@@ -5,6 +5,10 @@
 <body style="font-family:monospace;background:#0d1117;color:#e6edf3">
 <h2>Vetro</h2>
 <p>Dashboard at <code>http://&lt;TV&gt;:8099/</code> · Tizen/Samsung public API probe</p>
+<div id="pair" style="display:none;margin:24px 0;padding:24px 32px;border:2px solid #a3c7bd;border-radius:12px;max-width:900px">
+<div style="font-size:28px">Pairing request from <b id="pairName"></b>. Enter this code in the browser:</div>
+<div id="pairCode" style="font-size:96px;font-weight:bold;letter-spacing:16px;margin:12px 0;color:#a3c7bd"></div>
+<div style="font-size:22px;color:#a0a6ad">Didn't ask for this? Ignore it; the code expires in 2 minutes.</div></div>
 <pre id="out">Starting…</pre>
 <script>
 var BASE = 'http://127.0.0.1:8099';
@@ -71,6 +75,29 @@ jobs.reduce(function (p, j) { return p.then(function () { return attempt(j[0], j
     return sendReport();
   }).then(function (r) { log('\nReport sent to service: ' + r.status + (r.persisted ? ' · saved' : ' · memory only')); },
     function (e) { log('\nService unreachable: ' + e); });
+</script>
+<script>
+// Dashboard sign-in: show the pairing code the service asks for (only the TV can read it).
+(function () {
+  var box = document.getElementById('pair');
+  function check() {
+    if (document.hidden) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', BASE + '/auth/pending', true);
+    xhr.timeout = 3000;
+    xhr.onload = function () {
+      var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
+      box.style.display = d.code ? 'block' : 'none';
+      if (d.code) {
+        document.getElementById('pairName').textContent = d.name;
+        document.getElementById('pairCode').textContent = d.code.slice(0, 3) + ' ' + d.code.slice(3);
+      }
+    };
+    xhr.send();
+  }
+  check();
+  setInterval(check, 2000);
+})();
 </script>
 </body>
 </html>
