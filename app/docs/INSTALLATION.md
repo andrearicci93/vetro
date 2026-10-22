@@ -50,7 +50,7 @@ Select the connected TV target in Tizen Studio Device Manager, permit app instal
 tizen install -n /tmp/vetro.wgt -t YOUR_TV_TARGET
 ```
 
-Open **Vetro** once to run the public API probe. Visit `http://TV_IP:8099/` from a browser on the same LAN. Check app inventory, probe status and platform connectivity. A visible icon or accepted installation is not proof that the background service or root agent works.
+Open **Vetro** once to run the public API probe. Visit `http://TV_IP:8099/` from a browser on the same LAN and pair it with the code the TV shows ([sign-in](SIGN-IN.md)). Check app inventory, probe status and platform connectivity. A visible icon or accepted installation is not proof that the background service or root agent works.
 
 After a cold boot, Vetro’s background startup and root reacquisition can take **up to 90 seconds**. Wait before treating an unavailable dashboard or agent as a failure.
 
