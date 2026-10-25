@@ -116,12 +116,16 @@ function serveHtml(res, html) {
 
 function dashboardHtml() { return renderDashboard(); }
 
-var diagnosticPending = null;
-function downloadDiagnostics(res) {
+var diagnosticPending = null, diagnosticComponents = false;
+function downloadDiagnostics(res, withComponents) {
     // The CPU rate needs a second sample 1.5 s after the first, and the TV runs its commands one after the other:
     // read together, the sample waited behind the 13 s startup listing and came back without a rate (4 of 7 reports).
     // The other reads start once the second sample is queued, so it runs right after the first.
     function later(fn) { return function () { return new Promise(function (r) { setTimeout(r, 1700); }).then(fn); }; }
+    withComponents = withComponents === true;
+    // A plain download never joins one that is already reading the manifests, and the other way round.
+    if (diagnosticPending && diagnosticComponents !== withComponents) return diagnosticPending.then(function () { return downloadDiagnostics(res, withComponents); }, function () { return downloadDiagnostics(res, withComponents); });
+    diagnosticComponents = withComponents;
     if (!diagnosticPending) diagnosticPending = require('./diagnostic-report.js').collect({
         platform: function () { return platform.status(); },
         // The widget's probe wins; the service reads firmware and Tizen version itself when the probe never arrived.
@@ -145,6 +149,10 @@ function downloadDiagnostics(res) {
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         quickWins: later(function () { return wins.read(); }),
+        // Opt-in: the manifests of the components the catalog does not know. Without the box ticked the section says so.
+        components: withComponents
+            ? later(function () { return inventory(false).then(function (inv) { return require('./component-facts.js').read(agentExecute, inv.apps); }); })
+            : function () { throw require('./exec-error.js').coded('not-requested', 'not requested'); },
         probe: function () { return state; },
         serviceApis: serviceApiProbe
     }).finally(function () { diagnosticPending = null; });
@@ -575,7 +583,7 @@ http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
-        return downloadDiagnostics(res);
+        return downloadDiagnostics(res, /(?:\?|&)components=1(?:&|$)/.test(req.url || ''));
     }
     // Packaged widget documents use an opaque (null) origin. Allow only its
     // probe/status exchange, including the JSON POST preflight.

@@ -30,6 +30,13 @@ function numeric(v) { return typeof v === 'number' && Number.isFinite(v) ? v : n
 function boolean(v) { return typeof v === 'boolean' ? v : null; }
 function numbers(o, keys) { var out={}; keys.forEach(function(k){out[k]=numeric((o||{})[k]);});return out; }
 function flags(o, keys) { var out={}; keys.forEach(function(k){out[k]=boolean((o||{})[k]);});return out; }
+function hash(v) { return typeof v === 'string' && /^[a-f0-9]{64}$/.test(v) ? v : null; }
+// Samsung's own description of a component: plain words only; anything that looks like an address, URL or path is refused.
+function text(v) {
+    if (typeof v !== 'string' || !/^[A-Za-z0-9 .,()_\-\/&+:']{1,100}$/.test(v)) return null;
+    return /(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i.test(v) ? null : v;
+}
+function privilege(v) { return typeof v === 'string' && /^(?:tizen|samsung)\/[A-Za-z0-9_.\/-]{1,80}$/.test(v) ? v : null; }
 function list(v, limit) { return Array.isArray(v) ? v.slice(0,limit||5000) : []; }
 function dependencies(v) { return Array.isArray(v)?list(v).map(function(d){return {packageId:token(d.packageId),type:token(d.type),version:token(d.version)};}):null; }
 var projectors = {
@@ -52,10 +59,16 @@ var projectors = {
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','autorunSwitchedOff']));},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});return out;},
+    // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
+    components:function(d){return {requested:true,packageCount:numeric(d.packageCount),totalUnknown:numeric(d.totalUnknown),truncated:boolean(d.truncated),
+        packages:list(d.packages,300).map(function(p){return {packageId:token(p.packageId),origin:token(p.origin),manifest:['found','missing'].indexOf(p.manifest)>=0?p.manifest:null,
+            manifestSha256:hash(p.manifestSha256),description:text(p.description),privileges:list(p.privileges,40).map(privilege).filter(Boolean),
+            components:list(p.components,40).map(function(c){return Object.assign({appId:token(c.appId),kind:['service','ui'].indexOf(c.kind)>=0?c.kind:null,exec:token(c.exec),exeSha256:hash(c.exeSha256)},
+                flags(c,['declaredOnBoot','declaredAutoRestart','taskmanage','registeredOnBoot','registeredAutoRestart','differs']));})};})};},
     serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
-var SLOW = {startup: 4};
+var SLOW = {startup: 4, components: 3};
 function collect(readers, timeoutMs) {
     return Promise.all(Object.keys(projectors).map(function(name){
         if(typeof readers[name]!=='function')return {name:name,status:'unavailable',reason:'no-reader'};

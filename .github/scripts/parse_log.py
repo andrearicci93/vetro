@@ -24,7 +24,7 @@ SIGNATURES = {
 }
 
 
-SECTIONS = ('platform', 'device', 'inventory', 'settings', 'catalog', 'monitor', 'startup', 'network', 'dns', 'mqtt', 'privacy', 'hbbtv', 'probe', 'serviceApis')
+SECTIONS = ('platform', 'device', 'inventory', 'settings', 'catalog', 'monitor', 'startup', 'network', 'dns', 'mqtt', 'privacy', 'hbbtv', 'launcher', 'quickWins', 'components', 'probe', 'serviceApis')
 STATUSES = ('unavailable', 'timeout')
 REASONS = {
     'no-root-agent': 'no root agent connected',
@@ -34,6 +34,7 @@ REASONS = {
     'unreadable': 'source unreadable',
     'report-deadline': 'report deadline reached',
     'no-reader': 'not collected',
+    'not-requested': 'not requested',
     'error': 'error',
 }
 
@@ -78,6 +79,11 @@ def analyze(text):
         age = device.get('probeAgeMinutes')
         if device.get('source') == 'widget-probe':
             findings.append(('Model/firmware source', 'Reported by the Vetro widget' + (f'; last probe about {age} min before export' if type(age) is int and 0 <= age < 10**7 else '; probe age unknown') + ' (not read live)'))
+        if device.get('firmwareSource') == 'service-read':
+            findings.append(('Firmware source', 'Read from the TV by the Vetro service; the widget probe had not arrived'))
+        tizen = device.get('tizenVersion')
+        if isinstance(tizen, str) and re.fullmatch(r'\d{1,2}\.\d{1,2}\.\d{1,2}', tizen):
+            findings.append(('Tizen version', tizen))
         revision = report.get('sourceRevision')
         if isinstance(revision, str) and re.fullmatch(r'[a-f0-9]{40}', revision):
             dirty = report.get('sourceDirty')
@@ -119,11 +125,22 @@ def analyze(text):
         ram = memory.get('availableBytes') if isinstance(memory, dict) else None
         if type(ram) in (int, float) and 0 <= ram <= 2**50:
             findings.append(('Available RAM at capture', f'{ram / 1048576:.0f} MiB (not a performance comparison)'))
+        packages = data('components').get('packages')
+        if isinstance(packages, list):
+            rows = [x for x in packages if isinstance(x, dict)]
+            differing = [(x, c) for x in rows for c in (x.get('components') if isinstance(x.get('components'), list) else []) if isinstance(c, dict) and c.get('differs') is True]
+            findings.append(('Component details', f'{len(rows)} unrecognised packages read' + (f'; {len(differing)} with start flags that differ from their manifest' if differing else '')))
+            # Names only for system, preinstalled and Vetro's own packages: other app names can identify the household.
+            shown = [safe_token(c.get('appId')) for x, c in differing if x.get('origin') in ('system', 'preinstalled') or str(x.get('packageId', '')).startswith('vetrotvapp')][:5]
+            if shown:
+                findings.append(('Start flags differ from the manifest', ', '.join(shown)))
         missing = []
         for name in SECTIONS:
             section = sections.get(name)
             if not isinstance(section, dict) or section.get('status') == 'ok':
                 continue
+            if section.get('reason') == 'not-requested':
+                continue  # opt-in section the reporter did not tick
             status = section.get('status') if section.get('status') in STATUSES else 'unavailable'
             reason = REASONS.get(section.get('reason'), 'reason not recorded')
             code = section.get('exitCode')

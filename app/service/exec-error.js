@@ -1,7 +1,7 @@
 'use strict';
 // Diagnostic reports carry a failure code from a fixed vocabulary, never the
 // command output. Readers attach it to the Error they already throw.
-var CODES = ['no-root-agent', 'command-timeout', 'command-failed', 'incomplete', 'unreadable'];
+var CODES = ['no-root-agent', 'command-timeout', 'command-failed', 'incomplete', 'unreadable', 'not-requested'];
 function failed(r, message) {
     var error = new Error(message);
     error.code = r && r.timed_out ? 'command-timeout' : 'command-failed';
