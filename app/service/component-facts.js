@@ -5,15 +5,19 @@
 // the start flags it asks for. Comparing those with what the registry holds is also how a package that the installer
 // registered differently shows up (issues #25 and #26: on-boot="true" asked, onboot=false registered).
 //
-// Only runs when the user ticks the box in Diagnostics. Two read-only calls at the lowest priority; the work is capped
-// (packages, executables, bytes), and nothing is written. Paths, addresses and URLs never leave this module: the
+// Only runs when the user ticks the box in Diagnostics. Read-only, at the lowest priority, in small sequential calls so
+// the other root commands queue between them; the work is capped (packages, executables, bytes, time), and nothing is written. Paths, addresses and URLs never leave this module: the
 // privilege URIs are shortened to "tizen/<name>" or "samsung/<name>", and executables are reported by file name.
 var execError = require('./exec-error.js');
 var facts = require('./app-facts.js');
 
 var MAX_PACKAGES = 220;       // the export grows by about 600 bytes per package
 var MAX_EXES = 40;            // executables hashed; only components that start at boot
-var MAX_EXE_BYTES = 8388608;  // larger files are not read
+var MAX_EXE_BYTES = 4194304;  // larger files are not read
+var BATCH = 30;               // packages per call: the TV runs root commands one after another, so the others get a turn in between
+var HASH_BATCH = 8;           // executables per call
+var BATCH_BYTES = 8388608;    // read at most this much per hashing call
+var BUDGET_MS = 50000;        // no new call is started after this; the section returns what it has
 var MAX_PRIVILEGES = 40;
 var PACKAGE_ID = /^[A-Za-z0-9_.-]{1,120}$/;
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
@@ -57,8 +61,11 @@ function manifestScript(ids) {
 }
 function hashScript(paths) {
     return [
+        'total=0',
         'for e in ' + paths.join(' ') + '; do',
-        '  if [ -f "$e" ] && [ "$(wc -c < "$e" | tr -d " ")" -le ' + MAX_EXE_BYTES + ' ]; then sha256sum "$e"; fi',
+        '  [ -f "$e" ] || continue',
+        '  n=$(wc -c < "$e" | tr -d " ")',
+        '  if [ "$n" -le ' + MAX_EXE_BYTES + ' ] && [ $((total + n)) -le ' + BATCH_BYTES + ' ]; then sha256sum "$e"; total=$((total + n)); fi',
         'done',
         'true'
     ].join('\n');
@@ -101,9 +108,9 @@ function parseHashes(text) {
     return out;
 }
 
-function build(selection, manifests, hashes) {
+function build(selection, manifests, hashes, complete) {
     return {
-        requested: true, packageCount: selection.targets.length, totalUnknown: selection.total, truncated: selection.truncated,
+        requested: true, complete: complete !== false, packageCount: selection.targets.length, totalUnknown: selection.total, truncated: selection.truncated,
         packages: selection.targets.map(function (t) {
             var m = manifests[t.packageId] || {manifest: 'missing', sha256: null, description: null, privileges: [], components: {}};
             var open = t.origin === 'system' || t.origin === 'preinstalled' || OWN.test(t.packageId);
@@ -124,14 +131,33 @@ function build(selection, manifests, hashes) {
     };
 }
 
-function read(execute, rows) {
-    var selection = select(rows);
-    if (!selection.targets.length) return Promise.resolve(build(selection, {}, {}));
-    var ids = selection.targets.map(function (t) { return t.packageId; });
-    return execute(wrap(manifestScript(ids)), 45000).then(function (r) {
-        if (!r || r.exit_code || r.timed_out) throw execError.failed(r, 'component facts unavailable');
-        var manifests = parseManifests(r.stdout), paths = [];
-        // Hash the executables of components that start at boot, Vetro's own first; the rest is not worth the disk reads.
+function chunks(list, n) {
+    var out = [];
+    for (var i = 0; i < list.length; i += n) out.push(list.slice(i, i + n));
+    return out;
+}
+
+// Sequential batches. A failure in the first manifest batch fails the section (nothing was read); later on, a failed or
+// out-of-time batch only marks the result incomplete. options.budgetMs: no new call is started after that long.
+function read(execute, rows, options) {
+    var started = Date.now(), budget = options && options.budgetMs > 0 ? options.budgetMs : BUDGET_MS;
+    var selection = select(rows), complete = true, manifests = {}, hashes = {};
+    if (!selection.targets.length) return Promise.resolve(build(selection, manifests, hashes, true));
+    function inTime() { return Date.now() - started <= budget; }
+    var batches = chunks(selection.targets.map(function (t) { return t.packageId; }), BATCH);
+    var step = batches.reduce(function (p, batch, i) {
+        return p.then(function () {
+            if (!complete) return;
+            if (i > 0 && !inTime()) { complete = false; return; }
+            return execute(wrap(manifestScript(batch)), 15000).then(function (r) {
+                if (!r || r.exit_code || r.timed_out) throw execError.failed(r, 'component facts unavailable');
+                Object.assign(manifests, parseManifests(r.stdout));
+            }).catch(function (e) { if (i === 0) throw e; complete = false; });
+        });
+    }, Promise.resolve());
+    return step.then(function () {
+        // Hash the programs of components that start at boot, Vetro's own first; the rest is not worth the disk reads.
+        var paths = [];
         selection.targets.forEach(function (t) {
             var m = manifests[t.packageId];
             if (m) t.components.forEach(function (c) {
@@ -139,11 +165,15 @@ function read(execute, rows) {
                 if (d && d.exec && paths.length < MAX_EXES && paths.indexOf(d.exec) < 0 && (OWN.test(t.packageId) || c.registeredOnBoot || d.declaredOnBoot)) paths.push(d.exec);
             });
         });
-        if (!paths.length) return build(selection, manifests, {});
-        return execute(wrap(hashScript(paths)), 30000).then(function (h) {
-            return build(selection, manifests, h && !h.exit_code && !h.timed_out ? parseHashes(h.stdout) : {});
-        }, function () { return build(selection, manifests, {}); });
-    });
+        return chunks(paths, HASH_BATCH).reduce(function (p, batch) {
+            return p.then(function () {
+                if (!inTime()) { complete = false; return; }
+                return execute(wrap(hashScript(batch)), 15000).then(function (h) {
+                    if (h && !h.exit_code && !h.timed_out) Object.assign(hashes, parseHashes(h.stdout));
+                }, function () { /* no checksums for this batch; the manifests are still the section */ });
+            });
+        }, Promise.resolve());
+    }).then(function () { return build(selection, manifests, hashes, complete); });
 }
 
-module.exports = {read: read, select: select, parseManifests: parseManifests, parseHashes: parseHashes, build: build, manifestScript: manifestScript, hashScript: hashScript, MAX_PACKAGES: MAX_PACKAGES};
+module.exports = {read: read, chunks: chunks, BATCH: BATCH, select: select, parseManifests: parseManifests, parseHashes: parseHashes, build: build, manifestScript: manifestScript, hashScript: hashScript, MAX_PACKAGES: MAX_PACKAGES};

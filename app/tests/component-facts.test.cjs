@@ -114,6 +114,32 @@ function executor() {
         assert.equal(flaky.packages.length, 3); assert.ok(flaky.packages.every(p => p.components.every(x => x.exeSha256 === null)), 'no hashes, still a report');
         assert.equal((await cf.read(async () => { throw new Error('not called'); }, [{appId: KNOWN, packageId: KNOWN}])).packageCount, 0, 'nothing unknown: no call to the TV');
 
+        // Small sequential calls, a time limit, and a byte limit for the checksums
+        const seen = [];
+        const slow = (delay) => async cmd => {
+            const sc = Buffer.from(/^echo (\S+) /.exec(cmd)[1], 'base64').toString();
+            seen.push(sc);
+            if (delay) await new Promise(r => setTimeout(r, delay));
+            return {exit_code: 0, stdout: ''};
+        };
+        const lots = Array.from({length: 70}, (_, i) => ({appId: 'u.p' + i, packageId: 'u.p' + i, origin: 'installed', onboot: false}));
+        const batched = await cf.read(slow(0), lots);
+        assert.equal(seen.length, 3, '70 packages: 30 + 30 + 10');
+        assert.deepEqual(seen.map(sc => /for p in (.*); do/.exec(sc)[1].split(' ').length), [30, 30, 10]);
+        assert.equal(batched.complete, true); assert.equal(batched.packageCount, 70);
+        seen.length = 0;
+        const hurried = await cf.read(slow(60), lots, {budgetMs: 100});
+        assert.ok(seen.length >= 1 && seen.length < 3, 'out of time: no new call is started (' + seen.length + ')');
+        assert.equal(hurried.complete, false); assert.equal(hurried.packageCount, 70);
+        let calls = 0;
+        const half = await cf.read(async cmd => { if (calls++ === 1) throw new Error('boom'); return {exit_code: 0, stdout: ''}; }, lots);
+        assert.equal(half.complete, false, 'a later batch that fails marks the result incomplete');
+        await assert.rejects(cf.read(async () => { throw new Error('first'); }, lots), /first/, 'a failing first batch fails the section');
+        for (const n of [1, 2, 3]) fs.writeFileSync(path.join(apps, 'p.big', 'bin', 'f' + n), Buffer.alloc(3 * 1024 * 1024, n));
+        const hs = ['f1', 'f2', 'f3'].map(f => '/opt/usr/apps/p.big/bin/' + f);
+        const hashRun = await executor()('echo ' + Buffer.from(cf.hashScript(hs)).toString('base64') + ' | base64 -d | nice -n 19 sh');
+        assert.equal(hashRun.stdout.trim().split('\n').length, 2, 'three 3 MB files, an 8 MB budget per call: two are hashed');
+
         // In the report: strict projection, and "not-requested" without the box
         const poisoned = Object.assign({}, data, {
             packages: data.packages.concat([{packageId: 'p.x', origin: 'installed', manifest: 'found', manifestSha256: 'zz', description: 'see 192.0.2.10', privileges: ['http://x.test/p', 'tizen/ok'],

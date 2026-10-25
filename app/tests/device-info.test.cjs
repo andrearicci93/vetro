@@ -37,6 +37,19 @@ assert.equal(info.parse('Version=T-A1-1.1;\nVersion=T-NKM2DEUC-2301.1;').firmwar
     await assert.rejects(info.read(async () => ({exit_code: 1, stdout: ''})), /unavailable/);
     await assert.rejects(info.read(async () => ({exit_code: 0, timed_out: true, stdout: ''})), /unavailable/);
 
+    // merge(): it only ever adds to the widget's probe, and never waits longer than it was given
+    const good = async () => ({exit_code: 0, stdout: 'Version=T-NKM2DEUC-2301.1;\nTizen=Tizen6/TV 6.0.0 (arm)\n'});
+    const probe = {model: 'M', receivedAt: 5};
+    assert.deepEqual(await info.merge(probe, good, 1000), {model: 'M', receivedAt: 5, tizenVersion: '6.0.0', firmware: 'T-NKM2DEUC-2301.1', firmwareSource: 'service-read'}, 'no firmware posted: the service fills it in');
+    assert.deepEqual(await info.merge({model: 'M', firmware: 'T-FROM-WIDGET-1.1'}, good, 1000), {model: 'M', firmware: 'T-FROM-WIDGET-1.1', tizenVersion: '6.0.0'}, 'the widget firmware stays');
+    const started = Date.now();
+    assert.deepEqual(await info.merge(probe, () => new Promise(() => {}), 80), probe, 'a stuck agent: the probe, unchanged');
+    assert.ok(Date.now() - started < 1000, 'and not later than the limit');
+    assert.deepEqual(await info.merge(probe, async () => { throw new Error('agent down'); }, 1000), probe, 'an error leaves the probe alone');
+    assert.deepEqual(await info.merge(probe, async () => ({exit_code: 1, stdout: ''}), 1000), probe);
+    assert.deepEqual(await info.merge({}, async () => ({exit_code: 0, stdout: ''}), 1000), {tizenVersion: null}, 'nothing readable: nothing invented');
+    assert.equal(info.merge(probe, () => { throw new Error('sync'); }, 1000) instanceof Promise, true, 'never throws synchronously');
+
     // In the report: where the firmware came from, and nothing else gets through
     const now = Math.floor(Date.now() / 1000);
     const dev = d => report.projectors.device(d);

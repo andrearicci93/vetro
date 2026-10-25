@@ -49,6 +49,11 @@ const report=require('../service/diagnostic-report');
  const context={fetch:async()=>({ok:true,json:async()=>d}),$:id=>id==='diagnosticStatus'?status:button,Blob:class{constructor(parts){saved=parts.join('');}},URL:{createObjectURL:()=> 'blob:local',revokeObjectURL:()=>{}},document:{createElement:()=>({click:()=>clicks++,remove:()=>{}}),body:{appendChild:()=>{}}},setTimeout:()=>{},Error,JSON,Object};
  const fn=vm.runInNewContext('('+match[1]+')',context);fn.call(button);await new Promise(r=>setImmediate(r));
  assert.equal(clicks,1);assert.equal(JSON.parse(saved).schemaVersion,1);assert.equal(button.disabled,false);assert(status.textContent.includes('Nothing was uploaded'));
- context.fetch=async()=>({ok:false});fn.call(button);await new Promise(r=>setImmediate(r));assert.equal(button.disabled,false);assert(status.textContent.includes('Download failed'));assert.equal(clicks,1);
+ // The opt-in section left out is not a missing section
+ context.fetch=async()=>({ok:true,json:async()=>({format:'vetro-diagnostics',schemaVersion:1,sections:{platform:{status:'ok'},device:{status:'ok'},components:{status:'unavailable',reason:'not-requested'}}})});fn.call(button);await new Promise(r=>setImmediate(r));
+ assert(status.textContent.includes('2 / 2 sections'),status.textContent);assert(!status.textContent.includes('Missing'));
+ context.fetch=async()=>({ok:true,json:async()=>({format:'vetro-diagnostics',schemaVersion:1,sections:{platform:{status:'ok'},hbbtv:{status:'unavailable',reason:'command-failed'},components:{status:'unavailable',reason:'not-requested'}}})});fn.call(button);await new Promise(r=>setImmediate(r));
+ assert(status.textContent.includes('1 / 2 sections')&&status.textContent.includes('Missing'),status.textContent);
+ context.fetch=async()=>({ok:false});fn.call(button);await new Promise(r=>setImmediate(r));assert.equal(button.disabled,false);assert(status.textContent.includes('Download failed'));assert.equal(clicks,3,'a failed download saves no file');
  console.log('PASS diagnostic export: sensitive-field exclusion, technical fields, partial failure, timeout and browser JSON download');
 })().catch(e=>{console.error(e);process.exit(1);});

@@ -37,4 +37,17 @@ function read(execute) {
     });
 }
 
-module.exports = {read: read, parse: parse, script: script};
+// The probe values the widget posted, plus whatever the service can add. It only ever adds: it never rejects, and it
+// resolves with the probe alone once maxMs have passed, so a busy or stuck root agent cannot cost the report its
+// model and firmware. The firmware the widget posted is not replaced.
+function merge(probe, execute, maxMs) {
+    var timer;
+    var added = Promise.resolve().then(function () { return read(execute); }).then(function (info) {
+        return Object.assign({}, probe, {tizenVersion: info.tizenVersion},
+            probe.firmware || !info.firmware ? {} : {firmware: info.firmware, firmwareSource: 'service-read'});
+    }).catch(function () { return probe; });
+    var late = new Promise(function (resolve) { timer = setTimeout(function () { resolve(probe); }, maxMs); });
+    return Promise.race([added, late]).then(function (v) { clearTimeout(timer); return v; });
+}
+
+module.exports = {read: read, merge: merge, parse: parse, script: script};

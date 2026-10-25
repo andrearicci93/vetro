@@ -128,14 +128,11 @@ function downloadDiagnostics(res, withComponents) {
     diagnosticComponents = withComponents;
     if (!diagnosticPending) diagnosticPending = require('./diagnostic-report.js').collect({
         platform: function () { return platform.status(); },
-        // The widget's probe wins; the service reads firmware and Tizen version itself when the probe never arrived.
-        device: later(function () {
-            var probe = Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt});
-            return require('./device-info.js').read(agentExecute).then(function (info) {
-                return Object.assign(probe, {tizenVersion: info.tizenVersion},
-                    probe.firmware || !info.firmware ? {} : {firmware: info.firmware, firmwareSource: 'service-read'});
-            }, function () { return probe; });
-        }),
+        // The widget's probe wins. The service adds the firmware and Tizen version it reads itself; that read starts at once
+        // (a few milliseconds, ahead of the slow ones) and gives up after 8 s, so it can only add to the probe.
+        device: function () {
+            return require('./device-info.js').merge(Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt}), agentExecute, 8000);
+        },
         inventory: later(function () { return inventory(false); }),
         settings: later(function () { return tvSettings.read(); }),
         catalog: later(function () { return menuSettings.load(); }),
