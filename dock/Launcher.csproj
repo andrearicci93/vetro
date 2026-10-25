@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <AssemblyName>tvlauncher-dotnet</AssemblyName>
+    <RootNamespace>Launcher</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Runtime knobs for a small, quiet process: no background GC thread, workstation GC. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <TieredCompilation>true</TieredCompilation>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**;bin/**;obj/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Glass images and the generic Source/Settings/HDMI icons. The app list and the apps' own icons come from the TV at run time. -->
+    <None Include="res/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

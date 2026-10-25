@@ -8,4 +8,6 @@ assert.throws(() => debloat.validateTargets([component], false), /Smart Hub/,
 assert.equal(debloat.isAds('com.samsung.tv.acr', 'com.samsung.tv.acr-service-app'), true);
 assert.doesNotThrow(() => debloat.validateTargets([component], true));
 assert.throws(() => debloat.validateTargets([component + ".service"], false), /Smart Hub/);
+const toggleable = debloat.VERIFIED_GLOBAL_IDS.concat(require('../service/quick-settings.js').ALLOWED_IDS);
+assert.equal(toggleable.includes('org.tizen.ambientapp'), false, 'ambientapp is relaunched by a boot script that retries until it starts');
 console.log('PASS: Smart Hub dependency protected; ACR selection and recovery preserved');

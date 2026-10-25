@@ -1,6 +1,7 @@
 'use strict';
 // Candidate hostnames for the local filter and for external DNS blockers.
 // "firmware" hosts are strings found in the shipped Q80A image (T-NKM2DEUC);
+// "unverified" is a guess that has not been seen in the firmware or in traffic;
 // "by" names the components that reference them. What blocking a host does has
 // not been tested on a TV. "reported" hosts come from public reports and do not
 // appear in the firmware: the ACR service receives its servers from a control
@@ -29,13 +30,19 @@ var GROUPS = [
             {host: 'www.samsungrm.net', by: 'emergency log transmitter, HSMClient, RobustnessMonitor, targetLogClient'},
             {host: 'devicelog.samsungcloudsolution.net', by: 'smarthub-connection-test'}
         ]},
+    {id: 'qbe', label: 'Samsung QBE services', evidence: 'firmware',
+        note: 'Three hosts found in the firmware image. Which feature uses each one is not known, and no traffic to them has been seen yet. Check with Observe requests before relying on them.',
+        hosts: [{host: 'osb.samsungqbe.com'}, {host: 'rm.samsungqbe.com'}, {host: 'scs.samsungqbe.com'}]},
     {id: 'reported', label: 'Viewing data (ACR) and ads · reported', evidence: 'reported',
         note: 'Names from public reports; none appears in the firmware. Use Observe requests to see which ones your TV really asks for.',
         hosts: [
             {host: 'samsungads.com'}, {host: 'config.samsungads.com'}, {host: 'ads.samsung.com'},
             {host: 'samsungacr.com'}, {host: 'log-config.samsungacr.com'}, {host: 'log-ingestion.samsungacr.com'},
             {host: 'acr0.samsungcloudsolution.com'}
-        ]}
+        ]},
+    {id: 'probable', label: 'Probable ACR starting point · unverified', evidence: 'unverified',
+        note: 'Likely where the viewing-data service learns its servers. It is not in the firmware and nobody has confirmed it, so treat it as a guess and watch what the TV asks for.',
+        hosts: [{host: 'gpm.samsungqbe.com'}]}
 ];
 // Names the TV needs to work. The local filter refuses them and exports never include them.
 var ESSENTIAL = [
@@ -43,7 +50,8 @@ var ESSENTIAL = [
     {host: 'cdn.samsungqbe.cn', reason: 'the TV checks its internet connection here'},
     {host: 'time.samsungcloudsolution.com', reason: 'the TV sets its clock here'},
     {host: 'time.samsungcloudsolution.net', reason: 'the TV sets its clock here'},
-    {host: 'time.samsungqbe.cn', reason: 'the TV sets its clock here'}
+    {host: 'time.samsungqbe.cn', reason: 'the TV sets its clock here'},
+    {host: 'svdca.samsungqbe.com', reason: 'Samsung\u2019s Certificate Manager fetches the developer certificate here'}
 ];
 
 function hosts(group) { return group.hosts.map(function (h) { return h.host; }); }

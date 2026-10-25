@@ -32,7 +32,7 @@ var AREA_ROLE = {tracking: 'tracking', voice: 'optional', tv: 'keep', home: 'kee
 // Ordered: the first matching rule wins. Patterns match the package ID.
 var RULES = [
     ['system', /^vetrotvapp/],
-    ['tracking', /acr-service|canalysis|contents-recognition|nvision-analysis|vision-data-recognition|targeted-ad|ad-web-framework|^adplatform$|adplayer|samsung-analytics|cis-service-app|cis-api-service-app|coba\.adagent|pisa-service|privacy_app|PrivacyChoices|tv6pbVMQFF|content-grab-service|contents-ott-detector|contents-ui-detector/],
+    ['tracking', /acr-service|^com\.samsung\.tv\.acr$|canalysis|contents-recognition|nvision-analysis|vision-data-recognition|targeted-ad|ad-web-framework|^adplatform$|adplayer|samsung-analytics|cis-service-app|cis-api-service-app|coba\.adagent|pisa-service|privacy_app|PrivacyChoices|tv6pbVMQFF|content-grab-service|contents-ott-detector|contents-ui-detector/],
     ['voice', /alexa|bixby|google-assistant|wakeup-engine|voice|vif$|farfieldvoice|aov-|cnvoice|utterance-recommender|action-planner|fuzzy-search-engine|intelligent-action|stt-|tts-engine|multi-assistant/],
     ['commercial', /^com\.samsung\.ep[.-]|ep-hotel|ephotel|ep-boot|ep-event|ep-system|^ep-|hotel|factory|AgingApp|cloning|demo-player|remote-shop-care|UsbSyncDisplay|plateau|automation-(alert|app|viewer)|widget_viewer_sdk|hitcomp|remote-service-logging/],
     ['support', /TVDeviceCare|easy-support|remote-management|request-support|smarthub-connection-test|picture-test|sound-test|video-test|hdmi-troubleshooting|built-in-app-info-viewer|RunningApps|remoteguide|emanual|LzU5yAFXeg/],

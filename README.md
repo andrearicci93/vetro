@@ -2,90 +2,106 @@
   <img src="app/icon.png" alt="Vetro app icon" width="112">
 </p>
 <h1 align="center">Vetro</h1>
-<p align="center"><strong>Less bloat. More control over your Samsung TV.</strong></p>
-<p align="center">Root-powered debloating, privacy controls and a clearer view of what runs on Tizen.</p>
+<p align="center"><strong>Launcher. Debloater. Remapper.<br>The all-in-one TV manager for Samsung Tizen.</strong></p>
+<p align="center">Take control of your TV: get your privacy and your performance back.</p>
 <p align="center">
-  <a href="app/docs/INSTALLATION.md">Install on your TV</a> ·
-  <a href="#debloat-with-context">Debloating</a> ·
-  <a href="#root-on-the-tv">Root</a> ·
-  <a href="#compatibility">Compatibility</a> ·
-  <a href="#development">Development</a>
+  <a href="#launcher">Launcher</a> ·
+  <a href="#debloater">Debloater</a> ·
+  <a href="#remapper">Remapper</a> ·
+  <a href="app/docs/INSTALLATION.md">Install</a> ·
+  <a href="#compatibility">Compatibility</a>
 </p>
 
-Vetro lets you turn off features you never use, stop unwanted background services and reduce viewing-data collection. Open its dashboard from a computer or phone on your local network, see what each component does, and choose what stays active.
+Vetro runs on your Samsung TV with root access and gives you a dashboard, open from any computer or phone on your network, to manage it. Replace Samsung's Home with a light launcher, switch off what tracks you and wastes memory, and make the remote do what you want.
 
 <p align="center">
-  <img src="app/docs/images/quick-settings.jpg" alt="Vetro Quick settings: HbbTV, ACR viewing data, domain blocking and voice assistant switches" width="1000">
-  <br><em>Quick settings on Vetro 0.2.3, connected to the test TV.</em>
+  <img src="app/docs/images/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings: HbbTV, advertising and tracking, domain blocking and voice assistant switches" width="1000">
+  <br><em>The dashboard on a Samsung Q80A.</em>
 </p>
 
-## Make the TV yours
+## Launcher
 
-- **Disable voice assistants.** Separate switches for Alexa, Google Assistant, Bixby and shared voice services disable their listed components and stop those still running, including wake-word engines where included.
-- **Reduce tracking.** Turn off the supported ACR viewing-data services and HbbTV interactive broadcast features. Block selected advertising and tracking domains locally while keeping your DNS servers.
-- **Cut background work.** Inspect apps, stop running components and control startup and auto-restart flags. Remove eligible user packages and clear leftover installer files to reclaim storage.
-- **See the effect.** Check CPU, RAM, swap, storage and processes from the dashboard. Live sampling starts only when you request it and stops after two minutes.
+A fast, glass-style launcher on the Home key. It shows the same apps and icons as Samsung's Home, in the same order, and comes back by itself after a restart or a standby. Samsung's Home is one press away (the **Samsung Home** button), and nothing is removed.
 
-Disabling unnecessary services can free resources; the result depends on what was running. An exploratory comparison on the test TV ended with about **43 MiB more available RAM** after restoring five disabled-app flags. Repeat measurements are still needed; see [performance evidence](app/docs/PERFORMANCE.md).
-
-## Debloat with context
-
-A package name alone rarely tells you whether you need it. Vetro adds descriptions, feature areas and roles drawn from the Q80A firmware manifests: **Tracking**, **Not used at home**, **Optional** and **Keep**. Search by name, package or purpose, then expand a group to inspect its components.
+**It frees memory.** While the launcher is on, Samsung's Home is closed. On the Q80A that is about 150 MB of RAM that the launcher replaces with about 20–30 MB: available RAM went from **533 MB to 662 MB, about 24% more**. Method and numbers in the [performance evidence](app/docs/PERFORMANCE.md).
 
 <p align="center">
-  <img src="app/docs/images/debloater-current.jpg" alt="Vetro Debloater filtered to Tracking, with component descriptions, app state and startup flags" width="1000">
-  <br><em>Find viewing analytics and advertising components without guessing their purpose.</em>
+  <img src="app/docs/images/launcher-on-tv.jpg" alt="The Vetro launcher at the bottom of the TV screen: the apps from Samsung's Home, a Source hint, and Settings and Samsung Home buttons" width="1000">
+  <br><em>The launcher as the TV draws it (captured from the Q80A, over a plain backdrop instead of the video).</em>
 </p>
 
-The component drawer brings together app state, running processes, startup controls and declared dependencies. Disable, Stop and Uninstall show an in-page confirmation before sending a command. Protected targets stay restricted; available actions depend on the component and what has been verified.
+Turn it on in the **Launcher** tab, which also previews the bar. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
 
-**Disable** keeps a component installed and can be reversed with Enable. **Stop** ends its current process. **Uninstall** removes an eligible package and requires an installer to recover it. App state, boot flags and running processes are shown separately so you can check what actually changed.
+<p align="center">
+  <img src="app/docs/images/launcher-dashboard.jpg" alt="The Launcher tab of the dashboard: a preview of the bar, the launcher switch and the Fix TizenTube switch" width="1000">
+</p>
 
-Quick settings and Debloater share the same inventory: switch off an assistant in one, and its disabled components appear in the other.
+## Debloater
 
-## More privacy, fewer voice services
+Samsung TVs ship with advertising, viewing-data collection, voice assistants and background services you never asked for. Vetro lets you see them and switch them off, and every switch can be turned back on.
 
-Use the controls for the features you want to stop: ACR for the supported content-recognition services, HbbTV for interactive broadcast services, and the assistant switches for voice components. Domain blocking adds an exact-domain filter on the TV itself.
+**Quick settings** has one switch per win:
 
-Turning a voice group off also affects the remote's microphone shortcut and voice control; Vetro asks you to confirm. These controls disable software components, not the microphone hardware. Voice Guide's text-to-speech engine is excluded from the quick switches. Domain filtering does not guarantee that every app's advertising or telemetry is blocked.
+- **Disable all advertising and tracking**, which includes the ACR viewing-data services.
+- **Block ad and tracking domains** with a filter on the TV itself, keeping your DNS servers.
+- **Disable HbbTV** and **MultiScreen autostart**, which free about 22 MB and 15 MB of RAM.
+- **Disable all voice assistants**, or Alexa, Google Assistant, Bixby and the other voice services one by one.
+- **Disable automatic firmware update**, so a new firmware does not remove root behind your back.
 
-## Root on the TV
+Each switch shows *Done* or *Partly done*, so you can see what actually changed. Turning voice off also turns off the remote's microphone button; Vetro asks you to confirm. Domain filtering does not guarantee that every app's ads or telemetry are blocked.
 
-Vetro's optional integration runs a background service and reacquires a root context through TV-local SDB. Once configured, the TV can manage its own root-agent connection without a computer keeping a session open. This is what enables privileged app, process, startup and system controls behind the dashboard.
+**Task manager** lists every app and service on the TV (338 on the Q80A) with a plain description and a role: **Tracking**, **Not used at home**, **Optional** or **Keep**. Search by name, package or purpose, then disable, stop or uninstall with an in-page confirmation. Protected system components cannot be touched.
 
-Root and startup support depend on firmware, Developer Mode and your signing privileges; this is an experimental source release with no universal signed installer. See the [compatibility table](#compatibility) for tested hardware and upstream root evidence.
+<p align="center">
+  <img src="app/docs/images/task-manager.jpg" alt="Vetro Task manager filtered to Tracking, with component descriptions, app state and startup flags" width="1000">
+  <br><em>Find viewing analytics and advertising components without guessing what they do.</em>
+</p>
 
-Vetro **0.2.3** is installed on the test TV, with its source revision and authenticated UID-0 agent verified. Autonomous root recovery was observed after an earlier cold boot; unattended cold boot of 0.2.3 remains to be checked. Startup can take up to 90 seconds.
+Quick settings and Task manager share the same inventory: disable an assistant in one and its components show up as disabled in the other. Disabling a component keeps it installed and can be reversed; stopping ends the running process; uninstalling needs an installer to recover. Descriptions come from the Q80A's firmware, so on other models some packages are unclassified and left alone.
 
-The dashboard and API answer only devices paired with the TV: a browser or script pairs once with a 6-digit code shown on the TV screen. See [sign-in](app/docs/SIGN-IN.md). Traffic is still plain HTTP, so keep the TV on a trusted, isolated LAN with no public exposure. Privileged changes can disrupt TV features; review each target before changing it.
+## Remapper
 
-[Install and configure Vetro →](app/docs/INSTALLATION.md) · [Integration details](rooting/README.md) · [Validation record](app/docs/RELEASE-AUDIT.md)
+Do what you want with the remote. Press a button, choose an app, and the button opens it. Shortcuts survive restarts, and a key can also trigger an MQTT message for Home Assistant.
 
-## Compatibility
-
-**Vetro has been tested by the maintainer on one physical TV only;** one community diagnostic report from a second model is listed below. The root technique may work more broadly: the upstream [SDK archive-launcher route](https://github.com/chris-ritsen/samsung-tv-root#archive-root-route) is model-independent and has been demonstrated on QN90B and QN90F. That is evidence for the technique, not confirmation that Vetro's packaged integration or controls work on those TVs.
-
-| TV / platform | Firmware | Evidence | Vetro status |
-| --- | --- | --- | --- |
-| **Q80A — QE50Q80AATXZT**, Tizen 6, ARMv7 | **T-NKM2DEUC-2301.1** | Vetro installed; authenticated root agent and device controls verified. | **Tested on one TV** |
-| Q67B — QE43Q67BAUXXH (2022) | T-NKLBDEUC-1720.7 | Community diagnostic report from Vetro 0.2.3: app and service running, authenticated root agent reported with UID 0, app-disable flags set. Not confirmed: persistence after a cold boot, system service listing (that report section was unavailable) and device controls. | **Reported working**; not verified by the maintainer |
-| QN90B — QN55QN90BAFXZA, Tizen 6.5, ARMv7 | T-PTMAKUC-1602.3 | Upstream root testing, including the archive-launcher route. | Untested |
-| QN90F — QN75QN90FAFXZA / QA55QN90FAUXEG, Tizen 9.0, AArch64 | 1203.0 / 1301.0 | Upstream root testing on both firmwares; the archive route is also demonstrated on QN90F, without a separate firmware matrix. | Untested; architecture/runtime differences may require adaptation |
-| S90D | Exact OS/firmware not established here | An owner reported the underlying route; upstream has not run its exact archive implementation on this model. | Untested |
-| Other Samsung Tizen TVs, including S90C | Unknown | Possible where the required SDB, .NET and launcher components remain available. | Compatibility unknown |
-
-There is no confirmed blanket Tizen version range. Firmware patches, runtime support, signing privileges and on-boot behavior can change the outcome even within the same model family.
-
-**Help expand this table:** if you try Vetro, open a [TV diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with your exact model, firmware, what worked or failed, and the JSON from **Diagnostics → Download report** if the dashboard is reachable. Failed attempts are useful too. The report is designed to exclude credentials, IP/MAC addresses, serial numbers and viewing history; review it before uploading. See the [diagnostic format](app/docs/DIAGNOSTIC-EXPORT.md).
+<p align="center">
+  <img src="app/docs/images/remapper-dashboard.jpg" alt="The Remapper tab: listen to a remote key, choose an app and save the shortcut" width="1000">
+</p>
 
 ## Also included
 
-| Feature | What you can do |
-| --- | --- |
-| Remote shortcuts | Map supported physical remote buttons to native app launches and actions; save interception across restarts. |
-| TV settings | Adjust supported picture controls and selected advanced settings, with readback and restore handling. |
-| MQTT & Home Assistant | Connect a broker, publish state and discovery, and trigger actions from exact topics. [Setup guide](app/docs/mqtt/README.md). |
-| Diagnostics | Download a redacted compatibility report for review before sharing it in an issue. [Report format](app/docs/DIAGNOSTIC-EXPORT.md). |
+- **TV settings:** adjust supported picture controls and selected advanced settings, with read-back and restore.
+- **MQTT and Home Assistant:** publish the TV's state and discovery and trigger actions from exact topics. [Setup guide](app/docs/mqtt/README.md).
+- **Dashboard:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.
+- **Diagnostics:** download a redacted report to share in an issue. [Report format](app/docs/DIAGNOSTIC-EXPORT.md).
+
+## Install
+
+Vetro needs root on the TV, which comes from a package you build and sign yourself: there is no signed installer to download. You enable Developer Mode, build and install the package (signed with your own Samsung certificate, or with a tool such as [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung), which two community reports used), set **Host PC IP** to `127.0.0.1` and restart. [Step by step →](app/docs/INSTALLATION.md)
+
+The root comes from [Chris Ritsen's Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root) and works through TV-local SDB, so no computer needs to stay connected. Startup can take up to 90 seconds. This is experimental software: privileged changes can disrupt TV features, so read what a switch does before turning it on.
+
+**The dashboard and API answer only paired devices:** a browser or script pairs once with a 6-digit code shown on the TV ([sign-in](app/docs/SIGN-IN.md)). Traffic is still plain HTTP, so keep the TV on a trusted LAN and never expose it to the Internet. [Integration details](rooting/README.md) · [Validation record](app/docs/RELEASE-AUDIT.md)
+
+## Compatibility
+
+Vetro is developed and tested on a **Samsung Q80A**, and community reports confirm it on the other models below. Each report comes with a diagnostic export showing the app, the service and the root agent running, and the reporter's own account of what works.
+
+| TV | Firmware | Status |
+| --- | --- | --- |
+| **Q80A** QE50Q80AATXZT (2021) | T-NKM2DEUC-2301.1 | **Developed and tested here** |
+| Q70A QE55Q70AATXXC (2021) · [#8](https://github.com/andrearicci93/vetro/issues/8) | T-NKM2DEUC-2301.1 | Reported working |
+| QN85A GQ65QN85AATXZG (2021) | T-NKM2DEUC-2301.1 | Reported working, back after a reboot |
+| Q67B QE43Q67BAUXXH (2022) | T-NKLBDEUC-1720.7 | Reported working |
+| QN55S95B QN55S95BAFXZA (2022) · [#14](https://github.com/andrearicci93/vetro/issues/14) | T-PTMAKUC-1720.7 | Reported working |
+| Q65S95C (2023) · [#13](https://github.com/andrearicci93/vetro/issues/13) | T-PTMCDEUC-0090-2220.4 | Reported working |
+| GU75CU7179 (2023, Tizen 9.0) · [#17](https://github.com/andrearicci93/vetro/issues/17) | Tizen 9.0 (23_KSUE_UB_T09) | Reported working, installed with Apps2Samsung |
+| QN55Q65D QN55Q65DAGXZS (2024) · [#10](https://github.com/andrearicci93/vetro/issues/10) | T-NKLDUABC-0090-2123.9 | Reported working, installed with Apps2Samsung |
+| S90C (Tizen 7.0) · [#16](https://github.com/andrearicci93/vetro/issues/16) | not reported | Reported working |
+| UE43NU7090 (2018, Tizen 4) · [#2](https://github.com/andrearicci93/vetro/issues/2) | 1400.2 | Not working so far |
+
+Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. Tizen 6 or newer is what has worked; there is no confirmed range, and firmware updates can change the result even within one model family.
+
+**Add your TV.** Open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with your exact model and firmware, what worked or failed, and the report from **Diagnostics → Download**. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Failed attempts help too.
 
 ## Development
 

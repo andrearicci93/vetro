@@ -22,6 +22,18 @@ The sequence in `scripts/benchmark-tv.py` waits 30 seconds, opens YouTube, Strem
 
 Launcher acknowledgement is not time to a usable screen. Key acknowledgement is not input-to-photon latency. The compositor returns an unverified `a(usiud)` structure on this firmware; no reliable per-app FPS or below-60-FPS count has been derived. A 60 Hz display does not imply every application continuously generates 60 frames.
 
+## Launcher memory — 2026-10-23
+
+Same TV (Samsung QE50Q80AATXZT, firmware T-NKM2DEUC-2301.1). Single run, taken by hand during development, not an A/B test and not repeated.
+
+| Measurement | Samsung Home running | Launcher on, Samsung Home closed |
+| --- | ---: | ---: |
+| Available RAM | 533 MB | 662 MB |
+| Samsung Home (`com.samsung.tv.csfs`), resident memory (RSS) | about 152 MB (PSS about 100 MB) | closed |
+| Launcher process, resident memory (RSS) | — | about 22 MB (about 30 MB in a later read, PSS 5.7 MB) |
+
+Available RAM rose by about 129 MB, or 24%. The README's figure is this one. It measures memory only: nothing here shows a change in frame rate, input latency or time to open an app, and the figure depends on what else was running. The launcher closes Samsung's Home with a guard that repeats after each Home press (`--kill-on-home com.samsung.tv.csfs`).
+
 ## Vetro monitoring overhead
 
 Separate exploratory samples measured combined Vetro service and root-agent CPU:

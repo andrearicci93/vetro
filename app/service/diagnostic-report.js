@@ -45,13 +45,21 @@ var projectors = {
     mqtt:function(d){return Object.assign({state:['connected','connecting','disconnected','disabled','error'].indexOf(d.state)>=0?d.state:'unknown',hasError:!!d.lastError},flags(d,['connected']),numbers(d,['sent','received']));},
     privacy:function(d){return {doNotTrack:numeric(d.doNotTrack),acr:numbers(d.acr,['recognitionStatus','reset']),hbbtv:Object.assign(numbers(d.hbbtv,['dataService']),flags(d.hbbtv,['off','appRunning'])),tvPlusConsent:boolean(d.tvPlusConsent),agreementsAvailable:boolean(d.agreementsAvailable)};},
     hbbtv:function(d){return Object.assign({value:numeric(d.value)},flags(d,['off','canRestore']));},
+    // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out.
+    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,
+        appCount:numeric((d.apps||{}).count),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
+        tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return /tizentube/i.test(String(e.appId));}):null},
+        flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','autorunSwitchedOff']));},
+    quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});return out;},
     serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
 };
+// The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
+var SLOW = {startup: 4};
 function collect(readers, timeoutMs) {
     return Promise.all(Object.keys(projectors).map(function(name){
         if(typeof readers[name]!=='function')return {name:name,status:'unavailable',reason:'no-reader'};
-        return new Promise(function(resolve){var done=false,timer=setTimeout(function(){finish({name:name,status:'timeout',reason:'report-deadline'});},timeoutMs||20000);
+        return new Promise(function(resolve){var done=false,timer=setTimeout(function(){finish({name:name,status:'timeout',reason:'report-deadline'});},(timeoutMs||20000)*(SLOW[name]||1));
             function finish(v){if(done)return;done=true;clearTimeout(timer);resolve(v);}
             function fail(e){var f=failure(e);finish({name:name,status:'unavailable',reason:f.reason,exitCode:f.exitCode});}
             Promise.resolve().then(readers[name]).then(function(d){if(!d||d.error)throw Error('unavailable');finish({name:name,status:'ok',data:projectors[name](d)});},fail).catch(fail);

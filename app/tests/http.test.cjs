@@ -22,7 +22,7 @@ async function main() {
     try { await fn(); console.log('PASS ' + name); }
     catch (e) { failed++; console.log('FAIL ' + name + ': ' + e.message); }
   }
-  for (const route of ['/control', '/debloat', '/mqtt', '/install', '/exec']) {
+  for (const route of ['/control', '/debloat', '/mqtt', '/install', '/exec', '/wins']) {
     await check('POST ' + route + ' null returns 400 without throwing', async function () {
       const response = await request('POST', route, 'null');
       assert.equal(response.status, 400);
@@ -54,6 +54,17 @@ async function main() {
     assert.equal((await request('POST', '/control', '{"key":"XF86Home"}')).status, 503);
     assert.equal((await request('POST', '/exec', '{"cmd":"id"}')).status, 503);
     assert.equal((await request('POST', '/exec', 'id')).status, 503);
+  });
+  await check('the dock accepts only known actions and never touches the TV on a bad one', async function () {
+    assert.equal((await request('POST', '/dock', 'null')).status, 400);
+    const bad = await request('POST', '/dock', '{"action":"format"}');
+    assert.equal(bad.status, 409); assert.match(JSON.parse(bad.body).error, /Invalid dock action/);
+    const fix = await request('POST', '/dock', '{"action":"fixTizenTube","on":"yes"}');
+    assert.equal(fix.status, 409); assert.match(JSON.parse(fix.body).error, /Invalid value/);
+    assert.equal((await request('GET', '/dock/icon?slug=..%2F..%2Fetc%2Fpasswd')).status, 404);
+    assert.equal((await request('GET', '/dock/icon')).status, 404);
+    const status = await request('GET', '/dock');
+    assert.ok([200, 503].includes(status.status));
   });
   await check('malformed TV menu ID returns 400',async function(){assert.equal((await request('GET','/tv-menu?id=%ZZ')).status,400);});
   await check('GET /status returns JSON', async function () {

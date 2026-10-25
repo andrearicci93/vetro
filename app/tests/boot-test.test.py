@@ -91,10 +91,16 @@ class BootTests(unittest.TestCase):
             def do_POST(self):
                 routes.append(('POST', self.path))
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                self.server.command = body['cmd']
                 # /proc/<pid>/stat fields 3..21 followed by starttime (field 22).
                 fields = ['S'] + ['0'] * 18 + ['24500'] + ['0'] * 5
-                output = '250\n123 (vetrotvapp.svc) ' + ' '.join(fields) + '\n105.0 100\n'
+                if 'DOCKSTAT' in body['cmd']:
+                    self.server.launcher_command = body['cmd']
+                    late = ['S'] + ['0'] * 18 + ['30000'] + ['0'] * 5
+                    output = ('250\n130.0 100\nDOCKSTAT 77 (dotnet) ' + ' '.join(late) +
+                              '\nCSFSSTAT 55 (csfs) ' + ' '.join(fields) + '\nDOCKLOG\n12:00:00.1 start\n')
+                else:
+                    self.server.command = body['cmd']
+                    output = '250\n123 (vetrotvapp.svc) ' + ' '.join(fields) + '\n105.0 100\n'
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(json.dumps({'ok': True, 'output': output}).encode())
@@ -117,7 +123,14 @@ class BootTests(unittest.TestCase):
                     events = [json.loads(line) for line in (out / 'events.jsonl').read_text().splitlines()]
                     self.assertTrue(any(event['type'] == 'sample' for event in events))
                     self.assertTrue(any(event['type'] == 'processSnapshot' for event in events))
-                    self.assertEqual(routes.count(('POST', '/exec')), 1)
+                    self.assertEqual(routes.count(('POST', '/exec')), 2, 'one service snapshot, one launcher snapshot')
+                    launcher = report['processSnapshot']['launcher']
+                    self.assertEqual(launcher['dockStartBootSeconds'], 120)
+                    self.assertEqual(launcher['csfsStartBootSeconds'], 98)
+                    self.assertTrue(launcher['dockRunning'] and launcher['samsungHomeRunning'])
+                    self.assertEqual(launcher['dockLogTail'], ['12:00:00.1 start'])
+                    self.assertTrue(any(event['type'] == 'launcherSnapshot' for event in events))
+                    self.assertNotIn('>', server.launcher_command.replace('2>/dev/null', ''), 'read-only: no redirection that writes')
                     self.assertTrue(set(routes) <= {('GET', path) for path in MODULE['ROUTES']} | {('POST', '/exec')})
                     self.assertIn('cat /proc/123/stat', server.command)
                     again = subprocess.run(cmd, input='', text=True, capture_output=True, timeout=3)

@@ -18,6 +18,9 @@ blocklist.ESSENTIAL.forEach(n => {
 });
 assert.ok(!exported.includes('samsungcloudsolution.com'));
 assert.ok(exported.includes('rtb-config.samsungads.com'));
+['osb', 'rm', 'scs', 'gpm'].forEach(h => assert.ok(exported.includes(h + '.samsungqbe.com'), h + '.samsungqbe.com is a candidate'));
+assert.ok(blocklist.essential('svdca.samsungqbe.com'), 'the certificate server stays reachable');
+assert.ok(!exported.some(h => /^(samsungqbe\.com|samsungqbe\.cn)$/.test(h)), 'no parent domain of the QBE hosts');
 
 // The local filter refuses names the TV needs, whatever the case, and accepts the rest.
 assert.throws(() => dns.validate(['CDN.samsungcloudsolution.com ']), /cannot be blocked: the TV checks its internet connection/);
@@ -27,7 +30,7 @@ assert.deepStrictEqual(dns.validate(['samsungcloudsolution.com']), ['samsungclou
 
 // Dashboard data carries evidence and notes but not component names.
 const groups = blocklist.publicGroups();
-assert.deepStrictEqual(groups.map(g => g.evidence), ['firmware', 'firmware', 'firmware', 'reported']);
+assert.deepStrictEqual(groups.map(g => g.evidence), ['firmware', 'firmware', 'firmware', 'firmware', 'reported', 'unverified']);
 assert.ok(!JSON.stringify(groups).includes('"by"'));
 groups.forEach(g => assert.ok(g.label && g.note && g.hosts.length));
 console.log('PASS blocklist: evidence groups, unique valid hosts, essential names refused and never exported');

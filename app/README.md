@@ -28,5 +28,5 @@ The app catalog (`service/app-facts.js`) is generated from a private firmware du
 python3 scripts/build-app-catalog.py /path/to/dump/rootfs /tmp/app-facts-full.json --compact service/app-facts.js
 ```
 
-The default management port is 8099 (`VETRO_PORT` overrides it). TV-specific
+The default management port is 8099. `VETRO_PORT=9000 node build.cjs` builds a package that uses another port (the widget and the service both get it); `VETRO_PORT` also overrides it when running `node service/main.js` locally. TV-specific
 operations require the optional adapter and supported firmware/signing privileges.

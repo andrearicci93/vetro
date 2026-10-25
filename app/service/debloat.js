@@ -77,6 +77,9 @@ function parseList(csv) {
     return rows;
 }
 
+// Keep org.tizen.ambientapp out of this list: /usr/bin/ambient_start.sh relaunches it with
+// app_launcher in a loop that only ends on "successfully launched" (read from the Q80A
+// firmware, not tested on a TV), so a disabled app could leave that boot script spinning.
 var VERIFIED_GLOBAL_IDS=['com.samsung.tv.acr','com.samsung.tv.canalysis-service','com.samsung.tv.vision-data-recognition-service','com.samsung.tv.contents-recognition-dbmgr','com.samsung.tv.nvision-analysis-dbmgr'];
 module.exports = {
     VERIFIED_GLOBAL_IDS:VERIFIED_GLOBAL_IDS,

@@ -1,0 +1,6 @@
+# the inputs panel (Up on the dock). source:N is Samsung's input number: TV 0, HDMI 1-4 are 13-16
+in-tv	TV	source:0
+in-hdmi1	HDMI 1	source:13
+in-hdmi2	HDMI 2	source:14
+in-hdmi3	HDMI 3	source:15
+in-hdmi4	HDMI 4	source:16

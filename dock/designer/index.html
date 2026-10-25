@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Launcher designer</title>
+<style>
+:root{--bg:#0f1216;--panel:#161a20;--raised:#1d232a;--line:#2a313a;--ink:#e6e9ed;--muted:#97a1ac;--accent:#8fc5b4;--accent-ink:#0f1216;--warn:#e0bd85;--bad:#e59a9a;--font:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--font)}
+header{padding:18px 24px 8px;display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+h1{font-size:20px;margin:0;font-weight:600}header p{margin:0;color:var(--muted);font-size:13px}
+.wrap{display:grid;grid-template-columns:380px minmax(0,1fr);gap:20px;padding:12px 24px 40px;align-items:start}
+@media(max-width:1000px){.wrap{grid-template-columns:1fr}}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:10px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+@media(max-width:1000px){aside{position:static;max-height:none}}
+details{border-bottom:1px solid var(--line)}details:last-child{border-bottom:0}
+summary{padding:12px 16px;cursor:pointer;font-weight:600;font-size:13px;list-style:none;display:flex;justify-content:space-between}
+summary::after{content:"+";color:var(--muted)}details[open] summary::after{content:"–"}
+summary::-webkit-details-marker{display:none}
+.ctl{padding:0 16px 14px;display:grid;gap:10px}
+.row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center}
+.row label{font-size:13px}.row .val{font:12px var(--mono);color:var(--muted);text-align:right;min-width:42px}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.row.inline{grid-template-columns:1fr auto}
+input[type=text],select,textarea{width:100%;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+input[type=color]{width:42px;height:26px;border:1px solid var(--line);border-radius:6px;background:var(--raised);padding:2px}
+input[type=checkbox]{accent-color:var(--accent);width:18px;height:18px}
+.tag{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-left:6px;white-space:nowrap}
+.tag.y{color:var(--accent);border-color:#3c5b50}.tag.a{color:var(--warn);border-color:#685438}.tag.n{color:var(--bad);border-color:#6a4141}
+main{display:grid;gap:18px;min-width:0}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px}
+.bar select{width:auto}button{font:inherit;background:var(--raised);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--muted)}button.p{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.muted{color:var(--muted)}small{color:var(--muted)}
+.sh{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:10px;border:1px solid var(--line)}
+.s{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-family:system-ui}
+.s *{box-sizing:border-box}
+.s .t{transition:left var(--fs) var(--ease),top var(--fs) var(--ease),width var(--fs) var(--ease),height var(--fs) var(--ease),opacity var(--fs) var(--ease),filter var(--fs) var(--ease),transform var(--fs) var(--ease),background var(--fs),box-shadow var(--fs)}
+.s.nt .t{transition:none!important}
+.s .a{position:absolute}
+.ico{position:absolute;overflow:hidden;background:#222}.ico img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.ico.wide img{object-fit:contain;position:relative}.ico.wide:before{content:"";position:absolute;inset:-12px;background:var(--bg) center/cover;filter:blur(14px)}
+.ico.loose.tile img{inset:14%;width:72%;height:72%;object-fit:contain}
+.pin{position:absolute;display:flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap;color:#fff;font-weight:600}
+.pin svg{flex:none}
+.lab{position:absolute;white-space:nowrap}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:8px}
+.card h3{margin:0;font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card p{margin:0;font-size:12px;color:var(--muted)}
+textarea{font:12px/1.4 var(--mono);min-height:220px;resize:vertical}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:10px}
+.panel h2{margin:0;font-size:15px}
+ul.diff{margin:0;padding-left:18px;font:12px/1.6 var(--mono);color:var(--muted)}
+.kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:4px;padding:1px 5px;background:var(--raised)}
+</style>
+</head>
+<body>
+<header><h1>Launcher designer</h1><p>Cambia le opzioni a sinistra, guarda il risultato, poi incolla qui il JSON in fondo e lo trasformo in codice nativo.</p></header>
+<div class="wrap">
+<aside id="controls"></aside>
+<main>
+  <div class="bar">
+    <label>Sfondo <select id="scene"></select></label>
+    <button id="replay">▶ Entrata</button>
+    <label><input type="checkbox" id="nativeOnly"> solo opzioni native</label>
+    <span class="muted">Frecce <span class="kbd">←</span><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> o clic sulle icone</span>
+  </div>
+  <div class="sh" id="main"></div>
+  <small><span class="tag y">nativo</span> si porta com’è · <span class="tag a">approssimato</span> si porta in forma simile · <span class="tag n">solo anteprima</span> il launcher nativo non lo sa fare (EFL non ha blur dello sfondo, font fissi, ecc.)</small>
+
+  <section>
+    <h2 style="font-size:15px;margin:4px 0 10px">Confronto: stili pronti <small>(clic su “Usa come base”)</small></h2>
+    <div class="cards" id="gallery"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Risultato</h2>
+    <p class="muted" style="margin:0">Copia questo JSON e incollalo nella chat. In alto c’è l’elenco di quello che hai cambiato rispetto all’aspetto attuale.</p>
+    <ul class="diff" id="diff"></ul>
+    <textarea id="out" spellcheck="false"></textarea>
+    <div class="bar"><button class="p" id="copy">Copia JSON</button><button id="reset">Torna all’attuale</button><span id="copied" class="muted"></span></div>
+    <details><summary>Importa un JSON</summary><div class="ctl" style="padding:8px 0 0"><textarea id="in" spellcheck="false" placeholder="Incolla qui un JSON esportato"></textarea><div><button id="apply">Applica</button></div></div></details>
+  </section>
+</main>
+</div>
+<script src="icons.js" onerror="void 0"></script>
+<script>
+'use strict';
+/* ---------- data ---------- */
+var PLACEHOLDER = ['TV Plus','Live TV','TizenTube','Stremio','Now','Apple TV','RaiPlay','Netflix','Infinity','Prime Video','Disney+'];
+var SUB = {tvplus:'Live',livetv:'Antenna',tizentube:'Video',stremio:'Library',now:'Streaming','apple-tv':'Streaming',raiplay:'Streaming',netflix:'Streaming','mediaset-infinity':'Streaming','prime-video':'Streaming',disney:'Streaming'};
+var NAMES = {tvplus:'Samsung TV Plus',livetv:'Live TV',tizentube:'TizenTube',stremio:'Stremio',now:'NOW','apple-tv':'Apple TV',raiplay:'RaiPlay',netflix:'Netflix','mediaset-infinity':'Mediaset Infinity','prime-video':'Prime Video',disney:'Disney+'};
+function placeholderIcon(i,label){var c=document.createElement('canvas');c.width=c.height=256;var x=c.getContext('2d');var h=(i*47+200)%360;var g=x.createLinearGradient(0,0,256,256);g.addColorStop(0,'hsl('+h+',55%,42%)');g.addColorStop(1,'hsl('+(h+40)+',55%,26%)');x.fillStyle=g;x.fillRect(0,0,256,256);x.fillStyle='#fff';x.font='600 96px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText(label.slice(0,2),128,138);return c.toDataURL()}
+var RAW = (window.DESIGNER_APPS&&window.DESIGNER_APPS.length)?window.DESIGNER_APPS:PLACEHOLDER.map(function(l,i){return {slug:'app'+i,label:l,icon:placeholderIcon(i,l)}});
+var APPS = RAW.map(function(a){return {slug:a.slug,label:a.label||NAMES[a.slug]||a.slug,sub:a.sub||SUB[a.slug]||'App',src:a.icon,url:a.icon,loose:false,wide:false,color:[200,210,230]}});
+
+/* The same preparation the native launcher applies: banners get a blurred fill, loose logos may go on a tile. */
+function prepare(app){return new Promise(function(done){var im=new Image();im.onload=function(){
+  var w=im.naturalWidth,h=im.naturalHeight,c=document.createElement('canvas');c.width=c.height=256;var x=c.getContext('2d');
+  var s=document.createElement('canvas');s.width=s.height=48;var sx=s.getContext('2d');sx.drawImage(im,0,0,48,48);var d=sx.getImageData(0,0,48,48).data,opq=0,r=0,g=0,b=0,wt=0;
+  for(var i=0;i<d.length;i+=4){if(d[i+3]>200)opq++;var mx=Math.max(d[i],d[i+1],d[i+2]),mn=Math.min(d[i],d[i+1],d[i+2]),sat=mx?(mx-mn)/mx:0,q=(d[i+3]/255)*(0.15+sat)*(mx>40?1:0.2);r+=d[i]*q;g+=d[i+1]*q;b+=d[i+2]*q;wt+=q}
+  if(wt>0)app.color=[Math.round(r/wt),Math.round(g/wt),Math.round(b/wt)];
+  app.loose=Math.abs(w-h)<=w*0.02&&opq/(48*48)<0.8;
+  if(Math.abs(w-h)>w*0.02){app.wide=true;x.filter='blur(16px)';x.drawImage(im,-20,-20,296,296);x.filter='none';var k=Math.min(256/w,256/h);x.drawImage(im,(256-w*k)/2,(256-h*k)/2,w*k,h*k)}
+  else x.drawImage(im,0,0,256,256);
+  app.url=c.toDataURL();done()};im.onerror=function(){done()};im.src=app.src})}
+
+/* ---------- configuration ---------- */
+var DEF = {
+ 'scene':'dark',
+ 'layout.position':'bottom','layout.align':'center','layout.offset':40,'layout.maxW':1808,'layout.icon':92,'layout.focusIcon':112,'layout.gap':18,'layout.fisheye':0,'layout.padX':26,'layout.padTop':16,'layout.padBottom':16,'layout.groupGap':56,
+ 'divider.show':true,'divider.height':72,'divider.opacity':0.3,
+ 'shell.style':'solid','shell.radius':24,'shell.tint':'#2a3346','shell.opacity':0.62,'shell.gradient':0.25,'shell.borderW':2,'shell.border':0.22,'shell.borderColor':'#ffffff','shell.highlight':0.35,'shell.shadow':0.45,'shell.shadowBlur':50,'shell.blur':0,
+ 'icons.shape':'squircle','icons.radius':16,'icons.treat':'dark','icons.rim':true,'icons.dim':0.94,'icons.sat':0.95,'icons.looseTile':true,
+ 'glow.show':true,'glow.mode':'icon','glow.color':'#e2edff','glow.strength':0.44,'glow.spread':16,
+ 'focus.ring':2,'focus.ringColor':'#ffffff','focus.lift':4,
+ 'label.mode':'none','label.size':18,'label.weight':'400','label.color':'#ffffff','label.shadow':0.5,'label.case':'none','label.spacing':0,'label.font':'system','label.sub':false,'label.subColor':'#aab4c0',
+ 'clock.show':false,'clock.size':26,'clock.opacity':0.7,'clock.fmt':'24',
+ 'hint.show':true,'hint.text':'Source',
+ 'pills.mode':'stack','pills.w':232,'pills.h':48,'pills.gap':8,'pills.radius':24,'pills.style':'outline','pills.size':22,'pills.glyph':true,'pills.label1':'Settings','pills.label2':'Samsung Home','pills.color':'#ffffff',
+ 'motion.enter':'cascade','motion.duration':300,'motion.stagger':24,'motion.ease':'linear','motion.focus':300
+};
+var N='y',A='a',X='n';
+/* group, key, label, type, extra, native */
+var OPTS = [
+ ['Posizione e dimensioni','layout.position','Posizione','select',['bottom','top'],N],
+ ['Posizione e dimensioni','layout.align','Allineamento','select',['center','left','right'],N],
+ ['Posizione e dimensioni','layout.offset','Distanza dal bordo (px)','range',[0,200,2],N],
+ ['Posizione e dimensioni','layout.maxW','Larghezza massima (px)','range',[800,1808,8],N],
+ ['Posizione e dimensioni','layout.icon','Icona (px)','range',[56,160,2],N],
+ ['Posizione e dimensioni','layout.focusIcon','Icona selezionata (px)','range',[56,200,2],N],
+ ['Posizione e dimensioni','layout.gap','Spazio tra icone (px)','range',[0,60,2],N],
+ ['Posizione e dimensioni','layout.fisheye','Effetto lente sui vicini','range',[0,1,0.05],N],
+ ['Posizione e dimensioni','layout.padX','Margine laterale interno','range',[8,100,2],N],
+ ['Posizione e dimensioni','layout.padTop','Margine alto interno','range',[4,60,2],N],
+ ['Posizione e dimensioni','layout.padBottom','Margine basso interno','range',[4,60,2],N],
+ ['Posizione e dimensioni','divider.show','Linea di separazione','bool',null,N],
+ ['Posizione e dimensioni','divider.height','Altezza linea','range',[16,100,2],N],
+ ['Posizione e dimensioni','divider.opacity','Opacità linea','range',[0,1,0.05],N],
+ ['Posizione e dimensioni','layout.groupGap','Spazio prima delle pillole','range',[16,120,2],N],
+
+ ['Contenitore (la barra)','shell.style','Stile','select',['glass','solid','flat','outline','none'],N],
+ ['Contenitore (la barra)','shell.radius','Arrotondamento','range',[0,90,1],N],
+ ['Contenitore (la barra)','shell.tint','Colore','color',null,N],
+ ['Contenitore (la barra)','shell.opacity','Opacità','range',[0,1,0.02],N],
+ ['Contenitore (la barra)','shell.gradient','Schiarisce in alto','range',[0,1,0.05],N],
+ ['Contenitore (la barra)','shell.highlight','Riflesso in alto','range',[0,1,0.05],A],
+ ['Contenitore (la barra)','shell.borderW','Spessore bordo','range',[0,8,1],N],
+ ['Contenitore (la barra)','shell.border','Opacità bordo','range',[0,1,0.02],N],
+ ['Contenitore (la barra)','shell.borderColor','Colore bordo','color',null,N],
+ ['Contenitore (la barra)','shell.shadow','Ombra sotto','range',[0,1,0.02],N],
+ ['Contenitore (la barra)','shell.shadowBlur','Sfocatura ombra','range',[0,120,2],N],
+ ['Contenitore (la barra)','shell.blur','Sfocatura dello sfondo (vetro vero)','range',[0,40,1],X],
+
+ ['Icone','icons.shape','Forma','select',['squircle','circle','square','rounded'],N],
+ ['Icone','icons.radius','Arrotondamento (%) se “squircle/rounded”','range',[0,50,1],N],
+ ['Icone','icons.treat','Trattamento','select',['original','glass','dark','mono'],A],
+ ['Icone','icons.looseTile','Logo senza sfondo su tile scura','bool',null,N],
+ ['Icone','icons.rim','Bordo sottile chiaro','bool',null,N],
+ ['Icone','icons.dim','Opacità non selezionate','range',[0.2,1,0.02],N],
+ ['Icone','icons.sat','Saturazione non selezionate','range',[0,1,0.05],A],
+
+ ['Selezione','glow.show','Alone (glow)','bool',null,N],
+ ['Selezione','glow.mode','Colore alone','select',['white','custom','icon'],N],
+ ['Selezione','glow.color','Colore (se “white/custom”)','color',null,N],
+ ['Selezione','glow.strength','Intensità alone','range',[0,1,0.02],N],
+ ['Selezione','glow.spread','Raggio alone (px)','range',[0,80,1],N],
+ ['Selezione','focus.ring','Anello attorno (px)','range',[0,8,1],N],
+ ['Selezione','focus.ringColor','Colore anello','color',null,N],
+ ['Selezione','focus.lift','Sollevamento (px)','range',[0,40,1],N],
+
+ ['Testo','label.mode','Nome app','select',['focused','all','none'],N],
+ ['Testo','label.size','Dimensione','range',[14,44,1],N],
+ ['Testo','label.weight','Peso','select',['400','500','600','700'],A],
+ ['Testo','label.color','Colore','color',null,N],
+ ['Testo','label.shadow','Ombra del testo','range',[0,1,0.05],N],
+ ['Testo','label.case','Maiuscole','select',['none','upper'],N],
+ ['Testo','label.spacing','Spaziatura lettere','range',[0,6,0.5],A],
+ ['Testo','label.font','Carattere','select',['system','rounded','serif','mono'],X],
+ ['Testo','label.sub','Seconda riga (categoria)','bool',null,N],
+ ['Testo','label.subColor','Colore seconda riga','color',null,N],
+ ['Testo','clock.show','Orologio','bool',null,N],
+ ['Testo','clock.fmt','Formato orologio','select',['24','12'],N],
+ ['Testo','clock.size','Dimensione orologio','range',[12,40,1],N],
+ ['Testo','clock.opacity','Opacità orologio','range',[0.1,1,0.05],N],
+ ['Testo','hint.show','Indicatore “Input ˄”','bool',null,N],
+ ['Testo','hint.text','Testo indicatore','text',null,N],
+
+ ['Pillole (Settings e Samsung Home)','pills.mode','Disposizione','select',['stack','row','round','off'],N],
+ ['Pillole (Settings e Samsung Home)','pills.style','Stile','select',['glass','solid','outline'],N],
+ ['Pillole (Settings e Samsung Home)','pills.w','Larghezza','range',[120,320,2],N],
+ ['Pillole (Settings e Samsung Home)','pills.h','Altezza','range',[32,72,2],N],
+ ['Pillole (Settings e Samsung Home)','pills.gap','Spazio tra le due','range',[0,32,2],N],
+ ['Pillole (Settings e Samsung Home)','pills.radius','Arrotondamento','range',[0,40,1],N],
+ ['Pillole (Settings e Samsung Home)','pills.size','Testo (px)','range',[14,34,1],N],
+ ['Pillole (Settings e Samsung Home)','pills.color','Colore testo','color',null,N],
+ ['Pillole (Settings e Samsung Home)','pills.glyph','Icona nella pillola','bool',null,N],
+ ['Pillole (Settings e Samsung Home)','pills.label1','Testo 1','text',null,N],
+ ['Pillole (Settings e Samsung Home)','pills.label2','Testo 2','text',null,N],
+
+ ['Movimento','motion.enter','Entrata','select',['slide','fade','scale','cascade'],A],
+ ['Movimento','motion.duration','Durata entrata (ms)','range',[80,800,10],N],
+ ['Movimento','motion.stagger','Sfasamento a cascata (ms)','range',[0,80,2],A],
+ ['Movimento','motion.ease','Curva','select',['spring','out','linear'],A],
+ ['Movimento','motion.focus','Durata spostamento focus (ms)','range',[60,700,10],N]
+];
+
+var SCENES = {
+ dark:'linear-gradient(160deg,#27323f,#12161c 60%,#1a1f27)',
+ blue:'radial-gradient(900px 600px at 20% 25%,#3b6cff 0%,transparent 60%),radial-gradient(900px 700px at 85% 70%,#9b3bff 0%,transparent 55%),#0b1030',
+ warm:'linear-gradient(180deg,#ffb36b 0%,#e0566b 45%,#4b2a6b 100%)',
+ light:'radial-gradient(900px 600px at 30% 30%,#ffffff 0%,transparent 70%),linear-gradient(180deg,#dfe7f2,#b9c6d8)',
+ busy:'repeating-linear-gradient(90deg,rgba(255,255,255,.08) 0 40px,transparent 40px 80px),radial-gradient(700px 500px at 15% 40%,#e8552d 0%,transparent 60%),radial-gradient(800px 600px at 80% 60%,#2fb27f 0%,transparent 60%),radial-gradient(600px 500px at 50% 10%,#f2d24b 0%,transparent 60%),#243044',
+ black:'#000'
+};
+
+var PRESETS = [
+ {name:'Attuale',desc:'Com’è oggi sulla TV.',cfg:{}},
+ {name:'Glass tinto',desc:'Alone del colore dell’app, effetto lente sui vicini, riflesso e ombra più ricchi.',cfg:{'glow.mode':'icon','glow.strength':0.7,'glow.spread':34,'layout.fisheye':0.8,'shell.highlight':0.55,'shell.shadow':0.6,'shell.gradient':0.4,'icons.dim':0.8,'icons.sat':0.7,'label.sub':true,'motion.enter':'cascade'}},
+ {name:'Solido scuro',desc:'Niente trasparenza: barra opaca, anello bianco sulla selezione, molto leggibile da lontano.',cfg:{'shell.style':'solid','shell.tint':'#171b22','shell.opacity':1,'shell.gradient':0,'shell.highlight':0,'shell.border':0.1,'shell.shadow':0.55,'glow.show':false,'focus.ring':4,'icons.dim':0.7,'icons.shape':'rounded','icons.radius':16,'pills.style':'solid'}},
+ {name:'Minimale',desc:'Nessuna barra: solo icone, nome e un leggero alone. Pillole come icone tonde.',cfg:{'shell.style':'none','glow.mode':'icon','glow.strength':0.55,'label.shadow':0.9,'divider.show':false,'icons.rim':false,'icons.dim':0.75,'pills.mode':'round','hint.show':false,'clock.show':false}},
+ {name:'Chiaro',desc:'Vetro chiaro con testo scuro, per un look “iOS”.',cfg:{'shell.tint':'#ffffff','shell.opacity':0.55,'shell.borderColor':'#ffffff','shell.border':0.7,'shell.highlight':0.8,'shell.shadow':0.25,'label.color':'#1b2330','label.shadow':0,'glow.color':'#ffffff','glow.strength':0.8,'clock.opacity':0.8,'pills.color':'#1b2330','pills.style':'glass','divider.opacity':0.45,scene:'warm'}},
+ {name:'Neon',desc:'Barra a contorno, alone acceso, icone in scala di grigi che si colorano quando selezionate.',cfg:{'shell.style':'outline','shell.borderColor':'#7be8ff','shell.border':0.8,'shell.borderW':2,'shell.shadow':0.2,'glow.mode':'custom','glow.color':'#7be8ff','glow.strength':0.9,'glow.spread':38,'icons.treat':'mono','icons.dim':0.6,'icons.sat':0,'pills.style':'outline','pills.color':'#7be8ff',scene:'black'}},
+ {name:'Dock tipo macOS',desc:'Icone tonde-quadrate molto grandi al centro, forte effetto lente, nessun alone.',cfg:{'layout.fisheye':1,'layout.focusIcon':148,'layout.icon':92,'layout.gap':18,'glow.show':false,'icons.dim':1,'icons.radius':24,'focus.lift':10,'shell.radius':40,'label.mode':'focused','pills.mode':'round'}},
+ {name:'Barra in alto',desc:'La stessa barra ma in alto, piatta e compatta.',cfg:{'layout.position':'top','shell.style':'flat','shell.opacity':0.78,'shell.radius':24,'shell.highlight':0,'shell.shadow':0.3,'layout.padTop':16,'layout.padBottom':12,'label.size':22,'icons.shape':'rounded','icons.radius':14,'hint.show':false}},
+ {name:'Cerchi',desc:'Icone tonde, tutto morbido, nomi sotto ogni icona.',cfg:{'icons.shape':'circle','label.mode':'all','label.size':18,'layout.gap':30,'shell.radius':70,'glow.mode':'icon','glow.strength':0.6,'icons.dim':0.85,'clock.show':false,'layout.maxW':1808}},
+ {name:'Alto contrasto',desc:'Pensato per la vista: tutto grande, anello spesso, testo grande e pieno.',cfg:{'shell.style':'solid','shell.tint':'#000000','shell.opacity':1,'shell.border':0.9,'shell.borderW':3,'glow.show':false,'focus.ring':6,'label.size':34,'label.weight':'700','layout.icon':96,'layout.focusIcon':136,'icons.dim':0.55,'pills.style':'outline','pills.size':26,'pills.h':54,'pills.w':260}}
+];
+
+/* ---------- helpers ---------- */
+function $(id){return document.getElementById(id)}
+function hex(h){h=h.replace('#','');if(h.length===3)h=h.replace(/(.)/g,'$1$1');return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]}
+function rgba(h,a){var c=typeof h==='string'?hex(h):h;return 'rgba('+c[0]+','+c[1]+','+c[2]+','+a+')'}
+function mix(h,t,to){var c=hex(h);return [0,1,2].map(function(i){return Math.round(c[i]+(to-c[i])*t)})}
+function clamp(v,a,b){return v<a?a:v>b?b:v}
+function merge(a,b){var o={},k;for(k in a)o[k]=a[k];for(k in b)o[k]=b[k];return o}
+function num(cfg,k){return +cfg[k]}
+var EASE={spring:'cubic-bezier(.34,1.25,.64,1)',out:'cubic-bezier(.2,.8,.2,1)',linear:'linear'};
+var FONT={system:'system-ui,-apple-system,"Segoe UI",sans-serif',rounded:'ui-rounded,"SF Pro Rounded","Nunito",system-ui,sans-serif',serif:'Georgia,"Times New Roman",serif',mono:'ui-monospace,Menlo,monospace'};
+var GEAR='M128,76a52,52,0,1,0,52,52A52.06,52.06,0,0,0,128,76Zm0,80a28,28,0,1,1,28-28A28,28,0,0,1,128,156Zm113.86-49.57A12,12,0,0,0,236,98.34L208.21,82.49l-.11-31.31a12,12,0,0,0-4.25-9.12,116,116,0,0,0-38-21.41,12,12,0,0,0-9.68.89L128,37.27,99.83,21.53a12,12,0,0,0-9.7-.9,116.06,116.06,0,0,0-38,21.47,12,12,0,0,0-4.24,9.1l-.14,31.34L20,98.35a12,12,0,0,0-5.85,8.11,110.7,110.7,0,0,0,0,43.11A12,12,0,0,0,20,157.66l27.82,15.85.11,31.31a12,12,0,0,0,4.25,9.12,116,116,0,0,0,38,21.41,12,12,0,0,0,9.68-.89L128,218.73l28.14,15.74a12,12,0,0,0,9.7.9,116.06,116.06,0,0,0,38-21.47,12,12,0,0,0,4.24-9.1l.14-31.34,27.81-15.81a12,12,0,0,0,5.85-8.11A110.7,110.7,0,0,0,241.86,106.43Zm-22.63,33.18-26.88,15.28a11.94,11.94,0,0,0-4.55,4.59c-.54,1-1.11,1.93-1.7,2.88a12,12,0,0,0-1.83,6.31L184.13,199a91.83,91.83,0,0,1-21.07,11.87l-27.15-15.19a12,12,0,0,0-5.86-1.53h-.29c-1.14,0-2.3,0-3.44,0a12.08,12.08,0,0,0-6.14,1.51L93,210.82A92.27,92.27,0,0,1,71.88,199l-.11-30.24a12,12,0,0,0-1.83-6.32c-.58-.94-1.16-1.91-1.7-2.88A11.92,11.92,0,0,0,63.7,155L36.8,139.63a86.53,86.53,0,0,1,0-23.24l26.88-15.28a12,12,0,0,0,4.55-4.58c.54-1,1.11-1.94,1.7-2.89a12,12,0,0,0,1.83-6.31L71.87,57A91.83,91.83,0,0,1,92.94,45.17l27.15,15.19a11.92,11.92,0,0,0,6.15,1.52c1.14,0,2.3,0,3.44,0a12.08,12.08,0,0,0,6.14-1.51L163,45.18A92.27,92.27,0,0,1,184.12,57l.11,30.24a12,12,0,0,0,1.83,6.32c.58.94,1.16,1.91,1.7,2.88A11.92,11.92,0,0,0,192.3,101l26.9,15.33A86.53,86.53,0,0,1,219.23,139.61Z';
+function glyph(kind,px){var p=kind==='gear'?'<path d="'+GEAR+'" fill="currentColor"/>':'<path d="M100 76 L52 124 L100 172 M52 124 H172 a40 40 0 0 1 0 80 H108" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>';return '<svg width="'+px+'" height="'+px+'" viewBox="0 0 256 256" aria-hidden="true">'+p+'</svg>'}
+
+/* ---------- geometry (the same arithmetic as the native layout) ---------- */
+function geo(c){
+ var n=APPS.length,icon=num(c,'layout.icon'),fic=num(c,'layout.focusIcon'),gap=num(c,'layout.gap'),padX=num(c,'layout.padX'),pm=c['pills.mode'];
+ var pw=num(c,'pills.w'),ph=num(c,'pills.h'),pg=num(c,'pills.gap'),m=pm==='off'?0:2;
+ var appsW=n*icon+(n-1)*gap,pinW=0,pinH=0;
+ if(m){if(pm==='stack'){pinW=pw;pinH=2*ph+pg}else if(pm==='row'){pinW=2*pw+pg;pinH=ph}else{pinW=2*icon+gap;pinH=icon}}
+ var fixed=m?num(c,'layout.groupGap')+pinW:0,content=appsW+fixed;
+ var maxPill=Math.min(num(c,'layout.maxW'),1808),pillW=Math.min(content+2*padX,maxPill),view=pillW-2*padX-fixed;
+ var labelRow=(c['label.mode']==='focused'||c['clock.show'])?10+34+(c['label.sub']&&c['label.mode']==='focused'?22:0):(c['label.mode']==='all'?10+30+(c['label.sub']?20:0):0);
+ var pillH=num(c,'layout.padTop')+fic+labelRow+num(c,'layout.padBottom');
+ var al=c['layout.align'],px=al==='left'?56:al==='right'?1920-56-pillW:(1920-pillW)/2;
+ var off=num(c,'layout.offset'),py=c['layout.position']==='top'?off:1080-off-pillH;
+ return {n:n,m:m,icon:icon,fic:fic,gap:gap,padX:padX,appsW:appsW,pinW:pinW,pinH:pinH,fixed:fixed,pillW:pillW,view:view,pillH:pillH,px:px,py:py,rowCY:py+num(c,'layout.padTop')+fic/2,labelTop:py+num(c,'layout.padTop')+fic+10,pw:pw,ph:ph,pg:pg,pm:pm,labelRow:labelRow}
+}
+function scrollFor(g,fp){if(g.appsW<=g.view)return 0;var f=Math.min(fp,g.n-1),cen=g.icon/2+f*(g.icon+g.gap)-g.view/2;return clamp(cen,0,g.appsW-g.view)}
+function growth(c,d){var f=num(c,'layout.fisheye');return Math.max(0,1-d)+f*0.4*Math.max(0,1-Math.abs(d-1))}
+
+/* ---------- stage ---------- */
+function Stage(host,getCfg,opts){this.host=host;this.get=getCfg;this.interactive=!!(opts&&opts.interactive);this.focus=0;this.scene=null;this.build();var me=this;
+ var ro=new ResizeObserver(function(){me.fit()});ro.observe(host)}
+Stage.prototype.fit=function(){var s=this.host.clientWidth/1920;this.root.style.transform='scale('+s+')'};
+Stage.prototype.build=function(){
+ var c=this.get(),g=geo(c),h=this.host,me=this;h.innerHTML='';
+ var root=document.createElement('div');root.className='s nt';this.root=root;h.appendChild(root);
+ var s=document.createElement('div');this.sceneEl=s;s.className='a';s.style.cssText='left:0;top:0;width:1920px;height:1080px';root.appendChild(s);
+ function el(cls,parent,html){var e=document.createElement('div');e.className=cls;if(html!=null)e.innerHTML=html;(parent||root).appendChild(e);return e}
+ this.shell=el('a t');this.glowEl=el('a t');
+ this.clip=el('a');this.clip.style.overflow='hidden';
+ this.icons=APPS.map(function(a,i){var d=el('ico t',me.clip);d.innerHTML='<img alt="" src="'+a.url+'">';if(a.wide)d.classList.add('wide');if(a.loose)d.classList.add('loose');d.style.setProperty('--bg','url('+a.url+')');d.onclick=function(){if(me.interactive){me.focus=i;me.apply()}};return d});
+ this.pins=[];
+ if(g.m){[['gear','pills.label1'],['back','pills.label2']].forEach(function(p,k){var d=el('pin t');d.dataset.glyph=p[0];d.dataset.key=p[1];d.onclick=function(){if(me.interactive){me.focus=APPS.length+k;me.apply()}};me.pins.push(d)})}
+ this.divider=el('a t');
+ this.lab=el('lab t');this.sub=el('lab t');this.labs=APPS.map(function(a){var l=el('lab t',me.clip);return l});
+ this.clock=el('lab');this.hint=el('lab t');
+ this.apply(true);this.fit();
+ void root.offsetWidth;root.classList.remove('nt');
+};
+Stage.prototype.apply=function(first){
+ var c=this.get(),g=geo(c),fp=this.focus,n=g.n,root=this.root,me=this;
+ root.style.setProperty('--fs',(first?0:num(c,'motion.focus'))+'ms');root.style.setProperty('--ease',EASE[c['motion.ease']]||EASE.out);
+ this.sceneEl.style.background=SCENES[c.scene]||SCENES.dark;
+ var light=c.scene==='light'||c.scene==='warm';
+ /* shell */
+ var sh=this.shell,st=c['shell.style'],tint=c['shell.tint'],op=num(c,'shell.opacity'),gr=num(c,'shell.gradient'),R=num(c,'shell.radius');
+ var topC=rgba(mix(tint,gr*0.5,255),op),botC=rgba(mix(tint,gr*0.35,0),op),bw=num(c,'shell.borderW'),bc=rgba(c['shell.borderColor'],num(c,'shell.border'));
+ var css='left:'+g.px+'px;top:'+g.py+'px;width:'+g.pillW+'px;height:'+g.pillH+'px;border-radius:'+R+'px;';
+ var shadow='0 18px '+num(c,'shell.shadowBlur')+'px rgba(0,0,0,'+num(c,'shell.shadow')+')',hl=num(c,'shell.highlight');
+ if(st==='none')css+='background:none;border:0;';
+ else if(st==='outline')css+='background:none;border:'+bw+'px solid '+bc+';box-shadow:'+shadow+';';
+ else if(st==='flat')css+='background:'+rgba(tint,op)+';border:0;';
+ else if(st==='solid')css+='background:'+rgba(tint,Math.max(op,0.98))+';border:'+bw+'px solid '+bc+';box-shadow:'+shadow+';';
+ else css+='background:linear-gradient('+topC+','+botC+');border:'+bw+'px solid '+bc+';box-shadow:'+shadow+',inset 0 '+Math.round(2+hl*6)+'px '+Math.round(hl*14)+'px -'+Math.round(hl*10)+'px rgba(255,255,255,'+(hl*0.7)+');';
+ var bl=num(c,'shell.blur');if(bl>0)css+='backdrop-filter:blur('+bl+'px);-webkit-backdrop-filter:blur('+bl+'px);';
+ sh.style.cssText=css;
+ /* icons */
+ var scroll=scrollFor(g,fp),clipL=g.px+g.padX-14,shape=c['icons.shape'],rad=shape==='circle'?'50%':shape==='square'?'0':num(c,'icons.radius')+'%';
+ this.clip.style.cssText='left:'+clipL+'px;top:0;width:'+(g.view+28)+'px;height:1080px;overflow:hidden';
+ if(g.appsW<=g.view)this.clip.style.width=(g.view+28)+'px';
+ var treat=c['icons.treat'],lift=num(c,'focus.lift'),ring=num(c,'focus.ring'),dim=num(c,'icons.dim'),sat=num(c,'icons.sat');
+ for(var i=0;i<n;i++){
+  var d=Math.abs(fp-i),gr2=growth(c,d),size=Math.round((g.icon+(g.fic-g.icon)*gr2)/2)*2,cx=g.px+g.padX+g.icon/2+i*(g.icon+g.gap)-scroll;
+  var amt=Math.max(0,1-d),e=this.icons[i],f=i===fp;
+  var tile=(APPS[i].loose&&c['icons.looseTile'])||treat==='glass'||treat==='dark';
+  e.classList.toggle('tile',tile);
+  var bg=treat==='glass'?'linear-gradient(rgba(214,224,244,.28),rgba(214,224,244,.10))':treat==='dark'?'linear-gradient(#2c364f,#141b2a)':(APPS[i].loose&&c['icons.looseTile'])?'linear-gradient(#2c364f,#141b2a)':'#222';
+  var rim=c['icons.rim']?'inset 0 0 0 1px rgba(255,255,255,.2)':'';var rg=f&&ring>0?(rim?rim+',':'')+'0 0 0 '+ring+'px '+c['focus.ringColor']:rim;
+  e.style.cssText='left:'+(cx-size/2-clipL)+'px;top:'+(g.rowCY-size/2-(f?lift:0))+'px;width:'+size+'px;height:'+size+'px;border-radius:'+rad+';background:'+bg+';opacity:'+(dim+(1-dim)*amt)+';filter:'+(treat==='mono'?'grayscale(1) contrast(1.05) ':'')+'saturate('+(sat+(1-sat)*amt)+');box-shadow:'+(rg||'none');
+ }
+ /* pins */
+ var pinR=pillStyle(c,light);
+ var fx=0,fy=0,fw=0,fh=0,fr='0';
+ if(g.m){
+  var pcx=g.px+g.padX+g.view+num(c,'layout.groupGap');
+  this.pins.forEach(function(p,k){
+   var idx=n+k,w,hh,x,y,r;
+   if(g.pm==='stack'){w=g.pw;hh=g.ph;x=pcx;y=g.rowCY-g.pinH/2+k*(g.ph+g.pg);r=num(c,'pills.radius')}
+   else if(g.pm==='row'){w=g.pw;hh=g.ph;x=pcx+k*(g.pw+g.pg);y=g.rowCY-g.ph/2;r=num(c,'pills.radius')}
+   else{w=hh=g.icon;x=pcx+k*(g.icon+g.gap);y=g.rowCY-g.icon/2;r=g.icon/2}
+   var ff=idx===fp;
+   p.style.cssText='left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+hh+'px;border-radius:'+r+'px;font-size:'+num(c,'pills.size')+'px;color:'+c['pills.color']+';'+pinR+';opacity:'+(ff?1:0.88)+';'+(ff?'filter:brightness(1.18);':'');
+   var gl=c['pills.glyph']||g.pm==='round';
+   p.innerHTML=(gl?glyph(p.dataset.glyph,g.pm==='round'?Math.round(g.icon*0.42):Math.round(num(c,'pills.size')*1.2)):'')+(g.pm==='round'?'':'<span>'+esc(c[p.dataset.key])+'</span>');
+   if(ff){fx=x;fy=y;fw=w;fh=hh;fr=r+'px'}
+  });
+ }
+ /* glow */
+ var ge=this.glowEl,fa=fp<n;
+ if(fa){var sz=g.fic,cxf=g.px+g.padX+g.icon/2+fp*(g.icon+g.gap)-scroll;fx=cxf-sz/2;fy=g.rowCY-sz/2-lift;fw=sz;fh=sz;fr=rad}
+ var gc=c['glow.mode']==='icon'&&fa?APPS[fp].color:hex(c['glow.color']),gs=num(c,'glow.strength'),sp=num(c,'glow.spread');
+ ge.style.cssText='left:'+fx+'px;top:'+fy+'px;width:'+fw+'px;height:'+fh+'px;border-radius:'+fr+';background:'+rgba(gc,gs*0.55)+';box-shadow:0 0 '+Math.round(sp*1.6)+'px '+Math.round(sp*0.35)+'px '+rgba(gc,gs)+';opacity:'+(c['glow.show']&&(fw>0)?1:0);
+ /* divider */
+ this.divider.style.cssText=(g.m&&c['divider.show'])?'left:'+(g.px+g.padX+g.view+(num(c,'layout.groupGap')-2)/2)+'px;top:'+(g.rowCY-num(c,'divider.height')/2)+'px;width:2px;height:'+num(c,'divider.height')+'px;background:'+rgba(c['label.color'],num(c,'divider.opacity')):'display:none';
+ /* labels */
+ var ls=num(c,'label.size'),fam=FONT[c['label.font']]||FONT.system,txt=function(s){return c['label.case']==='upper'?String(s).toUpperCase():s};
+ var lcss='font-size:'+ls+'px;font-weight:'+c['label.weight']+';color:'+c['label.color']+';font-family:'+fam+';letter-spacing:'+num(c,'label.spacing')+'px;text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+');line-height:34px;';
+ var mode=c['label.mode'],item=fp<n?APPS[fp]:null;
+ if(mode==='focused'&&item){
+  this.lab.style.cssText=lcss+'opacity:1';this.lab.textContent=txt(item.label);var w=this.lab.offsetWidth;
+  var cxl=g.px+g.padX+g.icon/2+fp*(g.icon+g.gap)-scroll,lo=g.px+g.padX,hi=g.px+g.pillW-g.padX-w,x2=clamp(cxl-w/2,lo,Math.max(lo,hi));
+  this.lab.style.left=x2+'px';this.lab.style.top=g.labelTop+'px';this.labW=w;this.labX=x2;
+  this.sub.style.cssText='font-size:'+Math.round(ls*0.72)+'px;color:'+c['label.subColor']+';font-family:'+fam+';line-height:20px;opacity:'+(c['label.sub']?1:0);this.sub.textContent=item.sub;
+  var sw=this.sub.offsetWidth;this.sub.style.left=clamp(cxl-sw/2,lo,Math.max(lo,g.px+g.pillW-g.padX-sw))+'px';this.sub.style.top=(g.labelTop+34)+'px';
+ }else{this.lab.style.cssText='opacity:0';this.sub.style.cssText='opacity:0';this.labW=0;this.labX=-9999}
+ this.labs.forEach(function(l,i){
+  if(mode!=='all'){l.style.cssText='display:none';return}
+  var cxl=g.px+g.padX+g.icon/2+i*(g.icon+g.gap)-scroll,wmax=g.icon+g.gap-6;
+  l.style.cssText=lcss+'display:block;font-size:'+ls+'px;line-height:30px;width:'+wmax+'px;text-align:center;overflow:hidden;text-overflow:ellipsis;left:'+(cxl-wmax/2-clipL)+'px;top:'+(g.labelTop-g.px*0)+'px;opacity:'+(i===fp?1:0.7);
+  l.textContent=txt(APPS[i].label)+'';
+  if(c['label.sub']){l.innerHTML=esc(txt(APPS[i].label))+'<div style="font-size:'+Math.round(ls*0.72)+'px;line-height:18px;color:'+c['label.subColor']+'">'+esc(APPS[i].sub)+'</div>'}
+ });
+ /* clock */
+ var cs=num(c,'clock.size'),now=new Date(),hh=now.getHours(),mm=('0'+now.getMinutes()).slice(-2),ct=c['clock.fmt']==='12'?((hh%12)||12)+':'+mm+' '+(hh<12?'AM':'PM'):('0'+hh).slice(-2)+':'+mm;
+ this.clock.style.cssText='font-size:'+cs+'px;color:'+c['label.color']+';opacity:'+num(c,'clock.opacity')+';font-family:'+fam+';line-height:34px;text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+')';this.clock.textContent=ct;
+ var cw=this.clock.offsetWidth,cxr=g.px+g.pillW-g.padX-cw;this.clock.style.left=cxr+'px';this.clock.style.top=g.labelTop+'px';
+ this.clock.style.display=(c['clock.show']&&(mode!=='all')&&(g.labelRow>0)&&(cxr>this.labX+this.labW+16))?'block':'none';
+ /* hint */
+ var up=c['layout.position']==='top';this.hint.style.cssText='font-size:24px;color:'+c['label.color']+';opacity:'+(c['hint.show']?0.75:0)+';font-family:'+fam+';text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+')';
+ this.hint.innerHTML=esc(c['hint.text'])+' <svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-1px;'+(up?'transform:rotate(180deg)':'')+'"><path d="M5 15l7-7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+ var hw=this.hint.offsetWidth;this.hint.style.left=(g.px+(g.pillW-hw)/2)+'px';this.hint.style.top=(up?g.py+g.pillH+10:g.py-46+4)+'px';
+};
+function esc(s){return String(s).replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]})}
+function pillStyle(c,light){
+ var st=c['pills.style'],col=c['pills.color'];
+ if(st==='outline')return 'background:none;border:2px solid '+rgba(col,0.75)+';box-shadow:none';
+ if(st==='solid')return 'background:'+rgba(mix(c['shell.tint'],0.28,255),1)+';border:0;box-shadow:none';
+ return 'background:linear-gradient(rgba(255,255,255,.26),rgba(255,255,255,.10));border:2px solid rgba(255,255,255,.38);box-shadow:inset 0 6px 10px -6px rgba(255,255,255,.4)';
+}
+Stage.prototype.play=function(){
+ var c=this.get(),kind=c['motion.enter'],dur=num(c,'motion.duration'),stg=num(c,'motion.stagger'),root=this.root;
+ var ease=EASE[c['motion.ease']]||EASE.out,up=c['layout.position']==='top'?-48:48;
+ var all=[this.shell,this.glowEl,this.divider,this.lab,this.sub,this.clock,this.hint].concat(this.pins,[this.clip]);
+ function anim(e,kf,delay){if(e&&e.animate)e.animate(kf,{duration:dur,easing:ease,delay:delay||0,fill:'backwards'})}
+ if(kind==='slide')all.forEach(function(e){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}])});
+ else if(kind==='fade')all.forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
+ else if(kind==='scale')all.forEach(function(e){anim(e,[{transform:'scale(.92)',opacity:0},{transform:'none',opacity:1}])});
+ else{[this.shell,this.glowEl,this.divider,this.lab,this.sub,this.clock,this.hint].forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
+  this.icons.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],i*stg)});
+  this.pins.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],(APPS.length+i)*stg)})}
+};
+Stage.prototype.key=function(k){
+ var n=APPS.length,m=this.pins.length,t=n+m,f=this.focus,g=geo(this.get()),stack=g.pm==='stack';
+ if(k==='ArrowRight'){if(f<n)f=Math.min(f+1,t-1);else if(!stack&&f<t-1)f++}
+ else if(k==='ArrowLeft'){if(f>=n)f=stack?n-1:(f>n?f-1:n-1);else f=Math.max(0,f-1)}
+ else if(k==='ArrowDown'){if(f>=n&&stack)f=Math.min(f+1,t-1)}
+ else if(k==='ArrowUp'){if(f>n&&stack)f--}
+ else return false;
+ this.focus=f;this.apply();return true;
+};
+
+/* ---------- app ---------- */
+var cfg=merge(DEF,{}),main=null,gallery=[];
+try{var saved=JSON.parse(localStorage.getItem('launcherDesigner.cfg')||'null');if(saved&&typeof saved==='object')cfg=merge(DEF,saved)}catch(e){}
+function getCfg(){return cfg}
+function buildControls(){
+ var box=$('controls'),groups={},order=[];
+ OPTS.forEach(function(o){if(!groups[o[0]]){groups[o[0]]=[];order.push(o[0])}groups[o[0]].push(o)});
+ box.innerHTML='';
+ order.forEach(function(gname,gi){
+  var d=document.createElement('details');if(gi<2)d.open=true;
+  var html='<summary>'+esc(gname)+'</summary><div class="ctl">';
+  groups[gname].forEach(function(o){
+   var k=o[1],t=o[3],ex=o[4],nat=o[5],tag='<span class="tag '+nat+'" title="'+(nat==='y'?'nativo':nat==='a'?'approssimato':'solo anteprima')+'">'+(nat==='y'?'nativo':nat==='a'?'≈':'anteprima')+'</span>';
+   html+='<div class="row opt" data-k="'+k+'" data-n="'+nat+'">';
+   if(t==='range')html+='<label>'+esc(o[2])+tag+'</label><span class="val"></span><input type="range" min="'+ex[0]+'" max="'+ex[1]+'" step="'+ex[2]+'">';
+   else if(t==='bool')html+='<label for="c_'+k+'">'+esc(o[2])+tag+'</label><input id="c_'+k+'" type="checkbox">';
+   else if(t==='color')html+='<label>'+esc(o[2])+tag+'</label><input type="color">';
+   else if(t==='select')html+='<label>'+esc(o[2])+tag+'</label><select>'+ex.map(function(v){return '<option>'+v+'</option>'}).join('')+'</select>';
+   else html+='<label>'+esc(o[2])+tag+'</label><span></span><input type="text" style="grid-column:1/-1">';
+   html+='</div>';
+  });
+  d.innerHTML=html+'</div>';box.appendChild(d);
+ });
+ box.oninput=box.onchange=function(e){
+  var row=e.target.closest('.opt');if(!row)return;var k=row.dataset.k,x=e.target,o=OPTS.filter(function(q){return q[1]===k})[0],v;
+  if(o[3]==='bool')v=x.checked;else if(o[3]==='range')v=+x.value;else v=x.value;
+  cfg[k]=v;sync(false);
+ };
+}
+function syncControls(){
+ document.querySelectorAll('.opt').forEach(function(row){
+  var k=row.dataset.k,v=cfg[k],x=row.querySelector('input,select'),val=row.querySelector('.val');
+  if(x.type==='checkbox')x.checked=!!v;else x.value=v;if(val)val.textContent=v;
+  row.style.display=($('nativeOnly').checked&&row.dataset.n==='n')?'none':'';
+ });
+}
+function changes(){var out=[];Object.keys(DEF).forEach(function(k){if(String(cfg[k])!==String(DEF[k]))out.push([k,DEF[k],cfg[k]])});return out}
+function sync(rebuild){
+ syncControls();
+ main.scene=null;if(rebuild)main.build();else main.apply();
+ $('scene').value=cfg.scene;
+ var ch=changes();$('diff').innerHTML=ch.length?ch.map(function(c){return '<li>'+esc(c[0])+': '+esc(c[1])+' → <b style="color:var(--ink)">'+esc(c[2])+'</b></li>'}).join(''):'<li>nessuna modifica: è l’aspetto attuale</li>';
+ $('out').value=JSON.stringify({launcherDesign:1,config:cfg,changedFromCurrent:ch.reduce(function(o,c){o[c[0]]=c[2];return o},{})},null,1);
+ try{localStorage.setItem('launcherDesigner.cfg',JSON.stringify(cfg))}catch(e){}
+ refreshGallery();
+}
+function refreshGallery(){gallery.forEach(function(s){s.stage.build()})}
+function buildGallery(){
+ var box=$('gallery');box.innerHTML='';gallery=[];
+ PRESETS.forEach(function(p){
+  var card=document.createElement('div');card.className='card';
+  card.innerHTML='<h3><span>'+esc(p.name)+'</span><button>Usa come base</button></h3><div class="sh"></div><p>'+esc(p.desc)+'</p>';
+  box.appendChild(card);
+  var pc=merge(DEF,p.cfg);if(!p.cfg.scene)pc.scene=cfg.scene;
+  var stage=new Stage(card.querySelector('.sh'),function(){var m=merge(DEF,p.cfg);if(!p.cfg.scene)m.scene=cfg.scene;return m},{});
+  stage.focus=1;stage.apply(true);
+  card.querySelector('button').onclick=function(){cfg=merge(DEF,p.cfg);if(p.cfg.scene)cfg.scene=p.cfg.scene;sync(true);window.scrollTo({top:0,behavior:'smooth'})};
+  gallery.push({stage:stage});
+ });
+}
+function init(){
+ var sc=$('scene');Object.keys(SCENES).forEach(function(k){var o=document.createElement('option');o.textContent=k;sc.appendChild(o)});
+ sc.onchange=function(){cfg.scene=sc.value;sync(false)};
+ main=new Stage($('main'),getCfg,{interactive:true});
+ buildControls();buildGallery();sync(true);
+ $('nativeOnly').onchange=syncControls;
+ $('replay').onclick=function(){main.play()};
+ $('reset').onclick=function(){cfg=merge(DEF,{});sync(true)};
+ $('copy').onclick=function(){var t=$('out');t.select();var ok=false;try{ok=navigator.clipboard?(navigator.clipboard.writeText(t.value),true):document.execCommand('copy')}catch(e){try{ok=document.execCommand('copy')}catch(e2){}}$('copied').textContent=ok?'Copiato.':'Selezionato: premi Cmd+C.'};
+ $('apply').onclick=function(){try{var j=JSON.parse($('in').value),c=j.config||j;cfg=merge(DEF,c);sync(true)}catch(e){alert('JSON non valido: '+e.message)}};
+ document.addEventListener('keydown',function(e){if(/INPUT|SELECT|TEXTAREA/.test((e.target.tagName||'')))return;if(main.key(e.key))e.preventDefault()});
+}
+Promise.all(APPS.map(prepare)).then(init);
+</script>
+</body>
+</html>

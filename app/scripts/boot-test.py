@@ -174,6 +174,38 @@ def process_snapshot(base, pid):
     return result
 
 
+def dock_snapshot(base):
+    # Read-only: when the launcher process and Samsung's Home started, in seconds since boot,
+    # plus the end of the launcher's own log. Taken at the end of the capture, once the dock had time to start.
+    command = ('getconf CLK_TCK; cat /proc/uptime; '
+               'p=$(cat /home/owner/tvlauncher.pid 2>/dev/null); '
+               '[ -n "$p" ] && [ -r /proc/$p/stat ] && echo "DOCKSTAT $(cat /proc/$p/stat)"; '
+               'c=$(pidof com.samsung.tv.csfs 2>/dev/null | cut -d" " -f1); '
+               '[ -n "$c" ] && echo "CSFSSTAT $(cat /proc/$c/stat)"; '
+               'echo DOCKLOG; tail -n 8 /home/owner/tvlauncher.log 2>/dev/null; true')
+    result = request(base, '/exec', timeout=10, command=command)
+    raw = result.get('data', {})
+    if not raw.get('ok'):
+        return result
+    try:
+        lines = raw['output'].splitlines()
+        ticks = int(lines[0])
+        result['snapshotUptimeSeconds'] = float(lines[1].split()[0])
+        result['dockRunning'] = False
+        result['samsungHomeRunning'] = False
+        for line in lines[2:]:
+            for tag, name, flag in (('DOCKSTAT ', 'dockStartBootSeconds', 'dockRunning'),
+                                    ('CSFSSTAT ', 'csfsStartBootSeconds', 'samsungHomeRunning')):
+                if line.startswith(tag):
+                    result[name] = int(line[len(tag):].rsplit(')', 1)[1].split()[19]) / ticks
+                    result[flag] = True
+        if 'DOCKLOG' in lines:
+            result['dockLogTail'] = lines[lines.index('DOCKLOG') + 1:]
+    except (KeyError, ValueError, IndexError, ZeroDivisionError):
+        result['parseError'] = 'Launcher timing unavailable; inspect raw output.'
+    return result
+
+
 def save_summary(out, baseline, rows, markers, mode, snapshot, reason):
     report = summarize(baseline, rows, markers, mode)
     report.update(mode=mode, stopReason=reason, processSnapshot=snapshot)
@@ -259,6 +291,9 @@ def record(args):
                 if snapshot_future is not None and snapshot is None:
                     snapshot = snapshot_future.result()
                     event('processSnapshot', snapshot)
+                if snapshot is not None and 'agentConnected' in observed:
+                    snapshot['launcher'] = dock_snapshot(args.base)
+                    event('launcherSnapshot', snapshot['launcher'])
                 report = save_summary(out, baseline, rows, markers, args.mode, snapshot, reason)
         print('Saved: ' + str(out / 'summary.json'), flush=True)
         print('New boot confirmed: ' + str(report['newBootConfirmed']), flush=True)

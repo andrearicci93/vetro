@@ -41,3 +41,7 @@ __pycache__/
 # Rejected local experiments and their historical test
 /app/experiments/
 /app/tests/animations.test.cjs
+
+# Dock launcher build output
+/dock/**/bin/
+/dock/**/obj/

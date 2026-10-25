@@ -3,12 +3,16 @@
 // disabled flag on every installed member, as the Debloater does for a single
 // component. Disabling also stops members that are still running, so the
 // change takes effect now. Members come from the Q80A package manifests.
-var debloat = require('./debloat.js');
 
+// A group with "area" has no fixed list: its members are every component the Task manager files under that area,
+// except the ones that role "keep" or the protection rules cover (Smart Hub's ad agent, Vetro itself).
 var GROUPS = [
-    {id: 'acr', label: 'ACR viewing data', section: 'privacy',
-        description: 'Automatic content recognition and viewing analytics services.',
-        ids: debloat.VERIFIED_GLOBAL_IDS},
+    {id: 'tracking-all', label: 'All advertising and tracking', section: 'tracking', area: 'tracking',
+        description: 'Every component the Task manager lists under Advertising and tracking: viewing data, ad players, analytics, personalised content and the privacy screens. Smart Hub’s ad agent stays on because Home loads part of it.',
+        ids: []},
+    {id: 'voice-all', label: 'All voice assistants', section: 'voice', area: 'voice', microphone: true, everything: true,
+        description: 'Every component the Task manager lists under Voice assistants: Alexa, Bixby, Google Assistant, the assistant hub, always-on voice, speech and text-to-speech, voice actions and search suggestions.',
+        ids: []},
     {id: 'alexa', label: 'Alexa', section: 'voice', microphone: true,
         description: 'Alexa client, its full-screen view, launcher and wake-word engine.',
         ids: ['com.samsung.tv.alexa-client', 'com.samsung.tv.alexa-fullscreen-app', 'com.samsung.tv.alexa-jump-starter',
@@ -36,7 +40,12 @@ function find(id) { return GROUPS.filter(function (g) { return g.id === id; })[0
 function state(group, rows) {
     var byId = {};
     (rows || []).forEach(function (r) { byId[r.appId] = r; });
-    var installed = group.ids.filter(function (id) { return byId[id]; });
+    // This function is also sent to the dashboard as text, so it cannot call anything outside itself.
+    var ids = !group.area ? group.ids : (rows || []).filter(function (r) {
+        return r.area === group.area && r.role !== 'keep' && !/^vetrotvapp(\.|$)/.test(r.appId || '') &&
+            !/^com\.samsung\.tv\.coba\.adagent(\.|$)/.test(r.appId || '') && !/^com\.samsung\.tv\.coba\.adagent(\.|$)/.test(r.packageId || '');
+    }).map(function (r) { return r.appId; });
+    var installed = ids.filter(function (id) { return byId[id]; });
     var unknown = installed.filter(function (id) { return typeof byId[id].disabled !== 'boolean'; });
     var disabled = installed.filter(function (id) { return byId[id].disabled === true; });
     var enabled = installed.filter(function (id) { return byId[id].disabled === false; });
@@ -113,7 +122,7 @@ function apply(groupId, off, deps) {
         // A disabled flag does not end processes that are already running.
         return deps.execute('app_launcher -S', 10000).then(function (r) {
             if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
-            var ids = running(r.stdout).filter(function (id) { return group.ids.indexOf(id) >= 0; });
+            var ids = running(r.stdout).filter(function (id) { return result.state.installed.indexOf(id) >= 0; });
             if (!ids.length) return result;
             return deps.execute(stopCommand(ids), 30000).then(function (k) {
                 var codes = exitCodes(k.stdout);

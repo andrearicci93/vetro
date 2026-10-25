@@ -1,0 +1,82 @@
+/* Vetro — minimal design tokens.
+ * Import once; use semantic tokens in components.
+ * Default: dark. Set data-vetro-theme="light" on a container for light mode.
+ * Blue and ice are sampled/normalized from the icon; UI neutrals are derived.
+ */
+:root {
+  --vetro-blue-950: #00115b;
+  --vetro-blue-700: #123bb5;
+  --vetro-blue-600: #0450ef;
+  --vetro-blue-400: #1674fb;
+  --vetro-ice-100: #e1ebfd;
+  --vetro-white: #f5f8ff;
+
+  --vetro-bg: #080f23;
+  --vetro-surface: #101c35;
+  --vetro-surface-raised: #192943;
+  --vetro-text: var(--vetro-white);
+  --vetro-text-muted: #aab8d1;
+  --vetro-border: #344360;
+  --vetro-action: var(--vetro-blue-700);
+  --vetro-action-hover: #0e3095;
+  --vetro-on-action: var(--vetro-white);
+  --vetro-link: #8fbaff;
+  --vetro-focus: #8fbaff;
+
+  /* Brand fields only: keep everyday UI surfaces solid. */
+  --vetro-gradient-brand: radial-gradient(ellipse at 24% 72%, #1674fb 0%, transparent 52%), radial-gradient(ellipse at 78% 22%, #0450ef 0%, transparent 54%), linear-gradient(135deg, #00115b, #123bb5 52%, #00115b);
+  --vetro-gradient-blue: linear-gradient(135deg, #00115b 0%, #123bb5 48%, #1674fb 100%);
+  --vetro-gradient-glass: linear-gradient(145deg, rgba(245, 248, 255, .16), rgba(225, 235, 253, .04) 55%, rgba(245, 248, 255, .10));
+  --vetro-glass-fill: rgba(16, 28, 53, .88);
+  --vetro-glass-edge: rgba(225, 235, 253, .22);
+  --vetro-glass-blur: 16px;
+  --vetro-shadow: 0 12px 32px rgba(0, 8, 35, .24);
+
+  --vetro-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vetro-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --vetro-text-small: .875rem;
+  --vetro-text-body: 1rem;
+  --vetro-text-title: 1.5rem;
+  --vetro-text-display: 2.5rem;
+  --vetro-weight-regular: 400;
+  --vetro-weight-medium: 500;
+  --vetro-line-body: 1.5;
+  --vetro-line-heading: 1.15;
+
+  --vetro-space-1: 4px;
+  --vetro-space-2: 8px;
+  --vetro-space-3: 12px;
+  --vetro-space-4: 16px;
+  --vetro-space-6: 24px;
+  --vetro-space-8: 32px;
+  --vetro-space-12: 48px;
+  --vetro-radius-control: 8px;
+  --vetro-radius-surface: 16px;
+  --vetro-control-height: 44px;
+  --vetro-focus-width: 2px;
+  --vetro-focus-offset: 3px;
+  --vetro-duration-fast: 120ms;
+  --vetro-duration-normal: 200ms;
+  --vetro-ease: cubic-bezier(.2, 0, 0, 1);
+}
+
+[data-vetro-theme="light"] {
+  --vetro-bg: var(--vetro-white);
+  --vetro-surface: #ffffff;
+  --vetro-surface-raised: var(--vetro-ice-100);
+  --vetro-text: #101c35;
+  --vetro-text-muted: #52617a;
+  --vetro-border: #bcc9de;
+  --vetro-link: var(--vetro-blue-700);
+  --vetro-focus: var(--vetro-blue-600);
+  --vetro-glass-fill: rgba(245, 248, 255, .92);
+  --vetro-glass-edge: rgba(18, 59, 181, .18);
+  --vetro-shadow: 0 12px 32px rgba(0, 17, 91, .10);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vetro-duration-fast: 0ms;
+    --vetro-duration-normal: 0ms;
+  }
+}

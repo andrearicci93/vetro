@@ -14,6 +14,15 @@
 var BASE = 'http://127.0.0.1:8099';
 var report = {probe: {}, apps: [], packages: [], settings: {}};
 var out = document.getElementById('out');
+var delivered = false;
+// The service keeps running without this page; a resident page only holds memory.
+// While a sign-in code is on screen the page stays open; it closes once the code is used or expires.
+var leaveAfterPairing = false;
+function pairingShown() { try { return document.getElementById('pair').style.display === 'block'; } catch (e) { return false; } }
+function leave(force) {
+  if (!force && pairingShown()) { leaveAfterPairing = true; return; }
+  try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+}
 function log(line) { out.textContent += '\n' + line; }
 function attempt(name, fn) {
   return new Promise(function (resolve) {
@@ -21,6 +30,16 @@ function attempt(name, fn) {
       Promise.resolve(fn()).then(function (v) { report.probe[name] = {ok: true, value: v}; log('ok   ' + name); resolve(); },
         function (e) { report.probe[name] = {ok: false, error: String(e && e.message || e)}; log('fail ' + name); resolve(); });
     } catch (e) { report.probe[name] = {ok: false, error: String(e && e.message || e)}; log('fail ' + name); resolve(); }
+  });
+}
+// A public-level certificate may not get the on-boot start honored, so the page starts the service itself.
+function launchService() {
+  return cb(function (ok, ko) { tizen.application.launch('vetrotvapp.svc', ok, ko); });
+}
+function reach(tries) {
+  return fetch(BASE + '/status').then(function (r) { return r.status; }, function (e) {
+    if (tries <= 1) throw e;
+    return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return reach(tries - 1); });
   });
 }
 function cb(call) { return new Promise(function (ok, ko) { call(ok, ko); }); }
@@ -49,7 +68,10 @@ function tryConnect(port) {
     ws.onerror = function () { clearTimeout(t); reject(new Error('refused')); };
   });
 }
+// Hidden, nobody can read a code either, so close even if one is shown.
+document.addEventListener('visibilitychange', function () { if (document.hidden && delivered) leave(true); });
 var jobs = [
+  ['serviceLaunch', launchService],
   ['tizenObject', function () { return typeof tizen !== 'undefined'; }],
   ['webapisObject', function () { return typeof webapis !== 'undefined'; }],
   ['supportedKeys', function () { return tizen.tvinputdevice.getSupportedKeys().map(function (k) { return k.name; }); }],
@@ -68,13 +90,19 @@ var jobs = [
       return Object.keys(report.settings).length; }],
   ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }],
   ['remoteApi8001', function () { return tryConnect(8001); }],
-  ['serviceReach', function () { return fetch(BASE + '/status').then(function (r) { return r.status; }); }]
+  ['serviceReach', function () { return reach(8); }]
 ];
 jobs.reduce(function (p, j) { return p.then(function () { return attempt(j[0], j[1]); }); }, Promise.resolve())
   .then(function () {
     return sendReport();
-  }).then(function (r) { log('\nReport sent to service: ' + r.status + (r.persisted ? ' · saved' : ' · memory only')); },
-    function (e) { log('\nService unreachable: ' + e); });
+  }).then(function (r) {
+    delivered = true;
+    log('\nReport sent to service: ' + r.status + (r.persisted ? ' · saved' : ' · memory only') + '\nClosing in 5 s; the service keeps running.');
+    setTimeout(leave, 5000);
+  }, function (e) {
+    log('\nService unreachable: ' + e);
+    if (report.probe.serviceReach && !report.probe.serviceReach.ok) log('The background service did not answer on port 8099. Is the service installed and started?');
+  });
 </script>
 <script>
 // Dashboard sign-in: show the pairing code the service asks for (only the TV can read it).
@@ -87,7 +115,9 @@ jobs.reduce(function (p, j) { return p.then(function () { return attempt(j[0], j
     xhr.timeout = 3000;
     xhr.onload = function () {
       var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
+      var wasShown = box.style.display === 'block';
       box.style.display = d.code ? 'block' : 'none';
+      if (wasShown && !d.code && leaveAfterPairing) leave();
       if (d.code) {
         document.getElementById('pairName').textContent = d.name;
         document.getElementById('pairCode').textContent = d.code.slice(0, 3) + ' ' + d.code.slice(3);

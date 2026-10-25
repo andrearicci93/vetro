@@ -56,6 +56,55 @@ function buildLaunchScript(agentPort) {
         staging + ' </dev/null >' + staging + '/root-agent.log 2>&1 &\n';
 }
 
+// Every service start stages a new archive-root-<id> folder and a signed archive in on-demand/, and nothing
+// removed the earlier ones (150+ folders, ~10 MB on a nearly full /opt after a few weeks). The current one and
+// the newest few others stay, and so does any folder a running process still has on its command line.
+var STAGE_KEEP = 3;
+function stageInUse() {
+    var used = '';
+    try {
+        fs.readdirSync('/proc').forEach(function (d) {
+            if (!/^\d+$/.test(d)) return;
+            try { used += fs.readFileSync('/proc/' + d + '/cmdline', 'utf8') + '\n'; } catch (e) {}
+        });
+    } catch (e) {}
+    return used;
+}
+// Node 12 on the TV has no fs.rmSync.
+function removeTree(p) {
+    var st = fs.lstatSync(p);
+    if (st.isDirectory()) {
+        fs.readdirSync(p).forEach(function (n) { removeTree(p + '/' + n); });
+        fs.rmdirSync(p);
+    } else fs.unlinkSync(p);
+}
+function cleanStage(keep) {
+    var removed = [];
+    var onDemand = STAGE + '/on-demand';
+    var used = stageInUse();
+    var dirs = fs.readdirSync(STAGE).filter(function (n) {
+        return /^archive-root-[0-9a-f]{16}$/.test(n) && n !== keep;
+    }).map(function (n) {
+        var t = 0;
+        try { t = fs.statSync(STAGE + '/' + n).mtimeMs; } catch (e) {}
+        return { name: n, time: t };
+    }).sort(function (a, b) { return b.time - a.time; });
+    var spared = {};
+    spared[keep] = true;
+    dirs.forEach(function (d, i) {
+        if (i < STAGE_KEEP - 1 || used.indexOf(d.name) >= 0) { spared[d.name] = true; return; }
+        try { removeTree(STAGE + '/' + d.name); removed.push(d.name); } catch (e) {}
+    });
+    // Archives in on-demand/ whose folder is gone (or never existed) have no use.
+    try {
+        fs.readdirSync(onDemand).forEach(function (n) {
+            var m = /^(archive-root-[0-9a-f]{16})\.tar\.gz(\.signature)?$/.exec(n);
+            if (m && !spared[m[1]]) { try { fs.unlinkSync(onDemand + '/' + n); } catch (e) {} }
+        });
+    } catch (e) {}
+    return removed;
+}
+
 function prepare(agentPort) {
     var staging = ensureDir(STAGE + '/' + pkg);
     var onDemand = ensureDir(STAGE + '/on-demand');
@@ -83,8 +132,11 @@ function prepare(agentPort) {
     fs.writeFileSync(path.join(onDemand, pkg + '.tar.gz'), tarBuf);
     fs.writeFileSync(path.join(onDemand, pkg + '.tar.gz.signature'), signature);
 
+    // Housekeeping only: a failure here must never fail the preparation.
+    var removed = 0;
+    try { removed = cleanStage(pkg).length; } catch (e) {}
     state.prepared = true;
-    state.staging = { pkg: pkg, dir: staging, onDemand: path.join(onDemand, pkg + '.tar.gz') };
+    state.staging = { pkg: pkg, dir: staging, onDemand: path.join(onDemand, pkg + '.tar.gz'), removedOld: removed };
 }
 
 // --- root agent lifecycle -------------------------------------------------

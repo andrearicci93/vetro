@@ -3,8 +3,11 @@
 The recorder runs on the computer. It installs nothing on the TV and never reboots it or opens apps.
 It polls GET `/status` and `/telemetry` every second, in parallel, with a 0.8-second timeout.
 GET `/probe` is read every 5 seconds, keeping only its timestamp and counts.
-After a confirmed new boot and agent connection, it sends a single `/exec` request that reads
-`/proc/<pid>/stat`, uptime, the clock tick rate and systemd timestamps.
+After a confirmed new boot and agent connection, it sends one `/exec` request that reads
+`/proc/<pid>/stat`, uptime, the clock tick rate and systemd timestamps. At the end of the capture a second
+read-only `/exec` records when the launcher process and Samsung's Home (`csfs`) started (seconds since boot,
+`processSnapshot.launcher`) and the tail of the launcher's log, so the gap between Samsung's Home and the
+launcher can be measured.
 It does not change logging, flags, configuration, databases or services on the TV.
 
 ## Preparation

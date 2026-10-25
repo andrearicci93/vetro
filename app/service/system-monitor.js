@@ -5,7 +5,11 @@ var execError = require('./exec-error.js');
 var LIGHT = "echo '__BOOT__'; cat /proc/sys/kernel/random/boot_id; echo '__CPU__'; cat /proc/stat; echo '__MEM__'; cat /proc/meminfo; echo '__NET__'; cat /proc/net/dev; echo '__VM__'; cat /proc/vmstat; echo '__ZRAM__'; cat /sys/block/zram0/mm_stat 2>/dev/null; echo '__BLOCK__'; for d in mmcblk0 zram0; do if test -r /sys/block/$d/stat; then printf '%s ' \"$d\"; cat /sys/block/$d/stat; fi; done; echo '__UPTIME__'; cat /proc/uptime";
 var DETAILS = "echo '__APPS__'; app_launcher -S; echo '__PAGE__'; getconf PAGESIZE; echo '__PROC__'; for f in /proc/[0-9]*/stat; do if IFS= read -r line < \"$f\" 2>/dev/null; then printf '%s' \"$line\"; echo; fi; done";
 var STORAGE = "echo '__DISK__'; df -k /opt";
-var UNITS = 'systemctl list-units --all --type=service --no-legend --plain --no-pager; echo __FILES__; systemctl list-unit-files --type=service --no-legend --no-pager';
+// Two commands: the running state is read in a few milliseconds, but systemctl needs 13-17 s on the Q80A to work out
+// each unit's boot state (list-unit-files), which is more than the old single 15 s limit left on slower TVs: the Q80A
+// answered, and a Q70A, a Q65S95C and a QN55S95B reported "command timed out" for the whole listing.
+var UNITS_RUNNING = 'systemctl list-units --all --type=service --no-legend --plain --no-pager';
+var UNITS_FILES = 'systemctl list-unit-files --type=service --no-legend --no-pager';
 var MAX_DELTA_MS = 60000;
 function sections(text) {var out={},key=null;String(text||'').split('\n').forEach(function(l){var m=/^__(\w+)__$/.exec(l);if(m){key=m[1];out[key]=[];}else if(key)out[key].push(l);});return out;}
 function processStat(line,page) {
@@ -50,5 +54,8 @@ stream.pending=this.execute(cmd,15000).then(function(r){if(r.exit_code||r.timed_
  if(scope==='summary'){delete result.data.processes;delete result.data.processCount;}
  stream.previous=result.sample;stream.cached=result.data;return result.data;
 }).finally(function(){stream.pending=null;});return stream.pending;};
-Monitor.prototype.startup=function(){var self=this;if(this.units&&Date.now()-this.unitsAt<60000)return Promise.resolve(this.units);if(this.unitsPending)return this.unitsPending;this.unitsPending=this.execute(UNITS,15000).then(function(r){if(r.exit_code||r.timed_out)throw execError.failed(r,'service inventory unavailable');self.units=parseUnits(r.stdout);self.unitsAt=Date.now();return self.units;}).finally(function(){self.unitsPending=null;});return this.unitsPending;};
+Monitor.prototype.startup=function(){var self=this;if(this.units&&Date.now()-this.unitsAt<60000)return Promise.resolve(this.units);if(this.unitsPending)return this.unitsPending;this.unitsPending=this.execute(UNITS_RUNNING,15000).then(function(r){if(r.exit_code||r.timed_out)throw execError.failed(r,'service inventory unavailable');
+ // Without the boot states the listing is still useful: bootState stays null (unknown) instead of the whole section failing.
+ return self.execute(UNITS_FILES,60000).then(function(f){return f.exit_code||f.timed_out?'':f.stdout;},function(){return '';}).then(function(files){self.units=parseUnits(r.stdout+'\n__FILES__\n'+files);self.unitsAt=Date.now();return self.units;});
+}).finally(function(){self.unitsPending=null;});return this.unitsPending;};
 module.exports={Monitor:Monitor,parse:parse,processStat:processStat,parseUnits:parseUnits};

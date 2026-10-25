@@ -18,7 +18,10 @@ const report=require('../service/diagnostic-report');
   startup:()=>[{name:'test.service',active:'inactive',bootState:'disabled',description:secret}],
   privacy:()=>({...poison,adId:{psid:secret},agreements:[secret],doNotTrack:1}),
   serviceApis:()=>({tizenObject:false,application:false,secret}),
-  hbbtv:()=>{throw Error(secret);}
+  hbbtv:()=>{throw Error(secret);},
+  launcher:()=>({...poison,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,autorunSwitchedOff:true,failures:2,hasError:true,log:secret,
+   apps:{count:11,skipped:[{item:secret,reason:secret}]},entries:[{slug:'tizentube',label:secret,appId:'xvvl3S1TT1.TizenTubeStandalone'},{slug:'x',label:secret,appId:secret}],inputs:[{label:secret}]}),
+  quickWins:()=>({wins:{firmware:{status:'on',value:0},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
  };
  const d=await report.collect(readers,100);
  const text=JSON.stringify(d);
@@ -32,6 +35,8 @@ const report=require('../service/diagnostic-report');
  assert.equal(d.sections.startup.data.services[0].bootState,'disabled');
  assert.equal(d.sections.serviceApis.data.tizenObject,false);
  assert.equal(d.sections.hbbtv.status,'unavailable');
+ assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:1,appCount:11,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,autorunSwitchedOff:true},'launcher: states and counts only');
+ assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true}});
  assert.equal(d.sections.probe.data.supportedKeys.keys[0],'VolumeUp');
  assert.equal(d.sections.network.data.services[0].customDnsConfigured,true);
  const timeout=await report.collect({device:()=>new Promise(()=>{}),inventory:()=>Promise.reject(Error(secret))},10);

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vetro — Design system</title>
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--vetro-bg); color: var(--vetro-text); font: var(--vetro-text-body)/var(--vetro-line-body) var(--vetro-font); }
+    main { max-width: 1040px; margin: auto; padding: var(--vetro-space-12) var(--vetro-space-6); }
+    header { display: grid; grid-template-columns: 1fr 180px; align-items: center; gap: var(--vetro-space-8); padding-bottom: var(--vetro-space-8); }
+    header img { width: 100%; border-radius: var(--vetro-radius-surface); }
+    h1 { font-size: var(--vetro-text-display); line-height: var(--vetro-line-heading); margin: 8px 0 16px; font-weight: 500; letter-spacing: -.04em; }
+    h2 { font-size: var(--vetro-text-title); line-height: var(--vetro-line-heading); font-weight: 500; margin: 0 0 24px; }
+    p { max-width: 650px; }
+    .muted, small { color: var(--vetro-text-muted); }
+    small { font-size: var(--vetro-text-small); }
+    section { padding: var(--vetro-space-8) 0; border-top: 1px solid var(--vetro-border); }
+    .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .swatch { height: 90px; border-radius: var(--vetro-radius-control); margin-bottom: 12px; }
+    figure { margin: 0; min-width: 0; }
+    figcaption { display: flex; flex-direction: column; gap: 4px; }
+    code, pre { font-family: var(--vetro-font-mono); font-size: var(--vetro-text-small); overflow-wrap: anywhere; }
+    .gradients { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; }
+    .gradient { height: 150px; border-radius: var(--vetro-radius-surface); margin-bottom: 12px; }
+    .themes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .sample { padding: 24px; border-radius: var(--vetro-radius-surface); background: var(--vetro-surface); color: var(--vetro-text); border: 1px solid var(--vetro-border); }
+    .sample p { color: var(--vetro-text-muted); }
+    .sample a { color: var(--vetro-link); }
+    button { min-height: var(--vetro-control-height); padding: 10px 20px; border: 0; border-radius: var(--vetro-radius-control); background: var(--vetro-action); color: var(--vetro-on-action); font: inherit; font-weight: 500; cursor: pointer; transition: background var(--vetro-duration-fast) var(--vetro-ease); }
+    button:hover { background: var(--vetro-action-hover); }
+    button:focus-visible, a:focus-visible { outline: var(--vetro-focus-width) solid var(--vetro-focus); outline-offset: var(--vetro-focus-offset); }
+    .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    pre { background: var(--vetro-surface); border-radius: var(--vetro-radius-control); padding: 20px; white-space: pre-wrap; }
+    li { margin-bottom: 8px; }
+    @media (max-width: 640px) { main { padding: 24px 16px; } header { grid-template-columns: 1fr 100px; gap: 16px; } h1 { font-size: 2rem; } .palette { grid-template-columns: repeat(3, 1fr); } .gradients, .themes, .specs { grid-template-columns: 1fr; } }
+    @media (max-width: 360px) { header { grid-template-columns: 1fr; } header img { width: 100px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><small>VETRO / DESIGN SYSTEM</small><h1>Blu profondo.<br>Luce, con misura.</h1><p class="muted">Una base minimale ricavata dall’icona: blu per l’identità, ghiaccio per la luce, superfici tranquille per l’interfaccia.</p></div>
+    <img src="icon-reference.png" alt="Icona Vetro: anello trasparente su un gradiente blu">
+  </header>
+  <section>
+    <h2>Colori di base</h2>
+    <div class="palette">
+      <figure><div class="swatch" style="background:var(--vetro-blue-950)"></div><figcaption>Notte<code>#00115B</code><small>blue-950</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-blue-700)"></div><figcaption>Cobalto<code>#123BB5</code><small>blue-700 · azioni</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-blue-600)"></div><figcaption>Elettrico<code>#0450EF</code><small>blue-600</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-blue-400)"></div><figcaption>Luce<code>#1674FB</code><small>blue-400 · accento</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-ice-100)"></div><figcaption>Ghiaccio<code>#E1EBFD</code><small>ice-100</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-white)"></div><figcaption>Bianco<code>#F5F8FF</code><small>white</small></figcaption></figure>
+    </div>
+    <p class="muted">Notte, Luce e Ghiaccio riprendono campioni dell’immagine. Cobalto, Elettrico e i neutri UI sono armonizzati per l’uso digitale.</p>
+  </section>
+  <section>
+    <h2>Tre gradienti, tre ruoli</h2>
+    <div class="gradients">
+      <figure><div class="gradient" style="background:var(--vetro-gradient-brand)"></div><figcaption>Brand<code>--vetro-gradient-brand</code><small>Icona, copertine, momenti di identità.</small></figcaption></figure>
+      <figure><div class="gradient" style="background:var(--vetro-gradient-blue)"></div><figcaption>Blue<code>--vetro-gradient-blue</code><small>Accenti compatti, senza testo piccolo.</small></figcaption></figure>
+      <figure><div class="gradient" style="background:var(--vetro-gradient-glass),var(--vetro-surface)"></div><figcaption>Glass<code>--vetro-gradient-glass</code><small>Riflesso discreto sopra una superficie.</small></figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2>Semantica: scuro e chiaro</h2>
+    <div class="themes">
+      <div class="sample"><small>SCURO / PREDEFINITO</small><h3>Una superficie, un’azione.</h3><p>Testo primario e secondario leggibili, bordo sottile, un solo blu operativo.</p><button type="button">Azione primaria</button><p><a href="#usage">Vedi i token</a></p></div>
+      <div class="sample" data-vetro-theme="light"><small>CHIARO / OPZIONALE</small><h3>La stessa gerarchia.</h3><p>I componenti usano gli stessi nomi: cambiano soltanto i valori del tema.</p><button type="button">Azione primaria</button><p><a href="#usage">Vedi i token</a></p></div>
+    </div>
+  </section>
+  <section>
+    <h2>Ritmo e materia</h2>
+    <div class="specs">
+      <div><p>Font di sistema · pesi 400 / 500<br>Scala: 14 / 16 / 24 / 40 px<br>Interlinea: 1,5 testo · 1,15 titoli</p><p>Spazi: 4 / 8 / 12 / 16 / 24 / 32 / 48 px<br>Raggi: 8 px controlli · 16 px superfici<br>Controlli: altezza minima 44 px</p></div>
+      <div><p>Movimento: 120 / 200 ms · decelerazione morbida<br>Focus: anello 2 px, distanza 3 px<br>Vetro: blur 16 px, con fondo opaco di riserva</p><p class="muted">Usare l’effetto vetro solo per piccoli overlay. La superficie piena garantisce leggibilità anche senza blur. I token di movimento rispettano le preferenze di movimento ridotto.</p></div>
+    </div>
+  </section>
+  <section id="usage">
+    <h2>Uso</h2>
+    <pre><code>&lt;link rel="stylesheet" href="design-system/tokens.css"&gt;
+
+.panel {
+  background: var(--vetro-surface);
+  color: var(--vetro-text);
+  padding: var(--vetro-space-6);
+  border: 1px solid var(--vetro-border);
+  border-radius: var(--vetro-radius-surface);
+}
+
+/* Tema chiaro: data-vetro-theme="light" sul contenitore. */</code></pre>
+    <ul class="muted"><li>Circa l’80% della UI resta neutro; il blu identifica azioni e selezioni.</li><li>Usare testo chiaro sul Cobalto; riservare Luce a dettagli e gradienti.</li><li>Sui gradienti, collocare il testo in una superficie piena: il contrasto varia lungo il fondo.</li><li>I colori di stato funzionali vanno definiti separatamente: il blu non significa successo o errore.</li></ul>
+  </section>
+</main>
+</body>
+</html>

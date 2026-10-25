@@ -91,3 +91,10 @@ certificates and SDK binaries are not part of the public source snapshot.
 
 No vendor-owned TV applications, decrypted packages, user certificates,
 accounts or raw device dumps are distributed as part of this source release.
+
+## Phosphor Icons
+
+Source: https://phosphoricons.com
+License: MIT. The bold glyphs in `dock/tools/glyphs/` (gear, television, HDMI
+numbers, sign-in) are used to draw the dock's Settings, Source and input icons.
+The full notice is kept in `dock/tools/glyphs/LICENSE-phosphor.txt`.

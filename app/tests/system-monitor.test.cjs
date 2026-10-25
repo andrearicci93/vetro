@@ -17,3 +17,14 @@ let count=0,resolve;const m=new monitor.Monitor(()=>{count++;return new Promise(
 first.then(()=>m.snapshot()).then(()=>{assert.equal(count,1,'simultaneous clients share one snapshot');console.log('PASS monitor: CPU deltas, stale-gap baseline, PID reuse, shared snapshot, zero memory values, network rates and boot states');}).catch(e=>{console.error(e);process.exitCode=1});
 
 const mapped=monitor.parse('__APPS__\n user.ui (12)\n'+snapshot(1000,800,10,1,100),null,1000);assert.equal(mapped.data.processes[0].appId,'user.ui');
+
+// The startup listing is two commands: a slow boot-state read (13-17 s on a Q80A) must not take the running states with it
+(async()=>{
+ const calls=[];const run=(files)=>new monitor.Monitor((cmd,t)=>{calls.push({cmd,t});
+  if(cmd.indexOf('list-unit-files')>=0)return files==='timeout'?Promise.resolve({timed_out:true,stdout:''}):Promise.resolve({exit_code:0,stdout:'hotel.service disabled\n'});
+  return Promise.resolve({exit_code:0,stdout:'hotel.service loaded active running Hotel\n'});});
+ const ok=await run('ok').startup();assert.equal(ok[0].bootState,'disabled');
+ const l=calls.find(c=>c.cmd.indexOf('list-unit-files')>=0);assert.ok(l.t>=45000,'the boot-state read gets a long limit of its own');assert.ok(calls[0].t<=15000);
+ const slow=await run('timeout').startup();assert.equal(slow[0].active,'active');assert.equal(slow[0].bootState,null,'boot states unknown, not the whole listing failed');
+ console.log('PASS monitor startup: running states survive a slow or failed boot-state read');
+})().catch(e=>{console.error(e);process.exitCode=1});
