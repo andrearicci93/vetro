@@ -83,6 +83,25 @@ assert.equal(noYt.entries[0].killFirst, 'com.samsung.tv.cobalt-yt', 'still close
 assert.equal(noYt.entries[0].icon, tt.icons.tt, 'without a YouTube icon the app keeps its own');
 assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
 
+// Where the Home row is read: csfs (Q80A), else home.media (Tizen 9), never both
+(function () {
+    const fs = require('fs'), os = require('os'), path = require('path'), cp = require('child_process');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-order-')).replace(/\\/g, '/');
+    const [csfs, media] = catalog.ORDER_DIRS.map((d, i) => root + '/' + i);
+    const order = () => {
+        let s = catalog.script();
+        catalog.ORDER_DIRS.forEach((d, i) => { s = s.split(d).join(root + '/' + i); });
+        return cp.spawnSync('sh', ['-c', s], {encoding: 'utf8'}).stdout.split('\n').filter(l => l.startsWith('O|'));
+    };
+    try {
+        [csfs, media].forEach(d => fs.mkdirSync(d));
+        fs.writeFileSync(media + '/.appLayerCache.2', 'd/webapp@media\n');
+        assert.deepEqual(order(), ['O|d/webapp@media'], 'no cache under csfs: the home.media one is read');
+        fs.writeFileSync(csfs + '/.appLayerCache.1', 'd/webapp@csfs\n');
+        assert.deepEqual(order(), ['O|d/webapp@csfs'], 'csfs has a cache: it wins and home.media is not read');
+    } finally { fs.rmSync(root, {recursive: true, force: true}); }
+})();
+
 // load(): one read of the Home data, one check that the icon files exist; errors are explicit
 (async function () {
     const missing = '/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png';

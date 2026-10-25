@@ -1,6 +1,7 @@
 'use strict';
 // The dock's app list, built from what Samsung's own Home reads, so the two start out the same:
-//   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2)
+//   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2);
+//                              Tizen 9 keeps it under com.samsung.tv.home.media instead
 //   - the web app registry     /opt/dbspace/.webappservice.db     (title and Tizen app id)
 //   - the registry's icons     /opt/share/webappservice/apps_icon/all/<id>/
 //   - the package icons        /opt/dbspace/.pkgmgr_parser.db     (sideloaded apps, TV Plus)
@@ -8,7 +9,8 @@
 // (dock/src/Core/Catalog.cs): slug, label, app id, fallback, icon file. The dock rounds the
 // icons itself; this module never touches an image.
 
-var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
+var ORDER_DIRS = ['/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data',
+    '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data'];   // first one that has the cache wins
 var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
@@ -41,8 +43,10 @@ var SYSTEM_ROWS = [
 function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
     return [
-        'B=' + ORDER_DIR,
-        '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
+        'for B in ' + ORDER_DIRS.join(' ') + '; do',
+        '  if [ -f "$B/.appLayerCache.1" ] || [ -f "$B/.appLayerCache.2" ]; then',
+        '    { cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"; break',
+        '  fi; done',
         'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
@@ -182,4 +186,4 @@ function load(execute, options) {
     });
 }
 
-module.exports = {iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, ORDER_DIRS: ORDER_DIRS, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
