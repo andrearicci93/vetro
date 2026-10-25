@@ -27,9 +27,11 @@ The scripts in `app/scripts` send `VETRO_TOKEN` when it is set.
 | --- | --- |
 | Unpaired LAN clients get `401` on every route except `/auth/pair`, `/auth/confirm` and the sign-in page | Root routes need a paired device |
 | Only TV apps can read `/auth/pending` (the current code) | The code proves physical access to the TV |
+| One pairing at a time: while a code is live, new pairing requests get `429` and the TV app is not reopened | Nobody can cancel someone else's pairing or keep popping the code up |
 | Five wrong codes end a pairing; a new pairing at most every 10 seconds | Slows down guessing |
-| `Host` must be an IP address or `localhost` | Stops DNS rebinding |
-| A browser `Origin` must match `Host` | Stops other web pages from using a paired browser's cookie |
+| The no-key bypass for TV apps requires `Host` to be an IP address or `localhost` | A rebound hostname on loopback still has to pair |
+| A browser `Origin` must match `Host` on `/auth/pair`, `/auth/confirm` and every paired request | Other web pages can't start a pairing or use a paired browser's cookie |
+| Paired devices may use any host name (`tv.local`, a router name, Home Assistant) | The key, not the address, is what grants access |
 | Keys are 32 random bytes; only SHA-256 hashes are stored (`/opt/usr/home/owner/share/vetro-auth.json`) | A copied file does not reveal keys |
 
 ## Limits
