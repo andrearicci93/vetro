@@ -545,8 +545,10 @@ var winCopy={
   detail:'Sets the HbbTV menu value to Off, stops the HbbTV service first and then the app (the service starts the app again if it is left running), and does the same after every restart of the TV. Switch off to restore the previous value and start both again.'},
  multiscreen:{title:'Disable MultiScreen autostart',desc:'Samsung loads Multi View in the background at every restart of the TV. This stops that; Multi View still opens when you ask for it, and its first launch takes a few seconds longer. Frees about 15 MB.',
   detail:'Adds the file disable_preloading that Samsung’s own start-up unit checks, and stops the app now. Switch off to remove the file; nothing else is changed.'},
- ambient:{title:'Stop Ambient (partial block)',desc:'Stops the Ambient app now and after every restart of the TV, which frees about 59 MB. The block is partial: Samsung’s screen service starts the app again within seconds, and no setting turns that off, so the memory comes back until the next stop.',
-  detail:'Stops org.tizen.ambientapp now and once after each restart of the TV. screend, Samsung’s screen daemon, watches the app and launches it again when it ends (only a firmware feature of the model switches that off), so it can reappear after a few seconds. Samsung’s start-up script and the system image are not touched. Switch off to start it again.'},
+ ambient:{title:'Stop Ambient',desc:'Stops the Ambient app now and after every restart of the TV, and keeps it stopped. Frees about 59 MB. Opening Ambient yourself still works; switch this off or restart the TV to get the automatic start back.',
+  detail:'Samsung’s screen service (screend) starts org.tizen.ambientapp again within seconds of any stop. Vetro stops screend, ends the app and starts screend again; screend does not launch the app by itself, so it stays off. After each restart Vetro waits for Samsung’s start-up script to launch the app and ends it the same way. Samsung’s script and the system image are not touched. Switch off to start the app again.'},
+ telemetry:{title:'Stop viewing-data collection',desc:'Stops the services that recognise what is on screen, record remote key presses and send usage logs to Samsung. They are stopped now and again after every restart of the TV.',
+  detail:'Stops contents-recognition-service (viewing data), canalysis, pisa-service and adagent-service (analytics and ads), mirroring-recognition-manager, kpi-logging (key presses), emergency-log-transmitter and devicetracker. canalysis and pisa-service are kept off across restarts with the files their own start-up units check; the rest are stopped again at each boot. data-service uploads KPI logs to lcprd1.samsungcloudsolution.net and other components start it again, so that host is also added to the saved list of the domain filter. Turn on Block ad and tracking domains to apply it. Switch off to start everything again and remove the host if Vetro added it. Some TV features that report back to Samsung, such as targeted suggestions, may stop updating.'},
  firmware:{title:'Disable automatic firmware update',desc:'Same as Support › Software Update › Auto update. A new firmware can remove root access, so updates only happen when you start them.',
   detail:'Writes 0 to db/menu/support/softwareupdate/autoupdate and reads it back. Switch off to restore the previous value.'}
 };
@@ -570,8 +572,9 @@ function groupItem(g){
 function winItem(id){
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
- if(quickData.wins&&st==='on')state=id==='ambient'?chip('Partly done · Samsung may start it again','partial'):chip(id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
- if(st==='partial')state=chip('Partly done · Samsung started it again','partial');
+ if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · collection services are stopped':id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
+ if(id==='telemetry'&&st==='on'&&w.dnsBlocked===false)state+=chip('Uploads can resume · turn on Block ad and tracking domains','partial');
+ if(st==='partial')state=chip(id==='telemetry'?'Partly done · '+w.running+' service'+(w.running===1?'':'s')+' started again':'Partly done · Samsung started it again','partial');
  if(st==='off'&&w.running)state=chip('Running now','');
  var control=quickData.wins&&st&&st!=='unknown'?switchMarkup('data-win-switch="'+id+'"',st==='on',busy,c.title):'';
  return quickItem(id,c.title,c.desc,state,control,'<details><summary>What this changes</summary><p>'+esc(c.detail)+'</p></details>');
@@ -595,10 +598,10 @@ function renderQuick(){
   !d?chip('Reading…'):d.enabled&&!d.applied?chip('Saved as on, not applied','partial'):dnsOn?chip('Done · '+d.domains.length+' domain'+(d.domains.length===1?'':'s')+' blocked','on'):chip(dnsNoDomains?'No domains saved':d.domains.length+' domain'+(d.domains.length===1?'':'s')+' saved'),
   d?switchMarkup('data-dns-switch',dnsOn,quickBusy||uiOperationBusy.dns||dnsNoDomains&&!dnsOn,'Block ad and tracking domains'):'',
   dnsNoDomains?'<div class="quick-actions"><button data-quick-open="dns">Add domains</button></div>':'');
- // Ambient is offered as a partial block: screend, Samsung’s screen daemon, starts it again within seconds of a stop.
+ // Ambient: screend, Samsung’s screen daemon, is stopped around the kill so that it does not start the app again.
  $('quickMemory').innerHTML=hbbtvItem()+winItem('multiscreen')+winItem('ambient');
  $('quickControl').innerHTML=winItem('firmware');
- $('quickTracking').innerHTML=quickGroups.filter(function(g){return g.section==='tracking'}).map(groupItem).join('')+dns;
+ $('quickTracking').innerHTML=winItem('telemetry')+quickGroups.filter(function(g){return g.section==='tracking'}).map(groupItem).join('')+dns;
  $('quickVoice').innerHTML=quickGroups.filter(function(g){return g.section==='voice'}).map(groupItem).join('');
  var l=quickData.leftovers,files=l?l.files.filter(function(f){return f.isPackage}):[];
  var lstate=quickData.leftoversError?chip(quickData.leftoversError,'partial'):!l?chip('Reading…'):files.length?chip(files.length+' package file'+(files.length===1?'':'s')+' · '+fileSize(l.packageBytes),'partial'):chip('No package files');

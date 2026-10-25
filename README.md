@@ -44,7 +44,8 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 
 - **Disable all advertising and tracking**, which includes the ACR viewing-data services.
 - **Block ad and tracking domains** with a filter on the TV itself, keeping your DNS servers.
-- **Disable HbbTV** and **MultiScreen autostart**, which free about 22 MB and 15 MB of RAM.
+- **Stop viewing-data collection**, which stops the services that recognise what is on screen, log remote key presses and send usage logs, now and after every restart.
+- **Disable HbbTV**, **MultiScreen autostart** and **Stop Ambient**, which free about 22 MB, 15 MB and 59 MB of RAM.
 - **Disable all voice assistants**, or Alexa, Google Assistant, Bixby and the other voice services one by one.
 - **Disable automatic firmware update**, so a new firmware does not remove root behind your back.
 
