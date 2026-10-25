@@ -18,7 +18,8 @@
 //             stopped in 4 s. The picture is only flat while the app is on screen, nothing is left applied.
 //   telemetry The services that watch what is on screen or send usage logs. contents-recognition-service is the
 //             viewing-data (ACR) recogniser, canalysis, pisa and adagent are the analytics and ad agents,
-//             mirroring-recognition-manager, kpi-logging (remote key presses), emergency-log-transmitter and
+//             mirroring-recognition-manager, contents-ui-detector-service and contents-ott-detector-service (the second
+//             is started by contents-recognition-service, not by a unit; both find thumbnails and app screens in the picture), kpi-logging (remote key presses), emergency-log-transmitter and
 //             devicetracker (health KPIs) report on use. canalysis-service and pisa-service have a
 //             ConditionPathExists=! on a file in /opt/usr/share/systemd/system, so a file there keeps them off across
 //             boots; the others are stopped now and at every boot. data-service, the collector that uploads KPI logs
@@ -46,9 +47,10 @@ var TELEMETRY_DIR = '/opt/usr/share/systemd/system/';
 var TELEMETRY_BRAKES = ['canalysis-daemon', 'pisa-service', 'vision-data-recognition-service'].map(function (n) { return TELEMETRY_DIR + n; });
 var TELEMETRY_COND = '/tmp/eltlaunch.cond';
 var TELEMETRY_UNITS = ['canalysis-service', 'pisa-service', 'adagent-service', 'contents-recognition-service',
-    'mirroring-recognition-manager', 'kpi-logging', 'emergency-log-transmitter', 'devicetracker', 'data-service'];
+    'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
+    'emergency-log-transmitter', 'devicetracker', 'data-service'];
 var TELEMETRY_PROCS = ['canalysis-daemo', 'pisa-service', 'adagent-servic', 'contents-recogn', 'mirroring-recog',
-    'kpi-logging', 'emergencyLogTr', 'devicetracker'];
+    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker'];
 var TELEMETRY_HOST = 'lcprd1.samsungcloudsolution.net';
 var TELEMETRY_OFF = 'touch ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
     'for u in ' + TELEMETRY_UNITS.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\n' +

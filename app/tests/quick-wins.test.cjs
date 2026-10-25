@@ -81,6 +81,7 @@ const noWait=()=>Promise.resolve();
  const off=t.s.calls.find(c=>/^touch /.test(c));
  assert.ok(off.includes('/opt/usr/share/systemd/system/canalysis-daemon')&&off.includes('/opt/usr/share/systemd/system/pisa-service'),'the units\' own brake files');
  assert.ok(/for u in [^;]*contents-recognition-service[^;]*kpi-logging[^;]*; do systemctl stop/.test(off),'viewing-data and logging services are stopped');
+ assert.ok(/contents-ui-detector-service/.test(off)&&/contents-ui-det /.test(off)&&/contents-ott-de /.test(off),'the picture detectors are stopped, including the one a recogniser starts without a unit');
  assert.ok(!/systemctl (mask|disable)|rm -rf|\/usr\/lib/.test(off),'nothing on the system image, nothing masked');
  assert.equal((await w.read()).wins.telemetry.dnsBlocked,true);
  t.s.telRun=2;assert.equal((await w.read()).wins.telemetry.status,'partial','chosen but running again');
