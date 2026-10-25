@@ -124,7 +124,14 @@ function downloadDiagnostics(res) {
     function later(fn) { return function () { return new Promise(function (r) { setTimeout(r, 1700); }).then(fn); }; }
     if (!diagnosticPending) diagnosticPending = require('./diagnostic-report.js').collect({
         platform: function () { return platform.status(); },
-        device: function () { return Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt}); },
+        // The widget's probe wins; the service reads firmware and Tizen version itself when the probe never arrived.
+        device: later(function () {
+            var probe = Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt});
+            return require('./device-info.js').read(agentExecute).then(function (info) {
+                return Object.assign(probe, {tizenVersion: info.tizenVersion},
+                    probe.firmware || !info.firmware ? {} : {firmware: info.firmware, firmwareSource: 'service-read'});
+            }, function () { return probe; });
+        }),
         inventory: later(function () { return inventory(false); }),
         settings: later(function () { return tvSettings.read(); }),
         catalog: later(function () { return menuSettings.load(); }),
