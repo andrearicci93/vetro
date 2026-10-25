@@ -13,6 +13,7 @@ const calls=[];
 const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},console,setTimeout(fn){return 1},clearTimeout(){},setInterval(){},
  fetch:async(url,opts)=>{const body=opts&&opts.body?JSON.parse(opts.body):null;calls.push({url,body});let data={};
   if(url.startsWith('/apps'))data={apps,summary:{total:apps.length},source:'package registry + public probe'};
+  else if(url==='/status')data={agent:{connected:true},mode:'root',app:{version:'9.9.9'}};
   else if(url==='/hbbtv')data={value:19,off:true,valueOff:true,flag:true,running:false,serviceRunning:false,canRestore:true,restoreValue:20};
   else if(url==='/wins'&&!body)data={ts:1,wins:{firmware:{status:'off',value:1},multiscreen:{status:'on',running:false},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:'on',running:0,brakes:3,chosen:true,dnsBlocked:false}}};
   else if(url==='/wins')data={id:body.id,changed:true,status:body.on?'on':'off',previous:1,value:body.on?0:1};
@@ -26,6 +27,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{await tick();await tick();
  assert.equal(sandbox.currentPanel,'quick','Quick settings is the first panel');
  assert.ok(!calls.some(c=>c.url.startsWith('/monitor')),'no live sampling at start');
+ assert.equal(el('appVersion').textContent,'Vetro 9.9.9','the sidebar footer shows the version the service reports');assert.match(el('connection').textContent,/TV connected/);
  const voice=el('quickVoice').innerHTML;
  assert.match(voice,/Disable Alexa/);assert.match(voice,/Partly done · 3 of 4 components still enabled/);assert.doesNotMatch(voice,/data-quick-toggle="alexa" checked/,'partly done: the switch is not on yet');
  const memory=el('quickMemory').innerHTML;
