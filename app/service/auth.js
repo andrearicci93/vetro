@@ -31,13 +31,21 @@ var sessions = load();
 var pending = null;          // {id, code, name, expires, tries}
 var lastPairAt = 0;
 
+// A missing file just means nothing is paired yet; any other failure is logged, since it signs everyone out.
 function load() {
     try { var d = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')); return Array.isArray(d.sessions) ? d.sessions : []; }
-    catch (e) { return []; }
+    catch (e) {
+        if (e.code !== 'ENOENT') console.error('Sign-in: could not read ' + STORE_PATH + ' (' + e.message + '); every device must pair again');
+        return [];
+    }
 }
+// Returns null, or the reason the keys could not be written (also logged).
 function save() {
-    try { fs.writeFileSync(STORE_PATH, JSON.stringify({sessions: sessions}), {mode: 384}); } catch (e) {}
+    try { fs.writeFileSync(STORE_PATH, JSON.stringify({sessions: sessions}), {mode: 384}); return null; }
+    catch (e) { console.error('Sign-in: could not save ' + STORE_PATH + ' (' + e.message + ')'); return e.message; }
 }
+function live(now) { return sessions.filter(function (s) { return s.expires > now; }); }
+var FULL = 'This TV already has ' + MAX_SESSIONS + ' paired devices. Sign one out, or use Sign out all devices, before pairing another.';
 function hash(key) { return crypto.createHash('sha256').update(key).digest('hex'); }
 function same(a, b) { a = Buffer.from(String(a)); b = Buffer.from(String(b)); return a.length === b.length && crypto.timingSafeEqual(a, b); }
 
@@ -92,6 +100,7 @@ function startPair(req, res, onPair) {
     var now = Date.now();
     if (pending && pending.expires > now) return json(res, 429, {error: 'A pairing is in progress; try again when its code expires (at most 2 minutes)'});
     if (now - lastPairAt < 10000) return json(res, 429, {error: 'Wait a few seconds and try again'});
+    if (live(now).length >= MAX_SESSIONS) return json(res, 409, {error: FULL});
     lastPairAt = now;
     body(req, function (p) {
         var name = String(p.name || 'Browser').replace(/[^\w .()+-]/g, '').slice(0, 40) || 'Browser';
@@ -110,12 +119,14 @@ function confirmPair(req, res) {
             if (++pending.tries >= MAX_TRIES) pending = null;
             return json(res, 403, {error: pending ? 'Wrong code' : 'Too many wrong codes; start again'});
         }
+        sessions = live(now);
+        if (sessions.length >= MAX_SESSIONS) { pending = null; return json(res, 409, {error: FULL}); }
         var key = crypto.randomBytes(32).toString('hex');
         sessions.push({hash: hash(key), name: pending.name, created: now, seen: now, expires: now + KEY_DAYS * 86400000});
-        sessions = sessions.filter(function (s) { return s.expires > now; }).slice(-MAX_SESSIONS);
         pending = null;
-        save();
-        json(res, 200, {ok: true, token: key},
+        var failed = save(), reply = {ok: true, token: key};
+        if (failed) reply.warning = 'Paired, but the key could not be saved on the TV (' + failed + '): this device will have to pair again after the service restarts.';
+        json(res, 200, reply,
             {'set-cookie': COOKIE + '=' + key + '; Max-Age=' + KEY_DAYS * 86400 + '; Path=/; HttpOnly; SameSite=Strict'});
     });
 }
@@ -191,8 +202,9 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 'var id,$=function(i){return document.getElementById(i)},say=function(t,e){$("msg").textContent=t;$("msg").className=e?"msg err":"msg"};' +
 'function call(u,b){return fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw Error(d.error);return d})})}' +
 '$("start").onclick=function(){say("Asking the TV…");call("/auth/pair",{name:navigator.platform||"Browser"}).then(function(d){id=d.id;$("s1").hidden=true;$("s2").hidden=false;$("code").focus();say("Enter the 6-digit code now on the TV screen. It expires in 2 minutes.")}).catch(function(e){say(e.message,1)})};' +
-'$("s2").onsubmit=function(e){e.preventDefault();call("/auth/confirm",{id:id,code:$("code").value}).then(function(){say("Paired.");location.reload()}).catch(function(e){say(e.message,1);if(/start again/.test(e.message)){$("s1").hidden=false;$("s2").hidden=true}})};' +
+'$("s2").onsubmit=function(e){e.preventDefault();call("/auth/confirm",{id:id,code:$("code").value}).then(function(d){say(d.warning||"Paired.",!!d.warning);setTimeout(function(){location.reload()},d.warning?6000:300)}).catch(function(e){say(e.message,1);if(/start again/.test(e.message)){$("s1").hidden=false;$("s2").hidden=true}})};' +
 '</script></body></html>';
 
 module.exports = {gate: gate, decorate: decorate, tvApp: tvApp, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
-    _reset: function () { sessions = []; pending = null; lastPairAt = 0; }};
+    _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
+    _unthrottle: function () { lastPairAt = 0; }};

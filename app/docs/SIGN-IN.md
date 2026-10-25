@@ -33,6 +33,8 @@ The scripts in `app/scripts` send `VETRO_TOKEN` when it is set.
 | A browser `Origin` must match `Host` on `/auth/pair`, `/auth/confirm` and every paired request | Other web pages can't start a pairing or use a paired browser's cookie |
 | Paired devices may use any host name (`tv.local`, a router name, Home Assistant) | The key, not the address, is what grants access |
 | Keys are 32 random bytes; only SHA-256 hashes are stored (`/opt/usr/home/owner/share/vetro-auth.json`) | A copied file does not reveal keys |
+| At most 20 paired devices; a 21st pairing gets `409` with the reason | No existing key is dropped behind a script's back |
+| If the key file can't be written or read, the service logs it and `/auth/confirm` returns a `warning` | A read-only folder can't sign everyone out without a trace |
 
 ## Limits
 

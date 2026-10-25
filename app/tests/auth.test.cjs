@@ -84,5 +84,28 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   const t = (await call('POST', '/auth/confirm', {body: {id: p.body.id, code: (await call('GET', '/auth/pending', tv)).body.code}})).body.token;
   assert.equal((await call('POST', '/auth/signout-all', tv)).code, 200);
   assert.equal((await call('GET', '/apps', {headers: {authorization: 'Bearer ' + t}})).code, 401);
-  console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open');
+  // At most 20 keys: the 21st pairing is refused with a reason (no key is dropped silently).
+  auth._reset();
+  const pairOnce = async () => {
+    auth._unthrottle();
+    const st = await call('POST', '/auth/pair', {body: {name: 'Script'}});
+    if (st.code !== 200) return st;
+    return call('POST', '/auth/confirm', {body: {id: st.body.id, code: (await call('GET', '/auth/pending', tv)).body.code}});
+  };
+  const keys = [];
+  for (let i = 0; i < 20; i++) { const r = await pairOnce(); assert.equal(r.code, 200); keys.push(r.body.token); }
+  const full = await pairOnce();
+  assert.equal(full.code, 409); assert.match(full.body.error, /20 paired devices/);
+  assert.equal((await call('GET', '/apps', {headers: {authorization: 'Bearer ' + keys[0]}})).handled, false, 'the oldest key still works');
+
+  // If the key file can't be written, pairing still works but says so, and the failure is logged.
+  auth._reset();
+  fs.rmSync(process.env.VETRO_AUTH_PATH, {force: true}); fs.mkdirSync(process.env.VETRO_AUTH_PATH);
+  const logged = []; const err = console.error; console.error = m => logged.push(String(m));
+  const warned = await pairOnce();
+  console.error = err;
+  assert.equal(warned.code, 200); assert.match(warned.body.warning, /could not be saved/);
+  assert.ok(logged.some(m => /could not save/.test(m)), 'save failure is logged');
+
+  console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported');
 })().catch(e => { console.error(e); process.exitCode = 1; });
