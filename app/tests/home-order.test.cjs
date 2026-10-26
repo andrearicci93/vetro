@@ -6,6 +6,11 @@ const FIX = '3210\ns/livetv@TVPLUS\nd/webapp@aaa\nd/webapp@bbb\nEOFC OBA\n';
 
 assert.deepEqual(parse(FIX).entries, ['s/livetv@TVPLUS', 'd/webapp@aaa', 'd/webapp@bbb']);
 assert.equal(render({ version: '3210', entries: ['s/livetv@TVPLUS', 'd/webapp@aaa', 'd/webapp@bbb'] }), FIX);
+const NOSP = FIX.replace('EOFC OBA', 'EOFCOBA');
+assert.deepEqual(parse(NOSP).entries, parse(FIX).entries);
+assert.equal(parse(NOSP).term, 'EOFCOBA');
+assert.equal(render(parse(NOSP)), NOSP, 'terminator preserved on rewrite');
+assert.throws(() => parse('3210\ns/livetv@TVPLUS\nd/webapp@aaa\nEOF\n'), /terminator/);
 assert.throws(() => parse('nope'), /Unrecognized/);
 assert.throws(() => parse('3210\nx/y@z\nEOFC OBA\n'), /Invalid/);
 assert.throws(() => validate(['d/webapp@a', 'd/webapp@a', 'bad']), /Invalid/);
