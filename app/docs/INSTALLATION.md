@@ -15,7 +15,7 @@ What you do, once, from a computer on the same network as the TV:
 
 1. Turn on Developer Mode on the TV and point it at your computer (step 2).
 2. Build the integration package and sign it with your own Samsung certificate (step 3).
-3. Install it on the TV and open **Vetro** once (step 4).
+3. Install it on the TV and open **Vetro** once (step 4). This first opening is required: on some TVs the installer registers the service with on-boot and auto-restart off. Since 0.3.2 Vetro turns them on by itself, but only after it has run once and the root agent has connected. Until you open it, the service will not start by itself after a restart ([#25](https://github.com/andrearicci93/vetro/issues/25)).
 4. Change the TV's **Host PC IP** to `127.0.0.1` and restart the TV (step 5).
 
 What you do **not** do: run any C# file, DLL or "archive chain" yourself. Those are the root integration's own parts. After step 5 the Vetro service starts with the TV, uses the TV's own SDB service to start a small root helper (the *root agent*), and the helper connects back to the service. The dashboard says *Root agent: connected* when that worked. You will not see it happen; you only see the result.
