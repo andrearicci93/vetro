@@ -33,6 +33,6 @@ const runner = async function (cmd) {
     const text = Buffer.from(payload, 'base64').toString();
     assert.equal(text, '3210\nd/webapp@bbb\ns/livetv@TVPLUS\nd/webapp@aaa\nEOFC OBA\n');
     assert.equal(o.busy, false);
-    let current=FIX;const good=new Order(async cmd=>{const script=Buffer.from(cmd.split(' ')[1],'base64').toString();if(script.startsWith('cat'))return {exit_code:0,stdout:current};current=Buffer.from(script.match(/echo ([A-Za-z0-9+/=]+) \| base64 -d >/)[1],'base64').toString();return {exit_code:0,stdout:'OK'};}); assert.equal((await good.write(['d/webapp@bbb','s/livetv@TVPLUS','d/webapp@aaa'])).saved,true);
+    let current=FIX;const good=new Order(async cmd=>{const script=Buffer.from(cmd.split(' ')[1],'base64').toString();if(/cat .*appLayerCache/.test(script))return {exit_code:0,stdout:current};current=Buffer.from(script.match(/echo ([A-Za-z0-9+/=]+) \| base64 -d >/)[1],'base64').toString();return {exit_code:0,stdout:'OK'};}); assert.equal((await good.write(['d/webapp@bbb','s/livetv@TVPLUS','d/webapp@aaa'])).saved,true);
     console.log('PASS home-order: parse/render, strict entry validation, permutation-only write with backup');
 })().catch(function (e) { console.error(e); process.exitCode = 1; });

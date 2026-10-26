@@ -1,6 +1,7 @@
 'use strict';
 // The dock's app list, built from what Samsung's own Home reads, so the two start out the same:
-//   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2)
+//   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2); TVs with the new Home
+//                              (com.samsung.tv.home.media, 2022 and later) keep it in that package's data dir instead
 //   - the web app registry     /opt/dbspace/.webappservice.db     (title and Tizen app id)
 //   - the registry's icons     /opt/share/webappservice/apps_icon/all/<id>/
 //   - the package icons        /opt/dbspace/.pkgmgr_parser.db     (sideloaded apps, TV Plus)
@@ -9,6 +10,7 @@
 // icons itself; this module never touches an image.
 
 var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
+var ORDER_DIR_NEW_HOME = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data';
 var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
@@ -42,6 +44,7 @@ function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
     return [
         'B=' + ORDER_DIR,
+        'for d in ' + ORDER_DIR + ' ' + ORDER_DIR_NEW_HOME + '; do if [ -f "$d/.appLayerCache.1" ] || [ -f "$d/.appLayerCache.2" ]; then B=$d; break; fi; done',
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
         'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',

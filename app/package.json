@@ -1,6 +1,6 @@
 {
   "name": "vetro-app",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "private": true,
   "description": "Vetro feature development, independent of the TV integration implementation.",
   "scripts": {

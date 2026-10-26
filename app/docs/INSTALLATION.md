@@ -29,6 +29,8 @@ Use only a TV you own or are authorized to administer. Read the compatibility ta
 
 Do not reuse someone else's signed package or certificates. Historical signing material is excluded from the release. Review [Samsung's TV-device setup guide](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html) for your model's installation workflow.
 
+The certificate is bound to your TV's DUID (its device ID). One community report found it on the TV under **Smart Hub Information → Unique Device ID**; menu names vary by model.
+
 If Certificate Manager fails with `ArrayIndexOutOfBoundsException`, check whether a DNS filter or ad blocker on the computer blocks `svdca.samsungqbe.com`. A community report found that the plugin then saved the block page as `author.crt`; allowing the domain made the official certificate flow work.
 
 ### 2. Enable Developer Mode
@@ -74,6 +76,8 @@ Select the connected TV target in Tizen Studio Device Manager, permit app instal
 tizen install -n /tmp/vetro.wgt -t YOUR_TV_TARGET
 ```
 
+**Use `tizen install`, not `sdb install`.** A community report found that installing with `sdb` did nothing and showed no error, while `tizen install` worked. After Tizen Studio is installed, the tools are typically in `~/tizen-studio/tools/sdb` and `~/tizen-studio/tools/ide/bin/tizen` (the folder may differ, and they may not be on your `PATH`). To check that the installation reached the TV, `sdb shell 0 vd_applist` lists the apps installed on it; Vetro should be in the list.
+
 Open **Vetro** once to run the public API probe. Visit `http://TV_IP:8099/` from a browser on the same LAN and pair it with the code the TV shows ([sign-in](SIGN-IN.md)). Check app inventory, probe status and platform connectivity. A visible icon or accepted installation is not proof that the background service or root agent works.
 
 ### 5. Let the TV reach its own SDB service
@@ -95,6 +99,7 @@ Open `http://TV_IP:8099/status` in a browser and read these fields:
 | What you see | What it means | What to do |
 | --- | --- | --- |
 | `"mode": "app-only"` | The package on the TV is the app-only one, with no root integration. | Build with `rooting/build.cjs` (step 3) and install that package. |
+| A message such as `<operation>: TV platform adapter unavailable`, together with `"mode": "app-only"` in the status output | The package on the TV was built without the integration builder, so it has no TV platform adapter. | Rebuild with the integration builder (`node build.cjs` in `rooting/`, step 3; see [rooting/README.md](../../rooting/README.md)) and install that package. |
 | `"mode": "tv-integration"` and `"agent": {"connected": false}` | The integration is there but the helper has not connected. | Check that Developer Mode is on and **Host PC IP** is `127.0.0.1` (step 5), that you restarted the TV afterwards, and that you waited 90 seconds. |
 | The page does not load at all | The background service is not running. | Open **Vetro** on the TV once, wait 10 seconds and reload. If that does not help, see the [service notes](../../README.md#root-on-the-tv). |
 | `"attempts"` lists launches that end without `agent-connected` | Root did not work on this firmware, or SDB refused the connection. | Download the report from **Diagnostics** and attach it to a new issue; it contains no addresses or serial numbers. |

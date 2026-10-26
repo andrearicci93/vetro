@@ -19,6 +19,28 @@ class ParserTests(unittest.TestCase):
         self.assertIn('Unknown; requires a new cold boot',s)
         self.assertIn('single tested TV',s)
 
+    def test_service_read_firmware_and_component_details(self):
+        s = p.markdown(p.analyze(self.report(
+            device={'realModel':'GU75CU7179','firmware':'T-KSU2EBDEUC-1720.7','firmwareSource':'service-read','tizenVersion':'6.5.0'},
+            components={'packages':[
+                {'packageId':'vetrotvapp','origin':'installed','components':[{'appId':'vetrotvapp.svc','differs':True},{'appId':'vetrotvapp.app','differs':False}]},
+                {'packageId':'com.samsung.tv.iacr','origin':'preinstalled','components':[{'appId':'com.samsung.tv.iacr','differs':True}]},
+                {'packageId':'com.someone.private','origin':'installed','components':[{'appId':'com.someone.private','differs':True}]},
+                {'packageId':'x','origin':'installed','components':'<script>'}]})))
+        self.assertIn('Read from the TV by the Vetro service',s)
+        self.assertIn('| Tizen version | 6.5.0 |',s)
+        self.assertIn('4 unrecognised packages read; 3 with start flags that differ',s)
+        self.assertIn('vetrotvapp.svc, com.samsung.tv.iacr',s)
+        self.assertNotIn('com.someone.private',s)
+        self.assertNotIn('<script>',s)
+        self.assertNotIn('unrecognised)',s,'launcher, quickWins and components are known sections')
+
+    def test_components_not_requested_is_not_a_failure(self):
+        report = json.dumps({'format':'vetro-diagnostics','schemaVersion':1,'sections':{'components':{'status':'unavailable','reason':'not-requested'},'hbbtv':{'status':'unavailable','reason':'command-failed','exitCode':1}}})
+        s = p.markdown(p.analyze(report))
+        self.assertIn('Sections not collected | 1: hbbtv',s)
+        self.assertNotIn('components (',s)
+
     def test_disconnected_and_stopped(self):
         s = p.markdown(p.analyze(self.report(platform={'running':False,'rootAgent':{'connected':False}})))
         self.assertIn('Reported disconnected',s)

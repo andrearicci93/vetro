@@ -1,6 +1,8 @@
 'use strict';
 // Vetro application: telemetry, dashboard and feature endpoints.
 // Platform operations use the adapter documented in PLATFORM.md.
+// Tizen 5.5 runs Node 4.4: add the built-ins it lacks before anything else loads.
+require('./compat.js').install();
 var fs = require('fs');
 var http = require('http');
 var os = require('os');
@@ -520,7 +522,10 @@ function restoreInput(){
     inputRestoring=true;
     physical.inventory().then(function(list){
         if(inputPaused||inputPreference()!==preference)return;
-        var device=list.find(function(d){return d.selectable&&d.name===preference.device&&(d.unique||d.node===preference.node);});
+        var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
+        var keyed=candidates.filter(function(d){try{return /[1-9a-f]/i.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
+        // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
+        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
         if(!device)throw new Error('Saved physical remote is unavailable');
         return physical.start(device.node,'filter',inputTokens());
     }).then(function(){inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
@@ -683,3 +688,6 @@ var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRest
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
 var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+
+// Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
+var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
