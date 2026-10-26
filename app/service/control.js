@@ -17,7 +17,7 @@ var KEYS = [
     // TV keys (keyrouter names)
     'XF86Back', 'XF86Home', 'XF86Menu', 'XF86Info', 'XF86Exit',
     // channels / guide
-    'XF86ChannelList', 'XF86ChannelGuide',
+    'XF86ChannelList', 'XF86ChannelGuide', 'XF86DiscretSourceTV',
     // digits (standard X keysyms)
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     // playback
@@ -33,6 +33,6 @@ function injectCommand(key) {
     return '/usr/bin/input_keyevent ' + key;
 }
 
-var LAN_KEYS = {KEY_HOME:'XF86Home',KEY_RETURN:'XF86Back',KEY_EXIT:'XF86Exit',KEY_UP:'Up',KEY_DOWN:'Down',KEY_LEFT:'Left',KEY_RIGHT:'Right',KEY_ENTER:'Return',KEY_VOLUP:'XF86AudioRaiseVolume',KEY_VOLUMEUP:'XF86AudioRaiseVolume',KEY_VOLDOWN:'XF86AudioLowerVolume',KEY_VOLUMEDOWN:'XF86AudioLowerVolume',KEY_MUTE:'XF86AudioMute',KEY_PLAY:'XF86AudioPlay',KEY_PAUSE:'XF86AudioPause',KEY_STOP:'XF86AudioStop'};
+var LAN_KEYS = {KEY_TV:'XF86DiscretSourceTV',KEY_HOME:'XF86Home',KEY_RETURN:'XF86Back',KEY_EXIT:'XF86Exit',KEY_UP:'Up',KEY_DOWN:'Down',KEY_LEFT:'Left',KEY_RIGHT:'Right',KEY_ENTER:'Return',KEY_VOLUP:'XF86AudioRaiseVolume',KEY_VOLUMEUP:'XF86AudioRaiseVolume',KEY_VOLDOWN:'XF86AudioLowerVolume',KEY_VOLUMEDOWN:'XF86AudioLowerVolume',KEY_MUTE:'XF86AudioMute',KEY_PLAY:'XF86AudioPlay',KEY_PAUSE:'XF86AudioPause',KEY_STOP:'XF86AudioStop'};
 function nativeKey(key) {return KEY_SET[key] ? key : LAN_KEYS[key] || null;}
 module.exports = { nativeKey:nativeKey, KEYS: KEYS, injectCommand: injectCommand };

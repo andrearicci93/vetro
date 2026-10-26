@@ -29,6 +29,8 @@ Use only a TV you own or are authorized to administer. Read the compatibility ta
 
 Do not reuse someone else's signed package or certificates. Historical signing material is excluded from the release. Review [Samsung's TV-device setup guide](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html) for your model's installation workflow.
 
+The certificate is bound to your TV's DUID (its device ID). One community report found it on the TV under **Smart Hub Information → Unique Device ID**; menu names vary by model.
+
 If Certificate Manager fails with `ArrayIndexOutOfBoundsException`, check whether a DNS filter or ad blocker on the computer blocks `svdca.samsungqbe.com`. A community report found that the plugin then saved the block page as `author.crt`; allowing the domain made the official certificate flow work.
 
 ### 2. Enable Developer Mode
@@ -73,6 +75,8 @@ Select the connected TV target in Tizen Studio Device Manager, permit app instal
 ```sh
 tizen install -n /tmp/vetro.wgt -t YOUR_TV_TARGET
 ```
+
+**Use `tizen install`, not `sdb install`.** A community report found that installing with `sdb` did nothing and showed no error, while `tizen install` worked. After Tizen Studio is installed, the tools are typically in `~/tizen-studio/tools/sdb` and `~/tizen-studio/tools/ide/bin/tizen` (the folder may differ, and they may not be on your `PATH`). To check that the installation reached the TV, `sdb shell 0 vd_applist` lists the apps installed on it; Vetro should be in the list.
 
 Open **Vetro** once to run the public API probe. Visit `http://TV_IP:8099/` from a browser on the same LAN. Check app inventory, probe status and platform connectivity. A visible icon or accepted installation is not proof that the background service or root agent works.
 

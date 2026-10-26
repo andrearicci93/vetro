@@ -7,4 +7,7 @@ const script=Buffer.from(cmd.split(' ')[1],'base64').toString();assert.ok(script
 const allowed=ops.availability({...rows[0],disabled:false,show:false},rows,[]);assert.equal(allowed.toggle.allowed,true);assert.equal(allowed.uninstall.allowed,true);assert.match(allowed.launch.reason,/background/);
 const unknown=ops.availability({appId:'probe.ui',packageId:'probe'},[],[]);assert.equal(unknown.toggle.allowed,false);assert.equal(unknown.uninstall.allowed,false);
 const shared=ops.availability({...rows[0],packageId:'shared'},[{appId:'vetrotvapp.svc',packageId:'shared'}],[]);assert.equal(shared.uninstall.allowed,false);
-console.log('PASS component actions: exact installed targets, protected components, removable packages and independent persistent flags');
+const own=[{appId:'vetrotvapp.app',onboot:false,autorestart:false},{appId:'vetrotvapp.svc',onboot:false,autorestart:true}],fix=ops.selfStartup(own).map(c=>Buffer.from(c.split(' ')[1],'base64').toString());
+assert.equal(fix.length,1,'only the flag that is off');assert.ok(fix[0].includes("app_onboot='true'")&&fix[0].includes("app_id='vetrotvapp.svc'")&&!fix[0].includes('vetrotvapp.app'));
+assert.deepEqual(ops.selfStartup([{appId:'vetrotvapp.svc',onboot:true,autorestart:true}]),[]);assert.deepEqual(ops.selfStartup([]),[]);assert.throws(()=>ops.validate({action:'flags',appId:'vetrotvapp.svc',flag:'onboot',enabled:false},own),/Protected/,'users still cannot change Vetro');
+console.log('PASS component actions: exact installed targets, protected components, removable packages, independent persistent flags and Vetro\'s own startup flags');

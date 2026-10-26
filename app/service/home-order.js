@@ -1,7 +1,7 @@
 'use strict';
 
 // Home app order: the ordered list stored in the CoBA ".appLayerCache" file
-// under the csfs data dir. Each line is a section item:
+// under the csfs data dir (or the home.media one on TVs with the new Home). Each line is a section item:
 //   s/livetv@<source>        live TV source (TV Plus, RF, ...)
 //   d/webapp@<packageId|storeId>  web application
 // The file shape is: <version>\n<entries...>\nEOFC OBA\n. The Home reads it to
@@ -9,6 +9,9 @@
 // restore() puts it back. Applying a change needs the Home/CoBA host to reload.
 
 var BASE = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
+var BASE_NEW_HOME = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data';
+// Shell prelude: D is the first data dir that holds a cache file, the csfs one when neither does.
+var PICK_DIR = 'D=' + BASE + '\nfor c in ' + BASE + ' ' + BASE_NEW_HOME + '; do if [ -f "$c/.appLayerCache.1" ] || [ -f "$c/.appLayerCache.2" ]; then D=$c; break; fi; done\n';
 var FILES = ['.appLayerCache.1', '.appLayerCache.2'];
 var TERM = 'EOFC OBA';
 var MAX = 300;
@@ -49,7 +52,7 @@ function sameSet(a, b) {
 function Order(execute) { this.execute = execute; this.busy = false; }
 
 Order.prototype.read = function () {
-    var script = 'cat ' + BASE + '/' + FILES[0] + ' 2>/dev/null || cat ' + BASE + '/' + FILES[1] + ' 2>/dev/null';
+    var script = PICK_DIR + 'cat "$D/' + FILES[0] + '" 2>/dev/null || cat "$D/' + FILES[1] + '" 2>/dev/null';
     return this.execute(wrap(script), 8000).then(function (r) {
         var order = parse(check(r));
         order.file = null; // Fallback read does not identify the selected cache.
@@ -79,10 +82,10 @@ Order.prototype.write = function (entries) {
 };
 
 function rollbackScript() {
-    return 'set -e\nD=' + BASE + '\nfor f in ' + FILES.join(' ') + '; do if [ -f "$D/$f.vetro-txn" ]; then cp -p "$D/$f.vetro-txn" "$D/$f.vetro-tmp"; mv -f "$D/$f.vetro-tmp" "$D/$f"; elif [ -f "$D/$f.vetro-missing" ]; then rm -f "$D/$f"; fi; done';
+    return 'set -e\n' + PICK_DIR + 'for f in ' + FILES.join(' ') + '; do if [ -f "$D/$f.vetro-txn" ]; then cp -p "$D/$f.vetro-txn" "$D/$f.vetro-tmp"; mv -f "$D/$f.vetro-tmp" "$D/$f"; elif [ -f "$D/$f.vetro-missing" ]; then rm -f "$D/$f"; fi; done';
 }
 function transactionScript(payload, restoring) {
-    var prepare = 'set -e\nD=' + BASE + '\nfor f in ' + FILES.join(' ') + '; do rm -f "$D/$f.vetro-txn" "$D/$f.vetro-missing"; if [ -f "$D/$f" ]; then cp -p "$D/$f" "$D/$f.vetro-txn"; [ -f "$D/$f.vetro-bak" ] || cp -p "$D/$f" "$D/$f.vetro-bak"; else touch "$D/$f.vetro-missing"; fi; done\n';
+    var prepare = 'set -e\n' + PICK_DIR + 'for f in ' + FILES.join(' ') + '; do rm -f "$D/$f.vetro-txn" "$D/$f.vetro-missing"; if [ -f "$D/$f" ]; then cp -p "$D/$f" "$D/$f.vetro-txn"; [ -f "$D/$f.vetro-bak" ] || cp -p "$D/$f" "$D/$f.vetro-bak"; else touch "$D/$f.vetro-missing"; fi; done\n';
     if (restoring) prepare += 'for f in ' + FILES.join(' ') + '; do [ -f "$D/$f.vetro-bak" ] || { echo "Backup Home incompleto" >&2; exit 1; }; done\n';
     var fill = restoring ? 'cp -p "$D/$f.vetro-bak" "$D/$f.vetro-tmp"' : 'if [ -f "$D/$f" ]; then cp -p "$D/$f" "$D/$f.vetro-tmp"; else touch "$D/$f.vetro-tmp"; fi; echo ' + payload + ' | base64 -d > "$D/$f.vetro-tmp"';
     return prepare + 'committed=0\ntrap \'if [ "$committed" != 1 ]; then for f in ' + FILES.join(' ') + '; do if [ -f "$D/$f.vetro-txn" ]; then cp -p "$D/$f.vetro-txn" "$D/$f"; elif [ -f "$D/$f.vetro-missing" ]; then rm -f "$D/$f"; fi; done; fi\' EXIT\nfor f in ' + FILES.join(' ') + '; do ' + fill + '; done\nfor f in ' + FILES.join(' ') + '; do mv -f "$D/$f.vetro-tmp" "$D/$f"; done\ncommitted=1\necho OK';
