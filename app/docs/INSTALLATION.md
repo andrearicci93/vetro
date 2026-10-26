@@ -99,6 +99,7 @@ Open `http://TV_IP:8099/status` in a browser and read these fields:
 | What you see | What it means | What to do |
 | --- | --- | --- |
 | `"mode": "app-only"` | The package on the TV is the app-only one, with no root integration. | Build with `rooting/build.cjs` (step 3) and install that package. |
+| A message such as `tv platform adapter not available` (in the code: `TV platform adapter unavailable`), usually together with `"mode": "app-only"` | The package on the TV was built without the integration builder, so it has no TV platform adapter. | Rebuild with the integration builder (`node build.cjs` in `rooting/`, step 3; see [rooting/README.md](../../rooting/README.md)) and install that package. |
 | `"mode": "tv-integration"` and `"agent": {"connected": false}` | The integration is there but the helper has not connected. | Check that Developer Mode is on and **Host PC IP** is `127.0.0.1` (step 5), that you restarted the TV afterwards, and that you waited 90 seconds. |
 | The page does not load at all | The background service is not running. | Open **Vetro** on the TV once, wait 10 seconds and reload. If that does not help, see the [service notes](../../README.md#root-on-the-tv). |
 | `"attempts"` lists launches that end without `agent-connected` | Root did not work on this firmware, or SDB refused the connection. | Download the report from **Diagnostics** and attach it to a new issue; it contains no addresses or serial numbers. |
