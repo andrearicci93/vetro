@@ -47,7 +47,15 @@ function save() {
 function live(now) { return sessions.filter(function (s) { return s.expires > now; }); }
 var FULL = 'This TV already has ' + MAX_SESSIONS + ' paired devices. Sign one out, or use Sign out all devices, before pairing another.';
 function hash(key) { return crypto.createHash('sha256').update(key).digest('hex'); }
-function same(a, b) { a = Buffer.from(String(a)); b = Buffer.from(String(b)); return a.length === b.length && crypto.timingSafeEqual(a, b); }
+// Constant-time compare. crypto.timingSafeEqual is missing on Node 4.4 (Tizen 5.5), so fall back to XOR.
+function same(a, b) {
+    a = Buffer.from(String(a)); b = Buffer.from(String(b));
+    if (a.length !== b.length) return false;
+    if (crypto.timingSafeEqual) return crypto.timingSafeEqual(a, b);
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+    return diff === 0;
+}
 
 function json(res, code, body, headers) {
     var h = {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'};

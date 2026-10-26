@@ -107,5 +107,18 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.equal(warned.code, 200); assert.match(warned.body.warning, /could not be saved/);
   assert.ok(logged.some(m => /could not save/.test(m)), 'save failure is logged');
 
-  console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported');
+  // Node 4.4 (Tizen 5.5) has no crypto.timingSafeEqual: pairing and keys still work through the fallback.
+  {
+    const crypto = require('crypto'), real = crypto.timingSafeEqual;
+    crypto.timingSafeEqual = undefined;
+    try {
+      auth._reset(); fs.rmSync(process.env.VETRO_AUTH_PATH, {recursive: true, force: true});
+      const r = await pairOnce();
+      assert.equal(r.code, 200);
+      assert.equal((await call('GET', '/apps', {headers: {authorization: 'Bearer ' + r.body.token}})).handled, false);
+      assert.equal((await call('GET', '/apps', {headers: {authorization: 'Bearer ' + 'f'.repeat(64)}})).code, 401);
+    } finally { crypto.timingSafeEqual = real; }
+  }
+
+  console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported, Node 4 fallback');
 })().catch(e => { console.error(e); process.exitCode = 1; });
