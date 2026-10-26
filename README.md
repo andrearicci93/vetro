@@ -166,3 +166,11 @@ and the physical port order on the Sources page are unchanged. New installations
 default to off; earlier generated source lists preserve their previous choice.
 The choice is changed through a switch like Fix TizenTube. It persists and rolls
 back if rebuilding the catalog fails.
+
+### HDMI source images
+
+The independent **HDMI source images** preference uses Samsung-provided artwork
+on Home and Sources. Turning it off uses packaged generic icons. Source names,
+port order and the Home filtering preference stay unchanged. Fresh installations
+default to off; existing source artwork is preserved during migration. The option
+uses the same switch, persistence and rollback as the Home filter.

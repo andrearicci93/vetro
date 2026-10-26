@@ -105,8 +105,10 @@ function sourceEntries(parsed, options) {
         var key = type === 0 ? 'TV' : 'HDMI' + (type - 12), base = type === 0 ? 'TV' : 'HDMI ' + (type - 12);
         var meta = (parsed.sources || {})[key] || {};
         var name = cleanLabel(meta.EditName || meta.DetectedName, base);
+        var useImages = options && options.useSourceImages === true && type >= 13;
+        var samsung = useImages ? [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(iconOk)[0] || null : null;
         var entry = {slug: type === 0 ? 'in-tv' : 'in-hdmi' + (type - 12), label: name,
-            appId: 'source:' + type, icon: null, killFirst: null};
+            appId: 'source:' + type, icon: samsung, killFirst: null};
         // The Sources page always keeps TV, HDMI1, HDMI2, HDMI3, HDMI4 order and port labels.
         entry.inputLabel = type === 0 || name === base ? base : cleanLabel(base + ' - ' + name, base);
         return entry;

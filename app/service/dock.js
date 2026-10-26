@@ -36,13 +36,13 @@ var RETRY_MAX_MS = 300000;
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 
-var SOURCE_OPTION_KEYS = ['showHomeSources'];
-function legacyHomeSourceUsage(file) {
+var SOURCE_OPTION_KEYS = ['showHomeSources', 'useSourceImages'];
+function legacySourceUsage(file, images) {
     try {
         if (fs.statSync(file).size > 65536) return false;
         return fs.readFileSync(file, 'utf8').split('\n').some(function (line) {
             var fields = line.split('\t');
-            return /^source:(?:13|14|15|16)$/.test(fields[2] || '');
+            return /^source:(?:13|14|15|16)$/.test(fields[2] || '') && (!images || !!fields[4]);
         });
     } catch (e) { return false; }
 }
@@ -54,7 +54,8 @@ function Dock(options) {
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
-    this.legacyHomeSources = legacyHomeSourceUsage(this.appsFile);
+    this.legacyHomeSources = legacySourceUsage(this.appsFile, false);
+    this.legacySourceImages = legacySourceUsage(this.inputsFile, true);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -76,6 +77,7 @@ Dock.prototype.readState = function () {
     try { s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8')) || {}; } catch (e) {}
     return {enabled: s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s.fixTizenTube === true,
         showHomeSources: typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
+        useSourceImages: typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages,
         autorunWas: s.autorunWas === 1 ? 1 : null};
 };
 
@@ -171,7 +173,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
@@ -213,8 +215,8 @@ Dock.prototype.writeCatalog = function () {
     var self = this;
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
-    try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources}).then(function (c) {
+    try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
         try { fs.writeFileSync(self.appsFile, c.tsv); fs.writeFileSync(self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
