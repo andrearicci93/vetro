@@ -114,9 +114,47 @@ assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
         throw new Error('busy');
     });
     assert.ok(lenient.tsv.includes(missing));
-    await assert.rejects(catalog.load(async () => ({exit_code: 0, stdout: 'R|' + hex('a') + '|' + hex('A') + '|' + hex('x.a') + '|0'})), /empty or unreadable/);
+    await assert.rejects(catalog.load(async () => ({exit_code: 0, stdout: 'S|csfs\nR|' + hex('a') + '|' + hex('A') + '|' + hex('x.a') + '|0'})), /empty or unreadable/);
+    await assert.rejects(catalog.load(async () => ({exit_code: 0, stdout: ''})), /empty or unreadable/);
+    const registryOnly = await catalog.load(async () => ({exit_code: 0, stdout: 'R|' + hex('a') + '|' + hex('A') + '|' + hex('x.a') + '|0'}));
+    assert.equal(registryOnly.count, 1, 'no Home row of either kind: the registry alone makes the dock');
     await assert.rejects(catalog.load(async () => ({exit_code: 0, stdout: 'O|d/webapp@zz'})), /could be matched/);
     await assert.rejects(catalog.load(async () => ({exit_code: 1, stdout: '', stderr: 'boom'})), /boom/);
     await assert.rejects(catalog.load(async () => ({exit_code: 0, timed_out: true, stdout: ''})), /unavailable/);
     console.log('PASS dock catalog: Home row, registry and icons become the dock list');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+// 2022 Home (S95B): csfs has no row, the Media hub's file is the "recent" strip; the registry completes the list.
+{
+    const MEDIA = [
+        'S|media', 'O|274', 'O|s/source.layer.hdmi@HDMI1', 'O|d/webapp@hue', 'O|s/source.layer.hdmi@HDMI4', 'O|s/livetv@HDMI3', 'O|EOFCOBA',
+        'R|' + hex('hue') + '|' + hex('Hue Sync') + '|' + hex('kupCeIdDkX.HueSync') + '|0',
+        'R|' + hex('yt') + '|' + hex('YouTube') + '|' + hex('9Ur5IzDKqV.TizenYouTube') + '|0',
+        'R|' + hex('br') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0',
+        'R|' + hex('vt') + '|' + hex('Vetro') + '|' + hex('vetrotvapp.app') + '|0',
+        'R|' + hex('tpl') + '|' + hex('Water') + '|' + hex('com.samsung.tv.water-tpl') + '|1',
+        'I|yt|/opt/share/webappservice/apps_icon/all/yt/224x224.png'
+    ].join('\n');
+    const p = catalog.parse(MEDIA);
+    assert.equal(p.source, 'media');
+    assert.deepEqual(p.order, ['d/webapp@hue', 's/livetv@HDMI3'], 'input strips are not entries');
+    const b = catalog.build(p, {});
+    assert.deepEqual(b.entries.map(e => e.appId), ['kupCeIdDkX.HueSync', 'org.tizen.browser', '9Ur5IzDKqV.TizenYouTube'],
+        'the recent strip comes first, then the other visible apps by title; hidden apps and Vetro stay out');
+    assert.equal(b.entries[2].icon, '/opt/share/webappservice/apps_icon/all/yt/224x224.png', 'completed apps keep their registry icon');
+    assert.ok(b.skipped.some(s => s.item === 's/livetv@HDMI3'), 'an unknown live source is reported, not fatal');
+}
+// A csfs row keeps today's behaviour: nothing is appended from the registry.
+{
+    const p = catalog.parse(['S|csfs', 'O|d/webapp@aaa', 'R|' + hex('aaa') + '|' + hex('Netflix') + '|' + hex('org.tizen.netflix-app') + '|0',
+        'R|' + hex('bbb') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0'].join('\n'));
+    assert.equal(p.source, 'csfs');
+    assert.deepEqual(catalog.build(p, {}).entries.map(e => e.appId), ['org.tizen.netflix-app']);
+}
+// No row at all but a registry: still a dock.
+{
+    const p = catalog.parse(['R|' + hex('bbb') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0'].join('\n'));
+    assert.equal(p.source, null);
+    assert.deepEqual(catalog.build(p, {}).entries.map(e => e.appId), ['org.tizen.browser']);
+}
+console.log('dock-catalog 2022 Home: ok');
