@@ -112,7 +112,8 @@ function youtubeIcon(parsed) {
 
 function build(parsed, options) {
     options = options || {};
-    var entries = [], skipped = [], slugs = {};
+    var entries = [], skipped = [], slugs = {}, hiddenByUser = {};
+    (options.hidden || []).forEach(function (id) { if (APP_ID.test(id)) hiddenByUser[id] = true; });
     function add(slug, label, appId, icon) {
         var base = slug, n = 2;
         while (slugs[slug] || slug === 'source' || slug === 'settings') slug = base.slice(0, 36) + '-' + n++;
@@ -135,6 +136,7 @@ function build(parsed, options) {
         if (!reg) { skipped.push({item: item, reason: 'Not installed'}); return; }
         if (reg.hidden) { skipped.push({item: item, reason: 'Hidden in the registry'}); return; }
         if (!APP_ID.test(reg.appId)) { skipped.push({item: item, reason: 'Unusable app id'}); return; }
+        if (hiddenByUser[reg.appId]) { skipped.push({item: item, reason: 'Hidden from the launcher in Vetro'}); return; }
         var entry = add(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[ident] || parsed.packageIcons[reg.appId]);
         if (options.fixTizenTube && TIZENTUBE.test(reg.appId)) {
             entry.killFirst = COBALT_YOUTUBE;
@@ -149,7 +151,7 @@ function build(parsed, options) {
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });
         Object.keys(parsed.registry).filter(function (id) { return !inOrder[id]; }).map(function (id) { return {id: id, reg: parsed.registry[id]}; })
-            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !present[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
+            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !present[x.reg.appId] && !hiddenByUser[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
             .sort(function (a, b) { return a.reg.title.localeCompare(b.reg.title); })
             .forEach(function (x) {
                 if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: x.reg.appId, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }

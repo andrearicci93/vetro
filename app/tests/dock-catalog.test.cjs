@@ -158,3 +158,13 @@ assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
     assert.deepEqual(catalog.build(p, {}).entries.map(e => e.appId), ['org.tizen.browser']);
 }
 console.log('dock-catalog 2022 Home: ok');
+
+// Apps hidden by choice (options.hidden): left out of the row and of the completion, reported with a reason.
+{
+    const p = catalog.parse(['S|media', 'O|d/webapp@hue', 'R|' + hex('hue') + '|' + hex('Hue Sync') + '|' + hex('kupCeIdDkX.HueSync') + '|0',
+        'R|' + hex('br') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0', 'R|' + hex('yt') + '|' + hex('YouTube') + '|' + hex('9Ur5IzDKqV.TizenYouTube') + '|0'].join('\n'));
+    const b = catalog.build(p, {hidden: ['org.tizen.browser', 'kupCeIdDkX.HueSync', 'bad id;']});
+    assert.deepEqual(b.entries.map(e => e.appId), ['9Ur5IzDKqV.TizenYouTube'], 'hidden apps are out of the row and of the completion');
+    assert.ok(b.skipped.some(s => s.item === 'd/webapp@hue' && /Hidden from the launcher/.test(s.reason)));
+}
+console.log('dock-catalog hidden: ok');

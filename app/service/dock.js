@@ -69,8 +69,9 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+            autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            hidden: s && Array.isArray(s.hidden) ? s.hidden.filter(function (id) { return typeof id === 'string' && /^[A-Za-z0-9_.-]{1,120}$/.test(id); }) : []};
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null, hidden: []}; }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -156,7 +157,7 @@ Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
-        entries: this.entries(), inputs: this.inputEntries()};
+        hidden: state.hidden, entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
     }).catch(function (e) {
@@ -195,7 +196,8 @@ Dock.prototype.stopLines = function () {
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
-    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
+    var state = this.readState();
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, hidden: state.hidden}).then(function (c) {
         try { fs.writeFileSync(self.appsFile, c.tsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -318,6 +320,23 @@ Dock.prototype.setFixTizenTube = function (on) {
     if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });   // the preview follows the choice
     return this.refresh().catch(function (e) {
         try { self.patchState({fixTizenTube: state.fixTizenTube}); } catch (e2) {}
+        throw e;
+    });
+};
+
+// Apps left out of the launcher by choice (exact app ids). Saved with the dock state; the list is rebuilt
+// at once so the preview and, when it is on, the launcher follow.
+Dock.prototype.setHidden = function (appIds) {
+    var self = this;
+    if (!Array.isArray(appIds) || appIds.length > 200 || appIds.some(function (id) { return typeof id !== 'string' || !/^[A-Za-z0-9_.-]{1,120}$/.test(id); }))
+        return Promise.reject(new Error('Invalid app list'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState(), hidden = appIds.filter(function (id, i) { return appIds.indexOf(id) === i; });
+    try { this.patchState({hidden: hidden}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });
+    return this.refresh().catch(function (e) {
+        try { self.patchState({hidden: state.hidden}); } catch (e2) {}
         throw e;
     });
 };
