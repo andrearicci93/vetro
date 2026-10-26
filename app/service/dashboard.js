@@ -685,11 +685,11 @@ function isTizenTube(id){return String(id).toLowerCase().indexOf('tizentube')>=0
 // "Not installed" is only said once the registry has been read.
 function dockHasTizenTube(d){return (d.entries||[]).some(function(e){return isTizenTube(e.appId)})}
 function tizenTubeInstalled(d){return dockHasTizenTube(d)||(inventory||[]).some(function(a){return isTizenTube(a.appId)})}
-function previewTile(e,size,pill,sel){return '<div class="lp-tile'+(pill?' lp-oval':'')+(sel?' lp-sel':'')+'" style="width:'+(pill?232:size)+'px;height:'+(pill?48:size)+'px;border-radius:'+(pill?'24px':'16%')+'"><img alt="" src="/dock/icon?slug='+encodeURIComponent(e.slug)+'" data-initials="'+esc(e.label.slice(0,2))+'"></div>'}
+function previewTile(e,size,pill,sel,sourceImages){var art=/^source:/.test(e.appId)?'&images='+(sourceImages?'1':'0'):'';return '<div class="lp-tile'+(pill?' lp-oval':'')+(sel?' lp-sel':'')+'" style="width:'+(pill?232:size)+'px;height:'+(pill?48:size)+'px;border-radius:'+(pill?'24px':'16%')+'"><img alt="" src="/dock/icon?slug='+encodeURIComponent(e.slug)+art+'" data-initials="'+esc(e.label.slice(0,2))+'"></div>'}
 var sampleRow=[{slug:'sample-1',label:'Netflix'},{slug:'sample-2',label:'YouTube'},{slug:'sample-3',label:'Prime Video'},{slug:'sample-4',label:'Disney+'},{slug:'sample-5',label:'Plex'},{slug:'sample-6',label:'Sport'},{slug:'sample-7',label:'Music'},{slug:'sample-s1',label:'Source',system:true},{slug:'sample-s2',label:'Settings',system:true}];
 function previewMarkup(d){
  var real=(d.entries||[]).length>0,all=real?d.entries:sampleRow,apps=all.filter(function(e){return !e.system}),sys=all.filter(function(e){return e.system});
- var row=apps.map(function(e,i){return previewTile(e,i===0?112:92,false,i===0)}).join('')+(sys.length?'<i class="lp-divider"></i>'+'<div class="lp-stack">'+sys.map(function(e){return previewTile(e,92,true,false)}).join('')+'</div>':'');
+ var row=apps.map(function(e,i){return previewTile(e,i===0?112:92,false,i===0,d.useSourceImages)}).join('')+(sys.length?'<i class="lp-divider"></i>'+'<div class="lp-stack">'+sys.map(function(e){return previewTile(e,92,true,false,d.useSourceImages)}).join('')+'</div>':'');
  var note=real?(d.enabled?'This TV’s apps and icons, as the launcher shows them. The first app is selected.':'How the launcher will look with this TV’s apps. Turn it on to use it.'):'An example row. Your TV’s apps appear here once the list has been read.';
  return '<div class="dock-left panel"><h3>Preview</h3><p class="section-note">'+note+'</p><div class="lp" id="lp" role="img" aria-label="Preview of the launcher over a TV picture"><div class="lp-stage"><div class="lp-scene"></div><div class="lp-bug"><i></i><b>12</b><span>Evening Light HD</span></div><div class="lp-hint">Source ˄</div><div class="lp-pill"><div class="lp-row">'+row+'</div></div></div></div></div>';
 }
@@ -731,6 +731,7 @@ function renderDock(){
   return '<div class="quick-item" data-quick-item="'+key+'"><div><h3>'+label+'</h3><p>'+description+'</p><div class="quick-state">'+chip(d[key]?'On':'Off',d[key]?'on':'')+'</div></div>'+switchMarkup('data-dock-source-option="'+key+'"',!!d[key],dockBusy||!d.installed,label)+'</div>';
  }
  var sourceOptions=sourceOption('showHomeSources','HDMI sources on Home','Keep HDMI source tiles already present in Samsung’s Home row, in their original positions. Turn off to filter them out. The Sources page is unchanged.');
+ sourceOptions+=sourceOption('useSourceImages','HDMI source images','Use Samsung source images on Home and Sources. Turn off for the generic source icon. Names and source order stay the same.');
  box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+sourceOptions+fix+'</div></div>';
  setTimeout(fitPreview,0);
 }
@@ -738,7 +739,7 @@ function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockData=d;dockError=null;
-  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.') :action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.') :action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock()});
 }

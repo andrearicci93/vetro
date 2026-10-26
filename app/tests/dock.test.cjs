@@ -281,6 +281,26 @@ function fixture(options) {
     await migrated.writeCatalog();
     assert.equal(JSON.parse(fs.readFileSync(migrated.stateFile)).showHomeSources,true);
 
+    // Both choices are independent and remain explicit across restarts.
+    f=fixture();
+    assert.equal(f.dock.readState().useSourceImages,false);
+    await f.dock.setSourceOption('useSourceImages',true);
+    assert.equal(f.dock.readState().showHomeSources,false);
+    await f.dock.setSourceOption('showHomeSources',true);
+    await f.dock.setSourceOption('useSourceImages',false);
+    assert.equal(f.dock.readState().showHomeSources,true);
+    await f.dock.setSourceOption('showHomeSources',false);
+    const reloaded=new Dock({execute:f.dock.execute,dir:f.dock.dir,stateFile:f.dock.stateFile,appsFile:f.dock.appsFile});
+    assert.equal(reloaded.readState().showHomeSources,false);
+    assert.equal(reloaded.readState().useSourceImages,false);
+    // Old artwork on the generated Sources page migrates on, even if Home has no HDMI tiles.
+    f=fixture(); fs.writeFileSync(f.dock.inputsFile,'in-hdmi1\tConsole\tsource:13\t\t/opt/usr/apps/a/source.png\n');
+    const legacyArt=new Dock({execute:f.dock.execute,dir:f.dock.dir,stateFile:f.dock.stateFile,appsFile:f.dock.appsFile});
+    assert.equal(legacyArt.readState().showHomeSources,false);
+    assert.equal(legacyArt.readState().useSourceImages,true);
+    await legacyArt.writeCatalog();
+    assert.equal(JSON.parse(fs.readFileSync(legacyArt.stateFile)).useSourceImages,true);
+
     f=fixture(); fs.writeFileSync(f.dock.stateFile,JSON.stringify({showHomeSources:false,sourceOptionOriginal:{showHomeSources:true}}));
     await f.dock.setSourceOption('showHomeSources',true);
     assert.equal(f.dock.readState().showHomeSources,true);
