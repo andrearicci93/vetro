@@ -4,7 +4,7 @@
 // under the csfs data dir (or the home.media one on TVs with the new Home). Each line is a section item:
 //   s/livetv@<source>        live TV source (TV Plus, RF, ...)
 //   d/webapp@<packageId|storeId>  web application
-// The file shape is: <version>\n<entries...>\nEOFC OBA\n. The Home reads it to
+// The file shape is: <version>\n<entries...>\nEOFC OBA\n (some firmwares: EOFCOBA). The Home reads it to
 // order the app row; reordering = rewriting the entries. A backup is kept and
 // restore() puts it back. Applying a change needs the Home/CoBA host to reload.
 
@@ -14,6 +14,8 @@ var BASE_NEW_HOME = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data'
 var PICK_DIR = 'D=' + BASE + '\nfor c in ' + BASE + ' ' + BASE_NEW_HOME + '; do if [ -f "$c/.appLayerCache.1" ] || [ -f "$c/.appLayerCache.2" ]; then D=$c; break; fi; done\n';
 var FILES = ['.appLayerCache.1', '.appLayerCache.2'];
 var TERM = 'EOFC OBA';
+// Some firmwares (e.g. T-PTMDDEUC-1400.1) write the terminator without the space.
+var TERMS = ['EOFC OBA', 'EOFCOBA'];
 var MAX = 300;
 var ENTRY = /^[sd]\/[A-Za-z0-9_]+@[^\s]+$/;
 
@@ -23,14 +25,14 @@ function check(r) { if (r.exit_code || r.timed_out) throw Error(r.stderr || r.st
 function parse(text) {
     var lines = String(text || '').replace(/\r/g, '').split('\n');
     if (lines.length < 3) throw Error('Unrecognized Home order');
-    var end = lines.findIndex(function (l) { return l.trim() === TERM; });
+    var end = lines.findIndex(function (l) { return TERMS.indexOf(l.trim()) >= 0; });
     if (end < 0) throw Error('Home order terminator missing');
     var version = lines[0].trim();
     if (!/^\d+$/.test(version)) throw Error('Unrecognized Home order version');
     var entries = lines.slice(1, end).map(function (l) { return l.trim(); }).filter(Boolean);
     if (entries.length > MAX) throw Error('Too many Home order entries');
     validate(entries);
-    return { version: version, entries: entries };
+    return { version: version, entries: entries, term: lines[end].trim() };
 }
 
 function validate(entries) {
@@ -40,7 +42,7 @@ function validate(entries) {
 
 function render(order) {
     validate(order.entries);
-    return order.version + '\n' + order.entries.join('\n') + '\n' + TERM + '\n';
+    return order.version + '\n' + order.entries.join('\n') + '\n' + (TERMS.indexOf(order.term) >= 0 ? order.term : TERM) + '\n';
 }
 
 function sameSet(a, b) {
@@ -68,7 +70,7 @@ Order.prototype.write = function (entries) {
     return this.read().then(function (cur) {
         validate(entries);
         if (!sameSet(cur.entries, entries)) throw Error('Entries must be unchanged, only reordered');
-        var payload = Buffer.from(render({ version: cur.version, entries: entries })).toString('base64');
+        var payload = Buffer.from(render({ version: cur.version, entries: entries, term: cur.term })).toString('base64');
         var script = transactionScript(payload, false);
         self.transactionStarted = true;
         return self.execute(wrap(script), 10000).then(function (r) {
