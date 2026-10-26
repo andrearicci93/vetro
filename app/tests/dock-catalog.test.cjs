@@ -168,3 +168,20 @@ console.log('dock-catalog 2022 Home: ok');
     assert.ok(b.skipped.some(s => s.item === 'd/webapp@hue' && /Hidden from the launcher/.test(s.reason)));
 }
 console.log('dock-catalog hidden: ok');
+
+// The Smart Hub registry keeps rows for apps uninstalled since (seen on a S95B): the package manager decides.
+{
+    const p = catalog.parse(['S|media', 'O|d/webapp@gone', 'O|d/webapp@hue',
+        'R|' + hex('gone') + '|' + hex('e-Manual') + '|' + hex('g0l3ad0res.emanual') + '|0',
+        'R|' + hex('hue') + '|' + hex('Hue Sync') + '|' + hex('kupCeIdDkX.HueSync') + '|0',
+        'R|' + hex('br') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0',
+        'R|' + hex('sec') + '|' + hex('Security Center') + '|' + hex('J9fZJDMi1v.SecurityCenter') + '|0',
+        'A|' + hex('kupCeIdDkX.HueSync'), 'A|' + hex('org.tizen.browser')].join('\n'));
+    assert.deepEqual(Object.keys(p.installed).sort(), ['kupCeIdDkX.HueSync', 'org.tizen.browser']);
+    const b = catalog.build(p, {});
+    assert.deepEqual(b.entries.map(e => e.appId), ['kupCeIdDkX.HueSync', 'org.tizen.browser'], 'uninstalled apps are out of the row and of the completion');
+    assert.ok(b.skipped.some(s => s.item === 'd/webapp@gone' && /Uninstalled/.test(s.reason)));
+    // Without the A| lines (older output) nothing changes.
+    assert.equal(catalog.parse('R|' + hex('x') + '|' + hex('X') + '|' + hex('x.app') + '|0').installed, null);
+}
+console.log('dock-catalog installed cross-check: ok');

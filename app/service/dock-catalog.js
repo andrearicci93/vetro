@@ -53,6 +53,8 @@ function script() {
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
+        // The Smart Hub registry keeps rows for apps that were uninstalled since; the package manager is the truth.
+        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'A|\'||hex(app_id) FROM package_app_info;" 2>/dev/null',
         'true'
     ].join('\n');
 }
@@ -66,13 +68,15 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, source: null};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, source: null, installed: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(/\r$/, '');
         var f = line.split('|');
         try {
             if (f[0] === 'S' && f.length === 2) {
                 if (f[1] === 'csfs' || f[1] === 'media') out.source = f[1];
+            } else if (f[0] === 'A' && f.length === 2) {
+                (out.installed = out.installed || {})[unhex(f[1])] = true;
             } else if (f[0] === 'O') {
                 var entry = f.slice(1).join('|').trim();
                 if (/^[sd]\/[A-Za-z0-9_]+@\S+$/.test(entry)) out.order.push(entry);
@@ -137,6 +141,7 @@ function build(parsed, options) {
         if (reg.hidden) { skipped.push({item: item, reason: 'Hidden in the registry'}); return; }
         if (!APP_ID.test(reg.appId)) { skipped.push({item: item, reason: 'Unusable app id'}); return; }
         if (hiddenByUser[reg.appId]) { skipped.push({item: item, reason: 'Hidden from the launcher in Vetro'}); return; }
+        if (parsed.installed && !parsed.installed[reg.appId]) { skipped.push({item: item, reason: 'Uninstalled; the registry still lists it'}); return; }
         var entry = add(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[ident] || parsed.packageIcons[reg.appId]);
         if (options.fixTizenTube && TIZENTUBE.test(reg.appId)) {
             entry.killFirst = COBALT_YOUTUBE;
@@ -151,7 +156,7 @@ function build(parsed, options) {
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });
         Object.keys(parsed.registry).filter(function (id) { return !inOrder[id]; }).map(function (id) { return {id: id, reg: parsed.registry[id]}; })
-            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !present[x.reg.appId] && !hiddenByUser[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
+            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !present[x.reg.appId] && !hiddenByUser[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId) && (!parsed.installed || parsed.installed[x.reg.appId]); })
             .sort(function (a, b) { return a.reg.title.localeCompare(b.reg.title); })
             .forEach(function (x) {
                 if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: x.reg.appId, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
