@@ -36,12 +36,25 @@ var RETRY_MAX_MS = 300000;
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 
+var SOURCE_OPTION_KEYS = ['showHomeSources'];
+function legacyHomeSourceUsage(file) {
+    try {
+        if (fs.statSync(file).size > 65536) return false;
+        return fs.readFileSync(file, 'utf8').split('\n').some(function (line) {
+            var fields = line.split('\t');
+            return /^source:(?:13|14|15|16)$/.test(fields[2] || '');
+        });
+    } catch (e) { return false; }
+}
+
 function Dock(options) {
     options = options || {};
     this.execute = options.execute;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
+    this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
+    this.legacyHomeSources = legacyHomeSourceUsage(this.appsFile);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -59,11 +72,21 @@ Dock.prototype.installed = function () {
 };
 
 Dock.prototype.readState = function () {
+    var s = {};
+    try { s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8')) || {}; } catch (e) {}
+    return {enabled: s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s.fixTizenTube === true,
+        showHomeSources: typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
+        autorunWas: s.autorunWas === 1 ? 1 : null};
+};
+
+// Source-option migration must never overwrite an unreadable or malformed existing state.
+Dock.prototype.validateSourcePreferenceState = function () {
     try {
-        var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+        var state = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+        if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Invalid launcher state');
+    } catch (e) {
+        if (e.code !== 'ENOENT') throw new Error('Cannot read launcher preferences: ' + e.message);
+    }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -105,7 +128,7 @@ Dock.prototype.restoreAutorun = function () {
 };
 
 Dock.prototype.writeState = function (state) {
-    try { fs.writeFileSync(this.stateFile, JSON.stringify(state)); }
+    try { fs.writeFileSync(this.stateFile + '.tmp', JSON.stringify(state)); fs.renameSync(this.stateFile + '.tmp', this.stateFile); }
     catch (e) { throw new Error('The dock setting could not be saved: ' + e.message); }
 };
 
@@ -148,7 +171,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, autorunSwitchedOff: state.autorunWas === 1,
         entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
@@ -166,7 +189,7 @@ Dock.prototype.statusNow = function () {
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
-    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
+    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
     return [
         this.stopLines(),
@@ -188,8 +211,11 @@ Dock.prototype.stopLines = function () {
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
-    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
-        try { fs.writeFileSync(self.appsFile, c.tsv); }
+    var state = this.readState();
+    // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
+    try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources}); } catch (e) { return Promise.reject(e); }
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources}).then(function (c) {
+        try { fs.writeFileSync(self.appsFile, c.tsv); fs.writeFileSync(self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
         return c;
@@ -296,10 +322,37 @@ function parseTsv(text) {
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
+Dock.prototype.inputListPath = function () {
+    return fs.existsSync(this.inputsFile) ? this.inputsFile : path.join(this.dir, 'res', 'inputs.tsv');
+};
 Dock.prototype.inputEntries = function () {
-    try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }
+    try { return parseTsv(fs.readFileSync(this.inputListPath(), 'utf8')); } catch (e) { return []; }
 };
 
+// Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.
+Dock.prototype.setSourceOption = function (key, on) {
+    var self = this;
+    if (SOURCE_OPTION_KEYS.indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid source option'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    try { this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
+    var before = this.readState();
+    if (before[key] === on) return this.status();
+    var patch = {};
+    patch[key] = on;
+    try { this.patchState(patch); } catch (e) { return Promise.reject(e); }
+    this.busy = true; this.lastError = null;
+    function rebuild() { return before.enabled ? self.launch() : self.writeCatalog(); }
+    return Promise.resolve().then(rebuild).then(function () {
+        if (self.readState()[key] !== on) throw new Error('Source option readback failed');
+        return self.status();
+    }).catch(function (error) {
+        try { self.writeState(before); } catch (restoreError) { throw new Error(error.message + '; settings restore failed: ' + restoreError.message); }
+        return Promise.resolve().then(rebuild).catch(function (restoreError) {
+            self.lastError = error.message + '; catalog restore failed: ' + restoreError.message;
+            throw new Error(self.lastError);
+        }).then(function () { throw error; });
+    }).finally(function () { self.busy = false; });
+};
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
 Dock.prototype.setFixTizenTube = function (on) {
     var self = this;

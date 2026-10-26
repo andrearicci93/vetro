@@ -56,6 +56,9 @@ function fixture(options) {
     assert.equal(s.enabled, true);
     assert.equal(s.running, true);
     assert.equal(s.apps.count, 1);
+    assert.ok(fs.existsSync(f.dock.inputsFile), 'generated Sources list saved next to app data');
+    assert.ok(f.tv.started.includes("--inputs '" + f.dock.inputsFile + "'"), 'native dock uses the generated Sources list');
+    assert.deepEqual(f.dock.inputEntries().map(e => e.source), [0, 13, 14, 15, 16], 'Sources preview uses the same ordered list');
     assert.equal(fs.readFileSync(path.join(f.tmp, 'apps.tsv'), 'utf8').split('\n')[1],
         'netflix\tNetflix\torg.tizen.netflix-app\t\t/opt/share/webappservice/apps_icon/all/aaa/224x224.png', 'the list the dock reads');
     assert.ok(/tvlauncher-dotnet\.dll --apps '[^']+apps\.tsv' --inputs '[^']+inputs\.tsv' --hidden --home-code 63 --kill-on-home com\.samsung\.tv\.csfs/.test(f.tv.started),
@@ -247,6 +250,46 @@ function fixture(options) {
     fs.writeFileSync(f.dock.appsFile, '# x\nevil\tEvil\tx.evil\t\t/etc/passwd\nnet\tNet\tx.net\t\t/opt/usr/apps/a/../../b.png\n');
     assert.equal(f.dock.iconFile('evil'), null, 'a path outside the icon places is never read');
     assert.equal(f.dock.iconFile('net'), null, 'nor one with parent directories');
+
+    // Source switches persist like other launcher options and revert failed changes.
+    f = fixture();
+    assert.equal(f.dock.readState().showHomeSources,false);
+    await f.dock.writeCatalog();
+    assert.equal(JSON.parse(fs.readFileSync(f.dock.stateFile)).showHomeSources,false,'fresh defaults persist before creating generated lists');
+    await assert.rejects(f.dock.setSourceOption('other',true),/Invalid source option/);
+    await assert.rejects(f.dock.setSourceOption('showHomeSources','yes'),/Invalid source option/);
+    await f.dock.setSourceOption('showHomeSources',true);
+    await f.dock.setSourceOption('showHomeSources',false);
+    assert.equal(f.dock.readState().showHomeSources,false);
+    await f.dock.enable();
+    const previousCatalog=fs.readFileSync(f.dock.appsFile,'utf8'), exec=f.dock.execute;
+    let failOnce=true;
+    f.dock.execute=async function(cmd){
+        if(failOnce && Buffer.from(cmd.split(' ')[1]||'', 'base64').toString().includes('.appLayerCache')) {
+            failOnce=false;return {exit_code:1,stderr:'read failed'};
+        }
+        return exec(cmd);
+    };
+    await assert.rejects(f.dock.setSourceOption('showHomeSources',true),/read failed/);
+    assert.equal(f.dock.readState().showHomeSources,false,'failed changes restore persisted state');
+    assert.equal(fs.readFileSync(f.dock.appsFile,'utf8'),previousCatalog,'failed changes restore the generated catalog');
+    assert.equal(f.tv.running,true,'previous launcher relaunched after failed change');
+    // An old installation with HDMI tiles retains its visible behavior during migration.
+    f=fixture(); fs.writeFileSync(f.dock.appsFile,'in-hdmi1\tConsole\tsource:13\n');
+    const migrated=new Dock({execute:f.dock.execute,dir:f.dock.dir,stateFile:f.dock.stateFile,appsFile:f.dock.appsFile});
+    assert.equal(migrated.readState().showHomeSources,true);
+    await migrated.writeCatalog();
+    assert.equal(JSON.parse(fs.readFileSync(migrated.stateFile)).showHomeSources,true);
+
+    f=fixture(); fs.writeFileSync(f.dock.stateFile,JSON.stringify({showHomeSources:false,sourceOptionOriginal:{showHomeSources:true}}));
+    await f.dock.setSourceOption('showHomeSources',true);
+    assert.equal(f.dock.readState().showHomeSources,true);
+    assert.ok(!('sourceOptionOriginal' in JSON.parse(fs.readFileSync(f.dock.stateFile))),'obsolete original-choice metadata is removed when settings are saved');
+
+    f=fixture(); fs.writeFileSync(f.dock.stateFile,'broken existing state');
+    await assert.rejects(f.dock.setSourceOption('showHomeSources',true),/Cannot read launcher preferences/);
+    await assert.rejects(f.dock.writeCatalog(),/Cannot read launcher preferences/);
+    assert.equal(fs.readFileSync(f.dock.stateFile,'utf8'),'broken existing state','migration never overwrites malformed state');
 
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });

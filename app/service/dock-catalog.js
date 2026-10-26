@@ -46,6 +46,8 @@ function script() {
         'B=' + ORDER_DIR,
         'for d in ' + ORDER_DIR + ' ' + ORDER_DIR_NEW_HOME + '; do if [ -f "$d/.appLayerCache.1" ] || [ -f "$d/.appLayerCache.2" ]; then B=$d; break; fi; done',
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
+        'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
+        '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
         'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
@@ -63,14 +65,17 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, sources: {}};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(/\r$/, '');
         var f = line.split('|');
         try {
             if (f[0] === 'O') {
                 var entry = f.slice(1).join('|').trim();
-                if (/^[sd]\/[A-Za-z0-9_]+@\S+$/.test(entry)) out.order.push(entry);
+                if (/^[sd]\/[A-Za-z0-9_.]+@\S+$/.test(entry)) out.order.push(entry);
+            } else if (f[0] === 'S' && f.length === 2) {
+                var sources = JSON.parse(Buffer.from(f[1], 'base64').toString('utf8'));
+                if (sources && typeof sources === 'object' && !Array.isArray(sources)) out.sources = sources;
             } else if (f[0] === 'R' && f.length === 5) {
                 out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1'};
             } else if (f[0] === 'I' && f.length === 3) {
@@ -94,6 +99,20 @@ function cleanLabel(text, fallback) {
     return s || fallback;
 }
 
+// Sources retain their physical port identity and Samsung-provided names.
+function sourceEntries(parsed, options) {
+    return [0, 13, 14, 15, 16].map(function (type) {
+        var key = type === 0 ? 'TV' : 'HDMI' + (type - 12), base = type === 0 ? 'TV' : 'HDMI ' + (type - 12);
+        var meta = (parsed.sources || {})[key] || {};
+        var name = cleanLabel(meta.EditName || meta.DetectedName, base);
+        var entry = {slug: type === 0 ? 'in-tv' : 'in-hdmi' + (type - 12), label: name,
+            appId: 'source:' + type, icon: null, killFirst: null};
+        // The Sources page always keeps TV, HDMI1, HDMI2, HDMI3, HDMI4 order and port labels.
+        entry.inputLabel = type === 0 || name === base ? base : cleanLabel(base + ' - ' + name, base);
+        return entry;
+    });
+}
+
 // Same order as Samsung's row. Apps the registry does not know, hidden ones and anything with an
 // unusable id are left out and listed in `skipped`, so the page can say why a row is missing.
 function youtubeIcon(parsed) {
@@ -107,7 +126,7 @@ function youtubeIcon(parsed) {
 
 function build(parsed, options) {
     options = options || {};
-    var entries = [], skipped = [], slugs = {};
+    var entries = [], skipped = [], slugs = {}, inputs = sourceEntries(parsed, options), seenPorts = {};
     function add(slug, label, appId, icon) {
         var base = slug, n = 2;
         while (slugs[slug] || slug === 'source' || slug === 'settings') slug = base.slice(0, 36) + '-' + n++;
@@ -118,6 +137,16 @@ function build(parsed, options) {
     parsed.order.forEach(function (item) {
         if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: item, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
         var kind = item.slice(0, item.indexOf('@')), ident = item.slice(item.indexOf('@') + 1);
+        if (kind === 's/source.layer.hdmi') {
+            if (options.showHomeSources !== true) return;
+            if (!/^HDMI[1-4]$/.test(ident)) { skipped.push({item: item, reason: 'Unknown HDMI source'}); return; }
+            if (seenPorts[ident]) return;
+            seenPorts[ident] = true;
+            var source = inputs[+ident.slice(4)];
+            var tile = add(source.slug, source.label, source.appId, source.icon);
+            if (source.altIcon) tile.altIcon = source.altIcon;
+            return;
+        }
         if (kind === 's/livetv') {
             var live = LIVE[ident];
             if (!live) { skipped.push({item: item, reason: 'Unknown live source'}); return; }
@@ -137,13 +166,18 @@ function build(parsed, options) {
             if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
         }
     });
-    return {entries: entries, skipped: skipped};
+    return {entries: entries, inputs: inputs, skipped: skipped};
+}
+
+function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(/\t+$/, ''); }
+function inputsTsv(built) {
+    return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
 }
 
 function tsv(built) {
     var lines = ['# written by Vetro from the TV\'s own Home row; do not edit, it is rebuilt every time the dock starts'];
     built.entries.forEach(function (e) {
-        lines.push([e.slug, e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(/\t+$/, ''));
+        lines.push(entryLine(e));
     });
     return lines.concat(SYSTEM_ROWS).join('\n') + '\n';
 }
@@ -152,14 +186,15 @@ function tsv(built) {
 // call keeps only the paths that exist; if it fails the paths stay and the dock copes with them.
 function existing(execute, built) {
     var paths = [];
-    built.entries.forEach(function (e) { [e.icon, e.altIcon].forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
+    var all = built.entries.concat(built.inputs || []);
+    all.forEach(function (e) { [e.icon, e.altIcon].forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
     if (!paths.length) return Promise.resolve(built);
     var script = 'for p in ' + paths.map(function (p) { return "'" + p + "'"; }).join(' ') + '; do [ -f "$p" ] && echo "OK|$p"; done; true';
     return execute(wrap(script), 10000).then(function (r) {
-        if (r.exit_code || r.timed_out) { built.entries.forEach(function (e) { delete e.altIcon; }); return built; }
+        if (r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; }); return built; }
         var ok = {};
         String(r.stdout || '').split('\n').forEach(function (l) { if (l.indexOf('OK|') === 0) ok[l.slice(3).trim()] = true; });
-        built.entries.forEach(function (e) {
+        all.forEach(function (e) {
             if (e.altIcon) {
                 if (!(e.icon && ok[e.icon]) && ok[e.altIcon]) e.icon = e.altIcon;
                 delete e.altIcon;
@@ -167,22 +202,24 @@ function existing(execute, built) {
             if (e.icon && !ok[e.icon]) { built.skipped.push({item: e.slug, reason: 'Icon file missing; a generic icon is used'}); e.icon = null; }
         });
         return built;
-    }, function () { built.entries.forEach(function (e) { delete e.altIcon; }); return built; });
+    }, function () { all.forEach(function (e) { delete e.altIcon; }); return built; });
 }
 
 // Reads the TV and returns {tsv, count, skipped}. Throws when the Home row cannot be read at all,
 // because a dock with no apps is worse than none.
 function load(execute, options) {
+    options = options || {};
     return execute(wrap(script()), 20000).then(function (r) {
         if (r.exit_code || r.timed_out) throw new Error(r.stderr || 'Home data unavailable');
         var parsed = parse(r.stdout);
         if (!parsed.order.length) throw new Error('The Home row is empty or unreadable');
         var built = build(parsed, options);
-        if (!built.entries.length) throw new Error('None of the Home row apps could be matched in the registry');
+        var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return /^s\/source\.layer\.hdmi@HDMI[1-4]$/.test(entry); });
+        if (!built.entries.length && !filteredSources) throw new Error('None of the Home row apps could be matched in the registry');
         return existing(execute, built).then(function (b) {
-            return {tsv: tsv(b), count: b.entries.length, skipped: b.skipped};
+            return {tsv: tsv(b), inputsTsv: inputsTsv(b), count: b.entries.length, skipped: b.skipped};
         });
     });
 }
 
-module.exports = {iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
