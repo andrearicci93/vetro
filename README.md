@@ -80,7 +80,7 @@ Vetro needs root on the TV, which comes from a package you build and sign yourse
 
 The root comes from [Chris Ritsen's Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root) and works through TV-local SDB, so no computer needs to stay connected. Startup can take up to 90 seconds. This is experimental software: privileged changes can disrupt TV features, so read what a switch does before turning it on.
 
-**The dashboard uses plain HTTP and has no login.** Anyone on your network can open it, so keep the TV on a trusted LAN and never expose it to the Internet. [Integration details](rooting/README.md) · [Validation record](app/docs/RELEASE-AUDIT.md)
+**The dashboard and API answer only paired devices:** a browser or script pairs once with a 6-digit code shown on the TV ([sign-in](app/docs/SIGN-IN.md)). Traffic is still plain HTTP, so keep the TV on a trusted LAN and never expose it to the Internet. [Integration details](rooting/README.md) · [Validation record](app/docs/RELEASE-AUDIT.md)
 
 ## Compatibility
 

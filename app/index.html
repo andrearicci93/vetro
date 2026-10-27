@@ -5,6 +5,10 @@
 <body style="font-family:monospace;background:#0d1117;color:#e6edf3">
 <h2>Vetro</h2>
 <p>Dashboard at <code>http://&lt;TV&gt;:8099/</code> · Tizen/Samsung public API probe</p>
+<div id="pair" style="display:none;margin:24px 0;padding:24px 32px;border:2px solid #a3c7bd;border-radius:12px;max-width:900px">
+<div style="font-size:28px">Pairing request from <b id="pairName"></b>. Enter this code in the browser:</div>
+<div id="pairCode" style="font-size:96px;font-weight:bold;letter-spacing:16px;margin:12px 0;color:#a3c7bd"></div>
+<div style="font-size:22px;color:#a0a6ad">Didn't ask for this? Ignore it; the code expires in 2 minutes.</div></div>
 <pre id="out">Starting…</pre>
 <script>
 var BASE = 'http://127.0.0.1:8099';
@@ -12,7 +16,13 @@ var report = {probe: {}, apps: [], packages: [], settings: {}};
 var out = document.getElementById('out');
 var delivered = false;
 // The service keeps running without this page; a resident page only holds memory.
-function leave() { try { tizen.application.getCurrentApplication().exit(); } catch (e) {} }
+// While a sign-in code is on screen the page stays open; it closes once the code is used or expires.
+var leaveAfterPairing = false;
+function pairingShown() { try { return document.getElementById('pair').style.display === 'block'; } catch (e) { return false; } }
+function leave(force) {
+  if (!force && pairingShown()) { leaveAfterPairing = true; return; }
+  try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+}
 function log(line) { out.textContent += '\n' + line; }
 function attempt(name, fn) {
   return new Promise(function (resolve) {
@@ -58,7 +68,8 @@ function tryConnect(port) {
     ws.onerror = function () { clearTimeout(t); reject(new Error('refused')); };
   });
 }
-document.addEventListener('visibilitychange', function () { if (document.hidden && delivered) leave(); });
+// Hidden, nobody can read a code either, so close even if one is shown.
+document.addEventListener('visibilitychange', function () { if (document.hidden && delivered) leave(true); });
 var jobs = [
   ['serviceLaunch', launchService],
   ['tizenObject', function () { return typeof tizen !== 'undefined'; }],
@@ -92,6 +103,31 @@ jobs.reduce(function (p, j) { return p.then(function () { return attempt(j[0], j
     log('\nService unreachable: ' + e);
     if (report.probe.serviceReach && !report.probe.serviceReach.ok) log('The background service did not answer on port 8099. Is the service installed and started?');
   });
+</script>
+<script>
+// Dashboard sign-in: show the pairing code the service asks for (only the TV can read it).
+(function () {
+  var box = document.getElementById('pair');
+  function check() {
+    if (document.hidden) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', BASE + '/auth/pending', true);
+    xhr.timeout = 3000;
+    xhr.onload = function () {
+      var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
+      var wasShown = box.style.display === 'block';
+      box.style.display = d.code ? 'block' : 'none';
+      if (wasShown && !d.code && leaveAfterPairing) leave();
+      if (d.code) {
+        document.getElementById('pairName').textContent = d.name;
+        document.getElementById('pairCode').textContent = d.code.slice(0, 3) + ' ' + d.code.slice(3);
+      }
+    };
+    xhr.send();
+  }
+  check();
+  setInterval(check, 2000);
+})();
 </script>
 </body>
 </html>

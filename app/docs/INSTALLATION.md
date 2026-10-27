@@ -82,7 +82,7 @@ tizen install -n /tmp/vetro.wgt -t YOUR_TV_TARGET
 
 **Use `tizen install`, not `sdb install`.** A community report found that installing with `sdb` did nothing and showed no error, while `tizen install` worked. After Tizen Studio is installed, the tools are typically in `~/tizen-studio/tools/sdb` and `~/tizen-studio/tools/ide/bin/tizen` (the folder may differ, and they may not be on your `PATH`). To check that the installation reached the TV, `sdb shell 0 vd_applist` lists the apps installed on it; Vetro should be in the list.
 
-Open **Vetro** once to run the public API probe. Visit `http://TV_IP:8099/` from a browser on the same LAN. Check app inventory, probe status and platform connectivity. A visible icon or accepted installation is not proof that the background service or root agent works.
+Open **Vetro** once to run the public API probe. Visit `http://TV_IP:8099/` from a browser on the same LAN and pair it with the code the TV shows ([sign-in](SIGN-IN.md)). Check app inventory, probe status and platform connectivity. A visible icon or accepted installation is not proof that the background service or root agent works.
 
 ### 5. Let the TV reach its own SDB service
 
