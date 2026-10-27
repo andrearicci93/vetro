@@ -219,7 +219,7 @@ namespace Launcher
 
             WatchNewNodes();
             Log("home key code " + (_homeCode < 0 ? "not set" : _homeCode.ToString()) + (_learn ? ", learn mode (every key press is logged)" : ""));
-            // The remote's nodes come and go: it reconnects after standby, and Vetro creates its forwarded-remote
+            // The remote's nodes come and go: it reconnects after standby, and Vetro creates its forwarding
             // node some time after this process started. A node that appears later is picked up here.
             _rescanTimer = Efl.ecore_timer_add(RescanSeconds, RescanCb, IntPtr.Zero);
         }
