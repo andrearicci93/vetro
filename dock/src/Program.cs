@@ -52,7 +52,7 @@ namespace Launcher
         // Off by default; the app id is checked as plain id characters because it goes on a command line.
         // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
         // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
-        private static string _guardApp, _guardCmd;
+        private static string _guardApp, _guardCmd, _guardFlag;
         private const double GuardFirst = 0.15;
         private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
         private static int _homeCode = -1;
@@ -188,6 +188,7 @@ namespace Launcher
                 {
                     File.Delete(_pidPath);
                     Libc.unlink(_fifoPath);
+                    WriteGuard(false);
                 }
             }
             catch (Exception) { }
@@ -584,7 +585,7 @@ namespace Launcher
                         _lastHome = now;
                         _perfWhy = "home";
                         if (_ctl.IsActive) HideDock(); else ShowDock();
-                        ArmGuard();
+                        if (_guardApp != null) { WriteGuard(true); ArmGuard(); }
                     }
                 }
             }
@@ -603,9 +604,17 @@ namespace Launcher
         private static string GuardCommand(string appId)
         {
             string kill = "/usr/bin/app_launcher -k " + appId;
-            var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
-            foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
+            string check = "[ \"$(cat " + _guardFlag + " 2>/dev/null)\" = on ]";
+            var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + check + " && " + kill);
+            foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(check).Append(" && ").Append(kill);
             return sb.Append(" ) >/dev/null 2>&1 &").ToString();
+        }
+
+        /// <summary>The guard and the Samsung Home tile share one state: kills only while Home is suppressed.</summary>
+        private static void WriteGuard(bool on)
+        {
+            try { File.WriteAllText(_guardFlag, on ? "on\n" : "off\n"); }
+            catch (Exception ex) { Log("guard flag: " + ex.Message); }
         }
 
         // ------------------------------------------------------------------ launching
@@ -709,9 +718,10 @@ namespace Launcher
                 }
                 if (e.AppId == "com.samsung.tv.csfs")
                 {
-                    // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
-                    // the platform's own launcher starts it.
-                    Log("launch " + e.AppId + " rc=" + Libc.system("/usr/bin/app_launcher -s " + e.AppId + " >/dev/null 2>&1 &"));
+                    // The guard kills Home after a Home press; cancel it before asking the
+                    // platform launcher to raise Home, or the launch is killed again.
+                    WriteGuard(false);
+                    Log("launch home " + e.AppId + " rc=" + Libc.system("/usr/bin/app_launcher -s " + e.AppId + " >/dev/null 2>&1 &"));
                     return;
                 }
                 if (SendLaunch(e.AppId)) { Log("launch " + e.AppId); return; }
@@ -785,9 +795,11 @@ namespace Launcher
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
             _fifoPath = Path.Combine(_dir, "tvlauncher.fifo");
+            _guardFlag = Path.Combine(_dir, "tvlauncher-guard");
             TrimLog();
 
             if (!AcquireInstance()) return 0;
+            WriteGuard(false);
             AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupFiles();
 
             try
@@ -856,7 +868,7 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
+                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); WriteGuard(true); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
                     else Log("guard: bad app id ignored");
                 }
                 SetupInput(args);
