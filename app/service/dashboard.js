@@ -51,8 +51,19 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .row .field,.form-grid .field{margin:0}
 .row .field{flex:1 1 200px}
 .form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3);margin-top:var(--s3)}
-.input-label-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3);margin-top:var(--s3)}
-.input-label-grid .field{margin:0}
+.source-list{display:grid;gap:var(--s2);margin-top:var(--s3)}
+.source-row{display:grid;grid-template-columns:minmax(0,180px) minmax(140px,1fr) auto;gap:var(--s2) var(--s3);align-items:center;padding:var(--s2) 0;border-top:1px solid var(--border)}
+.source-row:first-child{border-top:0}
+.source-row.source-hidden{opacity:.55}
+.source-id{display:flex;align-items:center;gap:var(--s2);min-width:0;flex-wrap:wrap}
+.source-id img{width:24px;height:24px;object-fit:contain;flex-shrink:0}
+.source-port{font-size:var(--fs-s);color:var(--muted);white-space:nowrap}
+.source-row input[data-source-label]{width:100%;min-width:0}
+.source-controls{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.source-controls select{width:150px;min-width:0}
+.source-move{display:flex;gap:var(--s1)}
+.source-move button{width:32px;height:32px;padding:0}
+.source-row .switch{margin:0}
 /* Layout */
 .sidebar{position:fixed;inset:0 auto 0 0;width:var(--side);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:var(--s5) var(--s3);z-index:1;overflow-y:auto}
 .brand{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s3) var(--s4)}
@@ -248,7 +259,7 @@ dd{margin:0;overflow-wrap:anywhere}
 .deps small{display:block;color:var(--muted)}
 /* Responsive */
 @media(max-width:1000px){:root{--side:184px}.metric-grid,.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid,.layout,.quick-layout,.dock-layout{grid-template-columns:1fr}.main{padding:var(--s5) var(--s4) 64px}.app-table .proc-col{display:none}}
-@media(max-width:620px){:root{--side:0px}.sidebar{position:sticky;top:0;width:100%;flex-direction:row;align-items:center;gap:var(--s1);overflow:auto hidden;padding:var(--s2) var(--s3);border-right:0;border-bottom:1px solid var(--border)}.brand,.nav-label,.sidebar footer,.sidebar svg{display:none}.sidebar nav{display:flex;gap:var(--s1)}.sidebar [data-tab]{height:32px}.main{margin-left:0;padding:var(--s4) var(--s4) 48px;min-width:0}.page-head{flex-wrap:wrap}.metric-grid,.form-grid{grid-template-columns:1fr}.toolbar input{max-width:none;min-width:0;width:100%}.toolbar select{flex:1 1 45%}.panel,.box{padding:var(--s4)}.quick-group{padding:var(--s2) var(--s4)}#feedback{left:var(--s4);right:var(--s4)}#actionToast{left:50%}.drawer{padding:var(--s4)}.settings-table table{white-space:normal}dl{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)}.app-table{min-width:0}.app-table th:nth-child(2),.app-table td:nth-child(2),.app-table th:nth-child(4),.app-table td:nth-child(4){display:none}.app-table th:nth-child(3){width:104px}.app-table th,.app-table td{padding:var(--s3) var(--s2)}.app-table .icon{display:none}.app-table .component-row td:first-child{padding-left:var(--s4)}.mobile-role{display:block;margin-top:var(--s2)}}
+@media(max-width:620px){:root{--side:0px}.sidebar{position:sticky;top:0;width:100%;flex-direction:row;align-items:center;gap:var(--s1);overflow:auto hidden;padding:var(--s2) var(--s3);border-right:0;border-bottom:1px solid var(--border)}.brand,.nav-label,.sidebar footer,.sidebar svg{display:none}.sidebar nav{display:flex;gap:var(--s1)}.sidebar [data-tab]{height:32px}.main{margin-left:0;padding:var(--s4) var(--s4) 48px;min-width:0}.page-head{flex-wrap:wrap}.metric-grid,.form-grid{grid-template-columns:1fr}.toolbar input{max-width:none;min-width:0;width:100%}.toolbar select{flex:1 1 45%}.panel,.box{padding:var(--s4)}.quick-group{padding:var(--s2) var(--s4)}#feedback{left:var(--s4);right:var(--s4)}#actionToast{left:50%}.drawer{padding:var(--s4)}.settings-table table{white-space:normal}dl{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr)}.app-table{min-width:0}.app-table th:nth-child(2),.app-table td:nth-child(2),.app-table th:nth-child(4),.app-table td:nth-child(4){display:none}.app-table th:nth-child(3){width:104px}.app-table th,.app-table td{padding:var(--s3) var(--s2)}.app-table .icon{display:none}.app-table .component-row td:first-child{padding-left:var(--s4)}.mobile-role{display:block;margin-top:var(--s2)}.source-row{grid-template-columns:minmax(0,1fr)}.source-controls{gap:var(--s2)}.source-controls select{flex:1 1 120px;width:auto}}
 @media(max-width:400px){.drawer-actions{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 /* Launcher preview: the stage mirrors the native launcher (1920x1080 scaled down); its glass colours are the TV's own. */
@@ -716,11 +727,53 @@ function fitPreview(){
   if(img.complete&&img.naturalWidth)judge();else img.onload=judge;
  });
 }
-function inputPortName(slug){return slug==='in-tv'?'TV':/^in-hdmi[1-4]$/.test(slug)?'HDMI '+slug.slice(-1):slug}
-function inputLabelsMarkup(d){
- var list=(d.inputs||[]).filter(function(e){return e.source!=null});
- if(!list.length)return '';
- return '<div class="quick-item" data-quick-item="input-labels"><div><h3>Input labels</h3><p>Names in the launcher’s inputs panel. Press Up on the launcher to open it, or map a remote key to it in Remapper. The panel keeps this order.</p><div class="input-label-grid">'+list.map(function(e){return '<label class="field"><span>'+esc(inputPortName(e.slug))+'</span><input data-input-slug="'+esc(e.slug)+'" value="'+esc(e.label)+'" maxlength="24" autocomplete="off" aria-label="'+esc(inputPortName(e.slug))+' label"></label>'}).join('')+'</div></div><div><button data-dock-save-inputs '+(dockBusy?'disabled':'')+'>Save labels</button></div></div>';
+var sourceIconLabels={auto:'Auto',tv:'TV',hdmi:'HDMI',pc:'Computer',console:'Console',streaming:'Streaming',soundbar:'Soundbar',disc:'Disc',camera:'Camera'};
+// The Launcher's source list: saved order, labels, type icons and hidden rows, in one vertical list.
+function sourceListMarkup(d){
+ var list=(d.inputs||[]).filter(function(e){return e&&e.source!=null});
+ var note=d.detection&&d.detection.available===false?'<p class="notice">Source detection is unavailable, so the saved labels and the port names are shown. You can still edit and save.</p>':'';
+ if(!list.length)return '<div class="quick-item" data-quick-item="source-list"><div><h3>Sources</h3><p class="quick-callout">'+esc(d.error||'The source list could not be read.')+'</p>'+note+'<div class="quick-actions"><button data-dock-save-sources disabled>Save sources</button><button data-dock-refresh-sources '+(dockBusy?'disabled':'')+'>Refresh sources</button></div></div></div>';
+ var visible=list.filter(function(e){return !e.hidden}),canHide=visible.length>1;
+ var rows=list.map(function(e,index){
+  var port=e.slug==='in-tv'?'TV':'HDMI '+e.slug.slice(-1),hide=!e.hidden&&!canHide?' disabled':'';
+  var options=Object.keys(sourceIconLabels).map(function(id){return '<option value="'+id+'"'+(e.iconChoice===id?' selected':'')+'>'+sourceIconLabels[id]+'</option>'}).join('');
+  return '<div class="source-row'+(e.hidden?' source-hidden':'')+'" data-source-row data-source-slug="'+esc(e.slug)+'">'+
+   '<div class="source-id"><img src="/dock/source-icon?icon='+encodeURIComponent(e.icon)+'" alt=""><span class="source-port">'+esc(port)+'</span>'+(e.present===false?chip('No device detected'):'')+'</div>'+
+   '<input data-source-label value="'+esc(e.labelOverride||'')+'" placeholder="'+esc(e.autoLabel)+'" maxlength="24" autocomplete="off" aria-label="'+esc(port)+' label">'+
+   '<div class="source-controls"><select data-source-icon aria-label="'+esc(port)+' icon">'+options+'</select>'+
+   '<div class="source-move"><button data-source-up aria-label="Move '+esc(port)+' up"'+(index===0?' disabled':'')+'>↑</button><button data-source-down aria-label="Move '+esc(port)+' down"'+(index===list.length-1?' disabled':'')+'>↓</button></div>'+
+   '<label class="switch"><input type="checkbox" role="switch" data-source-hide'+(e.hidden?'':' checked')+hide+' aria-label="'+(e.hidden?'Show ':'Hide ')+esc(port)+'"><span>'+(e.hidden?'Off':'On')+'</span></label></div>'+
+  '</div>';
+ }).join('');
+ return '<div class="quick-item" data-quick-item="source-list"><div><h3>Sources</h3><p>The launcher’s inputs panel. Press Up on the launcher to open it, or map a remote key to it in Remapper. Names, icons and order are saved here; a hidden row stays out of the panel.</p>'+note+'<div class="source-list">'+rows+'</div><div class="quick-actions"><button data-dock-save-sources '+(dockBusy?'disabled':'')+'>Save sources</button><button data-dock-refresh-sources '+(dockBusy?'disabled':'')+'>Refresh sources</button></div></div></div>';
+}
+function sourceRowNodes(){var all=document.querySelectorAll('#dockBody [data-source-row]');return all?Array.prototype.slice.call(all):[]}
+// Edges and the last-hide rule are read from the DOM, so a move or a hide before Save settles them.
+function syncSourceEdges(){
+ var rows=sourceRowNodes(),visible=rows.filter(function(r){var h=r.querySelector('[data-source-hide]');return !h||h.checked});
+ rows.forEach(function(r,i){
+  var up=r.querySelector('[data-source-up]'),down=r.querySelector('[data-source-down]'),hide=r.querySelector('[data-source-hide]');
+  var port=r.querySelector('.source-port'),span=r.querySelector('.switch span');
+  if(up)up.disabled=i===0;
+  if(down)down.disabled=i===rows.length-1;
+  if(hide){hide.disabled=hide.checked&&visible.length<2;hide.setAttribute('aria-label',(hide.checked?'Hide ':'Show ')+(port?port.textContent:''));}
+  if(span)span.textContent=hide&&!hide.checked?'Off':'On';
+  if(r.classList)r.classList.toggle('source-hidden',!!hide&&!hide.checked);
+ });
+}
+function collectSources(){
+ return sourceRowNodes().map(function(r){
+  var label=r.querySelector('[data-source-label]'),icon=r.querySelector('[data-source-icon]'),hide=r.querySelector('[data-source-hide]');
+  var text=label&&label.value!=null?String(label.value).trim():'';
+  return {slug:r.dataset.sourceSlug,label:text||null,hidden:!!hide&&!hide.checked,icon:icon?icon.value:'auto'};
+ });
+}
+function moveSourceRow(row,step){
+ if(!row||!row.parentNode)return;
+ var rows=sourceRowNodes(),index=rows.indexOf(row),target=rows[index+step];
+ if(index<0||!target)return;
+ if(step<0)row.parentNode.insertBefore(row,target);else row.parentNode.insertBefore(target,row);
+ syncSourceEdges();
 }
 function renderDock(){
  var box=$('dockBody');if(!box)return;var d=dockData;
@@ -735,18 +788,19 @@ function renderDock(){
  var main='<div class="quick-item" data-quick-item="launcher"><div><h3>Vetro launcher</h3><p>Opens on the Home key with the same apps and icons as Samsung’s Home, which is closed while the launcher is on.</p><div class="quick-state">'+state+'</div>'+apps+problem+actions+log+'</div>'+control+confirm+'</div>';
  var noTube=inventory.length>0&&!tizenTubeInstalled(d),fixState=d.fixTizenTube?chip('On','on'):chip('Off');
  var fix='<div class="quick-item" data-quick-item="fix-tizentube"><div><h3>Fix TizenTube</h3><p>Shows the YouTube icon on the TizenTube tile and closes Samsung’s YouTube (com.samsung.tv.cobalt-yt) before starting it. Launcher tile only.</p><div class="quick-state">'+fixState+(noTube?chip('TizenTube is not installed on this TV','partial'):d.enabled&&!dockHasTizenTube(d)?chip('TizenTube is not in Samsung’s Home row','partial'):'')+'</div></div>'+switchMarkup('data-dock-fix',!!d.fixTizenTube,dockBusy||!d.installed||noTube&&!d.fixTizenTube,'Fix TizenTube')+'</div>';
- box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+fix+inputLabelsMarkup(d)+'</div></div>';
+ box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+fix+sourceListMarkup(d)+'</div></div>';
  setTimeout(fitPreview,0);
 }
 function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockData=d;dockError=null;
-  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='inputLabels'?'Input labels saved'+(d.enabled?'; the launcher was restarted to show them.':'; they apply when the launcher is on.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='saveSources'?'Source list saved'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='refreshSources'?'Sources refreshed'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock()});
 }
 $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
+ if(x.dataset.sourceHide!=null){var row=x.closest?x.closest('[data-source-row]'):null;if(!row)return;if(row.classList)row.classList.toggle('source-hidden',!x.checked);syncSourceEdges();return;}
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
@@ -756,7 +810,9 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockCancel!=null){dockConfirm=false;renderDock();var s=document.querySelector('[data-dock-switch]');if(s)s.focus();return}
  if(ds.dockConfirm!=null)return setDock('enable','Turn on the launcher');
  if(ds.dockRebuild!=null)return setDock('refresh','Rebuild the launcher app list');
- if(ds.dockSaveInputs!=null){var fields=document.querySelectorAll('#dockBody [data-input-slug]'),labels=[];for(var i=0;i<fields.length;i++)labels.push({slug:fields[i].dataset.inputSlug,label:fields[i].value});return setDock('inputLabels','Save input labels',{labels:labels});}
+ if(ds.sourceUp!=null||ds.sourceDown!=null){var row=b.closest?b.closest('[data-source-row]'):null;return moveSourceRow(row,ds.sourceUp!=null?-1:1);}
+ if(ds.dockSaveSources!=null){var list=collectSources();if(!list.length)return;return setDock('saveSources','Save the source list',{sources:list});}
+ if(ds.dockRefreshSources!=null)return setDock('refreshSources','Refresh the sources');
  if(ds.dockReload!=null)return loadDock();
 };
 if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',function(){if(currentPanel==='dock')fitPreview()});

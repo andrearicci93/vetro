@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 — 2026-10-27
+
+- **Launcher: the source list, with the TV's own names.** The inputs panel now shows the names the TV reports over HDMI-CEC (for example *Amazon Fire TV stick* or *PlayStation 5*) and a generic type icon classified from that name (TV, HDMI, computer, console, streaming, soundbar, disc or camera), instead of the port numbers. Old custom labels are carried over and the saved order is kept; the panel list is generated from a saved source list on the TV, so a package update no longer overwrites labels.
+- **Launcher: edit the source list.** The Launcher tab lists all five sources with a label, an icon choice, a move up/down control and a hide switch. **Save sources** writes the list and restarts a running launcher; **Refresh sources** re-reads detection and rebuilds the panel without saving edits. The last visible row cannot be hidden, and when detection is unavailable the rows fall back to the port names and saved labels.
+
 ## 0.3.5 — 2026-10-29
 
 - **Select the TV tuner directly** ([#31](https://github.com/andrearicci93/vetro/pull/31), by tomcraft): `KEY_TV` and `XF86DiscretSourceTV` are now accepted by the native key control and by remapping actions, so a rule such as "back to live TV" can select the tuner instead of cycling through the sources. Checked by the author from an HDMI source and from a foreground app; whether the key exists is firmware-dependent, and on a TV without it the request does nothing.
