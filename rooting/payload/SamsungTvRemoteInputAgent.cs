@@ -38,6 +38,10 @@ internal static class SamsungTvRemoteInputAgent
     private const uint UiSetKeyBit = 0x40045565;
     private const uint UiDeviceCreate = 0x00005501;
     private const uint UiDeviceDestroy = 0x00005502;
+    private const uint UiSetPhysical32 = 0x4004556c;
+    private const uint UiSetPhysical64 = 0x4008556c;
+    // Marks Vetro's own forwarding device; must match FORWARDED_PHYS in app/service/physical-input.js.
+    private const string ForwardedPhys = "vetro-forwarded-remote";
     private const int UinputUserDeviceSize = 1116;
     private const int UinputNameBytes = 80;
 
@@ -85,12 +89,17 @@ internal static class SamsungTvRemoteInputAgent
                 {
                     RequireIoctl(descriptor, UiSetKeyBit, code);
                 }
+                uint setPhysical = IntPtr.Size == 8 ? UiSetPhysical64 : UiSetPhysical32;
+                if (ioctl_string(descriptor, setPhysical, ForwardedPhys) != 0)
+                {
+                    throw NativeError("UI_SET_PHYS");
+                }
                 byte[] definition = new byte[UinputUserDeviceSize];
                 WriteFixedString(
                     definition,
                     0,
                     UinputNameBytes,
-                    "vetro-forwarded-remote");
+                    source.Name);
                 WriteUInt16(definition, 80, source.Bus == 0 ? (ushort)6 : source.Bus);
                 WriteUInt16(definition, 82, source.Vendor);
                 WriteUInt16(definition, 84, source.Product);
@@ -202,6 +211,9 @@ internal static class SamsungTvRemoteInputAgent
 
     [DllImport(Libc, SetLastError = true, EntryPoint = "ioctl")]
     private static extern int ioctl_no_argument(int descriptor, uint request);
+
+    [DllImport(Libc, SetLastError = true, EntryPoint = "ioctl", CharSet = CharSet.Ansi)]
+    private static extern int ioctl_string(int descriptor, uint request, string value);
 
     [DllImport(Libc)]
     private static extern int getpid();
@@ -696,6 +708,11 @@ internal static class SamsungTvRemoteInputAgent
         {
             Match nameMatch = Regex.Match(block, "N: Name=\\\"(.*)\\\"");
             if (!nameMatch.Success || nameMatch.Groups[1].Value != expectedName)
+            {
+                continue;
+            }
+            Match physMatch = Regex.Match(block, "P: Phys=(.*)");
+            if (physMatch.Success && physMatch.Groups[1].Value.Trim() == ForwardedPhys)
             {
                 continue;
             }

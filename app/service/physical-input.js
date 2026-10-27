@@ -9,7 +9,10 @@ var DEVICE_NAME_RE = /^N: Name="(.*)"$/m;
 var DEVICE_HANDLERS_RE = /^H: Handlers=(.*)$/m;
 var EVENT_NODE_RE = /\bevent\d+\b/;
 var REMOTE_NAME_RE = /smart control|rc device|mcirb/i;
-var NOT_REMOTE_NAME_RE = /keyboard|mouse|panel|forwarded/i;
+var NOT_REMOTE_NAME_RE = /keyboard|mouse|panel/i;
+// Marks Vetro's own forwarding device; must match ForwardedPhys in rooting/payload/SamsungTvRemoteInputAgent.cs.
+var FORWARDED_PHYS = 'vetro-forwarded-remote';
+var DEVICE_PHYS_RE = /^P: Phys=(.*)$/m;
 var KEY_CODE_RE = /^\d{1,3}$/;
 var MAC_HEX_RE = /^[a-f0-9]{64}$/;
 function quote(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
@@ -17,6 +20,10 @@ function devices(text) {
     return String(text).split(BLANK_LINE_RE).map(function (block) {
         var n = DEVICE_NAME_RE.exec(block), h = DEVICE_HANDLERS_RE.exec(block);
         var node = h && EVENT_NODE_RE.exec(h[1]);
+        var phys = DEVICE_PHYS_RE.exec(block);
+        if (phys && phys[1] === FORWARDED_PHYS) {
+            return null;
+        }
         return n && node ? {name:n[1], node:'/dev/input/' + node[0]} : null;
     }).filter(Boolean).map(function (d, i, all) {
         d.unique = all.filter(function (x) {return x.name === d.name;}).length === 1;

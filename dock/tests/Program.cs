@@ -663,11 +663,11 @@ namespace Launcher.Tests
                     "I: Bus=0019\nN: Name=\"wt61p807 panel key device\"\nH: Handlers=event3\n\n" +
                     "I: Bus=0005\nN: Name=\"Smart Control\"\nH: Handlers=kbd event4\n\n" +
                     "I: Bus=0003\nN: Name=\"Some Mouse\"\nH: Handlers=mouse1 event5\n\n" +
-                    "I: Bus=0005 Vendor=04e8\nN: Name=\"vetro-forwarded-remote\"\nH: Handlers=kbd event20\n\n" +
+                    "I: Bus=0005 Vendor=04e8\nN: Name=\"Smart Control\"\nP: Phys=vetro-forwarded-remote\nH: Handlers=kbd event20\n\n" +
                     "I: Bus=0005\nN: Name=\"dummy-uinput\"\nH: Handlers=kbd event21\n";
                 var nodes = InputDevices.RemoteNodes(text);
                 T.Eq(nodes.Count, 4, "three remotes plus Vetro's forwarded one");
-                T.Eq(nodes[3], "/dev/input/event20", "vetro-forwarded-remote is watched (the grabbed remote goes silent)");
+                T.Eq(nodes[3], "/dev/input/event20", "the forwarded node is watched (the grabbed remote goes silent)");
                 T.Eq(nodes[0], "/dev/input/event0", "ir");
                 T.Eq(nodes[1], "/dev/input/event2", "rc");
                 T.Eq(nodes[2], "/dev/input/event4", "bluetooth remote");
