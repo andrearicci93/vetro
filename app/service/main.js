@@ -512,42 +512,68 @@ function runActions(actions) {
         return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
 }
-var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
-var physical=new PhysicalInput(agentExecute,function(event){
+var actionQueue=Promise.resolve(), pendingActions=0, inputError=null, lastPhysical={code:null,at:0};
+function handlePhysicalEvent(event){
     if(event.action!=='down'||event.decision!=='blocked')return;
+    // Several interfaces can share one remote name; the same press can arrive twice.
+    var now=Date.now();
+    if(lastPhysical.code===event.code&&now-lastPhysical.at<120)return;
+    lastPhysical={code:event.code,at:now};
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
-    if(pendingActions>=8){inputPaused=true;physical.stop();inputError='input action queue exceeded';return;}
+    if(pendingActions>=8){inputPaused=true;stopInput();inputError='input action queue exceeded';return;}
     pendingActions++;
-    actionQueue=actionQueue.then(function(){return runActions(actions);}).catch(function(e){inputError=e.message;inputPaused=true;physical.stop();}).finally(function(){pendingActions--;});
-});
+    actionQueue=actionQueue.then(function(){return runActions(actions);}).catch(function(e){inputError=e.message;inputPaused=true;stopInput();}).finally(function(){pendingActions--;});
+}
+// One helper per physical remote. `physical` is the first device and keeps the old
+// single-device API for the status snapshot; extras cover every other remote.
+var physical=new PhysicalInput(agentExecute,handlePhysicalEvent), extraInputs=[];
 var inputObservers=[], inputPaused=false, inputRestoring=false;
-function inputPreference(){var p=remapStore.input;return p&&p.enabled===true&&typeof p.device==='string'?p:{enabled:false};}
+function inputPreference(){var p=remapStore.input;return p&&p.enabled===true?p:{enabled:false};}
 function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
 function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
+// Every selectable remote node. Several interfaces can share a name; the event
+// dedupe above keeps one press from running an action twice.
+function selectableRemotes(list){
+    return (list||[]).filter(function(d){return d.selectable;});
+}
+// Start one filter helper per selected remote. A failed remote does not stop the others.
+function startFilter(devices, tokens){
+    stopInput();
+    var extra=devices.slice(1).map(function(d){var b=new PhysicalInput(agentExecute,handlePhysicalEvent);extraInputs.push(b);return {bridge:b,device:d};});
+    var first=devices.length?physical.start(devices[0].node,'filter',tokens).catch(function(e){return {error:e.message};}):Promise.resolve(null);
+    return first.then(function(){
+        return Promise.all(extra.map(function(x){return x.bridge.start(x.device.node,'filter',tokens).catch(function(e){return {error:e.message};});}));
+    }).then(function(){return inputSnapshot();});
+}
 function restoreInput(){
     var preference=inputPreference();
-    if(!preference.enabled||inputPaused||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
+    if(!preference.enabled||inputPaused||inputRestoring||inputSnapshot().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
     inputRestoring=true;
     physical.inventory().then(function(list){
         if(inputPaused||inputPreference()!==preference)return;
-        var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
-        var keyed=candidates.filter(function(d){try{return /[1-9a-f]/i.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
-        // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
-        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
-        if(!device)throw new Error('Saved physical remote is unavailable');
-        return physical.start(device.node,'filter',inputTokens());
-    }).then(function(){inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
+        var devices=selectableRemotes(list);
+        if(!devices.length)throw new Error('No physical remote devices found');
+        return startFilter(devices,inputTokens());
+    }).then(function(s){if(s&&!s.policy.connected)throw new Error('Input helpers unavailable');inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
 }
-function stopInput(){inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+function stopInput(){inputObservers.forEach(function(b){b.stop();});inputObservers=[];extraInputs.forEach(function(b){b.stop();});extraInputs=[];physical.stop();}
 function inputSnapshot(){
-    if(!inputObservers.length)return Object.assign({},physical.status(),{preference:inputPreference()});
-    var events=[],connected=false,errors=[];
-    inputObservers.forEach(function(b){var s=b.status();events=events.concat(s.events);connected=connected||s.policy.connected;if(s.error)errors.push(s.error);});
+    var events=[],connected=false,errors=[],mode='off',blocked=[];
+    var sources=inputObservers.length?inputObservers:[physical].concat(extraInputs);
+    sources.forEach(function(b){
+        var s=b.status();
+        events=events.concat(s.events);
+        connected=connected||s.policy.connected;
+        if(s.policy.connected&&s.policy.mode)mode=s.policy.mode;
+        if(s.policy.blocked&&s.policy.blocked.length)blocked=s.policy.blocked;
+        if(s.error)errors.push(s.error);
+    });
     events.sort(function(a,b){return a.time_seconds-b.time_seconds||a.time_microseconds-b.time_microseconds;});
-    return {policy:{mode:'observe',device:'auto',connected:connected},preference:inputPreference(),events:events.slice(-30),error:errors.join('; ')||null};
+    return {policy:{mode:connected?mode:'off',device:inputObservers.length?'auto':'all',connected:connected,blocked:blocked},
+        preference:inputPreference(),events:events.slice(-30),error:errors.join('; ')||null};
 }
 function handleInput(req,res){
     if(req.method==='GET')return physical.inventory().then(function(list){serveJson(res,{devices:list,status:inputSnapshot(),error:inputError});}).catch(function(e){serveJson(res,{devices:[],status:inputSnapshot(),error:e.message});});
@@ -556,8 +582,20 @@ function handleInput(req,res){
         inputError=null;
         if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput();return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
         if(p.mode!=='observe'&&p.mode!=='filter')return serveJson(res,{error:'invalid input mode'},400);
-        if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         inputPaused=true;
+        if(p.mode==='filter'){
+            return physical.inventory().then(function(list){
+                var devices=selectableRemotes(list);
+                if(!devices.length)throw new Error('no physical remote devices found');
+                return startFilter(devices,tokens).then(function(s){
+                    if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');
+                    try{saveInputPreference({enabled:true,device:'all',nodes:devices.map(function(d){return d.node;})});}
+                    catch(e){stopInput();inputPaused=false;throw e;}
+                    inputPaused=false;
+                    serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});
+                });
+            }).catch(function(e){stopInput();inputPaused=false;serveJson(res,{ok:false,error:e.message},503);});
+        }
         if(p.mode==='observe'&&p.device==='auto'){
             stopInput();return physical.inventory().then(function(list){
                 var candidates=list.filter(function(d){return d.selectable;});
