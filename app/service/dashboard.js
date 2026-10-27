@@ -55,11 +55,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .source-row{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) auto;grid-template-areas:"id label hide" "id select move";gap:var(--s2) var(--s3);align-items:center;padding:var(--s2) 0;border-top:1px solid var(--border)}
 .source-row:first-child{border-top:0}
 .source-row.source-hidden{opacity:.55}
-.source-id{grid-area:id;display:grid;grid-template-columns:24px minmax(0,1fr);gap:var(--s1) var(--s2);align-items:center;min-width:0}
+.source-id{grid-area:id;align-self:start;display:grid;grid-template-columns:24px minmax(0,1fr);gap:var(--s1) var(--s2);align-items:center;min-width:0}
 .source-id img{width:24px;height:24px;object-fit:contain;flex-shrink:0;grid-row:1}
 .source-port{font-size:var(--fs-s);color:var(--muted);white-space:nowrap;grid-column:2}
 .source-id .state-chip{grid-column:1 / -1;justify-self:start;white-space:normal;height:auto;line-height:1.2;text-wrap:pretty}
-.source-row input[data-source-label]{grid-area:label;width:100%;min-width:0}
+.source-name{grid-area:label;display:grid;gap:2px;min-width:0}
+.source-name input{width:100%;min-width:0}
+.source-caption{font-size:var(--fs-s);color:var(--muted);line-height:1.2}
+.source-auto{font-size:var(--fs-s);color:var(--muted);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .source-controls{display:contents}
 .source-controls select{grid-area:select;width:100%;min-width:0}
 .source-move{grid-area:move;justify-self:end;display:flex;gap:var(--s1)}
@@ -744,7 +747,7 @@ function sourceListMarkup(d){
   var options=Object.keys(sourceIconLabels).map(function(id){return '<option value="'+id+'"'+(e.iconChoice===id?' selected':'')+'>'+sourceIconLabels[id]+'</option>'}).join('');
   return '<div class="source-row'+(e.hidden?' source-hidden':'')+'" data-source-row data-source-slug="'+esc(e.slug)+'">'+
    '<div class="source-id"><img src="/dock/source-icon?icon='+encodeURIComponent(e.icon)+'" alt=""><span class="source-port">'+esc(port)+'</span>'+(e.present===false?chip('No device detected'):'')+'</div>'+
-   '<input data-source-label value="'+esc(e.labelOverride||'')+'" placeholder="'+esc(e.autoLabel)+'" maxlength="24" autocomplete="off" aria-label="'+esc(port)+' label">'+
+   '<label class="source-name"><span class="source-caption">Name</span><input data-source-label value="'+esc(e.labelOverride||'')+'" placeholder="'+esc(e.autoLabel)+'" maxlength="24" autocomplete="off" aria-label="'+esc(port)+' name">'+(e.labelOverride==null?'<small class="source-auto">Auto: '+esc(e.autoLabel)+'</small>':'')+'</label>'+
    '<div class="source-controls"><select data-source-icon aria-label="'+esc(port)+' icon">'+options+'</select>'+
    '<div class="source-move"><button data-source-up aria-label="Move '+esc(port)+' up"'+(index===0?' disabled':'')+'>↑</button><button data-source-down aria-label="Move '+esc(port)+' down"'+(index===list.length-1?' disabled':'')+'>↓</button></div>'+
    '<label class="switch"><input type="checkbox" role="switch" data-source-hide'+(e.hidden?'':' checked')+hide+' aria-label="'+(e.hidden?'Show ':'Hide ')+esc(port)+'"><span>'+(e.hidden?'Off':'On')+'</span></label></div>'+
