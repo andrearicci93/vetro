@@ -581,6 +581,31 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
     runActions(remap.resolve(remapStore.rules,p.type,p.value,p.payload)).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
 });}
 
+// Temporary until the Launcher editor (S2) ships: the 0.3.3 tab still saves input labels. Map them onto
+// the saved source list, keeping its order, hidden flags and icon choices. Only a non-empty label that
+// differs from the automatic one becomes an override; this shim cannot clear a label.
+function saveInputLabels(labels) {
+    if (!Array.isArray(labels) || !labels.length) return Promise.reject(new Error('No input labels were supplied'));
+    return dock.status().then(function (d) {
+        var wanted = {}, seen = {};
+        (labels || []).forEach(function (item) {
+            if (!item || typeof item.slug !== 'string') throw new Error('Unknown input: ' + (item && item.slug));
+            if (seen[item.slug]) throw new Error('Duplicate input: ' + item.slug);
+            seen[item.slug] = true;
+            var rows = (d.inputs || []).filter(function (row) { return row.slug === item.slug; });
+            if (!rows.length) throw new Error('Unknown input: ' + item.slug);
+            wanted[item.slug] = item.label;
+        });
+        var next = (d.inputs || []).map(function (row) {
+            var text = wanted[row.slug] == null ? '' : String(wanted[row.slug]).trim();
+            var label = row.labelOverride;
+            if (text && text !== row.autoLabel) label = text;
+            return {slug: row.slug, label: label, hidden: row.hidden, icon: row.iconChoice};
+        });
+        return dock.saveSources(next);
+    });
+}
+
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
     if (url === '/diagnostics/download') {
@@ -606,7 +631,7 @@ http.createServer(function (req, res) {
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
-        if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='relaunch'?dock.relaunch():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):p.action==='inputLabels'?dock.setInputLabels(p.labels).then(function(){return dock.readState().enabled?dock.relaunch():dock.status();}):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
+        if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='relaunch'?dock.relaunch():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):p.action==='saveSources'?dock.saveSources(p.sources):p.action==='refreshSources'?dock.refreshSources():p.action==='inputLabels'?saveInputLabels(p.labels):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
@@ -623,6 +648,7 @@ http.createServer(function (req, res) {
     }
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/dock/icon') {var slug=require('url').parse(req.url,true).query.slug,png=dock.iconFile(slug);if(!png)return serveJson(res,{error:'icon unavailable'},404);res.writeHead(200,{'content-type':'image/png','cache-control':'private, max-age=60','X-Content-Type-Options':'nosniff'});return res.end(png);}
+    if (url === '/dock/source-icon') {var icon=require('url').parse(req.url,true).query.icon,png=dock.sourceIcon(icon);if(!png)return serveJson(res,{error:'icon unavailable'},404);res.writeHead(200,{'content-type':'image/png','cache-control':'private, max-age=60','X-Content-Type-Options':'nosniff'});return res.end(png);}
     if (url === '/dock') return dock.status({preview: true}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});

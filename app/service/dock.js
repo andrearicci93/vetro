@@ -14,11 +14,13 @@ var fs = require('fs');
 var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
+var sources = require('./dock-sources.js');
 
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
 var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
-var INPUTS_FILE = SHARE + '/vetro-dock-inputs.tsv';    // editable labels, seeded from the package
+var SOURCES_FILE = SHARE + '/vetro-dock-sources.json';   // the editable source list
+var INPUTS_FILE = SHARE + '/vetro-dock-inputs.tsv';      // generated from the source list and the TV
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
@@ -43,6 +45,7 @@ function Dock(options) {
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
+    this.sourcesFile = options.sourcesFile || SOURCES_FILE;
     this.inputsFile = options.inputsFile || INPUTS_FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
@@ -116,6 +119,24 @@ function check(r, what) {
     return r.stdout || '';
 }
 
+var PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+// Temp file then rename: a reader sees either the old file or the new one, never a partial write.
+function writeAtomic(file, text) {
+    fs.mkdirSync(path.dirname(file), {recursive: true});
+    var tmp = file + '.tmp';
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+}
+
+function readPng(file) {
+    try {
+        var data = fs.readFileSync(file);
+        if (data.length <= 1048576 && data.slice(0, 8).equals(PNG_MAGIC)) return data;
+    } catch (e) { /* no icon */ }
+    return null;
+}
+
 // What is running right now. Only the dock's own pid counts, and only if that pid is our dll.
 Dock.prototype.probe = function () {
     var script = [
@@ -148,14 +169,18 @@ Dock.prototype.status = function (options) {
 };
 
 Dock.prototype.statusNow = function () {
-    var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
-        entries: this.entries(), inputs: this.inputEntries()};
-    return this.probe().then(function (p) {
-        return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
-    }).catch(function (e) {
-        return Object.assign(base, {running: null, pid: null, samsungHome: null, log: '', probeError: e.message});
+    var self = this, state = this.readState(), list = this.sourceState();
+    // Detection is read on every status: the Launcher tab shows what the TV reports now, with no cache.
+    return this.readDetection().then(function (detection) {
+        var base = {installed: self.installed(), enabled: state.enabled, since: state.since, busy: self.busy,
+            error: self.lastError, failures: self.failures, apps: self.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
+            entries: self.entries(), inputs: sources.rows(list, detection),
+            detection: {available: detection.available, error: detection.error}};
+        return self.probe().then(function (p) {
+            return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
+        }).catch(function (e) {
+            return Object.assign(base, {running: null, pid: null, samsungHome: null, log: '', probeError: e.message});
+        });
     });
 };
 
@@ -216,7 +241,9 @@ Dock.prototype.waitRunning = function () {
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
 Dock.prototype.launch = function (quick) {
     var self = this, saved = quick && this.hasSavedApps();
-    return Promise.resolve().then(function () { self.ensureInputsFile(); })
+    // The inputs file is written before every start: a failed write fails the start, so the dock
+    // never opens a stale list.
+    return this.writeInputsFile()
         .then(function () { return saved ? null : self.writeCatalog(); }).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
@@ -295,7 +322,7 @@ Dock.prototype.relaunch = function () {
     if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
     if (!this.readState().enabled) return Promise.reject(new Error('The dock is off'));
     this.busy = true; this.lastError = null;
-    return this.launch(true).then(function () { return self.status(); }).catch(function (e) {
+    return this.restart().catch(function (e) {
         self.lastError = e.message; throw e;
     }).finally(function () { self.busy = false; });
 };
@@ -334,63 +361,119 @@ function parseTsv(text) {
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
-// The labels live in the share folder so a package update keeps them. The first launch copies the
-// packaged list there; before that (and if it cannot be read) the package's own list is shown.
-Dock.prototype.packagedInputs = function () {
-    try { return fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8'); } catch (e) { return null; }
-};
-Dock.prototype.ensureInputsFile = function () {
-    try { fs.statSync(this.inputsFile); return false; } catch (e) { /* seed it */ }
-    var text = this.packagedInputs();
-    if (text == null) throw new Error('The inputs list is missing from this Vetro package');
-    fs.mkdirSync(path.dirname(this.inputsFile), {recursive: true});
-    fs.writeFileSync(this.inputsFile, text);
-    return true;
-};
+// The generated inputs file, as last written. It is never edited by hand: the saved source list is.
 Dock.prototype.inputEntries = function () {
-    var text = null;
-    try { text = fs.readFileSync(this.inputsFile, 'utf8'); } catch (e) { text = this.packagedInputs(); }
-    try { return parseTsv(text); } catch (e) { return []; }
+    try { return parseTsv(fs.readFileSync(this.inputsFile, 'utf8')); } catch (e) { return []; }
+};
+// --- the saved source list and its generated inputs file --------------------
+//
+// vetro-dock-sources.json is the source of truth: order, labels, hidden flags and icon choices.
+// vetro-dock-inputs.tsv is generated from it and from the TV's own source report before every start.
+
+// The saved list, created on first use: from the old editable inputs file when there is one, else from
+// the defaults. A corrupt list is kept as .bad and replaced, so the editor can save a new one.
+Dock.prototype.sourceState = function () {
+    var raw;
+    try { raw = fs.readFileSync(this.sourcesFile, 'utf8'); }
+    catch (e) {
+        if (e.code !== 'ENOENT') throw new Error('The source list could not be read: ' + e.message);
+        var migrated = this.migrateSources();
+        this.writeSources(migrated);
+        return migrated;
+    }
+    try { return sources.normalize(JSON.parse(raw)); }
+    catch (e) {
+        try { fs.renameSync(this.sourcesFile, this.sourcesFile + '.bad'); }
+        catch (e2) { throw new Error('The source list could not be replaced: ' + e2.message); }
+        var defaults = sources.defaults();
+        this.writeSources(defaults);
+        return defaults;
+    }
 };
 
-var MAX_INPUT_LABEL = 24;
-function inputLabel(value) {
-    var label = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
-    if (!label) throw new Error('Input labels cannot be empty');
-    if (label.length > MAX_INPUT_LABEL) throw new Error('Input labels are limited to ' + MAX_INPUT_LABEL + ' characters');
-    if (/[\u0000-\u001f\u007f]/.test(label)) throw new Error('Input labels cannot contain control characters');
-    return label;
-}
+// 0.3.3 kept its editable labels in the inputs file. Read them once, keep a copy, and let the JSON take
+// over; after this the old file is generated output. A .bak that already exists is left alone.
+Dock.prototype.migrateSources = function () {
+    var text;
+    try { text = fs.readFileSync(this.inputsFile, 'utf8'); }
+    catch (e) {
+        if (e.code === 'ENOENT') return sources.defaults();
+        throw new Error('The old input labels could not be read: ' + e.message);
+    }
+    var backup = this.inputsFile + '.bak';
+    try { if (!fs.existsSync(backup)) fs.writeFileSync(backup, text); }
+    catch (e) { throw new Error('The old input labels could not be backed up: ' + e.message); }
+    return sources.migrate(text);
+};
 
-// Change the labels shown in the dock's inputs panel. The source order and numbers stay.
-Dock.prototype.setInputLabels = function (labels) {
-    if (!Array.isArray(labels) || !labels.length) return Promise.reject(new Error('No input labels were supplied'));
-    var entries = this.inputEntries();
-    if (!entries.length) return Promise.reject(new Error('The inputs list could not be read'));
-    var bySlug = {}, seen = {};
-    entries.forEach(function (e) { bySlug[e.slug] = e; });
-    try {
-        labels.forEach(function (item) {
-            if (!item || typeof item.slug !== 'string' || !bySlug[item.slug]) throw new Error('Unknown input: ' + (item && item.slug));
-            if (seen[item.slug]) throw new Error('Duplicate input: ' + item.slug);
-            seen[item.slug] = true;
-            bySlug[item.slug].label = inputLabel(item.label);
-        });
-    } catch (e) { return Promise.reject(e); }
-    var lines = ["# the inputs panel (Up on the dock). source:N is Samsung's input number: TV 0, HDMI 1-4 are 13-16"];
-    entries.forEach(function (e) {
-        var fields = [e.slug, e.label, e.appId];
-        if (e.icon) fields.push(e.icon);
-        if (e.killFirst) { while (fields.length < 4) fields.push(''); fields.push(e.killFirst); }
-        lines.push(fields.join('\t'));
+Dock.prototype.writeSources = function (state) {
+    try { writeAtomic(this.sourcesFile, JSON.stringify(state, null, 2) + '\n'); }
+    catch (e) { throw new Error('The source list could not be saved: ' + e.message); }
+};
+
+// What the TV reports now, or unavailable with a reason. No cache and no background polling.
+Dock.prototype.readDetection = function () {
+    return this.execute(wrap(sources.detectionScript()), 15000).then(function (r) {
+        if (!r || r.timed_out) return sources.unavailable();
+        return sources.parseDetection(r.stdout || '');
+    }).catch(function () { return sources.unavailable(); });
+};
+
+// The dock's inputs file, generated from the saved list and the TV's report. Atomic: a failed write
+// leaves the previous file and fails the start, so the dock never reads half a list.
+Dock.prototype.writeInputsFile = function (state) {
+    var self = this;
+    state = state || this.sourceState();
+    return this.readDetection().then(function (detection) {
+        var list = sources.rows(state, detection);
+        var text = sources.tsv(list, path.join(self.dir, 'res', 'icons'));
+        try { writeAtomic(self.inputsFile, text); }
+        catch (e) { throw new Error('The inputs list could not be saved: ' + e.message); }
+        return list;
     });
-    try {
-        fs.mkdirSync(path.dirname(this.inputsFile), {recursive: true});
-        var tmp = this.inputsFile + '.tmp';
-        fs.writeFileSync(tmp, lines.join('\n') + '\n');
-        fs.renameSync(tmp, this.inputsFile);
-    } catch (e) { return Promise.reject(new Error('The input labels could not be saved: ' + e.message)); }
-    return Promise.resolve({inputs: entries});
+};
+
+// Save the five rows (slug, label, hidden, icon), generate the inputs file and restart a running dock.
+// The JSON is written first: if the TSV write fails the old panel stays and the next start retries.
+Dock.prototype.saveSources = function (list) {
+    var self = this, state;
+    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    try { state = sources.normalize(list); } catch (e) { return Promise.reject(e); }
+    this.busy = true; this.lastError = null;
+    return Promise.resolve().then(function () {
+        self.writeSources(state);
+        return self.writeInputsFile(state);
+    }).then(function () {
+        return self.readState().enabled ? self.restart() : self.status();
+    }).catch(function (e) {
+        self.lastError = e.message;
+        throw e;
+    }).finally(function () { self.busy = false; });
+};
+
+// Re-read the TV and regenerate the inputs file from the saved list; it does not save edits.
+Dock.prototype.refreshSources = function () {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    this.busy = true; this.lastError = null;
+    return this.writeInputsFile().then(function () {
+        return self.readState().enabled ? self.restart() : self.status();
+    }).catch(function (e) {
+        self.lastError = e.message;
+        throw e;
+    }).finally(function () { self.busy = false; });
+};
+
+// Quick start with the app list already on disk, then the status the page shows.
+Dock.prototype.restart = function () {
+    var self = this;
+    return this.launch(true).then(function () { return self.status(); });
+};
+
+// The packaged type icon the editor asks for by id, so a hidden row still shows its icon.
+Dock.prototype.sourceIcon = function (icon) {
+    if (sources.TYPE_ICONS.indexOf(String(icon)) < 0) return null;
+    return readPng(path.join(this.dir, 'res', 'icons', sources.iconFile(String(icon))));
 };
 
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
@@ -418,10 +501,8 @@ Dock.prototype.iconFile = function (slug) {
     if (entry.icon && catalog.iconPathOk(entry.icon)) files.push(entry.icon);
     files.push(path.join(this.dir, 'res', 'icons', slug + '.png'));
     for (var i = 0; i < files.length; i++) {
-        try {
-            var data = fs.readFileSync(files[i]);
-            if (data.length <= 1048576 && data.slice(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return data;
-        } catch (e) { /* next */ }
+        var data = readPng(files[i]);
+        if (data) return data;
     }
     return null;
 };
