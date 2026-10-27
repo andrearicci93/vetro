@@ -43,7 +43,7 @@ namespace Launcher.Core
         public const int Lift = 4;
 
         // ---- Text ----
-        public static readonly bool ShowLabels = false;
+        public static readonly bool ShowLabels = true;
         public static readonly bool ShowClock = false;
         public const string HintText = "Source";
 

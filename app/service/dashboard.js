@@ -800,7 +800,9 @@ function renderDock(){
  setTimeout(fitPreview,0);
 }
 function setDock(action,label,extra){
- if(dockBusy)return;dockBusy=true;dockConfirm=false;renderDock();
+ if(dockBusy)return;dockBusy=true;dockConfirm=false;
+ // A save keeps the typed rows on screen while the TV writes and restarts; rendering here would clear them.
+ if(action!=='saveSources')renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockData=d;dockError=null;
   var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='saveSources'?'Source list saved'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='refreshSources'?'Sources refreshed'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
@@ -819,7 +821,7 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockConfirm!=null)return setDock('enable','Turn on the launcher');
  if(ds.dockRebuild!=null)return setDock('refresh','Rebuild the launcher app list');
  if(ds.sourceUp!=null||ds.sourceDown!=null){var row=b.closest?b.closest('[data-source-row]'):null;return moveSourceRow(row,ds.sourceUp!=null?-1:1);}
- if(ds.dockSaveSources!=null){var list=collectSources();if(!list.length)return;return setDock('saveSources','Save the source list',{sources:list});}
+ if(ds.dockSaveSources!=null){var list=collectSources();if(!list.length)return;b.disabled=true;return setDock('saveSources','Save the source list',{sources:list});}
  if(ds.dockRefreshSources!=null)return setDock('refreshSources','Refresh the sources');
  if(ds.dockReload!=null)return loadDock();
 };
