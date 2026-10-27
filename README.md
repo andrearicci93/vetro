@@ -30,7 +30,7 @@ A fast, glass-style launcher on the Home key. It shows the same apps and icons a
   <br><em>The launcher as the TV draws it (captured from the Q80A, over a plain backdrop instead of the video).</em>
 </p>
 
-Turn it on in the **Launcher** tab, which also previews the bar. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
+Turn it on in the **Launcher** tab, which also previews the bar. The focused app's name appears in a small tag above the bar; press Up for the inputs panel, where a short bar under a tile marks the input in use. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
 
 The tab also lists the five sources the inputs panel shows: TV and HDMI 1–4. Each row carries the TV's own detected name (over HDMI-CEC) as its automatic name, plus a type icon, a position and a visibility switch. Type a name to rename a port (up to 24 characters), choose Auto or a generic type icon, and move rows up or down. **Save sources** stores the whole list and restarts a running launcher; **Refresh sources** reads the TV's detection again and rebuilds the panel without saving row edits. Hidden rows keep their place in the list but stay out of the panel, and the last visible row cannot be hidden. If the TV reports no detection, the rows fall back to the port names and the saved labels; names are read from the TV and never leave it.
 

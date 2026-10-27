@@ -63,6 +63,7 @@ ul.diff{margin:0;padding-left:18px;font:12px/1.6 var(--mono);color:var(--muted)}
 <main>
   <div class="bar">
     <label>Sfondo <select id="scene"></select></label>
+    <label>Pagina <select id="page"><option value="apps">app</option><option value="sources">sorgenti (Su)</option></select></label>
     <button id="replay">▶ Entrata</button>
     <label><input type="checkbox" id="nativeOnly"> solo opzioni native</label>
     <span class="muted">Frecce <span class="kbd">←</span><span class="kbd">→</span><span class="kbd">↑</span><span class="kbd">↓</span> o clic sulle icone</span>
@@ -95,6 +96,9 @@ var NAMES = {tvplus:'Samsung TV Plus',livetv:'Live TV',tizentube:'TizenTube',str
 function placeholderIcon(i,label){var c=document.createElement('canvas');c.width=c.height=256;var x=c.getContext('2d');var h=(i*47+200)%360;var g=x.createLinearGradient(0,0,256,256);g.addColorStop(0,'hsl('+h+',55%,42%)');g.addColorStop(1,'hsl('+(h+40)+',55%,26%)');x.fillStyle=g;x.fillRect(0,0,256,256);x.fillStyle='#fff';x.font='600 96px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText(label.slice(0,2),128,138);return c.toDataURL()}
 var RAW = (window.DESIGNER_APPS&&window.DESIGNER_APPS.length)?window.DESIGNER_APPS:PLACEHOLDER.map(function(l,i){return {slug:'app'+i,label:l,icon:placeholderIcon(i,l)}});
 var APPS = RAW.map(function(a){return {slug:a.slug,label:a.label||NAMES[a.slug]||a.slug,sub:a.sub||SUB[a.slug]||'App',src:a.icon,url:a.icon,loose:false,wide:false,color:[200,210,230]}});
+/* The inputs panel (Up on the launcher), as the owner has it: three visible sources with the dock's own type icons. PS5 is the input in use. */
+var SOURCES = [['TV','in-tv'],['Amazon Fire TV','input-streaming'],['PS5','input-console']].map(function(s){var u='../res/icons/'+s[1]+'.png';return {slug:s[1],label:s[0],sub:'Source',src:u,url:u,loose:false,wide:false,color:[200,210,230]}});
+var CURRENT_SOURCE = 2, PAGE = 'apps';
 
 /* The same preparation the native launcher applies: banners get a blurred fill, loose logos may go on a tile. */
 function prepare(app){return new Promise(function(done){var im=new Image();im.onload=function(){
@@ -116,9 +120,10 @@ var DEF = {
  'icons.shape':'squircle','icons.radius':16,'icons.treat':'dark','icons.rim':true,'icons.dim':0.94,'icons.sat':0.95,'icons.looseTile':true,
  'glow.show':true,'glow.mode':'icon','glow.color':'#e2edff','glow.strength':0.44,'glow.spread':16,
  'focus.ring':2,'focus.ringColor':'#ffffff','focus.lift':4,
- 'label.mode':'none','label.size':18,'label.weight':'400','label.color':'#ffffff','label.shadow':0.5,'label.case':'none','label.spacing':0,'label.font':'system','label.sub':false,'label.subColor':'#aab4c0',
+ 'label.mode':'none','label.place':'below','label.capsule':false,'label.size':18,'label.weight':'400','label.color':'#ffffff','label.shadow':0.5,'label.case':'none','label.spacing':0,'label.font':'system','label.sub':false,'label.subColor':'#aab4c0',
+ 'current.show':false,
  'clock.show':false,'clock.size':26,'clock.opacity':0.7,'clock.fmt':'24',
- 'hint.show':true,'hint.text':'Source',
+ 'hint.show':true,'hint.text':'Source','hint.align':'center',
  'pills.mode':'stack','pills.w':232,'pills.h':48,'pills.gap':8,'pills.radius':24,'pills.style':'outline','pills.size':22,'pills.glyph':true,'pills.label1':'Settings','pills.label2':'Samsung Home','pills.color':'#ffffff',
  'motion.enter':'cascade','motion.duration':300,'motion.stagger':24,'motion.ease':'linear','motion.focus':300
 };
@@ -172,6 +177,8 @@ var OPTS = [
  ['Selezione','focus.lift','Sollevamento (px)','range',[0,40,1],N],
 
  ['Testo','label.mode','Nome app','select',['focused','all','none'],N],
+ ['Testo','label.place','Posizione del nome','select',['below','above'],N],
+ ['Testo','label.capsule','Capsula dietro il nome (sopra la barra)','bool',null,N],
  ['Testo','label.size','Dimensione','range',[14,44,1],N],
  ['Testo','label.weight','Peso','select',['400','500','600','700'],A],
  ['Testo','label.color','Colore','color',null,N],
@@ -187,6 +194,8 @@ var OPTS = [
  ['Testo','clock.opacity','Opacità orologio','range',[0.1,1,0.05],N],
  ['Testo','hint.show','Indicatore “Input ˄”','bool',null,N],
  ['Testo','hint.text','Testo indicatore','text',null,N],
+ ['Testo','hint.align','Allineamento indicatore','select',['center','right'],N],
+ ['Testo','current.show','Punto sotto la sorgente in uso','bool',null,N],
 
  ['Pillole (Settings e Samsung Home)','pills.mode','Disposizione','select',['stack','row','round','off'],N],
  ['Pillole (Settings e Samsung Home)','pills.style','Stile','select',['glass','solid','outline'],N],
@@ -243,44 +252,50 @@ var GEAR='M128,76a52,52,0,1,0,52,52A52.06,52.06,0,0,0,128,76Zm0,80a28,28,0,1,1,2
 function glyph(kind,px){var p=kind==='gear'?'<path d="'+GEAR+'" fill="currentColor"/>':'<path d="M100 76 L52 124 L100 172 M52 124 H172 a40 40 0 0 1 0 80 H108" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>';return '<svg width="'+px+'" height="'+px+'" viewBox="0 0 256 256" aria-hidden="true">'+p+'</svg>'}
 
 /* ---------- geometry (the same arithmetic as the native layout) ---------- */
-function geo(c){
- var n=APPS.length,icon=num(c,'layout.icon'),fic=num(c,'layout.focusIcon'),gap=num(c,'layout.gap'),padX=num(c,'layout.padX'),pm=c['pills.mode'];
- var pw=num(c,'pills.w'),ph=num(c,'pills.h'),pg=num(c,'pills.gap'),m=pm==='off'?0:2;
+/* The name above the bar sits in a capsule CAP.h tall, CAP.gap above the bar; that band (BAND) is also where the
+   "Source ˄" hint lives, and the height by which the inputs panel is raised over the apps bar. */
+var CAP={h:40,gap:10,padX:18},BAND=CAP.gap+CAP.h,CUR={w:32,h:6};
+function geo(c,list,page){
+ var n=list.length,icon=num(c,'layout.icon'),fic=num(c,'layout.focusIcon'),gap=num(c,'layout.gap'),padX=num(c,'layout.padX'),pm=c['pills.mode'];
+ var pw=num(c,'pills.w'),ph=num(c,'pills.h'),pg=num(c,'pills.gap'),m=(pm==='off'||page==='sources')?0:2;
  var appsW=n*icon+(n-1)*gap,pinW=0,pinH=0;
  if(m){if(pm==='stack'){pinW=pw;pinH=2*ph+pg}else if(pm==='row'){pinW=2*pw+pg;pinH=ph}else{pinW=2*icon+gap;pinH=icon}}
  var fixed=m?num(c,'layout.groupGap')+pinW:0,content=appsW+fixed;
  var maxPill=Math.min(num(c,'layout.maxW'),1808),pillW=Math.min(content+2*padX,maxPill),view=pillW-2*padX-fixed;
- var labelRow=(c['label.mode']==='focused'||c['clock.show'])?10+34+(c['label.sub']&&c['label.mode']==='focused'?22:0):(c['label.mode']==='all'?10+30+(c['label.sub']?20:0):0);
+ var below=c['label.place']!=='above';
+ var labelRow=(below&&c['label.mode']==='focused'||c['clock.show'])?10+34+(c['label.sub']&&c['label.mode']==='focused'?22:0):(c['label.mode']==='all'?10+30+(c['label.sub']?20:0):0);
  var pillH=num(c,'layout.padTop')+fic+labelRow+num(c,'layout.padBottom');
  var al=c['layout.align'],px=al==='left'?56:al==='right'?1920-56-pillW:(1920-pillW)/2;
- var off=num(c,'layout.offset'),py=c['layout.position']==='top'?off:1080-off-pillH;
- return {n:n,m:m,icon:icon,fic:fic,gap:gap,padX:padX,appsW:appsW,pinW:pinW,pinH:pinH,fixed:fixed,pillW:pillW,view:view,pillH:pillH,px:px,py:py,rowCY:py+num(c,'layout.padTop')+fic/2,labelTop:py+num(c,'layout.padTop')+fic+10,pw:pw,ph:ph,pg:pg,pm:pm,labelRow:labelRow}
+ var off=num(c,'layout.offset'),raise=page==='sources'?BAND:0,py=c['layout.position']==='top'?off:1080-off-pillH-raise;
+ return {n:n,m:m,icon:icon,fic:fic,gap:gap,padX:padX,appsW:appsW,pinW:pinW,pinH:pinH,fixed:fixed,pillW:pillW,view:view,pillH:pillH,px:px,py:py,rowCY:py+num(c,'layout.padTop')+fic/2,labelTop:py+num(c,'layout.padTop')+fic+10,pw:pw,ph:ph,pg:pg,pm:pm,labelRow:labelRow,page:page}
 }
 function scrollFor(g,fp){if(g.appsW<=g.view)return 0;var f=Math.min(fp,g.n-1),cen=g.icon/2+f*(g.icon+g.gap)-g.view/2;return clamp(cen,0,g.appsW-g.view)}
 function growth(c,d){var f=num(c,'layout.fisheye');return Math.max(0,1-d)+f*0.4*Math.max(0,1-Math.abs(d-1))}
 
 /* ---------- stage ---------- */
-function Stage(host,getCfg,opts){this.host=host;this.get=getCfg;this.interactive=!!(opts&&opts.interactive);this.focus=0;this.scene=null;this.build();var me=this;
+function Stage(host,getCfg,opts){this.host=host;this.get=getCfg;this.interactive=!!(opts&&opts.interactive);this.focus=0;this.scene=null;this.page='apps';this.build();var me=this;
  var ro=new ResizeObserver(function(){me.fit()});ro.observe(host)}
+Stage.prototype.list=function(){return this.page==='sources'?SOURCES:APPS};
+Stage.prototype.geo=function(c){return geo(c,this.list(),this.page)};
 Stage.prototype.fit=function(){var s=this.host.clientWidth/1920;this.root.style.transform='scale('+s+')'};
 Stage.prototype.build=function(){
- var c=this.get(),g=geo(c),h=this.host,me=this;h.innerHTML='';
+ var c=this.get(),g=this.geo(c),h=this.host,me=this,L=this.list();h.innerHTML='';
  var root=document.createElement('div');root.className='s nt';this.root=root;h.appendChild(root);
  var s=document.createElement('div');this.sceneEl=s;s.className='a';s.style.cssText='left:0;top:0;width:1920px;height:1080px';root.appendChild(s);
  function el(cls,parent,html){var e=document.createElement('div');e.className=cls;if(html!=null)e.innerHTML=html;(parent||root).appendChild(e);return e}
  this.shell=el('a t');this.glowEl=el('a t');
  this.clip=el('a');this.clip.style.overflow='hidden';
- this.icons=APPS.map(function(a,i){var d=el('ico t',me.clip);d.innerHTML='<img alt="" src="'+a.url+'">';if(a.wide)d.classList.add('wide');if(a.loose)d.classList.add('loose');d.style.setProperty('--bg','url('+a.url+')');d.onclick=function(){if(me.interactive){me.focus=i;me.apply()}};return d});
+ this.icons=L.map(function(a,i){var d=el('ico t',me.clip);d.innerHTML='<img alt="" src="'+a.url+'">';if(a.wide)d.classList.add('wide');if(a.loose)d.classList.add('loose');d.style.setProperty('--bg','url('+a.url+')');d.onclick=function(){if(me.interactive){me.focus=i;me.apply()}};return d});
  this.pins=[];
- if(g.m){[['gear','pills.label1'],['back','pills.label2']].forEach(function(p,k){var d=el('pin t');d.dataset.glyph=p[0];d.dataset.key=p[1];d.onclick=function(){if(me.interactive){me.focus=APPS.length+k;me.apply()}};me.pins.push(d)})}
- this.divider=el('a t');
- this.lab=el('lab t');this.sub=el('lab t');this.labs=APPS.map(function(a){var l=el('lab t',me.clip);return l});
+ if(g.m){[['gear','pills.label1'],['back','pills.label2']].forEach(function(p,k){var d=el('pin t');d.dataset.glyph=p[0];d.dataset.key=p[1];d.onclick=function(){if(me.interactive){me.focus=L.length+k;me.apply()}};me.pins.push(d)})}
+ this.divider=el('a t');this.dot=el('a t');
+ this.lab=el('lab t');this.sub=el('lab t');this.labs=L.map(function(a){var l=el('lab t',me.clip);return l});
  this.clock=el('lab');this.hint=el('lab t');
  this.apply(true);this.fit();
  void root.offsetWidth;root.classList.remove('nt');
 };
 Stage.prototype.apply=function(first){
- var c=this.get(),g=geo(c),fp=this.focus,n=g.n,root=this.root,me=this;
+ var c=this.get(),g=this.geo(c),fp=this.focus,n=g.n,root=this.root,me=this,L=this.list();
  root.style.setProperty('--fs',(first?0:num(c,'motion.focus'))+'ms');root.style.setProperty('--ease',EASE[c['motion.ease']]||EASE.out);
  this.sceneEl.style.background=SCENES[c.scene]||SCENES.dark;
  var light=c.scene==='light'||c.scene==='warm';
@@ -304,9 +319,9 @@ Stage.prototype.apply=function(first){
  for(var i=0;i<n;i++){
   var d=Math.abs(fp-i),gr2=growth(c,d),size=Math.round((g.icon+(g.fic-g.icon)*gr2)/2)*2,cx=g.px+g.padX+g.icon/2+i*(g.icon+g.gap)-scroll;
   var amt=Math.max(0,1-d),e=this.icons[i],f=i===fp;
-  var tile=(APPS[i].loose&&c['icons.looseTile'])||treat==='glass'||treat==='dark';
+  var tile=(L[i].loose&&c['icons.looseTile'])||treat==='glass'||treat==='dark';
   e.classList.toggle('tile',tile);
-  var bg=treat==='glass'?'linear-gradient(rgba(214,224,244,.28),rgba(214,224,244,.10))':treat==='dark'?'linear-gradient(#2c364f,#141b2a)':(APPS[i].loose&&c['icons.looseTile'])?'linear-gradient(#2c364f,#141b2a)':'#222';
+  var bg=treat==='glass'?'linear-gradient(rgba(214,224,244,.28),rgba(214,224,244,.10))':treat==='dark'?'linear-gradient(#2c364f,#141b2a)':(L[i].loose&&c['icons.looseTile'])?'linear-gradient(#2c364f,#141b2a)':'#222';
   var rim=c['icons.rim']?'inset 0 0 0 1px rgba(255,255,255,.2)':'';var rg=f&&ring>0?(rim?rim+',':'')+'0 0 0 '+ring+'px '+c['focus.ringColor']:rim;
   e.style.cssText='left:'+(cx-size/2-clipL)+'px;top:'+(g.rowCY-size/2-(f?lift:0))+'px;width:'+size+'px;height:'+size+'px;border-radius:'+rad+';background:'+bg+';opacity:'+(dim+(1-dim)*amt)+';filter:'+(treat==='mono'?'grayscale(1) contrast(1.05) ':'')+'saturate('+(sat+(1-sat)*amt)+');box-shadow:'+(rg||'none');
  }
@@ -330,38 +345,52 @@ Stage.prototype.apply=function(first){
  /* glow */
  var ge=this.glowEl,fa=fp<n;
  if(fa){var sz=g.fic,cxf=g.px+g.padX+g.icon/2+fp*(g.icon+g.gap)-scroll;fx=cxf-sz/2;fy=g.rowCY-sz/2-lift;fw=sz;fh=sz;fr=rad}
- var gc=c['glow.mode']==='icon'&&fa?APPS[fp].color:hex(c['glow.color']),gs=num(c,'glow.strength'),sp=num(c,'glow.spread');
+ var gc=c['glow.mode']==='icon'&&fa?L[fp].color:hex(c['glow.color']),gs=num(c,'glow.strength'),sp=num(c,'glow.spread');
  ge.style.cssText='left:'+fx+'px;top:'+fy+'px;width:'+fw+'px;height:'+fh+'px;border-radius:'+fr+';background:'+rgba(gc,gs*0.55)+';box-shadow:0 0 '+Math.round(sp*1.6)+'px '+Math.round(sp*0.35)+'px '+rgba(gc,gs)+';opacity:'+(c['glow.show']&&(fw>0)?1:0);
  /* divider */
  this.divider.style.cssText=(g.m&&c['divider.show'])?'left:'+(g.px+g.padX+g.view+(num(c,'layout.groupGap')-2)/2)+'px;top:'+(g.rowCY-num(c,'divider.height')/2)+'px;width:2px;height:'+num(c,'divider.height')+'px;background:'+rgba(c['label.color'],num(c,'divider.opacity')):'display:none';
+ /* the input in use: a short bar under its tile, whatever has the focus (CUR: its size) */
+ var cur=g.page==='sources'&&c['current.show']?CURRENT_SOURCE:-1;
+ this.dot.style.cssText=cur>=0?'left:'+(g.px+g.padX+g.icon/2+cur*(g.icon+g.gap)-scroll-CUR.w/2)+'px;top:'+(g.py+g.pillH-num(c,'layout.padBottom')/2-CUR.h/2)+'px;width:'+CUR.w+'px;height:'+CUR.h+'px;border-radius:'+CUR.h/2+'px;background:'+c['label.color']+';opacity:.92':'display:none';
  /* labels */
  var ls=num(c,'label.size'),fam=FONT[c['label.font']]||FONT.system,txt=function(s){return c['label.case']==='upper'?String(s).toUpperCase():s};
  var lcss='font-size:'+ls+'px;font-weight:'+c['label.weight']+';color:'+c['label.color']+';font-family:'+fam+';letter-spacing:'+num(c,'label.spacing')+'px;text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+');line-height:34px;';
- var mode=c['label.mode'],item=fp<n?APPS[fp]:null;
+ var mode=c['label.mode'],item=fp<n?L[fp]:null,above=c['label.place']==='above';
  if(mode==='focused'&&item){
-  this.lab.style.cssText=lcss+'opacity:1';this.lab.textContent=txt(item.label);var w=this.lab.offsetWidth;
+  var capCss=above&&c['label.capsule']?capsuleCss(c)+'padding:0 '+CAP.padX+'px;':'';
+  /* without the marker, the native launcher can only say "current" in the focused name (the old look) */
+  var curTxt=g.page==='sources'&&fp===CURRENT_SOURCE&&!c['current.show']?'  ·  current':'';
+  this.lab.style.cssText=lcss+capCss+'opacity:1';this.lab.textContent=txt(item.label)+curTxt;var w=this.lab.offsetWidth;
   var cxl=g.px+g.padX+g.icon/2+fp*(g.icon+g.gap)-scroll,lo=g.px+g.padX,hi=g.px+g.pillW-g.padX-w,x2=clamp(cxl-w/2,lo,Math.max(lo,hi));
-  this.lab.style.left=x2+'px';this.lab.style.top=g.labelTop+'px';this.labW=w;this.labX=x2;
-  this.sub.style.cssText='font-size:'+Math.round(ls*0.72)+'px;color:'+c['label.subColor']+';font-family:'+fam+';line-height:20px;opacity:'+(c['label.sub']?1:0);this.sub.textContent=item.sub;
+  this.lab.style.left=x2+'px';this.lab.style.top=(above?g.py-CAP.gap-CAP.h:g.labelTop)+'px';this.labW=w;this.labX=x2;
+  this.sub.style.cssText='font-size:'+Math.round(ls*0.72)+'px;color:'+c['label.subColor']+';font-family:'+fam+';line-height:20px;opacity:'+(c['label.sub']&&!above?1:0);this.sub.textContent=item.sub;
   var sw=this.sub.offsetWidth;this.sub.style.left=clamp(cxl-sw/2,lo,Math.max(lo,g.px+g.pillW-g.padX-sw))+'px';this.sub.style.top=(g.labelTop+34)+'px';
  }else{this.lab.style.cssText='opacity:0';this.sub.style.cssText='opacity:0';this.labW=0;this.labX=-9999}
  this.labs.forEach(function(l,i){
   if(mode!=='all'){l.style.cssText='display:none';return}
   var cxl=g.px+g.padX+g.icon/2+i*(g.icon+g.gap)-scroll,wmax=g.icon+g.gap-6;
   l.style.cssText=lcss+'display:block;font-size:'+ls+'px;line-height:30px;width:'+wmax+'px;text-align:center;overflow:hidden;text-overflow:ellipsis;left:'+(cxl-wmax/2-clipL)+'px;top:'+(g.labelTop-g.px*0)+'px;opacity:'+(i===fp?1:0.7);
-  l.textContent=txt(APPS[i].label)+'';
-  if(c['label.sub']){l.innerHTML=esc(txt(APPS[i].label))+'<div style="font-size:'+Math.round(ls*0.72)+'px;line-height:18px;color:'+c['label.subColor']+'">'+esc(APPS[i].sub)+'</div>'}
+  l.textContent=txt(L[i].label)+'';
+  if(c['label.sub']){l.innerHTML=esc(txt(L[i].label))+'<div style="font-size:'+Math.round(ls*0.72)+'px;line-height:18px;color:'+c['label.subColor']+'">'+esc(L[i].sub)+'</div>'}
  });
  /* clock */
  var cs=num(c,'clock.size'),now=new Date(),hh=now.getHours(),mm=('0'+now.getMinutes()).slice(-2),ct=c['clock.fmt']==='12'?((hh%12)||12)+':'+mm+' '+(hh<12?'AM':'PM'):('0'+hh).slice(-2)+':'+mm;
  this.clock.style.cssText='font-size:'+cs+'px;color:'+c['label.color']+';opacity:'+num(c,'clock.opacity')+';font-family:'+fam+';line-height:34px;text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+')';this.clock.textContent=ct;
  var cw=this.clock.offsetWidth,cxr=g.px+g.pillW-g.padX-cw;this.clock.style.left=cxr+'px';this.clock.style.top=g.labelTop+'px';
  this.clock.style.display=(c['clock.show']&&(mode!=='all')&&(g.labelRow>0)&&(cxr>this.labX+this.labW+16))?'block':'none';
- /* hint */
- var up=c['layout.position']==='top';this.hint.style.cssText='font-size:24px;color:'+c['label.color']+';opacity:'+(c['hint.show']?0.75:0)+';font-family:'+fam+';text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+')';
- this.hint.innerHTML=esc(c['hint.text'])+' <svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-1px;'+(up?'transform:rotate(180deg)':'')+'"><path d="M5 15l7-7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
- var hw=this.hint.offsetWidth;this.hint.style.left=(g.px+(g.pillW-hw)/2)+'px';this.hint.style.top=(up?g.py+g.pillH+10:g.py-46+4)+'px';
+ /* hint: "Source ˄" above the apps bar (centred, or at the right end over the pills, out of the name's way); "Back ˅" under the raised inputs panel.
+    With the name in a capsule, the hint gets the same capsule, so it stays readable over bright video. */
+ var src=g.page==='sources',up=src?c['layout.position']!=='top':c['layout.position']==='top',chip=above&&c['label.capsule'];
+ this.hint.style.cssText='font-size:22px;line-height:'+CAP.h+'px;color:'+c['label.color']+';font-family:'+fam+';'+(chip?capsuleCss(c)+'padding:0 '+(CAP.padX-4)+'px 0 '+CAP.padX+'px;':'text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+')');
+ this.hint.innerHTML='<span style="opacity:.9">'+esc(src?'Back':c['hint.text'])+' <svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-1px;'+(up?'transform:rotate(180deg)':'')+'"><path d="M5 15l7-7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+ var hw=this.hint.offsetWidth,right=!src&&c['hint.align']==='right',hx=right?g.px+g.pillW-g.padX-hw:g.px+(g.pillW-hw)/2;
+ var hy=src?g.py+g.pillH+CAP.gap:g.py-CAP.gap-CAP.h;
+ /* the name wins: the hint steps aside while the two would touch */
+ var clash=above&&this.labW>0&&!src&&this.labX<hx+hw+16&&this.labX+this.labW+16>hx;
+ this.hint.style.left=hx+'px';this.hint.style.top=hy+'px';this.hint.style.opacity=c['hint.show']&&!clash?(chip?1:0.75):0;
 };
+/* The capsule behind the name and the hint: the bar's tint and border, round ends. */
+function capsuleCss(c){return 'height:'+CAP.h+'px;line-height:'+(CAP.h-2*num(c,'shell.borderW'))+'px;border-radius:'+CAP.h/2+'px;background:'+rgba(c['shell.tint'],0.96)+';border:'+num(c,'shell.borderW')+'px solid '+rgba(c['shell.borderColor'],num(c,'shell.border'))+';text-shadow:none;'}
 function esc(s){return String(s).replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]})}
 function pillStyle(c,light){
  var st=c['pills.style'],col=c['pills.color'];
@@ -370,19 +399,22 @@ function pillStyle(c,light){
  return 'background:linear-gradient(rgba(255,255,255,.26),rgba(255,255,255,.10));border:2px solid rgba(255,255,255,.38);box-shadow:inset 0 6px 10px -6px rgba(255,255,255,.4)';
 }
 Stage.prototype.play=function(){
- var c=this.get(),kind=c['motion.enter'],dur=num(c,'motion.duration'),stg=num(c,'motion.stagger'),root=this.root;
+ var c=this.get(),kind=c['motion.enter'],dur=num(c,'motion.duration'),stg=num(c,'motion.stagger'),root=this.root,me=this;
  var ease=EASE[c['motion.ease']]||EASE.out,up=c['layout.position']==='top'?-48:48;
- var all=[this.shell,this.glowEl,this.divider,this.lab,this.sub,this.clock,this.hint].concat(this.pins,[this.clip]);
+ var all=[this.shell,this.glowEl,this.divider,this.dot,this.lab,this.sub,this.clock,this.hint].concat(this.pins,[this.clip]);
  function anim(e,kf,delay){if(e&&e.animate)e.animate(kf,{duration:dur,easing:ease,delay:delay||0,fill:'backwards'})}
  if(kind==='slide')all.forEach(function(e){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}])});
  else if(kind==='fade')all.forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
  else if(kind==='scale')all.forEach(function(e){anim(e,[{transform:'scale(.92)',opacity:0},{transform:'none',opacity:1}])});
- else{[this.shell,this.glowEl,this.divider,this.lab,this.sub,this.clock,this.hint].forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
+ else{[this.shell,this.glowEl,this.divider,this.dot,this.lab,this.sub,this.clock,this.hint].forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
   this.icons.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],i*stg)});
-  this.pins.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],(APPS.length+i)*stg)})}
+  this.pins.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],(me.list().length+i)*stg)})}
 };
 Stage.prototype.key=function(k){
- var n=APPS.length,m=this.pins.length,t=n+m,f=this.focus,g=geo(this.get()),stack=g.pm==='stack';
+ var n=this.list().length,m=this.pins.length,t=n+m,f=this.focus,g=this.geo(this.get()),stack=g.pm==='stack';
+ /* as on the TV: Up on an app, or on the top pill, opens the inputs panel; Down (or Back) closes it */
+ if(this.interactive&&this.page==='apps'&&k==='ArrowUp'&&(f<n||(stack&&f===n))){setPage('sources');return true}
+ if(this.interactive&&this.page==='sources'&&(k==='ArrowDown'||k==='Escape')){setPage('apps');return true}
  if(k==='ArrowRight'){if(f<n)f=Math.min(f+1,t-1);else if(!stack&&f<t-1)f++}
  else if(k==='ArrowLeft'){if(f>=n)f=stack?n-1:(f>n?f-1:n-1);else f=Math.max(0,f-1)}
  else if(k==='ArrowDown'){if(f>=n&&stack)f=Math.min(f+1,t-1)}
@@ -451,10 +483,13 @@ function buildGallery(){
   gallery.push({stage:stage});
  });
 }
+/* Switches the main preview between the apps bar and the inputs panel; the panel opens on the input in use, as on the TV. */
+function setPage(p){PAGE=p;main.page=p;main.focus=p==='sources'?CURRENT_SOURCE:0;$('page').value=p;main.build()}
 function init(){
  var sc=$('scene');Object.keys(SCENES).forEach(function(k){var o=document.createElement('option');o.textContent=k;sc.appendChild(o)});
  sc.onchange=function(){cfg.scene=sc.value;sync(false)};
  main=new Stage($('main'),getCfg,{interactive:true});
+ $('page').onchange=function(){setPage($('page').value)};
  buildControls();buildGallery();sync(true);
  $('nativeOnly').onchange=syncControls;
  $('replay').onclick=function(){main.play()};
@@ -463,7 +498,12 @@ function init(){
  $('apply').onclick=function(){try{var j=JSON.parse($('in').value),c=j.config||j;cfg=merge(DEF,c);sync(true)}catch(e){alert('JSON non valido: '+e.message)}};
  document.addEventListener('keydown',function(e){if(/INPUT|SELECT|TEXTAREA/.test((e.target.tagName||'')))return;if(main.key(e.key))e.preventDefault()});
 }
-Promise.all(APPS.map(prepare)).then(init);
+/* ?chosen loads the design the launcher draws today (chosen.json, needs the page served over http); ?page=sources opens the inputs panel. */
+var Q=new URLSearchParams(location.search);
+Promise.all(APPS.concat(SOURCES).map(prepare)).then(function(){
+ if(!Q.has('chosen'))return;
+ return fetch('chosen.json').then(function(r){return r.json()}).then(function(j){cfg=merge(DEF,j.config||j)}).catch(function(){});
+}).then(function(){init();if(Q.get('page')==='sources')setPage('sources');var f=+Q.get('focus');if(f>=0&&Q.has('focus')){main.focus=f;main.apply()}});
 </script>
 </body>
 </html>
