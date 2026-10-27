@@ -20,6 +20,7 @@ function fixture(options) {
         fs.mkdirSync(path.join(dir, 'res'), {recursive: true});
         fs.writeFileSync(path.join(dir, 'tvlauncher-dotnet.dll'), 'x');
         fs.writeFileSync(path.join(dir, 'res', 'glass_tile.png'), 'x');
+        fs.writeFileSync(path.join(dir, 'res', 'inputs.tsv'), 'in-tv\tTV\tsource:0\nin-hdmi1\tHDMI 1\tsource:13\nin-hdmi2\tHDMI 2\tsource:14\n');
     }
     const tv = {autorun: options.autorun == null ? 1 : options.autorun, running: options.running === true, scripts: [], neverStarts: options.neverStarts === true, csfs: true, clock: 1000000,
         homeData: options.homeData == null ? HOME_DATA : options.homeData, log: options.log || ''};
@@ -33,10 +34,11 @@ function fixture(options) {
         if (script.includes('setsid nohup')) { tv.started = script; if (!tv.neverStarts) tv.running = true; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
         if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=4242' : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
+        if (script.includes('/home/owner/tvlauncher.fifo') && script.includes('/usr/bin/input_keyevent Up')) { tv.inputsOpened = (tv.inputsOpened || 0) + 1; tv.inputsScript = script; return {exit_code: 0, stdout: ''}; }
         throw new Error('unexpected command: ' + script);
     };
     const dock = new Dock({execute: execute, dir: dir, stateFile: path.join(tmp, 'state.json'), appsFile: path.join(tmp, 'apps.tsv'),
-        sleep: async ms => { tv.clock += ms; }, now: () => tv.clock});
+        inputsFile: path.join(tmp, 'inputs.tsv'), sleep: async ms => { tv.clock += ms; }, now: () => tv.clock});
     return {dock, tv, tmp};
 }
 
@@ -123,6 +125,36 @@ function fixture(options) {
     assert.equal(s.enabled, false);
     assert.equal(s.running, false);
     assert.ok(!f.tv.scripts.some(c => /^app_launcher -s /.test(c)), 'the screen is not switched under the viewer');
+
+    // Input labels: seeded once in the share folder, validated, written with the source numbers, and applied by a restart.
+    f = fixture();
+    s = await f.dock.enable();
+    assert.equal(fs.readFileSync(path.join(f.tmp, 'inputs.tsv'), 'utf8'), 'in-tv\tTV\tsource:0\nin-hdmi1\tHDMI 1\tsource:13\nin-hdmi2\tHDMI 2\tsource:14\n', 'the packaged list seeds the editable copy');
+    assert.ok(f.tv.started.includes("--inputs '" + path.join(f.tmp, 'inputs.tsv') + "'"), 'the dock reads the editable copy');
+    assert.deepEqual(s.inputs.map(e => e.label), ['TV', 'HDMI 1', 'HDMI 2']);
+    await assert.rejects(f.dock.setInputLabels([]), /No input labels/);
+    await assert.rejects(f.dock.setInputLabels([{slug: 'nope', label: 'x'}]), /Unknown input/);
+    await assert.rejects(f.dock.setInputLabels([{slug: 'in-tv', label: '  '}]), /cannot be empty/);
+    await assert.rejects(f.dock.setInputLabels([{slug: 'in-tv', label: 'x'.repeat(25)}]), /24 characters/);
+    await assert.rejects(f.dock.setInputLabels([{slug: 'in-tv', label: 'a\u0001b'}]), /control characters/);
+    await assert.rejects(f.dock.setInputLabels([{slug: 'in-tv', label: 'A'}, {slug: 'in-tv', label: 'B'}]), /Duplicate input/);
+    s = await f.dock.setInputLabels([{slug: 'in-tv', label: 'Freeview'}, {slug: 'in-hdmi1', label: 'Mac mini'}]);
+    assert.deepEqual(s.inputs.map(e => e.label), ['Freeview', 'Mac mini', 'HDMI 2']);
+    assert.equal(fs.readFileSync(path.join(f.tmp, 'inputs.tsv'), 'utf8'), "# the inputs panel (Up on the dock). source:N is Samsung's input number: TV 0, HDMI 1-4 are 13-16\nin-tv\tFreeview\tsource:0\nin-hdmi1\tMac mini\tsource:13\nin-hdmi2\tHDMI 2\tsource:14\n");
+    assert.equal(f.dock.readState().enabled, true, 'saving labels does not change the launcher setting');
+    s = await f.dock.relaunch();
+    assert.equal(f.tv.running, true);
+    assert.deepEqual(s.inputs.map(e => e.label), ['Freeview', 'Mac mini', 'HDMI 2'], 'the running dock was restarted with the new file');
+    await f.dock.disable();
+    await assert.rejects(f.dock.relaunch(), /off/);
+    // The inputs panel: only while the launcher is running.
+    await assert.rejects(f.dock.openInputs(), /off/);
+    await f.dock.enable();
+    await f.dock.openInputs();
+    assert.equal(f.tv.inputsOpened, 1);
+    assert.ok(f.tv.inputsScript.includes("printf 'show\\n'") && f.tv.inputsScript.indexOf('sleep 0.8') < f.tv.inputsScript.indexOf('/usr/bin/input_keyevent Up'), 'show first, then the dock\'s own Up key');
+    f.tv.running = false;
+    await assert.rejects(f.dock.openInputs(), /not running/);
 
     // Supervision: only when on, installed, and the agent is up.
     f = fixture();

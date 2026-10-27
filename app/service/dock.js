@@ -18,6 +18,7 @@ var catalog = require('./dock-catalog.js');
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
 var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
+var INPUTS_FILE = SHARE + '/vetro-dock-inputs.tsv';    // editable labels, seeded from the package
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
@@ -42,6 +43,7 @@ function Dock(options) {
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
+    this.inputsFile = options.inputsFile || INPUTS_FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -166,7 +168,7 @@ Dock.prototype.statusNow = function () {
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
-    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
+    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(this.inputsFile) +
         ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
     return [
         this.stopLines(),
@@ -214,7 +216,8 @@ Dock.prototype.waitRunning = function () {
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
 Dock.prototype.launch = function (quick) {
     var self = this, saved = quick && this.hasSavedApps();
-    return (saved ? Promise.resolve() : this.writeCatalog()).then(function () {
+    return Promise.resolve().then(function () { self.ensureInputsFile(); })
+        .then(function () { return saved ? null : self.writeCatalog(); }).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
         if (saved) self.refreshPending = true;
@@ -285,6 +288,41 @@ Dock.prototype.refresh = function () {
     }).finally(function () { self.busy = false; });
 };
 
+// Restart with the saved app list, for a change that only affects what the dock reads at start
+// (the input labels). Unlike refresh(), it does not re-read Samsung's Home row.
+Dock.prototype.relaunch = function () {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    if (!this.readState().enabled) return Promise.reject(new Error('The dock is off'));
+    this.busy = true; this.lastError = null;
+    return this.launch(true).then(function () { return self.status(); }).catch(function (e) {
+        self.lastError = e.message; throw e;
+    }).finally(function () { self.busy = false; });
+};
+
+// The dock has no inputs command on its fifo, so this shows the dock and presses Up, the key the
+// dock itself uses to open the inputs panel. Both steps are the dock's own tested behaviour.
+Dock.prototype.openInputsScript = function () {
+    return [
+        'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
+        'if [ -z "$p" ] || ! tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + ' || [ ! -p ' + FIFO + ' ]; then echo "The Vetro launcher is not running" >&2; exit 1; fi',
+        "printf 'show\\n' > " + FIFO,
+        'sleep 0.8',
+        '/usr/bin/input_keyevent Up'
+    ].join('\n');
+};
+Dock.prototype.openInputs = function () {
+    var self = this;
+    if (!this.readState().enabled) return Promise.reject(new Error('The Vetro launcher is off; turn it on to use the inputs panel'));
+    return this.probe().then(function (p) {
+        if (!p.running) return Promise.reject(new Error('The Vetro launcher is not running'));
+        return self.execute(wrap(self.openInputsScript()), 8000).then(function (r) {
+            check(r, 'Open inputs');
+            return {ok: true, panel: 'inputs'};
+        });
+    });
+};
+
 // The list the dock was last given, as the page's preview shows it. Icons are served by iconFile().
 function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
@@ -296,8 +334,63 @@ function parseTsv(text) {
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
+// The labels live in the share folder so a package update keeps them. The first launch copies the
+// packaged list there; before that (and if it cannot be read) the package's own list is shown.
+Dock.prototype.packagedInputs = function () {
+    try { return fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8'); } catch (e) { return null; }
+};
+Dock.prototype.ensureInputsFile = function () {
+    try { fs.statSync(this.inputsFile); return false; } catch (e) { /* seed it */ }
+    var text = this.packagedInputs();
+    if (text == null) throw new Error('The inputs list is missing from this Vetro package');
+    fs.mkdirSync(path.dirname(this.inputsFile), {recursive: true});
+    fs.writeFileSync(this.inputsFile, text);
+    return true;
+};
 Dock.prototype.inputEntries = function () {
-    try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }
+    var text = null;
+    try { text = fs.readFileSync(this.inputsFile, 'utf8'); } catch (e) { text = this.packagedInputs(); }
+    try { return parseTsv(text); } catch (e) { return []; }
+};
+
+var MAX_INPUT_LABEL = 24;
+function inputLabel(value) {
+    var label = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+    if (!label) throw new Error('Input labels cannot be empty');
+    if (label.length > MAX_INPUT_LABEL) throw new Error('Input labels are limited to ' + MAX_INPUT_LABEL + ' characters');
+    if (/[\u0000-\u001f\u007f]/.test(label)) throw new Error('Input labels cannot contain control characters');
+    return label;
+}
+
+// Change the labels shown in the dock's inputs panel. The source order and numbers stay.
+Dock.prototype.setInputLabels = function (labels) {
+    if (!Array.isArray(labels) || !labels.length) return Promise.reject(new Error('No input labels were supplied'));
+    var entries = this.inputEntries();
+    if (!entries.length) return Promise.reject(new Error('The inputs list could not be read'));
+    var bySlug = {}, seen = {};
+    entries.forEach(function (e) { bySlug[e.slug] = e; });
+    try {
+        labels.forEach(function (item) {
+            if (!item || typeof item.slug !== 'string' || !bySlug[item.slug]) throw new Error('Unknown input: ' + (item && item.slug));
+            if (seen[item.slug]) throw new Error('Duplicate input: ' + item.slug);
+            seen[item.slug] = true;
+            bySlug[item.slug].label = inputLabel(item.label);
+        });
+    } catch (e) { return Promise.reject(e); }
+    var lines = ["# the inputs panel (Up on the dock). source:N is Samsung's input number: TV 0, HDMI 1-4 are 13-16"];
+    entries.forEach(function (e) {
+        var fields = [e.slug, e.label, e.appId];
+        if (e.icon) fields.push(e.icon);
+        if (e.killFirst) { while (fields.length < 4) fields.push(''); fields.push(e.killFirst); }
+        lines.push(fields.join('\t'));
+    });
+    try {
+        fs.mkdirSync(path.dirname(this.inputsFile), {recursive: true});
+        var tmp = this.inputsFile + '.tmp';
+        fs.writeFileSync(tmp, lines.join('\n') + '\n');
+        fs.renameSync(tmp, this.inputsFile);
+    } catch (e) { return Promise.reject(new Error('The input labels could not be saved: ' + e.message)); }
+    return Promise.resolve({inputs: entries});
 };
 
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.

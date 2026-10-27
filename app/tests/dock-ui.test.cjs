@@ -5,8 +5,10 @@ const nodes = {};
 const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textContent: '', innerHTML: '', disabled: false, focus() {}});
 const calls = [];
 let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false,
-    entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}]};
-const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
+    entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}],
+    inputs: [{slug: 'in-tv', label: 'TV', appId: 'source:0', source: 0}, {slug: 'in-hdmi1', label: 'HDMI 1', appId: 'source:13', source: 13}]};
+const inputFields = [{dataset: {inputSlug: 'in-tv'}, value: 'Freeview'}, {dataset: {inputSlug: 'in-hdmi1'}, value: 'Mac mini'}];
+const sandbox = {document: {getElementById: el, querySelectorAll: sel => sel === '#dockBody [data-input-slug]' ? inputFields : [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
     fetch: async (url, opts) => {
         const body = opts && opts.body ? JSON.parse(opts.body) : null;
         calls.push({url, body});
@@ -89,6 +91,12 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.doesNotMatch(page, /lp-label/, 'no name or clock row: the design shows none');
     assert.match(page, /<div class="lp-hint">Source/, 'the hint over the bar');
     assert.match(sandbox.operationEntries[0].message, /Launcher on and running\. Press Home on the remote to open it\./, 'recorded in Actions');
+    assert.match(page, /Input labels/);
+    assert.match(page, /data-input-slug="in-hdmi1"[^>]*value="HDMI 1"/, 'the editable label starts at the current one');
+    assert.match(page, /maxlength="24"/);
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockSaveInputs: ''}})}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body,
+        {action: 'inputLabels', labels: [{slug: 'in-tv', label: 'Freeview'}, {slug: 'in-hdmi1', label: 'Mac mini'}]});
 
     // Turning it off needs no warning.
     const off = {dataset: {dockSwitch: ''}, checked: false};

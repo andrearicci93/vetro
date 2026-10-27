@@ -506,6 +506,7 @@ function runActions(actions) {
     return actions.reduce(function(chain,a){return chain.then(function(){
         var command;
         if(a.type==='mqtt'){bridge.publish(a.topic,a.payload);sent++;mqttSent++;return;}
+        if(a.type==='inputs')return dock.openInputs().then(function(){sent++;});
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
@@ -605,7 +606,7 @@ http.createServer(function (req, res) {
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
-        if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
+        if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='relaunch'?dock.relaunch():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):p.action==='inputLabels'?dock.setInputLabels(p.labels).then(function(){return dock.readState().enabled?dock.relaunch():dock.status();}):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
