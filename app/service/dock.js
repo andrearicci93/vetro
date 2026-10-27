@@ -315,18 +315,6 @@ Dock.prototype.refresh = function () {
     }).finally(function () { self.busy = false; });
 };
 
-// Restart with the saved app list, for a change that only affects what the dock reads at start
-// (the input labels). Unlike refresh(), it does not re-read Samsung's Home row.
-Dock.prototype.relaunch = function () {
-    var self = this;
-    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
-    if (!this.readState().enabled) return Promise.reject(new Error('The dock is off'));
-    this.busy = true; this.lastError = null;
-    return this.restart().catch(function (e) {
-        self.lastError = e.message; throw e;
-    }).finally(function () { self.busy = false; });
-};
-
 // The dock has no inputs command on its fifo, so this shows the dock and presses Up, the key the
 // dock itself uses to open the inputs panel. Both steps are the dock's own tested behaviour.
 Dock.prototype.openInputsScript = function () {
@@ -338,11 +326,18 @@ Dock.prototype.openInputsScript = function () {
         '/usr/bin/input_keyevent Up'
     ].join('\n');
 };
+// Launcher off or stopped is a normal "nothing to open" answer, not a reason to stop the whole
+// physical remote: the caller keeps intercepting the other mapped keys.
+function skipped(message) {
+    var error = new Error(message);
+    error.nonFatal = true;
+    return error;
+}
 Dock.prototype.openInputs = function () {
     var self = this;
-    if (!this.readState().enabled) return Promise.reject(new Error('The Vetro launcher is off; turn it on to use the inputs panel'));
+    if (!this.readState().enabled) return Promise.reject(skipped('The Vetro launcher is off; turn it on to use the inputs panel'));
     return this.probe().then(function (p) {
-        if (!p.running) return Promise.reject(new Error('The Vetro launcher is not running'));
+        if (!p.running) return Promise.reject(skipped('The Vetro launcher is not running'));
         return self.execute(wrap(self.openInputsScript()), 8000).then(function (r) {
             check(r, 'Open inputs');
             return {ok: true, panel: 'inputs'};

@@ -2,8 +2,9 @@
 
 ## 0.4.0 — 2026-10-27
 
-- **Launcher: the source list, with the TV's own names.** The inputs panel now shows the names the TV reports over HDMI-CEC (for example *Amazon Fire TV stick* or *PlayStation 5*) and a generic type icon classified from that name (TV, HDMI, computer, console, streaming, soundbar, disc or camera), instead of the port numbers. Old custom labels are carried over and the saved order is kept; the panel list is generated from a saved source list on the TV, so a package update no longer overwrites labels.
-- **Launcher: edit the source list.** The Launcher tab lists all five sources with a label, an icon choice, a move up/down control and a hide switch. **Save sources** writes the list and restarts a running launcher; **Refresh sources** re-reads detection and rebuilds the panel without saving edits. The last visible row cannot be hidden, and when detection is unavailable the rows fall back to the port names and saved labels.
+- **Launcher: the source list, with the TV's own names.** The inputs panel now shows the names the TV reports over HDMI-CEC (for example *Amazon Fire TV stick* or *PlayStation 5*) and a generic type icon classified from that name (TV, HDMI, computer, console, streaming, soundbar, disc or camera), instead of the port numbers. Existing custom labels are migrated once, with a backup, and the saved order is kept; the panel list is generated from a saved source list on the TV, so a package update no longer overwrites labels.
+- **Launcher: edit the source list.** The Launcher tab lists all five sources with a name, an icon choice, a move up/down control and a hide switch. **Save sources** writes the list and restarts a running launcher; **Refresh sources** re-reads detection and rebuilds the panel without saving edits. The last visible row cannot be hidden, and when detection is unavailable the rows fall back to the port names and saved labels.
+- **Remapper: open the launcher's inputs panel.** A shortcut can open the HDMI switcher instead of an app. On the dock's own remote, Up does this; the shortcut shows the dock and presses the same key, so the TV does not need an input button. If the launcher is off or not running, the shortcut is skipped and the other mapped keys keep working. Select **Vetro · Inputs panel (HDMI switcher)** as the target in Remapper.
 
 ## 0.3.5 — 2026-10-29
 
@@ -21,11 +22,6 @@
 - **Compatibility:** a Samsung Q80R QN65Q80RAFXZA (2019, Tizen 5.0, firmware T-MSMAKUC-1500.5) works with a personal port ([#35](https://github.com/andrearicci93/vetro/issues/35), by torresdrew): its own launcher host (.NET Core 2.1.4), the older app registry and icon layout, and Node.js 16.20.2. It is not the stock package and the changes are not merged; it is listed as working with local changes.
 - **Compatibility:** a Samsung S90D QA65S90DAULXL (2024, Tizen 9, firmware T-PTMDUABC-0090-2130.0) on Vetro 0.3.2 ([#36](https://github.com/andrearicci93/vetro/issues/36), by Inderdeep29): service on Node v18.18.2 and the UID-0 root agent running, the Launcher on with 15 apps and no error, and, in the owner's account, the root agent back after a full restart.
 - **Compatibility:** a Samsung The Frame QN75LS03BAFXZA (2022, firmware T-PTMAKUC-1720.7) on Vetro 0.3.2 ([#39](https://github.com/andrearicci93/vetro/issues/39), by bertrandom): service on Node v12.16.3 and the UID-0 root agent running; after the Host PC IP was set to `127.0.0.1` the service started by itself after a cold boot. The Launcher was not tried.
-
-## 0.3.3 — 2026-10-27
-
-- **Remapper: open the launcher's inputs panel.** A shortcut can now open the HDMI switcher instead of an app. On the dock's own remote, Up does this; the shortcut shows the dock and presses the same key, so the TV does not need an input button. If the launcher is off or not running, the shortcut fails with that reason. Select **Vetro · Inputs panel (HDMI switcher)** as the target in Remapper.
-- **Launcher: editable input labels.** The inputs panel now reads labels from `vetro-dock-inputs.tsv` in the share folder, seeded from the package on first launch. The Launcher tab edits them in place (up to 24 characters each, source order and numbers unchanged) and restarts the running dock to apply them. Labels survive a package update.
 
 ## 0.3.2 — 2026-10-26
 

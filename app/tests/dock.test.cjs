@@ -251,19 +251,18 @@ function fixture(options) {
     await assert.rejects(f.dock.saveSources(saved.sources), /could not be saved/);
     assert.ok(fs.existsSync(path.join(f.tmp, 'sources.json')), 'the saved list survives a failed generate');
 
-    // The inputs panel: only while the launcher is running.
+    // The inputs panel: only while the launcher is running. Off/stopped is non-fatal, so a
+    // remapped key cannot take the whole physical remote down.
     f = fixture();
     s = await f.dock.enable();
     await f.dock.disable();
-    await assert.rejects(f.dock.relaunch(), /off/);
-    // The inputs panel: only while the launcher is running.
-    await assert.rejects(f.dock.openInputs(), /off/);
+    await assert.rejects(f.dock.openInputs(), e => e.nonFatal === true && /off/.test(e.message));
     await f.dock.enable();
     await f.dock.openInputs();
     assert.equal(f.tv.inputsOpened, 1);
     assert.ok(f.tv.inputsScript.includes("printf 'show\\n'") && f.tv.inputsScript.indexOf('sleep 0.8') < f.tv.inputsScript.indexOf('/usr/bin/input_keyevent Up'), 'show first, then the dock\'s own Up key');
     f.tv.running = false;
-    await assert.rejects(f.dock.openInputs(), /not running/);
+    await assert.rejects(f.dock.openInputs(), e => e.nonFatal === true && /not running/.test(e.message));
 
     // Supervision: only when on, installed, and the agent is up.
     f = fixture();

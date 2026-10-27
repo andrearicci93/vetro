@@ -18,5 +18,22 @@ function post(url,body){return new Promise(resolve=>{const req=new EventEmitter(
  const panelRun=await post('/remap/run',{type:'http',value:'panel'});
  assert.equal(panelRun.data.sent,1);assert.equal(opened,1);assert.deepEqual(commands,[],'the panel is opened by the launcher, not by a raw key');
  assert.equal((await post('/remap',{rules:[{...panelRule,actions:[{type:'inputs',key:'Up'}]}]})).data.rules[0].actions.length,1);
+
+ // A launcher-off inputs action is skipped, not fatal: interception and the helper stay up.
+ const offPanel={id:'panel-off',enabled:true,trigger:{type:'physical',value:'70'},actions:[{type:'inputs'}]};
+ const afterRule={id:'after',enabled:true,trigger:{type:'physical',value:'71'},actions:[{type:'launch',appId:'app.after'}]};
+ await post('/remap',{rules:[offPanel,afterRule]});
+ let stops=0;const realStop=context.physical.stop.bind(context.physical);
+ context.physical.stop=function(){stops++;return realStop();};
+ context.dock.openInputs=()=>Promise.reject(Object.assign(new Error('The Vetro launcher is off; turn it on to use the inputs panel'),{nonFatal:true}));
+ context.physical.onEvent({action:'down',decision:'blocked',code:70});
+ await context.actionQueue;
+ assert.equal(context.inputPaused,false,'a launcher-off shortcut does not pause interception');
+ assert.equal(stops,0,'the remote helper is not stopped');
+ assert.match(context.inputError,/launcher is off/);
+ commands.length=0;
+ context.physical.onEvent({action:'down',decision:'blocked',code:71});
+ await context.actionQueue;
+ assert.deepEqual(commands,['/usr/bin/app_launcher -s app.after'],'the next mapped key still runs');
  console.log('PASS native remap: canonical physical codes, selected app, whitelisted native key and the launcher inputs panel');
 })().catch(e=>{console.error(e);process.exitCode=1});

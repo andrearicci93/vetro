@@ -187,7 +187,11 @@ function iconFile(icon) {
 
 function shorten(label) {
     var text = String(label);
-    return text.length > MAX_TSV_LABEL ? text.slice(0, MAX_TSV_LABEL - 1) + '\u2026' : text;
+    if (text.length <= MAX_TSV_LABEL) return text;
+    var cut = MAX_TSV_LABEL - 1, head = text.slice(0, cut);
+    // Never leave half of a surrogate pair before the ellipsis.
+    if (/[\uD800-\uDBFF]$/.test(head)) head = text.slice(0, cut - 1);
+    return head + '\u2026';
 }
 
 // The saved list joined with the TV's report, one row per source, in saved order. `label` and `icon`

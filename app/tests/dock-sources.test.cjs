@@ -195,6 +195,10 @@ function state(changes) {
     assert.equal(lines.length, 6, 'header, four visible rows and the final newline');
     assert.equal(sources.shorten('x'.repeat(40)), 'x'.repeat(40), 'forty is short enough');
     assert.equal(sources.shorten('x'.repeat(41)).length, 40);
+    assert.equal(sources.shorten('x'.repeat(41)), 'x'.repeat(39) + '\u2026', 'the ellipsis replaces the fortieth character');
+    const splitPair = sources.shorten('a'.repeat(38) + '\uD83D\uDE00' + 'b'.repeat(10));
+    assert.equal(splitPair, 'a'.repeat(38) + '\u2026', 'a cut between the halves of an emoji drops the whole pair');
+    assert.doesNotMatch(splitPair, /[\uD800-\uDBFF]\u2026/, 'no lone high surrogate before the ellipsis');
 
     // Icon file names: TV reuses the existing TV icon, HDMI has its own file.
     assert.equal(sources.iconFile('tv'), 'in-tv.png');
