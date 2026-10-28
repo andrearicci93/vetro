@@ -23,9 +23,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#080f23;color:#f5f8ff;
 .state.warn{border-color:rgba(226,184,103,.4);background:rgba(226,184,103,.12);color:rgb(226,184,103)}
 .state.bad{border-color:rgba(239,138,128,.4);background:rgba(239,138,128,.12);color:rgb(239,138,128)}
 .state.wait{border-color:#344360;background:transparent;color:#aab8d1}
-/* The one moving thing: a slowly turning dashed ring while the checks run, so a quiet screen does not look stuck. */
+/* The one moving thing: a slowly turning dashed ring while the checks run, so a quiet screen does not look stuck.
+   Shown only once the checks take 100 ms (#stage.slow), as Samsung's TV guideline asks of loading indicators. */
 @keyframes spin{to{transform:rotate(360deg)}}
-.state.wait svg,.c.wait .ic{animation:spin 2.4s linear infinite}
+.state.wait svg,.c.wait .ic{visibility:hidden}
+.slow .state.wait svg,.slow .c.wait .ic{visibility:visible;animation:spin 2.4s linear infinite}
 .dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:#101c35;border:2px solid #344360}
 .dh{display:flex;align-items:baseline}
 .dh small{font-size:22px;letter-spacing:.12em;color:#aab8d1}
@@ -68,8 +70,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#080f23;color:#f5f8ff;
 var BASE = 'http://127.0.0.1:8099';
 var ICON = 'icon.png';
 var IDLE_MS = 300000;
+var LOADER_DELAY_MS = 100;
 var report = {probe: {}, apps: [], packages: [], settings: {}};
-var delivered = false, running = false, idleTimer = null;
+var delivered = false, running = false, idleTimer = null, loaderTimer = null;
 // The service keeps running without this page; a resident page only holds memory.
 function leave() { try { tizen.application.getCurrentApplication().exit(); } catch (e) {} }
 // Every probe gets a time limit: a Tizen call whose callback never fires must not leave the screen on "Checking".
@@ -261,6 +264,14 @@ function progress(done) {
   var el = document.getElementById('sum');
   if (el) el.textContent = done + ' of ' + jobs.length + ' checks done';
 }
+function showLoaderLater() {
+  var stage = document.getElementById('stage');
+  clearTimeout(loaderTimer);
+  stage.className = '';
+  loaderTimer = setTimeout(function () {
+    stage.className = 'slow';
+  }, LOADER_DELAY_MS);
+}
 // The checks don't depend on each other, so they run at the same time: a stuck one costs its own time limit, not
 // everyone's. Keys are created in job order so the report reads the same whichever check finishes first.
 function runChecks() {
@@ -281,6 +292,7 @@ function run() {
   running = true; delivered = false;
   report = {probe: {}, apps: [], packages: [], settings: {}};
   render(null, true);
+  showLoaderLater();
   return runChecks()
     .then(function () { return sendReport().then(function () { delivered = true; }, function () {}); })
     .then(function () { return readScreen().catch(function () { return null; }); })

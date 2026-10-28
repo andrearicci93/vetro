@@ -145,6 +145,12 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
+  // Samsung's guideline: a loading indicator only once loading takes 100 ms.
+  assert.ok(/\.state\.wait svg,\.c\.wait \.ic\{visibility:hidden\}/.test(html), 'the ring is hidden at first');
+  assert.ok(/\.slow \.state\.wait svg,\.slow \.c\.wait \.ic\{visibility:visible;animation:spin/.test(html), 'and turns once the stage is slow');
+  assert.equal(waiting.stage.className, '');
+  waiting.timers.find(t => t.ms === 100).f();
+  assert.equal(waiting.stage.className, 'slow', 'after 100 ms of checking the ring shows');
   // The TV has no monospace font: the address, PIN and support line use the bundled Roboto Mono.
   assert.ok(html.includes("@font-face{font-family:'Roboto Mono';src:url(fonts/RobotoMono-Regular.woff) format('woff')}"));
   assert.equal((html.match(/font-family:'Roboto Mono',monospace/g) || []).length, 3, '.url, .pin b and .share code');
