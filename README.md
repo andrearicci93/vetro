@@ -117,6 +117,7 @@ The app has no npm runtime dependencies. Use a maintained Node.js release and Py
 ```sh
 git clone https://github.com/andrearicci93/vetro.git
 cd vetro/app
+npm ci
 npm test
 npm start
 ```
