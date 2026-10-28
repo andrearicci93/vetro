@@ -145,5 +145,8 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
+  // The TV has no monospace font: the address, PIN and support line use the bundled Roboto Mono.
+  assert.ok(html.includes("@font-face{font-family:'Roboto Mono';src:url(fonts/RobotoMono-Regular.woff) format('woff')}"));
+  assert.equal((html.match(/font-family:'Roboto Mono',monospace/g) || []).length, 3, '.url, .pin b and .share code');
   console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');
 })().catch(e => {console.error(e); process.exitCode = 1;});
