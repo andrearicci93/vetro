@@ -254,16 +254,31 @@ function resetIdle() {
   idleTimer = setTimeout(leave, IDLE_MS);
 }
 // Shows how far the checks are, so a slow TV reads as working and not as stuck.
-function progress(n) {
+function progress(done) {
   var el = document.getElementById('sum');
-  if (el) el.textContent = 'Checking ' + n + ' of ' + jobs.length;
+  if (el) el.textContent = done + ' of ' + jobs.length + ' checks done';
+}
+// The checks don't depend on each other, so they run at the same time: a stuck one costs its own time limit, not
+// everyone's. Keys are created in job order so the report reads the same whichever check finishes first.
+function runChecks() {
+  var done = 0;
+  jobs.forEach(function (j) {
+    report.probe[j[0]] = null;
+  });
+  progress(done);
+  return Promise.all(jobs.map(function (j) {
+    return attempt(j[0], j[1], j[2]).then(function () {
+      done++;
+      progress(done);
+    });
+  }));
 }
 function run() {
   if (running) return Promise.resolve();
   running = true; delivered = false;
   report = {probe: {}, apps: [], packages: [], settings: {}};
   render(null, true);
-  return jobs.reduce(function (p, j, i) { return p.then(function () { progress(i + 1); return attempt(j[0], j[1], j[2]); }); }, Promise.resolve())
+  return runChecks()
     .then(function () { return sendReport().then(function () { delivered = true; }, function () {}); })
     .then(function () { return readScreen().catch(function () { return null; }); })
     .then(function (d) { render(d, false); }, function () { render(null, false); })

@@ -128,12 +128,15 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(hung.screen.innerHTML.includes('Checking'), 'still waiting for the stuck call');
   const limit = hung.timers.find(t => t.ms === 8000);
   assert.ok(limit, 'every probe has a time limit');
+  assert.equal(hung.screen.textContent, '9 of 10 checks done', 'the checks run at the same time: only the stuck one is left');
   limit.f();
   await hung.settle();
   const report = hung.sent.find(s => s.method === 'POST').body;
   assert.equal(report.probe.serviceLaunch.ok, false);
   assert.ok(/no answer/.test(report.probe.serviceLaunch.error));
   assert.equal(report.probe.serviceReach.ok, true, 'the probes after the stuck one still run');
+  assert.deepEqual(Object.keys(report.probe), ['serviceLaunch', 'tizenObject', 'webapisObject', 'supportedKeys', 'apps', 'packages',
+    'productinfo', 'systeminfoBattery', 'remoteApi8001', 'serviceReach'], 'the report keeps the job order, whichever check finishes first');
   assert.ok(!hung.screen.innerHTML.includes('Checking'), 'the screen leaves the waiting state');
   // While the checks run the screen says what it is doing: placeholders for each check, a turning ring, a step counter.
   const waiting = await run({hangLaunch: true});
