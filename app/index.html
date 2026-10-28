@@ -4,63 +4,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="$WEBAPIS/webapis/webapis.js"></script>
 <style>
-/* Values from design-system/tokens.css (dark), status colours from the dashboard. Static page: solid surfaces,
-   no blur, no animation. Flex without gap and ES5 only, so older TV runtimes draw it the same. */
-:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--link:#8fbaff;
---ok:rgb(127,203,160);--warn:rgb(226,184,103);--bad:rgb(239,138,128);
---ok-soft:rgba(127,203,160,.12);--warn-soft:rgba(226,184,103,.12);--bad-soft:rgba(239,138,128,.12);
---ok-line:rgba(127,203,160,.4);--warn-line:rgba(226,184,103,.4);--bad-line:rgba(239,138,128,.4)}
+/* Values from design-system/tokens.css (dark), status colours from the dashboard, written out: Tizen 3.0 (Chromium M47)
+   has no CSS custom properties and drops every declaration that uses var(). Static page: solid surfaces, no blur.
+   Flex without gap and ES5 only, so older TV runtimes draw it the same (tests/tv-compat.test.cjs). */
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+html,body{margin:0;height:100%;overflow:hidden;background:#080f23;color:#f5f8ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
 .safe{position:absolute;top:54px;left:96px;right:96px;bottom:54px}
 .hero{display:flex;align-items:center}
 .hero img{width:176px;height:176px;border-radius:28px;display:block;flex:none;margin-right:48px}
 .hero h1{margin:0;font-size:84px;line-height:1.05;font-weight:500;letter-spacing:-.04em}
-.meta{margin-top:12px;font-size:28px;color:var(--muted)}
-.state{margin-top:20px;display:inline-flex;align-items:center;font-size:28px;font-weight:500;padding:8px 20px 8px 12px;border-radius:999px;border:2px solid var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.meta{margin-top:12px;font-size:28px;color:#aab8d1}
+.state{margin-top:20px;display:inline-flex;align-items:center;font-size:28px;font-weight:500;padding:8px 20px 8px 12px;border-radius:999px;border:2px solid rgba(127,203,160,.4);background:rgba(127,203,160,.12);color:rgb(127,203,160)}
 .state svg{width:32px;height:32px;margin-right:12px;flex:none}
-.state.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
-.state.bad{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad)}
-.state.wait{border-color:var(--border);background:transparent;color:var(--muted)}
+.state.warn{border-color:rgba(226,184,103,.4);background:rgba(226,184,103,.12);color:rgb(226,184,103)}
+.state.bad{border-color:rgba(239,138,128,.4);background:rgba(239,138,128,.12);color:rgb(239,138,128)}
+.state.wait{border-color:#344360;background:transparent;color:#aab8d1}
 /* The one moving thing: a slowly turning dashed ring while the checks run, so a quiet screen does not look stuck. */
 @keyframes spin{to{transform:rotate(360deg)}}
 .state.wait svg,.c.wait .ic{animation:spin 2.4s linear infinite}
-.dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
+.dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:#101c35;border:2px solid #344360}
 .dh{display:flex;align-items:baseline}
-.dh small{font-size:22px;letter-spacing:.12em;color:var(--muted)}
+.dh small{font-size:22px;letter-spacing:.12em;color:#aab8d1}
 /* Reserved for the PIN of 0.4.0: stays hidden, and the card does not move, until the service sends one. */
-.pin{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
-.pin b{margin-left:12px;font-family:monospace;font-size:30px;letter-spacing:.2em;color:var(--text)}
-.url{margin:10px 0 8px;font-family:monospace;font-size:44px;font-weight:500;color:var(--link);white-space:nowrap}
-.url.off{color:var(--muted)}
-.dash p{margin:0;font-size:24px;line-height:1.35;color:var(--muted)}
-.panel{position:absolute;left:0;right:0;bottom:0;padding:32px 36px 28px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
-.panel.bad{border-color:var(--bad-line)}.panel.warn{border-color:var(--warn-line)}
+.pin{margin-left:auto;font-size:22px;letter-spacing:.12em;color:#aab8d1}
+.pin b{margin-left:12px;font-family:monospace;font-size:30px;letter-spacing:.2em;color:#f5f8ff}
+.url{margin:10px 0 8px;font-family:monospace;font-size:44px;font-weight:500;color:#8fbaff;white-space:nowrap}
+.url.off{color:#aab8d1}
+.dash p{margin:0;font-size:24px;line-height:1.35;color:#aab8d1}
+.panel{position:absolute;left:0;right:0;bottom:0;padding:32px 36px 28px;border-radius:16px;background:#101c35;border:2px solid #344360}
+.panel.bad{border-color:rgba(239,138,128,.4)}.panel.warn{border-color:rgba(226,184,103,.4)}
 .ph{display:flex;align-items:center;margin-bottom:24px}
 .ph h2{margin:0;font-size:36px;font-weight:500;letter-spacing:-.02em}
-.sum{margin-left:auto;font-size:26px;font-weight:500;color:var(--ok)}
-.sum.warn{color:var(--warn)}.sum.bad{color:var(--bad)}.sum.wait{color:var(--muted)}
+.sum{margin-left:auto;font-size:26px;font-weight:500;color:rgb(127,203,160)}
+.sum.warn{color:rgb(226,184,103)}.sum.bad{color:rgb(239,138,128)}.sum.wait{color:#aab8d1}
 .grid{display:flex;flex-wrap:wrap}
-.c{display:flex;width:calc(33.333% - 11px);margin:0 16px 16px 0;padding:20px 22px;border-radius:12px;background:var(--raised);border:2px solid transparent;min-height:112px}
+.c{display:flex;width:calc(33.333% - 11px);margin:0 16px 16px 0;padding:20px 22px;border-radius:12px;background:#192943;border:2px solid transparent;min-height:112px}
 .c:nth-child(3n){margin-right:0}
-.c.warn{background:var(--warn-soft);border-color:var(--warn-line)}
-.c.bad{background:var(--bad-soft);border-color:var(--bad-line)}
+.c.warn{background:rgba(226,184,103,.12);border-color:rgba(226,184,103,.4)}
+.c.bad{background:rgba(239,138,128,.12);border-color:rgba(239,138,128,.4)}
 .c.na{opacity:.6}
-.c.wait{background:transparent;border-color:var(--border)}.c.wait .v{color:var(--muted);font-weight:400}
+.c.wait{background:transparent;border-color:#344360}.c.wait .v{color:#aab8d1;font-weight:400}
 .ic{flex:none;width:40px;height:40px;margin-right:18px}
-.n{font-size:26px;line-height:1.2;color:var(--muted)}
+.n{font-size:26px;line-height:1.2;color:#aab8d1}
 .v{margin-top:2px;font-size:30px;line-height:1.2;font-weight:500}
-.v span{font-weight:400;color:var(--muted);font-size:24px}
-.c.warn .v{color:var(--warn)}.c.bad .v{color:var(--bad)}
+.v span{font-weight:400;color:#aab8d1;font-size:24px}
+.c.warn .v{color:rgb(226,184,103)}.c.bad .v{color:rgb(239,138,128)}
 .h{margin-top:8px;font-size:23px;line-height:1.35}
-.share{display:flex;align-items:center;margin-top:4px;padding-top:20px;border-top:2px solid var(--border)}
-.share .t{font-size:22px;color:var(--muted);flex:none;width:250px;margin-right:24px;line-height:1.3}
+.share{display:flex;align-items:center;margin-top:4px;padding-top:20px;border-top:2px solid #344360}
+.share .t{font-size:22px;color:#aab8d1;flex:none;width:250px;margin-right:24px;line-height:1.3}
 .share code{font-family:monospace;font-size:22px;word-break:break-word;line-height:1.4}
-.share em{font-style:normal;color:var(--bad);font-weight:700}.share em.w{color:var(--warn)}
-.keys{display:flex;justify-content:flex-end;margin-top:18px;font-size:22px;color:var(--muted)}
+.share em{font-style:normal;color:rgb(239,138,128);font-weight:700}.share em.w{color:rgb(226,184,103)}
+.keys{display:flex;justify-content:flex-end;margin-top:18px;font-size:22px;color:#aab8d1}
 .keys span{margin-left:28px}
-.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:8px;color:var(--text)}
+.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid #344360;border-radius:8px;color:#f5f8ff}
 </style></head>
 <body>
 <div id="stage"><div class="safe" id="screen"></div></div>
