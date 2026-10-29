@@ -28,6 +28,14 @@ var homeOrder = new (require('./home-order.js').Order)(agentExecute);
 var dock = new (require('./dock.js').Dock)({execute: agentExecute});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute);
+// Read-only: watches whether the TV starts a stopped app again and feeds the diagnostic report. It never stops or starts anything.
+var relaunchWatch = new (require('./relaunch-watch.js').Watch)(agentExecute);
+var HBBTV_IDS = ['org.tizen.hbbtv', require('./hbbtv.js').SERVICE];
+function watchSafely(label, ids) { try { return relaunchWatch.start(label, ids, function () { return hbbtv.busy; }).catch(function () {}); } catch (e) { return Promise.resolve(); } }
+function stopReason(message) {
+    message = String(message || '');
+    return /app is still running/.test(message) ? 'app-still-running' : /service is still running/.test(message) ? 'service-still-running' : /menu value was not kept/.test(message) ? 'menu-value-not-kept' : /brake file was not kept/.test(message) ? 'brake-file-not-kept' : 'other';
+}
 var presence = new (require('./presence.js').Presence)(agentExecute);
 var tvState = new (require('./tv-state.js').Store)(agentExecute);
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
@@ -148,6 +156,7 @@ function downloadDiagnostics(res) {
         mqtt: function () { return bridge.status(); },
         privacy: later(function () { return privacy.read(); }),
         hbbtv: later(function () { return hbbtv.read(); }),
+        relaunch: later(function () { return relaunchWatch.read(); }),
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         quickWins: later(function () { return wins.read(); }),
@@ -604,7 +613,7 @@ http.createServer(function (req, res) {
         if (url === '/debloat') return handleDebloatAction(req, res);
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);
-        if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
+        if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);if(p.off&&d.off)watchSafely('hbbtv-switch',HBBTV_IDS);}).catch(function(e){if(p.off&&/not fully off/.test(String(e.message)))relaunchWatch.failed('hbbtv-switch',stopReason(e.message));serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
@@ -626,7 +635,7 @@ http.createServer(function (req, res) {
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
-    if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
+    if (url === '/hbbtv') return hbbtv.read().then(function(d){d.relaunchSeen=relaunchWatch.seen('hbbtv');serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/privacy') return privacy.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/tv-menu') { var q=/[?&]id=([^&]+)/.exec(req.url||''), menuId=null; try { if(q)menuId=decodeURIComponent(q[1]); } catch(e) { return serveJson(res,{error:'Invalid menu ID'},400); } return (q?menuSettings.read(menuId):menuSettings.load()).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)}); }
     if (url === '/monitor') { var scope=/[?&]scope=([^&]*)/.exec(req.url||'');if(scope&&!/^(summary|full)$/.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full').then(function(d){d.telemetry=readTelemetry();serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
@@ -695,7 +704,7 @@ var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRest
 
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).then(function(did){did=did||[];var chain=Promise.resolve();if(did.indexOf('hbbtv')>=0)chain=chain.then(function(){return watchSafely('hbbtv-boot',HBBTV_IDS);});if(did.indexOf('ambient')>=0)chain=chain.then(function(){return watchSafely('ambient-boot',[require('./quick-wins.js').AMBIENT_ID]);});return chain;}).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
 var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
