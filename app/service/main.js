@@ -30,7 +30,7 @@ var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute);
 // Read-only: watches whether the TV starts a stopped app again and feeds the diagnostic report. It never stops or starts anything.
 var relaunchWatch = new (require('./relaunch-watch.js').Watch)(agentExecute);
-var HBBTV_IDS = ['org.tizen.hbbtv', hbbtv.SERVICE];
+var HBBTV_IDS = ['org.tizen.hbbtv', require('./hbbtv.js').SERVICE];
 function watchSafely(label, ids) { try { return relaunchWatch.start(label, ids, function () { return hbbtv.busy; }).catch(function () {}); } catch (e) { return Promise.resolve(); } }
 function stopReason(message) {
     message = String(message || '');
