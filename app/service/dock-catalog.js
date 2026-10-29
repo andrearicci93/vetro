@@ -39,6 +39,9 @@ var SYSTEM_ROWS = [
     'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu',
     'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'
 ];
+// 2025 (CoBA) firmware: csfs is only the service; the Home that comes up on screen is started through this app,
+// which then spawns csfs, home.sidebar and home.media. When it is installed the pill starts it instead.
+var COBA_HOME = 'com.samsung.tv.coba.newhome';
 
 function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
@@ -50,6 +53,7 @@ function script() {
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
+        '[ -d /usr/apps/' + COBA_HOME + ' ] || [ -d /opt/usr/apps/' + COBA_HOME + ' ] && echo "H|' + COBA_HOME + '"',
         'true'
     ].join('\n');
 }
@@ -63,7 +67,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, homeApp: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(/\r$/, '');
         var f = line.split('|');
@@ -78,6 +82,8 @@ function parse(text) {
             } else if (f[0] === 'P' && f.length === 3) {
                 var icon = unhex(f[2]), id = unhex(f[1]);
                 if (iconOk(icon) && !out.packageIcons[id]) out.packageIcons[id] = icon;
+            } else if (f[0] === 'H' && f.length === 2) {
+                if (f[1].trim() === COBA_HOME) out.homeApp = COBA_HOME;
             }
         } catch (e) { /* skip the line */ }
     });
@@ -137,7 +143,7 @@ function build(parsed, options) {
             if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
         }
     });
-    return {entries: entries, skipped: skipped};
+    return {entries: entries, skipped: skipped, homeApp: parsed.homeApp || null};
 }
 
 function tsv(built) {
@@ -145,7 +151,11 @@ function tsv(built) {
     built.entries.forEach(function (e) {
         lines.push([e.slug, e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(/\t+$/, ''));
     });
-    return lines.concat(SYSTEM_ROWS).join('\n') + '\n';
+    var system = SYSTEM_ROWS.map(function (row) {
+        // The CoBA home launcher first, Samsung's older home app as the fallback the dock already knows.
+        return built.homeApp ? row.replace('sys:com.samsung.tv.csfs', 'sys:' + built.homeApp + '\tcom.samsung.tv.csfs') : row;
+    });
+    return lines.concat(system).join('\n') + '\n';
 }
 
 // The registry can point at an icon that is no longer there (TV Plus does). One more read-only

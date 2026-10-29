@@ -25,6 +25,9 @@ var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
+// 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
+// when only csfs is closed, so the guard and the enable-time kill target all three.
+var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
 var AUTORUN_KEY = 'db/menu/smart_hub/ontvsetting/auto_start';   // Samsung's "Autorun Smart Hub"
 var HOME_CODE = 63;                                   // Home on the forwarded remote Vetro creates
 var START_WAIT_MS = 15000;
@@ -62,8 +65,8 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+            noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null};
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null}; }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -148,7 +151,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, autorunSwitchedOff: state.autorunWas === 1,
         entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
@@ -167,7 +170,7 @@ Dock.prototype.statusNow = function () {
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
     var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
-        ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
+        ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (this.readState().noMotion ? ' --no-motion' : '');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -250,7 +253,7 @@ Dock.prototype.enable = function () {
     }).then(function () {
         // Samsung's Home is idle in the background; closing it frees its memory, and Settings or
         // Source opened from the dock start it again on demand.
-        return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+        return self.execute(HOME_KILL.map(function (id) { return 'app_launcher -k ' + id; }).join('; '), 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
@@ -311,6 +314,22 @@ Dock.prototype.setFixTizenTube = function (on) {
     if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });   // the preview follows the choice
     return this.refresh().catch(function (e) {
         try { self.patchState({fixTizenTube: state.fixTizenTube}); } catch (e2) {}
+        throw e;
+    });
+};
+
+// Still selection: the focus jumps between tiles and the icons keep their size (the dock's --no-motion).
+// It is a start argument, so a running dock is restarted.
+Dock.prototype.setNoMotion = function (on) {
+    var self = this;
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    try { this.patchState({noMotion: on}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.status();
+    return this.refresh().catch(function (e) {
+        try { self.patchState({noMotion: state.noMotion}); } catch (e2) {}
         throw e;
     });
 };

@@ -46,16 +46,49 @@ namespace Launcher
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
         private const double HomeDebounceSeconds = 0.35;
+        // The raw press (evdev) opens the dock at once. The system holds Home to tell a short press from a long one
+        // and only then delivers XF86Home to the focused window, which is now the dock: on 2025 firmware that echo
+        // comes about 0.6 s later, well past the debounce. An XF86Home this soon after the raw press is the same
+        // press, not a request to close.
+        private const double HomeEchoSeconds = 1.5;
 
-        // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
-        // the key), so after each Home press the app is closed again, a few times because its start is slow.
-        // Off by default; the app id is checked as plain id characters because it goes on a command line.
+        // --kill-on-home APPID[,APPID...]: the system sends Home to Samsung's own home app as well (it is relaunched
+        // by the key), so after each Home press the app is closed again, a few times because its start is slow.
+        // 2025 (RSM/CoBA) firmware splits Home into csfs plus separate sidebar and media windows that stay on top of
+        // the dock when only csfs is closed, so several ids may be given. Off by default; every id is checked as
+        // plain id characters because it goes on a command line.
         // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
         // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
         private static string _guardApp, _guardCmd;
         private const double GuardFirst = 0.15;
         private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
         private static int _homeCode = -1;
+
+        // While the dock is up, the navigation keys are taken from the input device as well, like Home: the same
+        // press reaches us through the compositor only 140 ms or more later (measured on 2025 firmware), and that
+        // delay is what makes moving along the bar feel slow. Each raw press leaves one expected echo per key;
+        // the compositor's copy that arrives within EchoSeconds is dropped, a later one is a new press.
+        // Linux input codes; Samsung's remote reports the standard ones for these (Home is the odd one, 63).
+        private static readonly int[] NavCodes = { 105, 106, 103, 108, 28, 1 };
+        private static readonly string[] NavKeys = { "Left", "Right", "Up", "Down", "Return", "XF86Back" };
+        private static readonly int[] EchoPending = new int[6];
+        private static readonly double[] EchoAt = new double[6];
+        private const double EchoSeconds = 1.0;
+
+        /// <summary>Which raw key an evas key name stands for; the compositor has several names for OK and Back.</summary>
+        private static int NavBucket(string key)
+        {
+            switch (key)
+            {
+                case "Left": return 0;
+                case "Right": return 1;
+                case "Up": return 2;
+                case "Down": return 3;
+                case "Return": case "KP_Enter": case "Select": return 4;
+                case "XF86Back": case "Escape": return 5;
+                default: return -1;
+            }
+        }
         private static bool _learn;
         private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
@@ -510,6 +543,31 @@ namespace Launcher
             {
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                int bucket = NavBucket(key);
+                if (bucket >= 0 && EchoPending[bucket] > 0)
+                {
+                    if (Efl.ecore_time_get() - EchoAt[bucket] < EchoSeconds) { EchoPending[bucket]--; return; }
+                    EchoPending[bucket] = 0;   // stale: the echo never came, this is a new press
+                }
+                HandleKey(key);
+            }
+            catch (Exception ex) { Log("key: " + ex); }
+        }
+
+        /// <summary>A navigation key read straight from the input device, acted on only while the dock is up.</summary>
+        private static void NavFromInput(int code)
+        {
+            int i = Array.IndexOf(NavCodes, code);
+            if (i < 0 || !_ctl.IsActive) return;
+            EchoPending[i]++;
+            EchoAt[i] = Efl.ecore_time_get();
+            HandleKey(NavKeys[i]);
+        }
+
+        private static void HandleKey(string key)
+        {
+            try
+            {
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -528,7 +586,12 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
+                        if (key == "XF86Home")
+                        {
+                            double now = Efl.ecore_time_get();
+                            if (now - _lastHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastHome) * 1000).ToString("0") + " ms after the press"); break; }
+                            _lastHome = now;
+                        }
                         HideDock();
                         break;
                 }
@@ -577,7 +640,7 @@ namespace Launcher
                     {
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
-                        if (code != _homeCode) continue;
+                        if (code != _homeCode) { NavFromInput(code); continue; }
                         double now = Efl.ecore_time_get();
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
                         if (now - _lastHome < HomeDebounceSeconds) continue;
@@ -599,10 +662,10 @@ namespace Launcher
             catch (Exception ex) { Log("guard: " + ex.Message); }
         }
 
-        /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
-        private static string GuardCommand(string appId)
+        /// <summary>The app ids are plain id characters (checked at start), so they are safe on a command line.</summary>
+        private static string GuardCommand(string[] appIds)
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
+            string kill = string.Join("; ", Array.ConvertAll(appIds, id => "/usr/bin/app_launcher -k " + id));
             var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
             foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
             return sb.Append(" ) >/dev/null 2>&1 &").ToString();
@@ -630,8 +693,10 @@ namespace Launcher
                 if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
                 return;
             }
-            if (e.SourceType >= 0) SwitchSource(e); else Launch(e);
+            // The dock starts leaving before the request goes out: the launch call blocks the loop for a moment on a
+            // busy TV, and the press should be answered on the next frame, not after it.
             HideDock();
+            if (e.SourceType >= 0) SwitchSource(e); else Launch(e);
         }
 
         private const string SourceIconDir = "/usr/apps/com.samsung.tv.theme-resource/shared/res/org.tizen.menu/Settings_Popup/device_icon/";
@@ -707,14 +772,17 @@ namespace Launcher
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
-                if (e.AppId == "com.samsung.tv.csfs")
+                if (e.SystemApp || e.AppId == "com.samsung.tv.csfs")
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
-                    // the platform's own launcher starts it.
+                    // the platform's own launcher starts it. The same goes for the other system controls (sys: rows).
                     Log("launch " + e.AppId + " rc=" + Libc.system("/usr/bin/app_launcher -s " + e.AppId + " >/dev/null 2>&1 &"));
                     return;
                 }
-                if (SendLaunch(e.AppId)) { Log("launch " + e.AppId); return; }
+                long t0 = Stopwatch.GetTimestamp();
+                bool sent = SendLaunch(e.AppId);
+                long ms = (Stopwatch.GetTimestamp() - t0) * 1000 / Stopwatch.Frequency;
+                if (sent) { Log("launch " + e.AppId + " request " + ms + " ms"); return; }
                 Log("launch failed: " + e.AppId);
                 if (e.FallbackAppId != null && SendLaunch(e.FallbackAppId)) { Log("launch " + e.FallbackAppId + " (fallback)"); return; }
                 // Last resort: the platform's command line launcher.
@@ -781,6 +849,8 @@ namespace Launcher
         {
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
+            // --no-motion: the selection jumps and the icons keep their size; the bar still fades in and out.
+            if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
@@ -856,7 +926,8 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
+                    string[] guardIds = guard.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (guardIds.Length > 0 && Array.TrueForAll(guardIds, Catalog.ValidAppId)) { _guardApp = guard; _guardCmd = GuardCommand(guardIds); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
                     else Log("guard: bad app id ignored");
                 }
                 SetupInput(args);
