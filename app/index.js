@@ -8,8 +8,9 @@ var delivered = false, running = false, idleTimer = null, loaderTimer = null;
 function leave() { try { tizen.application.getCurrentApplication().exit(); } catch (e) {} }
 // Every probe gets a time limit: a Tizen call whose callback never fires must not leave the screen on "Checking".
 function attempt(name, fn, limit) {
+  limit = limit || 8000;
   return new Promise(function (resolve) {
-    var done = false, timer = setTimeout(function () { finish({ok: false, error: 'no answer in ' + Math.round(limit / 1000) + ' s'}); }, limit || 8000);
+    var done = false, timer = setTimeout(function () { finish({ok: false, error: 'no answer in ' + Math.round(limit / 1000) + ' s'}); }, limit);
     function finish(r) { if (done) return; done = true; clearTimeout(timer); report.probe[name] = r; resolve(); }
     try {
       Promise.resolve(fn()).then(function (v) { finish({ok: true, value: v}); },
