@@ -126,7 +126,7 @@
       tizen.package.getPackagesInfo(ok, fail);
     }).then(function (packages) {
       report.packages = packages.map(function (pkg) {
-        return {id: pkg.id, version: pkg.version, totalSize: pkg.totalSize, author: pkg.author};
+        return {id: pkg.id, version: pkg.version, author: pkg.author};
       });
       return packages.length;
     });

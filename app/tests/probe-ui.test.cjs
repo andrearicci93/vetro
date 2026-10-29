@@ -14,7 +14,8 @@ const GOOD = {version: '0.3.5', port: 8099, address: '192.168.1.42', root: {mode
 
 // screen: the /screen body (null: the service answers nothing); probeResponse: the /probe reply.
 async function run(options) {
-  const o = Object.assign({probeResponse: {ok: true, persisted: true}, screen: GOOD, failFetch: null, appVersion: '0.3.5', hangLaunch: false}, options || {});
+  const o = Object.assign({probeResponse: {ok: true, persisted: true}, screen: GOOD, failFetch: null, appVersion: '0.3.5', hangLaunch: false,
+    packages: [{id: 'vetrotvapp', version: '0.1.0'}]}, options || {});
   const sent = [], timers = [], listeners = {}, windowListeners = {}, exits = [], launched = [];
   const screen = {innerHTML: ''}, stage = {style: {}};
   function XHR() {}
@@ -41,7 +42,7 @@ async function run(options) {
       tvinputdevice: {getSupportedKeys: () => [{name: 'VolumeUp'}]},
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]),
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
-      package: {getPackagesInfo: ok => ok([{id: 'vetrotvapp', version: '0.1.0'}])},
+      package: {getPackagesInfo: ok => ok(o.packages)},
       systeminfo: {getPropertyValue: (name, ok) => ok({model: 'TV'})}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
     btoa: s => Buffer.from(s).toString('base64'), clearTimeout,
@@ -157,5 +158,12 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   // The TV has no monospace font: the address, PIN and support line use the bundled Roboto Mono.
   assert.ok(/@font-face \{\s*font-family: 'Roboto Mono';\s*src: url\(fonts\/RobotoMono-Regular\.woff\) format\('woff'\);/.test(css));
   assert.equal((css.match(/font-family: 'Roboto Mono', monospace;/g) || []).length, 3, '.url, .pin b and .share code');
-  console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');
+  // totalSize blocks the page on the TV (about 40 ms per package); the service measures sizes.
+  let sizeReads = 0;
+  const sized = await run({packages: [{id: 'a', version: '1', get totalSize() { sizeReads++; return 4096; }}]});
+  sized.timers.forEach(t => t.f());
+  await sized.settle();
+  assert.equal(sizeReads, 0, 'the page never reads a package size');
+  assert.deepEqual(sized.sent.find(s => s.method === 'POST').body.packages, [{id: 'a', version: '1'}]);
+  console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle, no package sizes read');
 })().catch(e => {console.error(e); process.exitCode = 1;});
