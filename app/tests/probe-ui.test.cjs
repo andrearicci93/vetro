@@ -3,15 +3,19 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const html = fs.readFileSync(process.argv[2] || path.join(__dirname, '..', 'index.html'), 'utf8');
-const script = /<script>\s*([\s\S]*?)<\/script>/.exec(html)[1];
+const page = process.argv[2] || path.join(__dirname, '..', 'index.html');
+const html = fs.readFileSync(page, 'utf8');
+const css = fs.readFileSync(path.join(path.dirname(page), 'index.css'), 'utf8');
+// The inline port settings of index.html, then index.js, as the TV runs them.
+const script = /<script>\s*([\s\S]*?)<\/script>/.exec(html)[1] + '\n' + fs.readFileSync(path.join(path.dirname(page), 'index.js'), 'utf8');
 
 const GOOD = {version: '0.3.5', port: 8099, address: '192.168.1.42', root: {mode: 'tv-integration', connected: true},
   input: {enabled: false, connected: false}, launcher: {installed: true, enabled: true, running: true, failures: 0, hasError: false}, memory: {availableMb: 612}};
 
 // screen: the /screen body (null: the service answers nothing); probeResponse: the /probe reply.
 async function run(options) {
-  const o = Object.assign({probeResponse: {ok: true, persisted: true}, screen: GOOD, failFetch: null, appVersion: '0.3.5', hangLaunch: false}, options || {});
+  const o = Object.assign({probeResponse: {ok: true, persisted: true}, screen: GOOD, failFetch: null, appVersion: '0.3.5', hangLaunch: false,
+    packages: [{id: 'vetrotvapp', version: '0.1.0'}]}, options || {});
   const sent = [], timers = [], listeners = {}, windowListeners = {}, exits = [], launched = [];
   const screen = {innerHTML: ''}, stage = {style: {}};
   function XHR() {}
@@ -38,13 +42,13 @@ async function run(options) {
       tvinputdevice: {getSupportedKeys: () => [{name: 'VolumeUp'}]},
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]),
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
-      package: {getPackagesInfo: ok => ok([{id: 'vetrotvapp', version: '0.1.0'}])},
+      package: {getPackagesInfo: ok => ok(o.packages)},
       systeminfo: {getPropertyValue: (name, ok) => ok({model: 'TV'})}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
     btoa: s => Buffer.from(s).toString('base64'), clearTimeout,
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
   };
-  vm.runInNewContext(script, context);   // its value is the page's run() promise, which a stuck call leaves pending
+  vm.runInNewContext(script, context);
   // run() is not awaited by the page: let its promise chain settle.
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
@@ -128,12 +132,15 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(hung.screen.innerHTML.includes('Checking'), 'still waiting for the stuck call');
   const limit = hung.timers.find(t => t.ms === 8000);
   assert.ok(limit, 'every probe has a time limit');
+  assert.equal(hung.screen.textContent, '9 of 10 checks done', 'the checks run at the same time: only the stuck one is left');
   limit.f();
   await hung.settle();
   const report = hung.sent.find(s => s.method === 'POST').body;
   assert.equal(report.probe.serviceLaunch.ok, false);
-  assert.ok(/no answer/.test(report.probe.serviceLaunch.error));
+  assert.equal(report.probe.serviceLaunch.error, 'no answer in 8 s', 'the error names the time limit that ran out');
   assert.equal(report.probe.serviceReach.ok, true, 'the probes after the stuck one still run');
+  assert.deepEqual(Object.keys(report.probe), ['serviceLaunch', 'tizenObject', 'webapisObject', 'supportedKeys', 'apps', 'packages',
+    'productinfo', 'systeminfoBattery', 'remoteApi8001', 'serviceReach'], 'the report keeps the job order, whichever check finishes first');
   assert.ok(!hung.screen.innerHTML.includes('Checking'), 'the screen leaves the waiting state');
   // While the checks run the screen says what it is doing: placeholders for each check, a turning ring, a step counter.
   const waiting = await run({hangLaunch: true});
@@ -141,6 +148,22 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(waiting.screen.innerHTML.includes('Root access'));
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
-  assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
-  console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');
+  assert.ok(/@keyframes spin/.test(css), 'the waiting ring turns');
+  // Samsung's guideline: a loading indicator only once loading takes 100 ms.
+  assert.ok(/\.state\.wait svg,\s*\.c\.wait \.ic \{\s*visibility: hidden;/.test(css), 'the ring is hidden at first');
+  assert.ok(/\.slow \.state\.wait svg,\s*\.slow \.c\.wait \.ic \{\s*visibility: visible;\s*animation: spin/.test(css), 'and turns once the stage is slow');
+  assert.equal(waiting.stage.className, '');
+  waiting.timers.find(t => t.ms === 100).f();
+  assert.equal(waiting.stage.className, 'slow', 'after 100 ms of checking the ring shows');
+  // The TV has no monospace font: the address, PIN and support line use the bundled Roboto Mono.
+  assert.ok(/@font-face \{\s*font-family: 'Roboto Mono';\s*src: url\(fonts\/RobotoMono-Regular\.woff\) format\('woff'\);/.test(css));
+  assert.equal((css.match(/font-family: 'Roboto Mono', monospace;/g) || []).length, 3, '.url, .pin b and .share code');
+  // totalSize blocks the page on the TV (about 40 ms per package); the service measures sizes.
+  let sizeReads = 0;
+  const sized = await run({packages: [{id: 'a', version: '1', get totalSize() { sizeReads++; return 4096; }}]});
+  sized.timers.forEach(t => t.f());
+  await sized.settle();
+  assert.equal(sizeReads, 0, 'the page never reads a package size');
+  assert.deepEqual(sized.sent.find(s => s.method === 'POST').body.packages, [{id: 'a', version: '1'}]);
+  console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle, no package sizes read');
 })().catch(e => {console.error(e); process.exitCode = 1;});

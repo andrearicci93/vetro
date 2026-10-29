@@ -5,6 +5,7 @@ See the [project README](../README.md) for features, installation, compatibility
 performance limitations, credits and support.
 
 ```sh
+npm ci
 npm test
 node service/main.js
 OUT=/tmp/vetro-app-only.wgt node build.cjs
