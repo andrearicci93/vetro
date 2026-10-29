@@ -47,7 +47,7 @@ async function run(options) {
     btoa: s => Buffer.from(s).toString('base64'), clearTimeout,
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
   };
-  vm.runInNewContext(script, context);   // its value is the page's run() promise, which a stuck call leaves pending
+  vm.runInNewContext(script, context);
   // run() is not awaited by the page: let its promise chain settle.
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
