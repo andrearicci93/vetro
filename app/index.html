@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Vetro</title>
+<head>
+<meta charset="utf-8">
+<title>Vetro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="$WEBAPIS/webapis/webapis.js"></script>
 <link rel="stylesheet" href="index.css">
+<script src="$WEBAPIS/webapis/webapis.js"></script>
 </head>
 <body>
-<div id="stage"><div class="safe" id="screen"></div></div>
+<div id="stage">
+  <div class="safe" id="screen"></div>
+</div>
 <script>
 // Everything that names the port stays in this file: the build rewrites it here (VETRO_PORT), and Apps2Samsung's
 // catalog finds these exact texts in index.html to set the user's port (tests/a2s-port-phrases.test.cjs).
