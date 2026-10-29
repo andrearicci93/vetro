@@ -25,6 +25,9 @@ var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
+// 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
+// when only csfs is closed, so the guard and the enable-time kill target all three.
+var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
 var AUTORUN_KEY = 'db/menu/smart_hub/ontvsetting/auto_start';   // Samsung's "Autorun Smart Hub"
 var HOME_CODE = 63;                                   // Home on the forwarded remote Vetro creates
 var START_WAIT_MS = 15000;
@@ -167,7 +170,7 @@ Dock.prototype.statusNow = function () {
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
     var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
-        ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
+        ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -250,7 +253,7 @@ Dock.prototype.enable = function () {
     }).then(function () {
         // Samsung's Home is idle in the background; closing it frees its memory, and Settings or
         // Source opened from the dock start it again on demand.
-        return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+        return self.execute(HOME_KILL.map(function (id) { return 'app_launcher -k ' + id; }).join('; '), 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.stopDock().catch(function () {}).then(function () { throw e; });

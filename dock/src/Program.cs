@@ -47,9 +47,11 @@ namespace Launcher
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
         private const double HomeDebounceSeconds = 0.35;
 
-        // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
-        // the key), so after each Home press the app is closed again, a few times because its start is slow.
-        // Off by default; the app id is checked as plain id characters because it goes on a command line.
+        // --kill-on-home APPID[,APPID...]: the system sends Home to Samsung's own home app as well (it is relaunched
+        // by the key), so after each Home press the app is closed again, a few times because its start is slow.
+        // 2025 (RSM/CoBA) firmware splits Home into csfs plus separate sidebar and media windows that stay on top of
+        // the dock when only csfs is closed, so several ids may be given. Off by default; every id is checked as
+        // plain id characters because it goes on a command line.
         // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
         // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
         private static string _guardApp, _guardCmd;
@@ -599,10 +601,10 @@ namespace Launcher
             catch (Exception ex) { Log("guard: " + ex.Message); }
         }
 
-        /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
-        private static string GuardCommand(string appId)
+        /// <summary>The app ids are plain id characters (checked at start), so they are safe on a command line.</summary>
+        private static string GuardCommand(string[] appIds)
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
+            string kill = string.Join("; ", Array.ConvertAll(appIds, id => "/usr/bin/app_launcher -k " + id));
             var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
             foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
             return sb.Append(" ) >/dev/null 2>&1 &").ToString();
@@ -856,7 +858,8 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
+                    string[] guardIds = guard.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (guardIds.Length > 0 && Array.TrueForAll(guardIds, Catalog.ValidAppId)) { _guardApp = guard; _guardCmd = GuardCommand(guardIds); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
                     else Log("guard: bad app id ignored");
                 }
                 SetupInput(args);
