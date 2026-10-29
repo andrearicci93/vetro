@@ -27,7 +27,9 @@ const none = '  com.samsung.tv.other  1234  0\n', back = none + '  org.tizen.hbb
   assert.equal(o.targets[0].relaunchedAfterSeconds, 5); assert.equal(o.targets[1].relaunchedAfterSeconds, null);
   assert.equal(w.seen('hbbtv'), true); assert.equal(w.seen('ambient'), false);
   assert.equal(t.scripts.length, 12, 'exactly 12 reads');
-  // Never back.
+  // Never back (and a new stop wipes the earlier answer).
+  t = tv([back]); w = new Watch(t.execute, {sleep: async () => {}, reads: 1}); await w.start('hbbtv-switch', IDS); assert.equal(w.seen('hbbtv'), true);
+  t = tv([none]); w.execute = t.execute; await w.start('hbbtv-switch', IDS); assert.equal(w.seen('hbbtv'), false);
   t = tv([none]); w = new Watch(t.execute, {sleep: async () => {}}); o = await w.start('hbbtv-boot', IDS);
   assert.equal(o.relaunched, false); assert.equal(o.status, 'done'); assert.ok(o.targets.every(x => x.relaunchedAfterSeconds === null)); assert.equal(w.seen('hbbtv'), false);
   // Errors and timeouts are caught; with no usable read the observation is "unavailable"; it never rejects and never stops early.

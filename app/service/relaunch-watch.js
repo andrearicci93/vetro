@@ -65,6 +65,7 @@ Watch.prototype.start = function (label, ids, isBusy) {
         if (isBusy && isBusy()) { this.remember({label: label, status: 'skipped-busy', reads: 0, relaunched: false, targets: []}); return Promise.resolve({status: 'skipped'}); }
     } catch (e) { return Promise.resolve({status: 'skipped'}); }
     this.running = true;
+    delete this.relaunched[label.split('-')[0]]; // a new stop starts a new answer
     var obs = {label: label, status: 'running', reads: 0, failedReads: 0, relaunched: false, intervalSeconds: this.gapMs / 1000,
         targets: ids.map(function (id) { return {id: id, relaunchedAfterSeconds: null}; })};
     this.remember(obs);
