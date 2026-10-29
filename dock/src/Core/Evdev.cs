@@ -67,9 +67,9 @@ namespace Launcher.Core
     /// <summary>Finds the remote-control input nodes in the text of /proc/bus/input/devices.</summary>
     internal static class InputDevices
     {
-        // "vetro-forwarded-remote" is where Vetro's filter re-emits the keys it lets through after it has
-        // taken the real remote exclusively (EVIOCGRAB): with the filter on, the physical nodes go silent.
-        private static readonly string[] Remote = { "smart control", "rc device", "mcirb", "vetro-forwarded-remote" };
+        // Vetro's filter takes the real remote exclusively (EVIOCGRAB) and re-emits the keys it lets through on its own
+        // node under the real remote's name, so these keywords match that node too while the physical one goes silent.
+        private static readonly string[] Remote = { "smart control", "rc device", "mcirb" };
         private static readonly string[] Excluded = { "keyboard", "mouse", "panel" };
 
         private static bool Any(string lower, string[] words)
@@ -91,7 +91,7 @@ namespace Launcher.Core
             return null;
         }
 
-        /// <summary>Vetro's remote selection, plus the node Vetro forwards the remote to (see <c>Remote</c>).</summary>
+        /// <summary>Vetro's remote selection, which also matches the node Vetro forwards the remote to (see <c>Remote</c>).</summary>
         public static List<string> RemoteNodes(string procBusInputDevices)
         {
             var nodes = new List<string>();
