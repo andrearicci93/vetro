@@ -1,6 +1,7 @@
 'use strict';
 
-const { Connection } = require('./adb.js');
+// Node 4.4 (Tizen 5.5 and older) cannot parse destructuring.
+const Connection = require('./adb.js').Connection;
 const SDB_PORT = 26101;
 
 function SdbError(code, message) {

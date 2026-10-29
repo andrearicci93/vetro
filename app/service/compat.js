@@ -1,9 +1,11 @@
 'use strict';
 
-// Tizen 5.5 runs the web service on Node 4.4 (V8 4.5). Three built-ins the
-// service uses elsewhere are missing or narrower there. Every branch below is
-// skipped on a runtime that already has the real thing, so modern Node is
-// unaffected. `install` takes an optional {Promise, Buffer} for tests.
+// Tizen 5.5 and older run the web service on Node 4.4 (V8 4.5). The built-ins
+// used elsewhere that are missing or narrower there are added below. Every
+// branch is skipped on a runtime that already has the real thing, so modern
+// Node is unaffected. `install` takes an optional {Promise, Buffer} for tests.
+
+var crypto = require('crypto');
 
 function acceptsString(BufferRef) {
     try { return BufferRef.from('a').toString() === 'a'; } catch (error) { return false; }
@@ -13,6 +15,7 @@ function install(env) {
     var target = env || {};
     var PromiseRef = target.Promise || Promise;
     var BufferRef = target.Buffer || Buffer;
+    var NumberRef = target.Number || Number;
 
     if (typeof PromiseRef.prototype.finally !== 'function') {
         PromiseRef.prototype.finally = function (callback) {
@@ -57,6 +60,27 @@ function install(env) {
                 return buffer;
             }
         });
+    }
+
+    // Node 4.4 has neither crypto.timingSafeEqual nor Number.isInteger. The
+    // root agent verifies HMAC frames with the former; both are numeric or
+    // length-only checks, so a constant-time byte compare and a Math.floor
+    // comparison are exact stand-ins.
+    if (typeof crypto.timingSafeEqual !== 'function') {
+        crypto.timingSafeEqual = function (a, b) {
+            if (!BufferRef.isBuffer(a) || !BufferRef.isBuffer(b) || a.length !== b.length) {
+                throw new TypeError('Input buffers must have the same byte length');
+            }
+            var difference = 0;
+            for (var i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
+            return difference === 0;
+        };
+    }
+
+    if (typeof NumberRef.isInteger !== 'function') {
+        NumberRef.isInteger = function (value) {
+            return typeof value === 'number' && isFinite(value) && Math.floor(value) === value;
+        };
     }
 
     return { Promise: PromiseRef, Buffer: BufferRef };

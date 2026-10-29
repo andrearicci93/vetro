@@ -8,7 +8,10 @@ const zlib = require('zlib');
 function padOctal(value, digits) {
     const s = value.toString(8);
     if (s.length > digits - 1) throw new Error('octal field overflow: ' + value);
-    return s.padStart(digits - 1, '0') + '\0';
+    // No String.prototype.padStart on Node 4.4.
+    let padded = s;
+    while (padded.length < digits - 1) padded = '0' + padded;
+    return padded + '\0';
 }
 
 function header(entry) {
@@ -35,7 +38,9 @@ function header(entry) {
 
 function tarGz(entries) {
     const blocks = [];
-    for (const entry of entries) {
+    // `for...of` is not supported by Node 4.4.
+    for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
         const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data, 'utf8');
         const size = data.length;
         blocks.push(header({ name: entry.name, mode: entry.mode, mtime: entry.mtime, size }));
