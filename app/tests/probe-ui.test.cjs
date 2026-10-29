@@ -3,8 +3,11 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const html = fs.readFileSync(process.argv[2] || path.join(__dirname, '..', 'index.html'), 'utf8');
-const script = /<script>\s*([\s\S]*?)<\/script>/.exec(html)[1];
+const page = process.argv[2] || path.join(__dirname, '..', 'index.html');
+const html = fs.readFileSync(page, 'utf8');
+const css = fs.readFileSync(path.join(path.dirname(page), 'index.css'), 'utf8');
+// The inline port settings of index.html, then index.js, as the TV runs them.
+const script = /<script>\s*([\s\S]*?)<\/script>/.exec(html)[1] + '\n' + fs.readFileSync(path.join(path.dirname(page), 'index.js'), 'utf8');
 
 const GOOD = {version: '0.3.5', port: 8099, address: '192.168.1.42', root: {mode: 'tv-integration', connected: true},
   input: {enabled: false, connected: false}, launcher: {installed: true, enabled: true, running: true, failures: 0, hasError: false}, memory: {availableMb: 612}};
@@ -144,15 +147,15 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(waiting.screen.innerHTML.includes('Root access'));
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
-  assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
+  assert.ok(/@keyframes spin/.test(css), 'the waiting ring turns');
   // Samsung's guideline: a loading indicator only once loading takes 100 ms.
-  assert.ok(/\.state\.wait svg,\.c\.wait \.ic\{visibility:hidden\}/.test(html), 'the ring is hidden at first');
-  assert.ok(/\.slow \.state\.wait svg,\.slow \.c\.wait \.ic\{visibility:visible;animation:spin/.test(html), 'and turns once the stage is slow');
+  assert.ok(/\.state\.wait svg,\.c\.wait \.ic\{visibility:hidden\}/.test(css), 'the ring is hidden at first');
+  assert.ok(/\.slow \.state\.wait svg,\.slow \.c\.wait \.ic\{visibility:visible;animation:spin/.test(css), 'and turns once the stage is slow');
   assert.equal(waiting.stage.className, '');
   waiting.timers.find(t => t.ms === 100).f();
   assert.equal(waiting.stage.className, 'slow', 'after 100 ms of checking the ring shows');
   // The TV has no monospace font: the address, PIN and support line use the bundled Roboto Mono.
-  assert.ok(html.includes("@font-face{font-family:'Roboto Mono';src:url(fonts/RobotoMono-Regular.woff) format('woff')}"));
-  assert.equal((html.match(/font-family:'Roboto Mono',monospace/g) || []).length, 3, '.url, .pin b and .share code');
+  assert.ok(css.includes("@font-face{font-family:'Roboto Mono';src:url(fonts/RobotoMono-Regular.woff) format('woff')}"));
+  assert.equal((css.match(/font-family:'Roboto Mono',monospace/g) || []).length, 3, '.url, .pin b and .share code');
   console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');
 })().catch(e => {console.error(e); process.exitCode = 1;});

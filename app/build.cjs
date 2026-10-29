@@ -32,7 +32,7 @@ const PORT_FILES = ['config.xml', 'index.html'];
 function collectFiles() {
     const dockFiles = dockResources();
     const port = buildPort();
-    const names = ['config.xml', 'index.html', 'icon.png', 'fonts/RobotoMono-Regular.woff', 'fonts/OFL.txt', 'native/TvState.dll', 'native/TvState.runtimeconfig.json',
+    const names = ['config.xml', 'index.html', 'index.css', 'index.js', 'icon.png', 'fonts/RobotoMono-Regular.woff', 'fonts/OFL.txt', 'native/TvState.dll', 'native/TvState.runtimeconfig.json',
         'native/dock/tvlauncher-dotnet.dll', 'native/dock/tvlauncher-dotnet.runtimeconfig.json'].concat(
         fs.readdirSync(path.join(__dirname,'service')).filter(name => name.endsWith('.js')).sort().map(name => 'service/' + name));
     const metadata = Object.assign({}, require('./service/build-info.js'));
