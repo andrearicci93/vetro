@@ -7,7 +7,7 @@ const {Dock} = require('../service/dock.js');
 
 const hex = s => Buffer.from(s).toString('hex');
 const HOME_DATA = [
-    'O|d/webapp@aaa',
+    'S|csfs', 'O|d/webapp@aaa',
     'R|' + hex('aaa') + '|' + hex('Netflix') + '|' + hex('org.tizen.netflix-app') + '|0',
     'I|aaa|/opt/share/webappservice/apps_icon/all/aaa/224x224.png'
 ].join('\n');
@@ -27,6 +27,7 @@ function fixture(options) {
         tv.scripts.push(cmd);
         if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
         const script = Buffer.from(cmd.split(' ')[1], 'base64').toString();
+        if (/^(app_launcher -k [A-Za-z0-9_.-]+ >\/dev\/null 2>&1; )+true$/.test(script)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
@@ -70,8 +71,11 @@ function fixture(options) {
     assert.equal(f.tv.csfs, false, 'Samsung Home closed once the dock is up');
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.tmp, 'state.json'), 'utf8')).enabled, true);
     assert.equal(f.tv.scripts[f.tv.scripts.length - 1].startsWith('echo '), true);
-    assert.ok(f.tv.scripts.findIndex(c => /^app_launcher -k com\.samsung\.tv\.csfs$/.test(c)) > f.tv.scripts.findIndex(c => c.startsWith('echo') && Buffer.from(c.split(' ')[1], 'base64').toString().includes('setsid')),
-        'Samsung Home is closed after the dock started, never before');
+    const decoded = c => c.startsWith('echo ') ? Buffer.from(c.split(' ')[1], 'base64').toString() : c;
+    const closeHome = f.tv.scripts.findIndex(c => /app_launcher -k com\.samsung\.tv\.csfs /.test(decoded(c)));
+    assert.ok(closeHome > f.tv.scripts.findIndex(c => decoded(c).includes('setsid')), 'Samsung Home is closed after the dock started, never before');
+    assert.ok(['com.samsung.tv.home.media', 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.art'].every(id => decoded(f.tv.scripts[closeHome]).includes('app_launcher -k ' + id + ' ')),
+        'the 2022 Home hubs are closed with csfs');
 
     // Autorun Smart Hub: switched off with the launcher, put back with it, only if the launcher changed it.
     f = fixture({autorun: 1});
@@ -199,7 +203,7 @@ function fixture(options) {
 
     // Fix TizenTube and the preview data
     const TT = [
-        'O|d/webapp@tt', 'O|d/webapp@aaa',
+        'S|csfs', 'O|d/webapp@tt', 'O|d/webapp@aaa',
         'R|' + hex('tt') + '|' + hex('TizenTube') + '|' + hex('xvvl3S1TT1.TizenTubeStandalone') + '|0',
         'R|' + hex('yt') + '|' + hex('YouTube') + '|' + hex('9Ur5IzDKqV.TizenYouTube') + '|0',
         'R|' + hex('aaa') + '|' + hex('Netflix') + '|' + hex('org.tizen.netflix-app') + '|0',
