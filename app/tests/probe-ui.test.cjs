@@ -136,7 +136,7 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   await hung.settle();
   const report = hung.sent.find(s => s.method === 'POST').body;
   assert.equal(report.probe.serviceLaunch.ok, false);
-  assert.ok(/no answer/.test(report.probe.serviceLaunch.error));
+  assert.equal(report.probe.serviceLaunch.error, 'no answer in 8 s', 'the error names the time limit that ran out');
   assert.equal(report.probe.serviceReach.ok, true, 'the probes after the stuck one still run');
   assert.deepEqual(Object.keys(report.probe), ['serviceLaunch', 'tizenObject', 'webapisObject', 'supportedKeys', 'apps', 'packages',
     'productinfo', 'systeminfoBattery', 'remoteApi8001', 'serviceReach'], 'the report keeps the job order, whichever check finishes first');
