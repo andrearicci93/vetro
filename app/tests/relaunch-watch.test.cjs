@@ -60,10 +60,11 @@ const none = '  com.samsung.tv.other  1234  0\n', back = none + '  org.tizen.hbb
   assert.equal(d.logStatus, 'ok'); assert.equal(d.log.length, 2, 'only lines that mention hbbtv or csfs');
   const joined = d.log.join('\n'); assert.doesNotMatch(joined, /192\.168|http|@|\/home\/|10-29/); assert.match(joined, /13:24:47/); assert.match(joined, /relaunch requested/);
   assert.ok(d.log.every(l => l.length <= 160));
+  assert.equal(cleanLine('10-29 13:24:47.123 I/HBBTV(  1): open hbbtv.broadcaster.example/app?x=1 and tv.channel.it:8080/p now org.tizen.hbbtv started'), '13:24:47 I/HBBTV( 1): open [x] and [x] now org.tizen.hbbtv started');
   assert.ok(t.scripts.some(s => /timeout 5 dlogutil -d -v time/.test(s)), 'the log read has a 5 s timeout');
   // dlogutil missing, failing or too slow: "unavailable", the rest of the section stays.
-  for (const bad of [{exit_code: 1, stdout: ''}, {exit_code: null, timed_out: true}, {exit_code: 0, stdout: '__NO_TIMEOUT__\n'}, 'throw']) {
-    t = tv([none], sh => /dlogutil|__NO_TIMEOUT__/.test(sh) ? (bad === 'throw' ? Promise.reject(Error('x')) : bad) : {exit_code: 0, stdout: listing});
+  for (const bad of [{exit_code: 1, stdout: ''}, {exit_code: null, timed_out: true}, {exit_code: 0, stdout: '__NO_LOG__\n'}, 'throw']) {
+    t = tv([none], sh => /dlogutil|__NO_LOG__/.test(sh) ? (bad === 'throw' ? Promise.reject(Error('x')) : bad) : {exit_code: 0, stdout: listing});
     d = await new Watch(t.execute).read(); assert.equal(d.logStatus, 'unavailable'); assert.deepEqual(d.log, []); assert.equal(d.apps.length, 2);
   }
   await assert.rejects(new Watch(async () => ({exit_code: 1})).read(), e => e.code === 'command-failed');

@@ -23,12 +23,17 @@ function appIds(out) {
 function cleanLine(line) {
     var s = String(line).replace(/[^\x20-\x7e]/g, ' ');
     s = s.replace(/^\s*\d{1,2}-\d{1,2}\s+/, '');
+    // Time of day is kept; anything dotted that is not a Samsung/Tizen id (host names, addresses, versions) is not.
+    var clock = /^(\d\d:\d\d:\d\d)(?:\.\d+)?/.exec(s), head = '';
+    if (clock) { head = clock[1]; s = s.slice(clock[0].length); }
     s = s.replace(/https?:\/\/\S+/gi, '[url]')
         .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/g, '[x]')
         .replace(/(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}/gi, '[x]')
         .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[x]')
         .replace(/\/(?:home|opt\/usr|Users)\/\S*/g, '[path]')
+        .replace(/[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+(?::\d+)?(?:\/\S*)?/g, function (m) { return /^(?:org\.tizen|com\.samsung|tizen)\.[A-Za-z0-9._-]*$/.test(m) ? m : '[x]'; })
         .replace(/\s+/g, ' ').trim();
+    s = (head ? head + ' ' : '') + s;
     return s.length > LINE_MAX ? s.slice(0, LINE_MAX) : s;
 }
 function Watch(execute, options) {
@@ -95,11 +100,11 @@ var LIST_SCRIPT = [
     'echo __PROCS__',
     'up=$(cut -d. -f1 /proc/uptime 2>/dev/null)',
     'for d in /proc/[0-9]*; do c=$(cat $d/comm 2>/dev/null); case "$c" in *[Hh][Bb][Bb][Tt][Vv]*|*[Cc][Ss][Ff][Ss]*)',
-    '  s=$(awk \'{print $22}\' $d/stat 2>/dev/null); a=""; if [ -n "$s" ] && [ -n "$up" ]; then a=$((up - s / 100)); fi; echo "P $c $a";;',
+    '  s=$(cut -d" " -f22 $d/stat 2>/dev/null); a=""; if [ -n "$s" ] && [ -n "$up" ]; then a=$((up - s / 100)); fi; echo "P $c $a";;',
     'esac; done 2>/dev/null | head -20',
     'true'
 ].join('\n');
-var LOG_SCRIPT = 'if command -v timeout >/dev/null 2>&1; then timeout 5 dlogutil -d -v time 2>/dev/null | grep -i -E "hbbtv|csfs" | tail -' + LOG_LINES + '; else echo __NO_TIMEOUT__; fi\ntrue';
+var LOG_SCRIPT = 'if command -v timeout >/dev/null 2>&1 && command -v dlogutil >/dev/null 2>&1; then timeout 5 dlogutil -d -v time 2>/dev/null | grep -i -E "hbbtv|csfs" | tail -' + LOG_LINES + '; else echo __NO_LOG__; fi\ntrue';
 function nameToken(v) { return typeof v === 'string' && v.length <= 80 && /^[A-Za-z0-9_.-]+$/.test(v) ? v : null; }
 Watch.prototype.read = function () {
     var self = this;
@@ -117,7 +122,7 @@ Watch.prototype.read = function () {
     }).then(function (data) {
         return self.execute(wrap(LOG_SCRIPT), 8000).then(function (r) {
             var out = String((r && r.stdout) || '');
-            if (!r || r.timed_out || r.exit_code || /__NO_TIMEOUT__/.test(out)) { data.logStatus = 'unavailable'; data.log = []; return data; }
+            if (!r || r.timed_out || r.exit_code || /__NO_LOG__/.test(out)) { data.logStatus = 'unavailable'; data.log = []; return data; }
             data.logStatus = 'ok';
             data.log = out.split('\n').filter(matches).slice(-LOG_LINES).map(cleanLine).filter(Boolean);
             return data;

@@ -66,7 +66,7 @@ var projectors = {
     serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
-var SLOW = {startup: 4};
+var SLOW = {startup: 4, relaunch: 2};
 function collect(readers, timeoutMs) {
     return Promise.all(Object.keys(projectors).map(function(name){
         if(typeof readers[name]!=='function')return {name:name,status:'unavailable',reason:'no-reader'};
