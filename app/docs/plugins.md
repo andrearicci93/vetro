@@ -5,7 +5,7 @@
 > not audited: that does not guarantee they work, are safe or stay unchanged, and the author of Vetro
 > takes no responsibility for what a plugin does. Install only plugins you trust.
 
-Vetro's own features (MQTT, launcher, …) are not plugins. Plugins are add-ons.
+Vetro's own features (Home Assistant, launcher, …) are not plugins. Plugins are add-ons.
 
 - [Use plugins](#use-plugins) · [Write a plugin](#write-a-plugin) · [Publish on GitHub](#publish-on-github)
 - [Reference](#reference) · [What the host guarantees](#what-the-host-guarantees) · [Troubleshooting](#troubleshooting)
@@ -55,7 +55,7 @@ Edit, `pack` again, install again: it updates in place and comes back switched o
 
 ### index.js
 
-Plain **ES5** for the TV (Node 4.4: no arrow functions, `let`/`const`, `async`, classes guaranteed).
+Plain **ES5**: the host is written and tested for Node 4.4, which older TVs run (the Q80A has Node 12), so do not rely on arrow functions, `let`/`const`, `async` or classes.
 
 ```js
 module.exports = function (ctx) {
