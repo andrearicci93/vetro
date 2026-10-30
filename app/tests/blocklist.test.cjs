@@ -18,6 +18,7 @@ blocklist.ESSENTIAL.forEach(n => {
 });
 assert.ok(!exported.includes('samsungcloudsolution.com'));
 assert.ok(exported.includes('rtb-config.samsungads.com'));
+assert.ok(exported.includes('rtb-config-canary.samsungads.com'), 'the ad agent also names the canary ad configuration host');
 ['osb', 'rm', 'scs', 'gpm'].forEach(h => assert.ok(exported.includes(h + '.samsungqbe.com'), h + '.samsungqbe.com is a candidate'));
 assert.ok(blocklist.essential('svdca.samsungqbe.com'), 'the certificate server stays reachable');
 assert.ok(!exported.some(h => /^(samsungqbe\.com|samsungqbe\.cn)$/.test(h)), 'no parent domain of the QBE hosts');

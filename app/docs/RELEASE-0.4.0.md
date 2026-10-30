@@ -16,7 +16,7 @@ Three themes:
 | Plugin host, install, update, remove, safe mode | yes | 70 test suites; install, update and refusal run against a fake list in a browser | on a TV (Node 4.4 / 12); the real GitHub list (the repository does not exist yet) |
 | Plugin pages under sign-in (session in the URL) | yes | host tests, routing test | with a paired browser on a TV |
 | Plugin guide, scaffolder, `check`/`pack`/`index` | yes | `new`, `check`, `pack`, `index` run on a computer | a plugin written by someone else, from scratch, using only the guide |
-| Sign-in (PR #9, zerodevb) | merged | author ran it on a Q60A (Tizen 6, Node 12.4): unpaired requests got 401, pairing worked | this branch's package: the TV screen showing the code (new screen, adapted here), the service opening Vetro on pairing |
+| Sign-in (PR #9, zerodevb) | merged | author ran the same auth module on a Q60A (Tizen 6, Node 12.4) with a different app showing the code: unpaired requests got 401, pairing worked | this branch's package: the TV screen showing the code (new screen, adapted here), the service opening Vetro on pairing |
 | Viewing-data stop, Stop Ambient, domain filter, ad list | yes (earlier in 0.4.0) | Q80A, with a real restart (see CHANGELOG) | other models |
 
 ## Before it can ship
@@ -30,15 +30,17 @@ Three themes:
 
 Exists in 0.4.0: stop viewing-data collection (ten services, with the brake files that survive a restart and a boot step for the others), Stop Ambient, the domain filter with the firmware's hosts and the reported ACR names, the Observe requests view, the ad and tracking categories of the Debloater, and the diagnostic export that shows what starts at boot.
 
-A scan of the strings in the Q80A firmware (all `*.samsung*` host names in programs and apps, about 190 names) found **no advertising or viewing-data host that the list does not already hold**. What it did find, not on the list, and what is known about it:
+A scan of the strings in the Q80A firmware (all `*.samsung*` host names in programs and apps, about 190 names) found **one advertising host that the list lacked, now added** (`rtb-config-canary.samsungads.com`, named by the ad agent itself), and **no viewing-data host** beyond the ones already listed. What it found that is not on the list, and what is known about it:
 
-| Host (all unverified: no traffic seen) | Where | Note |
+| Host (all unverified: no traffic seen) | Where | Decision |
 | --- | --- | --- |
-| `osb-v2.samsungqbe.com`, `osb-apps.samsungqbe.com`, `gpms.samsungqbe.com`, `pubsub.scs.samsungqbe.com` | QBE services | the list already has `osb`, `rm`, `scs`, `gpm`; the `-v2`, `-apps`, `gpms` and `pubsub` names look like the next API generation |
-| `netdiag-v2.samsungcloudsolution.com`, `policy.samsungrs.com` | diagnostics and policy | purpose inferred from the name |
-| `rscmapi.samsungcloud.tv`, `dpiapi-2w.samsungcloud.tv`, `tvpnlogoseu.samsungcloud.tv` | Samsung TV Plus and platform | the third is channel logos: blocking it breaks pictures, not privacy |
-| `rmus/rmeu/rmch.samsungcsportal.com` | remote management portals | support, not telemetry |
-| `api.samsungconsent.com` | consent | blocking it could break the consent screens |
+| `rtb-config-canary.samsungads.com` | ad agent, ad framework, Samsung TV Plus | **added to the Advertising group** |
+| `osb-v2.samsungqbe.com`, `osb-apps.samsungqbe.com`, `gpms.samsungqbe.com`, `pubsub.scs.samsungqbe.com` | QBE services | not added: the list has `osb`, `rm`, `scs`, `gpm`; these look like the next API generation, which nothing proves |
+| `netdiag-v2.samsungcloudsolution.com` | network diagnostics | not added: purpose inferred from the name |
+| `rscmapi.samsungcloud.tv`, `dpiapi-2w.samsungcloud.tv`, `tvpnlogoseu.samsungcloud.tv` | Samsung TV Plus and platform | not added: the third is channel logos, blocking it breaks pictures, not privacy |
+| `rmus/rmeu/rmch.samsungcsportal.com` | remote management portals | not added: support, not telemetry |
+| `api.samsungconsent.com`, `policy.samsungrs.com` | consent (the second is stored in the consent database) | not added: blocking could break the consent screens |
+| `oempprd.samsungcloudsolution.com` | list of accessory firmware images (camera, smart control), downloaded over plain HTTP | not added: it is firmware download for accessories, not telemetry; blocking it stops their updates |
 | `sas.samsungqbe.cn`, `sas.samsungcloudsolution.com/.net` | software update | already discussed in DOMAIN-FILTER.md: a decision for the owner |
 
 The scan reads strings only: a name built at run time, or served by a control server (the ACR service does that), is not in it. Staging and development names are left out.

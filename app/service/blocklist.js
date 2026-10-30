@@ -13,7 +13,8 @@ var GROUPS = [
         hosts: [
             {host: 'rtb-config.samsungads.com', by: 'pisa-service, ad-web-framework, tvplus'},
             {host: 'tvp-ads-log.samsungads.com', by: 'pisa-service, ad-web-framework, tvplus'},
-            {host: 'tvp-interactive-ad.samsungads.com', by: 'ad-web-framework, tvplus'}
+            {host: 'tvp-interactive-ad.samsungads.com', by: 'ad-web-framework, tvplus'},
+            {host: 'rtb-config-canary.samsungads.com', by: 'adagent-service, ad-web-framework, tvplus'}
         ]},
     {id: 'analytics', label: 'Analytics and KPI', evidence: 'firmware',
         note: 'Usage analytics and the KPI collector.',
