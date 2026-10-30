@@ -188,25 +188,38 @@ function gate(req, res, url, options) {
     return false;
 }
 
-// Small bar added to the dashboard: sign out.
-var BAR = '<div id="gaAuth" style="position:fixed;right:12px;bottom:12px;z-index:99;font:13px system-ui,sans-serif;background:#191c1f;color:#e2e5e8;border:1px solid #30353a;border-radius:10px;padding:6px 10px;opacity:.9">' +
-    '<a href="#" id="gaOut" style="color:#a3c7bd">Sign out</a> · <a href="#" id="gaAll" style="color:#a3c7bd">Sign out all devices</a></div>' +
-    '<script>(function(){function post(u){fetch(u,{method:"POST"}).then(function(){location.reload()})}' +
-    'document.getElementById("gaOut").onclick=function(e){e.preventDefault();post("/auth/signout")};' +
-    'document.getElementById("gaAll").onclick=function(e){e.preventDefault();if(confirm("Sign out every paired browser and script?"))post("/auth/signout-all")};})();</script>';
+// Sign out, added to the dashboard: two small buttons at the end of the sidebar footer (the dashboard's own tokens and
+// button style), so nothing floats over the toasts. On a narrow screen, where the footer is hidden, they join the bar; without a sidebar they stay at the bottom left.
+var BAR = '<div id="gaAuth"><button type="button" id="gaOut">Sign out</button><button type="button" id="gaAll">Sign out all devices</button></div>' +
+    '<style>#gaAuth{display:flex;flex-wrap:wrap;gap:var(--s1,4px);padding:var(--s3,12px) 0 0}' +
+    '#gaAuth button{height:32px;padding:0 var(--s3,12px);font-size:var(--fs-s,12px);color:var(--muted,#aab8d1);background:transparent}' +
+    '#gaAuth button:hover{color:var(--text,#f5f8ff)}' +
+    '#gaAuth.loose{position:fixed;left:12px;bottom:12px;z-index:3;padding:0}' +
+    '@media(max-width:620px){#gaAuth{flex-wrap:nowrap;white-space:nowrap;padding:0}}</style>' +
+    '<script>(function(){var box=document.getElementById("gaAuth"),side=document.querySelector(".sidebar"),foot=side&&side.querySelector("footer");' +
+    'if(foot&&getComputedStyle(foot).display!=="none")foot.appendChild(box);else if(side)side.appendChild(box);else box.className="loose";' +
+    'function post(u){fetch(u,{method:"POST"}).then(function(){location.reload()})}' +
+    'document.getElementById("gaOut").onclick=function(){post("/auth/signout")};' +
+    'document.getElementById("gaAll").onclick=function(){if(confirm("Sign out every paired browser and script?"))post("/auth/signout-all")};})();</script>';
 function decorate(html) { return html.indexOf('</body>') >= 0 ? html.replace('</body>', BAR + '</body>') : html + BAR; }
 
-var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-'<title>Vetro sign-in</title><style>:root{--night:#111315;--deep:#191c1f;--mint:#a3c7bd;--chalk:#e2e5e8;--muted:#a0a6ad}' +
-'*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--night);color:var(--chalk);font:16px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;padding:16px}' +
-'main{width:100%;max-width:400px}h1{font-size:22px;margin:0 0 6px}p{color:var(--muted);margin:0 0 18px}' +
-'input{width:100%;padding:14px;border:0;border-radius:12px;background:var(--deep);color:var(--chalk);font:inherit;font-size:24px;letter-spacing:8px;text-align:center}' +
-'input:focus{outline:2px solid var(--mint)}button{width:100%;margin-top:14px;padding:14px;border:0;border-radius:12px;background:var(--mint);color:var(--night);font:inherit;font-weight:700}' +
-'.msg{margin-top:14px;color:var(--muted)}.err{color:#ff9b9b}[hidden]{display:none}</style></head><body><main>' +
+// The sign-in page uses the dashboard's tokens (design-system/tokens.css, dark) with the same control sizes.
+var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">' +
+'<title>Vetro sign-in</title><style>:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--action:#123bb5;--action-hover:#0e3095;--link:#8fbaff;--danger:rgb(239,138,128)}' +
+'*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px}' +
+'main{width:100%;max-width:420px;padding:32px;background:var(--surface);border:1px solid var(--border);border-radius:16px}' +
+'.brand{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 16px}h1{font-size:24px;line-height:1.15;font-weight:500;letter-spacing:-.02em;margin:0 0 8px}p{color:var(--muted);margin:0 0 24px;font-size:14px}' +
+'label{display:block;font-size:14px;color:var(--muted);margin-bottom:8px}' +
+'input,button{font:inherit;height:44px;border-radius:8px;border:1px solid var(--border);width:100%}' +
+'input{background:var(--raised);color:var(--text);font-size:24px;letter-spacing:8px;text-align:center;padding:0 16px}' +
+'button{margin-top:16px;background:var(--action);border-color:var(--action);color:var(--text);font-weight:600;cursor:pointer}button:hover{background:var(--action-hover);border-color:var(--action-hover)}' +
+'#s1 button{margin-top:0}input:focus-visible,button:focus-visible{outline:2px solid var(--link);outline-offset:3px}' +
+'.msg{margin-top:16px;min-height:1.5em;font-size:14px;color:var(--muted)}.err{color:var(--danger)}[hidden]{display:none}</style></head><body><main>' +
+'<div class="brand">Vetro</div>' +
 '<h1>Pair with your TV</h1><p>Vetro controls your TV as root, so each browser pairs once with a code shown on the TV. If no code appears, open the Vetro app on the TV.</p>' +
 '<div id="s1"><button id="start">Show a code on the TV</button></div>' +
-'<form id="s2" hidden><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"><button>Pair</button></form>' +
-'<div class="msg" id="msg"></div></main><script>' +
+'<form id="s2" hidden><label for="code">Code shown on the TV</label><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"><button>Pair</button></form>' +
+'<div class="msg" id="msg" role="status" aria-live="polite"></div></main><script>' +
 'var id,$=function(i){return document.getElementById(i)},say=function(t,e){$("msg").textContent=t;$("msg").className=e?"msg err":"msg"};' +
 'function call(u,b){return fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw Error(d.error);return d})})}' +
 '$("start").onclick=function(){say("Asking the TV…");call("/auth/pair",{name:navigator.platform||"Browser"}).then(function(d){id=d.id;$("s1").hidden=true;$("s2").hidden=false;$("code").focus();say("Enter the 6-digit code now on the TV screen. It expires in 2 minutes.")}).catch(function(e){say(e.message,1)})};' +
