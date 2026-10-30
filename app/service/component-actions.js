@@ -30,7 +30,7 @@ function command(p,a){
  if(p.action==='stop')return wrap('app_launcher -k '+a.appId);
  if(p.action==='uninstall')return wrap('pkgcmd -u -n '+a.packageId);
  var field=p.flag==='onboot'?'app_onboot':'app_autorestart',db='/opt/dbspace/.pkgmgr_parser.db';
- return wrap('set -e\nmkdir -p /home/owner/share/vetro/startup-backups\nbackup=/home/owner/share/vetro/startup-backups/'+a.appId+'\nif [ ! -f "$backup" ]; then sqlite3 -readonly '+db+' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\''+a.appId+'\';" > "$backup"; fi\nsqlite3 -bail '+db+' "BEGIN IMMEDIATE; UPDATE package_app_info SET '+field+'=\''+(p.enabled?'true':'false')+'\' WHERE app_id=\''+a.appId+'\'; COMMIT;"\nsqlite3 -readonly '+db+' "SELECT '+field+' FROM package_app_info WHERE app_id=\''+a.appId+'\';"');
+ return wrap('set -e\nmkdir -p /home/owner/share/vetro/startup-backups\nbackup=/home/owner/share/vetro/startup-backups/'+a.appId+'\nif [ ! -f "$backup" ]; then sqlite3 -readonly '+db+' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\''+a.appId+'\';" > "$backup"; fi\nsqlite3 -bail -cmd ".timeout 5000" '+db+' "BEGIN IMMEDIATE; UPDATE package_app_info SET '+field+'=\''+(p.enabled?'true':'false')+'\' WHERE app_id=\''+a.appId+'\'; COMMIT;"\nsqlite3 -readonly '+db+' "SELECT '+field+' FROM package_app_info WHERE app_id=\''+a.appId+'\';"');
 }
 // A public-level certificate can leave Vetro's own service registered without on-boot and auto-restart (#4, S90C),
 // so it never starts after a reboot. Commands that put config.xml's values back; users still cannot change them.
