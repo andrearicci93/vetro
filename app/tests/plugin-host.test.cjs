@@ -3,12 +3,13 @@ const assert = require('assert').strict, fs = require('fs'), os = require('os'),
 const { PluginHost } = require('../service/plugin-host.js');
 
 function tmp() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-plugins-')), 'p'); }
-function res() { const r = { code: 0, body: null, headersSent: false, writeHead(c) { r.code = c; r.headersSent = true; }, end(b) { r.body = b; } }; return r; }
+function res() { const r = { code: 0, body: null, headersSent: false, setHeader() {}, writeHead(c) { r.code = c; r.headersSent = true; }, end(b) { r.body = b; } }; return r; }
 function json(r, obj, code) { r.code = code || 200; r.headersSent = true; r.body = obj; }
-function def(id, extra) { return Object.assign({ id, apiVersion: 1, create() { return {}; } }, extra); }
+function def(id, extra) { return Object.assign({ id, apiVersion: 1, defaultEnabled: true, create() { return {}; } }, extra); }
 
 // registration rules
-const h0 = new PluginHost({ dir: tmp() });
+const h0 = new PluginHost({ dir: tmp(), external: false });
+assert.throws(() => h0.register(def('lbl', { ui: { label: '' } })), /ui.label/);
 assert.throws(() => h0.register(def('Bad Id')), /Invalid plugin id/);
 assert.throws(() => h0.register(def('old', { apiVersion: 2 })), /unsupported plugin API/);
 assert.throws(() => h0.register(def('perm', { permissions: ['root'] })), /unknown permission/);
@@ -40,11 +41,11 @@ h1.stop();
 // routes: isolated prefix, failing route counted, plugin switched off after maxErrors
 let broken = true;
 const h2 = new PluginHost({ dir: tmp(), maxErrors: 2 }).register(def('web', {
-    tab: 'web',
+    ui: { label: 'Web' },
     create() { return { route(req, r, sub) { if (broken) throw new Error('bad route'); json(r, { sub }); } }; }
 }));
 h2.start();
-assert.equal(h2.status('web').tab, 'web');
+assert.deepEqual(h2.status('web').ui, { label: 'Web' });
 let r = res();
 assert.equal(h2.handle({ method: 'GET' }, r, '/other', json), false);
 r = res(); h2.handle({ method: 'GET' }, r, '/plugins/web/api/x', json);
@@ -62,6 +63,65 @@ assert.deepEqual(r.body, { sub: 'a/b' });
 r = res(); h2.handle({ method: 'GET' }, r, '/plugins', json);
 assert.equal(r.body.plugins.length, 1);
 h2.stop();
+
+
+// external plugins: folder + manifest, off until switched on, bad ones reported not fatal
+const ext = tmp();
+function plugin(id, manifest, code) {
+    fs.mkdirSync(path.join(ext, id), { recursive: true });
+    if (manifest !== null) fs.writeFileSync(path.join(ext, id, 'manifest.json'), typeof manifest === 'string' ? manifest : JSON.stringify(manifest));
+    if (code != null) fs.writeFileSync(path.join(ext, id, 'index.js'), code);
+}
+plugin('fine', { id: 'fine', name: 'Fine', version: '1', apiVersion: 1, ui: { label: 'Fine' } },
+    "module.exports=function(ctx){return {start:function(){global.__fineStarted=(global.__fineStarted||0)+1},stop:function(){global.__fineStopped=1},route:function(q,r,s){r.writeHead(200);r.end('hi '+s+' '+ctx.id)}}}");
+plugin('wrongid', { id: 'other', apiVersion: 1 }, 'module.exports=function(){return {}}');
+plugin('nomani', null, 'module.exports=function(){return {}}');
+plugin('badjson', '{nope', 'module.exports=function(){return {}}');
+plugin('escape', { id: 'escape', apiVersion: 1, main: '../fine/index.js' }, null);
+plugin('throws', { id: 'throws', apiVersion: 1 }, 'throw new Error("top level")');
+plugin('oldapi', { id: 'oldapi', apiVersion: 7 }, 'module.exports=function(){return {}}');
+const he = new PluginHost({ dir: ext, stableMs: 10 });
+const le = he.start();
+const by = id => le.filter(p => p.id === id)[0];
+assert.equal(by('fine').state, 'stopped', 'external plugins start off');
+assert.equal(by('fine').enabled, false);
+assert.equal(global.__fineStarted, undefined, 'nothing runs before it is switched on');
+assert.match(by('wrongid').lastError, /match the folder/);
+assert.match(by('nomani').lastError, /manifest/);
+assert.match(by('badjson').lastError, /manifest/);
+assert.match(by('escape').lastError, /inside the plugin folder/);
+assert.match(by('throws').lastError, /top level/);
+assert.match(by('oldapi').lastError, /unsupported plugin API 7/);
+['wrongid', 'nomani', 'badjson', 'escape', 'throws', 'oldapi'].forEach(id => assert.equal(by(id).state, 'invalid', id));
+assert.equal(he.setEnabled('fine', true).state, 'running');
+assert.equal(global.__fineStarted, 1);
+let rr = res(); rr.setHeader = (k, v) => { rr[k] = v; };
+he.handle({ method: 'GET', headers: { origin: 'null' } }, rr, '/plugins/fine/api/x', json);
+assert.equal(rr['Content-Security-Policy'], 'sandbox allow-scripts');
+assert.equal(rr['Access-Control-Allow-Origin'], 'null');
+rr = res(); he.handle({ method: 'POST' }, rr, '/plugins/badjson/enable', json);
+assert.equal(rr.code, 409);
+he.stop();
+assert.equal(global.__fineStopped, 1);
+
+// example shipped in the repo loads and works
+const exDir = tmp();
+fs.mkdirSync(exDir, { recursive: true });
+const exSrc = path.join(__dirname, '..', 'examples', 'plugins', 'hello');
+fs.mkdirSync(path.join(exDir, 'hello'));
+['manifest.json', 'index.js'].forEach(f => fs.copyFileSync(path.join(exSrc, f), path.join(exDir, 'hello', f)));
+const hx = new PluginHost({ dir: exDir, stableMs: 10 });
+assert.equal(hx.start()[0].state, 'stopped');
+assert.equal(hx.setEnabled('hello', true).state, 'running');
+let pressed = null;
+const pr = { headersSent: false, setHeader() {}, writeHead() { this.headersSent = true; }, end(b) { pressed = JSON.parse(b); } };
+hx.handle({ method: 'POST', headers: {} }, pr, '/plugins/hello/api/press', json);
+assert.deepEqual(pressed, { count: 1 });
+hx.stop();
+const hy = new PluginHost({ dir: exDir, stableMs: 10 });
+hy.start();
+assert.equal(hy.setEnabled('hello', true).detail.count, 1, 'count survives a restart');
+hy.stop();
 
 // exec is only lent to plugins that ask for it
 const calls = [];

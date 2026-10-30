@@ -1,12 +1,13 @@
 'use strict';
-// Plugin host (API 1). Internal modules, today only the ones shipped with Vetro,
-// register through one small interface instead of being wired into main.js:
+// Plugin host (API 1): the framework other people build on. A plugin is a folder
+// in the plugin directory with a manifest.json and an entry file (docs/plugins.md):
 //
-//   { id, name, version, apiVersion: 1, permissions: ['exec', ...],
-//     tab: 'mqtt' (optional: the dashboard page that shows only while the plugin runs),
-//     create(ctx) -> { start(), stop(), status(), route(req, res, sub) } }
+//   manifest: { id, name, version, apiVersion: 1, permissions: ['exec'], main: 'index.js',
+//               ui: { label } (optional: a page in the dashboard sidebar while it runs) }
+//   index.js: module.exports = function (ctx) { return { start, stop, status, route } }
 //
-// The host owns the lifecycle and keeps a failing plugin from taking Vetro down:
+// Vetro's own features are not plugins. The host owns the lifecycle of the ones
+// that are added and keeps a failing plugin from taking Vetro down:
 // every call into a plugin is guarded, a plugin that keeps failing is switched
 // off, and a start that never completes makes the next boot come up in safe mode.
 // Plain ES5 on purpose: the TV runs Node 4.4 (no worker_threads, no vm sandbox
@@ -25,6 +26,7 @@ function PluginHost(opts) {
     this.execute = opts.execute || null;       // agent command runner, only lent to plugins asking for 'exec'
     this.maxErrors = opts.maxErrors || 3;      // consecutive failures before a plugin is switched off
     this.stableMs = opts.stableMs == null ? 60000 : opts.stableMs;
+    this.external = opts.external !== false;   // load plugin folders from dir
     this.entries = Object.create(null);
     this.order = [];
     this.safeMode = false;
@@ -52,6 +54,45 @@ PluginHost.prototype._writeState = function (state) {
     fs.renameSync(temp, this._file('plugins.json'));
 };
 
+// Plugins come from folders, never from the network: whoever puts one there has
+// shell access to the TV already. Nothing runs until it is switched on.
+PluginHost.prototype._loadExternal = function () {
+    var names;
+    try { names = fs.readdirSync(this.dir); } catch (e) { return; }
+    names.sort();
+    for (var i = 0; i < names.length; i++) {
+        var id = names[i], folder = path.join(this.dir, id);
+        var isDir = false;
+        try { isDir = fs.statSync(folder).isDirectory(); } catch (e) { /* skip */ }
+        if (!isDir || id.charAt(0) === '.' || this.entries[id]) continue;
+        try {
+            this._loadFolder(id, folder);
+        } catch (e) {
+            this.entries[id] = {
+                def: { id: id, name: id, apiVersion: null, permissions: [] }, instance: null,
+                state: 'invalid', errors: 0, lastError: String(e && e.message || e), defaultEnabled: false
+            };
+            this.order.push(id);
+        }
+    }
+};
+
+PluginHost.prototype._loadFolder = function (id, folder) {
+    var manifest;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(folder, 'manifest.json'), 'utf8')); }
+    catch (e) { throw new Error('manifest.json missing or not valid JSON'); }
+    if (manifest.id !== id) throw new Error('manifest id must match the folder name');
+    var main = path.resolve(folder, manifest.main || 'index.js');
+    if (main.indexOf(path.resolve(folder) + path.sep) !== 0) throw new Error('main must stay inside the plugin folder');
+    var mod = require(main);
+    var create = typeof mod === 'function' ? mod : mod && mod.create;
+    if (typeof create !== 'function') throw new Error('entry file must export a function');
+    this.register({
+        id: id, name: manifest.name, version: manifest.version, apiVersion: manifest.apiVersion,
+        permissions: manifest.permissions, ui: manifest.ui, create: create
+    });
+};
+
 PluginHost.prototype.register = function (def) {
     if (!def || !ID_RE.test(def.id || '')) throw new Error('Invalid plugin id');
     if (this.entries[def.id]) throw new Error('Duplicate plugin: ' + def.id);
@@ -61,9 +102,12 @@ PluginHost.prototype.register = function (def) {
     for (var i = 0; i < perms.length; i++) {
         if (PERMISSIONS.indexOf(perms[i]) < 0) throw new Error(def.id + ': unknown permission ' + perms[i]);
     }
+    if (def.ui != null && (typeof def.ui.label !== 'string' || !def.ui.label || def.ui.label.length > 24)) {
+        throw new Error(def.id + ': ui.label must be 1-24 characters');
+    }
     this.entries[def.id] = {
         def: def, instance: null, state: 'stopped', errors: 0, lastError: null,
-        defaultEnabled: def.defaultEnabled !== false
+        defaultEnabled: def.defaultEnabled === true
     };
     this.order.push(def.id);
     return this;
@@ -158,6 +202,7 @@ PluginHost.prototype.start = function () {
         fs.mkdirSync(this.dir);
     } catch (e) { /* exists */ }
     try { fs.writeFileSync(this._file('starting'), String(Date.now())); } catch (e) { /* no marker, no safe mode */ }
+    if (this.external) this._loadExternal();
     for (var i = 0; i < this.order.length; i++) {
         var entry = this.entries[this.order[i]];
         var flag = state.enabled[entry.def.id];
@@ -188,6 +233,7 @@ PluginHost.prototype.stop = function () {
 PluginHost.prototype.setEnabled = function (id, on) {
     var entry = this.entries[id];
     if (!entry) throw new Error('Unknown plugin');
+    if (entry.state === 'invalid') throw new Error('Plugin is invalid: ' + entry.lastError);
     var state = this._readState();
     state.enabled[id] = !!on;
     this._writeState(state);
@@ -226,7 +272,7 @@ PluginHost.prototype.status = function (id) {
     return {
         id: id,
         name: entry.def.name || id,
-        tab: entry.def.tab || null,
+        ui: entry.def.ui ? { label: entry.def.ui.label } : null,
         version: entry.def.version || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
@@ -254,7 +300,7 @@ PluginHost.prototype.handle = function (req, res, pathname, json) {
     var id = m[1], sub = m[2];
     if (!id) {
         if (req.method !== 'GET') json(res, { error: 'Method not allowed' }, 405);
-        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, plugins: this.list() });
+        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, plugins: this.list() });
         return true;
     }
     if (id === 'resume') {
@@ -266,7 +312,10 @@ PluginHost.prototype.handle = function (req, res, pathname, json) {
     if (!entry) { json(res, { error: 'Unknown plugin' }, 404); return true; }
     if (sub === 'enable' || sub === 'disable') {
         if (req.method !== 'POST') json(res, { error: 'Method not allowed' }, 405);
-        else json(res, { ok: true, plugin: this.setEnabled(id, sub === 'enable') });
+        else {
+            try { json(res, { ok: true, plugin: this.setEnabled(id, sub === 'enable') }); }
+            catch (e) { json(res, { ok: false, error: e.message }, 409); }
+        }
         return true;
     }
     if (sub === undefined || sub === '') {
@@ -277,6 +326,14 @@ PluginHost.prototype.handle = function (req, res, pathname, json) {
     if (!api) { json(res, { error: 'Not found' }, 404); return true; }
     if (!entry.instance || !entry.instance.route) { json(res, { error: 'Plugin not running' }, 503); return true; }
     var handled = false;
+    // A plugin page is untrusted content: sandboxed even when opened on its own, and
+    // readable by the sandboxed dashboard frame (opaque origin) through CORS.
+    res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (req.headers && req.headers.origin === 'null') {
+        res.setHeader('Access-Control-Allow-Origin', 'null');
+        res.setHeader('Vary', 'Origin');
+    }
     this._guard(entry, function () { handled = entry.instance.route(req, res, api[1] || '') !== false; });
     if (!handled && !res.headersSent) {
         json(res, { error: entry.state === 'failed' ? 'Plugin failed: ' + entry.lastError : 'Not found' }, entry.state === 'failed' ? 503 : 404);

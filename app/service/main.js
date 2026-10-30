@@ -674,9 +674,9 @@ var bridge = new MqttBridge(readTelemetry,function(m){
  actionQueue=actionQueue.then(function(){return runActions(actions);}).then(function(r){bridge.event('trigger','Rule executed: '+m.topic+' · '+r.sent+' action(s)');}).catch(function(e){bridge.event('error','MQTT rule: '+e.message);}).finally(function(){pendingActions--;});
 });
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-// Shipped modules run as plugins: guarded lifecycle, own routes under /plugins/<id>/api, safe mode after a failed boot.
+// Third-party plugins (see docs/plugins.md): loaded from the plugin folder, off until switched on, guarded, safe mode after a failed boot.
+// Vetro's own features (MQTT, launcher, ...) are not plugins.
 var plugins = new PluginHost({dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute});
-plugins.register(require('./plugin-mqtt.js').definition(bridge));
 plugins.start();
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,

@@ -1,0 +1,9 @@
+{
+  "id": "hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "permissions": [],
+  "main": "index.js",
+  "ui": { "label": "Hello" }
+}
