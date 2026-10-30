@@ -9,188 +9,82 @@ const DETECTION = [
     '##vetro##db/source-service/detection_state_HDMI1, value = not_detected,mbr (String)\n##vetro##db/source-service/detection_state_HDMI2, value = detected,autodetection (String)\n##vetro##db/source-service/detection_state_HDMI3, value = detected,autodetection (String)\n##vetro##db/source-service/detection_state_HDMI4, value = not_detected,mbr (String)\n##vetro##'
 ].join('');
 
-// The shape vconftool prints for one value, used for variants. The captured string above pins the real tool.
-function vconf(key, value) {
-    const i = value.lastIndexOf(': ');
-    return i < 0 ? key + ', value = String: ' + value
-        : key + ', value = ' + value.slice(i + 2) + ' (String: ' + value.slice(0, i) + ')';
+// The same output for other entries, in the shape vconftool prints (split at the last ": ").
+function detection(entries) {
+    const vconf = (key, value) => { const i = value.lastIndexOf(': '); return i < 0 ? key + ', value = String: ' + value : key + ', value = ' + value.slice(i + 2) + ' (String: ' + value.slice(0, i) + ')'; };
+    const json = JSON.stringify(entries).replace(/,/g, ',\t').replace(/:/g, ' : ');
+    return [vconf('db/source-list/source-name', json)].concat([1, 2, 3, 4].map(n => 'db/source-service/detection_state_HDMI' + n + ', value = detected,autodetection (String)')).join('##vetro##') + '##vetro##';
 }
-function payload(entries) {
-    return JSON.stringify(entries).replace(/,/g, ',\t').replace(/:/g, ' : ');
+function list(changes) {
+    const rows = sources.defaults();
+    (changes || []).forEach(c => Object.assign(rows.find(r => r.slug === c.slug), c));
+    return rows;
 }
-function detection(entries, states) {
-    return [
-        vconf(sources.SOURCE_NAME_KEY, payload(entries)),
-        '##vetro##' + vconf('db/source-service/detection_state_HDMI1', states[0] + ',autodetection'),
-        '##vetro##' + vconf('db/source-service/detection_state_HDMI2', states[1] + ',autodetection'),
-        '##vetro##' + vconf('db/source-service/detection_state_HDMI3', states[2] + ',autodetection'),
-        '##vetro##' + vconf('db/source-service/detection_state_HDMI4', states[3] + ',autodetection'),
-        '##vetro##'
-    ].join('\n');
-}
+const autoLabel = (det, slug) => sources.rows(list(), det).find(r => r.slug === slug).autoLabel;
 
-// A saved list, with only the fields a test cares about changed.
-function state(changes) {
-    const list = sources.defaults();
-    (changes || []).forEach(change => Object.assign(list.sources.filter(row => row.slug === change.slug)[0], change));
-    return list;
-}
+// Validation: the editor's rows or the saved file, cleaned, with the first problem named.
+const five = sources.defaults();
+assert.deepEqual(sources.normalize({sources: five}), five, 'the saved file shape');
+assert.deepEqual(sources.normalize({version: 1, sources: five}), five, 'a file saved with a version field still reads');
+assert.equal(sources.normalize(list([{slug: 'in-hdmi2', label: '  Living room  '}]))[2].label, 'Living room');
+assert.equal(sources.normalize(list([{slug: 'in-hdmi2', label: '   '}]))[2].label, null, 'blank means automatic');
+assert.throws(() => sources.normalize(five.slice(0, 4)), /all five/);
+assert.throws(() => sources.normalize(five.slice(0, 4).concat(five[0])), /Duplicate source/);
+assert.throws(() => sources.normalize(five.map(r => r.slug === 'in-tv' ? Object.assign({}, r, {slug: 'in-usb'}) : r)), /Unknown source/);
+assert.throws(() => sources.normalize(list([{slug: 'in-hdmi2', icon: 'logo'}])), /Unknown icon/);
+assert.throws(() => sources.normalize(list([{slug: 'in-hdmi2', label: 'x'.repeat(25)}])), /24 characters/);
+assert.throws(() => sources.normalize(list([{slug: 'in-hdmi2', label: 'a\tb'}])), /control characters/);
+assert.throws(() => sources.normalize(five.map(r => Object.assign({}, r, {hidden: true}))), /at least one source visible/);
 
-(async function () {
-    // Defaults: all five visible, automatic labels, Auto icons, canonical order.
-    const empty = sources.defaults();
-    assert.deepEqual(empty.sources.map(row => row.slug), sources.SLUGS);
-    assert.ok(empty.sources.every(row => row.label === null && row.hidden === false && row.icon === 'auto'));
+// Detection: the TV's own names and presence from the captured output.
+const det = sources.parseDetection(DETECTION);
+assert.equal(det.available, true);
+assert.deepEqual(det.states, {13: 'not_detected', 14: 'detected', 15: 'detected', 16: 'not_detected'});
+assert.equal(autoLabel(det, 'in-hdmi2'), 'Amazon Fire TV stick');
+assert.equal(autoLabel(det, 'in-hdmi1'), 'HDMI 1', 'no device: the port name');
+assert.equal(autoLabel(sources.parseDetection(detection([{DetectedName: 'Old', SourceType: 14}, {DetectedName: 'New', SourceType: 14}])), 'in-hdmi2'), 'New', 'two entries for one port: the last wins');
+assert.equal(autoLabel(sources.parseDetection(detection([{DetectedName: 'Fire TV', EditName: 'Living room', SourceType: 14}])), 'in-hdmi2'), 'Living room', 'Samsung\'s edit wins over the detected name');
+assert.equal(autoLabel(sources.parseDetection(detection([{DetectedName: 'Fire TV', EditName: 'HDMI 2', SourceType: 14}])), 'in-hdmi2'), 'Fire TV', 'an edit equal to the port name is ignored');
+assert.equal(autoLabel(sources.parseDetection(detection([{DetectedName: 'Fire\tTV', SourceType: 14}])), 'in-hdmi2'), 'Fire TV', 'a tab in a TV name never reaches the file');
 
-    // Validation: the stored shape, or the five rows, with the first problem named.
-    assert.deepEqual(sources.normalize(empty), empty);
-    assert.deepEqual(sources.normalize(empty.sources), empty);
-    assert.equal(sources.normalize(state([{slug: 'in-hdmi2', label: '  Living room  '}])).sources[2].label, 'Living room');
-    assert.equal(sources.normalize(state([{slug: 'in-hdmi2', label: '   '}])).sources[2].label, null, 'empty means null');
-    assert.throws(() => sources.normalize({version: 2, sources: empty.sources}), /version/);
-    assert.throws(() => sources.normalize({version: 1, sources: empty.sources.slice(0, 4)}), /Missing source/);
-    assert.throws(() => sources.normalize({version: 1, sources: empty.sources.concat(empty.sources[0])}), /Duplicate source/);
-    assert.throws(() => sources.normalize(state([{slug: 'in-hdmi2', icon: 'logo'}])), /Unknown icon/);
-    assert.throws(() => sources.normalize(state([{slug: 'in-hdmi2', hidden: 'yes'}])), /hidden/);
-    assert.throws(() => sources.normalize(state([{slug: 'in-hdmi2', label: 'x'.repeat(25)}])), /24 characters/);
-    assert.throws(() => sources.normalize(state([{slug: 'in-hdmi2', label: 'a\u0001b'}])), /control characters/);
-    assert.throws(() => sources.normalize(state([
-        {slug: 'in-tv', hidden: true}, {slug: 'in-hdmi1', hidden: true}, {slug: 'in-hdmi2', hidden: true},
-        {slug: 'in-hdmi3', hidden: true}, {slug: 'in-hdmi4', hidden: true}
-    ])), /at least one source visible/);
-    assert.throws(() => sources.normalize({version: 1, sources: empty.sources.map(row => row.slug === 'in-tv' ? Object.assign({}, row, {slug: 'in-usb'}) : row)}), /Unknown source/);
+// Anything unreadable makes the whole detection unavailable.
+assert.equal(sources.parseDetection('').available, false);
+assert.equal(sources.parseDetection(DETECTION.replace('detection_state_HDMI3, value = detected', 'Error: no such key')).available, false, 'a failed state read');
+assert.equal(sources.parseDetection(DETECTION.replace('"PlayStation 5"', '"PlayStation 5')).available, false, 'broken JSON');
+assert.equal(sources.parseDetection(detection({not: 'a list'})).available, false);
+assert.equal(sources.parseDetection(detection([null])).available, false);
+assert.equal(sources.parseDetection(detection([])).available, true, 'an empty name list is fine');
 
-    // Detection: the TV's own names and presence.
-    const det = sources.parseDetection(DETECTION);
-    assert.equal(det.available, true);
-    assert.equal(det.names[14].detected, 'Amazon Fire TV stick');
-    assert.equal(det.names[15].detected, 'PlayStation 5');
-    assert.deepEqual(det.states, {13: 'not_detected', 14: 'detected', 15: 'detected', 16: 'not_detected'});
+// Rows: saved order, effective and saved values, presence, and icons classified from the TV's name.
+const rows = sources.rows(list([{slug: 'in-hdmi1', hidden: true}, {slug: 'in-hdmi2', label: 'Mac mini'}, {slug: 'in-tv', icon: 'camera'}]), det);
+assert.deepEqual(rows.map(r => [r.label, r.labelOverride, r.icon, r.iconChoice, r.present]), [
+    ['TV', null, 'camera', 'camera', true],
+    ['HDMI 1', null, 'hdmi', 'auto', false],
+    ['Mac mini', 'Mac mini', 'streaming', 'auto', true],
+    ['PlayStation 5', null, 'console', 'auto', true],
+    ['HDMI 4', null, 'hdmi', 'auto', false]
+], 'a Vetro label never changes the automatic icon');
+const offline = sources.rows(list([{slug: 'in-hdmi2', label: 'Fire TV'}]), sources.unavailable());
+assert.deepEqual(offline.map(r => r.label), ['TV', 'HDMI 1', 'Fire TV', 'HDMI 3', 'HDMI 4'], 'without detection: saved labels and port names');
+assert.ok(offline.every(r => r.present === null), 'no "no device" claim when detection cannot run');
 
-    const lastWins = sources.parseDetection(detection([
-        {DetectedName: 'Old stick', EditName: '', SourceType: 14},
-        {DetectedName: 'New stick', EditName: '', SourceType: 14}
-    ], ['not_detected', 'detected', 'not_detected', 'not_detected']));
-    assert.equal(lastWins.names[14].detected, 'New stick', 'two entries for one source: the last wins');
-    const edited = sources.parseDetection(detection([
-        {DetectedName: 'Amazon Fire TV stick', EditName: 'Living room', SourceType: 14}
-    ], ['not_detected', 'detected', 'not_detected', 'not_detected']));
-    assert.equal(sources.tvName('in-hdmi2', edited), 'Living room', 'Samsung edit wins over the detected name');
-    const sameDefault = sources.parseDetection(detection([
-        {DetectedName: 'Amazon Fire TV stick', EditName: 'HDMI 2', SourceType: 14}
-    ], ['not_detected', 'detected', 'not_detected', 'not_detected']));
-    assert.equal(sources.tvName('in-hdmi2', sameDefault), 'Amazon Fire TV stick', 'an edit equal to the port default is ignored');
+// Classification of common device names.
+[['Xbox Series X', 'console'], ['Apple TV 4K', 'streaming'], ['Windows PC', 'pc'], ['AV receiver', 'soundbar'],
+    ['Blu-ray player', 'disc'], ['Webcam', 'camera'], ['Satellite box', 'hdmi']].forEach(([name, icon]) => {
+    const one = sources.rows(list(), sources.parseDetection(detection([{DetectedName: name, SourceType: 13}])));
+    assert.equal(one[1].icon, icon, name);
+});
 
-    // Detection is unavailable as a whole: a failed read, broken JSON, or a shape we do not know.
-    assert.equal(sources.parseDetection('').available, false);
-    assert.equal(sources.parseDetection(DETECTION.replace('detection_state_HDMI3, value = detected', 'Error: no such key')).available, false, 'a failed state read');
-    assert.equal(sources.parseDetection(DETECTION.replace('"PlayStation 5"', '"PlayStation 5')).available, false, 'broken JSON');
-    assert.equal(sources.parseDetection(detection([], ['detected', 'detected', 'detected', 'detected'])).available, true, 'an empty source list is still a shape we know');
-    assert.equal(sources.parseDetection(vconf(sources.SOURCE_NAME_KEY, '') + '\n##vetro##x##vetro##x##vetro##x##vetro##x##vetro##').available, false);
-    assert.equal(sources.parseDetection(detection([{SourceType: '14'}], ['detected', 'detected', 'detected', 'detected'])).available, false, 'SourceType must be a number');
-    assert.equal(sources.parseDetection(detection([{DetectedName: 5, SourceType: 14}], ['detected', 'detected', 'detected', 'detected'])).available, false, 'DetectedName must be a string');
-    assert.equal(sources.parseDetection(detection({not: 'an array'}, ['detected', 'detected', 'detected', 'detected'])).available, false);
+// The generated file: visible rows in saved order, source numbers and absolute icon paths.
+const order = list([{slug: 'in-hdmi1', hidden: true}]);
+order.unshift(order.splice(3, 1)[0]);
+assert.equal(sources.tsv(sources.rows(order, det), '/pkg/icons'), [
+    '# the inputs panel (Up on the dock). Generated from vetro-dock-sources.json; do not edit.',
+    'in-hdmi3\tPlayStation 5\tsource:15\t\t/pkg/icons/input-console.png',
+    'in-tv\tTV\tsource:0\t\t/pkg/icons/in-tv.png',
+    'in-hdmi2\tAmazon Fire TV stick\tsource:14\t\t/pkg/icons/input-streaming.png',
+    'in-hdmi4\tHDMI 4\tsource:16\t\t/pkg/icons/input-hdmi.png',
+    ''
+].join('\n'));
 
-    // The saved list joined with detection: effective vs stored values, presence and the move/hide flags.
-    const list = state([
-        {slug: 'in-tv', hidden: true},
-        {slug: 'in-hdmi1', hidden: true},
-        {slug: 'in-hdmi2', label: 'Living room Fire TV', icon: 'streaming'}
-    ]);
-    const rows = sources.rows(list, det);
-    assert.deepEqual(rows.map(row => row.slug), sources.SLUGS);
-    assert.equal(rows[2].label, 'Living room Fire TV');
-    assert.equal(rows[2].labelOverride, 'Living room Fire TV');
-    assert.equal(rows[2].autoLabel, 'Amazon Fire TV stick');
-    assert.equal(rows[2].icon, 'streaming');
-    assert.equal(rows[2].iconChoice, 'streaming');
-    assert.equal(rows[3].label, 'PlayStation 5', 'automatic row uses the detected name');
-    assert.equal(rows[3].labelOverride, null);
-    assert.equal(rows[3].icon, 'console', 'auto icon classifies the TV name');
-    assert.equal(rows[3].present, true);
-    assert.equal(rows[1].present, false);
-    assert.equal(rows[0].present, true, 'the TV is always present');
-    assert.equal(rows[0].hidden, true);
-    assert.equal(rows[0].canMoveUp, false);
-    assert.equal(rows[0].canHide, false, 'hidden rows offer no actions');
-    assert.equal(rows[2].canMoveUp, false, 'the first visible row cannot move up');
-    assert.equal(rows[2].canMoveDown, true);
-    assert.equal(rows[3].canMoveUp, true);
-    assert.equal(rows[4].canMoveDown, false, 'the last visible row cannot move down');
-    assert.equal(rows[2].canHide, true);
-
-    // An explicit icon wins on any row; a Vetro label never changes the type.
-    const explicit = sources.rows(state([{slug: 'in-tv', icon: 'camera'}, {slug: 'in-hdmi2', label: 'Mac mini'}]), det);
-    assert.equal(explicit[0].icon, 'camera');
-    assert.equal(explicit[2].icon, 'streaming', 'classification uses the TV name, not the Vetro label');
-
-    // Detection unavailable: overrides stay, automatic rows fall back to port defaults, present is null.
-    const unavailable = sources.rows(state([{slug: 'in-hdmi2', label: 'Fire TV'}]), sources.unavailable());
-    assert.equal(unavailable[2].label, 'Fire TV');
-    assert.equal(unavailable[3].label, 'HDMI 3');
-    assert.equal(unavailable[3].icon, 'hdmi');
-    assert.ok(unavailable.every(row => row.present === null), 'no "no device" claim when detection cannot run');
-    // Only one visible row: it cannot be hidden or moved.
-    const last = sources.rows(state([{slug: 'in-hdmi1', hidden: true}, {slug: 'in-hdmi2', hidden: true},
-        {slug: 'in-hdmi3', hidden: true}, {slug: 'in-hdmi4', hidden: true}]), det);
-    assert.equal(last[0].canHide, false);
-    assert.equal(last[0].canMoveUp, false);
-    assert.equal(last[0].canMoveDown, false);
-
-    // Classification by name, the correction path being the per-row icon choice.
-    assert.equal(sources.classify('PlayStation 5'), 'console');
-    assert.equal(sources.classify('Xbox Series X'), 'console');
-    assert.equal(sources.classify('Nintendo Switch'), 'console');
-    assert.equal(sources.classify('Amazon Fire TV stick'), 'streaming');
-    assert.equal(sources.classify('Apple TV 4K'), 'streaming');
-    assert.equal(sources.classify('Chromecast'), 'streaming');
-    assert.equal(sources.classify('Roku'), 'streaming');
-    assert.equal(sources.classify('NVIDIA Shield'), 'streaming');
-    assert.equal(sources.classify('Mac mini'), 'pc');
-    assert.equal(sources.classify('Windows PC'), 'pc');
-    assert.equal(sources.classify('Linux box'), 'pc');
-    assert.equal(sources.classify('Soundbar'), 'soundbar');
-    assert.equal(sources.classify('Home Theater'), 'soundbar');
-    assert.equal(sources.classify('AV receiver'), 'soundbar');
-    assert.equal(sources.classify('Blu-ray player'), 'disc');
-    assert.equal(sources.classify('DVD'), 'disc');
-    assert.equal(sources.classify('Camera'), 'camera');
-    assert.equal(sources.classify('Webcam'), 'camera');
-    assert.equal(sources.classify('Satellite box'), 'hdmi');
-    assert.equal(sources.classify(''), 'hdmi');
-
-    // The generated inputs file: saved order, visible rows only, source numbers, absolute icon paths,
-    // and a label shortened to 40 characters including one ellipsis.
-    const long = sources.parseDetection(detection([
-        {DetectedName: 'A'.repeat(50), EditName: '', SourceType: 14}
-    ], ['detected', 'detected', 'detected', 'detected']));
-    const generated = sources.tsv(sources.rows(state([{slug: 'in-hdmi1', hidden: true}]), long), '/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons');
-    const lines = generated.split('\n');
-    assert.match(lines[0], /^# /);
-    assert.ok(!generated.includes('in-hdmi1'), 'hidden rows are omitted');
-    assert.equal(lines[1], 'in-tv\tTV\tsource:0\t\t/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons/in-tv.png');
-    assert.equal(lines[2], 'in-hdmi2\t' + 'A'.repeat(39) + '\u2026\tsource:14\t\t/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons/input-hdmi.png');
-    assert.equal(lines[3], 'in-hdmi3\tHDMI 3\tsource:15\t\t/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons/input-hdmi.png');
-    assert.equal(lines[4], 'in-hdmi4\tHDMI 4\tsource:16\t\t/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons/input-hdmi.png');
-    assert.equal(lines.length, 6, 'header, four visible rows and the final newline');
-    assert.equal(sources.shorten('x'.repeat(40)), 'x'.repeat(40), 'forty is short enough');
-    assert.equal(sources.shorten('x'.repeat(41)).length, 40);
-    assert.equal(sources.shorten('x'.repeat(41)), 'x'.repeat(39) + '\u2026', 'the ellipsis replaces the fortieth character');
-    const splitPair = sources.shorten('a'.repeat(38) + '\uD83D\uDE00' + 'b'.repeat(10));
-    assert.equal(splitPair, 'a'.repeat(38) + '\u2026', 'a cut between the halves of an emoji drops the whole pair');
-    assert.doesNotMatch(splitPair, /[\uD800-\uDBFF]\u2026/, 'no lone high surrogate before the ellipsis');
-
-    // Icon file names: TV reuses the existing TV icon, HDMI has its own file.
-    assert.equal(sources.iconFile('tv'), 'in-tv.png');
-    assert.equal(sources.iconFile('hdmi'), 'input-hdmi.png');
-    ['pc', 'console', 'streaming', 'soundbar', 'disc', 'camera'].forEach(id => assert.equal(sources.iconFile(id), 'input-' + id + '.png'));
-
-    // The detection command reads the one key and the four states in one call, separated by sections.
-    const script = sources.detectionScript();
-    assert.ok(script.includes('vconftool get "$1"'));
-    [sources.SOURCE_NAME_KEY, 'detection_state_HDMI1', 'detection_state_HDMI2', 'detection_state_HDMI3', 'detection_state_HDMI4']
-        .forEach(key => assert.ok(script.includes(key), 'reads ' + key));
-    assert.ok(script.includes('##vetro##'));
-
-    console.log('PASS dock sources: defaults, validation, detection, resolution, generated file');
-})().catch(e => { console.error(e); process.exitCode = 1; });
+console.log('PASS dock sources: validation, detection, rows and the generated file');

@@ -31,12 +31,8 @@ To change the look: edit `chosen.json` (or paste a new designer export there), u
 `render_all` before building (`cd tools && python3 -c "import system_icons as s; s.render_all('../res/icons')"`).
 
 Not ported from the designer (the launcher cannot do them): blurred background behind the bar, label fonts, the
-brightness boost on a selected pill, and the desaturation of unselected icons. The focused item's name is drawn in
-the system font, in a capsule above the bar (`res/caption.png`, shared with the hint); the input in use is marked
-by `res/current_mark.png` under its tile. There is no clock in the chosen design.
-
-The designer previews both pages: pick **sorgenti (Su)** or press Up. Serve `dock/` over http (for example
-`python3 -m http.server` in `dock/`) and open `designer/index.html?chosen` to start from `chosen.json`.
+brightness boost on a selected pill, and the desaturation of unselected icons. With the chosen design there are no
+name labels and no clock, so the label styling options are not carried either.
 
 ## Build
 

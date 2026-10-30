@@ -319,11 +319,7 @@ Dock.prototype.refresh = function () {
 
 // The dock's own `inputs` command shows the dock and opens the panel, wherever the apps page's focus was.
 Dock.prototype.openInputsScript = function () {
-    return [
-        'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
-        'if [ -z "$p" ] || ! tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + ' || [ ! -p ' + FIFO + ' ]; then echo "The Vetro launcher is not running" >&2; exit 1; fi',
-        "printf 'inputs\\n' > " + FIFO
-    ].join('\n');
+    return '[ -p ' + FIFO + " ] && printf 'inputs\\n' > " + FIFO;
 };
 // Launcher off or stopped is a normal "nothing to open" answer, not a reason to stop the whole
 // physical remote: the caller keeps intercepting the other mapped keys.
@@ -359,101 +355,64 @@ Dock.prototype.entries = function () {
 Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(this.inputsFile, 'utf8')); } catch (e) { return []; }
 };
+
 // --- the saved source list and its generated inputs file --------------------
-//
 // vetro-dock-sources.json is the source of truth: order, labels, hidden flags and icon choices.
 // vetro-dock-inputs.tsv is generated from it and from the TV's own source report before every start.
 
-// The saved list, created from the defaults on first use. A corrupt list is kept as .bad and replaced,
-// so the editor can save a new one.
+// The saved list, or the defaults when there is none or it cannot be used; the next save replaces it.
 Dock.prototype.sourceState = function () {
-    var raw;
-    try { raw = fs.readFileSync(this.sourcesFile, 'utf8'); }
-    catch (e) {
-        if (e.code !== 'ENOENT') throw new Error('The source list could not be read: ' + e.message);
-        var initial = sources.defaults();
-        this.writeSources(initial);
-        return initial;
-    }
-    try { return sources.normalize(JSON.parse(raw)); }
-    catch (e) {
-        try { fs.renameSync(this.sourcesFile, this.sourcesFile + '.bad'); }
-        catch (e2) { throw new Error('The source list could not be replaced: ' + e2.message); }
-        var defaults = sources.defaults();
-        this.writeSources(defaults);
-        return defaults;
-    }
+    try { return sources.normalize(JSON.parse(fs.readFileSync(this.sourcesFile, 'utf8'))); }
+    catch (e) { return sources.defaults(); }
 };
 
-Dock.prototype.writeSources = function (state) {
-    try { writeAtomic(this.sourcesFile, JSON.stringify(state, null, 2) + '\n'); }
-    catch (e) { throw new Error('The source list could not be saved: ' + e.message); }
-};
-
-// What the TV reports, or unavailable with a reason. A read is reused for a few seconds, so a save (generate,
-// restart, status) or a burst of page polls runs the root script once; Refresh sources always reads again.
+// What the TV reports, or unavailable. A read is reused for a few seconds, so a save (generate, restart,
+// status) or a burst of page polls runs the root script once.
 Dock.prototype.readDetection = function () {
     if (this.detection && this.now() - this.detection.at < DETECTION_CACHE_MS) return this.detection.read;
     var read = this.execute(wrap(sources.detectionScript()), 15000).then(function (r) {
-        if (!r || r.timed_out) return sources.unavailable();
-        return sources.parseDetection(r.stdout || '');
+        return r && !r.timed_out ? sources.parseDetection(r.stdout) : sources.unavailable();
     }).catch(function () { return sources.unavailable(); });
     this.detection = {at: this.now(), read: read};
     return read;
 };
 
-// The dock's inputs file, generated from the saved list and the TV's report. Atomic: a failed write
-// leaves the previous file and fails the start, so the dock never reads half a list. A saved list that
-// cannot be read rejects like any other step, so callers holding `busy` release it.
-Dock.prototype.writeInputsFile = function (state) {
-    var self = this;
-    return Promise.resolve().then(function () {
-        if (!state) state = self.sourceState();
-        return self.readDetection();
-    }).then(function (detection) {
-        var list = sources.rows(state, detection);
-        var text = sources.tsv(list, path.join(self.dir, 'res', 'icons'));
-        try { writeAtomic(self.inputsFile, text); }
+// Generate the dock's inputs file. Atomic: a failed write keeps the previous file and fails the start.
+Dock.prototype.writeInputsFile = function () {
+    var self = this, list = this.sourceState();
+    return this.readDetection().then(function (detection) {
+        try { writeAtomic(self.inputsFile, sources.tsv(sources.rows(list, detection), path.join(self.dir, 'res', 'icons'))); }
         catch (e) { throw new Error('The inputs list could not be saved: ' + e.message); }
-        return list;
     });
 };
 
-// Save the five rows (slug, label, hidden, icon), generate the inputs file and restart a running dock.
-// The JSON is written first: if the TSV write fails the old panel stays and the next start retries.
-Dock.prototype.saveSources = function (list) {
-    var self = this, state;
-    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
-    try { state = sources.normalize(list); } catch (e) { return Promise.reject(e); }
-    this.busy = true; this.lastError = null;
-    return Promise.resolve().then(function () {
-        self.writeSources(state);
-        return self.writeInputsFile(state);
-    }).then(function () {
-        return self.readState().enabled ? self.restart() : self.status();
-    }).catch(function (e) {
-        self.lastError = e.message;
-        throw e;
-    }).finally(function () { self.busy = false; });
-};
-
-// Re-read the TV and regenerate the inputs file from the saved list; it does not save edits.
-Dock.prototype.refreshSources = function () {
+// Re-read the TV and regenerate the inputs file, after `save` if given. A running dock reads the file
+// only when it starts, so it is restarted.
+Dock.prototype.applySources = function (save) {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
     this.busy = true; this.lastError = null; this.detection = null;
-    return this.writeInputsFile().then(function () {
-        return self.readState().enabled ? self.restart() : self.status();
-    }).catch(function (e) {
+    return Promise.resolve().then(save).then(function () {
+        return self.readState().enabled ? self.launch(true) : self.writeInputsFile();
+    }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         throw e;
     }).finally(function () { self.busy = false; });
 };
 
-// Quick start with the app list already on disk, then the status the page shows.
-Dock.prototype.restart = function () {
-    var self = this;
-    return this.launch(true).then(function () { return self.status(); });
+// Save the five rows (slug, label, hidden, icon) and apply them.
+Dock.prototype.saveSources = function (list) {
+    var self = this, state;
+    try { state = sources.normalize(list); } catch (e) { return Promise.reject(e); }
+    return this.applySources(function () {
+        try { writeAtomic(self.sourcesFile, JSON.stringify({sources: state}, null, 2) + '\n'); }
+        catch (e) { throw new Error('The source list could not be saved: ' + e.message); }
+    });
+};
+
+// Re-read the TV and rebuild the panel from the saved list; it does not save edits.
+Dock.prototype.refreshSources = function () {
+    return this.applySources();
 };
 
 // The packaged type icon the editor asks for by id, so a hidden row still shows its icon.

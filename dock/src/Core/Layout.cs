@@ -23,12 +23,11 @@ namespace Launcher.Core
         public const int Gap = 18;
         public const int PadX = 26;
         public const int PadTop = 16;
-        /// <summary>Room under the icons; the marker of the input in use sits in its middle, clear of the focus ring.</summary>
-        public const int PadBottom = 24;
-        /// <summary>Height of the clock row under the icons; none when the design shows no clock.</summary>
-        public static readonly int ClockRow = Design.ShowClock ? ClockGap + ClockH : 0;
-        public const int ClockGap = 10;
-        public const int ClockH = 34;
+        public const int LabelGap = 10;
+        public const int LabelH = 34;
+        public const int PadBottom = 16;
+        /// <summary>Height of the name/clock row under the icons; none when the design shows neither.</summary>
+        public static readonly int LabelRow = Design.ShowLabels || Design.ShowClock ? LabelGap + LabelH : 0;
         public const int Margin = 40;          // room for the bar's shadow on every side (also: pill bottom to screen bottom)
         public const int BottomGap = 0;        // window bottom to screen bottom
         public const int ScreenSideGap = 12;   // pill never closer than this to the screen edge
@@ -47,18 +46,12 @@ namespace Launcher.Core
         public const int PillItemGap = 8;
         /// <summary>Reach of the capsule glow around a focused pill (same spread as the icons' glow).</summary>
         public const int PillGlowPad = 32;
-        // The focused item's name is not in the bar: it sits in a capsule CaptionH tall, CaptionGap above the bar, its
-        // text CaptionPadX from either end. That band (HintH) also holds the "Source" hint on the apps page and the
-        // "Back" hint under the raised panel.
-        public const int CaptionH = 40;
-        public const int CaptionGap = 10;
-        public const int CaptionPadX = 18;
-        public const int HintH = CaptionGap + CaptionH;
-        /// <summary>Smallest space kept between the name and the hint; with less, the hint steps aside.</summary>
-        public const int HintClearance = 16;
-        /// <summary>The input in use: a short white bar under its tile, in the middle of the bottom padding.</summary>
-        public const int CurrentMarkW = 32;
-        public const int CurrentMarkH = 6;
+        /// <summary>Smallest space kept between the label and the clock; with less, the clock is not drawn.</summary>
+        public const int ClockGap = 16;
+        // Room for the navigation hint ("Input" above the apps, "Back" below the inputs): HintH is the
+        // whole band, the capsule inside it is CapsuleH tall and HintH - CapsuleH away from the pill.
+        public const int HintH = 46;
+        public const int CapsuleH = 36;
         public const int DividerW = 2;
         public const int DividerH = 72;
 
@@ -76,8 +69,7 @@ namespace Launcher.Core
         public readonly int OffsetX;
         /// <summary>
         /// True for the panel page: its pill sits <see cref="HintH"/> higher than the apps pill, and the
-        /// freed band underneath holds the back hint. Both pages keep a band above the pill for the focused
-        /// item's name, so the window is the same height for both.
+        /// freed band underneath holds the back hint. The window is the same height for both pages.
         /// </summary>
         public readonly bool Raised;
         /// <summary>Index of the first pinned system entry when the strip ends with a run of them, else -1.</summary>
@@ -108,10 +100,10 @@ namespace Launcher.Core
             int maxPill = Math.Min(MaxPillW, screenW - 2 * Margin - 2 * ScreenSideGap);
             PillW = Math.Min(ContentW + 2 * PadX, maxPill);
             ViewportW = PillW - 2 * PadX - fixedW;
-            PillH = PadTop + FocusIcon + ClockRow + PadBottom;
+            PillH = PadTop + FocusIcon + LabelRow + PadBottom;
             WinW = PillW + 2 * Margin;
             if (windowW > WinW) { OffsetX = (windowW - WinW) / 2; WinW = windowW; }
-            WinH = PillH + 2 * Margin + 2 * HintH;
+            WinH = PillH + 2 * Margin + HintH;
             Raised = raised;
             WinX = (screenW - WinW) / 2;
             WinY = screenH - WinH - BottomGap;
@@ -156,8 +148,8 @@ namespace Launcher.Core
             return a < 0f ? 0f : (a > 1f ? 1f : a);
         }
 
-        /// <summary>Window-relative y of the pill's top edge (without the slide): under the name band, and on the apps page also under the band the raised panel uses.</summary>
-        public int Top { get { return Margin + (Raised ? HintH : 2 * HintH); } }
+        /// <summary>Window-relative y of the pill's top edge (without the slide).</summary>
+        public int Top { get { return Margin + (Raised ? 0 : HintH); } }
 
         public int RowCenterY { get { return Top + PadTop + FocusIcon / 2; } }
 
@@ -244,58 +236,35 @@ namespace Launcher.Core
             Box b; b.X = Left - extra; b.Y = Top - extra + Design.ShadowDy + slide; b.W = PillW + 2 * extra; b.H = PillH + 2 * extra; return b;
         }
 
-        /// <summary>Window-relative x of the centre of item <paramref name="item"/> (its name and marker are centred on it).</summary>
-        public int ItemCenterX(int item, float scroll)
+        /// <summary>Window-relative x of the centre of item <paramref name="item"/>'s label (under its icon).</summary>
+        public int LabelCenterX(int item, float scroll)
         {
             return (int)Math.Round(Left + PadX + ItemCenter(item, scroll));
         }
 
-        /// <summary>Window-relative left edge of the name capsule: centred over its item, kept within the pill's inner edges.</summary>
-        public int CaptionLeft(int item, float scroll, int captionW)
+        /// <summary>Window-relative left edge of an item's label: centred under its icon, kept inside the icon area of the pill.</summary>
+        public int LabelLeft(int item, float scroll, int labelW)
         {
-            int x = ItemCenterX(item, scroll) - captionW / 2;
-            int min = Left + PadX, max = Left + PillW - PadX - captionW;
-            if (max < min) return Left + (PillW - captionW) / 2;   // capsule wider than the pill interior: centre it
+            int x = LabelCenterX(item, scroll) - labelW / 2;
+            int min = Left + PadX, max = Left + PillW - PadX - labelW;
+            if (max < min) return Left + (PillW - labelW) / 2;   // label wider than the pill interior: centre it
             return x < min ? min : (x > max ? max : x);
         }
 
-        /// <summary>Window-relative y of the name capsule: CaptionGap above the pill.</summary>
-        public int CaptionTop(int slide) { return Top - CaptionGap - CaptionH + slide; }
+        public int LabelTop(int slide) { return Top + PadTop + FocusIcon + LabelGap + slide; }
 
         /// <summary>
-        /// Window-relative y of the hint band (CaptionH tall): beside the name above the apps pill, which
-        /// points up to the inputs; below the raised panel, which points back down.
+        /// Window-relative y of the hint capsule: above the pill on the apps page (which points up to the
+        /// inputs), below it on the panel page (which points back down).
         /// </summary>
         public int HintTop(int slide)
         {
-            return Raised ? Top + PillH + CaptionGap + slide : CaptionTop(slide);
+            int gap = HintH - CapsuleH;
+            return (Raised ? Top + PillH + gap : Top - gap - CapsuleH) + slide;
         }
 
-        /// <summary>
-        /// Window-relative x of a hint of the given width: at the right end over the pinned entries on the apps page
-        /// (when the design says so), out of the way of the name, which starts at the first app; centred otherwise.
-        /// </summary>
-        public int HintLeft(int hintW)
-        {
-            if (!Raised && Design.HintAtRight) return Left + PillW - PadX - hintW;
-            return Left + (PillW - hintW) / 2;
-        }
-
-        /// <summary>The name always belongs over its item, so the hint is the one that gives way: it is drawn only while it keeps <see cref="HintClearance"/> px from the name.</summary>
-        public static bool HintClear(int captionX, int captionW, int hintX, int hintW)
-        {
-            return captionX + captionW + HintClearance <= hintX || hintX + hintW + HintClearance <= captionX;
-        }
-
-        /// <summary>The marker of the input in use: centred under item <paramref name="item"/>, in the middle of the bottom padding.</summary>
-        public Box CurrentMarkBox(int item, float scroll, int slide)
-        {
-            Box b;
-            b.W = CurrentMarkW; b.H = CurrentMarkH;
-            b.X = ItemCenterX(item, scroll) - CurrentMarkW / 2;
-            b.Y = Top + PillH - PadBottom / 2 - CurrentMarkH / 2 + slide;
-            return b;
-        }
+        /// <summary>Window-relative x of a hint capsule of the given width: centred on the pill.</summary>
+        public int HintLeft(int capsuleW) { return Left + (PillW - capsuleW) / 2; }
 
         /// <summary>The hairline between the apps and the pinned system entries, centred in the group gap. It never scrolls.</summary>
         public Box DividerBox(float scroll, int slide)
@@ -307,11 +276,17 @@ namespace Launcher.Core
             return b;
         }
 
-        /// <summary>Window-relative y of the clock row, under the icons.</summary>
-        public int ClockTop(int slide) { return Top + PadTop + FocusIcon + ClockGap + slide; }
-
-        /// <summary>Window-relative right edge of the clock, on its row.</summary>
+        /// <summary>Window-relative right edge of the clock, on the label row.</summary>
         public int ClockRight { get { return Left + PillW - PadX; } }
+
+        /// <summary>
+        /// The label always belongs under its icon, so the clock is the one that gives way: it is drawn
+        /// only while it keeps <see cref="ClockGap"/> pixels away from the label box.
+        /// </summary>
+        public bool ClockClear(int labelX, int labelW, int clockW)
+        {
+            return labelX + labelW + ClockGap <= ClockRight - clockW;
+        }
 
         /// <summary>Window-relative x range in which scrolled items are visible.</summary>
         public int ViewLeft { get { return Left + PadX; } }

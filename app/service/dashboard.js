@@ -51,20 +51,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .row .field,.form-grid .field{margin:0}
 .row .field{flex:1 1 200px}
 .form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3);margin-top:var(--s3)}
-.source-list{display:grid;gap:var(--s2);margin-top:var(--s3)}
-.source-row{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) auto;grid-template-areas:"id label hide" "id select move";gap:var(--s2) var(--s3);align-items:center;padding:var(--s2) 0;border-top:1px solid var(--border)}
+.source-list{display:grid;margin-top:var(--s3)}
+.source-row{display:grid;grid-template-columns:minmax(0,170px) minmax(0,1fr) auto;grid-template-areas:"id name hide" "id icon move";gap:var(--s2) var(--s3);align-items:center;padding:var(--s2) 0;border-top:1px solid var(--border)}
 .source-row:first-child{border-top:0}
 .source-row.source-hidden{opacity:.55}
-.source-id{grid-area:id;align-self:start;display:grid;grid-template-columns:24px minmax(0,1fr);gap:var(--s1) var(--s2);align-items:center;min-width:0}
-.source-id img{width:24px;height:24px;object-fit:contain;flex-shrink:0;grid-row:1}
-.source-port{font-size:var(--fs-s);color:var(--muted);white-space:nowrap;grid-column:2}
-.source-id .state-chip{grid-column:1 / -1;justify-self:start;white-space:normal;height:auto;line-height:1.2;text-wrap:pretty}
-.source-name{grid-area:label;display:grid;gap:2px;min-width:0}
-.source-name input{width:100%;min-width:0}
-.source-caption{font-size:var(--fs-s);color:var(--muted);line-height:1.2}
-.source-auto{font-size:var(--fs-s);color:var(--muted);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.source-controls{display:contents}
-.source-controls select{grid-area:select;width:100%;min-width:0}
+.source-id{grid-area:id;align-self:start;display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s2);color:var(--muted)}
+.source-id img{width:24px;height:24px;object-fit:contain}
+.source-name{grid-area:name;display:grid;gap:2px;min-width:0}
+.source-name small{font-size:var(--fs-s);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.source-name input,.source-row select{width:100%;min-width:0}
+.source-row select{grid-area:icon}
 .source-move{grid-area:move;justify-self:end;display:flex;gap:var(--s1)}
 .source-move button{width:32px;height:32px;padding:0}
 .source-row .switch{grid-area:hide;justify-self:end;margin:0}
@@ -269,7 +265,7 @@ dd{margin:0;overflow-wrap:anywhere}
 /* Launcher preview: the stage mirrors the native launcher (1920x1080 scaled down); its glass colours are the TV's own. */
 .lp{--s:.4;position:relative;width:100%;max-width:960px;aspect-ratio:16/9;overflow:hidden;border-radius:var(--r);border:1px solid var(--border);background:linear-gradient(160deg,rgba(var(--accent-rgb),.2),var(--bg) 60%,var(--surface))}
 .lp-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform:scale(var(--s));transform-origin:0 0;color:#fff;font-family:var(--font-ui)}
-.lp-pill{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);max-width:1808px;height:152px;box-sizing:border-box;padding:16px 26px 24px;display:flex;align-items:center;border-radius:24px;background:rgba(42,51,70,.98);border:2px solid rgba(255,255,255,.12);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.lp-pill{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);max-width:1808px;height:144px;box-sizing:border-box;padding:0 26px;display:flex;align-items:center;border-radius:24px;background:rgba(42,51,70,.98);border:2px solid rgba(255,255,255,.22);box-shadow:0 18px 50px rgba(0,0,0,.45)}
 .lp-row{display:flex;align-items:center;gap:18px;height:112px}
 .lp-tile{position:relative;flex:none;overflow:hidden;background:#222;display:flex;align-items:center;justify-content:center;font-size:36px;color:#cfd6e3;box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
 .lp-tile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -281,16 +277,11 @@ dd{margin:0;overflow-wrap:anywhere}
 .lp-oval img{object-fit:fill}
 .lp-stack{display:flex;flex-direction:column;gap:8px}
 .lp-divider{width:2px;height:72px;background:rgba(255,255,255,.3);margin:0 9px}
-.lp-sel{transform:translateY(-4px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),0 0 0 2px #fff,0 0 26px 6px var(--glow,rgba(226,237,255,.34))}
-/* The focused name and the hint float above the bar in capsules of the bar's own material (the launcher's caption.png). */
-.lp-focus{position:relative;flex:none}.lp-cap{position:absolute;left:0;right:0;bottom:calc(100% + 26px);display:flex;justify-content:safe center;pointer-events:none}
-.lp-cap span,.lp-hint{box-sizing:border-box;height:40px;line-height:36px;white-space:nowrap;border-radius:20px;background:rgba(42,51,70,.96);border:2px solid rgba(255,255,255,.12)}
-.lp-cap span{padding:0 18px;font-size:24px;font-weight:500}
-.lp-hint{position:absolute;right:26px;bottom:calc(100% + 10px);padding:0 14px 0 18px;font-size:22px;color:rgba(255,255,255,.9)}
-.dock-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:var(--s4);align-items:stretch}.dock-layout>.quick-group{display:grid;align-content:center}.dock-left{display:grid;gap:var(--s3);align-content:center}.dock-left h3{margin:0}.dock-left .section-note{margin:0}.dock-left .lp{max-width:none}.lp-scene{position:absolute;left:0;top:0;width:1920px;height:1080px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 1080' preserveAspectRatio='xMidYMid slice'><defs><linearGradient id='s' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23101c3f'/><stop offset='.45' stop-color='%23553b73'/><stop offset='.72' stop-color='%23d9707a'/><stop offset='1' stop-color='%23f6b26b'/></linearGradient><radialGradient id='g' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='%23fff2cf' stop-opacity='.95'/><stop offset='.35' stop-color='%23ffc58a' stop-opacity='.5'/><stop offset='1' stop-color='%23ffc58a' stop-opacity='0'/></radialGradient><linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23f0a26c'/><stop offset='1' stop-color='%231a2547'/></linearGradient></defs><rect width='1920' height='1080' fill='url(%23s)'/><circle cx='1330' cy='640' r='420' fill='url(%23g)'/><circle cx='1330' cy='640' r='64' fill='%23fff0c9'/><path d='M0 690 220 520 420 640 640 470 880 650 1080 560 1290 690 1500 540 1740 660 1920 590V760H0z' fill='%2342375f'/><path d='M0 760 180 640 400 740 640 620 900 760 1160 650 1420 770 1680 670 1920 740V800H0z' fill='%2326274a'/><rect y='780' width='1920' height='300' fill='url(%23w)'/><rect x='1250' y='790' width='160' height='6' rx='3' fill='%23ffe3b3' opacity='.7'/><rect x='1280' y='820' width='100' height='5' rx='2' fill='%23ffe3b3' opacity='.45'/><rect x='1300' y='850' width='60' height='4' rx='2' fill='%23ffe3b3' opacity='.3'/><path d='M0 900 0 1080H1920V920C1700 880 1500 930 1250 900 900 860 600 930 0 900z' fill='%230d1530' opacity='.55'/></svg>") center/cover}.lp-bug{position:absolute;left:64px;top:48px;display:flex;align-items:center;gap:14px;height:56px;padding:0 24px;border-radius:28px;background:rgba(10,14,26,.5);font-size:26px;letter-spacing:.02em;text-shadow:0 2px 6px rgba(0,0,0,.5)}.lp-bug i{width:14px;height:14px;border-radius:50%;background:#ff5a5a}.lp-bug b{font-weight:600}.lp-bug span{opacity:.75}
+.lp-sel{transform:translateY(-4px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),0 0 0 2px #fff,0 0 26px 6px var(--glow,rgba(226,237,255,.44))}
+.dock-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:var(--s4);align-items:stretch}.dock-layout>.quick-group{display:grid;align-content:center}.dock-left{display:grid;gap:var(--s3);align-content:center}.dock-left h3{margin:0}.dock-left .section-note{margin:0}.dock-left .lp{max-width:none}.lp-scene{position:absolute;left:0;top:0;width:1920px;height:1080px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1920 1080' preserveAspectRatio='xMidYMid slice'><defs><linearGradient id='s' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23101c3f'/><stop offset='.45' stop-color='%23553b73'/><stop offset='.72' stop-color='%23d9707a'/><stop offset='1' stop-color='%23f6b26b'/></linearGradient><radialGradient id='g' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='%23fff2cf' stop-opacity='.95'/><stop offset='.35' stop-color='%23ffc58a' stop-opacity='.5'/><stop offset='1' stop-color='%23ffc58a' stop-opacity='0'/></radialGradient><linearGradient id='w' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23f0a26c'/><stop offset='1' stop-color='%231a2547'/></linearGradient></defs><rect width='1920' height='1080' fill='url(%23s)'/><circle cx='1330' cy='640' r='420' fill='url(%23g)'/><circle cx='1330' cy='640' r='64' fill='%23fff0c9'/><path d='M0 690 220 520 420 640 640 470 880 650 1080 560 1290 690 1500 540 1740 660 1920 590V760H0z' fill='%2342375f'/><path d='M0 760 180 640 400 740 640 620 900 760 1160 650 1420 770 1680 670 1920 740V800H0z' fill='%2326274a'/><rect y='780' width='1920' height='300' fill='url(%23w)'/><rect x='1250' y='790' width='160' height='6' rx='3' fill='%23ffe3b3' opacity='.7'/><rect x='1280' y='820' width='100' height='5' rx='2' fill='%23ffe3b3' opacity='.45'/><rect x='1300' y='850' width='60' height='4' rx='2' fill='%23ffe3b3' opacity='.3'/><path d='M0 900 0 1080H1920V920C1700 880 1500 930 1250 900 900 860 600 930 0 900z' fill='%230d1530' opacity='.55'/></svg>") center/cover}.lp-bug{position:absolute;left:64px;top:48px;display:flex;align-items:center;gap:14px;height:56px;padding:0 24px;border-radius:28px;background:rgba(10,14,26,.5);font-size:26px;letter-spacing:.02em;text-shadow:0 2px 6px rgba(0,0,0,.5)}.lp-bug i{width:14px;height:14px;border-radius:50%;background:#ff5a5a}.lp-bug b{font-weight:600}.lp-bug span{opacity:.75}.lp-hint{position:absolute;left:50%;bottom:194px;height:36px;line-height:36px;transform:translateX(-50%);font-size:22px;opacity:.9;text-shadow:0 2px 6px rgba(0,0,0,.6)}
 /* Narrow layouts come after the Launcher's base rules, so they win. */
 @media(max-width:1000px){.dock-layout{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:620px){.source-row{grid-template-columns:minmax(0,1fr);grid-template-areas:"id" "label" "controls"}.source-controls{display:flex;grid-area:controls;align-items:center;gap:var(--s2);flex-wrap:wrap}.source-controls select{flex:1 1 120px;width:auto}.source-move{justify-self:start}.source-row .switch{justify-self:start}}
+@media(max-width:620px){.source-row{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"id hide" "name name" "icon move"}}
 </style></head><body>
 <aside class="sidebar"><div class="brand"><img src="/icon.png" alt="" width="44" height="44"><span>vetro<small>TV manager</small></span></div><nav aria-label="Main"><button data-tab="quick" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Quick settings</button><button data-tab="dock" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="13" width="18" height="7" rx="2.5"/><path d="M7.5 16.5h.01M12 16.5h.01M16.5 16.5h.01M8 8h8"/></svg>Launcher<span class="chip beta">Beta</span></button><button data-tab="remote" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="8" r="2"/><path d="M10 15h4M10 18h4"/></svg>Remapper</button></nav><div class="nav-label">TV</div><nav aria-label="TV"><button data-tab="apps" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Task manager</button><button data-tab="tvsettings" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg>TV settings</button><button data-tab="control" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.2"/><path d="m12 5.2-1.6 1.7h3.2zM12 18.8l-1.6-1.7h3.2zM5.2 12l1.7-1.6v3.2zM18.8 12l-1.7-1.6v3.2z"/></svg>TV controls</button></nav><div class="nav-label">Monitor</div><nav aria-label="Monitor"><button data-tab="dashboard" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18a8.5 8.5 0 1 1 15 0"/><path d="m12 14 4-5"/><circle cx="12" cy="14" r="1.2"/></svg>Dashboard</button><button data-tab="diagnostics" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/></svg>Diagnostics</button><button data-tab="actions" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.8v4.7h4.7M12 7.5V12l3 2"/></svg>History<span id="actionsCount" class="chip nav-count" hidden></span></button></nav><div class="nav-label">Network</div><nav aria-label="Network"><button data-tab="dns" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>Domain blocking</button><button data-tab="mqtt" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-4-4M20 16H4l4 4"/></svg>MQTT</button></nav><footer><span id="count">—</span> apps<span id="connection">Connecting to TV…</span></footer></aside>
 <main class="main"><div class="page"><header class="page-head"><div><h1><span id="pageTitle">Quick settings</span><span id="betaTag" class="chip beta" hidden>Beta</span></h1><p id="pageSubtitle">Quick wins: each switch frees memory, stops tracking or keeps the TV as it is.</p></div><div class="actions"><span id="sampleStatus" class="live" hidden>Live updates off</span><button id="liveToggle" hidden>Start live · 2 min</button></div></header>
@@ -711,13 +702,13 @@ function isTizenTube(id){return String(id).toLowerCase().indexOf('tizentube')>=0
 // "Not installed" is only said once the registry has been read.
 function dockHasTizenTube(d){return (d.entries||[]).some(function(e){return isTizenTube(e.appId)})}
 function tizenTubeInstalled(d){return dockHasTizenTube(d)||(inventory||[]).some(function(a){return isTizenTube(a.appId)})}
-function previewTile(e,size,pill,sel){var tile='<div class="lp-tile'+(pill?' lp-oval':'')+(sel?' lp-sel':'')+'" style="width:'+(pill?232:size)+'px;height:'+(pill?48:size)+'px;border-radius:'+(pill?'24px':'16%')+'"><img alt="" src="/dock/icon?slug='+encodeURIComponent(e.slug)+'" data-initials="'+esc(e.label.slice(0,2))+'"></div>';return sel?'<div class="lp-focus"><div class="lp-cap"><span>'+esc(e.label)+'</span></div>'+tile+'</div>':tile}
+function previewTile(e,size,pill,sel){return '<div class="lp-tile'+(pill?' lp-oval':'')+(sel?' lp-sel':'')+'" style="width:'+(pill?232:size)+'px;height:'+(pill?48:size)+'px;border-radius:'+(pill?'24px':'16%')+'"><img alt="" src="/dock/icon?slug='+encodeURIComponent(e.slug)+'" data-initials="'+esc(e.label.slice(0,2))+'"></div>'}
 var sampleRow=[{slug:'sample-1',label:'Netflix'},{slug:'sample-2',label:'YouTube'},{slug:'sample-3',label:'Prime Video'},{slug:'sample-4',label:'Disney+'},{slug:'sample-5',label:'Plex'},{slug:'sample-6',label:'Sport'},{slug:'sample-7',label:'Music'},{slug:'sample-s1',label:'Source',system:true},{slug:'sample-s2',label:'Settings',system:true}];
 function previewMarkup(d){
  var real=(d.entries||[]).length>0,all=real?d.entries:sampleRow,apps=all.filter(function(e){return !e.system}),sys=all.filter(function(e){return e.system});
  var row=apps.map(function(e,i){return previewTile(e,i===0?112:92,false,i===0)}).join('')+(sys.length?'<i class="lp-divider"></i>'+'<div class="lp-stack">'+sys.map(function(e){return previewTile(e,92,true,false)}).join('')+'</div>':'');
  var note=real?(d.enabled?'This TV’s apps and icons, as the launcher shows them. The first app is selected.':'How the launcher will look with this TV’s apps. Turn it on to use it.'):'An example row. Your TV’s apps appear here once the list has been read.';
- return '<div class="dock-left panel"><h3>Preview</h3><p class="section-note">'+note+'</p><div class="lp" id="lp" role="img" aria-label="Preview of the launcher over a TV picture"><div class="lp-stage"><div class="lp-scene"></div><div class="lp-bug"><i></i><b>12</b><span>Evening Light HD</span></div><div class="lp-pill"><div class="lp-hint">Source ˄</div><div class="lp-row">'+row+'</div></div></div></div></div>';
+ return '<div class="dock-left panel"><h3>Preview</h3><p class="section-note">'+note+'</p><div class="lp" id="lp" role="img" aria-label="Preview of the launcher over a TV picture"><div class="lp-stage"><div class="lp-scene"></div><div class="lp-bug"><i></i><b>12</b><span>Evening Light HD</span></div><div class="lp-hint">Source ˄</div><div class="lp-pill"><div class="lp-row">'+row+'</div></div></div></div></div>';
 }
 function fitPreview(){
  var lp=$('lp');if(!lp||!lp.style||!lp.querySelectorAll||!lp.clientWidth)return;
@@ -732,7 +723,7 @@ function fitPreview(){
     if(tile.classList.contains('lp-sel')){
      var r=0,g=0,b=0,t=0;
      for(var k=0;k<px.length;k+=4){var a=px[k+3];if(!a)continue;var mx=Math.max(px[k],px[k+1],px[k+2]),mn=Math.min(px[k],px[k+1],px[k+2]),q=(a/255)*(0.15+(mx?(mx-mn)/mx:0))*(mx>40?1:0.2);r+=px[k]*q;g+=px[k+1]*q;b+=px[k+2]*q;t+=q}
-     if(t>0)tile.style.setProperty('--glow','rgba('+Math.round(r/t)+','+Math.round(g/t)+','+Math.round(b/t)+',.34)');
+     if(t>0)tile.style.setProperty('--glow','rgba('+Math.round(r/t)+','+Math.round(g/t)+','+Math.round(b/t)+',.44)');
     }
    }catch(e){}
   }
@@ -741,53 +732,39 @@ function fitPreview(){
  });
 }
 var sourceIconLabels={auto:'Auto',tv:'TV',hdmi:'HDMI',pc:'Computer',console:'Console',streaming:'Streaming',soundbar:'Soundbar',disc:'Disc',camera:'Camera'};
-// The Launcher's source list: saved order, labels, type icons and hidden rows, in one vertical list.
+// Unsaved edits to the source list, in row order. Moves and hides re-render from it, and it keeps the typed
+// rows on screen through a save; a successful save or refresh drops it.
+var sourceDraft=null;
+function sourceRows(d){
+ var rows=(d.inputs||[]).filter(function(e){return e&&e.source!=null});if(!sourceDraft)return rows;
+ return sourceDraft.map(function(s){var e=rows.find(function(r){return r.slug===s.slug});return e&&Object.assign({},e,{labelOverride:s.label,hidden:s.hidden,iconChoice:s.icon})}).filter(Boolean);
+}
 function sourceListMarkup(d){
- var list=(d.inputs||[]).filter(function(e){return e&&e.source!=null});
+ var list=sourceRows(d),buttons='<div class="quick-actions"><button data-dock-save-sources '+(dockBusy||!list.length?'disabled':'')+'>Save sources</button><button data-dock-refresh-sources '+(dockBusy?'disabled':'')+'>Refresh sources</button></div>';
  var note=d.detection&&d.detection.available===false?'<p class="notice">Source detection is unavailable, so the saved labels and the port names are shown. You can still edit and save.</p>':'';
- if(!list.length)return '<div class="quick-item" data-quick-item="source-list"><div><h3>Sources</h3><p class="quick-callout">'+esc(d.error||'The source list could not be read.')+'</p>'+note+'<div class="quick-actions"><button data-dock-save-sources disabled>Save sources</button><button data-dock-refresh-sources '+(dockBusy?'disabled':'')+'>Refresh sources</button></div></div></div>';
- var visible=list.filter(function(e){return !e.hidden}),canHide=visible.length>1;
- var rows=list.map(function(e,index){
-  var port=e.slug==='in-tv'?'TV':'HDMI '+e.slug.slice(-1),hide=!e.hidden&&!canHide?' disabled':'';
+ var visible=list.filter(function(e){return !e.hidden}).length;
+ var rows=list.map(function(e,i){
+  var port=e.slug==='in-tv'?'TV':'HDMI '+e.slug.slice(-1);
   var options=Object.keys(sourceIconLabels).map(function(id){return '<option value="'+id+'"'+(e.iconChoice===id?' selected':'')+'>'+sourceIconLabels[id]+'</option>'}).join('');
   return '<div class="source-row'+(e.hidden?' source-hidden':'')+'" data-source-row data-source-slug="'+esc(e.slug)+'">'+
-   '<div class="source-id"><img src="/dock/source-icon?icon='+encodeURIComponent(e.icon)+'" alt=""><span class="source-port">'+esc(port)+'</span>'+(e.present===false?chip('No device detected'):'')+'</div>'+
-   '<label class="source-name"><span class="source-caption">Name</span><input data-source-label value="'+esc(e.labelOverride||'')+'" placeholder="'+esc(e.autoLabel)+'" maxlength="24" autocomplete="off" aria-label="'+esc(port)+' name">'+(e.labelOverride==null?'<small class="source-auto">Auto: '+esc(e.autoLabel)+'</small>':'')+'</label>'+
-   '<div class="source-controls"><select data-source-icon aria-label="'+esc(port)+' icon">'+options+'</select>'+
-   '<div class="source-move"><button data-source-up aria-label="Move '+esc(port)+' up"'+(index===0?' disabled':'')+'>↑</button><button data-source-down aria-label="Move '+esc(port)+' down"'+(index===list.length-1?' disabled':'')+'>↓</button></div>'+
-   '<label class="switch"><input type="checkbox" role="switch" data-source-hide'+(e.hidden?'':' checked')+hide+' aria-label="'+(e.hidden?'Show ':'Hide ')+esc(port)+'"><span>'+(e.hidden?'Off':'On')+'</span></label></div>'+
+   '<div class="source-id"><img src="/dock/source-icon?icon='+encodeURIComponent(e.icon)+'" alt=""><span>'+esc(port)+'</span>'+(e.present===false?chip('No device detected'):'')+'</div>'+
+   '<label class="source-name"><small>Name</small><input data-source-label value="'+esc(e.labelOverride||'')+'" placeholder="'+esc(e.autoLabel)+'" maxlength="24" autocomplete="off" aria-label="'+esc(port)+' name">'+(e.labelOverride==null?'<small>Auto: '+esc(e.autoLabel)+'</small>':'')+'</label>'+
+   '<select data-source-icon aria-label="'+esc(port)+' icon">'+options+'</select>'+
+   '<div class="source-move"><button data-source-move="-1" aria-label="Move '+esc(port)+' up"'+(i===0?' disabled':'')+'>↑</button><button data-source-move="1" aria-label="Move '+esc(port)+' down"'+(i===list.length-1?' disabled':'')+'>↓</button></div>'+
+   '<label class="switch"><input type="checkbox" role="switch" data-source-hide'+(e.hidden?'':' checked')+(!e.hidden&&visible<2?' disabled':'')+' aria-label="'+(e.hidden?'Show ':'Hide ')+esc(port)+'"><span>'+(e.hidden?'Off':'On')+'</span></label>'+
   '</div>';
  }).join('');
- return '<div class="quick-item" data-quick-item="source-list"><div><h3>Sources</h3><p>The launcher’s inputs panel. Press Up on the launcher to open it, or map a remote key to it in Remapper. Names, icons and order are saved here; a hidden row stays out of the panel.</p>'+note+'<div class="source-list">'+rows+'</div><div class="quick-actions"><button data-dock-save-sources '+(dockBusy?'disabled':'')+'>Save sources</button><button data-dock-refresh-sources '+(dockBusy?'disabled':'')+'>Refresh sources</button></div></div></div>';
+ var body=list.length?'<div class="source-list">'+rows+'</div>':'<p class="quick-callout">'+esc(d.error||'The source list could not be read.')+'</p>';
+ return '<div class="quick-item" data-quick-item="source-list"><div><h3>Sources</h3><p>The launcher’s inputs panel. Press Up on the launcher to open it, or map a remote key to it in Remapper. Names, icons and order are saved here; a hidden row stays out of the panel.</p>'+note+body+buttons+'</div></div>';
 }
-function sourceRowNodes(){var all=document.querySelectorAll('#dockBody [data-source-row]');return all?Array.prototype.slice.call(all):[]}
-// Edges and the last-hide rule are read from the DOM, so a move or a hide before Save settles them.
-function syncSourceEdges(){
- var rows=sourceRowNodes(),visible=rows.filter(function(r){var h=r.querySelector('[data-source-hide]');return !h||h.checked});
- rows.forEach(function(r,i){
-  var up=r.querySelector('[data-source-up]'),down=r.querySelector('[data-source-down]'),hide=r.querySelector('[data-source-hide]');
-  var port=r.querySelector('.source-port'),span=r.querySelector('.switch span');
-  if(up)up.disabled=i===0;
-  if(down)down.disabled=i===rows.length-1;
-  if(hide){hide.disabled=hide.checked&&visible.length<2;hide.setAttribute('aria-label',(hide.checked?'Hide ':'Show ')+(port?port.textContent:''));}
-  if(span)span.textContent=hide&&!hide.checked?'Off':'On';
-  if(r.classList)r.classList.toggle('source-hidden',!!hide&&!hide.checked);
- });
-}
+// The rows as typed, in screen order: what Save sends and what a move or hide re-renders from.
 function collectSources(){
- return sourceRowNodes().map(function(r){
-  var label=r.querySelector('[data-source-label]'),icon=r.querySelector('[data-source-icon]'),hide=r.querySelector('[data-source-hide]');
-  var text=label&&label.value!=null?String(label.value).trim():'';
-  return {slug:r.dataset.sourceSlug,label:text||null,hidden:!!hide&&!hide.checked,icon:icon?icon.value:'auto'};
+ return Array.prototype.slice.call(document.querySelectorAll('#dockBody [data-source-row]')).map(function(r){
+  var label=String(r.querySelector('[data-source-label]').value||'').trim(),hide=r.querySelector('[data-source-hide]');
+  return {slug:r.dataset.sourceSlug,label:label||null,hidden:!hide.checked,icon:r.querySelector('[data-source-icon]').value};
  });
 }
-function moveSourceRow(row,step){
- if(!row||!row.parentNode)return;
- var rows=sourceRowNodes(),index=rows.indexOf(row),target=rows[index+step];
- if(index<0||!target)return;
- if(step<0)row.parentNode.insertBefore(row,target);else row.parentNode.insertBefore(target,row);
- syncSourceEdges();
-}
+function editSources(change){var list=collectSources();if(change)change(list);sourceDraft=list;renderDock()}
 function renderDock(){
  var box=$('dockBody');if(!box)return;var d=dockData;
  if(!d){box.innerHTML='<div class="panel"><p class="notice">'+esc(dockError||'Reading…')+'</p></div>';return}
@@ -805,19 +782,16 @@ function renderDock(){
  setTimeout(fitPreview,0);
 }
 function setDock(action,label,extra){
- if(dockBusy)return;dockBusy=true;dockConfirm=false;
- // A save keeps the typed rows on screen while the TV writes and restarts; rendering here would clear them.
- // A failed save keeps them too: the error is in Actions and the rows stay for another try.
- var keepRows=action==='saveSources';
- if(!keepRows)renderDock();
+ if(dockBusy)return;dockBusy=true;dockConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
-  dockData=d;dockError=null;keepRows=false;
-  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='saveSources'?'Source list saved'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='refreshSources'?'Sources refreshed'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
+  dockData=d;dockError=null;if(action==='saveSources'||action==='refreshSources')sourceDraft=null;
+  var restarted=d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.';
+  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='saveSources'?'Source list saved'+restarted:action==='refreshSources'?'Sources refreshed'+restarted:'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
- })}).then(function(ok){if(!ok&&!keepRows)return loadDock()}).finally(function(){dockBusy=false;if(!keepRows)return renderDock();var save=document.querySelector('#dockBody [data-dock-save-sources]');if(save)save.disabled=false});
+ })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock()});
 }
 $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
- if(x.dataset.sourceHide!=null){var row=x.closest?x.closest('[data-source-row]'):null;if(!row)return;if(row.classList)row.classList.toggle('source-hidden',!x.checked);syncSourceEdges();return;}
+ if(x.dataset.sourceHide!=null)return editSources();
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
@@ -827,8 +801,8 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockCancel!=null){dockConfirm=false;renderDock();var s=document.querySelector('[data-dock-switch]');if(s)s.focus();return}
  if(ds.dockConfirm!=null)return setDock('enable','Turn on the launcher');
  if(ds.dockRebuild!=null)return setDock('refresh','Rebuild the launcher app list');
- if(ds.sourceUp!=null||ds.sourceDown!=null){var row=b.closest?b.closest('[data-source-row]'):null;return moveSourceRow(row,ds.sourceUp!=null?-1:1);}
- if(ds.dockSaveSources!=null){var list=collectSources();if(!list.length)return;b.disabled=true;return setDock('saveSources','Save the source list',{sources:list});}
+ if(ds.sourceMove!=null){var slug=b.closest('[data-source-row]').dataset.sourceSlug,step=+ds.sourceMove;return editSources(function(l){var i=l.findIndex(function(r){return r.slug===slug}),j=i+step;if(j>=0&&j<l.length)l.splice(j,0,l.splice(i,1)[0])})}
+ if(ds.dockSaveSources!=null){sourceDraft=collectSources();return setDock('saveSources','Save the source list',{sources:sourceDraft})}
  if(ds.dockRefreshSources!=null)return setDock('refreshSources','Refresh the sources');
  if(ds.dockReload!=null)return loadDock();
 };

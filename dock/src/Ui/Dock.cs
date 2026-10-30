@@ -7,8 +7,8 @@ namespace Launcher.Ui
 {
     /// <summary>
     /// The evas objects of the dock and the code that maps controller state onto them.
-    /// Object count is items + 8 (shadow, pill, clippers, two glows, two focus rings; two name capsules with their texts and the clock only when the design shows them), plus the divider
-    /// when the strip has a system group, one for the marker of the input in use, and two for the navigation hint (word, chevron);
+    /// Object count is items + 8 (shadow, pill, clippers, two glows, two focus rings; two labels and the clock only when the design shows names), plus the divider
+    /// when the strip has a system group and two for the navigation hint (word, chevron);
     /// icons are pre-sized PNGs, and <see cref="Apply"/> only calls into EFL for values that changed
     /// since the previous frame, so an animation frame costs a handful of native calls.
     /// </summary>
@@ -23,16 +23,11 @@ namespace Launcher.Ui
         private readonly Action<string> _log;
 
         private IntPtr _shadow, _pill, _clip, _appsClip, _highlight, _highlight2, _ring, _ring2, _clock, _divider;
-        // The focused item's name sits in a capsule above the bar. Two capsules cross-fade (see LabelFader): the name of
-        // the item being left and the one being reached.
-        private readonly IntPtr[] _label = new IntPtr[2], _caption = new IntPtr[2];
+        // Two name labels cross-fade (see LabelFader): the name under the icon being left and the one being reached.
+        private readonly IntPtr[] _label = new IntPtr[2];
         private readonly LabelFader _fader = new LabelFader();
         private readonly int[] _labelX = { int.MinValue, int.MinValue }, _labelW = new int[2], _labelAlpha = { -1, -1 };
-        private int _labelY = int.MinValue, _labelTextDy;
-        // The input in use: a short bar under its tile, there whatever has the focus.
-        private IntPtr _mark;
-        private Box _markBox;
-        private int _markAlpha = -1;
+        private int _labelY = int.MinValue;
         private IntPtr _hintChev, _hintText;
         private readonly string _hint;
         private readonly bool _hintUp;
@@ -72,7 +67,7 @@ namespace Launcher.Ui
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
             for (int i = 0; i < items.Length; i++) { _iconBox[i].W = -1; _iconAlpha[i] = -1; _glowRgb[i] = Design.GlowColor; }
-            _shadowBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = _markBox.W = -1;
+            _shadowBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = -1;
         }
 
         public IntPtr Evas { get { return _evas; } }
@@ -119,25 +114,13 @@ namespace Launcher.Ui
                 _dividerBox.W = -1;
             }
 
-            if (Design.ShowCurrent)
-            {
-                // Clipped with the apps, so it scrolls out of view with its tile.
-                _mark = NineSlice("current_mark", 0);
-                Efl.evas_object_color_set(_mark, 0, 0, 0, 0);
-                Efl.evas_object_clip_set(_mark, _appsClip);
-            }
-
             if (Design.ShowLabels)
                 for (int k = 0; k < 2; k++)
                 {
-                    // A capsule of the bar's own material: its ends are half its height, so only the middle stretches.
-                    _caption[k] = NineSlice("caption", DockLayout.CaptionH / 2, DockLayout.CaptionH / 2, 0, 0);
-                    Efl.evas_object_color_set(_caption[k], 0, 0, 0, 0);
                     _label[k] = Efl.evas_object_text_add(_evas);
-                    Efl.evas_object_text_font_set(_label[k], Font, Design.LabelTextSize);
-                    Efl.evas_object_text_text_set(_label[k], "Ag");
-                    _labelTextDy = (DockLayout.CaptionH - Efl.evas_object_text_vert_advance_get(_label[k])) / 2 - 1;
-                    Tint(_label[k], 0);
+                    Efl.evas_object_text_font_set(_label[k], Font, 26);
+                    SoftShadow(_label[k]);
+                    TintText(_label[k], 0);
                     Efl.evas_object_show(_label[k]);
                 }
 
@@ -172,14 +155,9 @@ namespace Launcher.Ui
             Efl.evas_object_text_shadow_color_set(text, 0, 0, 0, ShadowAlpha);
         }
 
-        /// <summary>
-        /// The capsule, then the word and its chevron inside it: created last so they sit above the pill, never inside the
-        /// clipper. The capsule is the name's own, so the hint stays readable over bright video.
-        /// </summary>
+        /// <summary>The word, then its chevron: created last so they sit above the pill, never inside the clipper.</summary>
         private void BuildHint()
         {
-            _hintCap = NineSlice("caption", DockLayout.CaptionH / 2, DockLayout.CaptionH / 2, 0, 0);
-            Efl.evas_object_color_set(_hintCap, 0, 0, 0, 0);
             _hintChev = Efl.evas_object_image_add(_evas);
             Efl.evas_object_image_file_set(_hintChev, Path.Combine(_assets, _hintUp ? "chev_up.png" : "chev_down.png"), null);
             if (Efl.evas_object_image_load_error_get(_hintChev) != Efl.EvasLoadErrorNone) _log("asset missing: chevron");
@@ -190,18 +168,15 @@ namespace Launcher.Ui
             _hintText = Efl.evas_object_text_add(_evas);
             Efl.evas_object_text_font_set(_hintText, Font, 22);
             Efl.evas_object_text_text_set(_hintText, _hint);
+            // No backing shape: a soft dark shadow keeps the word readable over bright video.
+            SoftShadow(_hintText);
             Efl.evas_object_show(_hintText);
             _hintTextW = Efl.evas_object_text_horiz_advance_get(_hintText);
             int textH = Efl.evas_object_text_vert_advance_get(_hintText);
-            // The chevron's stroke stops short of its cell, so the right padding is a little less than the left.
-            _hintW = DockLayout.CaptionPadX + _hintTextW + HintGap + HintChev + DockLayout.CaptionPadX - HintChevInset;
+            _hintW = _hintTextW + HintGap + HintChev;
             _hintX = _layout.HintLeft(_hintW);
-            Efl.evas_object_resize(_hintCap, _hintW, DockLayout.CaptionH);
-            _hintTextDy = (DockLayout.CaptionH - textH) / 2 - 1;
+            _hintTextDy = (DockLayout.CapsuleH - textH) / 2 - 1;
         }
-
-        private const int HintChevInset = 4;
-        private IntPtr _hintCap;
 
         private int _hintTextW;
         private int _hintTextDy;
@@ -212,7 +187,7 @@ namespace Launcher.Ui
         /// </summary>
         public void SetVisible(bool visible)
         {
-            IntPtr[] top = { _shadow, _pill, _clip, _caption[0], _caption[1], _label[0], _label[1], _clock, _hintCap, _hintChev, _hintText };
+            IntPtr[] top = { _shadow, _pill, _clip, _label[0], _label[1], _clock, _hintChev, _hintText };
             foreach (IntPtr o in top)
             {
                 if (o == IntPtr.Zero) continue;
@@ -220,11 +195,11 @@ namespace Launcher.Ui
             }
         }
 
-        /// <summary>Item that is in use right now (the active input): a marker sits under it. -1 for none.</summary>
+        /// <summary>Item that is in use right now (the active input): its label says so. -1 for none.</summary>
         public int CurrentIndex
         {
             get { return _current; }
-            set { _current = value; }
+            set { if (value != _current) { _current = value; _fader.Invalidate(); } }
         }
 
         public void SetClock(string text)
@@ -479,19 +454,9 @@ namespace Launcher.Ui
                 if (da != _dividerAlpha) { _dividerAlpha = da; Tint(_divider, da); }
             }
 
-            if (_mark != IntPtr.Zero) ApplyMark(c, scroll);
             if (Design.ShowLabels) ApplyLabels(c, slide, presence, scroll);
             if (Design.ShowClock) ApplyClock(slide, presence);
             if (_hintText != IntPtr.Zero) ApplyHint(slide, presence);
-        }
-
-        /// <summary>The input in use keeps its marker whatever has the focus; it comes in with its tile.</summary>
-        private void ApplyMark(Controller c, float scroll)
-        {
-            bool on = _current >= 0 && _current < _items.Length;
-            if (on) Place(_mark, ref _markBox, _layout.CurrentMarkBox(_current, scroll, c.ItemSlide(_current)));
-            int a = on ? (int)Math.Round(255f * Design.CurrentAlpha * c.ItemPresence(_current)) : 0;
-            if (a != _markAlpha) { _markAlpha = a; Tint(_mark, a); }
         }
 
         private void ApplyHint(int slide, int presence)
@@ -500,42 +465,38 @@ namespace Launcher.Ui
             if (y != _hintY)
             {
                 _hintY = y;
-                int tx = _hintX + DockLayout.CaptionPadX;
-                Efl.evas_object_move(_hintCap, _hintX, y);
-                Efl.evas_object_move(_hintText, tx, y + _hintTextDy);
-                Efl.evas_object_move(_hintChev, tx + _hintTextW + HintGap, y + (DockLayout.CaptionH - HintChev) / 2);
+                Efl.evas_object_move(_hintText, _hintX, y + _hintTextDy);
+                Efl.evas_object_move(_hintChev, _hintX + _hintTextW + HintGap, y + (DockLayout.CapsuleH - HintChev) / 2);
             }
-            // A signpost, not a headline: its word is a little quieter than the name. Beside the name it steps aside while the two would touch.
-            int ts = _fader.TargetSlot;
-            bool clash = !_layout.Raised && _labelW[ts] > 0 && _fader.Index[ts] >= 0 && !DockLayout.HintClear(_labelX[ts], _labelW[ts], _hintX, _hintW);
-            int a = clash ? 0 : presence;
-            if (a != _hintAlpha)
+            // Quieter than the label, like the clock: a signpost, not a headline.
+            if (presence != _hintAlpha)
             {
-                _hintAlpha = a;
-                Tint(_hintCap, a);
-                Tint(_hintChev, a * 9 / 10);
-                Tint(_hintText, a * 9 / 10);
+                _hintAlpha = presence;
+                int a = presence * 9 / 10;
+                Tint(_hintChev, a);
+                TintText(_hintText, a);
             }
         }
 
         private void ApplyClock(int slide, int presence)
         {
             int x = _layout.ClockRight - _clockW;
-            int y = _layout.ClockTop(slide) + 3;
+            int y = _layout.LabelTop(slide) + 3;
             if (x != _clockX || y != _clockY)
             {
                 _clockX = x; _clockY = y;
                 Efl.evas_object_move(_clock, x, y);
             }
-            // Quieter than the name: it is there to be glanced at, not read.
-            int a = presence * 7 / 10;
+            // Quieter than the label: it is there to be glanced at, not read. It gives way to the label.
+            int ts = _fader.TargetSlot;
+            int a = _layout.ClockClear(_labelX[ts], _labelW[ts], _clockW) ? presence * 7 / 10 : 0;
             if (a != _clockAlpha) { _clockAlpha = a; TintText(_clock, a); }
         }
 
         private void ApplyLabels(Controller c, int slide, int presence, float scroll)
         {
             _fader.Update(c.FocusTarget, c.FocusPos);
-            int y = _layout.CaptionTop(slide);
+            int y = _layout.LabelTop(slide);
             bool moveY = y != _labelY;
             _labelY = y;
             for (int k = 0; k < 2; k++)
@@ -543,25 +504,19 @@ namespace Launcher.Ui
                 int idx = _fader.Index[k];
                 if ((_fader.Dirty & (1 << k)) != 0 && idx >= 0)
                 {
-                    // A pill carries its own name; it gets no capsule.
-                    string text = _layout.IsPinned(idx) ? "" : _items[idx].Label;
+                    // A pill carries its own name; nothing is written under it.
+                    string text = _layout.IsPinned(idx) ? "" : idx == _current ? _items[idx].Label + "  \u00b7  current" : _items[idx].Label;
                     Efl.evas_object_text_text_set(_label[k], text);
-                    _labelW[k] = text.Length == 0 ? 0 : Efl.evas_object_text_horiz_advance_get(_label[k]) + 2 * DockLayout.CaptionPadX;
-                    if (_labelW[k] > 0) Efl.evas_object_resize(_caption[k], _labelW[k], DockLayout.CaptionH);
+                    _labelW[k] = Efl.evas_object_text_horiz_advance_get(_label[k]);
                     _labelX[k] = int.MinValue;   // placed again below
                 }
-                int a = idx < 0 || _labelW[k] == 0 ? 0 : (int)Math.Round(presence * _fader.Weight[k]);
-                if (idx >= 0 && _labelW[k] > 0)
+                int a = idx < 0 ? 0 : (int)Math.Round(presence * _fader.Weight[k]);
+                if (idx >= 0)
                 {
-                    int x = _layout.CaptionLeft(idx, scroll, _labelW[k]);
-                    if (x != _labelX[k] || moveY)
-                    {
-                        _labelX[k] = x;
-                        Efl.evas_object_move(_caption[k], x, y);
-                        Efl.evas_object_move(_label[k], x + DockLayout.CaptionPadX, y + _labelTextDy);
-                    }
+                    int x = _layout.LabelLeft(idx, scroll, _labelW[k]);
+                    if (x != _labelX[k] || moveY) { _labelX[k] = x; Efl.evas_object_move(_label[k], x, y); }
                 }
-                if (a != _labelAlpha[k]) { _labelAlpha[k] = a; Tint(_caption[k], a); Tint(_label[k], a); }
+                if (a != _labelAlpha[k]) { _labelAlpha[k] = a; TintText(_label[k], a); }
             }
             _fader.ClearDirty();
         }

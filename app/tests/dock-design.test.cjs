@@ -52,13 +52,9 @@ eq('RingW', c['focus.ring']); eq('RingColor', hex(c['focus.ringColor'])); eq('Li
 assert.equal(K.HighlightPad, Math.ceil(c['glow.spread'] * (0.35 + 1.6)), 'the glow image reaches spread + blur');
 assert.equal(K.PillGlowPad, K.HighlightPad);
 
-// text: the focused name sits in a capsule of the bar's material above the bar; the input in use is marked under its tile
+// text
 assert.equal(K.ShowLabels, c['label.mode'] !== 'none'); assert.equal(K.ShowClock, c['clock.show']);
-assert.equal(c['label.mode'], 'focused'); assert.equal(c['label.place'], 'above'); assert.equal(c['label.capsule'], true);
-eq('LabelTextSize', c['label.size']);
-assert.equal(K.ShowCurrent, c['current.show']);
 assert.equal(K.HintText, c['hint.text']); assert.equal(c['hint.show'], true);
-assert.equal(K.HintAtRight, c['hint.align'] === 'right');
 
 // pills
 assert.equal(c['pills.mode'], 'stack'); assert.equal(c['pills.style'], 'outline');
@@ -81,7 +77,5 @@ assert.deepEqual(size('dock_glow_pill.png'), [K.PillItemW + 2 * K.PillGlowPad, K
 assert.deepEqual(size('dock_ring.png'), [2 * (K.FocusIcon + 2 * K.RingW), 2 * (K.FocusIcon + 2 * K.RingW)], 'ring image: icon + ring, at twice the size');
 assert.deepEqual(size('icons/settings.png'), [K.PillItemW, K.PillItemH], 'a pill image is the pill size');
 assert.deepEqual(size('icons/in-hdmi1.png'), [K.FocusIcon, K.FocusIcon], 'the dock\'s own icons are made at the selected size');
-assert.deepEqual(size('caption.png'), [2 * K.CaptionH, K.CaptionH], 'name capsule: two round ends of CaptionH');
-assert.deepEqual(size('current_mark.png'), [K.CurrentMarkW, K.CurrentMarkH], 'marker of the input in use, at its size');
 
 console.log('PASS dock design: the native look matches the chosen designer JSON');

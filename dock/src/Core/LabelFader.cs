@@ -35,6 +35,14 @@ namespace Launcher.Core
 
         public void ClearDirty() { Dirty = 0; }
 
+        /// <summary>The names changed from outside (an item became or stopped being the current one): start over.</summary>
+        public void Invalidate()
+        {
+            _target = -1; _leaveSlot = -1; _leaveIndex = -1;
+            Index[0] = Index[1] = -1;
+            Weight[0] = Weight[1] = 0f;
+        }
+
         public void Update(int target, float focusPos)
         {
             if (target != _target)

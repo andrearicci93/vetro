@@ -191,6 +191,8 @@ namespace Launcher.Tests
                 }
                 j.Update(20, 20f);
                 T.Eq(j.Weight[j.TargetSlot], 1f, "the destination is fully shown at the end");
+                f.Invalidate(); f.Update(4, 4f);
+                T.Eq(f.Dirty & 1, 1, "after Invalidate the name is typed again");
             });
 
             T.Run("layout: icons grow in even steps so their centre never wobbles", () =>
@@ -209,62 +211,37 @@ namespace Launcher.Tests
                 T.Eq(l.IconBox(5, 0f, 0f, 0).W, DockLayout.Icon, "rest size reached");
             });
 
-            T.Run("layout: the name sits over the focused icon, above the bar; the hint yields", () =>
+            T.Run("layout: the label stays under the focused icon; the clock yields", () =>
             {
                 foreach (int n in new[] { 5, 13, 30 })
                 {
                     var l = new DockLayout(n, 1920, 1080);
-                    T.Eq(l.CaptionTop(0) + DockLayout.CaptionH + DockLayout.CaptionGap, l.Top, "the capsule ends CaptionGap above the bar n=" + n);
                     for (int p = 0; p <= n - 1; p++)
                     {
                         float sc = l.ScrollFor(p);
                         var ib = l.IconBox(p, p, sc, 0);
-                        int iconCx = l.ItemCenterX(p, sc);
-                        T.True(Math.Abs(iconCx - (ib.X + ib.W / 2)) <= 1, "name centre is the icon centre n=" + n + " p=" + p);
-                        T.True(l.CaptionTop(0) + DockLayout.CaptionH < ib.Y, "the capsule never covers the lifted icon n=" + n + " p=" + p);
+                        int iconCx = l.LabelCenterX(p, sc);
+                        T.True(Math.Abs(iconCx - (ib.X + ib.W / 2)) <= 1, "label centre is the icon centre n=" + n + " p=" + p);
                         foreach (int w in new[] { 60, 120, 180, 210 })
                         {
                             if (w > l.PillW - 2 * DockLayout.PadX) continue;
-                            int x = l.CaptionLeft(p, sc, w);
+                            int x = l.LabelLeft(p, sc, w);
+                            // whatever the neighbourhood of the clock, a label that fits is still under its icon
                             T.True(Math.Abs((x + w / 2) - iconCx) <= DockLayout.FocusIcon / 2 || x == l.Left + DockLayout.PadX || x + w == l.Left + l.PillW - DockLayout.PadX,
-                                "name centre over the icon (or pinned to the pill edge) n=" + n + " p=" + p + " w=" + w);
-                            T.True(x >= l.Left + DockLayout.PadX && x + w <= l.Left + l.PillW - DockLayout.PadX, "name within the pill's width n=" + n + " w=" + w);
+                                "label centre under the icon (or pinned to the pill edge) n=" + n + " p=" + p + " w=" + w);
+                            T.True(x >= l.Left + DockLayout.PadX && x + w <= l.Left + l.PillW - DockLayout.PadX, "label inside the pill n=" + n + " w=" + w);
+                            // the clock is the one that gives way: shown only when the two boxes do not touch
+                            bool clear = l.ClockClear(x, w, 62);
+                            bool touches = x + w + DockLayout.ClockGap > l.ClockRight - 62;
+                            T.Eq(clear, !touches, "clock hides exactly when it would touch the label n=" + n + " w=" + w);
                         }
                     }
+                    T.True(l.ClockRight <= l.Left + l.PillW - DockLayout.PadX, "clock inside the pill");
                 }
-                // the hint is at the right end of the apps bar, in the name's band; it gives way exactly when the two would touch
-                var apps = new DockLayout(13, 1920, 1080, 0, false, 11);
-                const int hintW = 110;
-                int hx = apps.HintLeft(hintW);
-                T.Eq(hx + hintW, apps.Left + apps.PillW - DockLayout.PadX, "hint ends at the pill's inner right edge");
-                T.Eq(apps.HintTop(0), apps.CaptionTop(0), "hint shares the name's band");
-                T.True(DockLayout.HintClear(apps.CaptionLeft(0, 0f, 140), 140, hx, hintW), "first app's name: hint shown");
-                T.True(!DockLayout.HintClear(apps.CaptionLeft(10, 0f, 480), 480, hx, hintW), "last app's long name: hint hidden");
-                foreach (int x in new[] { hx - hintW - 40, hx - 140 - DockLayout.HintClearance, hx - 140 - DockLayout.HintClearance + 1, hx, hx + hintW + DockLayout.HintClearance })
-                {
-                    bool touches = x < hx + hintW + DockLayout.HintClearance && x + 140 + DockLayout.HintClearance > hx;
-                    T.Eq(DockLayout.HintClear(x, 140, hx, hintW), !touches, "hint hides exactly when it would touch the name x=" + x);
-                }
-                // on the raised panel the hint is centred under the bar, clear of the name above it
-                var panel = new DockLayout(3, 1920, 1080, apps.WinW, true, -1);
-                T.Eq(panel.HintLeft(hintW), panel.Left + (panel.PillW - hintW) / 2, "back hint centred");
-                T.Eq(panel.HintTop(0), panel.Top + panel.PillH + DockLayout.CaptionGap, "back hint under the bar");
-                T.True(panel.HintTop(0) + DockLayout.CaptionH <= panel.WinH - DockLayout.Margin + DockLayout.CaptionGap, "back hint inside the window");
-                T.True(panel.CaptionTop(0) >= 0, "panel name inside the window");
-            });
-
-            T.Run("layout: the input in use is marked under its tile, inside the bar", () =>
-            {
-                var l = new DockLayout(3, 1920, 1080, 0, true, -1);
-                for (int cur = 0; cur < 3; cur++)
-                    foreach (float fp in new[] { 0f, 1f, 2f, 1.5f })
-                    {
-                        var m = l.CurrentMarkBox(cur, 0f, 0);
-                        var ib = l.IconBox(cur, fp, 0f, 0);
-                        T.True(Math.Abs((m.X + m.W / 2) - (ib.X + ib.W / 2)) <= 1, "marker centred under its tile cur=" + cur + " fp=" + fp);
-                        T.True(m.Y > ib.Y + ib.H, "marker below its tile, even focused cur=" + cur + " fp=" + fp);
-                        T.True(m.Y + m.H < l.Top + l.PillH - Design.ShellBorderW, "marker inside the bar's border cur=" + cur);
-                    }
+                // a label under an early item leaves the clock alone; the last item's long label hides it
+                var apps = new DockLayout(13, 1920, 1080);
+                T.True(apps.ClockClear(apps.LabelLeft(0, 0f, 100), 100, 62), "first item: clock shown");
+                T.True(!apps.ClockClear(apps.LabelLeft(12, apps.ScrollFor(12f), 150), 150, 62), "last item with a long label: clock hidden");
             });
 
             T.Run("controller: panel page keys", () =>
@@ -332,9 +309,9 @@ namespace Launcher.Tests
             T.Run("layout: window is a small strip at the bottom centre", () =>
             {
                 var l = new DockLayout(11, 1920, 1080);
-                // the pill and its shadow margins, plus two HintH bands: the name above the pill, and the band the raised panel moves into.
-                T.True(l.WinW < 1920 && l.WinH < 340, "window much smaller than the screen: " + l.WinW + "x" + l.WinH);
-                T.Eq(l.WinH, l.PillH + 2 * DockLayout.Margin + 2 * DockLayout.HintH, "window = pill + shadow margins + two hint bands");
+                // 264 for the pill and its shadow margins, plus the HintH band for the "Input" / "Back" hint.
+                T.True(l.WinW < 1920 && l.WinH < 330, "window much smaller than the screen: " + l.WinW + "x" + l.WinH);
+                T.Eq(l.WinH, l.PillH + 2 * DockLayout.Margin + DockLayout.HintH, "window = pill + shadow margins + hint band");
                 T.Eq(l.WinX, (1920 - l.WinW) / 2, "centred");
                 T.Eq(l.WinY + l.WinH + DockLayout.BottomGap, 1080, "sits at the bottom");
                 T.True(!l.Scrolls, "11 apps fit without scrolling");
@@ -395,7 +372,7 @@ namespace Launcher.Tests
                 T.Eq(l.GlowBox(3, 0f, 0).X, l.GlowBox(3, 0f, 0).X, "glow box depends only on the item");
             });
 
-            T.Run("layout: highlight and name are never cut or crowd the pill edge", () =>
+            T.Run("layout: highlight and label are never cut or crowd the pill edge", () =>
             {
                 foreach (int n in new[] { 2, 11, 30 })
                 {
@@ -408,18 +385,17 @@ namespace Launcher.Tests
                         T.True(h.X >= 0 && h.X + h.W <= l.WinW, "glow inside the window n=" + n + " p=" + p);
                         var ic = l.IconBox((int)Math.Round(p), p, sc, 0);
                         T.True(ic.X >= clipL && ic.X + ic.W <= clipR, "focused icon not cut by the apps clipper n=" + n + " p=" + p);
-                        T.True(l.CaptionTop(0) >= 0, "name capsule inside the window top n=" + n);
                         foreach (int w in new[] { 60, 260, 400 })
                         {
                             if (w > l.PillW - 2 * DockLayout.PadX) continue;   // does not fit: covered by the centring check below
-                            int x = l.CaptionLeft((int)Math.Round(p), sc, w);
-                            T.True(x >= DockLayout.Margin + DockLayout.PadX && x + w <= DockLayout.Margin + l.PillW - DockLayout.PadX, "name inset n=" + n + " w=" + w);
+                            int x = l.LabelLeft((int)Math.Round(p), sc, w);
+                            T.True(x >= DockLayout.Margin + DockLayout.PadX && x + w <= DockLayout.Margin + l.PillW - DockLayout.PadX, "label inset n=" + n + " w=" + w);
                         }
                     }
                 }
                 var wide = new DockLayout(2, 1920, 1080);
                 int lw = wide.PillW;   // wider than the interior: centred, not thrown off
-                T.Eq(wide.CaptionLeft(0, 0f, lw), DockLayout.Margin, "oversized name is centred over the pill");
+                T.Eq(wide.LabelLeft(0, 0f, lw), DockLayout.Margin, "oversized label is centred in the pill");
             });
 
             T.Run("layout: focused icon never leaves the pill", () =>
@@ -709,32 +685,31 @@ namespace Launcher.Tests
                 T.Eq(panel.WinH, apps.WinH, "both pages share the window height");
                 T.Eq(panel.WinY, apps.WinY, "and its position");
                 T.Eq(apps.Top - panel.Top, DockLayout.HintH, "the panel pill sits one hint band higher");
-                T.Eq(panel.Top, DockLayout.Margin + DockLayout.HintH, "raised pill starts under the shadow margin and its name band");
+                T.Eq(panel.Top, DockLayout.Margin, "raised pill starts right under the shadow margin");
                 T.Eq(apps.RowCenterY - panel.RowCenterY, DockLayout.HintH, "icon row follows the pill");
-                T.Eq(apps.CaptionTop(0) - panel.CaptionTop(0), DockLayout.HintH, "name follows the pill");
+                T.Eq(apps.LabelTop(0) - panel.LabelTop(0), DockLayout.HintH, "label follows the pill");
                 T.Eq(apps.PillBox(0).Y - panel.PillBox(0).Y, DockLayout.HintH, "pill box follows");
                 T.Eq(apps.ShadowBox(0).Y - panel.ShadowBox(0).Y, DockLayout.HintH, "shadow box follows");
                 T.True(apps.ShadowBox(0).Y >= 0 && panel.ShadowBox(0).Y >= 0, "shadow never starts above the window");
                 T.True(apps.ShadowBox(0).Y + apps.ShadowBox(0).H <= apps.WinH + Design.ShadowDy, "apps shadow stays in the window (bar its offset: that part is below the screen edge)");
             });
 
-            T.Run("layout: hints sit clear of the pill, inside the window", () =>
+            T.Run("layout: hint capsule sits clear of the pill, inside the window, centred", () =>
             {
-                var apps = new DockLayout(13, 1920, 1080, 0, false, 11);
+                var apps = new DockLayout(13, 1920, 1080);
                 var panel = new DockLayout(5, 1920, 1080, apps.WinW, true, -1);
                 foreach (int w in new[] { 90, 118, 140 })
                 {
                     int ax = apps.HintLeft(w), px = panel.HintLeft(w);
-                    if (Design.HintAtRight) T.Eq(ax + w, apps.Left + apps.PillW - DockLayout.PadX, "apps hint at the pill's inner right edge, w=" + w);
-                    else T.True(Math.Abs((ax + w / 2) - (apps.Left + apps.PillW / 2)) <= 1, "apps hint centred on its pill, w=" + w);
+                    T.True(Math.Abs((ax + w / 2) - (apps.Left + apps.PillW / 2)) <= 1, "apps hint centred on its pill, w=" + w);
                     T.True(Math.Abs((px + w / 2) - (panel.Left + panel.PillW / 2)) <= 1, "panel hint centred on its pill, w=" + w);
                     T.True(ax >= 0 && ax + w <= apps.WinW && px >= 0 && px + w <= panel.WinW, "hint inside the window width, w=" + w);
                 }
                 int up = apps.HintTop(0), down = panel.HintTop(0);
-                T.Eq(up + DockLayout.CaptionH + DockLayout.CaptionGap, apps.Top, "hint above the apps pill, with its gap");
+                T.Eq(up + DockLayout.CapsuleH + (DockLayout.HintH - DockLayout.CapsuleH), apps.Top, "capsule above the apps pill, with its gap");
                 T.True(up >= 0, "up hint inside the window top");
-                T.Eq(down, panel.Top + panel.PillH + DockLayout.CaptionGap, "back hint below the raised panel pill, with its gap");
-                T.True(down + DockLayout.CaptionH <= panel.WinH, "back hint inside the window bottom");
+                T.Eq(down, panel.Top + panel.PillH + (DockLayout.HintH - DockLayout.CapsuleH), "back capsule below the raised panel pill, with its gap");
+                T.True(down + DockLayout.CapsuleH <= panel.WinH, "back hint inside the window bottom");
                 T.True(down >= apps.Top + 0, "back hint sits in the band the raised pill vacated");
                 T.Eq(apps.HintTop(30) - up, 30, "hint follows the slide");
                 T.Eq(panel.HintTop(30) - down, 30, "back hint follows the slide");
@@ -809,7 +784,7 @@ namespace Launcher.Tests
                 for (int i = 18; i <= 21; i++)
                 {
                     var fb = l.IconBox(i, i, l.ScrollFor(i), 0);
-                    T.True(Math.Abs(l.ItemCenterX(i, l.ScrollFor(i)) - (fb.X + fb.W / 2)) <= 1, "name centred over its icon, item " + i);
+                    T.True(Math.Abs(l.LabelCenterX(i, l.ScrollFor(i)) - (fb.X + fb.W / 2)) <= 1, "label centred under its icon, item " + i);
                 }
                 var d = l.DividerBox(0f, 0);
                 T.True(d.X >= l.ViewRight + DockLayout.ClipPad && d.X + d.W <= rest[0].X, "divider between the clipper and the pinned entries");
@@ -975,8 +950,8 @@ namespace Launcher.Tests
                 T.Eq(g.Y + g.H / 2, l.RowCenterY - Design.Lift, "the glow rises with it");
                 var pill = l.IconBox(9, 9f, 0f, 0);
                 T.Eq(pill.Y, l.PillTop(9), "a selected pill does not rise");
-                T.Eq(l.PillH, DockLayout.PadTop + DockLayout.FocusIcon + DockLayout.ClockRow + DockLayout.PadBottom, "bar height");
-                if (!Design.ShowClock) T.Eq(DockLayout.ClockRow, 0, "no clock: no row under the icons, the name is above the bar");
+                T.Eq(l.PillH, DockLayout.PadTop + DockLayout.FocusIcon + DockLayout.LabelRow + DockLayout.PadBottom, "bar height");
+                if (!Design.ShowLabels && !Design.ShowClock) T.Eq(DockLayout.LabelRow, 0, "no names, no clock: no row for them");
                 T.Eq(l.PillW <= DockLayout.MaxPillW ? 1 : 0, 1, "the bar never exceeds the maximum width");
                 T.Eq(new DockLayout(40, 1920, 1080, 0, false, 38).PillW, DockLayout.MaxPillW, "a long row fills the maximum width");
                 T.Eq(l.WinY + l.WinH, 1080 - DockLayout.BottomGap, "the window ends at the bottom");
@@ -1094,7 +1069,7 @@ namespace Launcher.Tests
                         int g1, g2; float gw;
                         layout.GlowAt(fp, out g1, out g2, out gw);
                         sink += layout.GlowBox(g2, sc, slide).X + (long)gw;
-                        sink += layout.PillBox(slide).X + layout.ShadowBox(slide).Y + layout.GlowBox((int)fp, sc, slide).X + layout.ItemCenterX((int)fp, sc) + layout.CaptionTop(slide)
+                        sink += layout.PillBox(slide).X + layout.ShadowBox(slide).Y + layout.GlowBox((int)fp, sc, slide).X + layout.LabelCenterX((int)fp, sc) + layout.LabelTop(slide)
                             + layout.HintTop(slide) + layout.HintLeft(118) + layout.DividerBox(sc, slide).X;
                         for (int i = 0; i < layout.Count; i++) { sink += layout.IconBox(i, fp, sc, slide).W; sink += (long)DockLayout.Amount(fp, i); }
                     }

@@ -16,7 +16,7 @@ namespace Launcher.Core
         public const float ShellAlpha = 0.98f;
         public const int ShellBorderW = 2;
         public const int ShellBorderColor = 0xFFFFFF;
-        public const float ShellBorderAlpha = 0.12f;
+        public const float ShellBorderAlpha = 0.22f;
         /// <summary>Nine-slice border of the bar image: more than its corner radius, so the curve is never stretched.</summary>
         public const int ShellSlice = 32;
         public const int ShadowBlur = 50;      // CSS blur radius: a Gaussian of sigma = blur / 2
@@ -35,7 +35,7 @@ namespace Launcher.Core
         /// <summary>True: the glow takes the colour of the selected app's icon; false: <see cref="GlowColor"/>.</summary>
         public static readonly bool GlowFromIcon = true;
         public const int GlowColor = 0xE2EDFF;
-        public const float GlowStrength = 0.34f;
+        public const float GlowStrength = 0.44f;
         public const int GlowSpread = 16;
         public const int RingW = 2;
         public const int RingColor = 0xFFFFFF;
@@ -43,18 +43,9 @@ namespace Launcher.Core
         public const int Lift = 4;
 
         // ---- Text ----
-        /// <summary>The focused item's name, in a capsule of the bar's own material above the bar (geometry: DockLayout.Caption*).</summary>
-        public static readonly bool ShowLabels = true;
-        public const int LabelTextSize = 24;
-        /// <summary>Opacity of the name capsule's fill (the bar's tint); its border is the bar's border.</summary>
-        public const float CaptionAlpha = 0.96f;
+        public static readonly bool ShowLabels = false;
         public static readonly bool ShowClock = false;
         public const string HintText = "Source";
-        /// <summary>True: the apps page's hint sits at the right end above the pills, out of the name's way; false: centred.</summary>
-        public static readonly bool HintAtRight = true;
-        /// <summary>True: a short white bar under the input in use, always shown on the inputs panel.</summary>
-        public static readonly bool ShowCurrent = true;
-        public const float CurrentAlpha = 0.92f;
 
         // ---- The two pills ----
         public const float PillBorderAlpha = 0.75f;
