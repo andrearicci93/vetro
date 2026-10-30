@@ -64,21 +64,24 @@ function command(ids, disable) {
 }
 // The startup flags live in the package database, as the Task manager edits them (component-actions.js).
 var DB = '/opt/dbspace/.pkgmgr_parser.db', SAVED = '/home/owner/share/vetro/quick-flags';
+// pkgcmd may still hold the database when the flag script starts right after it: sqlite3 waits instead of failing at once.
+var SQL = 'q() { printf \'.timeout 5000\\n%s\\n\' "$1" | sqlite3 -bail ' + DB + '; }\n';
 // Clear boot and auto-restart; the previous values are kept in SAVED/<id> so that turning the group back on restores them.
 function clearFlagsCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
-    return wrap('mkdir -p ' + SAVED + '\nfor id in ' + ids.join(' ') + '; do\n' +
-        ' v=$(sqlite3 -readonly ' + DB + ' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\'$id\';")\n' +
+    return wrap(SQL + 'mkdir -p ' + SAVED + '\nfor id in ' + ids.join(' ') + '; do\n' +
+        ' v=$(q "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\'$id\';")\n' +
         ' case "$v" in *true*) echo "$v" > "' + SAVED + '/$id";; esac\n' +
-        ' sqlite3 -bail ' + DB + ' "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'false\',app_autorestart=\'false\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; echo "$id $?"\ndone');
+        ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'false\',app_autorestart=\'false\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; echo "$id $?"\ndone');
 }
+// "<id> 0": put back, "<id> none": nothing had been saved for it, anything else: failed.
 function restoreFlagsCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
-    return wrap('for id in ' + ids.join(' ') + '; do\n' +
-        ' f="' + SAVED + '/$id"\n [ -f "$f" ] || { echo "$id 0"; continue; }\n' +
+    return wrap(SQL + 'for id in ' + ids.join(' ') + '; do\n' +
+        ' f="' + SAVED + '/$id"\n [ -f "$f" ] || { echo "$id none"; continue; }\n' +
         ' v=$(cat "$f"); on=${v%%|*}; re=${v##*|}\n' +
         ' case "$on" in true|false) ;; *) on=false;; esac\n case "$re" in true|false) ;; *) re=false;; esac\n' +
-        ' sqlite3 -bail ' + DB + ' "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; r=$?\n' +
+        ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; r=$?\n' +
         ' [ $r -eq 0 ] && rm -f "$f"; echo "$id $r"\ndone');
 }
 function stopCommand(ids) {
@@ -101,8 +104,9 @@ function running(text) {
 function restoreFlagsFor(result, deps) {
     if (!result.changed.length) return Promise.resolve(result);
     return deps.execute(restoreFlagsCommand(result.changed), 60000).then(function (r) {
-        var codes = exitCodes(r.stdout);
-        result.changed.forEach(function (id) { (codes[id] === 0 ? result.flagsRestored : result.flagsNotRestored).push(id); });
+        var codes = {};
+        String(r.stdout || '').split('\n').forEach(function (l) { var m = /^(\S+) (\d+|none)$/.exec(l.trim()); if (m) codes[m[1]] = m[2]; });
+        result.changed.forEach(function (id) { if (codes[id] === '0') result.flagsRestored.push(id); else if (codes[id] !== 'none') result.flagsNotRestored.push(id); });
         deps.invalidate();
         return deps.inventory(true);
     }).then(function (d) {
@@ -131,7 +135,7 @@ function apply(groupId, off, deps) {
             return {apps: d.apps, wrong: ids.filter(function (id) { return !byId[id] || byId[id].disabled !== disabled; })};
         });
     }
-    var flagTargets = [];
+    var flagTargets = [], clearRan = false;
     function flagsWrong(apps, ids) {
         var byId = {};
         apps.forEach(function (r) { byId[r.appId] = r; });
@@ -157,6 +161,7 @@ function apply(groupId, off, deps) {
         }) : Promise.resolve(before.apps);
         return step.then(function (apps) {
             if (!flagTargets.length) return apps;
+            clearRan = true;
             return deps.execute(clearFlagsCommand(flagTargets), 60000).then(function (r) {
                 if (r.timed_out) throw new Error('TV did not finish clearing the startup flags in time');
                 deps.invalidate();
@@ -168,7 +173,7 @@ function apply(groupId, off, deps) {
             });
         }).catch(function (e) {
             // Put every member that was changed back to its previous state: flags first, then the disabled flag.
-            var undo = flagTargets.length ? deps.execute(restoreFlagsCommand(flagTargets), 60000) : Promise.resolve();
+            var undo = flagTargets.length && clearRan ? deps.execute(restoreFlagsCommand(flagTargets), 60000) : Promise.resolve();
             return undo.then(function () {
                 return targets.length ? deps.execute(command(targets, !off), 90000).then(function () { return verify(targets, !off); }) : {wrong: []};
             }).then(function (restored) {

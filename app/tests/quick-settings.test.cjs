@@ -23,8 +23,9 @@ function harness(opts){
   execute(cmd){const s=decode(cmd);calls.push(s);
    if(s==='app_launcher -S')return Promise.resolve({exit_code:0,stdout:(opts.running||[]).map((id,i)=>'\t'+id+' ('+(100+i)+')').join('\n')});
    if(/quick-flags/.test(s)){const ids=idsOf(s),clear=/app_onboot=\'false\',app_autorestart=\'false\'/.test(s);
-    ids.forEach(id=>{if(clear){if(opts.flagStuck===id)return;if(flags[id].onboot||flags[id].autorestart)saved[id]=Object.assign({},flags[id]);flags[id]={onboot:false,autorestart:false};}else if(saved[id]){flags[id]=saved[id];delete saved[id];}});
-    return Promise.resolve({exit_code:0,stdout:ids.map(id=>id+' 0').join('\n')});}
+    const out=ids.map(id=>{if(clear){if(opts.flagStuck===id)return id+' 0';if(flags[id].onboot||flags[id].autorestart)saved[id]=Object.assign({},flags[id]);flags[id]={onboot:false,autorestart:false};return id+' 0';}
+     if(saved[id]){flags[id]=saved[id];delete saved[id];return id+' 0';}return id+' none';});
+    return Promise.resolve({exit_code:0,stdout:out.join('\n')});}
    const m=/for id in (.*); do (pkgcmd (-D|-A)|app_launcher -k)/.exec(s);const ids=m[1].split(' ');
    if(m[2]==='app_launcher -k')return Promise.resolve({exit_code:0,stdout:ids.map(id=>id+' 0').join('\n')});
    ids.forEach(id=>{if(opts.stuck&&opts.stuck===id&&m[3]==='-D')return;m[3]==='-D'?disabled.add(id):disabled.delete(id);});
@@ -54,7 +55,7 @@ function harness(opts){
   assert.equal(r.state.status,'off');assert.deepEqual(r.flagsCleared.sort(),[alexa[0],alexa[1]].sort(),'only members that had a flag are cleared');
   assert.deepEqual(h.saved,f,'previous values are kept for the restore');assert.ok(alexa.every(id=>!h.flags[id].onboot&&!h.flags[id].autorestart));
   assert.ok(h.calls.some(c=>/pkgcmd -D/.test(c))&&h.calls.some(c=>/quick-flags/.test(c)),'one script for the disabled flag, one for the startup flags');
-  r=await quick.apply('alexa',false,h.deps);assert.equal(r.state.status,'on');assert.deepEqual(r.flagsRestored.sort(),r.changed.slice().sort());
+  r=await quick.apply('alexa',false,h.deps);assert.equal(r.state.status,'on');assert.deepEqual(r.flagsRestored.sort(),[alexa[0],alexa[1]].sort(),'only components that had flags saved count as restored');assert.deepEqual(r.flagsNotRestored,[]);
   assert.deepEqual([h.flags[alexa[0]],h.flags[alexa[1]]],[f[alexa[0]],f[alexa[1]]],'flags are back as they were');assert.deepEqual(h.saved,{});
   // All disabled already, flags left: only the flags script runs and the group becomes done
   h=harness({disabled:alexa,flags:f});r=await quick.apply('alexa',true,h.deps);
@@ -63,6 +64,10 @@ function harness(opts){
   h=harness({disabled:[],flags:f,flagStuck:alexa[0]});
   await assert.rejects(quick.apply('alexa',true,h.deps),/Startup flags not cleared for .*previous state restored/);
   assert.equal(h.disabled.size,0,'rollback re-enables the members');assert.deepEqual([h.flags[alexa[0]],h.flags[alexa[1]]],[f[alexa[0]],f[alexa[1]]]);
+  // The disable step failing never reaches the flags script, so rollback must not write saved values over live flags
+  h=harness({disabled:[],flags:f,stuck:alexa[1]});h.saved[alexa[0]]={onboot:false,autorestart:true};
+  await assert.rejects(quick.apply('alexa',true,h.deps),/Not confirmed for/);
+  assert.ok(!h.calls.some(c=>/quick-flags/.test(c)),'no flag script runs when the disable step failed');assert.deepEqual(h.flags[alexa[0]],f[alexa[0]],'live flags untouched');
   assert.throws(()=>quick.clearFlagsCommand(['a;b']),/Invalid app ID/);assert.throws(()=>quick.restoreFlagsCommand(['$(x)']),/Invalid app ID/);
  }
  // Area groups: members are whatever the Task manager files under the area, minus role keep and protected components
