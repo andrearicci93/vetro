@@ -79,7 +79,8 @@ A bundle is **text only**: up to 20 files, 512 KB in total, file names `a-z A-Z 
 ### The plugin page
 
 With `ui`, `GET /plugins/<id>/api/ui` must return an HTML page. It is shown in a sandboxed frame
-(`allow-scripts`, no same-origin): use **relative URLs** (`fetch("count")`), no cookies, no storage.
+(`allow-scripts`, no same-origin): use **relative URLs** (`fetch("count")`), no cookies, no storage. The page URL holds a session token
+that opens your routes and expires after 8 hours or when the plugin is switched off: build every request from a relative URL and the token follows.
 JSON `POST` works: the host answers the CORS preflight. Dark/light: add `<meta name="color-scheme" content="light dark">`.
 
 ### The `exec` permission
@@ -161,8 +162,9 @@ Bundle: `{ "format": "vetro-plugin", "version": 1, "manifest": {…}, "files": {
 - A plugin whose `start()` throws gets `stop()` called so it can release what it took, and is marked Failed.
 - Not done yet: if an update installs but its `start()` fails, the previous version is not restored automatically (the plugin shows Failed; install the old bundle again).
 - A plugin cannot take a Vetro route; it only gets `/plugins/<id>/api/...`.
-- This is fault isolation, **not** a security sandbox: a plugin runs inside Vetro's process. Anyone on the LAN who
-  can reach the dashboard can already run commands on the TV (`SECURITY.md`); installing a plugin is the same trust.
+- This is fault isolation, **not** a security sandbox: a plugin runs inside Vetro's process. Only paired devices can install,
+  switch on or remove plugins (`SIGN-IN.md`), and a plugin page gets a session limited to its own routes; but a plugin you
+  switch on has the same power as Vetro's service. Installing one is a trust decision.
 
 ## Troubleshooting
 

@@ -4,7 +4,7 @@ Vetro's routes can run commands as root, so the service only answers devices tha
 
 ## Pair a browser
 
-Open `http://TV_IP:8099/` and choose **Show a code on the TV**. The service opens the Vetro app on the TV, which shows a 6-digit code for 2 minutes. If nothing appears (for example, the root agent is not connected yet), open the Vetro app yourself; it shows any pending code. Type the code in the browser.
+Open `http://TV_IP:8099/` and choose **Show a code on the TV**. The service opens the Vetro app on the TV, which shows a 6-digit code for 2 minutes, with the name of the browser that asked, in the dashboard card of the TV screen. If nothing appears (for example, the root agent is not connected yet), open the Vetro app yourself; it shows any pending code. Type the code in the browser.
 
 The browser receives a random key in an `HttpOnly`, `SameSite=Strict` cookie, valid for a year. The dashboard shows **Sign out** and **Sign out all devices** in the bottom-right corner.
 
@@ -20,6 +20,10 @@ curl -s -H "Authorization: Bearer $VETRO_TOKEN" http://TV_IP:8099/status
 ```
 
 The scripts in `app/scripts` send `VETRO_TOKEN` when it is set.
+
+## Plugin pages
+
+A plugin page runs in a sandboxed frame without the dashboard's cookie, so it cannot send the key. When you open one, the dashboard asks the service for a **session** for that plugin: a random token in the page's own URL (`/plugins/<id>/s/<token>/api/...`). It opens that plugin's routes and nothing else, expires after 8 hours and ends when the plugin is switched off. Installing, switching on and removing plugins needs a paired device like everything else.
 
 ## What is enforced
 
