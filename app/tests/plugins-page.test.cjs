@@ -1,0 +1,9 @@
+'use strict';
+const assert = require('assert').strict;
+const html = require('../service/dashboard.js')({});
+assert.match(html, /<nav aria-label="Vetro"><button data-tab="plugins"/);
+assert.match(html, /<section id="plugins" hidden>/);
+assert.match(html, /function loadPlugins\(\)\{return api\('\/plugins'\)/);
+assert.match(html, /'\/plugins\/'\+encodeURIComponent\(id\)\+'\/'\+\(on\?'enable':'disable'\)/);
+assert.match(html, /data-plugin-resume/);
+console.log('plugins page: ok');
