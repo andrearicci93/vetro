@@ -22,6 +22,7 @@ var RUN_DIR = '/home/owner';                          // the dock's own pid, fif
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
 var LOG_FILE = RUN_DIR + '/tvlauncher.log';
+var GUARD_FILE = RUN_DIR + '/tvlauncher-guard';             // the dock kills Samsung Home only while this reads on
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
@@ -179,9 +180,10 @@ Dock.prototype.startScript = function () {
     ].join('\n');
 };
 
-// The dock ignores SIGTERM, so it takes kill -9; only a pid that is really our dll is touched.
+// The dock ignores SIGTERM, so it takes kill -9; only a pid that is really our dll is touched. The kill skips
+// the dock's exit cleanup, so the guard flag is set off first: a pending guard chain then leaves Samsung Home alone.
 Dock.prototype.stopLines = function () {
-    return 'systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
+    return 'printf off > ' + GUARD_FILE + ' 2>/dev/null; systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
         '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE;
 };

@@ -178,6 +178,7 @@ namespace Launcher
             Libc.close(fd);
         }
 
+        // Runs on a normal exit only; the service stops the dock with kill -9, so its stop lines write the guard flag off themselves.
         private static void CleanupFiles()
         {
             try
@@ -604,7 +605,7 @@ namespace Launcher
         private static string GuardCommand(string appId)
         {
             string kill = "/usr/bin/app_launcher -k " + appId;
-            string check = "[ \"$(cat " + _guardFlag + " 2>/dev/null)\" = on ]";
+            string check = "[ \"$(cat '" + _guardFlag.Replace("'", "'\\''") + "' 2>/dev/null)\" = on ]";
             var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + check + " && " + kill);
             foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(check).Append(" && ").Append(kill);
             return sb.Append(" ) >/dev/null 2>&1 &").ToString();
