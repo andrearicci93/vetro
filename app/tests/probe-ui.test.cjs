@@ -75,8 +75,9 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(/id="pin" hidden/.test(good.screen.innerHTML), 'the PIN slot is reserved and hidden');
   assert.ok(good.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/auth/pending'), 'the screen asks the service for a pending code');
   assert.ok(good.intervals.some(t => t.ms === 2000), 'and keeps asking');
-  const pinned = await run({pending: {code: '482913', name: 'Chrome on Mac'}});
-  assert.ok(/id="pin">PIN<b>482 913<\/b><i>Chrome on Mac<\/i>/.test(pinned.screen.innerHTML), 'a pending code is shown in groups of three, with the name');
+  const pinned = await run({pending: {code: '482913', name: 'Chrome on Mac', expiresIn: 95}});
+  assert.ok(/id="pin">PIN<b>482 913<\/b><i>Chrome on Mac · 1:3[45]<\/i>/.test(pinned.screen.innerHTML), 'a pending code is shown in groups of three, with the name and the time it stays valid');
+  assert.ok(pinned.intervals.some(t => t.ms === 1000), 'the countdown ticks every second, so a lost answer cannot leave a dead code on screen');
 
   // The page stays up while the user reads; Back leaves; OK checks again; idle leaves.
   assert.equal(good.exits.length, 0);

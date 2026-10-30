@@ -36,7 +36,8 @@ var ID = /^[A-Za-z0-9_.-]{1,180}$/;
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function find(id) { return GROUPS.filter(function (g) { return g.id === id; })[0] || null; }
 
-// "on": every installed member enabled; "off": every one disabled.
+// "on": every installed member enabled; "off": every one disabled and none of them left on boot or auto-restart.
+// A disabled member that still has a startup flag is "flagged": the group is only partly done until the flag is cleared.
 function state(group, rows) {
     var byId = {};
     (rows || []).forEach(function (r) { byId[r.appId] = r; });
@@ -49,9 +50,10 @@ function state(group, rows) {
     var unknown = installed.filter(function (id) { return typeof byId[id].disabled !== 'boolean'; });
     var disabled = installed.filter(function (id) { return byId[id].disabled === true; });
     var enabled = installed.filter(function (id) { return byId[id].disabled === false; });
+    var flagged = disabled.filter(function (id) { return byId[id].onboot === true || byId[id].autorestart === true; });
     var status = !installed.length ? 'unavailable' : unknown.length ? 'unknown'
-        : !enabled.length ? 'off' : !disabled.length ? 'on' : 'partial';
-    return {id: group.id, status: status, installed: installed, enabled: enabled, disabled: disabled};
+        : !enabled.length ? (flagged.length ? 'partial' : 'off') : !disabled.length ? 'on' : 'partial';
+    return {id: group.id, status: status, installed: installed, enabled: enabled, disabled: disabled, flagged: flagged};
 }
 
 // One script for the whole group: per-ID exit codes, no per-command queueing.
@@ -59,6 +61,25 @@ function command(ids, disable) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
     return wrap('for id in ' + ids.join(' ') + '; do pkgcmd ' + (disable ? '-D' : '-A') +
         ' -t app -n "$id" --global >/dev/null 2>&1; echo "$id $?"; done');
+}
+// The startup flags live in the package database, as the Task manager edits them (component-actions.js).
+var DB = '/opt/dbspace/.pkgmgr_parser.db', SAVED = '/home/owner/share/vetro/quick-flags';
+// Clear boot and auto-restart; the previous values are kept in SAVED/<id> so that turning the group back on restores them.
+function clearFlagsCommand(ids) {
+    ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
+    return wrap('mkdir -p ' + SAVED + '\nfor id in ' + ids.join(' ') + '; do\n' +
+        ' v=$(sqlite3 -readonly ' + DB + ' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\'$id\';")\n' +
+        ' case "$v" in *true*) echo "$v" > "' + SAVED + '/$id";; esac\n' +
+        ' sqlite3 -bail ' + DB + ' "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'false\',app_autorestart=\'false\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; echo "$id $?"\ndone');
+}
+function restoreFlagsCommand(ids) {
+    ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
+    return wrap('for id in ' + ids.join(' ') + '; do\n' +
+        ' f="' + SAVED + '/$id"\n [ -f "$f" ] || { echo "$id 0"; continue; }\n' +
+        ' v=$(cat "$f"); on=${v%%|*}; re=${v##*|}\n' +
+        ' case "$on" in true|false) ;; *) on=false;; esac\n case "$re" in true|false) ;; *) re=false;; esac\n' +
+        ' sqlite3 -bail ' + DB + ' "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; r=$?\n' +
+        ' [ $r -eq 0 ] && rm -f "$f"; echo "$id $r"\ndone');
 }
 function stopCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
@@ -73,6 +94,21 @@ function running(text) {
     var out = [];
     String(text || '').split('\n').forEach(function (l) { var m = /^\s*([A-Za-z0-9_.-]+) \((\d+)\)/.exec(l); if (m) out.push(m[1]); });
     return out;
+}
+
+// Turning a group back on gives its members the boot and auto-restart values they had before it was turned off.
+// This is best effort: the components are enabled already, so a failure is reported rather than undone.
+function restoreFlagsFor(result, deps) {
+    if (!result.changed.length) return Promise.resolve(result);
+    return deps.execute(restoreFlagsCommand(result.changed), 60000).then(function (r) {
+        var codes = exitCodes(r.stdout);
+        result.changed.forEach(function (id) { (codes[id] === 0 ? result.flagsRestored : result.flagsNotRestored).push(id); });
+        deps.invalidate();
+        return deps.inventory(true);
+    }).then(function (d) {
+        if (!d.registryError) { result.apps = d.apps; result.state = state(find(result.id), d.apps); }
+        return result;
+    }).catch(function () { result.flagsNotRestored = result.changed.slice(); result.flagsRestored = []; return result; });
 }
 
 // deps: execute(cmd, timeoutMs), inventory(refresh) -> {apps, registryError}, invalidate().
@@ -95,30 +131,56 @@ function apply(groupId, off, deps) {
             return {apps: d.apps, wrong: ids.filter(function (id) { return !byId[id] || byId[id].disabled !== disabled; })};
         });
     }
+    var flagTargets = [];
+    function flagsWrong(apps, ids) {
+        var byId = {};
+        apps.forEach(function (r) { byId[r.appId] = r; });
+        return ids.filter(function (id) { return !byId[id] || byId[id].onboot !== false || byId[id].autorestart !== false; });
+    }
     return registry(true).then(function (before) {
         var s = state(group, before.apps);
         if (s.status === 'unavailable') { var missing = new Error('Not installed on this TV'); missing.statusCode = 409; throw missing; }
         if (s.status === 'unknown') throw new Error('App state is unavailable. Refresh the inventory.');
         targets = off ? s.enabled : s.disabled;
-        if (!targets.length) return before.apps;
-        return deps.execute(command(targets, off), 90000).then(function (r) {
+        // Turning off also clears boot and auto-restart on the members that are off already but still flagged.
+        var byId = {};
+        before.apps.forEach(function (r) { byId[r.appId] = r; });
+        flagTargets = off ? s.enabled.concat(s.flagged).filter(function (id) { return byId[id].onboot === true || byId[id].autorestart === true; }) : [];
+        if (!targets.length && !flagTargets.length && off) return before.apps;
+        if (!targets.length && !off) return before.apps;
+        var step = targets.length ? deps.execute(command(targets, off), 90000).then(function (r) {
             if (r.timed_out) throw new Error('TV did not finish the change in time');
             return verify(targets, off);
         }).then(function (after) {
-            if (!after.wrong.length) return after.apps;
-            throw new Error('Not confirmed for ' + after.wrong.join(', '));
+            if (after.wrong.length) throw new Error('Not confirmed for ' + after.wrong.join(', '));
+            return after.apps;
+        }) : Promise.resolve(before.apps);
+        return step.then(function (apps) {
+            if (!flagTargets.length) return apps;
+            return deps.execute(clearFlagsCommand(flagTargets), 60000).then(function (r) {
+                if (r.timed_out) throw new Error('TV did not finish clearing the startup flags in time');
+                deps.invalidate();
+                return registry(true);
+            }).then(function (d) {
+                var wrong = flagsWrong(d.apps, flagTargets);
+                if (wrong.length) throw new Error('Startup flags not cleared for ' + wrong.join(', '));
+                return d.apps;
+            });
         }).catch(function (e) {
-            // Put every member that was changed back to its previous flag.
-            return deps.execute(command(targets, !off), 90000).then(function () { return verify(targets, !off); })
-                .then(function (restored) {
-                    throw new Error(e.message + ' · ' + (restored.wrong.length ? 'restore not confirmed for ' + restored.wrong.join(', ') : 'previous state restored'));
-                }, function () {
-                    throw new Error(e.message + ' · restore not confirmed');
-                });
+            // Put every member that was changed back to its previous state: flags first, then the disabled flag.
+            var undo = flagTargets.length ? deps.execute(restoreFlagsCommand(flagTargets), 60000) : Promise.resolve();
+            return undo.then(function () {
+                return targets.length ? deps.execute(command(targets, !off), 90000).then(function () { return verify(targets, !off); }) : {wrong: []};
+            }).then(function (restored) {
+                throw new Error(e.message + ' · ' + (restored.wrong.length ? 'restore not confirmed for ' + restored.wrong.join(', ') : 'previous state restored'));
+            }, function () {
+                throw new Error(e.message + ' · restore not confirmed');
+            });
         });
     }).then(function (apps) {
-        var result = {ok: true, verified: true, id: group.id, off: off, changed: targets, stopped: [], stopFailed: [], state: state(group, apps), apps: apps};
-        if (!off) return result;
+        var result = {ok: true, verified: true, id: group.id, off: off, changed: targets, flagsCleared: off ? flagTargets : [], flagsRestored: [], flagsNotRestored: [],
+            stopped: [], stopFailed: [], state: state(group, apps), apps: apps};
+        if (!off) return restoreFlagsFor(result, deps);
         // A disabled flag does not end processes that are already running.
         return deps.execute('app_launcher -S', 10000).then(function (r) {
             if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
@@ -134,4 +196,4 @@ function apply(groupId, off, deps) {
 }
 
 module.exports = {GROUPS: GROUPS, ALLOWED_IDS: ALLOWED_IDS, find: find, state: state, command: command,
-    stopCommand: stopCommand, exitCodes: exitCodes, running: running, apply: apply};
+    stopCommand: stopCommand, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};

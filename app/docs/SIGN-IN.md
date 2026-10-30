@@ -32,6 +32,7 @@ A plugin page runs in a sandboxed frame without the dashboard's cookie, so it ca
 | Unpaired LAN clients get `401` on every route except `/auth/pair`, `/auth/confirm` and the sign-in page | Root routes need a paired device |
 | Only TV apps can read `/auth/pending` (the current code) | The code proves physical access to the TV |
 | One pairing at a time: while a code is live, new pairing requests get `429` and the TV app is not reopened | Nobody can cancel someone else's pairing or keep popping the code up |
+| The browser that asked for a code gets a `vetro_pair` cookie (2 minutes, `HttpOnly`, `SameSite=Strict`, path `/auth`) holding the pairing id; `GET /auth/state` tells the sign-in page whether a code is waiting and whether it is theirs, so a reload resumes the code instead of losing it | A reload used to leave a code on the TV that nobody could confirm until it expired |
 | Five wrong codes end a pairing; a new pairing at most every 10 seconds | Slows down guessing |
 | The no-key bypass for TV apps requires `Host` to be an IP address or `localhost` | A rebound hostname on loopback still has to pair |
 | A browser `Origin` must match `Host` on `/auth/pair`, `/auth/confirm` and every paired request | Other web pages can't start a pairing or use a paired browser's cookie |

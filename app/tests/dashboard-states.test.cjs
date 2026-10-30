@@ -29,3 +29,10 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  sandbox.inventory=[{...app,disabled:undefined}];sandbox.render();assert.match(el('appGrid').innerHTML,/Unknown/);assert.ok(!el('appGrid').innerHTML.includes('disabled-row'));
  console.log('PASS dashboard states: disabled/running independence, startup mixtures, unknown and stale samples, package expansion');
 })().catch(e=>{console.error(e);process.exitCode=1});
+
+// Startup: a disabled app keeps its flags, so the default list shows only what can start; the rest is one filter away.
+const startupHtml = require('../service/dashboard.js')({});
+assert.match(startupHtml, /<option value="flagged">Can start: flag set, app enabled<\/option><option value="flags">Flag set, including disabled apps<\/option>/);
+assert.match(startupHtml, /\(a\.onboot\|\|a\.autorestart\)&&\(mode==='flags'\|\|a\.disabled===false\)/, 'default filter requires an enabled component');
+assert.match(startupHtml, /function mixedCount/, 'a Mixed flag says how many components have it on');
+assert.match(startupHtml, /A disabled app keeps its flags/);

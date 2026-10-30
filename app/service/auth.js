@@ -22,6 +22,7 @@ var fs = require('fs');
 
 var STORE_PATH = process.env.VETRO_AUTH_PATH || '/opt/usr/home/owner/share/vetro-auth.json';
 var COOKIE = 'vetro_session';
+var PAIR_COOKIE = 'vetro_pair';   // the pairing id, kept by the browser that asked for the code so a reload does not lose it
 var KEY_DAYS = 365;
 var CODE_MS = 2 * 60000;
 var MAX_TRIES = 5;
@@ -89,6 +90,15 @@ function keyOf(req) {
     m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([0-9a-f]{64})').exec(h.cookie || '');
     return m ? m[1] : null;
 }
+function pairIdOf(req) {
+    var m = new RegExp('(?:^|;\\s*)' + PAIR_COOKIE + '=([0-9a-f]{32})').exec((req.headers || {}).cookie || '');
+    return m ? m[1] : null;
+}
+// True when this request comes from the browser that started the pairing that is still waiting.
+function ownsPending(req, now) {
+    var id = pairIdOf(req);
+    return !!(pending && pending.expires > now && id && same(pending.id, id));
+}
 function sessionOf(req) {
     var key = keyOf(req);
     if (!key) return null;
@@ -106,7 +116,12 @@ function body(req, cb) {
 
 function startPair(req, res, onPair) {
     var now = Date.now();
-    if (pending && pending.expires > now) return json(res, 429, {error: 'A pairing is in progress; try again when its code expires (at most 2 minutes)'});
+    // A waiting code is never replaced, not even for the browser that asked for it: that browser resumes it (see /auth/state).
+    if (pending && pending.expires > now) {
+        var left = Math.ceil((pending.expires - now) / 1000);
+        return json(res, 429, {error: ownsPending(req, now) ? 'The code is already on the TV screen. Enter it, or wait ' + left + ' seconds for a new one.' :
+            'Another device is pairing right now. Try again in ' + left + ' seconds.', expiresIn: left, mine: ownsPending(req, now)});
+    }
     if (now - lastPairAt < 10000) return json(res, 429, {error: 'Wait a few seconds and try again'});
     if (live(now).length >= MAX_SESSIONS) return json(res, 409, {error: FULL});
     lastPairAt = now;
@@ -115,14 +130,17 @@ function startPair(req, res, onPair) {
         pending = {id: crypto.randomBytes(16).toString('hex'), code: String(1000000 + crypto.randomBytes(4).readUInt32BE(0) % 1000000).slice(1),
             name: name, expires: now + CODE_MS, tries: 0};
         if (onPair) try { onPair(); } catch (e) {}
-        json(res, 200, {id: pending.id, expiresIn: CODE_MS / 1000});
+        json(res, 200, {id: pending.id, expiresIn: CODE_MS / 1000},
+            {'set-cookie': PAIR_COOKIE + '=' + pending.id + '; Max-Age=' + CODE_MS / 1000 + '; Path=/auth; HttpOnly; SameSite=Strict'});
     });
 }
 
 function confirmPair(req, res) {
     body(req, function (p) {
         var now = Date.now();
-        if (!pending || pending.expires < now || !same(pending.id, p.id)) return json(res, 410, {error: 'This code expired; start again'});
+        var pid = p.id || pairIdOf(req);
+        if (!pending || pending.expires < now) return json(res, 410, {error: 'This code expired; start again'});
+        if (!pid || !same(pending.id, pid)) return json(res, 410, {error: 'This code was asked for by another browser or tab; start again'});
         if (!same(pending.code, String(p.code || '').replace(/\D/g, ''))) {
             if (++pending.tries >= MAX_TRIES) pending = null;
             return json(res, 403, {error: pending ? 'Wrong code' : 'Too many wrong codes; start again'});
@@ -135,7 +153,8 @@ function confirmPair(req, res) {
         var failed = save(), reply = {ok: true, token: key};
         if (failed) reply.warning = 'Paired, but the key could not be saved on the TV (' + failed + '): this device will have to pair again after the service restarts.';
         json(res, 200, reply,
-            {'set-cookie': COOKIE + '=' + key + '; Max-Age=' + KEY_DAYS * 86400 + '; Path=/; HttpOnly; SameSite=Strict'});
+            {'set-cookie': [COOKIE + '=' + key + '; Max-Age=' + KEY_DAYS * 86400 + '; Path=/; HttpOnly; SameSite=Strict',
+                PAIR_COOKIE + '=; Max-Age=0; Path=/auth; HttpOnly; SameSite=Strict']});
     });
 }
 
@@ -158,6 +177,11 @@ function gate(req, res, url, options) {
     if ((url === '/auth/pair' || url === '/auth/confirm') && req.method === 'POST') {
         if (!originOk(req)) return json(res, 403, {error: 'Cross-site request refused'}), true;
         return (url === '/auth/pair' ? startPair(req, res, onPair) : confirmPair(req, res)), true;
+    }
+    // What the sign-in page needs after a reload: is a code waiting, and was it asked for by this browser?
+    if (url === '/auth/state' && req.method === 'GET') {
+        var t = Date.now(), live0 = pending && pending.expires > t;
+        return json(res, 200, {pending: !!live0, mine: ownsPending(req, t), expiresIn: live0 ? Math.ceil((pending.expires - t) / 1000) : 0}), true;
     }
     if (url === '/auth/pending' && req.method === 'GET') {
         if (!local) return json(res, 403, {error: 'TV apps only'}), true;
@@ -220,10 +244,13 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 '<div id="s1"><button id="start">Show a code on the TV</button></div>' +
 '<form id="s2" hidden><label for="code">Code shown on the TV</label><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"><button>Pair</button></form>' +
 '<div class="msg" id="msg" role="status" aria-live="polite"></div></main><script>' +
-'var id,$=function(i){return document.getElementById(i)},say=function(t,e){$("msg").textContent=t;$("msg").className=e?"msg err":"msg"};' +
-'function call(u,b){return fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw Error(d.error);return d})})}' +
-'$("start").onclick=function(){say("Asking the TV…");call("/auth/pair",{name:navigator.platform||"Browser"}).then(function(d){id=d.id;$("s1").hidden=true;$("s2").hidden=false;$("code").focus();say("Enter the 6-digit code now on the TV screen. It expires in 2 minutes.")}).catch(function(e){say(e.message,1)})};' +
+'var id,wait,$=function(i){return document.getElementById(i)},say=function(t,e){$("msg").textContent=t;$("msg").className=e?"msg err":"msg"};' +
+'function call(u,b){return fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json().then(function(d){if(!r.ok){var x=Error(d.error);x.data=d;throw x}return d})})}' +
+'function enter(left){$("s1").hidden=true;$("s2").hidden=false;$("code").focus();say("Enter the 6-digit code shown on the TV screen. It expires in "+left+" seconds.")}' +
+'function busy(left,mine){clearTimeout(wait);$("start").disabled=true;(function tick(){if(left<=0){$("start").disabled=false;say("The code expired. You can ask for a new one.");return}say((mine?"A code is waiting on the TV. ":"Another device is pairing right now. ")+"You can ask for a new code in "+left+" seconds.");left--;wait=setTimeout(tick,1000)})()}' +
+'$("start").onclick=function(){say("Asking the TV…");call("/auth/pair",{name:navigator.platform||"Browser"}).then(function(d){id=d.id;enter(d.expiresIn)}).catch(function(e){if(e.data&&e.data.mine){id=null;enter(e.data.expiresIn)}else if(e.data&&e.data.expiresIn)busy(e.data.expiresIn,false);else say(e.message,1)})};' +
 '$("s2").onsubmit=function(e){e.preventDefault();call("/auth/confirm",{id:id,code:$("code").value}).then(function(d){say(d.warning||"Paired.",!!d.warning);setTimeout(function(){location.reload()},d.warning?6000:300)}).catch(function(e){say(e.message,1);if(/start again/.test(e.message)){$("s1").hidden=false;$("s2").hidden=true}})};' +
+'fetch("/auth/state").then(function(r){return r.json()}).then(function(d){if(!d.pending)return;if(d.mine)enter(d.expiresIn);else busy(d.expiresIn,false)}).catch(function(){});' +
 '</script></body></html>';
 
 module.exports = {gate: gate, decorate: decorate, tvApp: tvApp, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,

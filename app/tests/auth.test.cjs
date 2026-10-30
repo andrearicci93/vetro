@@ -50,13 +50,13 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.match(shown.body.code, /^\d{6}$/); assert.equal(shown.body.name, 'Mac');
   // A live pairing can't be replaced (no cancelling someone's pairing, no repeated pop-ups on the TV).
   const again1 = await call('POST', '/auth/pair', {body: {}, onPair: () => launched++});
-  assert.equal(again1.code, 429); assert.match(again1.body.error, /in progress/); assert.equal(launched, 1);
+  assert.equal(again1.code, 429); assert.match(again1.body.error, /Another device is pairing/); assert.equal(launched, 1);
   assert.equal((await call('GET', '/auth/pending', tv)).body.code, shown.body.code);
   const wrong = String((Number(shown.body.code) + 1) % 1000000).padStart(6, '0');
   assert.equal((await call('POST', '/auth/confirm', {body: {id: start.body.id, code: wrong}})).code, 403);
   const ok = await call('POST', '/auth/confirm', {body: {id: start.body.id, code: shown.body.code}});
   assert.equal(ok.code, 200); assert.match(ok.body.token, /^[0-9a-f]{64}$/);
-  assert.match(ok.headers['set-cookie'], /HttpOnly; SameSite=Strict/);
+  assert.match(ok.headers['set-cookie'][0], /HttpOnly; SameSite=Strict/);
   assert.equal((await call('GET', '/auth/pending', tv)).body.code, null);
   assert.ok(!fs.readFileSync(process.env.VETRO_AUTH_PATH, 'utf8').includes(ok.body.token), 'only hashes are stored');
 
@@ -77,6 +77,26 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   const bad = String((Number(code) + 7) % 1000000).padStart(6, '0');
   for (let i = 0; i < 5; i++) await call('POST', '/auth/confirm', {body: {id: again.body.id, code: bad}});
   assert.equal((await call('POST', '/auth/confirm', {body: {id: again.body.id, code}})).code, 410);
+
+  // A reload must not lose the pairing: the browser that asked keeps an id cookie, resumes the same code, and anyone else is told to wait.
+  auth._reset();
+  const r1 = await call('POST', '/auth/pair', {body: {name: 'Mac'}});
+  const pairCookie = {cookie: /^(vetro_pair=[0-9a-f]{32})/.exec(r1.headers['set-cookie'])[1]};
+  assert.match(r1.headers['set-cookie'], /Path=\/auth; HttpOnly; SameSite=Strict/); assert.match(r1.headers['set-cookie'], /Max-Age=120/);
+  assert.deepEqual(Object.assign({}, (await call('GET', '/auth/state')).body, {expiresIn: 0}), {pending: true, mine: false, expiresIn: 0}, 'another browser sees a waiting code, not that it is theirs');
+  const mine = await call('GET', '/auth/state', {headers: pairCookie});
+  assert.equal(mine.body.mine, true); assert.ok(mine.body.expiresIn > 100 && mine.body.expiresIn <= 120);
+  const noCookie = await call('POST', '/auth/pair', {body: {}});
+  assert.equal(noCookie.code, 429); assert.match(noCookie.body.error, /Another device is pairing right now\. Try again in \d+ seconds/); assert.equal(noCookie.body.mine, false);
+  auth._unthrottle();
+  const owner = await call('POST', '/auth/pair', {body: {}, headers: pairCookie});
+  assert.equal(owner.code, 429); assert.match(owner.body.error, /already on the TV screen/); assert.equal(owner.body.mine, true, 'the owner is told to resume, and the code is not replaced');
+  const wrongBrowser = await call('POST', '/auth/confirm', {body: {code: (await call('GET', '/auth/pending', tv)).body.code}});
+  assert.equal(wrongBrowser.code, 410); assert.match(wrongBrowser.body.error, /another browser or tab/, 'without the id the code does not work, and the message says why');
+  const resumed = await call('POST', '/auth/confirm', {body: {code: (await call('GET', '/auth/pending', tv)).body.code}, headers: pairCookie});
+  assert.equal(resumed.code, 200, 'after a reload the cookie stands in for the id');
+  assert.match(resumed.headers['set-cookie'].join('\n'), /vetro_pair=; Max-Age=0; Path=\/auth/, 'the pairing cookie is cleared once paired');
+  assert.equal((await call('GET', '/auth/state', {headers: pairCookie})).body.pending, false);
 
   // Sign out removes the key; the TV can sign everyone out.
   auth._reset();
