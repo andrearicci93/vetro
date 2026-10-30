@@ -12,8 +12,8 @@ apps.push({appId:'com.samsung.tv.acr-service-app',packageId:'com.samsung.tv.acr-
 // Quick settings are split in horizontal tabs, one panel each, with the usual tab semantics
 assert.match(html,/<div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings">/);
 const qtabs=[...html.matchAll(/data-quick-tab="(\w+)" aria-controls="quickPanel-(\w+)" aria-selected="(true|false)" tabindex="(0|-1)"/g)];
-assert.deepEqual(qtabs.map(m=>m[1]),['privacy','voice','memory','storage','system']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
-assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1'],'roving tabindex');
+assert.deepEqual(qtabs.map(m=>m[1]),['privacy','voice','memory','maintenance']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
+assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1'],'roving tabindex');
 ['quickTracking','quickVoice','quickMemory','quickStorage','quickControl'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
 const calls=[];
 const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},console,setTimeout(fn){return 1},clearTimeout(){},setInterval(){},
@@ -24,7 +24,9 @@ const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector
   else if(url==='/wins'&&!body)data={ts:1,wins:{firmware:{status:'off',value:1},multiscreen:{status:'on',running:false},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:'on',running:0,brakes:3,chosen:true,dnsBlocked:false}}};
   else if(url==='/wins')data={id:body.id,changed:true,status:body.on?'on':'off',previous:1,value:body.on?0:1};
   else if(url==='/dns')data={enabled:false,applied:false,domains:[],resolvers:[]};
-  else if(url==='/leftovers'&&!body)data={files:[{name:'old.wgt',size:2048,isPackage:true},{name:'device-profile.xml',size:10,isPackage:false}],packageBytes:2048,storageBefore:{availableBytes:1048576*900},errors:[]};
+  else if(url==='/leftovers'&&!body)data={files:[{name:'old.wgt',size:2048,isPackage:true},{name:'device-profile.xml',size:10,isPackage:false}],packageBytes:2048,storageBefore:{availableBytes:1048576*900},errors:[],
+  extras:[{kind:'log',label:'Old network logs',path:'/opt/usr/data/network/inm-manager.log.0',size:1052672},{kind:'webcache',label:'Web app caches (closed apps)',path:'/opt/usr/home/owner/apps_rw/AAAAAAAAAA/data/Code Cache',size:12288}],
+  extraKinds:{log:{label:'Old network logs',count:1,bytes:1052672},webcache:{label:'Web app caches (closed apps)',count:1,bytes:12288}},appsUnreadable:false};
   else if(url==='/quick'){apps=apps.map(a=>({...a,disabled:body.off}));data={ok:true,id:body.id,off:body.off,changed:alexa.slice(0,3),stopped:[alexa[0]],stopFailed:[],apps};}
   else if(url==='/input')data={devices:[],status:{policy:{mode:'off'},events:[]}};else if(url==='/remap')data={rules:[]};
   return {ok:true,json:async()=>data};}};
@@ -38,12 +40,12 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(voice,/Disable Alexa/);assert.match(voice,/Partly done · 3 of 4 components still enabled/);assert.doesNotMatch(voice,/data-quick-toggle="alexa" checked/,'partly done: the switch is not on yet');
  const memory=el('quickMemory').innerHTML;
  assert.match(memory,/Disable HbbTV/);assert.match(memory,/data-hbbtv-disable[^>]*checked[^>]*aria-label="Disable HbbTV"/,'HbbTV off: the win switch is on');assert.match(memory,/Done · HbbTV and its service are stopped/);
- assert.match(memory,/Disable MultiScreen autostart/);assert.match(memory,/data-win-switch="multiscreen" checked/);assert.match(memory,/Done · Multi View starts when you open it/);assert.match(memory,/chip[^>]*\bon\b[^>]*>Done · Multi View starts when you open it/,'a finished win is green, not yellow');
+ assert.match(memory,/Disable Multi View autostart/);assert.match(memory,/data-win-switch="multiscreen" checked/);assert.match(memory,/Done · Multi View starts when you open it/);assert.match(memory,/chip[^>]*\bon\b[^>]*>Done · Multi View starts when you open it/,'a finished win is green, not yellow');
  assert.match(memory,/<h3>Stop Ambient<\/h3>/);assert.doesNotMatch(memory,/partial block/,'Ambient is no longer sold as a partial block');assert.match(memory,/Vetro stops screend, ends the app and starts screend again/,'the detail says how it is kept off');
  assert.match(memory,/Partly done · Samsung started it again/,'chosen but running again is shown as partly done');assert.doesNotMatch(memory,/data-win-switch="ambient" checked/);
  const tracking=el('quickTracking').innerHTML;
  assert.match(tracking,/<h3>Stop viewing-data collection<\/h3>/);assert.match(tracking,/data-win-switch="telemetry" checked/,'collection services stopped: the switch is on');assert.match(tracking,/Done · recognition and logging stopped; data-service may still run/);
- assert.match(tracking,/Uploads can resume · turn on Block ad and tracking domains/,'the DNS entry is not applied: the state says so');assert.match(tracking,/lcprd1\.samsungcloudsolution\.net/);
+ assert.match(tracking,/Uploads can resume · turn on Enable domain blocking/,'the DNS entry is not applied: the state says so');assert.match(tracking,/lcprd1\.samsungcloudsolution\.net/);
  assert.match(tracking,/Disable all advertising and tracking/);assert.match(tracking,/Partly done · 2 of 3 components still enabled/,'the Smart Hub ad agent (role keep) is not a member');
  assert.doesNotMatch(tracking,/coba\.adagent/);
  assert.match(voice,/Disable all voice assistants/);assert.match(voice,/Partly done · 4 of 5 components still enabled/,'the assistant hub is a member of the all-in switch');
@@ -52,7 +54,8 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.doesNotMatch(html,/quickPrivacy|Disable viewing-data tracking/,'one Advertising and tracking section: the ACR switch is covered by the all-in switch');
  assert.equal((tracking.match(/data-quick-toggle=/g)||[]).length,1,'a single tracking group switch');
  assert.match(tracking,/No domains saved/);assert.match(tracking,/data-quick-open="dns"/,'the domain filter sits with the tracking switch');
- assert.match(el('quickStorage').innerHTML,/1 package file · 2 KiB/);
+ assert.match(el('quickStorage').innerHTML,/3 items · 1 MiB can be cleared/,'packages, logs and caches are one count');
+ assert.match(el('quickStorage').innerHTML,/Install packages · 1 · 2 KiB/);assert.match(el('quickStorage').innerHTML,/Old network logs · 1/);assert.match(el('quickStorage').innerHTML,/AAAAAAAAAA\/data\/Code Cache/,'the list shows where each item is');
  const sw={dataset:{quickToggle:'alexa'},checked:true};el('quick').onchange({target:sw});
  assert.equal(sw.checked,false,'switch stays off until confirmed');assert.ok(!calls.some(c=>c.url==='/quick'),'microphone groups need confirmation');
  assert.match(el('quickVoice').innerHTML,/microphone button on the remote/);
@@ -67,7 +70,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(sandbox.operationEntries[0].message,/Auto update off; value 1 → 0 read back/);assert.equal(sandbox.operationEntries[0].resultLabel,'State read back');
  const hb={dataset:{hbbtvDisable:''},checked:false};await el('quick').onchange({target:hb});await tick();await tick();
  assert.deepEqual(calls.filter(c=>c.url==='/hbbtv'&&c.body).at(-1).body,{off:false,expected:19},'switching the win off turns HbbTV back on');
- const clear={dataset:{leftoversClear:''}};el('quick').onclick({target:{closest:()=>clear}});assert.match(el('quickStorage').innerHTML,/Delete 1 package file \(2 KiB\)\?/);assert.ok(!calls.some(c=>c.url==='/leftovers'&&c.body),'cleanup needs confirmation');
+ const clear={dataset:{leftoversClear:''}};el('quick').onclick({target:{closest:()=>clear}});assert.match(el('quickStorage').innerHTML,/Delete 3 items \(1 MiB\)\?/);assert.ok(!calls.some(c=>c.url==='/leftovers'&&c.body),'cleanup needs confirmation');
  // A disabled member that still starts at boot keeps the group "partly done"; the Task manager and Quick settings read the same inventory
  apps=apps.map(a=>alexa.includes(a.appId)?{...a,disabled:true,onboot:a.appId===alexa[1],autorestart:false}:a);
  await sandbox.loadApps(true);
