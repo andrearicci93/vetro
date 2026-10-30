@@ -13,6 +13,7 @@ function definition(bridge) {
         version: '1',
         apiVersion: 1,
         permissions: [],
+        tab: 'mqtt',
         create: function () {
             return {
                 start: function () { bridge.start(); },

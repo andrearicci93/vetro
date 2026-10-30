@@ -6,4 +6,5 @@ assert.match(html, /<section id="plugins" hidden>/);
 assert.match(html, /function loadPlugins\(\)\{return api\('\/plugins'\)/);
 assert.match(html, /'\/plugins\/'\+encodeURIComponent\(id\)\+'\/'\+\(on\?'enable':'disable'\)/);
 assert.match(html, /data-plugin-resume/);
+assert.match(html, /function applyPluginTabs/);
 console.log('plugins page: ok');

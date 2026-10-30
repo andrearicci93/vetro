@@ -743,7 +743,14 @@ function setDock(action,label,extra){
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock()});
 }
 var pluginData=null,pluginError=null,pluginBusy=false;
-function loadPlugins(){return api('/plugins').then(function(d){pluginData=d;pluginError=null}).catch(function(e){pluginError=e.message}).finally(renderPlugins)}
+function applyPluginTabs(){
+ if(!pluginData)return;
+ pluginData.plugins.forEach(function(p){if(!p.tab)return;var off=p.state!=='running';
+  document.querySelectorAll('[data-tab="'+p.tab+'"]').forEach(function(b){b.style.display=off?'none':''});
+  if(off&&currentPanel===p.tab)switchPanel('plugins');
+ });
+}
+function loadPlugins(){return api('/plugins').then(function(d){if(!d||!Array.isArray(d.plugins))throw Error('Plugin list unavailable');pluginData=d;pluginError=null;applyPluginTabs()}).catch(function(e){pluginError=e.message}).finally(renderPlugins)}
 function pluginChip(p){var k=p.state==='running'?'on':'';return chip(p.state==='failed'?'Failed':p.state==='suspended'?'Suspended':p.state==='running'?'Running':'Off',k)}
 function renderPlugins(){
  var box=$('pluginsBody');if(!box)return;var d=pluginData;
@@ -776,5 +783,5 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockReload!=null)return loadDock();
 };
 if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('resize',function(){if(currentPanel==='dock')fitPreview()});
-loadApps().then(loadRules);liveStatus();loadQuick();setInterval(function(){if(currentPanel==='remote'&&inputListening&&!document.hidden)pollInput()},1500);setInterval(function(){if(liveUntil){if(Date.now()>=liveUntil)liveUntil=0;liveStatus();}if(currentPanel==='dashboard'||currentPanel==='processes'||currentPanel==='apps')pollMonitor()},1000);
+loadApps().then(loadRules);liveStatus();loadQuick();loadPlugins();setInterval(function(){if(currentPanel==='remote'&&inputListening&&!document.hidden)pollInput()},1500);setInterval(function(){if(liveUntil){if(Date.now()>=liveUntil)liveUntil=0;liveStatus();}if(currentPanel==='dashboard'||currentPanel==='processes'||currentPanel==='apps')pollMonitor()},1000);
 </script></body></html>`;};

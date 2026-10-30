@@ -40,9 +40,11 @@ h1.stop();
 // routes: isolated prefix, failing route counted, plugin switched off after maxErrors
 let broken = true;
 const h2 = new PluginHost({ dir: tmp(), maxErrors: 2 }).register(def('web', {
+    tab: 'web',
     create() { return { route(req, r, sub) { if (broken) throw new Error('bad route'); json(r, { sub }); } }; }
 }));
 h2.start();
+assert.equal(h2.status('web').tab, 'web');
 let r = res();
 assert.equal(h2.handle({ method: 'GET' }, r, '/other', json), false);
 r = res(); h2.handle({ method: 'GET' }, r, '/plugins/web/api/x', json);

@@ -3,6 +3,7 @@
 // register through one small interface instead of being wired into main.js:
 //
 //   { id, name, version, apiVersion: 1, permissions: ['exec', ...],
+//     tab: 'mqtt' (optional: the dashboard page that shows only while the plugin runs),
 //     create(ctx) -> { start(), stop(), status(), route(req, res, sub) } }
 //
 // The host owns the lifecycle and keeps a failing plugin from taking Vetro down:
@@ -225,6 +226,7 @@ PluginHost.prototype.status = function (id) {
     return {
         id: id,
         name: entry.def.name || id,
+        tab: entry.def.tab || null,
         version: entry.def.version || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
