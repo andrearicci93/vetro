@@ -29,15 +29,17 @@ accepts `{device, mode: "observe" | "filter" | "off"}`. Only registered exact no
 Names are accepted only if unique. Duplicate names are distinguished by their
 node; panel keys, keyboards, mice and forwarded devices are excluded.
 `{device: "auto", mode: "observe"}` observes the eligible nodes in parallel;
-filter mode requires a single detected node. Observe never grabs
+filter mode intercepts every eligible node, one helper each, and skips an IR
+receiver whose key map is `rc-empty`. The same key from a different node within
+300 ms runs once. Observe never grabs
 input. Filter requires saved enabled `physical` rules, with numeric evdev codes
 0..767. The helper forwards unconfigured key and synchronization events via
 uinput and withholds configured down/up/repeat events; actions execute on down.
 Socket closure releases the grab. The interception switch saves its enabled state
-and selected remote in the owner’s persistent remap store. Startup and helper
-disconnections retry the saved policy every five seconds once the adapter is ready.
-Unique device names allow event nodes to change after reboot; ambiguous names
-require the saved node to match. Editing rules releases the grab and then reapplies
+in the owner’s persistent remap store. Startup and helper disconnections retry
+every five seconds once the adapter is ready: remotes without a connected helper
+are started, including ones added after boot, and helpers whose remote has gone
+are dropped. Editing rules releases the grab and then reapplies
 the saved policy with the current enabled physical rules. Observe mode temporarily
 pauses interception for key capture; it is never restored at startup. Explicitly
 turning the switch off persists that choice. A new installation defaults to off. Native actions use `app_launcher` and the supported

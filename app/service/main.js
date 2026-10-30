@@ -536,9 +536,14 @@ function saveInputPreference(preference){
 }
 function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
 // Every selectable remote node. Several interfaces can share a name; the event
-// dedupe above keeps one press from running an action twice.
+// dedupe above keeps one press from running an action twice. An IR receiver whose
+// key map is empty (sdp-mcirb as rc-empty) never reports a key, so it gets no helper.
+function emptyKeymap(d){
+    try{return /^NAME=rc-empty$/m.test(fs.readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/device/uevent','utf8'));}
+    catch(e){return false;}
+}
 function selectableRemotes(list){
-    return (list||[]).filter(function(d){return d.selectable;});
+    return (list||[]).filter(function(d){return d.selectable&&!emptyKeymap(d);});
 }
 // Start a filter helper for each listed remote, reusing helpers that are not connected.
 // Every start begins synchronously, so a later stopInput() cancels it through the bridge
@@ -601,7 +606,7 @@ function handleInput(req,res){
                 if(!devices.length)throw new Error('no physical remote devices found');
                 return startFilter(devices,tokens).then(function(s){
                     if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');
-                    try{saveInputPreference({enabled:true,device:'all',nodes:devices.map(function(d){return d.node;})});}
+                    try{saveInputPreference({enabled:true,device:'all'});}
                     catch(e){stopInput();inputPaused=false;throw e;}
                     inputPaused=false;
                     serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});
@@ -610,7 +615,7 @@ function handleInput(req,res){
         }
         if(p.mode==='observe'&&p.device==='auto'){
             stopInput();return physical.inventory().then(function(list){
-                var candidates=list.filter(function(d){return d.selectable;});
+                var candidates=selectableRemotes(list);
                 if(!candidates.length)throw new Error('no physical remote devices found');
                 inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));

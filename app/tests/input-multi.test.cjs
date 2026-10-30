@@ -3,8 +3,10 @@ const assert=require('assert').strict, path=require('path'), EventEmitter=requir
 const load=require('./service-harness.cjs'), root=path.resolve(__dirname,'..');
 const devices=[
     {name:'wt61p807 rc device',node:'/dev/input/event1',unique:true,selectable:true},
-    {name:'Smart Control',node:'/dev/input/event3',unique:true,selectable:true}
+    {name:'Smart Control',node:'/dev/input/event3',unique:true,selectable:true},
+    {name:'sdp-mcirb',node:'/dev/input/event0',unique:true,selectable:true}
 ];
+const sysfs={'/sys/class/input/event0/device/device/uevent':'NAME=rc-empty\nDRV_NAME=sdp-mcirb\nDEV_NAME=sdp-mcirb\n'};
 let disk=JSON.stringify({rules:[{id:'remote',enabled:true,trigger:{type:'physical',value:'67'},actions:[{type:'launch',appId:'example.app'}]}]});
 const starts=[], commands=[], launched=[];
 let gate=null, failing=null;
@@ -33,7 +35,7 @@ let clock=1000;
 function boot(){
     const timers=[];
     const service=load(root,{dependencies:{
-        fs:{readFileSync:p=>p.endsWith('vetro-remap.json')?disk:'',
+        fs:{readFileSync:p=>p.endsWith('vetro-remap.json')?disk:p in sysfs?sysfs[p]:'',
             writeFileSync:(p,s)=>{disk=s;}},
         './physical-input.js':{Bridge},
         './platform.js':{start(){},status:()=>({agent:{connected:true}}),execute:cmd=>{commands.push(cmd);return Promise.resolve({exit_code:0,stdout:''});}}
@@ -58,7 +60,7 @@ const tracked=c=>[c.physical].concat(c.extraInputs);
     const service=boot(), c=service.context;await service.tick();
     let result=await post(service,{device:devices[0].node,mode:'filter'});
     assert.equal(result.ok,true);
-    assert.deepEqual(starts.map(s=>s.device),[devices[0].node,devices[1].node],'every selectable remote starts');
+    assert.deepEqual(starts.map(s=>s.device),[devices[0].node,devices[1].node],'every selectable remote starts, the rc-empty IR receiver does not');
     assert.ok(starts.every(s=>s.mode==='filter'&&s.tokens[0]==='67'));
     assert.equal(c.inputSnapshot().policy.mode,'filter');
     assert.equal(c.inputSnapshot().policy.connected,true);
