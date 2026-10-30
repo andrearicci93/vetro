@@ -30,7 +30,7 @@ const tick = () => new Promise(r => setImmediate(r));
 
 (async () => {
     await tick(); await tick();
-    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="dock"[^>]*>[\s\S]*?Launcher<span class="chip beta">Beta<\/span><\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><\/nav>/, 'Quick settings, Launcher (beta) and Remapper are the three first entries');
+    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="dock"[^>]*>[\s\S]*?Launcher<span class="chip beta">Beta<\/span><\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Plugins<\/button><\/nav>/, 'Quick settings, Launcher (beta) and Remapper open the main group, with Plugins right after the Remapper');
     assert.ok(!calls.some(c => c.url === '/dock'), 'the dock is not read until its tab is opened');
     sandbox.switchPanel('dock'); await tick(); await tick();
     assert.equal(sandbox.currentPanel, 'dock');

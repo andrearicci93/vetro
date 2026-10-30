@@ -1,7 +1,10 @@
 'use strict';
 const assert = require('assert').strict;
 const html = require('../service/dashboard.js')({});
-assert.match(html, /<nav aria-label="Vetro"><button data-tab="plugins"/);
+assert.match(html, /Remapper<\/button><button data-tab="plugins"/, 'Plugins sits right under Remapper in the main group');
+assert.doesNotMatch(html, /aria-label="Vetro"|id="pluginNav"|data-plugin-page/, 'no Vetro group and no plugin entries in the sidebar');
+assert.match(html, /id="pluginTabs"[^>]*role="tablist"/, 'running plugins become horizontal tabs inside the Plugins page');
+assert.match(html, /function showPluginTab/);
 assert.match(html, /<section id="plugins" hidden>/);
 assert.match(html, /function loadPlugins\(\)\{var changed=true;return api\('\/plugins'\)/);
 assert.match(html, /if\(changed\)renderPlugins\(\)/, 'polling repaints only when the list changed');
@@ -9,7 +12,8 @@ assert.match(html, /'\/plugins\/'\+encodeURIComponent\(id\)\+'\/'\+\(on\?'enable
 assert.match(html, /data-plugin-resume/);
 assert.match(html, /function installFromRegistry/);
 assert.match(html, /'\/plugins\/install'/);
-assert.match(html, /function renderPluginNav/);
+assert.match(html, /function renderPluginTabs/);
+assert.match(html, /ArrowRight/, 'tabs answer the arrow keys');
 assert.match(html, /confirm\('Remove '\+rid\+/, 'removing asks first');
 assert.match(html, /The list gives no SHA-256/, 'registry installs need a checksum');
 assert.match(html, /u\.protocol!=='https:'/, 'registry downloads are https only');
@@ -27,7 +31,7 @@ assert.match(html, /f\.size>528384/, 'the file picker uses the host limit');
 assert.match(html, /It could not start: /, 'a plugin that fails to start is not reported as done');
 assert.match(html, /Could not refresh the plugins/, 'a failed refresh does not leave stale data unannounced');
 assert.match(html, /not \x27\+e\.id|not '\+e\.id/, 'the downloaded bundle must be the one the list names');
-assert.match(html, /\/session',\{\}\)\.then\(function\(d\)\{if\(pluginView===id\)\$\('pluginFrame'\)\.src=d\.path/, 'a plugin page is opened with its own session URL');
+assert.match(html, /\/session',\{\}\)\.then\(function\(d\)\{if\(pluginView===id2\)\$\('pluginFrame'\)\.src=d\.path/, 'a plugin page is opened with its own session URL');
 assert.match(html, /id="pluginFrame"[^>]*sandbox="allow-scripts"/);
 console.log('plugins page: ok');
 

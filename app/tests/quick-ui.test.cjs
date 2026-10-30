@@ -9,6 +9,12 @@ apps.push({appId:'com.samsung.tv.acr-service-app',packageId:'com.samsung.tv.acr-
  {appId:'org.tizen.pisa-control-service',packageId:'com.samsung.tv.pisa-service',name:'pisa control',disabled:false,area:'tracking',role:'tracking'},
  {appId:'com.samsung.tv.coba.adagent',packageId:'com.samsung.tv.coba.adagent',name:'coba-adagent',disabled:false,area:'tracking',role:'keep'},
  {appId:'org.tizen.multi-assistant-service',packageId:'org.tizen.multi-assistant-service',name:'hub',disabled:false,area:'voice',role:'optional'});
+// Quick settings are split in horizontal tabs, one panel each, with the usual tab semantics
+assert.match(html,/<div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings">/);
+const qtabs=[...html.matchAll(/data-quick-tab="(\w+)" aria-controls="quickPanel-(\w+)" aria-selected="(true|false)" tabindex="(0|-1)"/g)];
+assert.deepEqual(qtabs.map(m=>m[1]),['privacy','voice','memory','storage','system']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
+assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1'],'roving tabindex');
+['quickTracking','quickVoice','quickMemory','quickStorage','quickControl'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
 const calls=[];
 const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},console,setTimeout(fn){return 1},clearTimeout(){},setInterval(){},
  fetch:async(url,opts)=>{const body=opts&&opts.body?JSON.parse(opts.body):null;calls.push({url,body});let data={};
