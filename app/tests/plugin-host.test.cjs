@@ -90,9 +90,11 @@ assert.match(by('wrongid').lastError, /match the folder/);
 assert.match(by('nomani').lastError, /manifest/);
 assert.match(by('badjson').lastError, /manifest/);
 assert.match(by('escape').lastError, /inside the plugin folder/);
-assert.match(by('throws').lastError, /top level/);
-assert.match(by('oldapi').lastError, /unsupported plugin API 7/);
-['wrongid', 'nomani', 'badjson', 'escape', 'throws', 'oldapi'].forEach(id => assert.equal(by(id).state, 'invalid', id));
+assert.equal(by('throws').state, 'stopped', 'code that would fail is not even read until it is switched on');
+assert.match(by('oldapi').lastError, /unsupported plugin API 7/i);
+['wrongid', 'nomani', 'badjson', 'escape', 'oldapi'].forEach(id => assert.equal(by(id).state, 'invalid', id));
+assert.equal(he.setEnabled('throws', true).state, 'failed');
+assert.match(he.status('throws').lastError, /top level/);
 assert.equal(he.setEnabled('fine', true).state, 'running');
 assert.equal(global.__fineStarted, 1);
 let rr = res(); rr.setHeader = (k, v) => { rr[k] = v; };
@@ -156,5 +158,41 @@ h3.start();
     const s4 = new PluginHost({ dir: sdir, stableMs: 10 }).register(good);
     assert.equal(s4.start()[0].state, 'running');
     s4.stop();
+
+    // safe mode still lists folder plugins (metadata only) so the culprit can be switched off or removed
+    const fdir = tmp();
+    const crashing = new PluginHost({ dir: fdir, stableMs: 60000 });
+    crashing.start();
+    crashing.install(JSON.stringify({ format: 'vetro-plugin', version: 1, manifest: { id: 'culprit', apiVersion: 1 }, files: { 'index.js': 'global.__culpritRan=1;module.exports=function(){return {}}' } }));
+    crashing.setEnabled('culprit', true);
+    crashing.stableTimer && clearTimeout(crashing.stableTimer);
+    global.__culpritRan = 0;
+    const afterCrash = new PluginHost({ dir: fdir, stableMs: 60000 });
+    const listed = afterCrash.start();
+    assert.equal(afterCrash.safeMode, true);
+    assert.deepEqual(listed.map(p => [p.id, p.state]), [['culprit', 'suspended']]);
+    assert.equal(global.__culpritRan, 0, 'safe mode does not run plugin code');
+    assert.equal(afterCrash.setEnabled('culprit', false).enabled, false);
+    afterCrash.stop();
+
+    // a start() that throws gets stop() so it can release what it grabbed
+    let cleaned = 0;
+    const hs = new PluginHost({ dir: tmp(), stableMs: 10 }).register({ id: 'leaky', apiVersion: 1, defaultEnabled: true, create: () => ({ start() { throw new Error('half started'); }, stop() { cleaned++; } }) });
+    assert.equal(hs.start()[0].state, 'failed');
+    assert.equal(cleaned, 1);
+    hs.stop();
+
+    // status polling does not hide a route that keeps failing
+    const hr = new PluginHost({ dir: tmp(), stableMs: 10, maxErrors: 3 }).register({ id: 'flaky', apiVersion: 1, defaultEnabled: true, create: () => ({ status: () => ({}), route() { throw new Error('boom'); } }) });
+    hr.start();
+    for (let i = 0; i < 3; i++) {
+        hr.handle({ method: 'GET', headers: {} }, { setHeader() {}, writeHead() {}, end() {} }, '/plugins/flaky/api/x', () => {});
+        hr.list();
+    }
+    assert.equal(hr.status('flaky').state, 'failed');
+    hr.stop();
+
+    // wrong field types are refused, not crashed on later
+    assert.throws(() => new PluginHost({ dir: tmp() }).register({ id: 'typed', apiVersion: 1, permissions: {}, create: () => ({}) }), /permissions/);
     console.log('plugin-host: ok');
 })().catch(e => { console.error(e); process.exit(1); });

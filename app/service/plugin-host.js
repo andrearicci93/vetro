@@ -24,6 +24,47 @@ var RESERVED = ['install', 'resume'];
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
 var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
 
+// Manifest rules shared by the loader, the installer and `vetro-plugin.cjs pack/check`.
+function checkManifest(m) {
+    var id = m && m.id;
+    if (!ID_RE.test(id || '') || RESERVED.indexOf(id) >= 0) throw new Error('Invalid plugin id');
+    if (m.apiVersion !== API_VERSION) throw new Error('Unsupported plugin API ' + m.apiVersion + ' (this Vetro runs API ' + API_VERSION + ')');
+    if (m.name != null && (typeof m.name !== 'string' || !m.name || m.name.length > 40)) throw new Error('name must be 1-40 characters');
+    if (m.version != null && (typeof m.version !== 'string' || !m.version || m.version.length > 24)) throw new Error('version must be a string of 1-24 characters');
+    var perms = m.permissions == null ? [] : m.permissions;
+    if (!Array.isArray(perms)) throw new Error('permissions must be a list');
+    for (var i = 0; i < perms.length; i++) if (PERMISSIONS.indexOf(perms[i]) < 0) throw new Error('Unknown permission ' + perms[i]);
+    if (m.description != null && (typeof m.description !== 'string' || m.description.length > 160)) throw new Error('description must be a string of up to 160 characters');
+    if (m.author != null && (typeof m.author !== 'string' || m.author.length > 60)) throw new Error('author must be a string of up to 60 characters');
+    if (m.ui != null && (typeof m.ui.label !== 'string' || !m.ui.label || m.ui.label.length > 24)) throw new Error('ui.label must be 1-24 characters');
+    if (m.main != null && (typeof m.main !== 'string' || !FILE_RE.test(m.main))) throw new Error('main must be a file name inside the plugin folder');
+}
+
+// A whole bundle object (parsed JSON): manifest, file names, sizes, entry file. Returns the file names.
+function checkBundle(b) {
+    if (!b || b.format !== 'vetro-plugin' || b.version !== 1 || !b.manifest || !b.files || typeof b.files !== 'object') {
+        throw new Error('Not a plugin bundle (format vetro-plugin, version 1)');
+    }
+    checkManifest(b.manifest);
+    var names = Object.keys(b.files), total = 0;
+    if (!names.length || names.length > BUNDLE_MAX_FILES) throw new Error('A bundle holds 1 to ' + BUNDLE_MAX_FILES + ' files');
+    for (var j = 0; j < names.length; j++) {
+        if (!FILE_RE.test(names[j]) || names[j] === 'manifest.json' || typeof b.files[names[j]] !== 'string') throw new Error('Invalid file entry: ' + names[j]);
+        total += Buffer.byteLength(b.files[names[j]]);
+    }
+    if (total > BUNDLE_MAX_BYTES) throw new Error('Bundle is larger than ' + (BUNDLE_MAX_BYTES / 1024) + ' KB');
+    if (typeof b.files[b.manifest.main || 'index.js'] !== 'string') throw new Error('Entry file ' + (b.manifest.main || 'index.js') + ' is missing');
+    return names;
+}
+
+// Node caches modules by path: without this a removed and re-installed plugin would run its old code.
+function forgetModules(folder) {
+    var parent = path.dirname(path.resolve(folder));
+    try { parent = fs.realpathSync(parent); } catch (e) { /* keep the plain path */ }
+    var prefix = path.join(parent, path.basename(folder)) + path.sep;
+    Object.keys(require.cache).forEach(function (k) { if (k.indexOf(prefix) === 0) delete require.cache[k]; });
+}
+
 function PluginHost(opts) {
     opts = opts || {};
     this.dir = opts.dir;                       // writable root, one sub folder per plugin
@@ -87,13 +128,20 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     try { manifest = JSON.parse(fs.readFileSync(path.join(folder, 'manifest.json'), 'utf8')); }
     catch (e) { throw new Error('manifest.json missing or not valid JSON'); }
     if (manifest.id !== id) throw new Error('manifest id must match the folder name');
+    checkManifest(manifest);
     var main = path.resolve(folder, manifest.main || 'index.js');
     if (main.indexOf(path.resolve(folder) + path.sep) !== 0) throw new Error('main must stay inside the plugin folder');
-    var mod = require(main);
-    var create = typeof mod === 'function' ? mod : mod && mod.create;
-    if (typeof create !== 'function') throw new Error('entry file must export a function');
+    if (!fs.existsSync(main)) throw new Error('entry file ' + (manifest.main || 'index.js') + ' is missing');
+    // The code is only read when the plugin is switched on: installing, listing or booting
+    // with it switched off never executes anything from the plugin.
+    var create = function (ctx) {
+        var mod = require(main);
+        var make = typeof mod === 'function' ? mod : mod && mod.create;
+        if (typeof make !== 'function') throw new Error('entry file must export a function');
+        return make(ctx);
+    };
     this.register({
-        id: id, name: manifest.name, version: manifest.version, apiVersion: manifest.apiVersion,
+        id: id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author, apiVersion: manifest.apiVersion,
         permissions: manifest.permissions, ui: manifest.ui, create: create
     });
 };
@@ -116,27 +164,8 @@ PluginHost.prototype.install = function (raw, expectedSha256) {
     if (expectedSha256 && String(expectedSha256).toLowerCase() !== sha) throw new Error('SHA-256 does not match the expected value');
     var b;
     try { b = JSON.parse(raw); } catch (e) { throw new Error('Not a plugin bundle (invalid JSON)'); }
-    if (!b || b.format !== 'vetro-plugin' || b.version !== 1 || !b.manifest || !b.files || typeof b.files !== 'object') {
-        throw new Error('Not a plugin bundle (format vetro-plugin, version 1)');
-    }
-    var m = b.manifest, id = m.id, names = Object.keys(b.files), total = 0;
-    if (!ID_RE.test(id || '') || RESERVED.indexOf(id) >= 0) throw new Error('Invalid plugin id');
-    if (m.apiVersion !== API_VERSION) throw new Error('Unsupported plugin API ' + m.apiVersion + ' (this Vetro runs API ' + API_VERSION + ')');
-    var perms = m.permissions || [];
-    for (var i = 0; i < perms.length; i++) if (PERMISSIONS.indexOf(perms[i]) < 0) throw new Error('Unknown permission ' + perms[i]);
-    if (!names.length || names.length > BUNDLE_MAX_FILES) throw new Error('A bundle holds 1 to ' + BUNDLE_MAX_FILES + ' files');
-    for (var j = 0; j < names.length; j++) {
-        if (!FILE_RE.test(names[j]) || names[j] === 'manifest.json' || typeof b.files[names[j]] !== 'string') throw new Error('Invalid file entry: ' + names[j]);
-        total += Buffer.byteLength(b.files[names[j]]);
-    }
-    if (total > BUNDLE_MAX_BYTES) throw new Error('Bundle is larger than ' + (BUNDLE_MAX_BYTES / 1024) + ' KB');
-    if (typeof b.files[m.main || 'index.js'] !== 'string') throw new Error('Entry file ' + (m.main || 'index.js') + ' is missing');
+    var names = checkBundle(b), m = b.manifest, id = m.id;
     var existing = this.entries[id];
-    if (existing && existing.state === 'invalid') {
-        delete this.entries[id];
-        this.order.splice(this.order.indexOf(id), 1);
-        existing = null;
-    }
     if (existing && existing.instance) throw new Error('Switch the plugin off before updating it');
 
     var staging = path.join(this.dir, '.install-' + id), target = path.join(this.dir, id);
@@ -152,15 +181,33 @@ PluginHost.prototype.install = function (raw, expectedSha256) {
             fs.writeFileSync(path.join(staging, n), b.files[n]);
         });
         fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify(m, null, 2) + '\n');
-        rmrf(target);
-        fs.renameSync(staging, target);
+        // An update keeps what the plugin saved (config.json) and can be rolled back.
+        try { fs.writeFileSync(path.join(staging, 'config.json'), fs.readFileSync(path.join(target, 'config.json')), { mode: 384 }); } catch (e) { /* first install */ }
     } catch (e) {
         rmrf(staging);
         throw e;
     }
+    var backup = path.join(this.dir, '.previous-' + id);
+    rmrf(backup);
+    try {
+        if (fs.existsSync(target)) fs.renameSync(target, backup);
+        fs.renameSync(staging, target);
+    } catch (e) {
+        rmrf(staging);
+        if (!fs.existsSync(target) && fs.existsSync(backup)) fs.renameSync(backup, target);
+        throw e;
+    }
+    rmrf(backup);
+    forgetModules(target);
+    // New code replaces the old in this process (the module cache was cleared), so no restart is needed.
+    // The plugin comes back switched off, as after a first install: the user decides to run the new version.
+    var at = existing ? this.order.indexOf(id) : -1;
     if (existing) {
-        // Node keeps the old code until restart; the new version loads on the next boot.
-        return { id: id, sha256: sha, restartRequired: true, plugin: this.status(id) };
+        delete this.entries[id];
+        this.order.splice(at, 1);
+        var state = this._readState();
+        state.enabled[id] = false;
+        this._writeState(state);
     }
     try {
         this._loadFolder(id, target);
@@ -171,7 +218,8 @@ PluginHost.prototype.install = function (raw, expectedSha256) {
         };
         this.order.push(id);
     }
-    return { id: id, sha256: sha, restartRequired: false, plugin: this.status(id) };
+    if (at >= 0) this.order.splice(at, 0, this.order.pop());
+    return { id: id, sha256: sha, updated: !!existing, plugin: this.status(id) };
 };
 
 PluginHost.prototype.remove = function (id) {
@@ -179,6 +227,7 @@ PluginHost.prototype.remove = function (id) {
     if (!entry) throw new Error('Unknown plugin');
     if (entry.instance) throw new Error('Switch the plugin off before removing it');
     rmrf(path.join(this.dir, id));
+    forgetModules(path.join(this.dir, id));
     var state = this._readState();
     delete state.enabled[id];
     this._writeState(state);
@@ -192,7 +241,8 @@ PluginHost.prototype.register = function (def) {
     if (this.entries[def.id]) throw new Error('Duplicate plugin: ' + def.id);
     if (def.apiVersion !== API_VERSION) throw new Error(def.id + ': unsupported plugin API ' + def.apiVersion);
     if (typeof def.create !== 'function') throw new Error(def.id + ': create() missing');
-    var perms = def.permissions || [];
+    var perms = def.permissions == null ? [] : def.permissions;
+    if (!Array.isArray(perms)) throw new Error(def.id + ': permissions must be a list');
     for (var i = 0; i < perms.length; i++) {
         if (PERMISSIONS.indexOf(perms[i]) < 0) throw new Error(def.id + ': unknown permission ' + perms[i]);
     }
@@ -234,10 +284,10 @@ PluginHost.prototype._context = function (entry) {
 };
 
 // Runs fn(instance) and turns a throw into a counted failure instead of a crash.
-PluginHost.prototype._guard = function (entry, fn) {
+PluginHost.prototype._guard = function (entry, fn, diagnostic) {
     try {
         var out = fn();
-        entry.errors = 0;
+        if (!diagnostic) entry.errors = 0;      // a status poll must not hide a route that keeps failing
         return out;
     } catch (e) {
         this._fail(entry, e);
@@ -269,7 +319,7 @@ PluginHost.prototype._startEntry = function (entry) {
         entry.errors = 0;
         entry.lastError = null;
     } catch (e) {
-        entry.instance = null;
+        this._halt(entry);                    // give a half-started plugin the chance to release what it grabbed
         entry.state = 'failed';
         entry.errors = this.maxErrors;
         entry.lastError = String(e && e.message || e);
@@ -289,7 +339,11 @@ PluginHost.prototype.start = function () {
     try { fs.unlinkSync(this._file('starting')); } catch (e) { /* none */ }
     this.safeMode = state.suspended;
     if (this.safeMode) {
-        for (var s = 0; s < this.order.length; s++) this.entries[this.order[s]].state = 'suspended';
+        if (this.external) this._loadExternal();      // metadata only: nothing of the plugins runs
+        for (var s = 0; s < this.order.length; s++) {
+            var held = this.entries[this.order[s]];
+            if (held.state !== 'invalid') held.state = 'suspended';
+        }
         return this.list();
     }
     try {
@@ -360,7 +414,7 @@ PluginHost.prototype.status = function (id) {
     if (!entry) return null;
     var detail = null;
     if (entry.instance && entry.instance.status) {
-        detail = this._guard(entry, function () { return entry.instance.status(); }) || null;
+        detail = this._guard(entry, function () { return entry.instance.status(); }, true) || null;
     }
     var enabled = this._readState().enabled[id];
     return {
@@ -368,6 +422,8 @@ PluginHost.prototype.status = function (id) {
         name: entry.def.name || id,
         ui: entry.def.ui ? { label: entry.def.ui.label } : null,
         version: entry.def.version || null,
+        description: entry.def.description || null,
+        author: entry.def.author || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
         enabled: enabled == null ? entry.defaultEnabled : enabled,
@@ -436,6 +492,13 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     }
     var api = /^api(?:\/(.*))?$/.exec(sub);
     if (!api) { json(res, { error: 'Not found' }, 404); return true; }
+    if (req.method === 'OPTIONS' && req.headers && req.headers.origin === 'null') {
+        // CORS preflight from a sandboxed plugin page (opaque origin) so it can POST JSON.
+        res.writeHead(204, { 'Access-Control-Allow-Origin': 'null', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600', 'Vary': 'Origin' });
+        res.end();
+        return true;
+    }
     if (!entry.instance || !entry.instance.route) { json(res, { error: 'Plugin not running' }, 503); return true; }
     var handled = false;
     // A plugin page is untrusted content: sandboxed even when opened on its own, and
@@ -453,4 +516,4 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     return true;
 };
 
-module.exports = { PluginHost: PluginHost, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES };
+module.exports = { PluginHost: PluginHost, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle };
