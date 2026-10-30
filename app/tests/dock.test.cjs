@@ -11,6 +11,11 @@ const HOME_DATA = [
     'R|' + hex('aaa') + '|' + hex('Netflix') + '|' + hex('org.tizen.netflix-app') + '|0',
     'I|aaa|/opt/share/webappservice/apps_icon/all/aaa/224x224.png'
 ].join('\n');
+// Captured from the QN90B's vconftool: HDMI 2 is the Fire TV stick, HDMI 3 the PlayStation.
+const DETECTION = [
+    'db/source-list/source-name, value = 15\t}] (String: [\t{\t\t"DetectedName" : "Amazon Fire TV stick",\t\t"DeviceType" : 53,\t\t"EditName" : "",\t\t"EditState" : 0,\t\t"MbrActivityIndex" : -2,\t\t"OrginalDeviceType" : 53,\t\t"SettingMethod" : 2,\t\t"SourceType" : 14\t},\t{\t\t"DetectedName" : "PlayStation 5",\t\t"DeviceType" : 7,\t\t"EditName" : "",\t\t"EditState" : 0,\t\t"MbrActivityIndex" : -2,\t\t"OrginalDeviceType" : 7,\t\t"SettingMethod" : 2,\t\t"SourceType" )',
+    '##vetro##db/source-service/detection_state_HDMI1, value = not_detected,mbr (String)\n##vetro##db/source-service/detection_state_HDMI2, value = detected,autodetection (String)\n##vetro##db/source-service/detection_state_HDMI3, value = detected,autodetection (String)\n##vetro##db/source-service/detection_state_HDMI4, value = not_detected,mbr (String)\n##vetro##'
+].join('');
 
 function fixture(options) {
     options = options || {};
@@ -22,20 +27,27 @@ function fixture(options) {
         fs.writeFileSync(path.join(dir, 'res', 'glass_tile.png'), 'x');
     }
     const tv = {autorun: options.autorun == null ? 1 : options.autorun, running: options.running === true, scripts: [], neverStarts: options.neverStarts === true, csfs: true, clock: 1000000,
-        homeData: options.homeData == null ? HOME_DATA : options.homeData, log: options.log || ''};
+        homeData: options.homeData == null ? HOME_DATA : options.homeData, log: options.log || '', detection: options.detection || 'ok'};
     const execute = async function (cmd) {
         tv.scripts.push(cmd);
         if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
         const script = Buffer.from(cmd.split(' ')[1], 'base64').toString();
+        if (script.includes('##vetro##')) {
+            if (tv.detection === 'unavailable') return {exit_code: 0, stdout: 'Error: no such key\n##vetro##Error: no such key\n##vetro##Error: no such key\n##vetro##Error: no such key\n##vetro##Error: no such key\n##vetro##'};
+            if (tv.detection === 'bad') return {exit_code: 0, stdout: DETECTION.replace('"PlayStation 5"', '"PlayStation 5')};
+            return {exit_code: 0, stdout: DETECTION};
+        }
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
         if (script.includes('setsid nohup')) { tv.started = script; if (!tv.neverStarts) tv.running = true; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
         if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=4242' : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
+        if (script.includes('/home/owner/tvlauncher.fifo') && script.includes("printf 'inputs\\n'")) { tv.inputsOpened = (tv.inputsOpened || 0) + 1; tv.inputsScript = script; return {exit_code: 0, stdout: ''}; }
         throw new Error('unexpected command: ' + script);
     };
     const dock = new Dock({execute: execute, dir: dir, stateFile: path.join(tmp, 'state.json'), appsFile: path.join(tmp, 'apps.tsv'),
+        sourcesFile: path.join(tmp, 'sources.json'), inputsFile: path.join(tmp, 'inputs.tsv'),
         sleep: async ms => { tv.clock += ms; }, now: () => tv.clock});
     return {dock, tv, tmp};
 }
@@ -45,7 +57,7 @@ function fixture(options) {
     let f = fixture({installed: false});
     assert.equal((await f.dock.status()).installed, false);
     await assert.rejects(f.dock.enable(), /not in this Vetro package/);
-    assert.equal(f.tv.scripts.length, 1, 'only the status probe ran');
+    assert.equal(f.tv.scripts.length, 2, 'only the detection read and the status probe ran');
 
     // Switching on: app list first, then the dock, then the setting, then Samsung's Home is closed.
     f = fixture();
@@ -123,6 +135,91 @@ function fixture(options) {
     assert.equal(s.enabled, false);
     assert.equal(s.running, false);
     assert.ok(!f.tv.scripts.some(c => /^app_launcher -s /.test(c)), 'the screen is not switched under the viewer');
+
+    // Sources: the saved list gives order and labels, the TV gives names, icons and presence, and the
+    // generated inputs file follows both. A leftover inputs file is only output, never read for labels.
+    const scriptsWith = (tv, text) => tv.scripts.filter(c => c.startsWith('echo') && Buffer.from(c.split(' ')[1], 'base64').toString().includes(text)).length;
+    const savedSlugs = t => JSON.parse(fs.readFileSync(path.join(t, 'sources.json'), 'utf8')).sources.map(r => r.slug);
+    const savedOrder = ['in-tv', 'in-hdmi3', 'in-hdmi1', 'in-hdmi2', 'in-hdmi4'];
+    const rows = savedOrder.map(slug => ({slug, label: slug === 'in-hdmi2' ? 'Living room Fire TV' : null, hidden: false, icon: 'auto'}));
+    f = fixture();
+    fs.writeFileSync(path.join(f.tmp, 'sources.json'), JSON.stringify({sources: rows}));
+    fs.writeFileSync(path.join(f.tmp, 'inputs.tsv'), 'in-hdmi4\tOld label\tsource:16\n');
+    s = await f.dock.enable();
+    assert.equal(s.detection.available, true);
+    assert.deepEqual(s.inputs.map(r => [r.label, r.icon, r.present]),
+        [['TV', 'tv', true], ['PlayStation 5', 'console', true], ['HDMI 1', 'hdmi', false], ['Living room Fire TV', 'streaming', true], ['HDMI 4', 'hdmi', false]]);
+    let inputsTsv = fs.readFileSync(path.join(f.tmp, 'inputs.tsv'), 'utf8');
+    assert.ok(!inputsTsv.includes('Old label'), 'the old file is replaced');
+    assert.ok(inputsTsv.includes('in-hdmi2\tLiving room Fire TV\tsource:14\t\t' + path.join(f.tmp, 'dock', 'res', 'icons', 'input-streaming.png')), inputsTsv);
+
+    // Saving a new order with a hidden row writes both files and restarts the running dock, reading the TV once.
+    await assert.rejects(f.dock.saveSources(rows.slice(1)), /all five/);
+    const reordered = [rows[3]].concat(rows.slice(0, 3), rows[4]).map(r => Object.assign({}, r, {hidden: r.slug === 'in-hdmi1'}));
+    f.tv.scripts.length = 0;
+    s = await f.dock.saveSources(reordered);
+    assert.equal(s.inputs[0].slug, 'in-hdmi2', 'saved order is the panel order');
+    assert.deepEqual(savedSlugs(f.tmp), reordered.map(r => r.slug));
+    inputsTsv = fs.readFileSync(path.join(f.tmp, 'inputs.tsv'), 'utf8');
+    assert.equal(inputsTsv.split('\n')[1].split('\t')[0], 'in-hdmi2');
+    assert.ok(!inputsTsv.includes('in-hdmi1'), 'a hidden row is left out of the panel');
+    assert.equal(scriptsWith(f.tv, 'setsid'), 1, 'the running dock is restarted with the new list');
+    assert.equal(scriptsWith(f.tv, '##vetro##'), 1, 'one detection read serves the generate, the restart and the status');
+
+    // One change at a time.
+    const saving = f.dock.saveSources(reordered);
+    await assert.rejects(f.dock.refreshSources(), /in progress/);
+    await saving;
+
+    // Refresh reads the TV again and does not save; without detection the saved labels stay and no port is called empty.
+    f.tv.detection = 'unavailable';
+    s = await f.dock.refreshSources();
+    assert.equal(s.detection.available, false);
+    assert.deepEqual(s.inputs.map(r => r.present), [null, null, null, null, null]);
+    assert.deepEqual(savedSlugs(f.tmp), reordered.map(r => r.slug), 'refresh does not save');
+    assert.ok(fs.readFileSync(path.join(f.tmp, 'inputs.tsv'), 'utf8').includes('in-hdmi2\tLiving room Fire TV\tsource:14'));
+
+    // Launcher off: a save writes the files and starts nothing.
+    await f.dock.disable();
+    f.tv.scripts.length = 0;
+    s = await f.dock.saveSources(rows);
+    assert.equal(s.enabled, false);
+    assert.equal(scriptsWith(f.tv, 'setsid'), 0, 'the dock is not started by a save');
+    assert.deepEqual(savedSlugs(f.tmp), savedOrder);
+
+    // A failed write is reported, keeps the saved list and releases the change.
+    fs.rmSync(path.join(f.tmp, 'inputs.tsv'));
+    fs.mkdirSync(path.join(f.tmp, 'inputs.tsv'));
+    await assert.rejects(f.dock.saveSources(reordered), /inputs list could not be saved/);
+    assert.equal(f.dock.busy, false);
+    assert.deepEqual(savedSlugs(f.tmp), reordered.map(r => r.slug), 'the source list was saved before the failed generate');
+
+    // No saved list, or one that cannot be used: the five defaults, and the dock still starts. Unreadable detection
+    // falls back to the port names.
+    f = fixture({detection: 'bad'});
+    fs.writeFileSync(path.join(f.tmp, 'sources.json'), '{"sources":[]}');
+    s = await f.dock.enable();
+    assert.equal(s.running, true);
+    assert.equal(s.detection.available, false);
+    assert.deepEqual(s.inputs.map(r => r.label), ['TV', 'HDMI 1', 'HDMI 2', 'HDMI 3', 'HDMI 4']);
+
+    // Type icons are served by id, and nothing else is.
+    fs.mkdirSync(path.join(f.tmp, 'dock', 'res', 'icons'), {recursive: true});
+    const typePng = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from('data')]);
+    fs.writeFileSync(path.join(f.tmp, 'dock', 'res', 'icons', 'input-streaming.png'), typePng);
+    assert.ok(f.dock.sourceIcon('streaming').equals(typePng));
+    assert.equal(f.dock.sourceIcon('logo'), null);
+    assert.equal(f.dock.sourceIcon('../icons/input-streaming'), null);
+
+    // The inputs panel opens only while the launcher runs. Off or stopped is non-fatal, so a remapped key
+    // cannot take the whole physical remote down.
+    f = fixture();
+    await assert.rejects(f.dock.openInputs(), e => e.nonFatal === true && /off/.test(e.message));
+    await f.dock.enable();
+    await f.dock.openInputs();
+    assert.equal(f.tv.inputsOpened, 1, 'the dock\'s own inputs command, not a key press');
+    f.tv.running = false;
+    await assert.rejects(f.dock.openInputs(), e => e.nonFatal === true && /not running/.test(e.message));
 
     // Supervision: only when on, installed, and the agent is up.
     f = fixture();

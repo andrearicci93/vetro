@@ -14,10 +14,13 @@ var fs = require('fs');
 var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
+var sources = require('./dock-sources.js');
 
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
 var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
+var SOURCES_FILE = SHARE + '/vetro-dock-sources.json';   // the editable source list
+var INPUTS_FILE = SHARE + '/vetro-dock-inputs.tsv';      // generated from the source list and the TV
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
@@ -32,6 +35,7 @@ var BOOT_WAIT_MS = 75000;                             // a start in the first mi
 var BOOT_WINDOW_S = 300;
 var RETRY_FIRST_MS = 30000;
 var RETRY_MAX_MS = 300000;
+var DETECTION_CACHE_MS = 5000;                        // one save or status burst shares a single read
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
@@ -42,6 +46,8 @@ function Dock(options) {
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
+    this.sourcesFile = options.sourcesFile || SOURCES_FILE;
+    this.inputsFile = options.inputsFile || INPUTS_FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -51,6 +57,7 @@ function Dock(options) {
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
+    this.detection = null;
 }
 
 Dock.prototype.installed = function () {
@@ -114,6 +121,24 @@ function check(r, what) {
     return r.stdout || '';
 }
 
+var PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+// Temp file then rename: a reader sees either the old file or the new one, never a partial write.
+function writeAtomic(file, text) {
+    fs.mkdirSync(path.dirname(file), {recursive: true});
+    var tmp = file + '.tmp';
+    fs.writeFileSync(tmp, text);
+    fs.renameSync(tmp, file);
+}
+
+function readPng(file) {
+    try {
+        var data = fs.readFileSync(file);
+        if (data.length <= 1048576 && data.slice(0, 8).equals(PNG_MAGIC)) return data;
+    } catch (e) { /* no icon */ }
+    return null;
+}
+
 // What is running right now. Only the dock's own pid counts, and only if that pid is our dll.
 Dock.prototype.probe = function () {
     var script = [
@@ -146,14 +171,18 @@ Dock.prototype.status = function (options) {
 };
 
 Dock.prototype.statusNow = function () {
-    var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
-        entries: this.entries(), inputs: this.inputEntries()};
-    return this.probe().then(function (p) {
-        return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
-    }).catch(function (e) {
-        return Object.assign(base, {running: null, pid: null, samsungHome: null, log: '', probeError: e.message});
+    var self = this, state = this.readState(), list = this.sourceState();
+    // Detection is re-read after a few seconds: the Launcher tab shows what the TV reports now.
+    return this.readDetection().then(function (detection) {
+        var base = {installed: self.installed(), enabled: state.enabled, since: state.since, busy: self.busy,
+            error: self.lastError, failures: self.failures, apps: self.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
+            entries: self.entries(), inputs: sources.rows(list, detection),
+            detection: {available: detection.available, error: detection.error}};
+        return self.probe().then(function (p) {
+            return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
+        }).catch(function (e) {
+            return Object.assign(base, {running: null, pid: null, samsungHome: null, log: '', probeError: e.message});
+        });
     });
 };
 
@@ -166,7 +195,7 @@ Dock.prototype.statusNow = function () {
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
-    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
+    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(this.inputsFile) +
         ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
     return [
         this.stopLines(),
@@ -214,7 +243,10 @@ Dock.prototype.waitRunning = function () {
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
 Dock.prototype.launch = function (quick) {
     var self = this, saved = quick && this.hasSavedApps();
-    return (saved ? Promise.resolve() : this.writeCatalog()).then(function () {
+    // The inputs file is written before every start: a failed write fails the start, so the dock
+    // never opens a stale list.
+    return this.writeInputsFile()
+        .then(function () { return saved ? null : self.writeCatalog(); }).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
         if (saved) self.refreshPending = true;
@@ -285,6 +317,29 @@ Dock.prototype.refresh = function () {
     }).finally(function () { self.busy = false; });
 };
 
+// The dock's own `inputs` command shows the dock and opens the panel, wherever the apps page's focus was.
+Dock.prototype.openInputsScript = function () {
+    return '[ -p ' + FIFO + " ] && printf 'inputs\\n' > " + FIFO;
+};
+// Launcher off or stopped is a normal "nothing to open" answer, not a reason to stop the whole
+// physical remote: the caller keeps intercepting the other mapped keys.
+function skipped(message) {
+    var error = new Error(message);
+    error.nonFatal = true;
+    return error;
+}
+Dock.prototype.openInputs = function () {
+    var self = this;
+    if (!this.readState().enabled) return Promise.reject(skipped('The Vetro launcher is off; turn it on to use the inputs panel'));
+    return this.probe().then(function (p) {
+        if (!p.running) return Promise.reject(skipped('The Vetro launcher is not running'));
+        return self.execute(wrap(self.openInputsScript()), 8000).then(function (r) {
+            check(r, 'Open inputs');
+            return {ok: true, panel: 'inputs'};
+        });
+    });
+};
+
 // The list the dock was last given, as the page's preview shows it. Icons are served by iconFile().
 function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
@@ -296,8 +351,74 @@ function parseTsv(text) {
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
+// The generated inputs file, as last written. It is never edited by hand: the saved source list is.
 Dock.prototype.inputEntries = function () {
-    try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }
+    try { return parseTsv(fs.readFileSync(this.inputsFile, 'utf8')); } catch (e) { return []; }
+};
+
+// --- the saved source list and its generated inputs file --------------------
+// vetro-dock-sources.json is the source of truth: order, labels, hidden flags and icon choices.
+// vetro-dock-inputs.tsv is generated from it and from the TV's own source report before every start.
+
+// The saved list, or the defaults when there is none or it cannot be used; the next save replaces it.
+Dock.prototype.sourceState = function () {
+    try { return sources.normalize(JSON.parse(fs.readFileSync(this.sourcesFile, 'utf8'))); }
+    catch (e) { return sources.defaults(); }
+};
+
+// What the TV reports, or unavailable. A read is reused for a few seconds, so a save (generate, restart,
+// status) or a burst of page polls runs the root script once.
+Dock.prototype.readDetection = function () {
+    if (this.detection && this.now() - this.detection.at < DETECTION_CACHE_MS) return this.detection.read;
+    var read = this.execute(wrap(sources.detectionScript()), 15000).then(function (r) {
+        return r && !r.timed_out ? sources.parseDetection(r.stdout) : sources.unavailable();
+    }).catch(function () { return sources.unavailable(); });
+    this.detection = {at: this.now(), read: read};
+    return read;
+};
+
+// Generate the dock's inputs file. Atomic: a failed write keeps the previous file and fails the start.
+Dock.prototype.writeInputsFile = function () {
+    var self = this, list = this.sourceState();
+    return this.readDetection().then(function (detection) {
+        try { writeAtomic(self.inputsFile, sources.tsv(sources.rows(list, detection), path.join(self.dir, 'res', 'icons'))); }
+        catch (e) { throw new Error('The inputs list could not be saved: ' + e.message); }
+    });
+};
+
+// Re-read the TV and regenerate the inputs file, after `save` if given. A running dock reads the file
+// only when it starts, so it is restarted.
+Dock.prototype.applySources = function (save) {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    this.busy = true; this.lastError = null; this.detection = null;
+    return Promise.resolve().then(save).then(function () {
+        return self.readState().enabled ? self.launch(true) : self.writeInputsFile();
+    }).then(function () { return self.status(); }).catch(function (e) {
+        self.lastError = e.message;
+        throw e;
+    }).finally(function () { self.busy = false; });
+};
+
+// Save the five rows (slug, label, hidden, icon) and apply them.
+Dock.prototype.saveSources = function (list) {
+    var self = this, state;
+    try { state = sources.normalize(list); } catch (e) { return Promise.reject(e); }
+    return this.applySources(function () {
+        try { writeAtomic(self.sourcesFile, JSON.stringify({sources: state}, null, 2) + '\n'); }
+        catch (e) { throw new Error('The source list could not be saved: ' + e.message); }
+    });
+};
+
+// Re-read the TV and rebuild the panel from the saved list; it does not save edits.
+Dock.prototype.refreshSources = function () {
+    return this.applySources();
+};
+
+// The packaged type icon the editor asks for by id, so a hidden row still shows its icon.
+Dock.prototype.sourceIcon = function (icon) {
+    if (sources.TYPE_ICONS.indexOf(String(icon)) < 0) return null;
+    return readPng(path.join(this.dir, 'res', 'icons', sources.iconFile(String(icon))));
 };
 
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
@@ -325,10 +446,8 @@ Dock.prototype.iconFile = function (slug) {
     if (entry.icon && catalog.iconPathOk(entry.icon)) files.push(entry.icon);
     files.push(path.join(this.dir, 'res', 'icons', slug + '.png'));
     for (var i = 0; i < files.length; i++) {
-        try {
-            var data = fs.readFileSync(files[i]);
-            if (data.length <= 1048576 && data.slice(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return data;
-        } catch (e) { /* next */ }
+        var data = readPng(files[i]);
+        if (data) return data;
     }
     return null;
 };

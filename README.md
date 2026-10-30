@@ -32,6 +32,8 @@ A fast, glass-style launcher on the Home key. It shows the same apps and icons a
 
 Turn it on in the **Launcher** tab, which also previews the bar. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
 
+Press Up on the launcher, or a remote key mapped to **Vetro · Inputs panel** in Remapper, for the inputs panel. The Launcher tab's **Sources** list sets what it shows: TV and HDMI 1–4, each with a name (the TV's own HDMI-CEC name unless you type one, up to 24 characters), an icon, a position and a switch to hide it. **Save sources** stores the list and restarts a running launcher; **Refresh sources** reads the TV again without saving edits. If the TV's detection can't be read, the port names and saved names are used.
+
 <p align="center">
   <img src="app/docs/images/launcher-dashboard.jpg" alt="The Launcher tab of the dashboard: a preview of the bar, the launcher switch and the Fix TizenTube switch" width="1000">
 </p>
