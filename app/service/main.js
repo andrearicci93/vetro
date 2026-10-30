@@ -551,8 +551,8 @@ function fillFilter(devices, tokens){
         if(!b){b=new PhysicalInput(agentExecute,handlePhysicalEvent);extraInputs.push(b);}
         return b.start(d.node,'filter',tokens).catch(function(e){return {error:e.message};});
     });
-    // Helpers left idle belong to remotes that are gone.
-    idle.forEach(function(b){b.stop();});
+    // Helpers left idle belong to remotes that are gone, so their last error is dropped too.
+    idle.forEach(function(b){b.retire();});
     extraInputs=extraInputs.filter(function(b){return idle.indexOf(b)<0;});
     return Promise.all(started).then(function(){return inputSnapshot();});
 }
@@ -566,9 +566,9 @@ function restoreInput(){
         var devices=selectableRemotes(list);
         if(!devices.length)throw new Error('No physical remote devices found');
         // Start only remotes without a connected helper: a crashed helper or a remote added after boot.
+        // With none missing, the fill still retires helpers whose remote has gone.
         var live=[physical].concat(extraInputs).map(function(b){var p=b.status().policy;return p.connected&&p.node;});
-        var missing=devices.filter(function(d){return live.indexOf(d.node)<0;});
-        return missing.length?fillFilter(missing,inputTokens()):inputSnapshot();
+        return fillFilter(devices.filter(function(d){return live.indexOf(d.node)<0;}),inputTokens());
     }).then(function(s){if(!s)return;if(!s.policy.connected)throw new Error(s.error||'Input helpers unavailable');inputError=s.error;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
 }
 function stopInput(){inputObservers.forEach(function(b){b.stop();});inputObservers=[];extraInputs.forEach(function(b){b.stop();});extraInputs=[];physical.stop();}

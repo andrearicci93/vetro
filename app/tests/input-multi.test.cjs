@@ -15,6 +15,7 @@ class Bridge {
     inventory(){return Promise.resolve(devices);}
     status(){return {policy:this.current,events:[],error:this.lastError};}
     stop(){this.generation++;this.current={mode:'off',connected:false};}
+    retire(){this.stop();this.lastError=null;}
     async start(device,mode,tokens){
         const generation=this.generation;
         starts.push({device:device,mode:mode,tokens:tokens});
@@ -99,6 +100,18 @@ const tracked=c=>[c.physical].concat(c.extraInputs);
     failing=null;await service.tick();
     status=await request(service,'GET');
     assert.equal(status.error,null,'the error clears once every remote is connected');
+
+    // The first remote goes away while the second stays covered: its stale error is dropped.
+    const gone=devices.shift();c.physical.disconnect();
+    status=await request(service,'GET');
+    assert.match(status.status.error||'',/disconnected/);
+    await service.tick();
+    status=await request(service,'GET');
+    assert.equal(status.status.policy.connected,true);
+    assert.equal(status.status.error,null,'a helper whose remote is gone leaves no error behind');
+    assert.equal(status.error,null);
+    devices.unshift(gone);await service.tick();
+    assert.ok(tracked(c).every(b=>b.current.connected),'the remote is intercepted again when it returns');
 
     // A stop while the helpers are still starting must not leave one running untracked.
     let release;gate=new Promise(r=>{release=r;});
