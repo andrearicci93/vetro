@@ -584,7 +584,7 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
 
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
-    if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson);
+    if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson, readBody);
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res, /(?:\?|&)components=1(?:&|$)/.test(req.url || ''));
@@ -676,7 +676,8 @@ var bridge = new MqttBridge(readTelemetry,function(m){
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
 // Third-party plugins (see docs/plugins.md): loaded from the plugin folder, off until switched on, guarded, safe mode after a failed boot.
 // Vetro's own features (MQTT, launcher, ...) are not plugins.
-var plugins = new PluginHost({dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute});
+var plugins = new PluginHost({dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
+    registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/main/index.json'});
 plugins.start();
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,

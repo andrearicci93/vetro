@@ -767,17 +767,64 @@ function renderPlugins(){
  var rows=!d.plugins.length?'<div class="panel"><p class="notice">No plugins installed. Put a plugin folder in <code>'+esc(d.dir||'')+'</code> and restart Vetro. Developer guide: docs/plugins.md.</p></div>':d.plugins.map(function(p){
   var sw=p.state==='invalid'?'':switchMarkup('data-plugin-switch="'+esc(p.id)+'"',p.enabled&&p.state!=='suspended',pluginBusy||d.safeMode,p.name);
   var err=p.state==='failed'&&p.lastError?'<p class="quick-callout">Switched off after repeated errors: '+esc(p.lastError)+'</p>':p.state==='invalid'?'<p class="quick-callout">Not loaded: '+esc(p.lastError)+'</p>':'';
-  return '<div class="quick-item" data-quick-item="plugin-'+esc(p.id)+'"><div><h3>'+esc(p.name)+'</h3><p>Version '+esc(p.version||'—')+(p.permissions.length?' · can '+esc(p.permissions.join(', ')):'')+'</p><div class="quick-state">'+pluginChip(p)+'</div>'+err+'</div>'+sw+'</div>';
+  var rm=p.state==='running'?'':'<div class="quick-actions"><button data-plugin-remove="'+esc(p.id)+'" '+(pluginBusy?'disabled':'')+'>Remove</button></div>';
+  return '<div class="quick-item" data-quick-item="plugin-'+esc(p.id)+'"><div><h3>'+esc(p.name)+'</h3><p>Version '+esc(p.version||'—')+(p.permissions.length?' · can '+esc(p.permissions.join(', ')):'')+'</p><div class="quick-state">'+pluginChip(p)+'</div>'+err+rm+'</div>'+sw+'</div>';
  }).join('');
- box.innerHTML=safe+(d.plugins.length?'<div class="quick-group">'+rows+'</div><div class="panel"><p class="section-note">A plugin is code running on the TV. Switch on only plugins you trust, and read the permissions above. One that keeps failing is switched off on its own.</p></div>':rows);
+ box.innerHTML=safe+pluginAddPanel(d)+(d.plugins.length?'<div class="quick-group">'+rows+'</div><div class="panel"><p class="section-note">A plugin is code running on the TV. Switch on only plugins you trust, and read the permissions above. One that keeps failing is switched off on its own.</p></div>':rows);
+}
+var registryData=null,registryError=null,registryLoading=false,pluginNote=null;
+function registryUrl(){return (pluginData||{}).registry||null}
+function loadRegistry(){
+ var url=registryUrl();if(!url){registryError='No plugin list is configured.';return renderPlugins()}
+ registryLoading=true;renderPlugins();
+ return fetch(url,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('The plugin list answered '+r.status);return r.json()}).then(function(d){
+  if(!d||d.format!=='vetro-plugin-index'||!Array.isArray(d.plugins))throw Error('Unexpected plugin list format');
+  registryData=d;registryError=null;
+ }).catch(function(e){registryError=e.message==='Failed to fetch'?'Could not reach the plugin list. This browser needs internet access.':e.message}).finally(function(){registryLoading=false;renderPlugins()});
+}
+function pluginAddPanel(d){
+ var installed={};d.plugins.forEach(function(p){installed[p.id]=p});
+ var list='';
+ if(registryLoading)list='<p class="notice">Loading the plugin list…</p>';
+ else if(registryError)list='<p class="quick-callout">'+esc(registryError)+'</p>';
+ else if(registryData){
+  list=registryData.plugins.length?registryData.plugins.map(function(e){
+   var have=installed[e.id],same=have&&have.version===e.version;
+   var label=!have?'Install':same?'Installed':'Update to '+e.version;
+   return '<div class="quick-item"><div><h3>'+esc(e.name)+' <small>'+esc(e.version)+(e.author?' · '+esc(e.author):'')+'</small></h3><p>'+esc(e.description||'')+'</p><div class="quick-state">'+(e.permissions&&e.permissions.length?chip('Can '+e.permissions.join(', '),'warn'):chip('No special permissions'))+'</div></div><div class="quick-actions"><button data-registry-install="'+esc(e.id)+'" '+(same||pluginBusy?'disabled':'')+'>'+esc(label)+'</button></div></div>';
+  }).join(''):'<p class="notice">The list has no plugins yet.</p>';
+ }
+ var note=pluginNote?'<p class="quick-callout">'+esc(pluginNote)+'</p>':'';
+ return '<div class="panel"><h3>Add a plugin</h3><p class="section-note">Plugins land switched off. Each one is checked against the SHA-256 the list publishes.</p>'+note+'<div class="quick-actions"><button data-registry-refresh '+(registryLoading?'disabled':'')+'>'+(registryData?'Refresh list':'Show available plugins')+'</button><label class="file-pick">or from a file <input type="file" accept=".vplugin,.json" data-plugin-file></label></div>'+list+'</div>';
+}
+function installBundle(text,sha,label){
+ if(pluginBusy)return;pluginBusy=true;pluginNote=null;renderPlugins();
+ return runUiOperation('plugin-install',label,'Plugins',null,function(mark){
+  return fetch('/plugins/install',{method:'POST',headers:{'X-Vetro-Sha256':sha||''},body:text}).then(function(r){return r.json().then(function(d){if(!r.ok||d.ok===false)throw Error(d.error||'Install failed');return d})}).then(function(d){
+   var msg=label+' done. It is switched off.'+(d.restartRequired?' Restart Vetro to load the new version.':'')+' SHA-256 '+d.sha256.slice(0,16)+'…';
+   pluginNote=msg;mark(msg,'Installed');return {resultLabel:'Installed',message:msg};
+  });
+ }).finally(function(){pluginBusy=false;loadPlugins()});
+}
+function installFromRegistry(id){
+ var e=((registryData||{}).plugins||[]).filter(function(x){return x.id===id})[0];if(!e)return;
+ var url;try{url=new URL(e.url,registryUrl()).href}catch(x){pluginNote='The list entry has no valid address.';return renderPlugins()}
+ pluginBusy=true;renderPlugins();
+ return fetch(url,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('Download answered '+r.status);return r.text()}).then(function(text){pluginBusy=false;return installBundle(text,e.sha256,'Install '+e.name)}).catch(function(err){pluginBusy=false;pluginNote='Download failed: '+err.message;renderPlugins()});
 }
 function setPlugin(id,on,label){
  if(pluginBusy)return;pluginBusy=true;renderPlugins();
  return runUiOperation('plugin-'+id,label,'Plugins',null,function(mark){return api('/plugins/'+encodeURIComponent(id)+'/'+(on?'enable':'disable'),{}).then(function(){mark(label+' done.','Done');return {resultLabel:'Done',message:label+' done.'}})}).finally(function(){pluginBusy=false;loadPlugins()});
 }
-$('plugins').onchange=function(e){var x=e.target;if(!x.dataset||x.dataset.pluginSwitch==null)return;var p=(pluginData.plugins||[]).filter(function(q){return q.id===x.dataset.pluginSwitch})[0];setPlugin(x.dataset.pluginSwitch,x.checked,(x.checked?'Turn on ':'Turn off ')+(p?p.name:x.dataset.pluginSwitch));};
+$('plugins').onchange=function(e){var x=e.target;
+ if(x.dataset&&x.dataset.pluginFile!=null){var f=x.files&&x.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){installBundle(String(rd.result),'','Install '+f.name)};rd.readAsText(f);return}
+ if(!x.dataset||x.dataset.pluginSwitch==null)return;var p=(pluginData.plugins||[]).filter(function(q){return q.id===x.dataset.pluginSwitch})[0];setPlugin(x.dataset.pluginSwitch,x.checked,(x.checked?'Turn on ':'Turn off ')+(p?p.name:x.dataset.pluginSwitch));};
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-plugin-page]');if(b)openPluginPage(b.dataset.pluginPage)});
-$('plugins').onclick=function(e){if(e.target.dataset&&e.target.dataset.pluginResume!=null){pluginBusy=true;renderPlugins();api('/plugins/resume',{}).then(function(){pluginBusy=false;return loadPlugins()}).catch(function(err){pluginBusy=false;pluginError=err.message;renderPlugins()})}};
+$('plugins').onclick=function(e){var t=e.target,ds=t.dataset||{};
+ if(ds.registryRefresh!=null)return loadRegistry();
+ if(ds.registryInstall)return installFromRegistry(ds.registryInstall);
+ if(ds.pluginRemove){var rid=ds.pluginRemove;if(pluginBusy)return;pluginBusy=true;pluginNote=null;renderPlugins();return runUiOperation('plugin-remove-'+rid,'Remove '+rid,'Plugins',null,function(mark){return api('/plugins/'+encodeURIComponent(rid)+'/remove',{}).then(function(){mark('Removed '+rid+'.','Removed');return {resultLabel:'Removed',message:'Removed '+rid+'.'}})}).finally(function(){pluginBusy=false;loadPlugins()})}
+ if(e.target.dataset&&e.target.dataset.pluginResume!=null){pluginBusy=true;renderPlugins();api('/plugins/resume',{}).then(function(){pluginBusy=false;return loadPlugins()}).catch(function(err){pluginBusy=false;pluginError=err.message;renderPlugins()})}};
 setInterval(function(){if(currentPanel==='plugins'&&!document.hidden&&!pluginBusy)loadPlugins()},5000);
 $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});

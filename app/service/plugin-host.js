@@ -14,11 +14,15 @@
 // worth the name), so this is fault isolation, not a security boundary.
 
 var fs = require('fs');
+var crypto = require('crypto');
 var path = require('path');
 
 var API_VERSION = 1;
 var PERMISSIONS = ['exec'];
 var ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
+var RESERVED = ['install', 'resume'];
+var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
+var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
 
 function PluginHost(opts) {
     opts = opts || {};
@@ -26,6 +30,7 @@ function PluginHost(opts) {
     this.execute = opts.execute || null;       // agent command runner, only lent to plugins asking for 'exec'
     this.maxErrors = opts.maxErrors || 3;      // consecutive failures before a plugin is switched off
     this.stableMs = opts.stableMs == null ? 60000 : opts.stableMs;
+    this.registry = opts.registry || null;     // URL of the plugin list the dashboard shows
     this.external = opts.external !== false;   // load plugin folders from dir
     this.entries = Object.create(null);
     this.order = [];
@@ -93,8 +98,97 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     });
 };
 
+function rmrf(target) {
+    var st;
+    try { st = fs.lstatSync(target); } catch (e) { return; }
+    if (st.isDirectory()) {
+        fs.readdirSync(target).forEach(function (n) { rmrf(path.join(target, n)); });
+        fs.rmdirSync(target);
+    } else fs.unlinkSync(target);
+}
+
+// A bundle is one text file: { format: 'vetro-plugin', version: 1, manifest, files: { name: text } }.
+// Text only on purpose (no binaries, no native code), small, and hashed as received.
+// expectedSha256 is optional; when given (from the plugin list) a mismatch is refused.
+// The plugin lands switched off; nothing in it runs until the user turns it on.
+PluginHost.prototype.install = function (raw, expectedSha256) {
+    var sha = crypto.createHash('sha256').update(raw).digest('hex');
+    if (expectedSha256 && String(expectedSha256).toLowerCase() !== sha) throw new Error('SHA-256 does not match the expected value');
+    var b;
+    try { b = JSON.parse(raw); } catch (e) { throw new Error('Not a plugin bundle (invalid JSON)'); }
+    if (!b || b.format !== 'vetro-plugin' || b.version !== 1 || !b.manifest || !b.files || typeof b.files !== 'object') {
+        throw new Error('Not a plugin bundle (format vetro-plugin, version 1)');
+    }
+    var m = b.manifest, id = m.id, names = Object.keys(b.files), total = 0;
+    if (!ID_RE.test(id || '') || RESERVED.indexOf(id) >= 0) throw new Error('Invalid plugin id');
+    if (m.apiVersion !== API_VERSION) throw new Error('Unsupported plugin API ' + m.apiVersion + ' (this Vetro runs API ' + API_VERSION + ')');
+    var perms = m.permissions || [];
+    for (var i = 0; i < perms.length; i++) if (PERMISSIONS.indexOf(perms[i]) < 0) throw new Error('Unknown permission ' + perms[i]);
+    if (!names.length || names.length > BUNDLE_MAX_FILES) throw new Error('A bundle holds 1 to ' + BUNDLE_MAX_FILES + ' files');
+    for (var j = 0; j < names.length; j++) {
+        if (!FILE_RE.test(names[j]) || names[j] === 'manifest.json' || typeof b.files[names[j]] !== 'string') throw new Error('Invalid file entry: ' + names[j]);
+        total += Buffer.byteLength(b.files[names[j]]);
+    }
+    if (total > BUNDLE_MAX_BYTES) throw new Error('Bundle is larger than ' + (BUNDLE_MAX_BYTES / 1024) + ' KB');
+    if (typeof b.files[m.main || 'index.js'] !== 'string') throw new Error('Entry file ' + (m.main || 'index.js') + ' is missing');
+    var existing = this.entries[id];
+    if (existing && existing.state === 'invalid') {
+        delete this.entries[id];
+        this.order.splice(this.order.indexOf(id), 1);
+        existing = null;
+    }
+    if (existing && existing.instance) throw new Error('Switch the plugin off before updating it');
+
+    var staging = path.join(this.dir, '.install-' + id), target = path.join(this.dir, id);
+    try { fs.mkdirSync(this.dir); } catch (e) { /* exists */ }
+    rmrf(staging);
+    fs.mkdirSync(staging);
+    try {
+        names.forEach(function (n) {
+            var parts = n.split('/');
+            for (var k = 1; k < parts.length; k++) {
+                try { fs.mkdirSync(path.join(staging, parts.slice(0, k).join('/'))); } catch (e) { /* exists */ }
+            }
+            fs.writeFileSync(path.join(staging, n), b.files[n]);
+        });
+        fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify(m, null, 2) + '\n');
+        rmrf(target);
+        fs.renameSync(staging, target);
+    } catch (e) {
+        rmrf(staging);
+        throw e;
+    }
+    if (existing) {
+        // Node keeps the old code until restart; the new version loads on the next boot.
+        return { id: id, sha256: sha, restartRequired: true, plugin: this.status(id) };
+    }
+    try {
+        this._loadFolder(id, target);
+    } catch (e) {
+        this.entries[id] = {
+            def: { id: id, name: id, apiVersion: null, permissions: [] }, instance: null,
+            state: 'invalid', errors: 0, lastError: String(e && e.message || e), defaultEnabled: false
+        };
+        this.order.push(id);
+    }
+    return { id: id, sha256: sha, restartRequired: false, plugin: this.status(id) };
+};
+
+PluginHost.prototype.remove = function (id) {
+    var entry = this.entries[id];
+    if (!entry) throw new Error('Unknown plugin');
+    if (entry.instance) throw new Error('Switch the plugin off before removing it');
+    rmrf(path.join(this.dir, id));
+    var state = this._readState();
+    delete state.enabled[id];
+    this._writeState(state);
+    delete this.entries[id];
+    this.order.splice(this.order.indexOf(id), 1);
+    return { ok: true };
+};
+
 PluginHost.prototype.register = function (def) {
-    if (!def || !ID_RE.test(def.id || '')) throw new Error('Invalid plugin id');
+    if (!def || !ID_RE.test(def.id || '') || RESERVED.indexOf(def.id) >= 0) throw new Error('Invalid plugin id');
     if (this.entries[def.id]) throw new Error('Duplicate plugin: ' + def.id);
     if (def.apiVersion !== API_VERSION) throw new Error(def.id + ': unsupported plugin API ' + def.apiVersion);
     if (typeof def.create !== 'function') throw new Error(def.id + ': create() missing');
@@ -294,13 +388,23 @@ PluginHost.prototype.list = function () {
 // /plugins, /plugins/resume and /plugins/<id>/(enable|disable) for itself, so a
 // plugin cannot shadow a Vetro route or another plugin's.
 // Returns true when the request belonged to the host.
-PluginHost.prototype.handle = function (req, res, pathname, json) {
+PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     var m = /^\/plugins(?:\/([^\/]+)(?:\/(.*))?)?$/.exec(pathname);
     if (!m) return false;
     var id = m[1], sub = m[2];
     if (!id) {
         if (req.method !== 'GET') json(res, { error: 'Method not allowed' }, 405);
-        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, plugins: this.list() });
+        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry, plugins: this.list() });
+        return true;
+    }
+    if (id === 'install') {
+        if (req.method !== 'POST' || !readBody) { json(res, { error: 'Method not allowed' }, 405); return true; }
+        var host = this;
+        readBody(req, function (body, err) {
+            if (err) return json(res, { ok: false, error: err.message }, err.statusCode || 400);
+            try { json(res, Object.assign({ ok: true }, host.install(body, req.headers && req.headers['x-vetro-sha256']))); }
+            catch (e) { json(res, { ok: false, error: e.message }, 400); }
+        }, BUNDLE_MAX_BYTES + 4096);
         return true;
     }
     if (id === 'resume') {
@@ -310,6 +414,14 @@ PluginHost.prototype.handle = function (req, res, pathname, json) {
     }
     var entry = this.entries[id];
     if (!entry) { json(res, { error: 'Unknown plugin' }, 404); return true; }
+    if (sub === 'remove') {
+        if (req.method !== 'POST') json(res, { error: 'Method not allowed' }, 405);
+        else {
+            try { json(res, this.remove(id)); }
+            catch (e) { json(res, { ok: false, error: e.message }, 409); }
+        }
+        return true;
+    }
     if (sub === 'enable' || sub === 'disable') {
         if (req.method !== 'POST') json(res, { error: 'Method not allowed' }, 405);
         else {
@@ -341,4 +453,4 @@ PluginHost.prototype.handle = function (req, res, pathname, json) {
     return true;
 };
 
-module.exports = { PluginHost: PluginHost, API_VERSION: API_VERSION };
+module.exports = { PluginHost: PluginHost, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES };
