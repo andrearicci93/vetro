@@ -19,4 +19,9 @@ assert.ok(Object.keys(facts.packages).length>300);
 assert.ok(!JSON.stringify(facts).match(/192\.168|\/Users\/|keysequence:\/\//),'no local data or key sequences shipped');
 const rows=apps.normalize([{id:'com.samsung.tv.acr-service-app',packageId:'com.samsung.tv.acr-service-app'}],[]);
 assert.equal(rows[0].role,'tracking','probe-only rows carry the catalog too');
+// Apps seen on three other TVs (issues #14, #17, #26), whose names the rules did not know
+['com.samsung.tv.coba.privacychoice','com.samsung.tv.adagent-service','org.tizen.pisa-control-service'].forEach(id=>assert.equal(d(id).area,'tracking',id));
+['AQKO41xyKP.AmazonAlexa','com.samsung.tv.device-assistant-service','com.samsung.tv.salute-assistant','com.samsung.tv.google-fullscreen-app','org.tizen.tts-download-service'].forEach(id=>assert.equal(d(id).area,'voice',id));
+assert.equal(catalog.describe({appId:'IkWsFHtOY9.StremioService',packageId:'IkWsFHtOY9',origin:'installed'}).role,'optional','a store-installed app is optional, not a system service to keep');
+assert.equal(catalog.describe({appId:'com.samsung.tv.unknown-core',packageId:'com.samsung.tv.unknown-core',origin:'system'}).role,'keep','unknown system packages stay protected by default');
 console.log('PASS app catalog: areas, roles, protected keeps, firmware facts, no private data');
