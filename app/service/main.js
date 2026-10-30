@@ -679,6 +679,8 @@ bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger
 var plugins = new PluginHost({dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
     registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/main/index.json'});
 plugins.start();
+// A deliberate stop is not a crash: close the boot marker so the next start is not put in safe mode.
+['SIGTERM', 'SIGINT'].forEach(function (sig) { process.on(sig, function () { try { plugins.stop(); } catch (e) { /* exiting anyway */ } process.exit(0); }); });
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
