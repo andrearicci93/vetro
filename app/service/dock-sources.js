@@ -74,27 +74,6 @@ function normalize(value) {
     return {version: VERSION, sources: out};
 }
 
-// The old editable inputs file, in its own order. Old slugs that are not one of the five are ignored,
-// a duplicate takes the first row, and a slot the old file did not have is appended in canonical order.
-// A label equal to the exact port default cannot be told apart from the default, so it becomes automatic.
-function migrate(text) {
-    var order = [], bySlug = {};
-    String(text || '').split('\n').forEach(function (line) {
-        var fields = line.replace(/\r$/, '').split('\t');
-        var slug = (fields[0] || '').trim();
-        if (!slug || slug.charAt(0) === '#' || bySlug[slug] || SLUGS.indexOf(slug) < 0) return;
-        var label = String(fields[1] == null ? '' : fields[1]).replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-        if (label === DEFAULT_LABEL[slug]) label = '';
-        bySlug[slug] = {slug: slug, label: label ? label.slice(0, MAX_LABEL) : null, hidden: false, icon: 'auto'};
-        order.push(slug);
-    });
-    // A slot the old file did not have is appended in canonical order.
-    SLUGS.forEach(function (slug) {
-        if (!bySlug[slug]) { bySlug[slug] = {slug: slug, label: null, hidden: false, icon: 'auto'}; order.push(slug); }
-    });
-    return {version: VERSION, sources: order.map(function (slug) { return bySlug[slug]; })};
-}
-
 function detectionScript() {
     return [
         'get() { vconftool get "$1" 2>&1; printf "%s" "' + SEPARATOR + '"; }',
@@ -239,7 +218,7 @@ function tsv(list, iconDir) {
 module.exports = {
     VERSION: VERSION, SLUGS: SLUGS, PORT: PORT, DEFAULT_LABEL: DEFAULT_LABEL, ICONS: ICONS, TYPE_ICONS: TYPE_ICONS,
     MAX_LABEL: MAX_LABEL, MAX_TSV_LABEL: MAX_TSV_LABEL, SOURCE_NAME_KEY: SOURCE_NAME_KEY,
-    defaults: defaults, cleanLabel: cleanLabel, normalize: normalize, migrate: migrate,
+    defaults: defaults, cleanLabel: cleanLabel, normalize: normalize,
     detectionScript: detectionScript, parseDetection: parseDetection, unavailable: unavailable,
     tvName: tvName, classify: classify, iconFile: iconFile, shorten: shorten, rows: rows, tsv: tsv
 };

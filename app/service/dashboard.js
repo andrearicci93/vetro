@@ -807,12 +807,14 @@ function renderDock(){
 function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;
  // A save keeps the typed rows on screen while the TV writes and restarts; rendering here would clear them.
- if(action!=='saveSources')renderDock();
+ // A failed save keeps them too: the error is in Actions and the rows stay for another try.
+ var keepRows=action==='saveSources';
+ if(!keepRows)renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
-  dockData=d;dockError=null;
+  dockData=d;dockError=null;keepRows=false;
   var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='saveSources'?'Source list saved'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='refreshSources'?'Sources refreshed'+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
- })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock()});
+ })}).then(function(ok){if(!ok&&!keepRows)return loadDock()}).finally(function(){dockBusy=false;if(!keepRows)return renderDock();var save=document.querySelector('#dockBody [data-dock-save-sources]');if(save)save.disabled=false});
 }
 $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.sourceHide!=null){var row=x.closest?x.closest('[data-source-row]'):null;if(!row)return;if(row.classList)row.classList.toggle('source-hidden',!x.checked);syncSourceEdges();return;}

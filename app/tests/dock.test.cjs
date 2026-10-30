@@ -44,7 +44,7 @@ function fixture(options) {
         if (script.includes('setsid nohup')) { tv.started = script; if (!tv.neverStarts) tv.running = true; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
         if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=4242' : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
-        if (script.includes('/home/owner/tvlauncher.fifo') && script.includes('/usr/bin/input_keyevent Up')) { tv.inputsOpened = (tv.inputsOpened || 0) + 1; tv.inputsScript = script; return {exit_code: 0, stdout: ''}; }
+        if (script.includes('/home/owner/tvlauncher.fifo') && script.includes("printf 'inputs\\n'")) { tv.inputsOpened = (tv.inputsOpened || 0) + 1; tv.inputsScript = script; return {exit_code: 0, stdout: ''}; }
         throw new Error('unexpected command: ' + script);
     };
     const dock = new Dock({execute: execute, dir: dir, stateFile: path.join(tmp, 'state.json'), appsFile: path.join(tmp, 'apps.tsv'),
@@ -137,22 +137,22 @@ function fixture(options) {
     assert.equal(s.running, false);
     assert.ok(!f.tv.scripts.some(c => /^app_launcher -s /.test(c)), 'the screen is not switched under the viewer');
 
-    // Sources: 0.3.3's labels migrate once, in their order, with a backup, and the generated file
-    // uses the TV's own names and icons.
+    // Sources: the saved list gives order and labels, and the generated file uses the TV's own names
+    // and icons. A leftover inputs file is only output: it is replaced, never read for labels.
     f = fixture();
-    fs.writeFileSync(path.join(f.tmp, 'inputs.tsv'), [
-        '# old editable list',
-        'in-tv\tTV\tsource:0',
-        'in-hdmi3\tPlayStation 5\tsource:15',
-        'in-hdmi1\tHDMI 1\tsource:13',
-        'in-hdmi2\tLiving room Fire TV\tsource:14',
-        'in-hdmi4\tHDMI 4\tsource:16'
-    ].join('\n') + '\n');
+    fs.writeFileSync(path.join(f.tmp, 'sources.json'), JSON.stringify({version: 1, sources: [
+        {slug: 'in-tv', label: null, hidden: false, icon: 'auto'},
+        {slug: 'in-hdmi3', label: 'PlayStation 5', hidden: false, icon: 'auto'},
+        {slug: 'in-hdmi1', label: null, hidden: false, icon: 'auto'},
+        {slug: 'in-hdmi2', label: 'Living room Fire TV', hidden: false, icon: 'auto'},
+        {slug: 'in-hdmi4', label: null, hidden: false, icon: 'auto'}
+    ]}));
+    fs.writeFileSync(path.join(f.tmp, 'inputs.tsv'), '# old editable list\nin-hdmi4\tOld label\tsource:16\n');
     s = await f.dock.enable();
     const saved = JSON.parse(fs.readFileSync(path.join(f.tmp, 'sources.json'), 'utf8'));
-    assert.deepEqual(saved.sources.map(r => r.slug), ['in-tv', 'in-hdmi3', 'in-hdmi1', 'in-hdmi2', 'in-hdmi4'], 'the old row order is kept');
-    assert.deepEqual(saved.sources.map(r => r.label), [null, 'PlayStation 5', null, 'Living room Fire TV', null], 'custom labels stay, port defaults become automatic');
-    assert.ok(fs.readFileSync(path.join(f.tmp, 'inputs.tsv.bak'), 'utf8').includes('Living room Fire TV'), 'the old file is kept as .bak');
+    assert.deepEqual(saved.sources.map(r => r.slug), ['in-tv', 'in-hdmi3', 'in-hdmi1', 'in-hdmi2', 'in-hdmi4'], 'the saved order is kept');
+    assert.deepEqual(saved.sources.map(r => r.label), [null, 'PlayStation 5', null, 'Living room Fire TV', null], 'the inputs file is not imported as labels');
+    assert.ok(!fs.existsSync(path.join(f.tmp, 'inputs.tsv.bak')));
     assert.equal(s.detection.available, true);
     assert.deepEqual(s.inputs.map(r => r.label), ['TV', 'PlayStation 5', 'HDMI 1', 'Living room Fire TV', 'HDMI 4']);
     assert.deepEqual(s.inputs.map(r => r.icon), ['tv', 'console', 'hdmi', 'streaming', 'hdmi'], 'auto icons classify the TV name');
@@ -182,6 +182,8 @@ function fixture(options) {
     assert.ok(!inputsTsv.includes('in-hdmi1'), 'a hidden row is left out of the dock list');
     assert.ok(f.tv.scripts.some(c => c.startsWith('echo') && Buffer.from(c.split(' ')[1], 'base64').toString().includes('setsid')), 'the running dock is restarted with the new list');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.tmp, 'sources.json'), 'utf8')).sources.map(r => r.slug), reordered.map(r => r.slug));
+    assert.ok(f.tv.scripts.filter(c => c.startsWith('echo') && Buffer.from(c.split(' ')[1], 'base64').toString().includes('##vetro##')).length <= 1,
+        'one detection read serves the generate, the restart and the status of a save');
 
     // Two changes at once: the second is refused.
     const saving = f.dock.saveSources(reordered);
@@ -225,7 +227,7 @@ function fixture(options) {
     assert.deepEqual(s.inputs.map(r => r.label), ['TV', 'HDMI 1', 'HDMI 2', 'HDMI 3', 'HDMI 4']);
     assert.ok(fs.readFileSync(path.join(f.tmp, 'inputs.tsv'), 'utf8').includes('in-hdmi2\tHDMI 2\tsource:14'));
 
-    // No old file, no saved list: the five defaults, all visible.
+    // No saved list: the five defaults, all visible.
     f = fixture();
     s = await f.dock.enable();
     assert.deepEqual(s.inputs.map(r => r.slug), ['in-tv', 'in-hdmi1', 'in-hdmi2', 'in-hdmi3', 'in-hdmi4']);
@@ -251,6 +253,22 @@ function fixture(options) {
     await assert.rejects(f.dock.saveSources(saved.sources), /could not be saved/);
     assert.ok(fs.existsSync(path.join(f.tmp, 'sources.json')), 'the saved list survives a failed generate');
 
+    // A saved list that cannot be read fails the change and releases it: the error is a rejection, not
+    // a throw out of the request, and the next change is not refused as "in progress".
+    f = fixture();
+    await f.dock.enable();
+    fs.rmSync(path.join(f.tmp, 'sources.json'));
+    fs.mkdirSync(path.join(f.tmp, 'sources.json'));
+    await assert.rejects(f.dock.refreshSources(), /source list could not be read/);
+    assert.equal(f.dock.busy, false);
+    await assert.rejects(f.dock.refresh(), /source list could not be read/);
+    assert.equal(f.dock.busy, false);
+    f = fixture();
+    fs.mkdirSync(path.join(f.tmp, 'sources.json'));
+    await assert.rejects(f.dock.enable(), /source list could not be read/);
+    assert.equal(f.dock.busy, false);
+    assert.equal(f.dock.readState().enabled, false, 'a failed start does not turn the launcher on');
+
     // The inputs panel: only while the launcher is running. Off/stopped is non-fatal, so a
     // remapped key cannot take the whole physical remote down.
     f = fixture();
@@ -260,7 +278,7 @@ function fixture(options) {
     await f.dock.enable();
     await f.dock.openInputs();
     assert.equal(f.tv.inputsOpened, 1);
-    assert.ok(f.tv.inputsScript.includes("printf 'show\\n'") && f.tv.inputsScript.indexOf('sleep 0.8') < f.tv.inputsScript.indexOf('/usr/bin/input_keyevent Up'), 'show first, then the dock\'s own Up key');
+    assert.ok(f.tv.inputsScript.includes("printf 'inputs\\n'") && !f.tv.inputsScript.includes('input_keyevent'), 'the dock\'s own inputs command, not a key that only moves a lower pill\'s focus');
     f.tv.running = false;
     await assert.rejects(f.dock.openInputs(), e => e.nonFatal === true && /not running/.test(e.message));
 

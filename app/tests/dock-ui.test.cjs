@@ -14,6 +14,7 @@ const SOURCE_ROWS = [
     {slug: 'in-hdmi4', labelOverride: null, autoLabel: 'HDMI 4', source: 16, hidden: false, icon: 'hdmi', iconChoice: 'auto', present: false}
 ];
 const sourceInputs = () => SOURCE_ROWS.map(row => Object.assign({label: row.labelOverride || row.autoLabel}, row));
+let failSave = null;
 let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false, detection: {available: true, error: null},
     entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}],
     inputs: sourceInputs()};
@@ -45,6 +46,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: sel => sel ===
         let data = {};
         if (url === '/dock' && !body) data = dock;
         else if (url === '/dock') {
+            if (body.action === 'saveSources' && failSave) return {ok: false, json: async () => ({ok: false, error: failSave})};
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
@@ -192,6 +194,21 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body.sources.map(r => [r.slug, r.label, r.hidden]), [
         ['in-tv', null, false], ['in-hdmi1', 'Mac mini', true], ['in-hdmi2', null, true], ['in-hdmi3', null, true], ['in-hdmi4', null, true]
     ], 'whitespace becomes null and hidden rows stay in the saved list');
+
+    // A failed save is reported and leaves the typed rows alone: no reload, no re-render over them.
+    mountRows(SOURCE_ROWS);
+    domRows[2].label.value = 'Typed name';
+    el('dockBody').innerHTML = 'the rows being edited';
+    const readsBefore = calls.filter(c => c.url === '/dock' && !c.body).length;
+    failSave = 'The inputs list could not be saved: EISDIR';
+    await clickOn({dockSaveSources: ''}, null); await tick(); await tick(); await tick();
+    failSave = null;
+    assert.equal(calls.filter(c => c.url === '/dock' && c.body).pop().body.sources[2].label, 'Typed name');
+    assert.match(sandbox.operationEntries[0].message, /The inputs list could not be saved: EISDIR/, 'the error is shown in Actions');
+    assert.equal(calls.filter(c => c.url === '/dock' && !c.body).length, readsBefore, 'no reload over the edits');
+    assert.equal(el('dockBody').innerHTML, 'the rows being edited', 'the typed rows are not re-rendered');
+    assert.equal(domRows[2].label.value, 'Typed name');
+    assert.equal(sandbox.dockBusy, false, 'another save can be tried');
 
     // Refresh re-reads detection and rebuilds; it is a different action from Save.
     await clickOn({dockRefreshSources: ''}, null); await tick(); await tick(); await tick();

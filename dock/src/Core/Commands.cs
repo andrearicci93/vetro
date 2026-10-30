@@ -4,10 +4,10 @@ using System.Text;
 
 namespace Launcher.Core
 {
-    internal enum Command { Show, Hide, Toggle }
+    internal enum Command { Show, Hide, Toggle, Inputs }
 
     /// <summary>
-    /// Newline-delimited command stream read from the control FIFO ("show", "hide", "toggle").
+    /// Newline-delimited command stream read from the control FIFO ("show", "hide", "toggle", "inputs").
     /// Unknown words are dropped, a line without a terminator waits for more bytes, and a
     /// writer that never sends a newline cannot grow the buffer past <see cref="MaxLine"/>.
     /// </summary>
@@ -42,6 +42,7 @@ namespace Launcher.Core
                 case "show": into.Add(Command.Show); break;
                 case "hide": into.Add(Command.Hide); break;
                 case "toggle": into.Add(Command.Toggle); break;
+                case "inputs": into.Add(Command.Inputs); break;
             }
         }
     }

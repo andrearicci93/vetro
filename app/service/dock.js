@@ -35,6 +35,7 @@ var BOOT_WAIT_MS = 75000;                             // a start in the first mi
 var BOOT_WINDOW_S = 300;
 var RETRY_FIRST_MS = 30000;
 var RETRY_MAX_MS = 300000;
+var DETECTION_CACHE_MS = 5000;                        // one save or status burst shares a single read
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
@@ -56,6 +57,7 @@ function Dock(options) {
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
+    this.detection = null;
 }
 
 Dock.prototype.installed = function () {
@@ -170,7 +172,7 @@ Dock.prototype.status = function (options) {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState(), list = this.sourceState();
-    // Detection is read on every status: the Launcher tab shows what the TV reports now, with no cache.
+    // Detection is re-read after a few seconds: the Launcher tab shows what the TV reports now.
     return this.readDetection().then(function (detection) {
         var base = {installed: self.installed(), enabled: state.enabled, since: state.since, busy: self.busy,
             error: self.lastError, failures: self.failures, apps: self.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
@@ -315,15 +317,12 @@ Dock.prototype.refresh = function () {
     }).finally(function () { self.busy = false; });
 };
 
-// The dock has no inputs command on its fifo, so this shows the dock and presses Up, the key the
-// dock itself uses to open the inputs panel. Both steps are the dock's own tested behaviour.
+// The dock's own `inputs` command shows the dock and opens the panel, wherever the apps page's focus was.
 Dock.prototype.openInputsScript = function () {
     return [
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -z "$p" ] || ! tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + ' || [ ! -p ' + FIFO + ' ]; then echo "The Vetro launcher is not running" >&2; exit 1; fi',
-        "printf 'show\\n' > " + FIFO,
-        'sleep 0.8',
-        '/usr/bin/input_keyevent Up'
+        "printf 'inputs\\n' > " + FIFO
     ].join('\n');
 };
 // Launcher off or stopped is a normal "nothing to open" answer, not a reason to stop the whole
@@ -365,16 +364,16 @@ Dock.prototype.inputEntries = function () {
 // vetro-dock-sources.json is the source of truth: order, labels, hidden flags and icon choices.
 // vetro-dock-inputs.tsv is generated from it and from the TV's own source report before every start.
 
-// The saved list, created on first use: from the old editable inputs file when there is one, else from
-// the defaults. A corrupt list is kept as .bad and replaced, so the editor can save a new one.
+// The saved list, created from the defaults on first use. A corrupt list is kept as .bad and replaced,
+// so the editor can save a new one.
 Dock.prototype.sourceState = function () {
     var raw;
     try { raw = fs.readFileSync(this.sourcesFile, 'utf8'); }
     catch (e) {
         if (e.code !== 'ENOENT') throw new Error('The source list could not be read: ' + e.message);
-        var migrated = this.migrateSources();
-        this.writeSources(migrated);
-        return migrated;
+        var initial = sources.defaults();
+        this.writeSources(initial);
+        return initial;
     }
     try { return sources.normalize(JSON.parse(raw)); }
     catch (e) {
@@ -386,40 +385,32 @@ Dock.prototype.sourceState = function () {
     }
 };
 
-// 0.3.3 kept its editable labels in the inputs file. Read them once, keep a copy, and let the JSON take
-// over; after this the old file is generated output. A .bak that already exists is left alone.
-Dock.prototype.migrateSources = function () {
-    var text;
-    try { text = fs.readFileSync(this.inputsFile, 'utf8'); }
-    catch (e) {
-        if (e.code === 'ENOENT') return sources.defaults();
-        throw new Error('The old input labels could not be read: ' + e.message);
-    }
-    var backup = this.inputsFile + '.bak';
-    try { if (!fs.existsSync(backup)) fs.writeFileSync(backup, text); }
-    catch (e) { throw new Error('The old input labels could not be backed up: ' + e.message); }
-    return sources.migrate(text);
-};
-
 Dock.prototype.writeSources = function (state) {
     try { writeAtomic(this.sourcesFile, JSON.stringify(state, null, 2) + '\n'); }
     catch (e) { throw new Error('The source list could not be saved: ' + e.message); }
 };
 
-// What the TV reports now, or unavailable with a reason. No cache and no background polling.
+// What the TV reports, or unavailable with a reason. A read is reused for a few seconds, so a save (generate,
+// restart, status) or a burst of page polls runs the root script once; Refresh sources always reads again.
 Dock.prototype.readDetection = function () {
-    return this.execute(wrap(sources.detectionScript()), 15000).then(function (r) {
+    if (this.detection && this.now() - this.detection.at < DETECTION_CACHE_MS) return this.detection.read;
+    var read = this.execute(wrap(sources.detectionScript()), 15000).then(function (r) {
         if (!r || r.timed_out) return sources.unavailable();
         return sources.parseDetection(r.stdout || '');
     }).catch(function () { return sources.unavailable(); });
+    this.detection = {at: this.now(), read: read};
+    return read;
 };
 
 // The dock's inputs file, generated from the saved list and the TV's report. Atomic: a failed write
-// leaves the previous file and fails the start, so the dock never reads half a list.
+// leaves the previous file and fails the start, so the dock never reads half a list. A saved list that
+// cannot be read rejects like any other step, so callers holding `busy` release it.
 Dock.prototype.writeInputsFile = function (state) {
     var self = this;
-    state = state || this.sourceState();
-    return this.readDetection().then(function (detection) {
+    return Promise.resolve().then(function () {
+        if (!state) state = self.sourceState();
+        return self.readDetection();
+    }).then(function (detection) {
         var list = sources.rows(state, detection);
         var text = sources.tsv(list, path.join(self.dir, 'res', 'icons'));
         try { writeAtomic(self.inputsFile, text); }
@@ -450,7 +441,7 @@ Dock.prototype.saveSources = function (list) {
 Dock.prototype.refreshSources = function () {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
-    this.busy = true; this.lastError = null;
+    this.busy = true; this.lastError = null; this.detection = null;
     return this.writeInputsFile().then(function () {
         return self.readState().enabled ? self.restart() : self.status();
     }).catch(function (e) {

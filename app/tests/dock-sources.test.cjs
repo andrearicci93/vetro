@@ -60,26 +60,6 @@ function state(changes) {
     ])), /at least one source visible/);
     assert.throws(() => sources.normalize({version: 1, sources: empty.sources.map(row => row.slug === 'in-tv' ? Object.assign({}, row, {slug: 'in-usb'}) : row)}), /Unknown source/);
 
-    // Migration: the old file's order and custom labels survive; defaults become automatic; unknown
-    // slugs are ignored, duplicates take the first row, and a missing slot is appended.
-    const old = [
-        "# the inputs panel (Up on the dock). source:N is Samsung's input number",
-        'in-hdmi3\tPlayStation 5\tsource:15',
-        'in-tv\tFreeview\tsource:0',
-        'in-hdmi3\tSecond copy\tsource:15',
-        'in-usb\tCamcorder\tsource:99',
-        'in-hdmi2\tHDMI 2\tsource:14',
-        'in-hdmi1\tMac mini\tsource:13'
-    ].join('\n');
-    const migrated = sources.migrate(old);
-    assert.deepEqual(migrated.sources.map(row => row.slug), ['in-hdmi3', 'in-tv', 'in-hdmi2', 'in-hdmi1', 'in-hdmi4']);
-    assert.equal(migrated.sources[0].label, 'PlayStation 5');
-    assert.equal(migrated.sources[1].label, 'Freeview');
-    assert.equal(migrated.sources[2].label, null, 'the exact port default is automatic, not an override');
-    assert.equal(migrated.sources[3].label, 'Mac mini');
-    assert.equal(migrated.sources[4].label, null);
-    assert.ok(migrated.sources.every(row => row.hidden === false && row.icon === 'auto'));
-
     // Detection: the TV's own names and presence.
     const det = sources.parseDetection(DETECTION);
     assert.equal(det.available, true);
@@ -212,5 +192,5 @@ function state(changes) {
         .forEach(key => assert.ok(script.includes(key), 'reads ' + key));
     assert.ok(script.includes('##vetro##'));
 
-    console.log('PASS dock sources: defaults, validation, migration, detection, resolution, generated file');
+    console.log('PASS dock sources: defaults, validation, detection, resolution, generated file');
 })().catch(e => { console.error(e); process.exitCode = 1; });
