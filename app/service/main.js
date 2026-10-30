@@ -512,13 +512,14 @@ function runActions(actions) {
         return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
 }
-var actionQueue=Promise.resolve(), pendingActions=0, inputError=null, lastPhysical={code:null,at:0};
+var actionQueue=Promise.resolve(), pendingActions=0, inputError=null, lastPhysical={code:null,node:null,at:0};
 function handlePhysicalEvent(event){
     if(event.action!=='down'||event.decision!=='blocked')return;
-    // Several interfaces can share one remote name; the same press can arrive twice.
+    // One remote can reach the TV on two interfaces, so the same press can arrive from a
+    // second node. A repeat from the same node is a real double press and still counts.
     var now=Date.now();
-    if(lastPhysical.code===event.code&&now-lastPhysical.at<120)return;
-    lastPhysical={code:event.code,at:now};
+    if(lastPhysical.code===event.code&&lastPhysical.node!==event.node&&now-lastPhysical.at<300)return;
+    lastPhysical={code:event.code,node:event.node,at:now};
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){inputPaused=true;stopInput();inputError='input action queue exceeded';return;}
     pendingActions++;
@@ -539,25 +540,36 @@ function inputTokens(){return remapStore.rules.filter(function(r){return r.enabl
 function selectableRemotes(list){
     return (list||[]).filter(function(d){return d.selectable;});
 }
-// Start one filter helper per selected remote. A failed remote does not stop the others.
-function startFilter(devices, tokens){
-    stopInput();
-    var extra=devices.slice(1).map(function(d){var b=new PhysicalInput(agentExecute,handlePhysicalEvent);extraInputs.push(b);return {bridge:b,device:d};});
-    var first=devices.length?physical.start(devices[0].node,'filter',tokens).catch(function(e){return {error:e.message};}):Promise.resolve(null);
-    return first.then(function(){
-        return Promise.all(extra.map(function(x){return x.bridge.start(x.device.node,'filter',tokens).catch(function(e){return {error:e.message};});}));
-    }).then(function(){return inputSnapshot();});
+// Start a filter helper for each listed remote, reusing helpers that are not connected.
+// Every start begins synchronously, so a later stopInput() cancels it through the bridge
+// generation; a start issued after a stop would launch a helper nobody tracks.
+// Connected helpers keep running, and a failed remote does not stop the others.
+function fillFilter(devices, tokens){
+    var idle=[physical].concat(extraInputs).filter(function(b){return !b.status().policy.connected;});
+    var started=devices.map(function(d){
+        var b=idle.shift();
+        if(!b){b=new PhysicalInput(agentExecute,handlePhysicalEvent);extraInputs.push(b);}
+        return b.start(d.node,'filter',tokens).catch(function(e){return {error:e.message};});
+    });
+    // Helpers left idle belong to remotes that are gone.
+    idle.forEach(function(b){b.stop();});
+    extraInputs=extraInputs.filter(function(b){return idle.indexOf(b)<0;});
+    return Promise.all(started).then(function(){return inputSnapshot();});
 }
+function startFilter(devices, tokens){stopInput();return fillFilter(devices,tokens);}
 function restoreInput(){
     var preference=inputPreference();
-    if(!preference.enabled||inputPaused||inputRestoring||inputSnapshot().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
+    if(!preference.enabled||inputPaused||inputRestoring||!platform.status().agent.connected||!inputTokens().length)return;
     inputRestoring=true;
     physical.inventory().then(function(list){
         if(inputPaused||inputPreference()!==preference)return;
         var devices=selectableRemotes(list);
         if(!devices.length)throw new Error('No physical remote devices found');
-        return startFilter(devices,inputTokens());
-    }).then(function(s){if(s&&!s.policy.connected)throw new Error('Input helpers unavailable');inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
+        // Start only remotes without a connected helper: a crashed helper or a remote added after boot.
+        var live=[physical].concat(extraInputs).map(function(b){var p=b.status().policy;return p.connected&&p.node;});
+        var missing=devices.filter(function(d){return live.indexOf(d.node)<0;});
+        return missing.length?fillFilter(missing,inputTokens()):inputSnapshot();
+    }).then(function(s){if(!s)return;if(!s.policy.connected)throw new Error(s.error||'Input helpers unavailable');inputError=s.error;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
 }
 function stopInput(){inputObservers.forEach(function(b){b.stop();});inputObservers=[];extraInputs.forEach(function(b){b.stop();});extraInputs=[];physical.stop();}
 function inputSnapshot(){
@@ -605,11 +617,9 @@ function handleInput(req,res){
             }).then(function(){var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
             .catch(function(e){stopInput();serveJson(res,{ok:false,error:e.message},503);});
         }
-        if(p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         stopInput();
-        physical.start(p.device,p.mode,tokens).then(function(status){
-            if(p.mode==='filter'){saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node});inputPaused=false;}
-            serveJson(res,{ok:true,persisted:p.mode==='filter',status:inputSnapshot()});
+        physical.start(p.device,p.mode,tokens).then(function(){
+            serveJson(res,{ok:true,persisted:false,status:inputSnapshot()});
         }).catch(function(e){physical.stop();serveJson(res,{ok:false,error:e.message},503);});
     });
 }
