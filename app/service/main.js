@@ -7,6 +7,7 @@ var fs = require('fs');
 var http = require('http');
 var os = require('os');
 var MqttBridge = require('./mqtt-bridge.js').MqttBridge;
+var PluginHost = require('./plugin-host.js').PluginHost;
 var debloat = require('./debloat.js');
 var control = require('./control.js');
 var packageInfo = require('./package-info.js');
@@ -583,6 +584,7 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
 
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
+    if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson);
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res, /(?:\?|&)components=1(?:&|$)/.test(req.url || ''));
@@ -672,7 +674,10 @@ var bridge = new MqttBridge(readTelemetry,function(m){
  actionQueue=actionQueue.then(function(){return runActions(actions);}).then(function(r){bridge.event('trigger','Rule executed: '+m.topic+' · '+r.sent+' action(s)');}).catch(function(e){bridge.event('error','MQTT rule: '+e.message);}).finally(function(){pendingActions--;});
 });
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-bridge.start();
+// Shipped modules run as plugins: guarded lifecycle, own routes under /plugins/<id>/api, safe mode after a failed boot.
+var plugins = new PluginHost({dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute});
+plugins.register(require('./plugin-mqtt.js').definition(bridge));
+plugins.start();
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
