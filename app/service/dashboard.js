@@ -760,7 +760,10 @@ function openPluginPage(id){
  var p=((pluginData||{}).plugins||[]).filter(function(q){return q.id===id})[0];if(!p)return;
  pluginView=id;switchPanel('pluginview');
  $('pageTitle').textContent=p.ui.label;$('pageSubtitle').textContent=p.name+' · plugin';
- $('pluginFrame').src='/plugins/'+encodeURIComponent(id)+'/api/ui';renderPluginNav();
+ $('pluginFrame').removeAttribute('src');
+ // The page gets its own session in its URL: a sandboxed frame cannot send the dashboard's sign-in cookie.
+ api('/plugins/'+encodeURIComponent(id)+'/session',{}).then(function(d){if(pluginView===id)$('pluginFrame').src=d.path}).catch(function(e){if(pluginView===id)$('pageSubtitle').textContent=p.name+' · could not open: '+e.message});
+ renderPluginNav();
 }
 var pluginSig='',registryChecked=false;
 function loadPlugins(){var changed=true;return api('/plugins').then(function(d){if(!d||!Array.isArray(d.plugins))throw Error('Plugin list unavailable');var sig=JSON.stringify(d);changed=sig!==pluginSig||pluginError!==null;pluginSig=sig;pluginData=d;pluginError=null;renderPluginNav()}).catch(function(e){changed=pluginError!==e.message;pluginError=e.message}).finally(function(){if(changed)renderPlugins()})}

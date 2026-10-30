@@ -21,6 +21,7 @@ var API_VERSION = 1;
 var PERMISSIONS = ['exec'];
 var ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
 var RESERVED = ['install', 'resume'];
+var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
 var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
 
@@ -78,6 +79,7 @@ function PluginHost(opts) {
     this.safeMode = false;
     this.started = false;
     this.stableTimer = null;
+    this.sessions = Object.create(null);       // plugin id -> { token: expiry }, see _openSession
 }
 
 PluginHost.API_VERSION = API_VERSION;
@@ -304,7 +306,27 @@ PluginHost.prototype._fail = function (entry, e) {
     }
 };
 
+// A plugin page runs in a sandboxed frame with an opaque origin: the browser sends no cookie and no
+// dashboard sign-in key with its requests. The signed-in dashboard asks for a session instead: a random
+// token in the page's own URL (/plugins/<id>/s/<token>/api/...), so relative URLs keep working. It
+// opens that plugin's routes and nothing else, expires, and ends when the plugin is switched off.
+PluginHost.prototype._openSession = function (id) {
+    var now = Date.now(), set = this.sessions[id] || (this.sessions[id] = Object.create(null));
+    Object.keys(set).forEach(function (t) { if (set[t] < now) delete set[t]; });
+    var live = Object.keys(set);
+    if (live.length >= SESSION_MAX) delete set[live[0]];
+    var token = crypto.randomBytes(16).toString('hex');
+    set[token] = now + SESSION_MS;
+    return token;
+};
+
+PluginHost.prototype._sessionOk = function (id, token) {
+    var set = this.sessions[id];
+    return !!(set && set[token] > Date.now());
+};
+
 PluginHost.prototype._halt = function (entry) {
+    delete this.sessions[entry.def.id];
     var inst = entry.instance;
     entry.instance = null;
     try { if (inst && inst.stop) inst.stop(); } catch (e) { /* already failing */ }
@@ -478,6 +500,12 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
         }
         return true;
     }
+    if (sub === 'session') {
+        if (req.method !== 'POST') json(res, { error: 'Method not allowed' }, 405);
+        else if (!entry.instance || !entry.instance.route) json(res, { ok: false, error: 'Plugin not running' }, 409);
+        else json(res, { ok: true, path: '/plugins/' + id + '/s/' + this._openSession(id) + '/api/ui' });
+        return true;
+    }
     if (sub === 'enable' || sub === 'disable') {
         if (req.method !== 'POST') json(res, { error: 'Method not allowed' }, 405);
         else {
@@ -489,6 +517,11 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     if (sub === undefined || sub === '') {
         json(res, this.status(id));
         return true;
+    }
+    if (sub !== undefined && /^s\//.test(sub)) {
+        var scoped = /^s\/([0-9a-f]{32})\/(api(?:\/.*)?)$/.exec(sub);
+        if (!scoped || !this._sessionOk(id, scoped[1])) { json(res, { error: 'This plugin page has expired: open it again from the dashboard' }, 401); return true; }
+        sub = scoped[2];
     }
     var api = /^api(?:\/(.*))?$/.exec(sub);
     if (!api) { json(res, { error: 'Not found' }, 404); return true; }
@@ -505,6 +538,7 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     // readable by the sandboxed dashboard frame (opaque origin) through CORS.
     res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     if (req.headers && req.headers.origin === 'null') {
         res.setHeader('Access-Control-Allow-Origin', 'null');
         res.setHeader('Vary', 'Origin');

@@ -11,8 +11,8 @@ const GOOD = {version: '0.3.5', port: 8099, address: '192.168.1.42', root: {mode
 
 // screen: the /screen body (null: the service answers nothing); probeResponse: the /probe reply.
 async function run(options) {
-  const o = Object.assign({probeResponse: {ok: true, persisted: true}, screen: GOOD, failFetch: null, appVersion: '0.3.5', hangLaunch: false}, options || {});
-  const sent = [], timers = [], listeners = {}, windowListeners = {}, exits = [], launched = [];
+  const o = Object.assign({probeResponse: {ok: true, persisted: true}, screen: GOOD, failFetch: null, appVersion: '0.3.5', hangLaunch: false, pending: {code: null}}, options || {});
+  const sent = [], timers = [], intervals = [], listeners = {}, windowListeners = {}, exits = [], launched = [];
   const screen = {innerHTML: ''}, stage = {style: {}};
   function XHR() {}
   XHR.prototype.open = function (method, url) { this.method = method; this.url = url; };
@@ -23,6 +23,7 @@ async function run(options) {
       this.status = 200; this.responseText = JSON.stringify(o.probeResponse); this.onload();
     } else {
       sent.push({method: this.method, url: this.url});
+      if (/\/auth\/pending$/.test(this.url)) { this.status = 200; this.responseText = JSON.stringify(o.pending); return this.onload(); }
       if (o.screen === null) return this.onerror();
       this.status = 200; this.responseText = JSON.stringify(o.screen); this.onload();
     }
@@ -41,14 +42,14 @@ async function run(options) {
       package: {getPackagesInfo: ok => ok([{id: 'vetrotvapp', version: '0.1.0'}])},
       systeminfo: {getPropertyValue: (name, ok) => ok({model: 'TV'})}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
-    btoa: s => Buffer.from(s).toString('base64'), clearTimeout,
+    btoa: s => Buffer.from(s).toString('base64'), clearTimeout, setInterval: (f, ms) => { intervals.push({f, ms}); return intervals.length; },
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
   };
   vm.runInNewContext(script, context);   // its value is the page's run() promise, which a stuck call leaves pending
   // run() is not awaited by the page: let its promise chain settle.
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
-  return {settle, sent, timers, exits, launched, listeners, windowListeners, screen, stage, context};
+  return {settle, intervals, sent, timers, exits, launched, listeners, windowListeners, screen, stage, context};
 }
 const key = (r, keyCode) => r.listeners.keydown({keyCode});
 
@@ -70,10 +71,12 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(!/class="c (bad|warn)/.test(good.screen.innerHTML));
   assert.match(good.stage.style.transform, /^scale\(1\)$/);
 
-  // The PIN slot of 0.4.0 exists but is hidden until the service sends one.
+  // The sign-in code: the slot is hidden until a browser asks to pair, then shows the code and who asked.
   assert.ok(/id="pin" hidden/.test(good.screen.innerHTML), 'the PIN slot is reserved and hidden');
-  const pinned = await run({screen: Object.assign({}, GOOD, {pin: '4829'})});
-  assert.ok(/id="pin">PIN<b>4829<\/b>/.test(pinned.screen.innerHTML), 'a PIN sent by the service is shown');
+  assert.ok(good.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/auth/pending'), 'the screen asks the service for a pending code');
+  assert.ok(good.intervals.some(t => t.ms === 2000), 'and keeps asking');
+  const pinned = await run({pending: {code: '482913', name: 'Chrome on Mac'}});
+  assert.ok(/id="pin">PIN<b>482 913<\/b><i>Chrome on Mac<\/i>/.test(pinned.screen.innerHTML), 'a pending code is shown in groups of three, with the name');
 
   // The page stays up while the user reads; Back leaves; OK checks again; idle leaves.
   assert.equal(good.exits.length, 0);

@@ -29,8 +29,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
 .dh{display:flex;align-items:baseline}
 .dh small{font-size:22px;letter-spacing:.12em;color:var(--muted)}
-/* Reserved for the PIN of 0.4.0: stays hidden, and the card does not move, until the service sends one. */
+/* The sign-in code: hidden, and the card does not move, until a browser asks to pair. */
 .pin{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
+.pin i{display:block;margin-top:4px;font-size:20px;font-style:normal;letter-spacing:0;text-align:right;color:var(--muted)}
 .pin b{margin-left:12px;font-family:monospace;font-size:30px;letter-spacing:.2em;color:var(--text)}
 .url{margin:10px 0 8px;font-family:monospace;font-size:44px;font-weight:500;color:var(--link);white-space:nowrap}
 .url.off{color:var(--muted)}
@@ -70,6 +71,8 @@ var ICON = 'icon.png';
 var IDLE_MS = 300000;
 var report = {probe: {}, apps: [], packages: [], settings: {}};
 var delivered = false, running = false, idleTimer = null;
+// Dashboard sign-in: the service asks for a 6-digit code that only this screen shows (see service/auth.js).
+var pairing = null;
 // The service keeps running without this page; a resident page only holds memory.
 function leave() { try { tizen.application.getCurrentApplication().exit(); } catch (e) {} }
 // Every probe gets a time limit: a Tizen call whose callback never fires must not leave the screen on "Checking".
@@ -219,7 +222,7 @@ function cell(c) {
 
 var WAITING = [['Service', 'Starting'], ['Root access', 'Checking'], ['Remote input', 'Checking'], ['Launcher', 'Checking'], ['TV APIs', 'Checking'], ['Memory', 'Checking']];
 function render(d, waiting) {
-  var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = d && typeof d.pin === 'string' ? d.pin : '';
+  var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '';
   list.forEach(function (c) { if (waiting) return; if (c[0] === 'bad') bad++; else if (c[0] === 'warn') warn++; });
   if (waiting) { state = 'wait'; label = 'Checking'; sum = 'Checking'; }
   else if (!d) { state = 'bad'; label = 'Not responding'; sum = 'The service is down'; }
@@ -238,7 +241,7 @@ function render(d, waiting) {
     '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' +
     (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
     '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
-    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b></div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pairing.name : '') + '</i></div></div>' +
     '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
     '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. The address appears in a few seconds.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
     '<div class="panel ' + (bad ? 'bad' : warn ? 'warn' : '') + '"><div class="ph"><h2>Diagnostics</h2><div class="sum ' + (state === 'ok' ? '' : state) + '" id="sum">' + esc(sum) + '</div></div>' +
@@ -252,6 +255,23 @@ function fit() {
 }
 
 // ---- run ----------------------------------------------------------------------------------------------------
+// Asks the service every 2 s whether a browser is waiting to pair; only loopback may read the code.
+function showPairing(p) {
+  var was = pairing && pairing.code, el = document.getElementById('pin');
+  pairing = p && p.code ? {code: String(p.code), name: String(p.name || 'Browser')} : null;
+  if (pairing) resetIdle();                       // the screen stays open while a code is waiting
+  if (!el || (pairing && pairing.code === was) || (!pairing && !was)) return;
+  el.hidden = !pairing;
+  el.innerHTML = 'PIN<b>' + (pairing ? esc(pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3)) : '') + '</b><i>' + esc(pairing ? pairing.name : '') + '</i>';
+}
+function checkPairing() {
+  if (document.hidden) return;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', BASE + '/auth/pending', true);
+  xhr.timeout = 3000;
+  xhr.onload = function () { var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return; } showPairing(d); };
+  xhr.send();
+}
 function resetIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(leave, IDLE_MS);
@@ -282,6 +302,8 @@ document.addEventListener('keydown', function (e) {
 window.addEventListener('resize', fit);
 fit();
 resetIdle();
+checkPairing();
+setInterval(checkPairing, 2000);
 run();
 </script>
 </body>

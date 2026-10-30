@@ -27,6 +27,7 @@ assert.match(html, /f\.size>528384/, 'the file picker uses the host limit');
 assert.match(html, /It could not start: /, 'a plugin that fails to start is not reported as done');
 assert.match(html, /Could not refresh the plugins/, 'a failed refresh does not leave stale data unannounced');
 assert.match(html, /not \x27\+e\.id|not '\+e\.id/, 'the downloaded bundle must be the one the list names');
+assert.match(html, /\/session',\{\}\)\.then\(function\(d\)\{if\(pluginView===id\)\$\('pluginFrame'\)\.src=d\.path/, 'a plugin page is opened with its own session URL');
 assert.match(html, /id="pluginFrame"[^>]*sandbox="allow-scripts"/);
 console.log('plugins page: ok');
 
@@ -34,3 +35,10 @@ console.log('plugins page: ok');
 const main = require('fs').readFileSync(require('path').join(__dirname, '..', 'service', 'main.js'), 'utf8');
 assert.match(main, /\nbridge\.start\(\);\n/, 'main.js must start the MQTT bridge');
 assert.ok(!/plugin-mqtt/.test(main), 'MQTT is not a plugin');
+
+// Sign-in: a sandboxed plugin page cannot send the dashboard's cookie, so its session URL must reach the plugin host before the gate.
+const mainSrc = require('fs').readFileSync(require('path').join(__dirname, '..', 'service', 'main.js'), 'utf8');
+const scopedAt = mainSrc.indexOf("/s\\/[0-9a-f]{32}\\/api");
+const gateAt = mainSrc.indexOf('auth.gate(req, res, url');
+assert.ok(scopedAt > 0 && gateAt > 0 && scopedAt < gateAt, 'plugin session URLs are routed before the sign-in gate');
+console.log('plugin sessions: ok');

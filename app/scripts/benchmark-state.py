@@ -4,7 +4,7 @@ base=args.base
 snapshot=json.load(open(args.snapshot))
 targets=[x for x in snapshot['/apps']['apps'] if x.get('disabled')]
 def api(cmd):
- req=urllib.request.Request(base+'/exec',data=json.dumps({'cmd':cmd}).encode(),headers={'Content-Type':'application/json'})
+ req=urllib.request.Request(base+'/exec',data=json.dumps({'cmd':cmd}).encode(),headers={'Content-Type':'application/json',**({'Authorization':'Bearer '+__import__('os').environ['VETRO_TOKEN']} if __import__('os').environ.get('VETRO_TOKEN') else {})})
  with urllib.request.urlopen(req,timeout=35) as r:d=json.load(r)
  if not d.get('ok'):raise RuntimeError(str(d))
  return d

@@ -118,6 +118,32 @@ const M = { id: 'demo', name: 'Demo', version: '1', apiVersion: 1, permissions: 
     assert.equal(pre.headers['Access-Control-Allow-Origin'], 'null');
     host.setEnabled('hello', false);
 
+
+    // a plugin page has no sign-in cookie: it gets a session token in its own URL, good for that plugin only
+    host.install(hello.text);
+    host.setEnabled('hello', true);
+    out.body = null;
+    host.handle({ method: 'POST', headers: {} }, {}, '/plugins/hello/session', json, readBody);
+    assert.equal(out.code, 200);
+    const sessionPath = out.body.path;
+    assert.match(sessionPath, /^\/plugins\/hello\/s\/[0-9a-f]{32}\/api\/ui$/);
+    const page = () => { const r = { code: 0, headers: {}, setHeader(k, v) { r.headers[k] = v; }, writeHead(c) { r.code = c; }, end() {} }; return r; };
+    let pr = page(); host.handle({ method: 'GET', headers: { origin: 'null' } }, pr, sessionPath, json, readBody);
+    assert.equal(pr.code, 200, 'the token opens the plugin page');
+    assert.equal(pr.headers['Referrer-Policy'], 'no-referrer');
+    pr = page(); host.handle({ method: 'GET', headers: { origin: 'null' } }, pr, sessionPath.replace('/api/ui', '/api/count'), json, readBody);
+    assert.equal(pr.code, 200, 'relative URLs from the page resolve under the same token');
+    host.handle({ method: 'GET', headers: {} }, {}, sessionPath.replace(/\/s\/[0-9a-f]{32}/, '/s/' + '0'.repeat(32)), json, readBody);
+    assert.equal(out.code, 401, 'a wrong token is refused');
+    host.handle({ method: 'POST', headers: {} }, {}, sessionPath.replace('/api/ui', '/disable'), json, readBody);
+    assert.equal(out.code, 401, 'a token reaches api routes only, never enable/disable/remove');
+    host.handle({ method: 'GET', headers: {} }, {}, '/plugins/other/s/' + sessionPath.split('/')[4] + '/api/ui', json, readBody);
+    assert.notEqual(out.code, 200, 'a token is good for its own plugin only');
+    host.handle({ method: 'POST', headers: {} }, {}, '/plugins/broken/session', json, readBody);
+    assert.equal(out.code, 409, 'no session for a plugin that is not running');
+    host.setEnabled('hello', false);
+    host.handle({ method: 'GET', headers: {} }, {}, sessionPath, json, readBody);
+    assert.equal(out.code, 401, 'switching the plugin off ends its sessions');
     host.remove('hello');
     host.stop();
 

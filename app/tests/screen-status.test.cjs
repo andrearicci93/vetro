@@ -20,6 +20,6 @@ const bare = screen.build({version: '0.3.5', port: 8099, platform: {mode: 'app-o
 assert.equal(bare.root.connected, false);
 assert.equal(bare.launcher.running, null, 'a launcher that was not checked is unknown, not stopped');
 assert.equal(bare.memory.availableMb, null);
-assert.ok(!('pin' in bare), 'no PIN until 0.4.0 adds one');
+assert.ok(!('pin' in bare), 'the sign-in code is not part of /screen: the screen reads /auth/pending itself');
 assert.ok(Object.keys(out.launcher).every(k => ['boolean', 'number'].includes(typeof out.launcher[k]) || out.launcher[k] === null), 'no error text or log leaves the service');
 console.log('PASS TV screen status: address, memory, root, input and launcher facts, nothing else');

@@ -593,8 +593,14 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
     runActions(remap.resolve(remapStore.rules,p.type,p.value,p.payload)).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
 });}
 
+var auth = require('./auth.js');
+// The Vetro app polls /auth/pending and shows the code; open it so the code is on screen.
+function showPairingCode() { runActions([{type: 'launch', appId: 'vetrotvapp.app'}]).catch(function () {}); }
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
+    // A sandboxed plugin page carries no sign-in cookie; its URL holds a session token the plugin host checks.
+    if (/^\/plugins\/[^\/]+\/s\/[0-9a-f]{32}\/api(?:\/|$)/.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
+    if (auth.gate(req, res, url, {open: platform.status().mode === 'app-only', onPair: showPairingCode})) return;
     if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson, readBody);
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
@@ -661,7 +667,7 @@ http.createServer(function (req, res) {
     if (url === '/tv-settings') return Promise.all([tvSettings.read().catch(function(e){return {items:[],error:e.message}}),dnsFilter.status().catch(function(e){return {error:e.message}}),tvSettings.readNetwork().catch(function(e){return {configurationError:e.message,services:[],interfaces:[],writable:false}})]).then(function(d){serveJson(res,{ts:Date.now(),items:d[0].items,scope:d[0].scope,error:d[0].error||null,network:Object.assign({},d[1],d[2]),device:settings.sanitize(state.settings)});});
     if (url === '/settings') return handleSettings(req, res);
     if (url === '/remap') return handleRemap(req, res);
-    if (url === '/' || url === '/index.html') return serveHtml(res, dashboardHtml());
+    if (url === '/' || url === '/index.html') return serveHtml(res, auth.decorate(dashboardHtml()));
     serveJson(res, { error: 'not found' }, 404);
 }).listen(PORT, function () {
     console.log('VETRO listening on ' + PORT);
