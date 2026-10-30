@@ -15,7 +15,9 @@ var ADS_PATTERNS = [
     'analytics',
     'nvision-analysis',
     'contents-recognition',
-    'vision-data-recognition'
+    'vision-data-recognition',
+    'com.samsung.tv.iacr',
+    'screen-analysis'
 ];
 
 // Also worth surfacing under "privacy".

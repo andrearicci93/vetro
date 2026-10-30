@@ -104,6 +104,17 @@ function readTelemetry() {
     return out;
 }
 
+// What the TV screen shows. The launcher's pid check is the only root command, and it runs only while the launcher is on.
+function screenSummary() {
+    var launcherState = dock.readState(), p = platform.status();
+    var checkLauncher = launcherState.enabled && p.agent.connected ? dock.probe().then(function (r) { return r.running; }, function () { return null; }) : Promise.resolve(null);
+    return checkLauncher.then(function (running) {
+        return require('./screen-status.js').build({version: buildInfo.version, port: PORT, platform: p, input: inputSnapshot(),
+            launcher: {installed: dock.installed(), enabled: launcherState.enabled, running: running, failures: dock.failures, error: !!dock.lastError},
+            meminfo: tryReadRaw('/proc/meminfo'), interfaces: os.networkInterfaces()});
+    });
+}
+
 // --- HTTP routing ---------------------------------------------------------
 function serveJson(res, obj, code) {
     if (res.destroyed || res.writableEnded) return;
@@ -591,7 +602,7 @@ http.createServer(function (req, res) {
     }
     // Packaged widget documents use an opaque (null) origin. Allow only its
     // probe/status exchange, including the JSON POST preflight.
-    if ((url === '/probe' || url === '/status') && req.headers && req.headers.origin === 'null') {
+    if ((url === '/probe' || url === '/status' || url === '/screen') && req.headers && req.headers.origin === 'null') {
         res.setHeader('Access-Control-Allow-Origin', 'null');
         res.setHeader('Vary', 'Origin');
         if (req.method === 'OPTIONS') {
@@ -637,6 +648,7 @@ http.createServer(function (req, res) {
     if (url === '/telemetry') return serveJson(res, readTelemetry());
     if (url === '/leftovers') return handleLeftovers(req,res);
     if (url === '/status') return serveJson(res, Object.assign({}, platform.status(), {app: buildInfo}));
+    if (url === '/screen') return screenSummary().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/exec') return handleExecStatus(res);
     if (url === '/debloat') return handleDebloatList(req, res);
     if (url === '/mqtt') return handleMqttConfig(req, res);

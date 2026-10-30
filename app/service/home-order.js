@@ -17,7 +17,8 @@ var TERM = 'EOFC OBA';
 // Some firmwares (e.g. T-PTMDDEUC-1400.1) write the terminator without the space.
 var TERMS = ['EOFC OBA', 'EOFCOBA'];
 var MAX = 300;
-var ENTRY = /^[sd]\/[A-Za-z0-9_]+@[^\s]+$/;
+// Type part: letters, digits, "_" and "." (physical inputs use e.g. "source.layer.hdmi").
+var ENTRY = /^[sd]\/[A-Za-z0-9_.]+@[^\s]+$/;
 
 function wrap(script) { return 'echo ' + Buffer.from(script).toString('base64') + ' | base64 -d | sh'; }
 function check(r) { if (r.exit_code || r.timed_out) throw Error(r.stderr || r.stdout || 'Home order unavailable'); return r.stdout || ''; }

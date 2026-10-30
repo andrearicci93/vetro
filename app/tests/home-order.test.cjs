@@ -41,3 +41,15 @@ const runner = async function (cmd) {
     let current=FIX;const good=new Order(async cmd=>{const script=Buffer.from(cmd.split(' ')[1],'base64').toString();if(/cat .*appLayerCache/.test(script))return {exit_code:0,stdout:current};current=Buffer.from(script.match(/echo ([A-Za-z0-9+/=]+) \| base64 -d >/)[1],'base64').toString();return {exit_code:0,stdout:'OK'};}); assert.equal((await good.write(['d/webapp@bbb','s/livetv@TVPLUS','d/webapp@aaa'])).saved,true);
     console.log('PASS home-order: parse/render, strict entry validation, permutation-only write with backup');
 })().catch(function (e) { console.error(e); process.exitCode = 1; });
+
+// Physical input entry (The Frame 2024, issue #41): dots in the type part, and the EOFCOBA terminator.
+{
+    const HDMI = "1146\ns/livetv@TVPLUS\ns/source.layer.hdmi@HDMI3/0\nEOFCOBA\n";
+    const p = parse(HDMI);
+    assert.deepEqual(p.entries, ["s/livetv@TVPLUS", "s/source.layer.hdmi@HDMI3/0"]);
+    assert.equal(render(p), HDMI);
+    validate(["s/source.layer.hdmi@HDMI3/0"]);
+    for (const bad of ["s/a b@x", "s/a;b@x", "x/source.layer.hdmi@HDMI3/0", "s/source.layer.hdmi@HDMI 3", "s/a$(id)@x", "s/a/b@x", "s/a-b@x"]) {
+        assert.throws(() => validate([bad]), /Invalid/, bad);
+    }
+}
