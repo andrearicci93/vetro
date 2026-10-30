@@ -20,7 +20,7 @@ var path = require('path');
 var API_VERSION = 1;
 var PERMISSIONS = ['exec'];
 var ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
-var RESERVED = ['install', 'resume'];
+var RESERVED = ['install', 'resume', 'developer'];
 var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
 var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
@@ -74,6 +74,9 @@ function PluginHost(opts) {
     this.stableMs = opts.stableMs == null ? 60000 : opts.stableMs;
     this.registry = opts.registry || null;     // URL of the plugin list the dashboard shows
     this.external = opts.external !== false;   // load plugin folders from dir
+    // Public key of the plugin list (PEM), a different key from the one that signs Vetro updates. Without it
+    // signatures cannot be checked and installs behave as before.
+    this.registryKey = opts.registryKey || null;
     this.entries = Object.create(null);
     this.order = [];
     this.safeMode = false;
@@ -89,8 +92,9 @@ PluginHost.prototype._file = function (name) { return path.join(this.dir, name);
 PluginHost.prototype._readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this._file('plugins.json'), 'utf8'));
-        return { enabled: s && typeof s.enabled === 'object' && s.enabled || {}, suspended: !!(s && s.suspended) };
-    } catch (e) { return { enabled: {}, suspended: false }; }
+        return { enabled: s && typeof s.enabled === 'object' && s.enabled || {}, suspended: !!(s && s.suspended),
+            developer: !!(s && s.developer), trust: s && typeof s.trust === 'object' && s.trust || {} };
+    } catch (e) { return { enabled: {}, suspended: false, developer: false, trust: {} }; }
 };
 
 PluginHost.prototype._writeState = function (state) {
@@ -161,7 +165,7 @@ function rmrf(target) {
 // Text only on purpose (no binaries, no native code), small, and hashed as received.
 // expectedSha256 is optional; when given (from the plugin list) a mismatch is refused.
 // The plugin lands switched off; nothing in it runs until the user turns it on.
-PluginHost.prototype.install = function (raw, expectedSha256) {
+PluginHost.prototype.install = function (raw, expectedSha256, signature) {
     var sha = crypto.createHash('sha256').update(raw).digest('hex');
     if (expectedSha256 && String(expectedSha256).toLowerCase() !== sha) throw new Error('SHA-256 does not match the expected value');
     var b;
@@ -169,6 +173,7 @@ PluginHost.prototype.install = function (raw, expectedSha256) {
     var names = checkBundle(b), m = b.manifest, id = m.id;
     var existing = this.entries[id];
     if (existing && existing.instance) throw new Error('Switch the plugin off before updating it');
+    var trust = this._trustFor(id, m.version, sha, signature);
 
     var staging = path.join(this.dir, '.install-' + id), target = path.join(this.dir, id);
     try { fs.mkdirSync(this.dir); } catch (e) { /* exists */ }
@@ -221,7 +226,32 @@ PluginHost.prototype.install = function (raw, expectedSha256) {
         this.order.push(id);
     }
     if (at >= 0) this.order.splice(at, 0, this.order.pop());
-    return { id: id, sha256: sha, updated: !!existing, plugin: this.status(id) };
+    var after = this._readState();
+    after.trust[id] = trust;
+    this._writeState(after);
+    return { id: id, sha256: sha, updated: !!existing, trust: trust, plugin: this.status(id) };
+};
+
+// Where a bundle comes from, as far as it can be shown: 'registry' (the plugin list's key signed this exact id, version
+// and hash), 'file' (installed in Developer mode, or from a build without a list key). A signature shows that the bundle
+// is the one the list published; it says nothing about what the code does.
+function signedText(id, version, sha) { return 'vetro-plugin\n' + id + '\n' + version + '\n' + sha; }
+PluginHost.prototype._trustFor = function (id, version, sha, signature) {
+    if (signature) {
+        if (!this.registryKey) throw new Error('This build has no plugin list key, so a signature cannot be checked');
+        var ok = false;
+        try {
+            var v = crypto.createVerify('RSA-SHA256');
+            v.update(signedText(id, version, sha));
+            ok = v.verify(this.registryKey, String(signature), 'base64');
+        } catch (e) { ok = false; }
+        if (!ok) throw new Error('The signature does not match the plugin list key');
+        return 'registry';
+    }
+    if (this.registryKey && !this._readState().developer) {
+        throw new Error('This plugin is not signed by the plugin list. Switch on Developer mode to install it anyway.');
+    }
+    return 'file';
 };
 
 PluginHost.prototype.remove = function (id) {
@@ -232,6 +262,7 @@ PluginHost.prototype.remove = function (id) {
     forgetModules(path.join(this.dir, id));
     var state = this._readState();
     delete state.enabled[id];
+    delete state.trust[id];
     this._writeState(state);
     delete this.entries[id];
     this.order.splice(this.order.indexOf(id), 1);
@@ -438,7 +469,7 @@ PluginHost.prototype.status = function (id) {
     if (entry.instance && entry.instance.status) {
         detail = this._guard(entry, function () { return entry.instance.status(); }, true) || null;
     }
-    var enabled = this._readState().enabled[id];
+    var st = this._readState(), enabled = st.enabled[id];
     return {
         id: id,
         name: entry.def.name || id,
@@ -448,6 +479,7 @@ PluginHost.prototype.status = function (id) {
         author: entry.def.author || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
+        trust: st.trust[id] || 'folder',
         enabled: enabled == null ? entry.defaultEnabled : enabled,
         state: entry.state,
         errors: entry.errors,
@@ -472,7 +504,8 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     var id = m[1], sub = m[2];
     if (!id) {
         if (req.method !== 'GET') json(res, { error: 'Method not allowed' }, 405);
-        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry, plugins: this.list() });
+        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry,
+            signed: !!this.registryKey, developer: this._readState().developer, plugins: this.list() });
         return true;
     }
     if (id === 'install') {
@@ -480,9 +513,24 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
         var host = this;
         readBody(req, function (body, err) {
             if (err) return json(res, { ok: false, error: err.message }, err.statusCode || 400);
-            try { json(res, Object.assign({ ok: true }, host.install(body, req.headers && req.headers['x-vetro-sha256']))); }
+            try { json(res, Object.assign({ ok: true }, host.install(body, req.headers && req.headers['x-vetro-sha256'], req.headers && req.headers['x-vetro-signature']))); }
             catch (e) { json(res, { ok: false, error: e.message }, 400); }
         }, BUNDLE_MAX_BYTES + 4096);
+        return true;
+    }
+    if (id === 'developer') {
+        if (req.method !== 'POST' || !readBody) { json(res, { error: 'Method not allowed' }, 405); return true; }
+        var self = this;
+        readBody(req, function (body, err) {
+            if (err) return json(res, { ok: false, error: err.message }, err.statusCode || 400);
+            var p;
+            try { p = JSON.parse(body); } catch (e) { return json(res, { ok: false, error: 'Invalid JSON' }, 400); }
+            if (!p || typeof p.on !== 'boolean') return json(res, { ok: false, error: 'Send {"on": true|false}' }, 400);
+            var state = self._readState();
+            state.developer = p.on;
+            self._writeState(state);
+            json(res, { ok: true, developer: p.on });
+        });
         return true;
     }
     if (id === 'resume') {
@@ -550,4 +598,4 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     return true;
 };
 
-module.exports = { PluginHost: PluginHost, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle };
+module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle };
