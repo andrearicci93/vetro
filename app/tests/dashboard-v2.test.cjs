@@ -46,5 +46,17 @@ res.then(r => {
   assert.equal(r.head['content-type'], 'image/png');
   assert.deepEqual(r.data, fs.readFileSync(path.join(root, 'icon.png')));
   assert.deepEqual([...r.data.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'a real PNG');
+// Markup hygiene: a replaced block once left half of the old Quick settings after the new one, which then showed on every page
+{
+  const body = html.slice(html.indexOf('<body'), html.indexOf('<script>'));
+  const count = re => (body.match(re) || []).length;
+  for (const tag of ['section', 'div', 'nav', 'aside', 'main', 'header', 'footer', 'details', 'table'])
+    assert.equal(count(new RegExp('<' + tag + '\\b', 'g')), count(new RegExp('</' + tag + '>', 'g')), '<' + tag + '> tags are balanced');
+  const ids = [...body.matchAll(/ id="([^"]+)"/g)].map(m => m[1]), dup = ids.filter((id, i) => ids.indexOf(id) !== i);
+  assert.deepEqual(dup, [], 'no id appears twice');
+  // Every panel is a direct child of <main>'s page: a panel must never sit outside its own section
+  const quick = /<section id="quick">([\s\S]*?)<section id="dashboard"/.exec(body)[1];
+  assert.ok(!/quick-layout|quick-column|Keep the TV as it is/.test(quick), 'no leftover of the old two-column Quick settings');
+}
   console.log('PASS dashboard v2: design tokens, nav order, names, beta tag, Vetro icon');
 }).catch(e => { console.error(e); process.exitCode = 1; });
