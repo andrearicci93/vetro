@@ -28,9 +28,9 @@ Three themes:
 
 ## Ads and privacy: what exists, what could go further
 
-Exists in 0.4.0: stop viewing-data collection (nine services, with the brake files that survive a restart and a boot step for the others), Stop Ambient, the domain filter with the firmware's hosts and the reported ACR names, the Observe requests view, the ad and tracking categories of the Debloater, and the diagnostic export that shows what starts at boot.
+Exists in 0.4.0: stop viewing-data collection (ten services, with the brake files that survive a restart and a boot step for the others), Stop Ambient, the domain filter with the firmware's hosts and the reported ACR names, the Observe requests view, the ad and tracking categories of the Debloater, and the diagnostic export that shows what starts at boot.
 
-A scan of the strings in the Q80A firmware (all `*.samsung*` host names in programs and apps, 190 names) found **no advertising or viewing-data host that the list does not already hold**. What it did find, not on the list, and what is known about it:
+A scan of the strings in the Q80A firmware (all `*.samsung*` host names in programs and apps, about 190 names) found **no advertising or viewing-data host that the list does not already hold**. What it did find, not on the list, and what is known about it:
 
 | Host (all unverified: no traffic seen) | Where | Note |
 | --- | --- | --- |
