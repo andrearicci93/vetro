@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 internal static class SamsungTvRemoteInputAgent
@@ -24,6 +25,21 @@ internal static class SamsungTvRemoteInputAgent
     private const int OpenWriteOnly = 1;
     private const int OpenNonblock = 2048;
     private const int InterruptedSystemCall = 4;
+    private static readonly int OpenNoFollow = NoFollowFlag(RuntimeInformation.ProcessArchitecture);
+    private const int OpenCloseOnExec = 0x80000;
+    private static readonly byte[] DockToggleCommand = Encoding.ASCII.GetBytes("toggle\n");
+    private static readonly Func<bool> ToggleDock = TryToggleDock;
+
+    // Linux statx has a fixed ABI on ARM32 and x64, unlike struct stat.
+    [StructLayout(LayoutKind.Explicit, Size = 256)]
+    private struct StatxStatus
+    {
+        [FieldOffset(0)] public uint Mask;
+        [FieldOffset(28)] public ushort Mode;
+    }
+    [DllImport(Libc, SetLastError = true)]
+    private static extern int statx(int descriptor, string path, int flags, uint mask, out StatxStatus status);
+
     private const short PollIn = 1;
     private const short PollError = 8;
     private const short PollHangup = 16;
@@ -485,20 +501,8 @@ internal static class SamsungTvRemoteInputAgent
                 {
                     bool first = blocked.Contains(code.ToString())
                         || (!string.IsNullOrEmpty(key) && blocked.Contains(key));
-                    bool original;
-                    if (value == 1)
-                    {
-                        block = first;
-                        pressedBlocked[code] = block;
-                    }
-                    else if (pressedBlocked.TryGetValue(code, out original))
-                    {
-                        block = original;
-                    }
-                    else
-                    {
-                        block = first;
-                    }
+                    block = DecideBlocked(code, value, filter, first, pressedBlocked,
+                        ToggleDock);
                 }
                 if (filter
                     && !block
@@ -541,6 +545,72 @@ internal static class SamsungTvRemoteInputAgent
                 }
             }
         }
+    }
+
+    // Home is intercepted only while the enabled launcher FIFO accepts
+    // commands. Other keys keep their existing forwarding/remapping policy.
+    private static bool DecideBlocked(ushort code, int value, bool filter,
+        bool configuredBlock, Dictionary<ushort, bool> pressed, Func<bool> toggle)
+    {
+        bool original;
+        if (value != 1 && pressed.TryGetValue(code, out original)) return original;
+        bool block = configuredBlock;
+        if (value == 1 && filter && code == 63 && !configuredBlock)
+            block = toggle();
+        if (value == 1) pressed[code] = block;
+        return block;
+    }
+
+    // ARM32 overrides O_NOFOLLOW; ARM64 and x64 use asm-generic/fcntl.h.
+    private static int NoFollowFlag(Architecture architecture)
+    {
+        return architecture == Architecture.Arm ? 1 << 15 : 1 << 17;
+    }
+
+    private static bool LauncherEnabled(string stateFile)
+    {
+        try
+        {
+            if (new FileInfo(stateFile).Length > 16384) return false;
+            using (JsonDocument state = JsonDocument.Parse(File.ReadAllText(stateFile)))
+            {
+                JsonElement enabled;
+                return state.RootElement.ValueKind == JsonValueKind.Object
+                    && state.RootElement.TryGetProperty("enabled", out enabled)
+                    && enabled.ValueKind == JsonValueKind.True;
+            }
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+        catch (JsonException) { return false; }
+    }
+
+    private static bool TryToggleDock()
+    {
+        return TryToggleDock("/opt/usr/home/owner/share/vetro-dock.json",
+            "/home/owner/tvlauncher.fifo");
+    }
+
+    private static bool TryToggleDock(string stateFile, string fifo)
+    {
+        if (!LauncherEnabled(stateFile)) return false;
+        int descriptor = open(fifo, OpenWriteOnly | OpenNonblock | OpenNoFollow | OpenCloseOnExec);
+        if (descriptor < 0) return false;
+        try
+        {
+            // Validate the opened descriptor, not the pathname: no symlink or
+            // replacement-file race may turn Home into a write to a regular file.
+            StatxStatus status;
+            if (statx(descriptor, "", 0x1000 /* AT_EMPTY_PATH */, 1 /* STATX_TYPE */, out status) != 0
+                || (status.Mask & 1) == 0 || (status.Mode & 0xf000) != 0x1000 /* S_IFIFO */)
+                return false;
+            bool sent = write(descriptor, DockToggleCommand, DockToggleCommand.Length) == DockToggleCommand.Length;
+            Console.Error.WriteLine(DateTime.UtcNow.ToString("O") + " Home dock FIFO " + (sent ? "queued" : "failed; forwarding"));
+            return sent;
+        }
+        // Older TV libc/kernel versions may not implement statx. Preserve Home.
+        catch (EntryPointNotFoundException) { return false; }
+        finally { close(descriptor); }
     }
 
     private static string EventJson(

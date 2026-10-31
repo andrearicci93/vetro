@@ -156,3 +156,22 @@ People who reported problems or shared results from their TVs are credited in th
 Vetro builds on [Chris Ritsen and contributors' Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root). [Glasshouse](https://github.com/rorygallagher2024/glasshouse) inspired the TV-management concept and dashboard. [TizenBrew, TizenTube and tizen.js](https://github.com/reisxd) informed installation and runtime research; [Samsung's developer documentation](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html) documents the device workflow. The install-leftovers cleanup is ported from [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung), which is also the recommended way to install Vetro. See [third-party notices](THIRD_PARTY_NOTICES.md) for provenance and licenses.
 
 Original Vetro code is [MIT licensed](LICENSE); vendored code retains its own license. Independent, experimental software, provided as is and unaffiliated with Samsung or the projects above. Generative AI and coding agents assisted development; tests and device observations define what has been verified.
+
+### Direct physical Home interception
+
+When the Launcher is enabled and physical remote interception is active in
+Remapper, physical Home is sent directly to the launcher's command FIFO instead
+of reaching Samsung first. It uses the existing Launcher on/off setting: there
+is no extra switch or marker to create. A configured physical Home remapping takes
+priority. SmartThings and other network remotes keep the existing Home handling.
+
+This reuses the existing physical remapping filter; it does not select or grab an
+unconfigured remote automatically. If that filter is inactive, the launcher keeps
+its existing Home handling. The saved launcher state must explicitly contain
+`"enabled": true`; missing, invalid or disabled state leaves Home unchanged.
+
+If the launcher FIFO has no reader, is full, is not a FIFO, or cannot be validated,
+Home is forwarded normally. Descriptor validation uses Linux `statx` (kernel 4.11
+and libc 2.28 or newer); on systems where it is unavailable the helper forwards
+Home. FIFO write success means the command was queued, not acknowledged by the
+launcher: an unresponsive launcher that keeps its FIFO open is not detected.
