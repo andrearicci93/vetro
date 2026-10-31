@@ -6,7 +6,10 @@
 var execError = require('./exec-error.js');
 
 var FIRMWARE = /^T-[A-Z0-9]{2,12}(?:-\d{4})?-\d{1,5}\.\d{1,3}$/;
-var TIZEN = /(\d{1,2}\.\d{1,2}\.\d{1,2})/;
+// Two to four numeric parts: the platform capability gives "6.5" or "9.0", /etc/tizen-release gives "6.0.0".
+var VERSION = /^\d{1,2}\.\d{1,2}(?:\.\d{1,3}){0,2}$/;
+var TIZEN = /(\d{1,2}\.\d{1,2}(?:\.\d{1,3}){0,2})/;
+function version(v) { return typeof v === 'string' && VERSION.test(v) ? v : null; }
 
 function script() {
     return [
@@ -40,14 +43,23 @@ function read(execute) {
 // The probe values the widget posted, plus whatever the service can add. It only ever adds: it never rejects, and it
 // resolves with the probe alone once maxMs have passed, so a busy or stuck root agent cannot cost the report its
 // model and firmware. The firmware the widget posted is not replaced.
+// The Tizen version comes from the platform capability the widget posted (platformVersion) when there is one, otherwise
+// from the root read; tizenVersionSource says which, or 'unknown'. Without root only the first can exist.
+function withVersion(probe, info) {
+    var widget = version((probe || {}).platformVersion), service = info ? version(info.tizenVersion) : null;
+    return Object.assign({}, probe, {
+        tizenVersion: widget || service || null,
+        tizenVersionSource: widget ? 'widget-capability' : service ? 'service-read' : 'unknown'
+    });
+}
 function merge(probe, execute, maxMs) {
     var timer;
     var added = Promise.resolve().then(function () { return read(execute); }).then(function (info) {
-        return Object.assign({}, probe, {tizenVersion: info.tizenVersion},
+        return Object.assign(withVersion(probe, info),
             probe.firmware || !info.firmware ? {} : {firmware: info.firmware, firmwareSource: 'service-read'});
-    }).catch(function () { return probe; });
-    var late = new Promise(function (resolve) { timer = setTimeout(function () { resolve(probe); }, maxMs); });
+    }).catch(function () { return withVersion(probe, null); });
+    var late = new Promise(function (resolve) { timer = setTimeout(function () { resolve(withVersion(probe, null)); }, maxMs); });
     return Promise.race([added, late]).then(function (v) { clearTimeout(timer); return v; });
 }
 
-module.exports = {read: read, merge: merge, parse: parse, script: script};
+module.exports = {read: read, merge: merge, parse: parse, script: script, version: version};
