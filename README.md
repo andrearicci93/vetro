@@ -156,3 +156,21 @@ People who reported problems or shared results from their TVs are credited in th
 Vetro builds on [Chris Ritsen and contributors' Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root). [Glasshouse](https://github.com/rorygallagher2024/glasshouse) inspired the TV-management concept and dashboard. [TizenBrew, TizenTube and tizen.js](https://github.com/reisxd) informed installation and runtime research; [Samsung's developer documentation](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html) documents the device workflow. The install-leftovers cleanup is ported from [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung), which is also the recommended way to install Vetro. See [third-party notices](THIRD_PARTY_NOTICES.md) for provenance and licenses.
 
 Original Vetro code is [MIT licensed](LICENSE); vendored code retains its own license. Independent, experimental software, provided as is and unaffiliated with Samsung or the projects above. Generative AI and coding agents assisted development; tests and device observations define what has been verified.
+
+### HDMI sources on Home
+
+The Launcher preference **HDMI sources on Home** retains recognized HDMI tiles
+already present in the native Home row, preserving their positions. Turning it
+off filters them out; missing ports are never inserted. Native Live TV behavior
+and the physical port order on the Sources page are unchanged. New installations
+default to off; earlier generated source lists preserve their previous choice.
+The choice is changed through a switch like Fix TizenTube. It persists and rolls
+back if rebuilding the catalog fails.
+
+### HDMI source images
+
+The independent **HDMI source images** preference uses Samsung-provided artwork
+on Home and Sources. Turning it off uses packaged generic icons. Source names,
+port order and the Home filtering preference stay unchanged. Fresh installations
+default to off; existing source artwork is preserved during migration. The option
+uses the same switch, persistence and rollback as the Home filter.
