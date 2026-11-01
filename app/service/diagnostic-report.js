@@ -4,6 +4,7 @@
 var settings = require('./tv-settings.js').ITEMS;
 var buildInfo = require('./build-info.js');
 var execError = require('./exec-error.js');
+var relaunchWatch = require('./relaunch-watch.js');
 function token(v) {
     if (typeof v !== 'string' || v.length > 180 || !/^[A-Za-z0-9_./ -]+$/.test(v)) return null;
     if (/(?:\d{1,3}\.){3}\d{1,3}|(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}|https?:|\/home\/|\/opt\/usr\/|\/Users\//i.test(v)) return null;
@@ -52,10 +53,20 @@ var projectors = {
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','autorunSwitchedOff']));},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});return out;},
+    // Apps the TV starts again after Vetro stopped them: names that match the filter, ages in seconds, and a few
+    // filtered system log lines (time of day only; addresses, URLs, e-mails and paths removed).
+    relaunch:function(d){var REASONS=['app-still-running','service-still-running','menu-value-not-kept','brake-file-not-kept','other'];
+        function logLine(v){if(typeof v!=='string')return null;var c=relaunchWatch.cleanLine(v);return c&&/hbbtv|csfs/i.test(c)?c:null;}
+        return {apps:list(d.apps,20).map(token).filter(Boolean),
+            processes:list(d.processes,20).map(function(p){return {name:token((p||{}).name),ageSeconds:numeric((p||{}).ageSeconds)};}).filter(function(p){return p.name;}),
+            observations:list(d.observations,6).map(function(o){o=o||{};return {label:token(o.label),status:['running','done','unavailable','stop-failed','skipped-busy'].indexOf(o.status)>=0?o.status:null,reason:REASONS.indexOf(o.reason)>=0?o.reason:null,reads:numeric(o.reads),failedReads:numeric(o.failedReads),intervalSeconds:numeric(o.intervalSeconds),relaunched:boolean(o.relaunched),
+                targets:list(o.targets,4).map(function(t){t=t||{};return {id:token(t.id),relaunchedAfterSeconds:numeric(t.relaunchedAfterSeconds)};})};}),
+            logStatus:d.logStatus==='ok'?'ok':'unavailable',
+            log:list(d.log,40).map(logLine).filter(Boolean)};},
     serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
-var SLOW = {startup: 4};
+var SLOW = {startup: 4, relaunch: 2};
 function collect(readers, timeoutMs) {
     return Promise.all(Object.keys(projectors).map(function(name){
         if(typeof readers[name]!=='function')return {name:name,status:'unavailable',reason:'no-reader'};
@@ -64,7 +75,7 @@ function collect(readers, timeoutMs) {
             function fail(e){var f=failure(e);finish({name:name,status:'unavailable',reason:f.reason,exitCode:f.exitCode});}
             Promise.resolve().then(readers[name]).then(function(d){if(!d||d.error)throw Error('unavailable');finish({name:name,status:'ok',data:projectors[name](d)});},fail).catch(fail);
         });
-    })).then(function(results){var sections={};results.forEach(function(r){sections[r.name]={status:r.status};if(r.reason)sections[r.name].reason=r.reason;if(r.exitCode!==undefined)sections[r.name].exitCode=r.exitCode;if(r.data)sections[r.name].data=r.data;});return {format:'vetro-diagnostics',schemaVersion:1,appVersion:buildInfo.version,sourceRevision:buildInfo.sourceRevision,sourceDirty:boolean(buildInfo.sourceDirty),privacy:{policy:'allowlist-v1',excluded:['credentials','network addresses','serial numbers','device identity','hostnames','user names','custom display names','URLs','MQTT topics and payloads','command lines','raw logs and errors','viewing history','action history'],note:'Installed package IDs and current process names are included. This is a technical snapshot, not a record of watched content.'},limitations:['One snapshot; not a performance benchmark. CPU rates come from two samples taken a moment apart and may be unavailable.','Catalog entries describe firmware capabilities, not confirmed working controls.','Dependencies are declared registry links only.','Model, firmware and API probes are reported by the Vetro widget and may be out of date; see probeAgeMinutes.','Settings marked implemented have a write path in Vetro; they were not written during this export or tested on this TV.'],sections:sections};});
+    })).then(function(results){var sections={};results.forEach(function(r){sections[r.name]={status:r.status};if(r.reason)sections[r.name].reason=r.reason;if(r.exitCode!==undefined)sections[r.name].exitCode=r.exitCode;if(r.data)sections[r.name].data=r.data;});return {format:'vetro-diagnostics',schemaVersion:1,appVersion:buildInfo.version,sourceRevision:buildInfo.sourceRevision,sourceDirty:boolean(buildInfo.sourceDirty),privacy:{policy:'allowlist-v1',excluded:['credentials','network addresses','serial numbers','device identity','hostnames','user names','custom display names','URLs','MQTT topics and payloads','command lines','raw logs and errors (except a few filtered lines that mention hbbtv or csfs)','viewing history','action history'],note:'Installed package IDs and current process names are included. This is a technical snapshot, not a record of watched content.'},limitations:['One snapshot; not a performance benchmark. CPU rates come from two samples taken a moment apart and may be unavailable.','Catalog entries describe firmware capabilities, not confirmed working controls.','Dependencies are declared registry links only.','Model, firmware and API probes are reported by the Vetro widget and may be out of date; see probeAgeMinutes.','Settings marked implemented have a write path in Vetro; they were not written during this export or tested on this TV.'],sections:sections};});
 }
 // CPU and fault rates need two samples. The second only runs while the report
 // deadline still has room, so a slow TV returns the first, rate-less sample
