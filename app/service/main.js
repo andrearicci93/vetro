@@ -14,6 +14,7 @@ var platform = require('./platform.js');
 var buildInfo = require('./build-info.js');
 var apps = require('./apps.js');
 var probe = require('./probe.js');
+var PackageSizes = require('./package-sizes.js').Sizes;
 var remap = require('./remap.js');
 var settings = require('./settings.js');
 var TVSettings = require('./tv-settings.js').Store;
@@ -396,7 +397,28 @@ function handleProbe(req, res) {
 }
 
 var registryCache = null, registryAt = 0, registryPending = null;
+var packageSizes = new PackageSizes();
+function measurePackageSizes() {
+    packageSizes.measure(tizen.package);
+}
+// Sizes are optional: a service without these Tizen APIs must still start.
+try {
+    if (typeof tizen !== 'undefined' && tizen.package) {
+        measurePackageSizes();
+        tizen.package.setPackageInfoEventListener({oninstalled: measurePackageSizes, onupdated: measurePackageSizes, onuninstalled: measurePackageSizes});
+    }
+} catch (e) {}
+function withSizes(data) {
+    data.apps.forEach(function (row) {
+        var size = packageSizes.sizeOf(row.packageId);
+        if (size !== null) row.size = size;
+    });
+    return data;
+}
 function inventory(refresh) {
+    return loadInventory(refresh).then(withSizes);
+}
+function loadInventory(refresh) {
     if (!refresh && registryCache && Date.now()-registryAt<60000) return Promise.resolve(registryCache);
     if (registryPending) return registryPending;
     registryPending=AppRegistry.load(agentExecute,state).then(function(data){registryCache=data;registryAt=Date.now();return data;})

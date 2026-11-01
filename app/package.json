@@ -10,5 +10,14 @@
   },
   "engines": {
     "node": ">=12.4.0"
+  },
+  "devDependencies": {
+    "@mdn/browser-compat-data": "8.1.7",
+    "eslint": "10.13.0",
+    "eslint-plugin-compat": "7.0.2",
+    "eslint-plugin-es-x": "9.7.0"
+  },
+  "overrides": {
+    "@mdn/browser-compat-data": "$@mdn/browser-compat-data"
   }
 }

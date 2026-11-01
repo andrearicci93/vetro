@@ -98,3 +98,11 @@ Source: https://phosphoricons.com
 License: MIT. The bold glyphs in `dock/tools/glyphs/` (gear, television, HDMI
 numbers, sign-in) are used to draw the dock's Settings, Source and input icons.
 The full notice is kept in `dock/tools/glyphs/LICENSE-phosphor.txt`.
+
+## Roboto Mono
+
+Source: https://github.com/googlefonts/robotomono
+License: SIL Open Font License 1.1. Copyright 2015 The Roboto Mono Project
+Authors. `app/fonts/RobotoMono-Regular.woff` (Regular, unmodified) is the font
+of the address, PIN and support line on the TV screen; the full licence is kept
+in `app/fonts/OFL.txt` and packaged next to it.
