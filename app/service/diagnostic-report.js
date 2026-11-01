@@ -46,7 +46,7 @@ var projectors = {
     privacy:function(d){return {doNotTrack:numeric(d.doNotTrack),acr:numbers(d.acr,['recognitionStatus','reset']),hbbtv:Object.assign(numbers(d.hbbtv,['dataService']),flags(d.hbbtv,['off','appRunning'])),tvPlusConsent:boolean(d.tvPlusConsent),agreementsAvailable:boolean(d.agreementsAvailable)};},
     hbbtv:function(d){return Object.assign({value:numeric(d.value)},flags(d,['off','canRestore']));},
     // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out.
-    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,
+    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.filter(function(row){return !row.hidden;}).length:null,
         appCount:numeric((d.apps||{}).count),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return /tizentube/i.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','autorunSwitchedOff']));},

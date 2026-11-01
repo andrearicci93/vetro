@@ -6,13 +6,26 @@ const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textCon
 const calls = [];
 let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false,
     entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}]};
-const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
+// The source rows as the page rendered them, as a minimal DOM the page's Save, move and hide handlers can read back.
+let domRows = [];
+function mountRows() {
+    domRows = el('dockBody').innerHTML.split('data-source-row data-source-slug="').slice(1).map(part => {
+        const label = {value: /data-source-label value="([^"]*)"/.exec(part)[1]}, icon = {value: /<option value="(\w+)" selected>/.exec(part)[1]};
+        const hide = {checked: /data-source-hide checked/.test(part)};
+        return {dataset: {sourceSlug: part.slice(0, part.indexOf('"'))}, querySelector: sel => ({'[data-source-label]': label, '[data-source-icon]': icon, '[data-source-hide]': hide})[sel]};
+    });
+    return domRows;
+}
+const clickDock = (dataset, row) => el('dock').onclick({target: {closest: sel => sel === 'button' ? {dataset, closest: () => row} : null}});
+let failSave = null;
+const sandbox = {document: {getElementById: el, querySelectorAll: sel => sel === '#dockBody [data-source-row]' ? domRows : [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
     fetch: async (url, opts) => {
         const body = opts && opts.body ? JSON.parse(opts.body) : null;
         calls.push({url, body});
         let data = {};
         if (url === '/dock' && !body) data = dock;
         else if (url === '/dock') {
+            if (body.action === 'saveSources' && failSave) return {ok: false, json: async () => ({ok: false, error: failSave})};
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
@@ -132,5 +145,63 @@ const tick = () => new Promise(r => setImmediate(r));
     dock = Object.assign({}, dock, {installed: true, enabled: false, error: 'The launcher did not start.'});
     await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick();
     assert.match(el('dockBody').innerHTML, /The launcher did not start\./);
-    console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors');
+
+    // Sources: the five rows from /dock, the TV's name as the placeholder, and a chip only where no device is detected.
+    const SOURCE_ROWS = [
+        {slug: 'in-tv', label: 'TV', labelOverride: null, autoLabel: 'TV', source: 0, hidden: false, icon: 'tv', iconChoice: 'auto', present: true},
+        {slug: 'in-hdmi1', label: 'Mac mini', labelOverride: 'Mac mini', autoLabel: 'HDMI 1', source: 13, hidden: false, icon: 'pc', iconChoice: 'pc', present: true},
+        {slug: 'in-hdmi2', label: 'Fire TV', labelOverride: null, autoLabel: 'Fire TV', source: 14, hidden: false, icon: 'streaming', iconChoice: 'auto', present: true},
+        {slug: 'in-hdmi3', label: 'PlayStation 5', labelOverride: null, autoLabel: 'PlayStation 5', source: 15, hidden: false, icon: 'console', iconChoice: 'auto', present: true},
+        {slug: 'in-hdmi4', label: 'HDMI 4', labelOverride: null, autoLabel: 'HDMI 4', source: 16, hidden: false, icon: 'hdmi', iconChoice: 'auto', present: false}
+    ];
+    dock = Object.assign({}, dock, {error: null, enabled: true, detection: {available: true}, inputs: SOURCE_ROWS});
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick();
+    page = el('dockBody').innerHTML;
+    assert.equal(mountRows().length, 5);
+    assert.match(page, /<input data-source-label value="" placeholder="Fire TV"/, 'an automatic name is a placeholder, never a value');
+    assert.match(page, /<input data-source-label value="Mac mini" placeholder="HDMI 1"/);
+    assert.equal((page.match(/<small>Auto: /g) || []).length, 4, 'a Vetro name has no automatic-name hint');
+    assert.match(page, /<option value="pc" selected>Computer<\/option>/);
+    assert.match(page, /aria-label="Move TV up" disabled/); assert.match(page, /aria-label="Move HDMI 4 down" disabled/);
+    assert.equal((page.match(/No device detected/g) || []).length, 1);
+
+    // Moves and hides are drafts: nothing is sent, typed names survive the re-render, and the last visible row cannot be hidden.
+    const sent = () => calls.filter(c => c.url === '/dock' && c.body);
+    const before = sent().length;
+    domRows[2].querySelector('[data-source-label]').value = 'Typed';
+    await clickDock({sourceMove: '-1'}, domRows[3]);
+    assert.deepEqual(mountRows().map(r => r.dataset.sourceSlug), ['in-tv', 'in-hdmi1', 'in-hdmi3', 'in-hdmi2', 'in-hdmi4']);
+    assert.equal(domRows[3].querySelector('[data-source-label]').value, 'Typed');
+    domRows.slice(1).forEach(r => { r.querySelector('[data-source-hide]').checked = false; });
+    el('dock').onchange({target: {dataset: {sourceHide: ''}}});
+    page = el('dockBody').innerHTML;
+    assert.match(page, /data-source-hide checked disabled aria-label="Hide TV"/, 'the last visible row cannot be hidden');
+    assert.equal((page.match(/source-row source-hidden/g) || []).length, 4);
+    assert.equal(sent().length, before, 'a move or hide sends nothing');
+
+    // A failed save reports the error and keeps the typed rows; a good save sends the rows in screen order.
+    mountRows();
+    failSave = 'The inputs list could not be saved: EISDIR';
+    await clickDock({dockSaveSources: ''}); await tick(); await tick(); await tick();
+    failSave = null;
+    assert.match(sandbox.operationEntries[0].message, /EISDIR/);
+    assert.equal(sandbox.dockBusy, false);
+    assert.equal(mountRows()[3].querySelector('[data-source-label]').value, 'Typed', 'the typed rows are still on screen');
+    domRows[3].querySelector('[data-source-label]').value = '   ';
+    await clickDock({dockSaveSources: ''}); await tick(); await tick(); await tick();
+    assert.deepEqual(sent().pop().body, {action: 'saveSources', sources: [
+        {slug: 'in-tv', label: null, hidden: false, icon: 'auto'}, {slug: 'in-hdmi1', label: 'Mac mini', hidden: true, icon: 'pc'},
+        {slug: 'in-hdmi3', label: null, hidden: true, icon: 'auto'}, {slug: 'in-hdmi2', label: null, hidden: true, icon: 'auto'},
+        {slug: 'in-hdmi4', label: null, hidden: true, icon: 'auto'}]}, 'blank is automatic; hidden rows stay in the list');
+    assert.match(sandbox.operationEntries[0].message, /Source list saved; the launcher was restarted\./);
+    assert.deepEqual(mountRows().map(r => r.dataset.sourceSlug), SOURCE_ROWS.map(r => r.slug), 'after a save the page shows what the TV returned');
+
+    // Refresh is its own action; detection being unavailable is said, and no port is called empty.
+    await clickDock({dockRefreshSources: ''}); await tick(); await tick(); await tick();
+    assert.deepEqual(sent().pop().body, {action: 'refreshSources'});
+    sandbox.dockData = Object.assign({}, dock, {detection: {available: false}, inputs: SOURCE_ROWS.map(r => Object.assign({}, r, {present: null}))});
+    sandbox.renderDock();
+    assert.match(el('dockBody').innerHTML, /Source detection is unavailable/);
+    assert.doesNotMatch(el('dockBody').innerHTML, /No device detected/);
+    console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors, source list');
 })().catch(e => { console.error(e); process.exitCode = 1; });

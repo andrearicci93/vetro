@@ -14,7 +14,7 @@ using Launcher.Ui;
 //   * the process stays resident; Back/Home/idle only hide the window, so showing the dock
 //     again costs a window map instead of a dotnet cold start;
 //   * hidden, the process sleeps in the EFL main loop (no animator, no timer, no polling);
-//   * `show` / `hide` / `toggle` are read from a FIFO through an ecore fd handler.
+//   * `show` / `hide` / `toggle` / `inputs` are read from a FIFO through an ecore fd handler.
 namespace Launcher
 {
     internal static class Program
@@ -197,7 +197,7 @@ namespace Launcher
         {
             Libc.unlink(_fifoPath);
             if (Libc.mkfifo(_fifoPath, 438u) != 0) { Log("mkfifo failed: " + Marshal.GetLastWin32Error()); return; }
-            Libc.chmod(_fifoPath, 438u);   // 0666: it only accepts show/hide/toggle
+            Libc.chmod(_fifoPath, 438u);   // 0666: it only accepts show/hide/toggle/inputs
             // O_RDWR keeps a writer open ourselves, so the descriptor never reports EOF when a client disconnects.
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
@@ -552,6 +552,8 @@ namespace Launcher
                             case Command.Show: _perfWhy = "fifo-show"; ShowDock(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
                             case Command.Toggle: _perfWhy = "fifo-toggle"; if (_ctl.IsActive) HideDock(); else ShowDock(); break;
+                            // The panel opened directly, wherever the apps page's focus was left (Up from a lower pill only climbs the column).
+                            case Command.Inputs: _perfWhy = "fifo-inputs"; ShowDock(); if (_ctl == _appsCtl && _appsCtl.PanelEnabled) OpenInputs(); break;
                         }
                     }
                 }

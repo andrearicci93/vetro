@@ -1,7 +1,8 @@
 'use strict';
 
 // Rules map physical evdev codes, foreground widget keys, or HTTP/MQTT triggers
-// to native key injection and app launch through the platform adapter.
+// to native key injection, app launch, and the launcher's inputs panel through the
+// platform adapter.
 
 var MAX_RULES = 50;
 var MAX_ACTIONS = 10;
@@ -20,6 +21,7 @@ function validateAction(a) {
         if (typeof a.appId !== 'string' || !APP_RE.test(a.appId)) throw new Error('invalid appId');
         return {type: 'launch', appId: a.appId};
     }
+    if (a.type === 'inputs') return {type: 'inputs'};
     if (a.type === 'mqtt') {
         if (typeof a.topic !== 'string' || !TOPIC_RE.test(a.topic)) throw new Error('invalid topic');
         var payload = a.payload == null ? '' : String(a.payload);
