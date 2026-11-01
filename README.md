@@ -30,7 +30,7 @@ A fast, glass-style launcher on the Home key. It shows the same apps and icons a
   <br><em>The launcher as the TV draws it (captured from the Q80A, over a plain backdrop instead of the video).</em>
 </p>
 
-Turn it on in the **Launcher** tab, which also previews the bar. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
+Turn it on in the **Launcher** tab, which also previews the bar. The focused app's name appears in a small tag above the bar; press Up for the inputs panel, where a short bar under a tile marks the input in use. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
 
 <p align="center">
   <img src="app/docs/images/launcher-dashboard.jpg" alt="The Launcher tab of the dashboard: a preview of the bar, the launcher switch and the Fix TizenTube switch" width="1000">
