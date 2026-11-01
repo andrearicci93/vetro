@@ -19,7 +19,7 @@ var VIEWER = 'org.tizen.tv-viewer';
 // Fix TizenTube: TizenTube is a sideloaded app that stands in for YouTube. Samsung's own YouTube
 // (a Cobalt process) has to be closed before TizenTube starts, and the tile borrows the icon
 // Samsung's registry holds for YouTube.
-var TIZENTUBE = /TizenTube/i;
+var TIZENTUBE = /(?:TizenTube|^tUb3Xq7Lm9)/i;
 var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
 // The dock repeats this check, but the file is written here, so refuse a bad path here as well.
 function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0; }
