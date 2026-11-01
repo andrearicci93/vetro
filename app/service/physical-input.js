@@ -2,15 +2,21 @@
 // Local authenticated evdev bridge. The optional integration supplies the native
 // helper; this feature never acquires privileges or uses the LAN remote API.
 var net = require('net'), crypto = require('crypto'), path = require('path');
+// Marks Vetro's own forwarding device; must match ForwardedPhys in rooting/payload/SamsungTvRemoteInputAgent.cs.
+var FORWARDED_PHYS = 'vetro-forwarded-remote';
 function quote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function devices(text) {
     return String(text).split(/\n\s*\n/).map(function (block) {
         var n = /^N: Name="(.*)"$/m.exec(block), h = /^H: Handlers=(.*)$/m.exec(block);
         var node = h && /\bevent\d+\b/.exec(h[1]);
+        var phys = /^P: Phys=(.*)$/m.exec(block);
+        if (phys && phys[1] === FORWARDED_PHYS) {
+            return null;
+        }
         return n && node ? {name:n[1], node:'/dev/input/' + node[0]} : null;
     }).filter(Boolean).map(function (d, i, all) {
         d.unique = all.filter(function (x) {return x.name === d.name;}).length === 1;
-        d.selectable = /smart control|rc device|mcirb/i.test(d.name) && !/keyboard|mouse|panel|forwarded/i.test(d.name);
+        d.selectable = /smart control|rc device|mcirb/i.test(d.name) && !/keyboard|mouse|panel/i.test(d.name);
         return d;
     });
 }
