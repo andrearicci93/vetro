@@ -45,16 +45,14 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
+        private const double HomeDebounceSeconds = 0.50;
 
         // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
         // the key), so after each Home press the app is closed again, a few times because its start is slow.
         // Off by default; the app id is checked as plain id characters because it goes on a command line.
-        // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
-        // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
+        // One process: a single shell runs every sleep and every kill (via HomeGuard), so the dock itself spawns
+        // once per Home press instead of five times from the loop.
         private static string _guardApp, _guardCmd;
-        private const double GuardFirst = 0.15;
-        private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
         private static int _homeCode = -1;
         private static bool _learn;
         private static double _lastHome = -100;
@@ -290,6 +288,7 @@ namespace Launcher
 
         private static void ShowDock()
         {
+            if (_learn) Log("ShowDock invoked (isActive=" + _ctl.IsActive + ")");
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
@@ -302,6 +301,7 @@ namespace Launcher
 
         private static void HideDock()
         {
+            if (_learn) Log("HideDock invoked (why=" + _perfWhy + ")");
             CancelIdle();
             StopClock();
             if (_ctl.Hide()) StartAnimator();
@@ -528,7 +528,16 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
+                        if (key == "XF86Home")
+                        {
+                            double now = Efl.ecore_time_get();
+                            if (now - _lastHome < HomeDebounceSeconds)
+                            {
+                                if (_learn) Log("evas XF86Home debounced (" + (now - _lastHome).ToString("0.000") + "s < " + HomeDebounceSeconds + "s), ignoring Hide");
+                                break;
+                            }
+                            _lastHome = now;
+                        }
                         HideDock();
                         break;
                 }
@@ -602,10 +611,7 @@ namespace Launcher
         /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
         private static string GuardCommand(string appId)
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
-            var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
-            foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
-            return sb.Append(" ) >/dev/null 2>&1 &").ToString();
+            return HomeGuard.BuildCommand(appId);
         }
 
         // ------------------------------------------------------------------ launching

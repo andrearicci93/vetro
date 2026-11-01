@@ -680,7 +680,7 @@ $('quick').onclick=function(e){var b=e.target.closest?e.target.closest('button')
 // --- Launcher: a glass launcher for the Home key. The service builds its app list from Samsung's Home row. ---
 var dockData=null,dockError=null,dockBusy=false,dockConfirm=false;
 function loadDock(){return api('/dock').then(function(d){dockData=d;dockError=null}).catch(function(e){dockError=e.message}).finally(renderDock)}
-function isTizenTube(id){return String(id).toLowerCase().indexOf('tizentube')>=0}
+function isTizenTube(id){return /(?:tizentube|^tub3xq7lm9)/i.test(String(id))}
 // TizenTube is a sideloaded app. It has a tile when the launcher list has it; it is installed when the TV registry or that list has it.
 // "Not installed" is only said once the registry has been read.
 function dockHasTizenTube(d){return (d.entries||[]).some(function(e){return isTizenTube(e.appId)})}

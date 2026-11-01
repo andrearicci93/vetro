@@ -675,6 +675,16 @@ namespace Launcher.Tests
                 T.Eq(InputDevices.RemoteNodes("garbage").Count, 0, "garbage text");
             });
 
+            T.Run("input devices: smart control keyboard is recognised, mouse excluded", () =>
+            {
+                string text =
+                    "I: Bus=0005\nN: Name=\"Smart Control 2016 Keyboard\"\nH: Handlers=kbd event16\n\n" +
+                    "I: Bus=0005\nN: Name=\"Smart Control 2016 Mouse\"\nH: Handlers=mouse2 event17\n\n";
+                var nodes = InputDevices.RemoteNodes(text);
+                T.Eq(nodes.Count, 1, "keyboard added, mouse excluded");
+                T.Eq(nodes[0], "/dev/input/event16", "event16");
+            });
+
             T.Run("layout: the hint band changes the window, not where the apps pill sits", () =>
             {
                 var apps = new DockLayout(13, 1920, 1080);
@@ -1079,6 +1089,28 @@ namespace Launcher.Tests
                 for (int i = 0; i < 20000; i++) once();
                 long after = GC.GetAllocatedBytesForCurrentThread();
                 T.Eq(after - before, 0L, "bytes allocated over 20000 iterations of 30 frames (sink " + sink + ")");
+            });
+
+            T.Run("home guard: multi-target lockout includes media and sidebar, excludes quicklaunch", () =>
+            {
+                string cmd = HomeGuard.BuildCommand("com.samsung.tv.csfs");
+                T.True(cmd.Contains("app_launcher -k com.samsung.tv.csfs"), "kills csfs");
+                T.True(cmd.Contains("app_launcher -k com.samsung.tv.home.sidebar"), "kills sidebar");
+                T.True(cmd.Contains("app_launcher -k com.samsung.tv.home.media"), "kills homemedia");
+                T.True(!cmd.Contains("quicklaunch"), "preserves quicklaunch");
+                T.True(cmd.StartsWith("( sleep 0.15;"), "starts with 0.15s gap");
+                T.True(cmd.EndsWith(") >/dev/null 2>&1 &"), "forks into background");
+
+                string cmd2 = HomeGuard.BuildCommand("com.samsung.tv.home.media");
+                int firstCycleEnd = cmd2.IndexOf("; sleep 0.3;");
+                string firstCycle = cmd2.Substring(0, firstCycleEnd);
+                int count = 0, minIdx = 0;
+                while ((minIdx = firstCycle.IndexOf("com.samsung.tv.home.media", minIdx)) != -1)
+                {
+                    count++;
+                    minIdx += "com.samsung.tv.home.media".Length;
+                }
+                T.Eq(count, 1, "no duplicate kill in single cycle");
             });
 
             Console.WriteLine();

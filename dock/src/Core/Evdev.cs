@@ -113,6 +113,11 @@ namespace Launcher.Core
         {
             if (name == null || node == null) return;
             string lower = name.ToLowerInvariant();
+            if (lower.Contains("smart control"))
+            {
+                if (!lower.Contains("mouse")) into.Add(node);
+                return;
+            }
             if (Any(lower, Remote) && !Any(lower, Excluded)) into.Add(node);
         }
     }
