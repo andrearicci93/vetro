@@ -110,9 +110,9 @@ Vetro is developed and tested on a **Samsung Q80A**, and community reports confi
 | LS03B QN75LS03BAFXZA (The Frame, 2022) · [#39](https://github.com/andrearicci93/vetro/issues/39) | T-PTMAKUC-1720.7 | Reported working, the service started by itself after a cold boot; the Launcher was not tried |
 | Smart Monitor M8 LS32BM801UNXGO · [#15](https://github.com/andrearicci93/vetro/issues/15) | T-PTMWWC-1720.7 | Installed, service and root agent running; what works not reported yet |
 | Q80R QN65Q80RAFXZA (2019, Tizen 5.0) · [#35](https://github.com/andrearicci93/vetro/issues/35) | T-MSMAKUC-1500.5 | Works with **local changes**, not with the stock package: a personal port with its own launcher host, app registry paths and Node.js 16.20.2, not reviewed or merged |
-| UE43NU7090 (2018, Tizen 4) · [#2](https://github.com/andrearicci93/vetro/issues/2) | 1400.2 | Not working so far |
+| UE43NU7090 (2018, Tizen 4) · [#2](https://github.com/andrearicci93/vetro/issues/2) | 1400.2 | Service, dashboard and diagnostics reported working on Node 4.4; the root agent is not available on that runtime, so the features that need it stay off |
 
-Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. Tizen 6 or newer is what has worked with the stock package (one Tizen 5 TV works with a local port); there is no confirmed range, and firmware updates can change the result even within one model family.
+Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. Tizen 6 or newer is what has worked with the stock package (one Tizen 5 TV works with a local port); there is no confirmed range, and firmware updates can change the result even within one model family. Tizen 4 and 5.5 run the web service on Node.js 4.4: the dashboard, the app list and diagnostics can work there, but the root agent needs Node 10.12+, so anything that needs root is unavailable.
 
 **Add your TV.** Open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with your exact model and firmware, what worked or failed, and the report from **Diagnostics → Download**. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Failed attempts help too.
 
