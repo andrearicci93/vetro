@@ -6,8 +6,10 @@ var crypto = require('crypto');
 var sdb = require('./sdb.js');
 var tarGz = require('./tar.js').tarGz;
 var RootAgentServer = require('./root-agent.js').RootAgentServer;
+var TunnelServer = require('./sdb-tunnel.js').TunnelServer;
 var debloatCommands = require('./debloat-commands.js');
 var STAGE = '/home/owner/share/tmp/sdk_tools';
+var SDB_TUNNEL_PORT = Number(process.env.VETRO_SDB_TUNNEL_PORT) || 26201;
 
 var state = {
     when: new Date().toISOString(),
@@ -144,6 +146,7 @@ var secret = crypto.randomBytes(32);
 var secretB64 = secret.toString('base64');
 var agentServer = null;
 var agentConnected = false;
+var tunnelServer = null;
 var launchClient = null;   // temporary SDB connection during launch
 var launching = false;
 var relaunchTimer = null;
@@ -191,6 +194,13 @@ function startAgent() {
         state.agentPort = port;
         try { prepare(port); } catch (e) { state.prepareError = String(e.message || e); }
         relaunch();
+    });
+
+    tunnelServer = new TunnelServer({ port: SDB_TUNNEL_PORT });
+    tunnelServer.start(function (err, port) {
+        state.sdbTunnel = err
+            ? { listening: false, error: String(err.message || err) }
+            : { listening: true, port: port };
     });
 }
 
@@ -296,6 +306,9 @@ function stop() {
     if (agentServer) agentServer.close();
     agentServer = null;
     agentConnected = false;
+    if (tunnelServer) tunnelServer.close();
+    tunnelServer = null;
+    state.sdbTunnel = { listening: false };
     launching = false;
     state.agent = {connected: false};
 }
