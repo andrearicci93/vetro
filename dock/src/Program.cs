@@ -45,7 +45,7 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
+        private const double HomeDebounceSeconds = 0.50;
 
         // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
         // the key), so after each Home press the app is closed again, a few times because its start is slow.
@@ -290,6 +290,7 @@ namespace Launcher
 
         private static void ShowDock()
         {
+            if (_learn) Log("ShowDock invoked (isActive=" + _ctl.IsActive + ")");
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
@@ -302,6 +303,7 @@ namespace Launcher
 
         private static void HideDock()
         {
+            if (_learn) Log("HideDock invoked (why=" + _perfWhy + ")");
             CancelIdle();
             StopClock();
             if (_ctl.Hide()) StartAnimator();
@@ -528,7 +530,16 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
+                        if (key == "XF86Home")
+                        {
+                            double now = Efl.ecore_time_get();
+                            if (now - _lastHome < HomeDebounceSeconds)
+                            {
+                                if (_learn) Log("evas XF86Home debounced (" + (now - _lastHome).ToString("0.000") + "s < " + HomeDebounceSeconds + "s), ignoring Hide");
+                                break;
+                            }
+                            _lastHome = now;
+                        }
                         HideDock();
                         break;
                 }
@@ -603,6 +614,8 @@ namespace Launcher
         private static string GuardCommand(string appId)
         {
             string kill = "/usr/bin/app_launcher -k " + appId;
+            if (appId != "com.samsung.tv.home.sidebar") kill += "; /usr/bin/app_launcher -k com.samsung.tv.home.sidebar";
+            if (appId != "com.samsung.tv.csfs") kill += "; /usr/bin/app_launcher -k com.samsung.tv.csfs";
             var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
             foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
             return sb.Append(" ) >/dev/null 2>&1 &").ToString();
