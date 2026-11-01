@@ -25,6 +25,13 @@ var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
+// The 2022 Home (Tizen 6.5, S95B) keeps its hubs as separate apps next to csfs; left running they hold
+// about 150 MB (measured on a S95B: MemAvailable 457 -> 604 MB). The firmware does not restart them
+// by itself; Samsung Home, opened from the dock, brings them back when needed.
+var HOME_PARTS = ['com.samsung.tv.home.media', 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.art'];
+function closeHomeScript() {
+    return [HOME_APP].concat(HOME_PARTS).map(function (id) { return 'app_launcher -k ' + id + ' >/dev/null 2>&1'; }).join('; ') + '; true';
+}
 var AUTORUN_KEY = 'db/menu/smart_hub/ontvsetting/auto_start';   // Samsung's "Autorun Smart Hub"
 var HOME_CODE = 63;                                   // Home on the forwarded remote Vetro creates
 var START_WAIT_MS = 15000;
@@ -62,8 +69,9 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+            autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            hidden: s && Array.isArray(s.hidden) ? s.hidden.filter(function (id) { return typeof id === 'string' && /^[A-Za-z0-9_.-]{1,120}$/.test(id); }) : []};
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null, hidden: []}; }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -149,7 +157,7 @@ Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
-        entries: this.entries(), inputs: this.inputEntries()};
+        hidden: state.hidden, entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
     }).catch(function (e) {
@@ -188,7 +196,8 @@ Dock.prototype.stopLines = function () {
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
-    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
+    var state = this.readState();
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, hidden: state.hidden}).then(function (c) {
         try { fs.writeFileSync(self.appsFile, c.tsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -250,7 +259,7 @@ Dock.prototype.enable = function () {
     }).then(function () {
         // Samsung's Home is idle in the background; closing it frees its memory, and Settings or
         // Source opened from the dock start it again on demand.
-        return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+        return self.execute(wrap(closeHomeScript()), 12000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
@@ -315,6 +324,23 @@ Dock.prototype.setFixTizenTube = function (on) {
     });
 };
 
+// Apps left out of the launcher by choice (exact app ids). Saved with the dock state; the list is rebuilt
+// at once so the preview and, when it is on, the launcher follow.
+Dock.prototype.setHidden = function (appIds) {
+    var self = this;
+    if (!Array.isArray(appIds) || appIds.length > 200 || appIds.some(function (id) { return typeof id !== 'string' || !/^[A-Za-z0-9_.-]{1,120}$/.test(id); }))
+        return Promise.reject(new Error('Invalid app list'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState(), hidden = appIds.filter(function (id, i) { return appIds.indexOf(id) === i; });
+    try { this.patchState({hidden: hidden}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });
+    return this.refresh().catch(function (e) {
+        try { self.patchState({hidden: state.hidden}); } catch (e2) {}
+        throw e;
+    });
+};
+
 // The file behind one tile of the preview: the app's own icon when the list names one that is a
 // safe path, else the dock's packaged icon. Returns a Buffer or null.
 Dock.prototype.iconFile = function (slug) {
@@ -344,7 +370,11 @@ Dock.prototype.supervise = function (agentConnected) {
     this.busy = true;
     return this.probe().then(function (p) {
         if (p.running) { self.failures = 0; self.refreshCatalogLater(); return 'running'; }
-        return self.launch(true).then(function () { self.failures = 0; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
+        return self.launch(true).then(function () {
+            self.failures = 0; self.lastError = null; self.refreshCatalogLater();
+            // After a boot the firmware has started Samsung's Home and its hubs again: close them as enable() does.
+            return self.execute(wrap(closeHomeScript()), 12000).catch(function () {}).then(function () { return 'started'; });
+        });
     }).catch(function (e) {
         self.failures++;
         self.nextTry = self.now() + Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * Math.pow(2, Math.min(self.failures, 8) - 1));
