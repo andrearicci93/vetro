@@ -13,7 +13,7 @@ using Launcher.Ui;
 // Lifecycle (see README):
 //   * the process stays resident; Back/Home/idle only hide the window, so showing the dock
 //     again costs a window map instead of a dotnet cold start;
-//   * hidden, the process sleeps in the EFL main loop (no animator, no timer, no polling);
+//   * idle, the process sleeps in the EFL main loop; Home suppression only schedules a short burst;
 //   * `show` / `hide` / `toggle` are read from a FIFO through an ecore fd handler.
 namespace Launcher
 {
@@ -50,11 +50,13 @@ namespace Launcher
         // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
         // the key), so after each Home press the app is closed again, a few times because its start is slow.
         // Off by default; the app id is checked as plain id characters because it goes on a command line.
-        // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
-        // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
-        private static string _guardApp, _guardCmd;
-        private const double GuardFirst = 0.15;
-        private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
+        // The UI loop owns this schedule, so choosing Samsung Home can cancel it. Track each
+        // nonblocking close command until it exits before dispatching an explicit Home launch.
+        private static string _guardApp;
+        private static readonly HomeCloseGuard HomeGuard = new HomeCloseGuard();
+        private static readonly Efl.TaskCb GuardCb = OnGuard;
+        private static IntPtr _guardTimer;
+        private static Process _guardProcess;
         private static int _homeCode = -1;
         private static bool _learn;
         private static double _lastHome = -100;
@@ -594,18 +596,61 @@ namespace Launcher
 
         private static void ArmGuard()
         {
-            if (_guardCmd == null) return;
-            try { Libc.system(_guardCmd); }   // returns at once: the shell puts the whole chain in the background
-            catch (Exception ex) { Log("guard: " + ex.Message); }
+            if (_guardApp == null) return;
+            HomeGuard.Arm(Efl.ecore_time_get());
+            ScheduleGuard();
         }
 
-        /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
-        private static string GuardCommand(string appId)
+        private static void ScheduleGuard()
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
-            var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
-            foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
-            return sb.Append(" ) >/dev/null 2>&1 &").ToString();
+            if (_guardTimer != IntPtr.Zero) { Efl.ecore_timer_del(_guardTimer); _guardTimer = IntPtr.Zero; }
+            double? delay = HomeGuard.NextDelay(Efl.ecore_time_get());
+            if (delay.HasValue) _guardTimer = Efl.ecore_timer_add(delay.Value, GuardCb, IntPtr.Zero);
+        }
+
+        private static byte OnGuard(IntPtr data)
+        {
+            _guardTimer = IntPtr.Zero;
+            try
+            {
+                if (_guardProcess != null)
+                {
+                    if (!_guardProcess.HasExited) { ScheduleGuard(); return 0; }
+                    _guardProcess.Dispose();
+                    _guardProcess = null;
+                    HomeGuard.CloseFinished();
+                }
+                if (HomeGuard.TryBeginClose(Efl.ecore_time_get()))
+                {
+                    try
+                    {
+                        // exec replaces the shell, so the tracked process is the actual close
+                        // command. No detached child can survive it and close a newly opened Home.
+                        // The app id is validated at startup; no user text reaches the shell.
+                        var start = new ProcessStartInfo("/bin/sh") { UseShellExecute = false };
+                        start.ArgumentList.Add("-c");
+                        start.ArgumentList.Add("exec /usr/bin/app_launcher -k " + _guardApp + " >/dev/null 2>&1");
+                        _guardProcess = Process.Start(start);
+                        if (_guardProcess == null) throw new InvalidOperationException("Home close command did not start");
+                    }
+                    catch
+                    {
+                        HomeGuard.CloseFinished();
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // If command supervision fails, stop the burst and drop any queued launch.
+                // Never dispatch it while a close command's completion is unknown.
+                HomeGuard.Release(null);
+                HomeGuard.CloseFinished();
+                if (_guardProcess != null) { _guardProcess.Dispose(); _guardProcess = null; }
+                Log("guard: " + ex.Message);
+            }
+            ScheduleGuard();
+            return 0;
         }
 
         // ------------------------------------------------------------------ launching
@@ -696,6 +741,17 @@ namespace Launcher
         }
 
         private static void LaunchApp(AppEntry e)
+        {
+            if (_guardApp != null && e.AppId == _guardApp)
+            {
+                HomeGuard.Release(() => LaunchAppNow(e));
+                ScheduleGuard();
+                return;
+            }
+            LaunchAppNow(e);
+        }
+
+        private static void LaunchAppNow(AppEntry e)
         {
             try
             {
@@ -856,7 +912,7 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
+                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; Log("guard: " + guard + " is closed after each Home press; explicit launches cancel pending closes"); }
                     else Log("guard: bad app id ignored");
                 }
                 SetupInput(args);
