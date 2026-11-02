@@ -6,7 +6,8 @@
 //               ui: { label } (optional: a page in the dashboard sidebar while it runs) }
 //   index.js: module.exports = function (ctx) { return { start, stop, status, route } }
 //
-// Vetro's own features are not plugins. The host owns the lifecycle of the ones
+// Most of Vetro's own features are not plugins yet; the launcher is the first bundled one (bundled: true, see
+// docs/PLUGIN-ARCHITECTURE.md). The host owns the lifecycle of the ones
 // that are added and keeps a failing plugin from taking Vetro down:
 // every call into a plugin is guarded, a plugin that keeps failing is switched
 // off, and a start that never completes makes the next boot come up in safe mode.
@@ -77,6 +78,7 @@ function PluginHost(opts) {
     // Public key of the plugin list (PEM), a different key from the one that signs Vetro updates. Without it
     // signatures cannot be checked and installs behave as before.
     this.registryKey = opts.registryKey || null;
+    this.services = opts.services || {};        // what Vetro lends to bundled plugins only (ctx.vetro)
     this.entries = Object.create(null);
     this.order = [];
     this.safeMode = false;
@@ -172,6 +174,7 @@ PluginHost.prototype.install = function (raw, expectedSha256, signature) {
     try { b = JSON.parse(raw); } catch (e) { throw new Error('Not a plugin bundle (invalid JSON)'); }
     var names = checkBundle(b), m = b.manifest, id = m.id;
     var existing = this.entries[id];
+    if (existing && existing.def.bundled) throw new Error(id + ' is part of Vetro and cannot be replaced by a bundle');
     if (existing && existing.instance) throw new Error('Switch the plugin off before updating it');
     var trust = this._trustFor(id, m.version, sha, signature);
 
@@ -257,6 +260,7 @@ PluginHost.prototype._trustFor = function (id, version, sha, signature) {
 PluginHost.prototype.remove = function (id) {
     var entry = this.entries[id];
     if (!entry) throw new Error('Unknown plugin');
+    if (entry.def.bundled) throw new Error(id + ' is part of Vetro and cannot be removed');
     if (entry.instance) throw new Error('Switch the plugin off before removing it');
     rmrf(path.join(this.dir, id));
     forgetModules(path.join(this.dir, id));
@@ -282,9 +286,10 @@ PluginHost.prototype.register = function (def) {
     if (def.ui != null && (typeof def.ui.label !== 'string' || !def.ui.label || def.ui.label.length > 24)) {
         throw new Error(def.id + ': ui.label must be 1-24 characters');
     }
+    // A bundled plugin ships in the Vetro package: on unless its definition says otherwise.
     this.entries[def.id] = {
         def: def, instance: null, state: 'stopped', errors: 0, lastError: null,
-        defaultEnabled: def.defaultEnabled === true
+        defaultEnabled: def.bundled === true ? def.defaultEnabled !== false : def.defaultEnabled === true
     };
     this.order.push(def.id);
     return this;
@@ -294,7 +299,7 @@ PluginHost.prototype.register = function (def) {
 PluginHost.prototype._context = function (entry) {
     var host = this, id = entry.def.id, dir = path.join(this.dir, id);
     var allowed = (entry.def.permissions || []).indexOf('exec') >= 0 && host.execute;
-    return {
+    var ctx = {
         id: id,
         dir: dir,
         config: {
@@ -314,6 +319,9 @@ PluginHost.prototype._context = function (entry) {
             return host.execute(cmd, timeout);
         }
     };
+    // Services of the shell are lent to the plugins that ship with Vetro, not to third parties (docs/PLUGIN-ARCHITECTURE.md).
+    if (entry.def.bundled) ctx.vetro = host.services;
+    return ctx;
 };
 
 // Runs fn(instance) and turns a throw into a counted failure instead of a crash.
@@ -331,7 +339,8 @@ PluginHost.prototype._guard = function (entry, fn, diagnostic) {
 PluginHost.prototype._fail = function (entry, e) {
     entry.errors++;
     entry.lastError = String(e && e.message || e);
-    if (entry.errors >= this.maxErrors && entry.state !== 'failed') {
+    // A bundled plugin is counted but never switched off: it has no switch on the Plugins page to turn it back on.
+    if (entry.errors >= this.maxErrors && entry.state !== 'failed' && !entry.def.bundled) {
         this._halt(entry);
         entry.state = 'failed';
     }
@@ -395,6 +404,8 @@ PluginHost.prototype.start = function () {
         if (this.external) this._loadExternal();      // metadata only: nothing of the plugins runs
         for (var s = 0; s < this.order.length; s++) {
             var held = this.entries[this.order[s]];
+            // Safe mode protects against code nobody checked. A bundled plugin is Vetro's own and keeps running.
+            if (held.def.bundled) { if (state.enabled[held.def.id] !== false) this._startEntry(held); continue; }
             if (held.state !== 'invalid') held.state = 'suspended';
         }
         return this.list();
@@ -435,6 +446,7 @@ PluginHost.prototype.setEnabled = function (id, on) {
     var entry = this.entries[id];
     if (!entry) throw new Error('Unknown plugin');
     if (entry.state === 'invalid') throw new Error('Plugin is invalid: ' + entry.lastError);
+    if (entry.def.bundled && !on) throw new Error(id + ' is part of Vetro: use its own switch');
     var state = this._readState();
     state.enabled[id] = !!on;
     this._writeState(state);
@@ -479,7 +491,8 @@ PluginHost.prototype.status = function (id) {
         author: entry.def.author || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
-        trust: st.trust[id] || 'folder',
+        bundled: !!entry.def.bundled,
+        trust: entry.def.bundled ? 'bundled' : st.trust[id] || 'folder',
         enabled: enabled == null ? entry.defaultEnabled : enabled,
         state: entry.state,
         errors: entry.errors,
@@ -494,6 +507,24 @@ PluginHost.prototype.list = function () {
     return out;
 };
 
+// Calls a plugin's route on behalf of Vetro itself, for the old URLs that bundled plugins keep answering (/dock, ...).
+// Not a plugin page: no sandbox headers. If the plugin is not running the caller gets 503 and the reason.
+PluginHost.prototype.dispatch = function (id, req, res, sub, json) {
+    var entry = this.entries[id];
+    if (!entry || !entry.def.bundled) { json(res, { error: 'Unknown bundled plugin' }, 404); return true; }
+    if (!entry.instance || !entry.instance.route) {
+        json(res, { error: entry.def.name + ' is not running' + (entry.lastError ? ': ' + entry.lastError : '') }, 503);
+        return true;
+    }
+    var handled = false;
+    this._guard(entry, function () { handled = entry.instance.route(req, res, sub) !== false; });
+    if (!handled && !res.headersSent) {
+        if (entry.errors) json(res, { error: entry.def.name + ' failed: ' + entry.lastError }, 500);
+        else json(res, { error: 'Not found' }, 404);
+    }
+    return true;
+};
+
 // Plugin routes live under /plugins/<id>/api/...; the host keeps
 // /plugins, /plugins/resume and /plugins/<id>/(enable|disable) for itself, so a
 // plugin cannot shadow a Vetro route or another plugin's.
@@ -504,8 +535,12 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     var id = m[1], sub = m[2];
     if (!id) {
         if (req.method !== 'GET') json(res, { error: 'Method not allowed' }, 405);
-        else json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry,
-            signed: !!this.registryKey, developer: this._readState().developer, plugins: this.list() });
+        else {
+            var all = this.list();      // once: every status() call counts an error from a plugin whose status() throws
+            json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry,
+                signed: !!this.registryKey, developer: this._readState().developer,
+                plugins: all.filter(function (p) { return !p.bundled; }), bundled: all.filter(function (p) { return p.bundled; }) });
+        }
         return true;
     }
     if (id === 'install') {

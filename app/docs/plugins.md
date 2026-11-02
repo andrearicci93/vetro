@@ -6,7 +6,9 @@
 > not audited: that does not guarantee they work, are safe or stay unchanged, and the author of Vetro
 > takes no responsibility for what a plugin does. Install only plugins you trust.
 
-Vetro's own features (Home Assistant, launcher, …) are not plugins. Plugins are add-ons.
+Vetro's own features (Home Assistant, remapper, …) are not plugins. The **launcher** is the first one that is: a *bundled* plugin
+that ships in the Vetro package (see [PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md)). It is not listed with the add-ons
+below, cannot be removed, and keeps running in safe mode. Plugins in the list are add-ons.
 
 - [Use plugins](#use-plugins) · [Write a plugin](#write-a-plugin) · [Publish on GitHub](#publish-on-github)
 - [Reference](#reference) · [What the host guarantees](#what-the-host-guarantees) · [Troubleshooting](#troubleshooting)
