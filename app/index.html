@@ -196,9 +196,14 @@ var ICONS = {
 };
 function esc(v) { return String(v).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
 function probeOk(name) { return !!(report.probe[name] && report.probe[name].ok); }
-// Steps that ran out of time, or were skipped because the whole check did.
+// Steps that ran out of time, or were skipped because the whole check did. A slow service start does not count once the
+// service has answered: on some TVs the start call never reports back although the service runs.
 function slowSteps() {
-  return Object.keys(report.probe).filter(function (k) { var p = report.probe[k]; return p && !p.ok && /^(no answer|skipped)/.test(String(p.error || '')); });
+  return Object.keys(report.probe).filter(function (k) {
+    var p = report.probe[k];
+    if (k === 'serviceLaunch' && probeOk('serviceReach')) return false;
+    return p && !p.ok && /^(no answer|skipped)/.test(String(p.error || ''));
+  });
 }
 // Why the service is down, for the support line: what the start and the reach steps said (#2).
 function svcWhy() {
@@ -245,7 +250,8 @@ function checks(d) {
   slow = slowSteps();
   slowHint = slow.length ? 'No answer in time: ' + esc(slow.map(function (k) { return LABELS[k] || k; }).join(', ')) + '.' : '';
   if (apiMissing.length) api = ['warn', 'TV APIs', 'Limited', 'Not available: ' + esc(apiMissing.join(', ')) + '.' + (slowHint ? ' ' + slowHint : ''), 'API ' + apiMissing.join('/') + (slow.length ? ' SLOW ' + slow.join('/') : ''), 'warn'];
-  else if (slow.length) api = ['warn', 'TV APIs', 'Slow', slowHint, 'API SLOW ' + slow.join('/'), 'warn'];
+  // A slow step whose answer Vetro does not need is named, without turning a healthy TV into a warning.
+  else if (slow.length) api = ['ok', 'TV APIs', 'Available', 'slow: ' + esc(slow.map(function (k) { return LABELS[k] || k; }).join(', ')), 'api ok, slow ' + slow.join('/')];
   else api = ['ok', 'TV APIs', 'Available', report.probe.packages ? null : 'package list: reading', 'api ok'];
   out.push(api);
   mem = d && d.memory && d.memory.availableMb;

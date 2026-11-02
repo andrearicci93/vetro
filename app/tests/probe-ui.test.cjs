@@ -40,7 +40,7 @@ async function run(options) {
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]),
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
       package: {getPackagesInfo: ok => { if (!o.hangPackages) ok([{id: 'vetrotvapp', version: '0.1.0'}]); }},
-      systeminfo: {getPropertyValue: (name, ok) => ok({model: 'TV'})}
+      systeminfo: {getPropertyValue: (name, ok) => { if (!o.hangBuild) ok({model: 'TV'}); }}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
     btoa: s => Buffer.from(s).toString('base64'), clearTimeout, clearInterval: () => {}, setInterval: (f, ms) => { intervals.push({f, ms}); return intervals.length; },
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
@@ -181,6 +181,15 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(/no answer/.test(report.probe.serviceLaunch.error));
   assert.equal(report.probe.serviceReach.ok, true, 'the probes after the stuck one still run');
   assert.ok(!hung.screen.innerHTML.includes('Checking'), 'the screen leaves the waiting state');
+  assert.ok(hung.screen.innerHTML.includes('Running in the background'), 'a start call that never reports back does not matter once the service answers');
+  assert.ok(!/slow serviceLaunch|SLOW serviceLaunch/.test(hung.screen.innerHTML));
+  // A slow step Vetro does not need is named, but the TV stays green.
+  const build = await run({hangBuild: true});
+  build.timers.filter(t => t.ms === 8000).pop().f();
+  await build.settle();
+  assert.ok(build.screen.innerHTML.includes('Running in the background'));
+  assert.ok(build.screen.innerHTML.includes('slow: System info'));
+  assert.ok(build.screen.innerHTML.includes('api ok, slow systeminfoBattery'));
   // While the checks run the screen says what it is doing: placeholders for each check, a turning ring, a step counter.
   const waiting = await run({hangLaunch: true});
   assert.ok(waiting.screen.innerHTML.includes('class="c wait"'), 'one placeholder per check while waiting');
