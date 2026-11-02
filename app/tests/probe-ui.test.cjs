@@ -39,10 +39,10 @@ async function run(options) {
       tvinputdevice: {getSupportedKeys: () => [{name: 'VolumeUp'}]},
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]),
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
-      package: {getPackagesInfo: ok => ok([{id: 'vetrotvapp', version: '0.1.0'}])},
+      package: {getPackagesInfo: ok => { if (!o.hangPackages) ok([{id: 'vetrotvapp', version: '0.1.0'}]); }},
       systeminfo: {getPropertyValue: (name, ok) => ok({model: 'TV'})}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
-    btoa: s => Buffer.from(s).toString('base64'), clearTimeout, setInterval: (f, ms) => { intervals.push({f, ms}); return intervals.length; },
+    btoa: s => Buffer.from(s).toString('base64'), clearTimeout, clearInterval: () => {}, setInterval: (f, ms) => { intervals.push({f, ms}); return intervals.length; },
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
   };
   vm.runInNewContext(script, context);   // its value is the page's run() promise, which a stuck call leaves pending
@@ -86,10 +86,23 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   // Healthy TV: the probe report is still sent, and the screen says so.
   const good = await run();
   const posts = good.sent.filter(s => s.method === 'POST');
-  assert.equal(posts.length, 1, 'widget must still POST its collected report');
-  assert.equal(posts[0].url, 'http://127.0.0.1:8099/probe');
-  assert.equal(posts[0].body.apps[0].id, 'vetrotvapp.app');
-  assert.equal(posts[0].body.probe.serviceReach.ok, true);
+  // #101: a first report right after the service answers, one per later step, the verdict one, one with the package list
+  assert.equal(posts.length, 5, 'widget must still POST its collected report');
+  assert.ok(posts.every(p => p.url === 'http://127.0.0.1:8099/probe'));
+  assert.equal(posts[0].body.settings.model, 'QE55Q80A', 'the first report already names the TV');
+  assert.equal(posts[0].body.progress.partial, true);
+  assert.equal(posts[0].body.progress.done, 6);
+  assert.equal(posts[0].body.progress.of, 9);
+  assert.equal(posts[0].body.progress.next, 'remoteApi8001', 'a report left behind says which step came next');
+  assert.equal(posts[0].body.probe.apps, undefined, 'the app list is not read yet');
+  const verdict = posts.find(p => p.body.progress.partial === false).body;
+  assert.equal(verdict.apps[0].id, 'vetrotvapp.app');
+  assert.equal(verdict.probe.serviceReach.ok, true);
+  assert.equal(verdict.probe.packages, undefined, 'the package list is read after the verdict');
+  assert.equal(verdict.progress.done, 9);
+  const last = posts[posts.length - 1].body;
+  assert.equal(last.probe.packages.ok, true);
+  assert.equal(last.packages[0].id, 'vetrotvapp', 'the package list goes out once it is read');
   assert.deepEqual(good.launched, ['vetrotvapp.svc'], 'the page starts the background service itself');
   assert.ok(good.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/screen'));
   assert.ok(good.screen.innerHTML.includes('Running in the background'));
@@ -114,7 +127,7 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(good.timers.some(t => t.ms === 300000), 'an idle screen closes itself');
   key(good, 13);
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
-  assert.equal(good.sent.filter(s => s.method === 'POST').length, 2, 'OK runs the checks again');
+  assert.equal(good.sent.filter(s => s.method === 'POST').length, 10, 'OK runs the checks again (five reports each time)');
   key(good, 10009);
   assert.equal(good.exits.length, 1, 'Back closes the screen');
   const idle = good.timers.filter(t => t.ms === 300000).pop();
@@ -173,6 +186,35 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(waiting.screen.innerHTML.includes('class="c wait"'), 'one placeholder per check while waiting');
   assert.ok(waiting.screen.innerHTML.includes('Root access'));
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
+  assert.ok(waiting.screen.innerHTML.includes('1&ndash;2 minutes: please do not close this screen'), 'the wait is announced');
+  assert.equal(waiting.screen.textContent, 'Checking 1 of 9 \u00b7 Starting the service \u00b7 0 s', 'the step, its name and its seconds');
+  assert.ok(waiting.intervals.some(t => t.ms === 1000), 'the seconds tick');
+  assert.ok(!waiting.screen.innerHTML.includes('<i>OK</i>'), 'no OK key while OK does nothing (#104)');
+  assert.ok(good.screen.innerHTML.includes('<i>OK</i>Check again'), 'and back once the checks are done');
+  // A step stuck past the total limit: the screen gives its verdict anyway, and says which steps did not answer.
+  const capped = await run({hangLaunch: true});
+  capped.timers.find(t => t.ms === 100000).f();
+  await capped.settle();
+  const cappedReport = capped.sent.find(s => s.method === 'POST' && s.body.progress.partial === false).body;
+  assert.ok(/^skipped/.test(cappedReport.probe.serviceLaunch.error));
+  assert.equal(cappedReport.progress.done, 0);
+  assert.ok(!capped.screen.innerHTML.includes('class="c wait"'), 'the verdict is drawn');
+  assert.ok(capped.screen.innerHTML.includes('No answer in time: Starting the service'), 'the stuck step is named');
+  assert.ok(capped.screen.innerHTML.includes('SLOW serviceLaunch'), 'and in the support line');
+  // The service never answers: no early report (it would fail), and the reason is in the support line (#2).
+  const unreachable = await run({screen: null, failFetch: {n: 99}});
+  assert.equal(unreachable.sent.filter(s => s.method === 'POST').length, 2, 'only the verdict report and the package one are tried');
+  assert.ok(unreachable.screen.innerHTML.includes('SVC DOWN (reach: refused)'));
+  // The package list is slow: the verdict does not wait for it, then it is drawn when it times out.
+  const pk = await run({hangPackages: true});
+  assert.ok(pk.screen.innerHTML.includes('Running in the background'), 'the verdict is there before the package list');
+  assert.ok(pk.screen.innerHTML.includes('package list: reading'));
+  pk.timers.find(t => t.ms === 30000).f();
+  await pk.settle();
+  assert.ok(pk.screen.innerHTML.includes('Not available: packages. No answer in time: Package list.'));
+  assert.ok(pk.screen.innerHTML.includes('API packages SLOW packages'));
+  const pkLast = pk.sent.filter(s => s.method === 'POST').pop().body;
+  assert.ok(/^no answer in 30 s/.test(pkLast.probe.packages.error), 'the report says so too');
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
   console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');

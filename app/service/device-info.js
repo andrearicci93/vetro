@@ -52,14 +52,49 @@ function withVersion(probe, info) {
         tizenVersionSource: widget ? 'widget-capability' : service ? 'service-read' : 'unknown'
     });
 }
-function merge(probe, execute, maxMs) {
+// The commercial model, from the TV's own remote-control API on 127.0.0.1:8001 (/api/v2/). It answers without root and
+// without the widget, so a report taken after the Vetro screen was closed early still names the TV (#101). That answer
+// also carries ids and addresses: only the model name is kept, and only if it looks like one.
+var MODEL = /^[A-Z0-9][A-Z0-9_-]{3,40}$/;
+var API_URL = 'http://127.0.0.1:8001/api/v2/';
+function parseApi(text) {
+    var d;
+    try { d = JSON.parse(String(text || '')); } catch (e) { return {modelName: null}; }
+    var name = d && d.device && d.device.modelName;
+    return {modelName: typeof name === 'string' && MODEL.test(name) ? name : null};
+}
+// A small GET with a time limit and a size cap. ES5 and the http module only, for the Node 4.4 TVs.
+function httpGet(url, ms) {
+    return new Promise(function (resolve, reject) {
+        var body = '', req = require('http').get(url, function (res) {
+            res.setEncoding('utf8');
+            res.on('data', function (c) { body += c; if (body.length > 65536) { req.abort(); reject(new Error('answer too large')); } });
+            res.on('end', function () { resolve(body); });
+        });
+        req.setTimeout(ms, function () { req.abort(); reject(new Error('timeout')); });
+        req.on('error', reject);
+    });
+}
+function readApi(get) { return get(API_URL, 3000).then(parseApi); }
+
+// Gives up with the fallback after ms; never rejects.
+function bounded(promise, ms, fallback) {
     var timer;
-    var added = Promise.resolve().then(function () { return read(execute); }).then(function (info) {
-        return Object.assign(withVersion(probe, info),
-            probe.firmware || !info.firmware ? {} : {firmware: info.firmware, firmwareSource: 'service-read'});
-    }).catch(function () { return withVersion(probe, null); });
-    var late = new Promise(function (resolve) { timer = setTimeout(function () { resolve(withVersion(probe, null)); }, maxMs); });
-    return Promise.race([added, late]).then(function (v) { clearTimeout(timer); return v; });
+    var late = new Promise(function (resolve) { timer = setTimeout(function () { resolve(fallback); }, ms); });
+    return Promise.race([promise.catch(function () { return fallback; }), late]).then(function (v) { clearTimeout(timer); return v; });
+}
+// The model from the API is added only when the widget posted none; modelSource says where it came from.
+function merge(probe, execute, maxMs, get) {
+    probe = probe || {};
+    var root = bounded(Promise.resolve().then(function () { return read(execute); }), maxMs, null);
+    var api = typeof get === 'function' && !probe.realModel && !probe.model
+        ? bounded(Promise.resolve().then(function () { return readApi(get); }), maxMs, null) : Promise.resolve(null);
+    return Promise.all([root, api]).then(function (r) {
+        var info = r[0], out = withVersion(probe, info);
+        if (info && info.firmware && !probe.firmware) { out.firmware = info.firmware; out.firmwareSource = 'service-read'; }
+        if (r[1] && r[1].modelName) { out.realModel = r[1].modelName; out.modelSource = 'service-api'; }
+        return out;
+    });
 }
 
-module.exports = {read: read, merge: merge, parse: parse, script: script, version: version};
+module.exports = {read: read, merge: merge, parse: parse, script: script, version: version, parseApi: parseApi, httpGet: httpGet, API_URL: API_URL};
