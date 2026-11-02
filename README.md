@@ -60,6 +60,8 @@ Each switch shows *Done* or *Partly done*, so you can see what actually changed.
 
 Quick settings and Task manager share the same inventory: disable an assistant in one and its components show up as disabled in the other. Disabling a component keeps it installed and can be reversed; stopping ends the running process; uninstalling needs an installer to recover. Descriptions come from the Q80A's firmware, so on other models some packages are unclassified and left alone.
 
+**Uninstalling:** *Quick settings, Maintenance, Restore the TV* shows what Vetro changed and puts it all back after one confirmation; *Remove Vetro* can then delete Vetro's saved data and explains how to delete the app (from the TV's Apps screen, or with Apps2Samsung). [Steps →](app/docs/INSTALLATION.md#uninstalling)
+
 ## Remapper
 
 Do what you want with the remote. Press a button, choose an app, and the button opens it. Shortcuts survive restarts, and a key can also trigger an MQTT message for Home Assistant.

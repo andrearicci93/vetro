@@ -142,6 +142,20 @@ Good to know:
 - To test it: fully power off the TV, unplug it for 30 seconds, turn it on, and open `/status` and `/monitor?scope=summary` without opening Vetro. Check for a new boot, a running service and an authenticated UID-0 agent. Keep boot identifiers private. Standby is not a cold boot.
 - See the [release audit](RELEASE-AUDIT.md) for current results.
 
+## Uninstalling
+
+Vetro changes the TV in several places (it can replace Home, stop services, disable components, block domains), and a plain uninstall leaves some of that behind: the domain filter keeps hiding names from `/etc/hosts` and the saved settings stay in the share folder. So restore first, then remove the app.
+
+1. **Restore the TV.** Open the dashboard, *Quick settings*, *Maintenance*, **Restore the TV**. Press *Review what will change* to see the list, then *Restore everything*. Nothing changes before you confirm. The report says what it could not put back (packages removed from the Task manager, values written in the TV settings pages).
+2. **Optional: remove Vetro's saved data.** In **Remove Vetro**, *Remove Vetro's saved data*. It is offered only when nothing is left to put back, because those files hold the values used to restore. A package uninstall does not remove them.
+3. **Restart the TV.** This clears temporary changes and reloads Home.
+4. **Remove the app on the TV.** Open *Apps*, go to the settings icon of the Apps screen, select Vetro and choose *Delete*. Menu names vary by model and year.
+5. **Or with Apps2Samsung.** Its desktop and Android apps list the installed apps and can remove them; use it if the TV menu does not offer Delete. Its command-line tool documents no uninstall. This route has been used less than the TV menu.
+6. **Developer Mode.** If you turned it on only for Vetro, switch it off, or set *Host PC IP* back, in the same Apps screen.
+7. **Home Assistant.** If you used the bridge, delete the TV device there; its entities stay until you do.
+
+Vetro cannot remove itself: its own package is protected from the Task manager on purpose.
+
 ## If the dashboard says the root agent is not connected
 
 Open `http://TV_IP:8099/status` in a browser and read these fields:

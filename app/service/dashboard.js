@@ -194,6 +194,7 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .quick-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s4);align-items:start}
 .quick-column{display:grid;gap:var(--s4)}
 .quick-group{padding:var(--s2) var(--s5)}
+.quick-group ol.steps{margin:var(--s2) 0 var(--s3);padding-left:var(--s5)}.quick-group ol.steps li{margin:0 0 var(--s2);line-height:1.5}
 .quick-group>h2{padding:var(--s4) 0 var(--s1)}
 .quick-group>.quick-callout{margin:var(--s2) 0}
 .quick-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s4);padding:var(--s4) 0}
@@ -294,7 +295,7 @@ dd{margin:0;overflow-wrap:anywhere}
 <div id="quickPanel-privacy" class="stack" role="tabpanel" aria-labelledby="qtab-privacy"><section class="quick-group" aria-labelledby="quickTrackingTitle"><h2 id="quickTrackingTitle">Advertising and tracking</h2><div id="quickTracking"></div></section></div>
 <div id="quickPanel-voice" class="stack" role="tabpanel" aria-labelledby="qtab-voice" hidden><section class="quick-group" aria-labelledby="quickVoiceTitle"><h2 id="quickVoiceTitle">Voice assistants</h2><p class="quick-callout">Disabling one also turns off the remote’s microphone button and voice control.</p><div id="quickVoice"></div></section></div>
 <div id="quickPanel-memory" class="stack" role="tabpanel" aria-labelledby="qtab-memory" hidden><section class="quick-group" aria-labelledby="quickMemoryTitle"><h2 id="quickMemoryTitle">Free memory</h2><div id="quickMemory"><p class="section-note">Reading the TV…</p></div></section></div>
-<div id="quickPanel-maintenance" class="stack" role="tabpanel" aria-labelledby="qtab-maintenance" hidden><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 id="quickStorageTitle">Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickControlTitle"><h2 id="quickControlTitle">Firmware updates</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div></section></div></section>
+<div id="quickPanel-maintenance" class="stack" role="tabpanel" aria-labelledby="qtab-maintenance" hidden><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 id="quickStorageTitle">Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickControlTitle"><h2 id="quickControlTitle">Firmware updates</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickRestoreTitle"><h2 id="quickRestoreTitle">Restore the TV</h2><div id="quickRestore"></div></section><section class="quick-group" aria-labelledby="quickRemoveTitle"><h2 id="quickRemoveTitle">Remove Vetro</h2><div id="quickRemove"></div></section></div></section>
 <section id="dashboard" hidden><div class="metric-grid">
 <div class="metric"><div class="label">CPU</div><div id="cpuValue" class="value">—</div><small id="cpuMeta">Start live updates to sample the TV</small></div>
 <div class="metric"><div class="label">Available RAM</div><div id="ramValue" class="value">—</div><small id="ramMeta">—</small></div>
@@ -571,6 +572,7 @@ $('settingGroups').onchange=function(e){if(e.target.dataset&&e.target.dataset.hb
 $('settingGroups').onclick=function(e){var c=e.target.closest('[data-catalog-id]');if(c){c.disabled=true;var id=c.dataset.catalogId;api('/tv-menu?id='+encodeURIComponent(id)).then(function(d){catalogValues[id]=d;}).catch(function(e){catalogValues[id]={error:e.message};}).finally(renderCatalog);return;}var audio=e.target.closest('[data-audio-key]');if(audio){k(audio.dataset.audioKey);return;}var b=e.target.closest('[data-setting]');if(!b||settingBusy)return;var x=tvSettingsData.items.find(function(x){return x.id===b.dataset.setting}),v=Number($('setting-'+x.id).value);if(!$('setting-'+x.id).value.trim()||!Number.isInteger(v)||v<x.min||v>x.max){say('Allowed value: '+x.min+'–'+x.max);return}settingBusy=true;return runUiOperation('settings','Change setting',x.label,b,function(mark){return api('/tv-settings',{id:x.id,value:v,expected:x.value}).then(function(d){if(d.verified!==true||d.id!==x.id||d.value!==v)throw Error('Requested value not confirmed');var message=x.label+': '+d.previous+' → '+d.value+' read back from the TV. Applies to the current source; apps and HDR may change the context.';mark(message,'Value read back');return loadTVSettings(true).then(function(){return {resultLabel:'Value read back',message:message}})});}).finally(function(){settingBusy=false;renderTVSettings()});};
 // --- Quick settings: shared state with the Debloater, Domain blocking and TV settings ---
 var quickGroups=${JSON.stringify(quickGroups)},quickState=${quickStateFn.toString()};
+var restoreView={plan:null,error:null,result:null,confirm:false,eraseConfirm:false,erased:null,loading:false};
 var quickData={dns:null,leftovers:null,leftoversError:null,hbbtvError:null,wins:null,winsError:null},quickBusy=false,quickConfirm=null,leftoverConfirm=false;
 // Every Quick settings switch is a win: on means it is applied, off puts the TV back. Memory figures were measured on a Q80A.
 var groupTitles={'tracking-all':'Disable all advertising and tracking','voice-all':'Disable all voice assistants',alexa:'Disable Alexa',google:'Disable Google Assistant',bixby:'Disable Bixby',voice:'Disable the other voice services'};
@@ -629,6 +631,7 @@ function showQuickTab(id){quickTab=id;document.querySelectorAll('[data-quick-tab
 $('quickTabs').onclick=function(e){var b=e.target.closest&&e.target.closest('[data-quick-tab]');if(b)showQuickTab(b.dataset.quickTab)};
 function renderQuick(){
  if(!$('quickTracking'))return;
+ renderRestore();
  var d=quickData.dns;
  var dnsOn=!!(d&&d.enabled),dnsNoDomains=!!d&&!d.domains.length;
  var dns=quickItem('dns','Enable domain blocking','Blocks the saved ad and tracking domains. DNS servers stay unchanged.',
@@ -724,7 +727,73 @@ $('quick').onclick=function(e){var b=e.target.closest?e.target.closest('button')
  if(ds.leftoversCancel!=null){leftoverConfirm=false;renderQuick();return}
  if(ds.leftoversConfirm!=null)return clearLeftovers();
  if(ds.leftoversRefresh!=null)return loadLeftovers();
+ if(ds.restoreReview!=null)return loadRestorePlan();
+ if(ds.restoreAsk!=null){restoreView.confirm=true;renderRestore();var rc=document.querySelector('[data-restore-confirm]');if(rc)rc.focus();return}
+ if(ds.restoreCancel!=null){restoreView.confirm=false;renderRestore();return}
+ if(ds.restoreConfirm!=null)return runRestore();
+ if(ds.eraseAsk!=null){restoreView.eraseConfirm=true;renderRestore();var ec=document.querySelector('[data-erase-confirm]');if(ec)ec.focus();return}
+ if(ds.eraseCancel!=null){restoreView.eraseConfirm=false;renderRestore();return}
+ if(ds.eraseConfirm!=null)return eraseVetroData();
 };
+
+// --- Restore the TV and Remove Vetro: the plan comes from the service (restore.js); nothing changes until it is confirmed. ---
+function restoreChip(state){return state==='changed'?chip('Will be put back','partial'):state==='manual'?chip('Do this yourself','partial'):state==='unknown'?chip('Could not be read','partial'):chip('As before','on')}
+function renderRestore(){
+ if(!$('quickRestore'))return;
+ var v=restoreView,p=v.plan,busy=quickBusy||uiOperationBusy.restore||v.loading;
+ var html='<p class="section-note">Puts back what Vetro changed and switches off what can be switched off, so the app can then be removed cleanly. Review first: nothing changes until you confirm.</p>';
+ if(v.error)html+='<p class="section-note">'+esc(v.error)+'</p>';
+ if(p){
+  var open=p.items.filter(function(i){return i.state!=='clean'}),clean=p.items.filter(function(i){return i.state==='clean'});
+  if(open.length)html+='<ul class="member-list">'+open.map(function(i){return '<li><span><strong>'+esc(i.label)+(i.count?' · '+i.count:'')+'</strong><br><span class="muted">'+esc(i.state==='unknown'?(i.error||'Unavailable'):i.detail)+'</span></span>'+restoreChip(i.state)+'</li>'}).join('')+'</ul>';
+  else html+='<p class="section-note">Nothing left to put back: the TV is as it was before Vetro.</p>';
+  if(clean.length)html+='<details><summary>'+clean.length+' item'+(clean.length===1?'':'s')+' already as before</summary><ul class="member-list">'+clean.map(function(i){return '<li><span>'+esc(i.label)+'</span>'+restoreChip('clean')+'</li>'}).join('')+'</ul></details>';
+  html+='<details><summary>What Vetro cannot put back</summary><ul class="member-list">'+p.notes.map(function(n){return '<li><span>'+esc(n)+'</span></li>'}).join('')+'</ul></details>';
+ }
+ var r=v.result;
+ if(r)html+='<h4>Last restore</h4><ul class="member-list">'+r.steps.filter(function(s){return s.status!=='skipped'}).map(function(s){return '<li><span><strong>'+esc(s.label)+'</strong><br><span class="muted">'+esc(s.message)+'</span></span>'+chip(s.status==='done'?'Done':s.status==='manual'?'Do this yourself':'Failed',s.status==='done'?'on':'partial')+'</li>'}).join('')+'</ul>'+(r.complete?'':'<p class="section-note">Some steps did not finish. Review again to see what is left, then restore again.</p>');
+ var pending=p?p.pending:0;
+ if(v.confirm&&pending)html+='<div class="inline-confirm" role="group" aria-label="Confirm restore"><p><strong>Restore '+pending+' item'+(pending===1?'':'s')+'?</strong> Home returns to Samsung’s, the services Vetro stopped start again and domain blocking ends. Vetro itself keeps running and your saved settings stay until you remove Vetro’s data. Each step is checked on the TV, and one that fails does not stop the others.</p><div class="row"><button class="primary" data-restore-confirm>Restore everything</button><button data-restore-cancel>Cancel</button></div></div>';
+ else html+='<div class="quick-actions"><button data-restore-review '+(busy?'disabled':'')+'>'+(p?'Review again':'Review what will change')+'</button>'+(pending?'<button class="primary" data-restore-ask '+(busy?'disabled':'')+'>Restore everything…</button>':'')+'</div>';
+ $('quickRestore').innerHTML=html;
+ renderRemove();
+}
+function renderRemove(){
+ if(!$('quickRemove'))return;
+ var v=restoreView,p=v.plan,ready=!!p&&p.pending===0,busy=quickBusy||uiOperationBusy.restore;
+ var unread=p?p.items.filter(function(i){return i.state==='unknown'}).map(function(i){return i.label}):[];
+ var html='<p class="section-note">Vetro cannot remove itself. Restore the TV first, then:</p><ol class="steps">'
+  +'<li><strong>Optional: remove Vetro’s saved data.</strong> It holds the values used to restore, your remapper rules, MQTT settings, plugins and the paired browsers. It is only offered once everything is restored, and it cannot be undone.</li>'
+  +'<li><strong>Restart the TV.</strong> This clears the temporary changes and reloads Home.</li>'
+  +'<li><strong>Remove the app on the TV.</strong> Open <em>Apps</em>, go to the settings icon of the Apps screen, select Vetro and choose <em>Delete</em>. Menu names vary by model and year.</li>'
+  +'<li><strong>Or with Apps2Samsung.</strong> Its desktop and Android apps list the installed apps and can remove them. Use it if the TV menu does not offer Delete; the command-line tool documents no uninstall.</li>'
+  +'<li><strong>Developer Mode.</strong> If you turned it on only for Vetro, switch it off, or change <em>Host PC IP</em> back, in the same Apps screen.</li>'
+  +'<li><strong>Home Assistant.</strong> If you used the bridge, delete the TV device there: its entities stay until you do.</li></ol>';
+ if(v.erased)html+='<p class="section-note">Vetro’s saved data was removed'+(v.erased.left?' (a few items could not be deleted)':'')+'. Vetro keeps running until you remove the app; browsers stay paired until it restarts.</p>';
+ else if(v.eraseConfirm&&ready)html+='<div class="inline-confirm" role="group" aria-label="Confirm removing the data"><p><strong>Delete Vetro’s saved data on the TV?</strong> The saved restore values, settings, rules, plugins and pairing go. The launcher is already off and the TV is already restored. This cannot be undone.'+(unread.length?' <strong>Could not be checked: '+esc(unread.join(', '))+'.</strong> If Vetro changed any of them, the saved values needed to put them back are lost.':'')+'</p><div class="row"><button class="primary" data-erase-confirm>Delete the data</button><button data-erase-cancel>Cancel</button></div></div>';
+ else html+='<div class="quick-actions"><button data-erase-ask '+(ready&&!busy?'':'disabled')+'>Remove Vetro’s saved data…</button></div>'+(ready?'':'<p class="section-note">Review the restore above; this unlocks when nothing is left to put back.</p>');
+ $('quickRemove').innerHTML=html;
+}
+function loadRestorePlan(){
+ restoreView.error=null;restoreView.loading=true;renderRestore();
+ return api('/restore').then(function(d){restoreView.plan=d}).catch(function(e){restoreView.error=e.message}).finally(function(){restoreView.loading=false;renderRestore()});
+}
+function runRestore(){
+ restoreView.confirm=false;quickBusy=true;renderRestore();
+ return runUiOperation('restore','Restore the TV','TV',null,function(mark){return api('/restore',{action:'run'}).then(function(d){
+  restoreView.result=d;
+  var done=d.steps.filter(function(s){return s.status==='done'}).length,bad=d.steps.filter(function(s){return s.status==='failed'}).length;
+  var message=done+' step'+(done===1?'':'s')+' done'+(bad?', '+bad+' failed':'')+'.'+(d.complete?' The TV is as it was before Vetro.':' Review again to see what is left.');
+  mark(message,'Checked on the TV');
+  return api('/restore').then(function(plan){restoreView.plan=plan}).catch(function(){}).then(function(){return loadApps(false,true)}).then(function(){return {state:d.complete?'success':'warning',resultLabel:'Checked on the TV',message:message}});
+ })}).finally(function(){quickBusy=false;loadQuick()});
+}
+function eraseVetroData(){
+ restoreView.eraseConfirm=false;quickBusy=true;renderRestore();
+ return runUiOperation('restore','Remove Vetro’s saved data','TV',null,function(mark){return api('/restore',{action:'erase'}).then(function(d){
+  restoreView.erased=d;var message='Vetro’s saved data was removed.';mark(message,'Removed');return {resultLabel:'Removed',message:message};
+ })}).finally(function(){quickBusy=false;renderRestore()});
+}
 // --- Launcher: a glass launcher for the Home key. The service builds its app list from Samsung's Home row. ---
 var dockData=null,dockError=null,dockBusy=false,dockConfirm=false;
 function loadDock(){return api('/dock').then(function(d){dockData=d;dockError=null}).catch(function(e){dockError=e.message}).finally(renderDock)}

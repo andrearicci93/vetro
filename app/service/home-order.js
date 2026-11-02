@@ -100,4 +100,4 @@ Order.prototype.restore = function () {
     return this.execute(wrap(transactionScript(null, true)), 10000).then(function (r) { check(r); return self.read(); }).finally(function () { self.busy = false; });
 };
 
-module.exports = { transactionScript: transactionScript, rollbackScript: rollbackScript, Order: Order, parse: parse, render: render, validate: validate, BASE: BASE, FILES: FILES, TERM: TERM };
+module.exports = { PICK_DIR: PICK_DIR, BASE_NEW_HOME: BASE_NEW_HOME, transactionScript: transactionScript, rollbackScript: rollbackScript, Order: Order, parse: parse, render: render, validate: validate, BASE: BASE, FILES: FILES, TERM: TERM };

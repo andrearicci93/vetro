@@ -36,6 +36,7 @@ var tvState = new (require('./tv-state.js').Store)(agentExecute);
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
 var menuSettings = new (require('./menu-settings.js').Catalog)(agentExecute);
 var quickSettings = require('./quick-settings.js');
+var disabledLedger = require('./disabled-ledger.js');
 var leftovers = new (require('./leftovers.js').Leftovers)(agentExecute);
 // Components whose disabled flag Vetro may change: verified ACR set plus Quick Settings groups.
 var TOGGLE_IDS = debloat.VERIFIED_GLOBAL_IDS.concat(quickSettings.ALLOWED_IDS);
@@ -376,6 +377,11 @@ function handleDebloatAction(req, res) {
         var id=appIds[0],desired=action==='disable',original;
         inventory(true).then(function(d){var row=d.apps.find(function(a){return a.appId===id;});if(d.registryError)throw Error('App registry unavailable');if(!row){var missing=Error('App not installed');missing.statusCode=409;throw missing;}var capability=ComponentActions.availability(row,d.apps,TOGGLE_IDS).toggle;if(!capability.allowed){var unavailable=Error(capability.reason);unavailable.statusCode=409;throw unavailable;}original=row.disabled;if(original===desired)return {ok:true,verified:true,changed:false,appId:id,disabled:desired};
             return agentExecute('pkgcmd '+(desired?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'App state unchanged');registryAt=0;return inventory(true);}).then(function(after){var r=after.apps.find(function(a){return a.appId===id;});if(after.registryError||!r||r.disabled!==desired)throw Error('Global flag not confirmed');return {ok:true,verified:true,changed:true,appId:id,disabled:r.disabled,scope:'Global flag confirmed; running processes may remain until the next launch'};}).catch(function(e){return agentExecute('pkgcmd '+(original?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Restore not confirmed');registryAt=0;return inventory(true);}).then(function(d){var restored=d.apps.find(function(a){return a.appId===id;});throw Error(e.message+' · '+(restored&&restored.disabled===original&&!d.registryError?'previous flag restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});
+        }).then(function(d){
+            // Remember what Vetro disabled, so that "Restore the TV" switches on those and not what the firmware ships disabled.
+            if(d.changed===false&&desired)return d;
+            var ledger;try{ledger=desired?disabledLedger.addCommand(id):disabledLedger.removeCommand(id);}catch(e){return d;}
+            return agentExecute(ledger,8000).then(function(){return d;},function(){return d;});
         }).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 
     });
@@ -465,6 +471,28 @@ function handleWins(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
     wins.apply(p.id,p.on).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
 });}
+// Restore the TV: puts back what Vetro changed, then (separately) removes Vetro's data. See restore.js.
+var restoreTv = new (require('./restore.js').Restore)({
+    execute: agentExecute, inventory: inventory, invalidate: function(){registryAt=0;},
+    wins: wins, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock,
+    plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
+    input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
+        off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
+    mqtt: {enabled: function(){var c=require('./mqtt-bridge.js').readConfig();return !!c&&c.enabled!==false&&!!c.host;},
+        off: function(){var m=require('./mqtt-bridge.js'),c=Object.assign({},m.readConfig(),{enabled:false});m.saveConfig(c);bridge.configure(c);}},
+    afterHbbtv: function(){privacy.cached=null;},
+    removeAuth: function(){try{fs.unlinkSync(auth.STORE_PATH);}catch(e){}}
+});
+function handleRestore(req,res) {
+    if(req.method==='GET')return restoreTv.publicPlan().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
+    readJsonBody(req,res,function(p){
+        if(p.action!=='run'&&p.action!=='erase')return serveJson(res,{error:'Invalid restore action'},400);
+        if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
+        if(p.action==='run')return restoreTv.run().then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},503);});
+        restoreTv.eraseData().then(function(d){debloatBusy=false;var finish=d.finish;delete d.finish;res.on('finish',finish);serveJson(res,d);})
+            .catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
+    });
+}
 // Vetro's own app icon, shown in the dashboard. It ships in the package next to the service folder.
 var iconPng=null;
 function serveIcon(res) {
@@ -640,6 +668,7 @@ http.createServer(function (req, res) {
         if (url === '/debloat') return handleDebloatAction(req, res);
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);
+        if (url === '/restore') return handleRestore(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
@@ -662,6 +691,7 @@ http.createServer(function (req, res) {
     if (url === '/dock/icon') return plugins.dispatch('launcher', req, res, 'icon', serveJson);
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
+    if (url === '/restore') return handleRestore(req,res);
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
