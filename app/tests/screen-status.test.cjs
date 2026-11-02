@@ -33,9 +33,10 @@ assert.deepEqual(why({attempts: [{phase: 'launch'}]}), {reason: 'starting', code
 assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'ok'}]}), {reason: 'starting', code: null}, 'one launch, the agent may still call back');
 assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'ok'}, {phase: 'launch', connect: 'ok'}]}), {reason: 'agent', code: null});
 assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'ok'}, {phase: 'launch', connect: 'fail:sdbClosed', err: 'closed before handshake'}]}), {reason: 'sdb', code: 'sdbClosed'});
-assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'fail:sdbRefused'}, {phase: 'agent-connected'}]}), {reason: 'sdb', code: 'sdbRefused'}, 'the last launch counts');
-assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'fail:<b>x</b>'}]}), {reason: 'starting', code: null}, 'a code of the wrong shape is not passed on');
-const down = screen.build({version: '0.5.0', port: 8099, platform: {mode: 'tv-integration', agent: {connected: false}, attempts: [{phase: 'launch', connect: 'fail:sdbClosed', err: 'secret text'}]}, input: {}, launcher: {}, meminfo: null, interfaces: {}});
+assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'ok'}, {phase: 'launch', connect: 'fail:sdbRefused'}, {phase: 'agent-connected'}]}), {reason: 'sdb', code: 'sdbRefused'}, 'the last launch counts');
+assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'fail:sdbRefused'}]}), {reason: 'starting', code: null}, 'one refusal right after a start is not a verdict');
+assert.deepEqual(why({attempts: [{phase: 'launch', connect: 'fail:<b>x</b>'}, {phase: 'launch', connect: 'fail:<b>x</b>'}]}), {reason: 'starting', code: null}, 'a code of the wrong shape is not passed on');
+const down = screen.build({version: '0.5.0', port: 8099, platform: {mode: 'tv-integration', agent: {connected: false}, attempts: [{phase: 'launch', connect: 'fail:sdbClosed'}, {phase: 'launch', connect: 'fail:sdbClosed', err: 'secret text'}]}, input: {}, launcher: {}, meminfo: null, interfaces: {}});
 assert.deepEqual(down.root, {mode: 'tv-integration', connected: false, reason: 'sdb', code: 'sdbClosed'});
 assert.ok(!JSON.stringify(down).includes('secret text'), 'no error text leaves the service');
 console.log('PASS TV screen status: address, memory, root (and why it is not connected), input and launcher facts, nothing else');

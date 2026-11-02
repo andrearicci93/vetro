@@ -22,7 +22,7 @@ function availableMb(meminfo) {
 //   prepare      the agent files could not be prepared
 //   sdb          the TV refused or closed its local developer connection (the code says how, e.g. sdbClosed)
 //   agent        the helper was started but never called back
-//   starting     no verdict yet: no attempt, or a single one still in flight
+//   starting     no verdict yet: no attempt, or a single one (in flight, or refused once)
 // code is the last connection code; only a short word in a fixed shape leaves the service.
 function rootReason(p) {
     p = p || {};
@@ -31,7 +31,8 @@ function rootReason(p) {
     if (p.prepareError) return {reason: 'prepare', code: null};
     var launches = (Array.isArray(p.attempts) ? p.attempts : []).filter(function (a) { return a && a.phase === 'launch'; });
     var last = launches[launches.length - 1], m = last && /^fail:([A-Za-z]{1,24})$/.exec(last.connect || '');
-    if (m) return {reason: 'sdb', code: m[1]};
+    // Right after a start the port may not be open yet: one refusal is not a verdict, two in a row are.
+    if (m && launches.length > 1) return {reason: 'sdb', code: m[1]};
     if (last && last.connect === 'ok' && launches.length > 1) return {reason: 'agent', code: null};
     return {reason: 'starting', code: null};
 }
