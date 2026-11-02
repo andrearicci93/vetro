@@ -16,6 +16,8 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/')).sort
     'service/mqtt-bridge.js', 'service/mqtt.js', 'service/compat.js', 'service/package-info.js',
     'service/platform.js',
     'service/plugin-host.js',
+    'service/plugin-launcher.js',
+    'service/updater.js', 'service/update-key.js', 'service/plugin-key.js',
     'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/leftovers.js', 'service/remap.js',
     'service/samsung-remote.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
 ].sort());

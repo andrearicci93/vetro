@@ -6,8 +6,10 @@ require('./compat.js').install();
 var fs = require('fs');
 var http = require('http');
 var os = require('os');
+var path = require('path');
 var MqttBridge = require('./mqtt-bridge.js').MqttBridge;
 var PluginHost = require('./plugin-host.js').PluginHost;
+var Updater = require('./updater.js').Updater;
 var debloat = require('./debloat.js');
 var control = require('./control.js');
 var packageInfo = require('./package-info.js');
@@ -192,6 +194,20 @@ function handleInstall(req, res) {
             serveJson(res, {submitted: false, error: String(error.message || error)}, 400);
         });
     });
+}
+
+// --- self-update ------------------------------------------------------------
+// The bundle is a signed text file (about 1.5 MB). It is checked here against the key built into the package.
+function handleUpdate(req, res, apply) {
+    readBody(req, function (body, err) {
+        if (err) return serveJson(res, {ok: false, error: err.message}, err.statusCode || 400);
+        var sha = req.headers && req.headers['x-vetro-sha256'];
+        var task;
+        try { task = apply ? updater.apply(body, sha) : Promise.resolve(updater.check(body, sha)); } catch (e) { task = Promise.reject(e); }
+        task.then(function (d) { serveJson(res, d); }, function (e) {
+            serveJson(res, {ok: false, error: e.message, code: e.code || null}, e.code === 'busy' ? 409 : 400);
+        });
+    }, 8 * 1024 * 1024);
 }
 
 function readBody(req, cb, maxBytes) {
@@ -625,7 +641,7 @@ http.createServer(function (req, res) {
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
-        if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
+        if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
@@ -635,14 +651,16 @@ http.createServer(function (req, res) {
         if (url === '/mqtt') return handleMqttConfig(req, res);
         if (url === '/control') return handleControl(req, res);
         if (url === '/install') return handleInstall(req, res);
+        if (url === '/update/apply' || url === '/update/check') return handleUpdate(req, res, url === '/update/apply');
+        if (url === '/update/rollback') return updater.rollback().then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, 409); });
         if (url === '/probe') return handleProbe(req, res);
         if (url === '/remap') return handleRemap(req, res);
         if (url === '/remap/run') return handleRemapRun(req, res);
         return serveJson(res, { error: 'POST not supported here' }, 405);
     }
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
-    if (url === '/dock/icon') {var slug=require('url').parse(req.url,true).query.slug,png=dock.iconFile(slug);if(!png)return serveJson(res,{error:'icon unavailable'},404);res.writeHead(200,{'content-type':'image/png','cache-control':'private, max-age=60','X-Content-Type-Options':'nosniff'});return res.end(png);}
-    if (url === '/dock') return dock.status({preview: true}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
+    if (url === '/dock/icon') return plugins.dispatch('launcher', req, res, 'icon', serveJson);
+    if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
@@ -654,6 +672,7 @@ http.createServer(function (req, res) {
     if (url === '/telemetry') return serveJson(res, readTelemetry());
     if (url === '/leftovers') return handleLeftovers(req,res);
     if (url === '/status') return serveJson(res, Object.assign({}, platform.status(), {app: buildInfo}));
+    if (url === '/update') return serveJson(res, updater.status());
     if (url === '/screen') return screenSummary().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/exec') return handleExecStatus(res);
     if (url === '/debloat') return handleDebloatList(req, res);
@@ -674,11 +693,7 @@ http.createServer(function (req, res) {
 });
 
 platform.start();
-// The dock is started again after a boot or a crash while its switch is on.
-// A short tick notices the moment the root agent connects, so after a boot the dock starts at once
-// instead of waiting for the next 10 s round.
-var dockAgentWas=false,dockTicks=0;
-var dockTimer=setInterval(function(){var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
+// The launcher is started again after a boot or a crash while its switch is on: that supervision is the launcher plugin's (plugin-launcher.js).
 // Retry after boot and helper disconnects, including late adapter availability.
 var inputRestoreTimer=setInterval(restoreInput,5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
 
@@ -693,10 +708,40 @@ var bridge = new MqttBridge(readTelemetry,function(m){
 });
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
 bridge.start();
+// Self-update (docs/UPDATING.md): a bundle signed with the Vetro release key replaces the package files in place.
+// Nothing is checked or downloaded here; the dashboard fetches the bundle in the browser and sends it to /update/apply.
+var updater = new Updater({publicKey: require('./update-key.js'), installDir: path.resolve(__dirname, '..'),
+    workDir: process.env.VETRO_UPDATE_DIR || '/opt/usr/home/owner/share/vetro-update', buildInfo: buildInfo, execute: agentExecute, dockStopCommand: dock.stopLines(),
+    source: process.env.VETRO_UPDATE_SOURCE || 'https://raw.githubusercontent.com/andrearicci93/vetro/updates/'});
+// Once the root agent has connected, a freshly updated version restarts the launcher if the update changed its files,
+// then tells the watchdog it is up (otherwise the old version comes back). The dock is a separate process: a service
+// restart alone leaves it running the old binary.
+function restartDockAfterUpdate() {
+    if (!dock.readState().enabled) return Promise.resolve('off');
+    var tries = 0;
+    function attempt() {
+        return dock.refresh().then(function () { return 'restarted'; }, function (e) {
+            if (++tries >= 4) throw e;
+            return new Promise(function (r) { setTimeout(r, 4000); }).then(attempt);
+        });
+    }
+    return attempt();
+}
+var updateConfirmAttempts = 0;
+var updateConfirmTimer = setInterval(function () {
+    if (++updateConfirmAttempts > 60) { clearInterval(updateConfirmTimer); return; }
+    if (!platform.status().agent.connected) return;
+    clearInterval(updateConfirmTimer);
+    updater.finish(restartDockAfterUpdate).catch(function () { /* the watchdog decides */ });
+}, 5000);
+if (updateConfirmTimer.unref) updateConfirmTimer.unref();
 // Third-party plugins (see docs/plugins.md): loaded from the plugin folder, off until switched on, guarded, safe mode after a failed boot.
-// Vetro's own features (MQTT, launcher, ...) are not plugins.
-var plugins = new PluginHost({dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
-    registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/main/index.json'});
+// Bundled plugins ship in this package, are on by default, keep running in safe mode and get ctx.vetro (docs/PLUGIN-ARCHITECTURE.md).
+// The launcher is the first one; MQTT, the remapper and the rest are still Vetro's own code.
+var plugins = new PluginHost({registryKey: require('./plugin-key.js'), dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
+    registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/main/index.json',
+    services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
+plugins.register(require('./plugin-launcher.js').definition(dock));
 plugins.start();
 // A deliberate stop is not a crash: close the boot marker so the next start is not put in safe mode.
 ['SIGTERM', 'SIGINT'].forEach(function (sig) { process.on(sig, function () { try { plugins.stop(); } catch (e) { /* exiting anyway */ } process.exit(0); }); });

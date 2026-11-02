@@ -1,13 +1,16 @@
-# Vetro 0.4.0: Security & Plugin update
+# Vetro 0.5.0: Security, Plugin and Launcher update
 
 Working plan for the release. It says what is in, how far each part is checked, and what is still to do. It is
 not a promise: anything marked *not tried on a TV* has only run in the test suite or on a test server.
 
-Three themes:
+There was no 0.4.0 release: it was preliminary work and is part of this one. Themes:
 
-1. **Plugins:** add-ons written by other people.
-2. **Sign-in:** the dashboard and API answer only paired devices.
-3. **Ads and privacy:** stop more of what the TV sends out.
+1. **Plugins, and the launcher as a plugin:** add-ons written by other people, and a launcher others can build or customise ([PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md)).
+2. **Update from inside Vetro:** signed, with rollback ([UPDATING.md](UPDATING.md)).
+3. **Better UI:** dashboard from plugin data and shared design tokens (scope to be fixed).
+4. **Sign-in:** the dashboard and API answer only paired devices.
+5. **Ads and privacy:** stop more of what the TV sends out.
+6. **Important hotfixes** from `main`, merged.
 
 ## State
 
@@ -17,7 +20,7 @@ Three themes:
 | Plugin pages under sign-in (session in the URL) | yes | host tests, routing test | with a paired browser on a TV |
 | Plugin guide, scaffolder, `check`/`pack`/`index` | yes | `new`, `check`, `pack`, `index` run on a computer | a plugin written by someone else, from scratch, using only the guide |
 | Sign-in (PR #9, zerodevb) | merged | author ran the same auth module on a Q60A (Tizen 6, Node 12.4) with a different app showing the code: unpaired requests got 401, pairing worked | this branch's package: the TV screen showing the code (new screen, adapted here), the service opening Vetro on pairing |
-| Viewing-data stop, Stop Ambient, domain filter, ad list | yes (earlier in 0.4.0) | Q80A, with a real restart (see CHANGELOG) | other models |
+| Viewing-data stop, Stop Ambient, domain filter, ad list | yes (from the preliminary 0.4.0 work) | Q80A, with a real restart (see CHANGELOG) | other models |
 
 ## Before it can ship
 
@@ -28,7 +31,7 @@ Three themes:
 
 ## Ads and privacy: what exists, what could go further
 
-Exists in 0.4.0: stop viewing-data collection (ten services, with the brake files that survive a restart and a boot step for the others), Stop Ambient, the domain filter with the firmware's hosts and the reported ACR names, the Observe requests view, the ad and tracking categories of the Debloater, and the diagnostic export that shows what starts at boot.
+Exists in 0.5.0: stop viewing-data collection (ten services, with the brake files that survive a restart and a boot step for the others), Stop Ambient, the domain filter with the firmware's hosts and the reported ACR names, the Observe requests view, the ad and tracking categories of the Debloater, and the diagnostic export that shows what starts at boot.
 
 A scan of the strings in the Q80A firmware (all `*.samsung*` host names in programs and apps, about 190 names) found **one advertising host that the list lacked, now added** (`rtb-config-canary.samsungads.com`, named by the ad agent itself), and **no viewing-data host** beyond the ones already listed. What it found that is not on the list, and what is known about it:
 
@@ -57,9 +60,9 @@ Not planned: Netflix (investigated, no durable switch, see CHANGELOG notes), any
 
 ## Open pull requests that touch the same files
 
-| PR | What | Note for 0.4.0 |
+| PR | What | Note for 0.5.0 |
 | --- | --- | --- |
-| #9 | pairing sign-in | **merged into this branch**; close it on GitHub when 0.4.0 ships, and thank zerodevb in the release notes |
+| #9 | pairing sign-in | **merged into this branch**; close it on GitHub when 0.5.0 ships, and thank zerodevb in the release notes |
 | #69 | fixes for the 0.3.5 redesign (domenix) | edits the TV screen, where the sign-in code now lives: expect a conflict in `app/index.html` |
 | #75 | Tizen 4 on Node 4.4 (Merennor) | touches service start-up; check it against `plugin-host.js` and `auth.js` |
 | #74 | relaunch diagnostics (maintainer) | not in the theme. It adds a read-only watcher that records, in the Diagnostics report, when the TV starts an app again after Vetro stopped it (HbbTV, `csfs`), so that reports from other TVs show which app and when. Not merged here |

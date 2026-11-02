@@ -52,7 +52,12 @@ namespace Launcher
         // Off by default; the app id is checked as plain id characters because it goes on a command line.
         // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
         // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
-        private static string _guardApp, _guardCmd;
+        private static string _guardApp;
+        // The kills are tied to a generation written to a file: each Home press arms a new one, and launching the guarded
+        // app on purpose (the Samsung Home pill) retires it. Without that, Samsung Home started 1-2 s after a Home press
+        // was closed again by the kills still pending, and the pill seemed to do nothing.
+        private static int _guardGen;
+        private static string _guardFile;
         private const double GuardFirst = 0.15;
         private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
         private static int _homeCode = -1;
@@ -594,15 +599,35 @@ namespace Launcher
 
         private static void ArmGuard()
         {
-            if (_guardCmd == null) return;
-            try { Libc.system(_guardCmd); }   // returns at once: the shell puts the whole chain in the background
+            if (_guardApp == null) return;
+            try
+            {
+                NewGuardGeneration();
+                Libc.system(GuardCommand(_guardApp, _guardGen));   // returns at once: the shell puts the whole chain in the background
+            }
             catch (Exception ex) { Log("guard: " + ex.Message); }
         }
 
-        /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
-        private static string GuardCommand(string appId)
+        /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
+        private static void CancelGuard()
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
+            if (_guardApp == null) return;
+            try { NewGuardGeneration(); Log("guard: cancelled, " + _guardApp + " was asked for"); }
+            catch (Exception ex) { Log("guard cancel: " + ex.Message); }
+        }
+
+        private static void NewGuardGeneration()
+        {
+            _guardGen++;
+            File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.
+        /// Each kill runs only if the generation file still holds the number this chain was armed with.</summary>
+        private static string GuardCommand(string appId, int gen)
+        {
+            string g = gen.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string kill = "[ \"$(cat '" + _guardFile + "')\" = " + g + " ] && /usr/bin/app_launcher -k " + appId;
             var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
             foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
             return sb.Append(" ) >/dev/null 2>&1 &").ToString();
@@ -707,6 +732,7 @@ namespace Launcher
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
+                if (e.AppId != null && e.AppId == _guardApp) CancelGuard();
                 if (e.AppId == "com.samsung.tv.csfs")
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
@@ -856,7 +882,7 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
+                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + GuardCommand(guard, 0)); }
                     else Log("guard: bad app id ignored");
                 }
                 SetupInput(args);

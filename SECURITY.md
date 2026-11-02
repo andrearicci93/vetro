@@ -7,9 +7,16 @@ trusted isolated LAN. Do not
 forward its ports, expose it publicly or enable unrestricted access from other
 networks. Root-agent authentication is a separate internal protocol from the dashboard sign-in.
 
-Plugins (`app/docs/plugins.md`) are third-party code that runs inside Vetro's service process: the host
-guards failures but is not a security sandbox. They are off until switched on, can only be installed by a
-paired device, and the public list is spot-checked, not audited. Switch on only plugins you trust.
+Plugins (`app/docs/plugins.md`) are third-party code that runs inside Vetro's service process. There is **no sandbox**:
+the host guards failures, but a plugin can use everything Vetro can, including running commands as root, whatever
+permissions it declares (permissions are labels, not limits). They are off until switched on and can only be installed
+by a paired device. The public list is signed with its own key and spot-checked, not audited: a signature shows that a
+file is the one the list published, not that its code is safe. Plugins outside the list need Developer mode. Switch on only
+plugins you trust.
+
+Self-update (`app/docs/UPDATING.md`) replaces Vetro's files with the root helper. An update is accepted only if its manifest
+is signed with the Vetro release key, whose public half is part of the package; the private key is kept offline and is not
+the plugin list's key.
 
 Use GitHub private vulnerability reporting if the repository maintainer enables
 it. If no private channel is configured, ask for one in an issue without including

@@ -6,8 +6,11 @@
 //   node scripts/vetro-plugin.cjs pack <folder> [outDir]   bundle <id>-<version>.vplugin, print its SHA-256
 //   node scripts/vetro-plugin.cjs index <index.json> <bundle.vplugin> [url]
 //                                                          add or update that bundle in a plugin list (registry)
+//   node scripts/vetro-plugin.cjs keygen <folder>          make the plugin list key pair (private key stays with the list's maintainer)
+//   node scripts/vetro-plugin.cjs sign <index.json> <private.pem> [dist-folder]
+//                                                          add a `signature` to every entry (id, version, bundle SHA-256)
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const { checkBundle, BUNDLE_MAX_BYTES } = require('../service/plugin-host.js');
+const { checkBundle, BUNDLE_MAX_BYTES, signedText } = require('../service/plugin-host.js');
 
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 const die = (msg, code) => { console.error(msg); process.exit(code || 1); };
@@ -116,7 +119,31 @@ try {
         list.plugins.sort((x, y) => x.id < y.id ? -1 : 1);
         fs.writeFileSync(a, JSON.stringify(list, null, 2) + '\n');
         console.log((at >= 0 ? 'Updated ' : 'Added ') + e.id + ' ' + e.version + ' in ' + a + '\nCommit the list and ' + path.basename(b) + ' together.');
+    } else if (cmd === 'keygen') {
+        if (!a) die('usage: node scripts/vetro-plugin.cjs keygen <folder>', 2);
+        const dir = path.resolve(a), priv = path.join(dir, 'plugin-list-private.pem');
+        fs.mkdirSync(dir, { recursive: true });
+        if (fs.existsSync(priv)) die('Refusing to overwrite ' + priv);
+        const k = crypto.generateKeyPairSync('rsa', { modulusLength: 3072 });
+        fs.writeFileSync(priv, k.privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+        const pubPem = k.publicKey.export({ type: 'spki', format: 'pem' });
+        fs.writeFileSync(path.join(dir, 'plugin-list-public.pem'), pubPem);
+        console.log('Private key: ' + priv + ' (never commit it; this is not the Vetro update key)\nPaste this into app/service/plugin-key.js as the exported string:\n\n' + pubPem);
+    } else if (cmd === 'sign') {
+        if (!a || !b) die('usage: node scripts/vetro-plugin.cjs sign <index.json> <private.pem> [dist-folder]', 2);
+        const list = JSON.parse(fs.readFileSync(a, 'utf8')), key = fs.readFileSync(b, 'utf8'), base = c || path.join(path.dirname(a), 'dist');
+        if (list.format !== 'vetro-plugin-index' || !Array.isArray(list.plugins)) die(a + ' is not a plugin list');
+        list.plugins.forEach(e => {
+            const file = path.join(base, path.basename(String(e.url || '')));
+            const text = fs.readFileSync(file, 'utf8'), hash = sha256(text);
+            if (hash !== e.sha256) throw new Error(e.id + ': the bundle ' + file + ' does not match the SHA-256 in the list');
+            const m = JSON.parse(text).manifest;
+            if (m.id !== e.id || m.version !== e.version) throw new Error(e.id + ': the bundle is ' + m.id + ' ' + m.version + ', not ' + e.version);
+            e.signature = crypto.sign('RSA-SHA256', Buffer.from(signedText(e.id, e.version, hash)), key).toString('base64');
+        });
+        fs.writeFileSync(a, JSON.stringify(list, null, 2) + '\n');
+        console.log('Signed ' + list.plugins.length + ' entr' + (list.plugins.length === 1 ? 'y' : 'ies') + ' in ' + a);
     } else {
-        die('usage: node scripts/vetro-plugin.cjs new|check|pack|index  (docs/plugins.md)', 2);
+        die('usage: node scripts/vetro-plugin.cjs new|check|pack|index|keygen|sign  (docs/plugins.md)', 2);
     }
 } catch (e) { die('Error: ' + e.message); }
