@@ -120,7 +120,9 @@ Dock.prototype.probe = function () {
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
         'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || ps | grep -q "[c]sfs"; then echo "home=1"; else echo "home=0"; fi',
-        'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null'
+        // No log file yet is normal. Without || true the missing file failed the whole read, and the user saw its raw
+        // output, "dock= home=0 log:", as the error (#82).
+        'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
     ].join('\n');
     return this.execute(wrap(script), 8000).then(function (r) {
         var out = check(r, 'Status');
