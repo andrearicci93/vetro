@@ -88,7 +88,15 @@ function attempt(name, fn, limit) {
 }
 // A public-level certificate may not get the on-boot start honored, so the page starts the service itself.
 function launchService() {
-  return cb(function (ok, ko) { tizen.application.launch('vetrotvapp.svc', ok, ko); });
+  return cb(function (ok, ko) {
+    function failed(e) { ko(new Error('launch failed (wrt:service: ' + (e && e.message || e) + ')')); }
+    if (typeof window.a2sService === 'function') {
+      try { Promise.resolve(new window.a2sService('vetrotvapp.svc').start()).then(ok, failed); }
+      catch (e) { failed(e); }
+      return;
+    }
+    tizen.application.launch('vetrotvapp.svc', ok, ko);
+  });
 }
 function reach(tries) {
   return fetch(BASE + '/status').then(function (r) { return r.status; }, function (e) {
@@ -180,7 +188,8 @@ function appVersion() { try { return tizen.application.getCurrentApplication().a
 function checks(d) {
   var out = [], root, api, apiMissing = [], mem, l, i;
   if (!d) {
-    out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.', 'SVC DOWN', 'bad']);
+    out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +
+      (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN', 'bad']);
   } else {
     var av = appVersion(), mismatch = av && d.version && av !== d.version;
     out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. Reinstall Vetro so both match.', 'SVC ' + d.version + '/APP ' + av, 'warn']
@@ -315,7 +324,9 @@ resetIdle();
 checkPairing();
 setInterval(checkPairing, 2000);
 setInterval(function () { if (pairing) paintPairing(); }, 1000);
-run();
+// Module scripts run after this classic script and before DOMContentLoaded.
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
 </script>
+<script type="module">import { Service } from 'wrt:service'; window.a2sService = Service;</script>
 </body>
 </html>
