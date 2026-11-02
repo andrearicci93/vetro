@@ -45,7 +45,7 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
+        private static readonly HomeKeyHandler HomeKeys = new HomeKeyHandler();
 
         // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
         // the key), so after each Home press the app is closed again, a few times because its start is slow.
@@ -57,7 +57,6 @@ namespace Launcher
         private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
         private static int _homeCode = -1;
         private static bool _learn;
-        private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
         private static readonly List<int> _inputFds = new List<int>();
         private static readonly List<EvdevReader> _inputReaders = new List<EvdevReader>();
@@ -307,6 +306,12 @@ namespace Launcher
             if (_ctl.Hide()) StartAnimator();
         }
 
+        private static void ApplyHome(HomeKeyAction action)
+        {
+            if (action == HomeKeyAction.Show) ShowDock();
+            else if (action == HomeKeyAction.Hide) HideDock();
+        }
+
         // ------------------------------------------------------------------ pages
 
         private static void ActivatePage(Controller ctl, Dock dock)
@@ -510,6 +515,11 @@ namespace Launcher
             {
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                if (key == "XF86Home")
+                {
+                    ApplyHome(HomeKeys.FromWindow(Efl.ecore_time_get(), _ctl.IsActive));
+                    return;
+                }
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -528,7 +538,6 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
                         HideDock();
                         break;
                 }
@@ -578,12 +587,10 @@ namespace Launcher
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
                         if (code != _homeCode) continue;
-                        double now = Efl.ecore_time_get();
-                        // The focused dock also gets XF86Home through evas and hides itself: count it once.
-                        if (now - _lastHome < HomeDebounceSeconds) continue;
-                        _lastHome = now;
+                        HomeKeyAction action = HomeKeys.FromEvdev(Efl.ecore_time_get(), _ctl.IsActive);
+                        if (action == HomeKeyAction.None) continue;
                         _perfWhy = "home";
-                        if (_ctl.IsActive) HideDock(); else ShowDock();
+                        ApplyHome(action);
                         ArmGuard();
                     }
                 }
