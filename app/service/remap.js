@@ -9,6 +9,14 @@ var KEY_RE = /^KEY_[A-Z0-9_]{1,30}$/;
 var APP_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var TOPIC_RE = /^[A-Za-z0-9_\/.-]{1,120}$/;
 var TRIGGER_TYPES = ['physical', 'key', 'mqtt', 'http'];
+// Parts of Samsung's Settings ("CoBA Setting Component", app-facts.js). app_launcher accepts their ID and returns 0, but
+// nothing opens (#100). Not offered as "App to open", refused in new rules, and skipped if an older rule has one.
+var NOT_LAUNCHABLE_PREFIX = 'com.samsung.tv.coba.setting';
+function launchable(appId) {
+    var id = String(appId || '');
+    return !(id === NOT_LAUNCHABLE_PREFIX || id.indexOf(NOT_LAUNCHABLE_PREFIX + '.') === 0);
+}
+var NOT_LAUNCHABLE_MESSAGE = 'is part of Samsung\u2019s Settings, not an app: it cannot be opened by its ID';
 
 function validateAction(a) {
     if (!a || typeof a !== 'object') throw new Error('invalid action');
@@ -70,4 +78,12 @@ function resolve(rules, type, value, payload) {
     return out;
 }
 
-module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve};
+// New rules only: rules saved by an older version still load (validateRules), and runActions skips the action.
+function checkLaunchable(rules) {
+    (rules || []).forEach(function (r) { (r.actions || []).forEach(function (a) {
+        if (a.type === 'launch' && !launchable(a.appId)) throw new Error(a.appId + ' ' + NOT_LAUNCHABLE_MESSAGE);
+    }); });
+    return rules;
+}
+module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, launchable: launchable,
+    checkLaunchable: checkLaunchable, NOT_LAUNCHABLE_PREFIX: NOT_LAUNCHABLE_PREFIX};

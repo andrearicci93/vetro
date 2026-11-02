@@ -31,7 +31,15 @@ assert.deepStrictEqual(dns.validate(['samsungcloudsolution.com']), ['samsungclou
 
 // Dashboard data carries evidence and notes but not component names.
 const groups = blocklist.publicGroups();
-assert.deepStrictEqual(groups.map(g => g.evidence), ['firmware', 'firmware', 'firmware', 'firmware', 'reported', 'unverified']);
+assert.deepStrictEqual(groups.map(g => g.evidence), ['firmware', 'firmware', 'firmware', 'firmware', 'reported', 'unverified', 'reported']);
+// #79: the Home ad picture server is offered on its own, never in the exported lists
+const home = groups.find(g => g.id === 'home-images');
+assert.deepStrictEqual(home.hosts, ['cdn-stv.adgrx.com']);
+assert.equal(home.optional, true);
+assert.ok(/cache/.test(home.note), 'the note says that blocking alone leaves the cached ads');
+assert.ok(!exported.includes('cdn-stv.adgrx.com') && !all.includes('cdn-stv.adgrx.com'), 'not in the exported lists');
+assert.deepStrictEqual(dns.validate(['cdn-stv.adgrx.com']), ['cdn-stv.adgrx.com'], 'the local filter accepts it when the user adds it');
+assert.ok(groups.filter(g => g.id !== 'home-images').every(g => g.optional === false));
 assert.ok(!JSON.stringify(groups).includes('"by"'));
 groups.forEach(g => assert.ok(g.label && g.note && g.hosts.length));
 console.log('PASS blocklist: evidence groups, unique valid hosts, essential names refused and never exported');
