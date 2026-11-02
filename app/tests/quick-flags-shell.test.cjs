@@ -11,7 +11,8 @@ const sql=q=>cp.spawnSync('sqlite3',[db,q],{encoding:'utf8'}).stdout.trim();
 sql("CREATE TABLE package_app_info(app_id TEXT, app_onboot TEXT, app_autorestart TEXT);INSERT INTO package_app_info VALUES('a.one','true','true'),('a.two','true','false'),('a.three','false','false');");
 function run(cmd,shell){
  const script=Buffer.from(/^echo (\S+) \|/.exec(cmd)[1],'base64').toString().split('/opt/dbspace/.pkgmgr_parser.db').join(db).split('/home/owner/share/vetro/quick-flags').join(saved);
- const r=cp.spawnSync(shell,['-c',script],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout;
+ const argv=shell.split(' ');   // 'busybox sh' is a program and its first argument
+ const r=cp.spawnSync(argv[0],argv.slice(1).concat(['-c',script]),{encoding:'utf8'});assert.equal(r.status,0,r.stderr||String(r.error));return r.stdout;
 }
 const rows=()=>sql('SELECT app_id,app_onboot,app_autorestart FROM package_app_info ORDER BY app_id;');
 const shells=['sh'].concat(has('dash')?['dash']:[]).concat(has('busybox')?['busybox sh']:[]);
