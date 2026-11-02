@@ -183,6 +183,18 @@ function esc(v) { return String(v).replace(/[&<>"]/g, function (c) { return {'&'
 function probeOk(name) { return !!(report.probe[name] && report.probe[name].ok); }
 function appVersion() { try { return tizen.application.getCurrentApplication().appInfo.version || null; } catch (e) { return null; } }
 
+// Root not connected: what the service saw decides what the screen asks for (#99, #91, #75). A cold start is what made
+// the agent connect on the TVs we heard from; reinstalling does not help a TV that cannot run it.
+var COLD = 'turn the TV off at the wall (or unplug it) for 30 seconds, then on again';
+function rootCheck(r) {
+  var code = r.code ? ' ' + r.code : '';
+  if (r.reason === 'unsupported') return ['warn', 'Root access', 'Not available on this TV', 'This TV\'s system is too old for the root helper. Vetro works here as an app only: features that need root are off. Reinstalling will not change this.', 'ROOT N/A old-tv', 'warn'];
+  if (r.reason === 'starting') return ['warn', 'Root access', 'Connecting', 'Root usually connects within a minute of the TV starting. Press OK to check again.', 'ROOT WAIT', 'warn'];
+  if (r.reason === 'sdb') return ['bad', 'Root access', 'Not connected', 'The TV refused the local developer connection root needs. Check that Developer Mode is on and Host PC IP is 127.0.0.1, then ' + COLD + '.', 'ROOT DOWN' + code, 'bad'];
+  if (r.reason === 'agent') return ['bad', 'Root access', 'Not connected', 'The root helper started but did not answer. Check that Host PC IP is 127.0.0.1, then ' + COLD + '. If it stays like this, reinstall the root package.', 'ROOT DOWN agent', 'bad'];
+  if (r.reason === 'prepare') return ['bad', 'Root access', 'Not connected', 'Vetro could not prepare the root helper. Reinstall the root package.', 'ROOT DOWN prepare', 'bad'];
+  return ['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad'];
+}
 // One check: [state, name, value, hint, token, tokenState]. state is ok | warn | bad | off | na. The token is the
 // short form for the support line; it is upper case (and coloured) when something is wrong.
 function checks(d) {
@@ -198,7 +210,7 @@ function checks(d) {
   if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
   else if (d.root.connected) out.push(['ok', 'Root access', 'Connected', null, 'root ok']);
   else if (d.root.mode === 'app-only') out.push(['warn', 'Root access', 'Not available', 'This is the app-only package. Features that need root are off.', 'ROOT NO', 'warn']);
-  else out.push(['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad']);
+  else out.push(rootCheck(d.root));
   root = !!(d && d.root.connected);
   if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
   else if (!d.input.enabled) out.push(['off', 'Remote input', 'Off', null, 'input off']);
