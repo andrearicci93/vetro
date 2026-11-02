@@ -2,7 +2,7 @@
 // Regression guard for the Tizen 5.5 / Node 4.4 compatibility work. The TV runs
 // Node 4.4, so each built-in the service relies on is removed here to recreate
 // that runtime, then compat.install() has to restore working behaviour.
-const assert = require('assert').strict, fs = require('fs'), os = require('os'), path = require('path'), zlib = require('zlib');
+const assert = require('assert').strict, crypto = require('crypto'), fs = require('fs'), os = require('os'), path = require('path'), zlib = require('zlib');
 const compat = require('../service/compat.js'), info = require('../service/package-info.js');
 const serviceDir = path.join(__dirname, '..', 'service');
 
@@ -79,7 +79,27 @@ function wgt(xml) {
     Object.defineProperty(Buffer, 'from', { value: realFrom, configurable: true, writable: true });
   }
 
-  // 6. package-info read(): the callback-fs path that replaced fs.promises.
+  // 6. crypto.timingSafeEqual and Number.isInteger — absent on Node 4.4.
+  const realSafeEqual = crypto.timingSafeEqual, realIsInteger = Number.isInteger;
+  delete crypto.timingSafeEqual;
+  delete Number.isInteger;
+  try {
+    assert.equal(typeof crypto.timingSafeEqual, 'undefined', 'this Node still had timingSafeEqual');
+    assert.equal(typeof Number.isInteger, 'undefined', 'this Node still had Number.isInteger');
+    compat.install();
+    assert.ok(crypto.timingSafeEqual(Buffer.from('abc'), Buffer.from('abc')), 'equal frames verify');
+    assert.ok(!crypto.timingSafeEqual(Buffer.from('abc'), Buffer.from('abd')), 'a different frame is rejected');
+    assert.throws(function () { crypto.timingSafeEqual(Buffer.from('ab'), Buffer.from('abc')); }, /same byte length/);
+    assert.equal(Number.isInteger(3), true);
+    assert.equal(Number.isInteger(-3), true);
+    assert.equal(Number.isInteger(3.5), false);
+    assert.equal(Number.isInteger('3'), false);
+  } finally {
+    crypto.timingSafeEqual = realSafeEqual;
+    Number.isInteger = realIsInteger;
+  }
+
+  // 7. package-info read(): the callback-fs path that replaced fs.promises.
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-node4-'));
   try {
     const file = path.join(directory, 'sample.wgt');
@@ -93,5 +113,5 @@ function wgt(xml) {
     await assert.rejects(info.read(file + ';reboot'), /absolute/, 'unsafe path rejects');
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 
-  console.log('PASS Node 4 compatibility: source guards, final/alloc/from shims and the callback-fs WGT reader');
+  console.log('PASS Node 4 compatibility: source guards, final/alloc/from/safe-equal/isInteger shims and the callback-fs WGT reader');
 })().catch(function (error) { console.error(error); process.exitCode = 1; });

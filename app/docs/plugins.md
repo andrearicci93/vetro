@@ -1,11 +1,14 @@
 # Plugins (API 1, experimental)
 
 > **Third-party code.** Plugins are written by other people, not by the author of Vetro. A plugin
-> runs on your TV with the same access as Vetro itself. Plugins in the public list are spot-checked,
+> runs inside Vetro with the same access as Vetro itself, **including running commands as root**, whatever
+> permissions it lists. Permissions are labels, not limits (see [What a plugin can do](#what-a-plugin-can-do)). Plugins in the public list are spot-checked,
 > not audited: that does not guarantee they work, are safe or stay unchanged, and the author of Vetro
 > takes no responsibility for what a plugin does. Install only plugins you trust.
 
-Vetro's own features (Home Assistant, launcher, …) are not plugins. Plugins are add-ons.
+Vetro's own features (Home Assistant, remapper, …) are not plugins. The **launcher** is the first one that is: a *bundled* plugin
+that ships in the Vetro package (see [PLUGIN-ARCHITECTURE.md](PLUGIN-ARCHITECTURE.md)). It is not listed with the add-ons
+below, cannot be removed, and keeps running in safe mode. Plugins in the list are add-ons.
 
 - [Use plugins](#use-plugins) · [Write a plugin](#write-a-plugin) · [Publish on GitHub](#publish-on-github)
 - [Reference](#reference) · [What the host guarantees](#what-the-host-guarantees) · [Troubleshooting](#troubleshooting)
@@ -21,7 +24,7 @@ Open **Plugins** in the dashboard.
 - **Update**: a plugin whose list version is higher shows "Update to x.y.z". If it was running it is switched
   off, replaced, and switched on again, unless the new version asks for different permissions: then it
   stays off and you review it first. No restart is needed.
-- **From a file**: pick a `.vplugin` file. Nothing verifies who wrote it.
+- **From a file**: pick a `.vplugin` file (needs Developer mode in a build with the list key). Nothing verifies who wrote it.
 - **Remove** deletes the plugin and its saved settings. A running plugin must be switched off first.
 - A plugin with a page appears in the sidebar while it runs.
 - Folders copied by hand into the plugin folder (shown on the page, `/opt/usr/home/owner/share/vetro-plugins/`
@@ -85,8 +88,38 @@ JSON `POST` works: the host answers the CORS preflight. Dark/light: add `<meta n
 
 ### The `exec` permission
 
-`exec` runs shell commands on the TV as root-equivalent. Ask for it only if you must; the user sees
-"can exec" before installing, and the public list looks at these more closely.
+`exec` gives `ctx.execute`, which runs shell commands on the TV as root. Declare it if your plugin uses it: the user sees
+"says it needs: run commands as root" before installing, and the public list looks at these more closely. It is a
+**label, not a limit**: see the next section.
+
+## What a plugin can do
+
+A plugin is JavaScript that Vetro loads into its own process. Vetro catches its errors and switches it off after repeated
+failures, but there is no sandbox. A plugin that lists no permission can still use Node's own modules (`child_process`,
+`fs`, the network) and reach the rest of Vetro, including the connection to the root helper. So:
+
+- Whoever you let run code here can do what Vetro can do. Install only plugins you trust.
+- `permissions` tells you what the author says the plugin needs. Vetro does not enforce it against a plugin that wants more.
+- A signature from the plugin list (below) shows that the file is the one the list published. It does not show that the code is safe.
+
+This is measured, not guessed: a test plugin with `permissions: []` runs `child_process` and reads the service files.
+A real boundary needs the plugin to run in a separate unprivileged process; that works on the Q80A and is being studied
+([PLUGIN-ISOLATION.md](PLUGIN-ISOLATION.md)). It is not in this release.
+
+## Signed list and Developer mode
+
+The public list is signed with its own key, **different from the key that signs Vetro updates**, so a compromised list
+cannot push code as a Vetro update. Each entry carries a `signature` over its id, version and bundle SHA-256.
+
+- A build that has the list key installs a plugin only with the list's signature, or when **Developer mode** is on
+  (Plugins, Add a plugin). Developer mode is off by default and asks for confirmation. It is what you need for your own
+  plugins and for **or from a file**.
+- Each installed plugin shows where it came from: signed by the plugin list, installed from a file, or copied in by hand.
+- A build without a list key behaves as before (SHA-256 only), and says so.
+
+For the list's maintainer: `node scripts/vetro-plugin.cjs keygen <folder>` makes the pair (paste the public key into
+`app/service/plugin-key.js`); `node scripts/vetro-plugin.cjs sign <index.json> <private.pem> [dist-folder]` adds the
+`signature` to every entry after checking each bundle against its hash. Run it before every publish.
 
 ## Publish on GitHub
 
@@ -122,7 +155,8 @@ To add or update a plugin:
   "description": "One line, shown in the dashboard.",
   "permissions": [],
   "url": "dist/my-plugin-1.0.0.vplugin",
-  "sha256": "64 lowercase hex characters, the hash of the .vplugin file"
+  "sha256": "64 lowercase hex characters, the hash of the .vplugin file",
+  "signature": "added by `vetro-plugin.cjs sign`"
 }
 ```
 

@@ -31,8 +31,8 @@ async function run(options) {
   function WS() { setImmediate(() => this.onopen()); }
   WS.prototype.close = function () {};
   const context = {
-    document: {getElementById: id => id === 'stage' ? stage : screen, hidden: false, addEventListener: (n, f) => { listeners[n] = f; }},
-    window: {innerWidth: 1920, innerHeight: 1080, addEventListener: (n, f) => { windowListeners[n] = f; }},
+    document: {readyState: o.readyState || 'complete', getElementById: id => id === 'stage' ? stage : screen, hidden: false, addEventListener: (n, f) => { listeners[n] = f; }},
+    window: {a2sService: o.Service, innerWidth: 1920, innerHeight: 1080, addEventListener: (n, f) => { windowListeners[n] = f; }},
     XMLHttpRequest: XHR, WebSocket: WS,
     fetch: async () => { if (o.failFetch && o.failFetch.n-- > 0) throw new Error('refused'); return {status: 200}; },
     tizen: {
@@ -54,6 +54,35 @@ async function run(options) {
 const key = (r, keyCode) => r.listeners.keydown({keyCode});
 
 (async function () {
+  assert.ok(html.includes("<script type=\"module\">import { Service } from 'wrt:service'; window.a2sService = Service;</script>"));
+  // The classic script must wait for the later module before choosing a launcher.
+  const deferred = await run({readyState: 'loading'}), started = [];
+  assert.equal(deferred.launched.length, 0);
+  assert.equal(deferred.sent.filter(s => s.method === 'POST').length, 0);
+  deferred.context.window.a2sService = function (id) {
+    this.start = () => { started.push(id); return Promise.resolve(); };
+  };
+  deferred.listeners.DOMContentLoaded();
+  await deferred.settle();
+  assert.deepEqual(started, ['vetrotvapp.svc']);
+  assert.equal(deferred.launched.length, 0);
+  assert.equal(deferred.sent.find(s => s.method === 'POST').body.probe.serviceLaunch.ok, true);
+  const noReturn = await run({Service: function () { this.start = () => {}; }});
+  assert.equal(noReturn.sent.find(s => s.method === 'POST').body.probe.serviceLaunch.ok, true);
+  assert.equal(noReturn.launched.length, 0);
+  for (const synchronous of [false, true]) {
+    const refused = await run({screen: null, Service: function () {
+      this.start = () => { if (synchronous) throw new Error('refused <start>'); return Promise.reject(new Error('refused <start>')); };
+    }});
+    assert.equal(refused.launched.length, 0);
+    assert.equal(refused.sent.find(s => s.method === 'POST').body.probe.serviceLaunch.error, 'launch failed (wrt:service: refused <start>)');
+    assert.ok(refused.screen.innerHTML.includes('launch failed (wrt:service: refused &lt;start&gt;)'));
+  }
+  // Missing/unsupported module on an older runtime leaves the legacy launcher available.
+  const older = await run({readyState: 'loading'});
+  older.listeners.DOMContentLoaded();
+  await older.settle();
+  assert.deepEqual(older.launched, ['vetrotvapp.svc']);
   // Healthy TV: the probe report is still sent, and the screen says so.
   const good = await run();
   const posts = good.sent.filter(s => s.method === 'POST');

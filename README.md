@@ -73,7 +73,8 @@ Do what you want with the remote. Press a button, choose an app, and the button 
 - **TV settings:** adjust supported picture controls and selected advanced settings, with read-back and restore.
 - **MQTT and Home Assistant:** publish the TV's state and discovery and trigger actions from exact topics. [Setup guide](app/docs/mqtt/README.md).
 - **Dashboard:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.
-- **Plugins:** add-ons written by other people, installed from a public list or a file, off until you switch them on. They are third-party code and are only spot-checked: read the warning in [the plugin guide](app/docs/plugins.md), which also explains how to write and publish one.
+- **Plugins:** add-ons written by other people, installed from a public list or a file, off until you switch them on. They are third-party code, not sandboxed (a plugin can do what Vetro can, including running commands as root) and only spot-checked: read the warning in [the plugin guide](app/docs/plugins.md), which also explains how to write and publish one.
+- **Updates:** update Vetro from the dashboard, launcher included, with no computer and no reinstall. Updates are signed and put back by themselves if the new version does not start. [How it works](app/docs/UPDATING.md).
 - **Diagnostics:** download a redacted report to share in an issue. [Report format](app/docs/DIAGNOSTIC-EXPORT.md).
 
 ## Install
@@ -112,9 +113,9 @@ Vetro is developed and tested on a **Samsung Q80A**, and community reports confi
 | LS03B QN75LS03BAFXZA (The Frame, 2022) · [#39](https://github.com/andrearicci93/vetro/issues/39) | T-PTMAKUC-1720.7 | Reported working, the service started by itself after a cold boot; the Launcher was not tried |
 | Smart Monitor M8 LS32BM801UNXGO · [#15](https://github.com/andrearicci93/vetro/issues/15) | T-PTMWWC-1720.7 | Installed, service and root agent running; what works not reported yet |
 | Q80R QN65Q80RAFXZA (2019, Tizen 5.0) · [#35](https://github.com/andrearicci93/vetro/issues/35) | T-MSMAKUC-1500.5 | Works with **local changes**, not with the stock package: a personal port with its own launcher host, app registry paths and Node.js 16.20.2, not reviewed or merged |
-| UE43NU7090 (2018, Tizen 4) · [#2](https://github.com/andrearicci93/vetro/issues/2) | 1400.2 | Not working so far |
+| UE43NU7090 (2018, Tizen 4) · [#2](https://github.com/andrearicci93/vetro/issues/2) | 1400.2 | Service, dashboard and diagnostics reported working on Node 4.4; the root agent is not available on that runtime, so the features that need it stay off |
 
-Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. Tizen 6 or newer is what has worked with the stock package (one Tizen 5 TV works with a local port); there is no confirmed range, and firmware updates can change the result even within one model family.
+Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. Tizen 6 or newer is what has worked with the stock package (one Tizen 5 TV works with a local port); there is no confirmed range, and firmware updates can change the result even within one model family. Tizen 4 and 5.5 run the web service on Node.js 4.4: the dashboard, the app list and diagnostics can work there, but the root agent needs Node 10.12+, so anything that needs root is unavailable.
 
 **Add your TV.** Open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with your exact model and firmware, what worked or failed, and the report from **Diagnostics → Download**. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Failed attempts help too.
 

@@ -23,3 +23,4 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 - **Never a coloured top border on a rounded card**: a thicker line on top makes coloured "ears" at the corners. Give a card a theme colour with a faint background, a uniform border and a coloured label or icon.
 - A switch is a **win**: its title says what you get ("Disable HbbTV", "Disable automatic firmware update"), and *on* means the win is applied. A chip under the title says *Done* or *Partly done*, in plain words.
 - Copy is English, short, and says what changes on the TV. A feature that is not finished carries a **Beta** chip.
+- Under 620 px the sidebar becomes a sheet: a top bar with the brand and a **Menu** button opens it, so every page, the service state and Sign out stay reachable. Tab rows and filter chips scroll sideways and run to the screen edge, which shows there is more.

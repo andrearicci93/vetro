@@ -15,6 +15,16 @@ none of this implementation.
 node tests/run.cjs
 ```
 
+The TV runs this adapter inside the package's web service, and Tizen 4 and 5.5 run
+that service on Node.js 4.4. The adapter is therefore ES5, and the test suite
+parses every packaged service file for the syntax and built-ins that runtime lacks:
+one destructuring pattern is a SyntaxError while loading, and the service never
+listens. Where the runtime cannot prepare the agent at all —
+`crypto.generateKeyPairSync` needs Node 10.12+ — `start()` records
+`platformUnsupported` once and stops retrying; the dashboard, the app list and
+diagnostics keep working, and the sections that need the agent report
+`no-root-agent`.
+
 Before building, install dependencies with `npm ci` in `on-boot-probe`, then set
 `AUTHOR_P12`, `DIST_P12`, `AUTHOR_PW`, `DIST_PW` and optionally `OUT` using your own
 certificate profile. The builder has no password fallback. Certificates are not
