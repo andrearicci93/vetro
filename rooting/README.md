@@ -11,6 +11,15 @@ none of this implementation.
 - `on-boot-probe/package*.json`: signing dependency manifests. Historical prototypes
   and device material are local-only; they are not release dependencies.
 
+The adapter's status includes `rooting.backend`, the current `rooting.phase`, and
+a nullable `rooting.failure` with the last failed stage and a fixed error code.
+This separates preparation, the local SDB handshake, the launch command and the
+authenticated agent callback. A completed launch command does not establish that
+injection or archive execution succeeded. Only an authenticated root-agent
+connection sets the phase to `connected`. The diagnostic export includes these
+bounded fields without raw errors or command output; see the
+[report format](../app/docs/DIAGNOSTIC-EXPORT.md).
+
 ```sh
 node tests/run.cjs
 ```

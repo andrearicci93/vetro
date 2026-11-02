@@ -48,6 +48,18 @@ const execError = require('../service/exec-error');
   assert.equal(full.sections.network.data.services[0].state, 'ready');
   assert('sourceDirty' in full);
 
+  const root = report.projectors.platform({rooting: {backend: 'sdb-archive', phase: 'retrying',
+    failure: {stage: 'sdb-handshake', code: 'sdbClosed', message: secret}, secret}});
+  assert.deepStrictEqual(root.rooting, {backend: 'sdb-archive', phase: 'retrying', failure: {stage: 'sdb-handshake', code: 'sdbClosed'}});
+  assert(!JSON.stringify(root).includes(secret));
+  const poisoned = report.projectors.platform({rooting: {backend: secret, phase: secret, failure: {stage: secret, code: secret}}});
+  assert.deepStrictEqual(poisoned.rooting, {backend: null, phase: null, failure: {stage: null, code: null}});
+  assert.deepStrictEqual(report.projectors.platform({}).rooting, {backend: null, phase: null, failure: null});
+  const olderInventory = report.projectors.inventory({dependenciesAvailable: false, apps: [{appId: 'old.app', dependencies: null, dependents: null}]});
+  assert.equal(olderInventory.registryAvailable, true);
+  assert.equal(olderInventory.dependenciesAvailable, false);
+  assert.equal(olderInventory.apps[0].dependencies, null);
+
   // Two samples: the second is forced; a failing or late second sample falls back to the first.
   const calls = [];
   const ok = await report.twoSamples(force => { calls.push(force); return Promise.resolve({n: calls.length}); }, 5, 10000);

@@ -120,7 +120,7 @@ Dock.prototype.probe = function () {
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
         'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || ps | grep -q "[c]sfs"; then echo "home=1"; else echo "home=0"; fi',
-        'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null'
+        'echo "log:"; if [ -f ' + LOG_FILE + ' ]; then tail -n 6 ' + LOG_FILE + ' 2>/dev/null; fi'
     ].join('\n');
     return this.execute(wrap(script), 8000).then(function (r) {
         var out = check(r, 'Status');

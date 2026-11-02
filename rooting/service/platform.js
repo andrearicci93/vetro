@@ -16,6 +16,7 @@ var state = {
     prepared: false,
     running: false,
     unsupported: false,
+    rooting: { backend: 'sdb-archive', phase: 'stopped', failure: null },
     agent: { connected: false }
 };
 
@@ -180,7 +181,9 @@ function prepareForRuntime(port) {
         delete state.prepareError;
     } catch (e) {
         state.prepareError = String(e.message || e);
+        rootFailure('preparation', e.code === 'platformUnsupported' ? 'platformUnsupported' : 'prepare-failed');
         if (e.code !== 'platformUnsupported') return;
+        rootPhase('unsupported');
         // This runtime will never be able to prepare the agent, so stop the
         // retry loop (which rewrote the status file every few seconds) and the
         // loopback listener that nothing can connect to.
@@ -192,16 +195,31 @@ function prepareForRuntime(port) {
     }
 }
 
+// Report only phases we can observe. An SDB stream finishing does not prove
+// injection or archive execution succeeded; only authenticated AUTH proves root.
+function rootPhase(phase) { state.rooting.phase = phase; }
+function rootFailure(stage, code) {
+    state.rooting.failure = { stage: stage, code: code };
+}
+function transportCode(error) {
+    var codes = ['sdbRefused', 'sdbTimeout', 'sdbReset', 'sdbAuthRequired', 'sdbError',
+        'sdbClosed', 'sdbStreamFailed', 'sdbStreamError'];
+    return error && codes.indexOf(error.code) >= 0 ? error.code : 'sdbError';
+}
+
 function startAgent() {
     if (state.running) return;
     state.running = true;
     state.unsupported = false;
+    state.rooting = { backend: 'sdb-archive', phase: 'preparing', failure: null };
     agentServer = new RootAgentServer({
         secret: secret,
         onConnect: function (conn) {
             if (!state.running) { conn._socket.destroy(); return; }
             if (relaunchTimer) { clearTimeout(relaunchTimer); relaunchTimer = null; }
             agentConnected = true;
+            rootPhase('connected');
+            state.rooting.failure = null;
             state.agent = {
                 connected: true,
                 pid: conn.identity.pid,
@@ -217,8 +235,10 @@ function startAgent() {
             if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
         },
         onClose: function () {
+            if (!state.running) return;
             agentConnected = false;
             state.agent = { connected: false };
+            rootFailure('agent-connection', 'agent-disconnected');
             if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
             persist();
             scheduleRelaunch();
@@ -235,6 +255,7 @@ function startAgent() {
 
 function scheduleRelaunch() {
     if (!state.running || state.unsupported || relaunchTimer) return;
+    rootPhase('retrying');
     relaunchTimer = setTimeout(function () {
         relaunchTimer = null;
         relaunch();
@@ -244,6 +265,7 @@ function scheduleRelaunch() {
 function relaunch() {
     if (launching || agentConnected || !agentServer || !state.running || state.unsupported) return;
     launching = true;
+    rootPhase('preparing');
     var gen = ++launchGen;
 
     // kill any previous hanging injection before starting a new one, so two
@@ -271,6 +293,7 @@ function relaunch() {
     } catch (e) {
         launching = false;
         state.prepareError = String(e.message || e);
+        rootFailure('preparation', 'token-write-failed');
         persist();
         scheduleRelaunch();
         return;
@@ -282,28 +305,51 @@ function relaunch() {
     var entry = { t: Date.now(), phase: 'launch' };
     pushAttempt(entry);
 
+    rootPhase('sdb-handshake');
     sdb.connect({ host: '127.0.0.1', port: 26101, timeout: 8000 })
         .then(function (client) {
-            if (!state.running || gen !== launchGen) { sdb.close(client); launching = false; return; }
+            if (!state.running || gen !== launchGen || agentConnected) {
+                sdb.close(client);
+                if (gen === launchGen) launching = false;
+                return;
+            }
             launchClient = client;
             entry.connect = 'ok';
+            rootPhase('launch-command');
             // The launch script returns independently of the agent lifetime.
             // Release this connection on agent connect as an additional safeguard.
-            sdb.exec(client, 'shell:0 appinstall tpk ' + injection, { timeout: 60000 })
-                .then(function (out) { entry.output = out; })
-                .catch(function (e) { entry.err = String(e.message || e); });
+            Promise.resolve().then(function () {
+                if (!state.running || gen !== launchGen || agentConnected) return;
+                return sdb.exec(client, 'shell:0 appinstall tpk ' + injection, { timeout: 60000 });
+            }).then(function (out) {
+                entry.output = out;
+                if (state.running && gen === launchGen && !agentConnected) rootPhase('agent-callback');
+            }).catch(function (e) {
+                entry.err = String(e.message || e);
+                if (state.running && gen === launchGen && !agentConnected) {
+                    rootFailure('launch-command', transportCode(e));
+                    rootPhase('agent-callback');
+                    persist();
+                }
+            });
             launching = false;
             // if the agent has not connected within 30s, retry — but only if
             // this launch is still the current one (no newer relaunch started)
             setTimeout(function () {
-                if (gen === launchGen && !agentConnected && !launching) relaunch();
+                if (state.running && gen === launchGen && !agentConnected && !launching) {
+                    // Keep a more specific error from this launch when available.
+                    if (!entry.err) rootFailure('agent-callback', 'agent-timeout');
+                    relaunch();
+                }
             }, 30000);
         })
         .catch(function (e) {
+            if (!state.running || gen !== launchGen) return;
             launching = false;
             launchClient = null;
             entry.connect = 'fail:' + (e.code || 'error');
             entry.err = String(e.message || e);
+            rootFailure('sdb-handshake', transportCode(e));
             persist();
             scheduleRelaunch();
         });
@@ -328,6 +374,7 @@ function status() {
 }
 function stop() {
     state.running = false;
+    rootPhase('stopped');
     ++launchGen;
     if (relaunchTimer) clearTimeout(relaunchTimer);
     relaunchTimer = null;
