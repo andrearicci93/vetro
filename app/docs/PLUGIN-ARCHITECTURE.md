@@ -26,7 +26,7 @@ labels until then), moving every feature, changing how Vetro is installed or upd
 
 ## What the code looks like today
 
-Measured on `release-0.4.0`.
+Measured on `release-0.4.0` (the preliminary branch that was merged into 0.5.0).
 
 **Each feature is already one module, required only by `main.js`.**
 
@@ -286,7 +286,7 @@ and the replacement never gains `ctx` members the bundled one does not have. Not
 
 ## Checked, and not checked
 
-Checked in the code of `release-0.4.0`: the requires between modules, the lines in `main.js`, the routes, the state
+Checked in the code of `release-0.4.0` (merged into 0.5.0): the requires between modules, the lines in `main.js`, the routes, the state
 paths, the timers, the updater's handling of the launcher, the contents of `ctx`, the history of `f92f2d7` / `cac599b` /
 `33fa3fb`.
 
