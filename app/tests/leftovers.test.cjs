@@ -9,7 +9,12 @@ fs.writeFileSync(path.join(shim,'stat'),'#!/bin/sh\n[ -n "$STATLOG" ] && echo x 
 const files={'app.wgt':10,'UPPER.TPK':20,'.hidden.rpm':30,'name with space.wgt':40,'.wgt':5,'device-profile.xml':7};
 Object.entries(files).forEach(([n,s])=>fs.writeFileSync(path.join(a,n),'x'.repeat(s)));
 fs.writeFileSync(path.join(a,'archive-root-0123','agent.wgt'),'keep');
-function run(clear,dirs,extras){return l.parse(cp.execFileSync('sh',['-c',l.script(clear,dirs,root,extras||null)],{env:{...process.env,PATH:shim+':'+process.env.PATH}}).toString(),dirs);}
+function run(clear,dirs,extras,tail){return l.parse(cp.execFileSync('sh',['-c',l.script(clear,dirs,root,extras||null)],{env:{...process.env,PATH:shim+':'+(tail||process.env.PATH)}}).toString(),dirs);}
+// A PATH with every system tool except one, for hosts that have it installed (fuser is on the Ubuntu CI runner).
+function pathWithout(tool){const dir=path.join(root,'no-'+tool);fs.mkdirSync(dir,{recursive:true});
+ process.env.PATH.split(':').forEach(d=>{let names=[];try{names=fs.readdirSync(d)}catch(e){return}
+  names.forEach(n=>{const t=path.join(dir,n);if(n!==tool&&!fs.existsSync(t)){try{fs.symlinkSync(path.join(d,n),t)}catch(e){}}})});
+ return dir;}
 try{
  const listed=run(false,[a,b]);
  assert.deepEqual(listed.errors,[],'missing tmp/ subfolder is not an error');
@@ -70,7 +75,7 @@ try{
   const blind=run(true,[a,b],cfg);assert.equal(blind.appsUnreadable,true);assert.equal(blind.extrasDeleted.filter(e=>e.kind!=='log').length,0);assert.ok(fs.existsSync(path.join(pv,'tmp_bitmap1')));
   // Without fuser every file counts as open
   stub('app_launcher','printf "\\tx (1)\\n"');fs.rmSync(path.join(shim,'fuser'));old(w(path.join(logs,'inm.log.5'),10));
-  const nofuser=run(false,[a,b],{...cfg,webRoot:path.join(x,'none'),bitmaps:[]});assert.deepEqual(nofuser.extras,[],'fuser missing: no log is offered');
+  const nofuser=run(false,[a,b],{...cfg,webRoot:path.join(x,'none'),bitmaps:[]},pathWithout('fuser'));assert.deepEqual(nofuser.extras,[],'fuser missing: no log is offered');
   assert.throws(()=>l.script(false,[a],root,{...cfg,logs:[{dir:"/a b/'x",name:'x'}]}),/Unsafe path/);
  }
  console.log('PASS leftovers: Apps2Samsung staging rules, dotfiles, case-insensitive packages, folders kept, bytes freed');
