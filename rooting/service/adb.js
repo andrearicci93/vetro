@@ -4,8 +4,9 @@
 // sdbd authorizes by developer host IP, not by key: this client never handles AUTH.
 
 const net = require('net');
-const { EventEmitter } = require('events');
-const { Duplex } = require('stream');
+// Node 4.4 (Tizen 5.5 and older) cannot parse destructuring.
+const EventEmitter = require('events').EventEmitter;
+const Duplex = require('stream').Duplex;
 
 const COMMANDS = ['SYNC', 'OPEN', 'CNXN', 'AUTH', 'OKAY', 'CLSE', 'WRTE']
     .reduce((all, name) => { all[name] = Buffer.from(name).readUInt32LE(0); return all; }, {});
@@ -80,7 +81,9 @@ class Stream extends Duplex {
     }
     _flush() {
         if (this._remoteId === -1 || this._inFlight || this._queue.length === 0) return;
-        const { chunk, done } = this._queue.shift();
+        const next = this._queue.shift();
+        const chunk = next.chunk;
+        const done = next.done;
         this._inFlight = done || function () {};
         this._connection._send(COMMANDS.WRTE, this._localId, this._remoteId, chunk);
     }
