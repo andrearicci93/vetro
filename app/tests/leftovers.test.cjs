@@ -4,8 +4,8 @@ const assert=require('assert').strict,fs=require('fs'),os=require('os'),path=req
 const l=require('../service/leftovers.js');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'vetro-leftovers-')),a=path.join(root,'sdk_tools'),b=path.join(a,'tmp'),shim=path.join(root,'bin');
 fs.mkdirSync(path.join(a,'archive-root-0123'),{recursive:true});fs.mkdirSync(shim);
-// Portable stat -c %s for macOS test hosts.
-fs.writeFileSync(path.join(shim,'stat'),'#!/bin/sh\n[ -n "$STATLOG" ] && echo x >> "$STATLOG"\nif [ "$1" = -c ] && [ "$2" = %h ]; then /usr/bin/stat -f %l "$3"; exit 0; fi\nif [ "$1" = -c ] && [ "$2" = "%h %s %n" ]; then shift 2; for f in "$@"; do /usr/bin/stat -f "%l %z %N" "$f"; done; exit 0; fi\nif [ "$1" = -c ]; then wc -c < "$3" | tr -d " "; exit 0; fi\nexec /usr/bin/stat "$@"\n',{mode:0o755});
+// Portable stat -c %s for macOS test hosts. GNU stat (Linux, CI) already understands -c and is used as it is.
+fs.writeFileSync(path.join(shim,'stat'),'#!/bin/sh\n[ -n "$STATLOG" ] && echo x >> "$STATLOG"\nif /usr/bin/stat -c %s / >/dev/null 2>&1; then exec /usr/bin/stat "$@"; fi\nif [ "$1" = -c ] && [ "$2" = %h ]; then /usr/bin/stat -f %l "$3"; exit 0; fi\nif [ "$1" = -c ] && [ "$2" = "%h %s %n" ]; then shift 2; for f in "$@"; do /usr/bin/stat -f "%l %z %N" "$f"; done; exit 0; fi\nif [ "$1" = -c ]; then wc -c < "$3" | tr -d " "; exit 0; fi\nexec /usr/bin/stat "$@"\n',{mode:0o755});
 const files={'app.wgt':10,'UPPER.TPK':20,'.hidden.rpm':30,'name with space.wgt':40,'.wgt':5,'device-profile.xml':7};
 Object.entries(files).forEach(([n,s])=>fs.writeFileSync(path.join(a,n),'x'.repeat(s)));
 fs.writeFileSync(path.join(a,'archive-root-0123','agent.wgt'),'keep');
