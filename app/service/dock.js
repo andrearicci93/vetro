@@ -39,6 +39,7 @@ function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function Dock(options) {
     options = options || {};
     this.execute = options.execute;
+    this.checkRuntime = options.checkRuntime === true;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
@@ -212,9 +213,23 @@ Dock.prototype.waitRunning = function () {
 
 // `quick` is the start after a boot or a crash: it uses the list saved by the last start, so the
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
+Dock.prototype.ensureRuntime = function () {
+    if (!this.checkRuntime) return Promise.resolve();
+    // This read-only probe must precede catalog writes, stopping an old dock,
+    // changing Autorun or closing Home. A connected Node agent does not prove .NET exists.
+    return this.execute('if [ ! -x /usr/bin/dotnet ]; then echo "Launcher requires /usr/bin/dotnet, which is unavailable on this TV" >&2; exit 127; fi\n/usr/bin/dotnet --info', 8000)
+        .then(function (r) { check(r, 'Launcher .NET runtime check'); })
+        .catch(function (error) {
+            error.code = 'dock-runtime-unavailable';
+            throw error;
+        });
+};
+
 Dock.prototype.launch = function (quick) {
     var self = this, saved = quick && this.hasSavedApps();
-    return (saved ? Promise.resolve() : this.writeCatalog()).then(function () {
+    return this.ensureRuntime().then(function () {
+        return saved ? null : self.writeCatalog();
+    }).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
         if (saved) self.refreshPending = true;
@@ -253,6 +268,7 @@ Dock.prototype.enable = function () {
         return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
+        if (e.code === 'dock-runtime-unavailable') throw e;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
     }).finally(function () { self.busy = false; });
 };

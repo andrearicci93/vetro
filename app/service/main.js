@@ -25,7 +25,7 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
-var dock = new (require('./dock.js').Dock)({execute: agentExecute});
+var dock = new (require('./dock.js').Dock)({execute: agentExecute, checkRuntime: buildInfo.rootMethod === 'remote-pc'});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
@@ -39,6 +39,9 @@ var TOGGLE_IDS = debloat.VERIFIED_GLOBAL_IDS.concat(quickSettings.ALLOWED_IDS);
 // The package builder writes a non-default port into build-info.js (VETRO_PORT=... node build.cjs);
 // VETRO_PORT at run time still wins for local runs.
 var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
+// Manual Remote PC builds allow explicit actions without replaying saved changes.
+var READ_ONLY = buildInfo.readOnly === true || process.env.VETRO_READ_ONLY === '1';
+var AUTOMATIC_RESTORE = !READ_ONLY && buildInfo.automaticRestore !== false;
 
 // --- telemetry reader (service side, uid 5001) ---------------------------
 // Reads /proc and /sys directly via fs. No platform command is needed. Every read
@@ -582,6 +585,12 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
 
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
+    // The widget's loopback-only report is diagnostic input, not a TV action.
+    // handleProbe still validates its source, schema and body limit.
+    var diagnosticReport = url === '/probe' && req.method === 'POST';
+    if (READ_ONLY && !diagnosticReport && req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+        return serveJson(res, {error: 'This experimental build provides read-only diagnostics'}, 403);
+    }
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res);
@@ -658,9 +667,9 @@ platform.start();
 // A short tick notices the moment the root agent connects, so after a boot the dock starts at once
 // instead of waiting for the next 10 s round.
 var dockAgentWas=false,dockTicks=0;
-var dockTimer=setInterval(function(){var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
+var dockTimer=setInterval(function(){if(!AUTOMATIC_RESTORE)return;var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
 // Retry after boot and helper disconnects, including late adapter availability.
-var inputRestoreTimer=setInterval(restoreInput,5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
+var inputRestoreTimer=setInterval(function(){if(AUTOMATIC_RESTORE)restoreInput();},5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
 
 // MQTT bridge: publishes telemetry + Home Assistant discovery when a broker
 // is configured (persistent owner config, /tmp fallback). No-op without config.
@@ -672,7 +681,7 @@ var bridge = new MqttBridge(readTelemetry,function(m){
  actionQueue=actionQueue.then(function(){return runActions(actions);}).then(function(r){bridge.event('trigger','Rule executed: '+m.topic+' · '+r.sent+' action(s)');}).catch(function(e){bridge.event('error','MQTT rule: '+e.message);}).finally(function(){pendingActions--;});
 });
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-bridge.start();
+if (AUTOMATIC_RESTORE) bridge.start();
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
@@ -691,11 +700,11 @@ var tvStateTimer=setInterval(function(){
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
 
 // Restore only an explicitly saved local domain filter once the adapter is ready.
-var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRestoreAttempts>12){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
+var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++dnsRestoreAttempts>12){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
 
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
-var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
+var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

@@ -22,10 +22,26 @@ const AUTHOR_PW = process.env.AUTHOR_PW;
 const DISTRIBUTOR_PW = process.env.DIST_PW;
 
 function collectIntegration() {
+    const rootMethod = process.env.VETRO_ROOT_METHOD || 'archive';
+    if (rootMethod !== 'archive' && rootMethod !== 'remote-pc') throw new Error('Unknown VETRO_ROOT_METHOD');
+    const remotePcMode = process.env.VETRO_REMOTE_PC_MODE || 'diagnostics';
+    if (rootMethod === 'remote-pc' && !['diagnostics', 'manual', 'automatic'].includes(remotePcMode)) {
+        throw new Error('VETRO_REMOTE_PC_MODE must be diagnostics, manual or automatic');
+    }
     const files = require('../app/build.cjs').collectFiles().filter(file => decodeURIComponent(file.uri) !== 'service/platform.js');
     ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js'].forEach(name => {
+        const source = name === 'platform.js' && rootMethod === 'remote-pc' ? 'remote-pc-platform.js' : name;
+        files.push({uri: encodeURIComponent('service/' + name), data: fs.readFileSync(path.join(__dirname,'service',source))});
+    });
+    if (rootMethod === 'remote-pc') ['node-root-agent.js', 'shell-executor.js', 'shell-worker.sh'].forEach(name => {
         files.push({uri: encodeURIComponent('service/' + name), data: fs.readFileSync(path.join(__dirname,'service',name))});
     });
+    if (rootMethod === 'remote-pc') {
+        const metadata = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js');
+        const flags = {rootMethod: 'remote-pc', remotePcMode,
+            readOnly: remotePcMode === 'diagnostics', automaticRestore: remotePcMode === 'automatic'};
+        metadata.data = Buffer.concat([metadata.data, Buffer.from('\nObject.assign(module.exports, ' + JSON.stringify(flags) + ');\n')]);
+    }
     fs.readdirSync(path.join(__dirname,'payload')).sort().forEach(name => {
         files.push({uri: encodeURIComponent('payload/' + name), data: fs.readFileSync(path.join(__dirname,'payload',name))});
     });

@@ -17,6 +17,15 @@ privileged behavior. The app-only build must not contain payloads, SDB or signin
 materials. The browser management HTTP interface currently requires a trusted
 LAN and has no login; agent authentication does not authenticate browser users.
 
+Remote PC builds have three build-time modes: `diagnostics` (default, HTTP
+mutations blocked), `manual` (explicit actions enabled, automatic feature
+restores disabled) and `automatic` (explicit actions and restores enabled).
+`build-info.js` records `remotePcMode`, `readOnly` and `automaticRestore`.
+`VETRO_READ_ONLY=1` still forces HTTP read-only operation and disables restores.
+The Remote PC adapter also requires a feature-enabled mode to expose its
+package installation and package-state methods. Missing root rejects commands;
+neither command failure nor renewal automatically retries a mutation.
+
 ### Physical remote feature
 
 `service/physical-input.js` is a localhost HMAC-authenticated event receiver.

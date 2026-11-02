@@ -14,6 +14,11 @@
 
 Vetro runs on your Samsung TV with root access and gives you a dashboard, open from any computer or phone on your network, to manage it. Replace Samsung's Home with a light launcher, switch off what tracks you and wastes memory, and make the remote do what you want.
 
+**Q74T fork:** this branch adds the Remote PC adapter for Tizen 5.5 and a
+manual feature-testing build. It uses an existing external boot supervisor;
+the WGT does not install persistence. See the [Q74T build and validation notes](rooting/Q74T.md)
+for what is supported, reported on hardware and still awaiting device tests.
+
 <p align="center">
   <img src="app/docs/images/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings: HbbTV, advertising and tracking, domain blocking and voice assistant switches" width="1000">
   <br><em>The dashboard on a Samsung Q80A.</em>
