@@ -8,6 +8,13 @@ When it is on, the Home key opens this launcher instead of Samsung's Home. The d
 the same apps, in the same order and with the same icons as Samsung's Home row, read
 from the TV at start-up, and ends with two outline pills, Settings and Samsung Home.
 
+In Vetro’s **Launcher → Home shortcut** settings, choose an installed app to open from
+that second button and enter a label of up to 12 characters. The label fits inside the
+existing button. Samsung Home remains the default and is used if the selected app is
+removed (at the next list refresh) or its launch request is rejected. Save restarts an enabled launcher to apply the change;
+it does not enable a disabled launcher or change the TV’s default Home app. Keep any
+custom home app’s own Home takeover off while using Vetro’s launcher.
+
 ## Layout
 
 - `src/` the dock. `Core/` is pure logic (layout, catalog, input decoding) and has tests;

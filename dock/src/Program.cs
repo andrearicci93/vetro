@@ -716,12 +716,22 @@ namespace Launcher
                 }
                 if (SendLaunch(e.AppId)) { Log("launch " + e.AppId); return; }
                 Log("launch failed: " + e.AppId);
+                if (e.FallbackAppId == "com.samsung.tv.csfs")
+                {
+                    LaunchApp(new AppEntry("samsunghome", "Samsung Home", e.FallbackAppId, null));
+                    return;
+                }
                 if (e.FallbackAppId != null && SendLaunch(e.FallbackAppId)) { Log("launch " + e.FallbackAppId + " (fallback)"); return; }
                 // Last resort: the platform's command line launcher.
                 Process.Start(new ProcessStartInfo("/usr/bin/app_launcher", "-s " + (e.FallbackAppId ?? e.AppId)) { UseShellExecute = false });
                 Log("launch via app_launcher: " + (e.FallbackAppId ?? e.AppId));
             }
-            catch (Exception ex) { Log("launch error: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Log("launch error: " + ex.Message);
+                if (e.AppId != "com.samsung.tv.csfs" && e.FallbackAppId == "com.samsung.tv.csfs")
+                    LaunchApp(new AppEntry("samsunghome", "Samsung Home", e.FallbackAppId, null));
+            }
         }
 
         // ------------------------------------------------------------------ warm-up

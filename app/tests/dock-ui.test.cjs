@@ -15,6 +15,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         else if (url === '/dock') {
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
+            if (body.action === 'homeShortcut') dock = Object.assign({}, dock, {homeShortcut: body.appId ? {appId: body.appId, label: body.label} : null});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
             data = dock;
         } else if (url.startsWith('/apps')) data = {apps: [], summary: {total: 0}, source: 'package registry + public probe'};
@@ -120,6 +121,22 @@ const tick = () => new Promise(r => setImmediate(r));
     page = el('dockBody').innerHTML;
     assert.doesNotMatch(page, /TizenTube is not installed/); assert.match(page, /TizenTube is not in Samsung’s Home row/, 'installed but without a tile: the other chip'); assert.doesNotMatch(page, /data-dock-fix[^>]* disabled/);
     sandbox.inventory = [];
+
+    sandbox.inventory = [{appId: 'DclHome001.Home', name: 'AeroTizen', show: true, disabled: false},
+        {appId: 'hidden.service', name: 'Hidden helper', show: false, disabled: false}];
+    sandbox.renderDock(); page = el('dockBody').innerHTML;
+    assert.match(page, /Samsung Home \(default\)/); assert.match(page, /maxlength="12"/);
+    assert.match(page, /DclHome001.Home/); assert.ok(!page.includes('hidden.service'));
+    el('dockHomeApp').value = 'DclHome001.Home';
+    el('dock').onchange({target: {dataset: {dockHomeApp: ''}, value: 'DclHome001.Home'}});
+    assert.equal(el('dockHomeLabel').value, 'AeroTizen');
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}}); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body,
+        {action: 'homeShortcut', appId: 'DclHome001.Home', label: 'AeroTizen'});
+    el('dockHomeApp').value = '';
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}}); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'homeShortcut', appId: null, label: null});
+    assert.match(sandbox.previewTile({slug: 'customhome', label: '<Home>'}, 92, true, false), /&lt;Home&gt;/);
 
     // A package without the dock cannot be switched on.
     dock = Object.assign({}, dock, {installed: false});

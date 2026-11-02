@@ -685,7 +685,7 @@ function isTizenTube(id){return String(id).toLowerCase().indexOf('tizentube')>=0
 // "Not installed" is only said once the registry has been read.
 function dockHasTizenTube(d){return (d.entries||[]).some(function(e){return isTizenTube(e.appId)})}
 function tizenTubeInstalled(d){return dockHasTizenTube(d)||(inventory||[]).some(function(a){return isTizenTube(a.appId)})}
-function previewTile(e,size,pill,sel){return '<div class="lp-tile'+(pill?' lp-oval':'')+(sel?' lp-sel':'')+'" style="width:'+(pill?232:size)+'px;height:'+(pill?48:size)+'px;border-radius:'+(pill?'24px':'16%')+'"><img alt="" src="/dock/icon?slug='+encodeURIComponent(e.slug)+'" data-initials="'+esc(e.label.slice(0,2))+'"></div>'}
+function previewTile(e,size,pill,sel){if(e.slug==='customhome'&&pill)return '<div class="lp-tile lp-oval" style="width:232px;height:48px;border-radius:24px;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:22px"><span style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(e.label)+'</span></div>';return '<div class="lp-tile'+(pill?' lp-oval':'')+(sel?' lp-sel':'')+'" style="width:'+(pill?232:size)+'px;height:'+(pill?48:size)+'px;border-radius:'+(pill?'24px':'16%')+'"><img alt="" src="/dock/icon?slug='+encodeURIComponent(e.slug)+'" data-initials="'+esc(e.label.slice(0,2))+'"></div>'}
 var sampleRow=[{slug:'sample-1',label:'Netflix'},{slug:'sample-2',label:'YouTube'},{slug:'sample-3',label:'Prime Video'},{slug:'sample-4',label:'Disney+'},{slug:'sample-5',label:'Plex'},{slug:'sample-6',label:'Sport'},{slug:'sample-7',label:'Music'},{slug:'sample-s1',label:'Source',system:true},{slug:'sample-s2',label:'Settings',system:true}];
 function previewMarkup(d){
  var real=(d.entries||[]).length>0,all=real?d.entries:sampleRow,apps=all.filter(function(e){return !e.system}),sys=all.filter(function(e){return e.system});
@@ -714,6 +714,13 @@ function fitPreview(){
   if(img.complete&&img.naturalWidth)judge();else img.onload=judge;
  });
 }
+function dockHomeControls(d){
+ var saved=d.homeShortcut||{appId:'',label:''},available=inventory.filter(function(a){return a.show&&!a.disabled&&a.appId!=='com.samsung.tv.csfs'}).sort(function(a,b){return(a.name||a.appId).localeCompare(b.name||b.appId)});
+ var options='<option value="">Samsung Home (default)</option>';
+ if(saved.appId&&!available.some(function(a){return a.appId===saved.appId}))options+='<option value="'+esc(saved.appId)+'" selected>'+esc(saved.label)+' (unavailable)</option>';
+ options+=available.map(function(a){return '<option value="'+esc(a.appId)+'"'+(a.appId===saved.appId?' selected':'')+'>'+esc(a.name||a.appId)+'</option>'}).join('');
+ return '<div class="quick-item"><div><h3>Home shortcut</h3><p>Choose what the Samsung Home button opens. This changes the button only; the remote’s Home key still opens Vetro.</p><label for="dockHomeApp">App</label><select id="dockHomeApp" data-dock-home-app '+(dockBusy?'disabled':'')+'>'+options+'</select><label for="dockHomeLabel">Button label (1–12 characters)</label><input id="dockHomeLabel" maxlength="12" value="'+esc(saved.label)+'" placeholder="AeroTizen" '+(!saved.appId||dockBusy?'disabled':'')+'><p class="section-note">An unavailable app falls back to Samsung Home when the launcher list refreshes. Keep a custom home app’s own Home takeover off when using Vetro’s launcher.</p><div class="quick-actions"><button data-dock-home-save '+(dockBusy||!d.installed?'disabled':'')+'>Save shortcut</button></div></div></div>';
+}
 function renderDock(){
  var box=$('dockBody');if(!box)return;var d=dockData;
  if(!d){box.innerHTML='<div class="panel"><p class="notice">'+esc(dockError||'Reading…')+'</p></div>';return}
@@ -727,24 +734,26 @@ function renderDock(){
  var main='<div class="quick-item" data-quick-item="launcher"><div><h3>Vetro launcher</h3><p>Opens on the Home key with the same apps and icons as Samsung’s Home, which is closed while the launcher is on.</p><div class="quick-state">'+state+'</div>'+apps+problem+actions+log+'</div>'+control+confirm+'</div>';
  var noTube=inventory.length>0&&!tizenTubeInstalled(d),fixState=d.fixTizenTube?chip('On','on'):chip('Off');
  var fix='<div class="quick-item" data-quick-item="fix-tizentube"><div><h3>Fix TizenTube</h3><p>Shows the YouTube icon on the TizenTube tile and closes Samsung’s YouTube (com.samsung.tv.cobalt-yt) before starting it. Launcher tile only.</p><div class="quick-state">'+fixState+(noTube?chip('TizenTube is not installed on this TV','partial'):d.enabled&&!dockHasTizenTube(d)?chip('TizenTube is not in Samsung’s Home row','partial'):'')+'</div></div>'+switchMarkup('data-dock-fix',!!d.fixTizenTube,dockBusy||!d.installed||noTube&&!d.fixTizenTube,'Fix TizenTube')+'</div>';
- box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+fix+'</div></div>';
+ box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+dockHomeControls(d)+fix+'</div></div>';
  setTimeout(fitPreview,0);
 }
 function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockData=d;dockError=null;
-  var message=action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='homeShortcut'?'Home shortcut saved'+(d.enabled?'; the launcher restarted.':'; it applies when the launcher is on.'):action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock()});
 }
 $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
+ if(x.dataset.dockHomeApp!=null){var app=inventory.filter(function(a){return a.appId===x.value})[0],label=$('dockHomeLabel');label.disabled=!x.value;label.value=app?(app.name||app.appId).slice(0,12):'';return}
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
  return setDock('disable','Turn off the launcher');
 };
 $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):null;if(!b)return;var ds=b.dataset;
+ if(ds.dockHomeSave!=null){var id=$('dockHomeApp').value,label=$('dockHomeLabel').value.trim();if(id&&(!label||label.length>12)){say('Enter a button label of 1–12 characters');return}return setDock('homeShortcut','Save Home shortcut',{appId:id||null,label:id?label:null})}
  if(ds.dockCancel!=null){dockConfirm=false;renderDock();var s=document.querySelector('[data-dock-switch]');if(s)s.focus();return}
  if(ds.dockConfirm!=null)return setDock('enable','Turn on the launcher');
  if(ds.dockRebuild!=null)return setDock('refresh','Rebuild the launcher app list');

@@ -248,5 +248,36 @@ function fixture(options) {
     assert.equal(f.dock.iconFile('evil'), null, 'a path outside the icon places is never read');
     assert.equal(f.dock.iconFile('net'), null, 'nor one with parent directories');
 
+    // The shortcut changes only its button, survives other setting writes, and resets safely.
+    const custom = {appId: 'DclHome001.Home', label: 'AeroTizen'};
+    const available = [{appId: custom.appId, name: 'AeroTizen', show: true, disabled: false}];
+    f = fixture({homeData: HOME_DATA + '\nH|' + hex(custom.appId)});
+    s = await f.dock.setHomeShortcut(custom, available);
+    assert.deepEqual(s.homeShortcut, custom); assert.equal(s.enabled, false);
+    assert.ok(s.entries.some(e => e.slug === 'customhome' && e.label === 'AeroTizen' && e.appId === 'sys:' + custom.appId && e.system));
+    assert.ok(!f.tv.started, 'saving does not turn the launcher on');
+    await f.dock.enable();
+    assert.match(f.tv.started, /--kill-on-home com\.samsung\.tv\.csfs/, 'physical Home keeps its guard');
+    assert.match(fs.readFileSync(f.dock.appsFile, 'utf8'), /customhome\tAeroTizen\tsys:DclHome001\.Home\tcom\.samsung\.tv\.csfs/);
+    await f.dock.setFixTizenTube(true);
+    assert.deepEqual(f.dock.readState().homeShortcut, custom, 'other setting updates preserve the shortcut');
+    await assert.rejects(f.dock.setHomeShortcut({appId: custom.appId, label: '1234567890123'}, available), /1–12/);
+    await assert.rejects(f.dock.setHomeShortcut({appId: 'bad;command', label: 'Bad'}, available), /Choose/);
+    await assert.rejects(f.dock.setHomeShortcut({appId: custom.appId, label: 'bad\tlabel'}, available), /1–12/);
+    await assert.rejects(f.dock.setHomeShortcut(custom, []), /installed/);
+    await assert.rejects(f.dock.setHomeShortcut(custom, [{...available[0], disabled: true}]), /enabled/);
+    assert.deepEqual(f.dock.readState().homeShortcut, custom);
+    f.tv.homeData = HOME_DATA; await f.dock.refresh();
+    assert.ok(f.dock.entries().some(e => e.slug === 'samsunghome'), 'removed app falls back at rebuild');
+    assert.ok(!f.dock.entries().some(e => e.slug === 'customhome'));
+    assert.deepEqual(f.dock.readState().homeShortcut, custom, 'missing app does not erase the preference');
+    s = await f.dock.setHomeShortcut(null);
+    assert.equal(s.homeShortcut, null); assert.ok(s.enabled);
+    assert.ok(s.entries.some(e => e.slug === 'samsunghome'));
+    await f.dock.disable();
+    f.tv.homeData = 'unreadable';
+    await assert.rejects(f.dock.setHomeShortcut(custom, available), /empty or unreadable/);
+    assert.equal(f.dock.readState().homeShortcut, null, 'a failed save restores the previous choice');
+
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
