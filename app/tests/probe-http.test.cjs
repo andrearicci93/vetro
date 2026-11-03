@@ -42,7 +42,21 @@ server.listen(0, '127.0.0.1', async () => {
     });
     assert.equal(remote.code, 403);
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).apps.length, 700);
-    console.log('PASS widget probe HTTP: preflight, report round trip, opaque origin only, loopback writes only');
+    // The widget on a TV that blocks loopback posts through the TV's own LAN address: accepted.
+    const own = Object.values(require('os').networkInterfaces()).flat().find(n => n && n.family === 'IPv4' && !n.internal);
+    if (own) {
+      for (const address of [own.address, '::ffff:' + own.address]) {
+        const local = await new Promise(resolve => {
+          const res = {headers: {}, setHeader() {}, writeHead(code) {res.code = code;}, end(text) {resolve({code: res.code, text});}};
+          const body = Buffer.from(JSON.stringify({probe: {tizenObject: {ok: true, value: true}}, apps: []}));
+          const req = {method: 'POST', url: '/probe', headers: {'content-type': 'application/json', 'content-length': String(body.length)},
+            socket: {remoteAddress: address}, on(ev, fn) { if (ev === 'data') setImmediate(() => fn(body)); if (ev === 'end') setImmediate(() => setImmediate(fn)); }};
+          service.router(req, res);
+        });
+        assert.notEqual(local.code, 403, 'own LAN address ' + address + ' refused');
+      }
+    }
+    console.log('PASS widget probe HTTP: preflight, report round trip, opaque origin only, loopback or own LAN address writes only');
   } catch (e) {console.error(e); process.exitCode = 1;}
   finally {server.close();}
 });
