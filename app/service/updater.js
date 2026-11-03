@@ -235,7 +235,9 @@ Updater.prototype._applyScript = function (from, to, changed, existing, added, h
 // Waits for the new version to confirm itself (confirm() below); otherwise puts the old files back and restarts.
 Updater.prototype._watchdog = function (to, existing, added, dock) {
     var lines = ['#!/bin/sh', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'i=0',
-        'while [ "$i" -lt ' + this.waitSteps + ' ]; do', '  [ -f "$W/ok-' + to + '" ] && exit 0', '  sleep 2; i=$((i+1))', 'done'];
+        'while [ "$i" -lt ' + this.waitSteps + ' ]; do', '  [ -f "$W/ok-' + to + '" ] && exit 0', '  sleep 2; i=$((i+1))', 'done',
+        // One last look after the final sleep: a confirm written in the last two seconds must not be rolled back.
+        '[ -f "$W/ok-' + to + '" ] && exit 0'];
     lines.push.apply(lines, this._restoreLines(existing, added));
     if (dock && this.dockStopCommand) lines.push(this.dockStopCommand);
     lines.push('echo rolled-back > "$W/rolled-back"', this.restartCommand);
