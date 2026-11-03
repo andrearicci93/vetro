@@ -54,7 +54,7 @@
   "label.font": "system",
   "label.sub": false,
   "label.subColor": "#aab4c0",
-  "clock.show": false,
+  "clock.show": true,
   "clock.size": 26,
   "clock.opacity": 0.7,
   "clock.fmt": "24",

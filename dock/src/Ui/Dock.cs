@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Launcher.Core;
 using Launcher.Native;
@@ -14,7 +15,7 @@ namespace Launcher.Ui
     /// </summary>
     internal sealed class Dock
     {
-        private const string Font = "SamsungOneUI 500,Sans";
+        private const string Font = "One UI Sans APP 500 Medium,SamsungOneUI 500,Sans";
 
         private readonly IntPtr _win, _evas;
         private readonly DockLayout _layout;
@@ -39,6 +40,8 @@ namespace Launcher.Ui
 
         private readonly Box[] _iconBox;
         private readonly int[] _iconAlpha;
+        private readonly IntPtr[] _runningDot;
+        private HashSet<string> _runningApps;
         private Box _shadowBox, _pillBox, _hlBox, _hlBox2, _ringBox, _ringBox2;
         private int _chromeAlpha = -1, _hlAlpha = -1, _hlAlpha2 = -1, _clockAlpha = -1, _ringAlpha = -1, _ringAlpha2 = -1;
         private int _hlRgb = -1, _hlRgb2 = -1;
@@ -65,6 +68,7 @@ namespace Launcher.Ui
             _initials = new IntPtr[items.Length];
             _iconBox = new Box[items.Length];
             _iconAlpha = new int[items.Length];
+            _runningDot = new IntPtr[items.Length];
             _glowRgb = new int[items.Length];
             for (int i = 0; i < items.Length; i++) { _iconBox[i].W = -1; _iconAlpha[i] = -1; _glowRgb[i] = Design.GlowColor; }
             _shadowBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = -1;
@@ -98,6 +102,13 @@ namespace Launcher.Ui
                 IntPtr clip = i < _layout.AppCount ? _appsClip : _clip;
                 Efl.evas_object_clip_set(_icon[i], clip);
                 if (_initials[i] != IntPtr.Zero) Efl.evas_object_clip_set(_initials[i], clip);
+                if (i < _layout.AppCount)
+                {
+                    _runningDot[i] = Efl.evas_object_rectangle_add(_evas);
+                    Efl.evas_object_color_set(_runningDot[i], 0, 0, 0, 0);
+                    Efl.evas_object_clip_set(_runningDot[i], _appsClip);
+                    Efl.evas_object_show(_runningDot[i]);
+                }
             }
             Efl.evas_object_clip_set(_highlight, _clip);
             Efl.evas_object_clip_set(_highlight2, _clip);
@@ -127,7 +138,7 @@ namespace Launcher.Ui
             if (Design.ShowClock)
             {
                 _clock = Efl.evas_object_text_add(_evas);
-                Efl.evas_object_text_font_set(_clock, Font, 22);
+                Efl.evas_object_text_font_set(_clock, Font, 24);
                 Efl.evas_object_text_text_set(_clock, "--:--");
                 _clockW = Efl.evas_object_text_horiz_advance_get(_clock);
                 SoftShadow(_clock);
@@ -208,6 +219,11 @@ namespace Launcher.Ui
             Efl.evas_object_text_text_set(_clock, text);
             _clockW = Efl.evas_object_text_horiz_advance_get(_clock);
             _clockX = int.MinValue;   // re-place on the next frame: the width may have changed
+        }
+
+        public void SetRunningApps(HashSet<string> running)
+        {
+            _runningApps = running;
         }
 
         private void GlowShape(IntPtr img, ref bool round, bool wantRound)
@@ -445,6 +461,24 @@ namespace Launcher.Ui
                     int h = Efl.evas_object_text_vert_advance_get(_initials[i]);
                     Efl.evas_object_move(_initials[i], b.X + (b.W - w) / 2, b.Y + (b.H - h) / 2);
                 }
+                if (i < _runningDot.Length && _runningDot[i] != IntPtr.Zero)
+                {
+                    bool isRunning = _items[i].IsRunning(_runningApps);
+                    if (isRunning)
+                    {
+                        const int dotSize = 6;
+                        int dotX = b.X + (b.W - dotSize) / 2;
+                        int dotY = b.Y + b.H + 4;
+                        Efl.evas_object_move(_runningDot[i], dotX, dotY);
+                        Efl.evas_object_resize(_runningDot[i], dotSize, dotSize);
+                        int dotA = (int)Math.Round(255f * c.ItemPresence(i));
+                        Efl.evas_object_color_set(_runningDot[i], (52 * dotA) / 255, (199 * dotA) / 255, (89 * dotA) / 255, dotA);
+                    }
+                    else
+                    {
+                        Efl.evas_object_color_set(_runningDot[i], 0, 0, 0, 0);
+                    }
+                }
             }
 
             if (_divider != IntPtr.Zero)
@@ -481,7 +515,7 @@ namespace Launcher.Ui
         private void ApplyClock(int slide, int presence)
         {
             int x = _layout.ClockRight - _clockW;
-            int y = _layout.LabelTop(slide) + 3;
+            int y = _layout.LabelTop(slide) + 2;
             if (x != _clockX || y != _clockY)
             {
                 _clockX = x; _clockY = y;
@@ -489,7 +523,7 @@ namespace Launcher.Ui
             }
             // Quieter than the label: it is there to be glanced at, not read. It gives way to the label.
             int ts = _fader.TargetSlot;
-            int a = _layout.ClockClear(_labelX[ts], _labelW[ts], _clockW) ? presence * 7 / 10 : 0;
+            int a = _layout.ClockClear(_labelX[ts], _labelW[ts], _clockW) ? presence * 8 / 10 : 0;
             if (a != _clockAlpha) { _clockAlpha = a; TintText(_clock, a); }
         }
 

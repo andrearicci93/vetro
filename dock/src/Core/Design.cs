@@ -44,7 +44,8 @@ namespace Launcher.Core
 
         // ---- Text ----
         public static readonly bool ShowLabels = false;
-        public static readonly bool ShowClock = false;
+        public static readonly bool ShowClock = true;
+        public static readonly bool ShowSysInfo = true;
         public const string HintText = "Source";
 
         // ---- The two pills ----

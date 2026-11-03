@@ -4,7 +4,7 @@ namespace Launcher.Core
 {
     internal enum Phase { Hidden, Showing, Shown, Hiding }
 
-    internal enum KeyAction { None, Moved, Launch, Hide, OpenPanel, Back }
+    internal enum KeyAction { None, Moved, Launch, Hide, OpenPanel, Back, Kill }
 
     /// <summary>The apps row is the home page; a Panel page (the inputs) sits one step beside it.</summary>
     internal enum PageKind { Apps, Panel }
@@ -184,6 +184,21 @@ namespace Launcher.Core
                 case "Select":
                     launchIndex = FocusTarget;
                     return KeyAction.Launch;
+                case "XF86Red":
+                case "Delete":
+                case "r":
+                case "R":
+                case "XF86AudioPause":
+                case "XF86AudioPlay":
+                case "XF86AudioPlayPause":
+                case "MediaPlayPause":
+                case "Pause":
+                case "p":
+                case "P":
+                case "XF86PlayBack":
+                case "PlayBack":
+                    launchIndex = FocusTarget;
+                    return KeyAction.Kill;
                 case "Up":
                     // Inside the column of pills Up climbs it; from the top one (or an app) it opens the inputs page.
                     if (_layout.IsPinned(FocusTarget) && FocusTarget > _layout.GroupStart) return MoveTo(FocusTarget - 1);
