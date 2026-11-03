@@ -59,7 +59,8 @@ Owner-reported results:
   was captured here; detailed negative-pairing and plugin lifecycle cases are not individually recorded.
 - Country switch needs a VPN for the intended service-country behaviour on this setup. Treat this as
   the owner's observed result, not proof that changing the value bypasses Samsung's regional checks.
-- Plugin update awaits the public `tv-uptime` 1.0.1 catalog entry and package.
+- The public `tv-uptime` 1.0.1 catalog entry and package are available after vetro-plugins PR #1
+  (merge `095d5ce`). The public bundle SHA-256 was verified; updating it on the TV remains to test.
 - Restore the TV and deleting Vetro's saved data are explicitly deferred by the owner; do not run them.
 - Signed self-update and rollback remain to test and need a build with the update public key configured.
 
