@@ -29,6 +29,14 @@ function collectIntegration() {
         throw new Error('VETRO_REMOTE_PC_MODE must be diagnostics, manual or automatic');
     }
     const files = require('../app/build.cjs').collectFiles().filter(file => decodeURIComponent(file.uri) !== 'service/platform.js');
+    if (rootMethod === 'remote-pc') {
+        const compiled = JSON.parse(fs.readFileSync(path.join(__dirname,'payload55','build-manifest.json'),'utf8'));
+        const digest = file => require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+        if (compiled.target !== 'netcoreapp3.0' || compiled.sourceSha256 !== digest(path.join(__dirname,'payload','SamsungTvRemoteInputAgent.cs')) ||
+            compiled.dllSha256 !== digest(path.join(__dirname,'payload55','SamsungTvRemoteInputAgent.dll'))) {
+            throw new Error('Rebuild the Tizen 5.5 input helper: its source or binary differs from the build manifest');
+        }
+    }
     ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js'].forEach(name => {
         const source = name === 'platform.js' && rootMethod === 'remote-pc' ? 'remote-pc-platform.js' : name;
         files.push({uri: encodeURIComponent('service/' + name), data: fs.readFileSync(path.join(__dirname,'service',source))});
@@ -38,12 +46,13 @@ function collectIntegration() {
     });
     if (rootMethod === 'remote-pc') {
         const metadata = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js');
-        const flags = {rootMethod: 'remote-pc', remotePcMode,
+        const flags = {rootMethod: 'remote-pc', remotePcMode, inputRuntime: 'tizen55', restoreInput: remotePcMode !== 'diagnostics',
             readOnly: remotePcMode === 'diagnostics', automaticRestore: remotePcMode === 'automatic'};
         metadata.data = Buffer.concat([metadata.data, Buffer.from('\nObject.assign(module.exports, ' + JSON.stringify(flags) + ');\n')]);
     }
     fs.readdirSync(path.join(__dirname,'payload')).sort().forEach(name => {
-        files.push({uri: encodeURIComponent('payload/' + name), data: fs.readFileSync(path.join(__dirname,'payload',name))});
+        const inputVariant = rootMethod === 'remote-pc' && /^SamsungTvRemoteInputAgent\.(dll|runtimeconfig\.json)$/.test(name);
+        files.push({uri: encodeURIComponent('payload/' + name), data: fs.readFileSync(path.join(__dirname,inputVariant ? 'payload55' : 'payload',name))});
     });
     return files;
 }

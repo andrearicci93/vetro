@@ -30,12 +30,12 @@ function install(env) {
 
     if (typeof BufferRef.alloc !== 'function') {
         // Only reached on a runtime without Buffer.alloc. `new Buffer` is that
-        // runtime's allocator and is zero-filled there; allocUnsafe is used when
-        // present so the fallback never recurses into a Buffer.alloc of its own.
+        // runtime's allocator; both allocation paths need explicit zeroing.
+        // allocUnsafe avoids recursion into a Buffer.alloc of our own.
         BufferRef.alloc = function (size, fill, encoding) {
             var unsafe = typeof BufferRef.allocUnsafe === 'function';
             var buffer = unsafe ? BufferRef.allocUnsafe(size) : new BufferRef(size);
-            if (unsafe) buffer.fill(0);
+            buffer.fill(0);
             if (fill !== undefined) buffer.fill(fill, 0, size, encoding);
             return buffer;
         };
@@ -49,6 +49,14 @@ function install(env) {
             configurable: true,
             writable: true,
             value: function (value, encoding) {
+                // Node 4's inherited TypedArray.from cannot construct a Buffer
+                // from arrays or Buffers either (confirmed during input AUTH).
+                if (Array.isArray(value) || BufferRef.isBuffer(value)) {
+                    var copy = typeof BufferRef.allocUnsafe === 'function'
+                        ? BufferRef.allocUnsafe(value.length) : new BufferRef(value.length);
+                    for (var i = 0; i < value.length; i++) copy[i] = value[i];
+                    return copy;
+                }
                 if (typeof value !== 'string') return typedArrayFrom.apply(BufferRef, arguments);
                 // Not `new Buffer(value)`: on a modern runtime that constructor
                 // delegates back to Buffer.from and would recurse.

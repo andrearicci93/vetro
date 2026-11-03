@@ -82,8 +82,13 @@ async function main() {
             vm.runInNewContext(files.find(f => decodeURIComponent(f.uri) === 'service/build-info.js').data.toString(), context);
             const info = context.module.exports;
             assert.equal(info.remotePcMode, mode);
+            assert.equal(info.inputRuntime, 'tizen55');
+            assert.equal(info.restoreInput, mode !== 'diagnostics');
             assert.equal(info.readOnly, mode === 'diagnostics');
             assert.equal(info.automaticRestore, mode === 'automatic');
+            const runtime = JSON.parse(files.find(f => decodeURIComponent(f.uri) === 'payload/SamsungTvRemoteInputAgent.runtimeconfig.json').data.toString());
+            assert.equal(runtime.runtimeOptions.tfm, 'netcoreapp3.0');
+            assert.ok(files.find(f => decodeURIComponent(f.uri) === 'payload/SamsungTvRemoteInputAgent.dll').data.equals(fs.readFileSync(path.resolve(__dirname, '../payload55/SamsungTvRemoteInputAgent.dll'))));
             // Verify the packaged singleton uses the flags, not just the factory fixture.
             const packaged = {module: {exports: {}}, __dirname: path.resolve(__dirname, '../../app/service'),
                 require: name => name === './build-info.js' ? info : name === './compat.js' ? require('../../app/service/compat.js') : name.startsWith('.')

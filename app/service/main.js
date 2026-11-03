@@ -42,6 +42,7 @@ var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
 // Manual Remote PC builds allow explicit actions without replaying saved changes.
 var READ_ONLY = buildInfo.readOnly === true || process.env.VETRO_READ_ONLY === '1';
 var AUTOMATIC_RESTORE = !READ_ONLY && buildInfo.automaticRestore !== false;
+var INPUT_RESTORE = !READ_ONLY && (AUTOMATIC_RESTORE || buildInfo.restoreInput === true);
 
 // --- telemetry reader (service side, uid 5001) ---------------------------
 // Reads /proc and /sys directly via fs. No platform command is needed. Every read
@@ -500,7 +501,9 @@ function handleRemap(req, res) {
         stopInput(); inputPaused=false;
         remapStore.rules = rules;
         bridge.setTopics(rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-        serveJson(res, { ok: true, persisted: saveRemap(), rules: rules });
+        var persisted = saveRemap();
+        if (persisted) restoreInput();
+        serveJson(res, { ok: true, persisted: persisted, rules: rules });
     });
 }
 
@@ -522,7 +525,7 @@ var physical=new PhysicalInput(agentExecute,function(event){
     if(pendingActions>=8){inputPaused=true;physical.stop();inputError='input action queue exceeded';return;}
     pendingActions++;
     actionQueue=actionQueue.then(function(){return runActions(actions);}).catch(function(e){inputError=e.message;inputPaused=true;physical.stop();}).finally(function(){pendingActions--;});
-});
+}, {helperRuntime: buildInfo.inputRuntime});
 var inputObservers=[], inputPaused=false, inputRestoring=false;
 function inputPreference(){var p=remapStore.input;return p&&p.enabled===true&&typeof p.device==='string'?p:{enabled:false};}
 function saveInputPreference(preference){
@@ -565,7 +568,7 @@ function handleInput(req,res){
             stopInput();return physical.inventory().then(function(list){
                 var candidates=list.filter(function(d){return d.selectable;});
                 if(!candidates.length)throw new Error('no physical remote devices found');
-                inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
+                inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){}, {helperRuntime: buildInfo.inputRuntime});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
             }).then(function(){var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
             .catch(function(e){stopInput();serveJson(res,{ok:false,error:e.message},503);});
@@ -669,7 +672,7 @@ platform.start();
 var dockAgentWas=false,dockTicks=0;
 var dockTimer=setInterval(function(){if(!AUTOMATIC_RESTORE)return;var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
 // Retry after boot and helper disconnects, including late adapter availability.
-var inputRestoreTimer=setInterval(function(){if(AUTOMATIC_RESTORE)restoreInput();},5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
+var inputRestoreTimer=setInterval(function(){if(INPUT_RESTORE)restoreInput();},5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
 
 // MQTT bridge: publishes telemetry + Home Assistant discovery when a broker
 // is configured (persistent owner config, /tmp fallback). No-op without config.

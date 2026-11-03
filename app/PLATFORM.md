@@ -21,7 +21,9 @@ Remote PC builds have three build-time modes: `diagnostics` (default, HTTP
 mutations blocked), `manual` (explicit actions enabled, automatic feature
 restores disabled) and `automatic` (explicit actions and restores enabled).
 `build-info.js` records `remotePcMode`, `readOnly` and `automaticRestore`.
-`VETRO_READ_ONLY=1` still forces HTTP read-only operation and disables restores.
+`restoreInput` can independently restore explicitly saved remote interception
+in manual mode without starting the other feature restores. `VETRO_READ_ONLY=1`
+still forces HTTP read-only operation and disables restores.
 The Remote PC adapter also requires a feature-enabled mode to expose its
 package installation and package-state methods. Missing root rejects commands;
 neither command failure nor renewal automatically retries a mutation.
@@ -32,6 +34,11 @@ neither command failure nor renewal automatically retries a mutation.
 It uses the existing `execute` contract to start the optional integration's
 `payload/SamsungTvRemoteInputAgent.dll` through the TV runtime. The standalone
 package does not include that payload and reports unavailable platform access.
+
+Remote PC builds set `inputRuntime: "tizen55"` and package the separate .NET
+Core 3.0 helper. Its detached child invokes Samsung's `dotnet-launcher` from
+the installed app path, changing only that child's SMACK label. The standard
+integration retains its original runtime and helper.
 
 `GET /input` inventories input devices and shows recent events; `POST /input`
 accepts `{device, mode: "observe" | "filter" | "off"}`. Only registered exact nodes of recognized remote input devices can be selected.

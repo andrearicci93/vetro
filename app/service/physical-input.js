@@ -14,8 +14,11 @@ function devices(text) {
         return d;
     });
 }
-function Bridge(execute, onEvent) {
+function Bridge(execute, onEvent, options) {
+    options = options || {};
     this.execute = execute; this.onEvent = onEvent; this.current = {mode:'off',connected:false};
+    this.helperRuntime = options.helperRuntime || 'dotnet';
+    this.helperPath = options.helperPath || path.join(__dirname,'..','payload','SamsungTvRemoteInputAgent.dll');
     this.events = []; this.server = null; this.socket = null; this.generation = 0; this.lastError=null; this.cancel=null;
 }
 Bridge.prototype.inventory = function () {
@@ -81,9 +84,19 @@ Bridge.prototype.start = function (device, mode, tokens) {
             self.server.on('error',fail);
             self.server.listen(0,'127.0.0.1',function(){
                 var token='/tmp/vetro-input-'+crypto.randomBytes(12).toString('hex')+'.token';
-                var helper=path.join(__dirname,'..','payload','SamsungTvRemoteInputAgent.dll');
+                var helper=self.helperPath;
                 var args=['127.0.0.1',String(self.server.address().port),token,selected.name+'@'+selected.node,'evdev','TV',mode,mode==='filter'?tokens.join(','):''];
-                var command='umask 077; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
+                var command;
+                if (self.helperRuntime === 'tizen55') {
+                    // Samsung's launcher accepts installed app paths, not /tmp.
+                    // It also needs a process-local label that can access AUL.
+                    // setsid keeps the helper outside the command worker's group.
+                    var child='printf %s System::Privileged > /proc/self/attr/current || exit 1; exec /usr/bin/dotnet-launcher --standalone '+quote(helper)+' '+args.map(quote).join(' ');
+                    var log=token.replace(/\.token$/,'.log');
+                    command='test -x /usr/bin/dotnet-launcher || { echo "Samsung .NET launcher is unavailable" >&2; exit 127; }; test -r '+quote(helper)+' || { echo "Tizen 5.5 input helper is unavailable" >&2; exit 1; }; umask 077; (set -C; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+' && : > '+quote(log)+') || exit 1; setsid nohup /bin/sh -c '+quote(child)+' </dev/null >>'+quote(log)+' 2>&1 &';
+                } else {
+                    command='umask 077; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
+                }
                 self.execute(command,5000).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
         });

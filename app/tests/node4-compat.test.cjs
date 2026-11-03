@@ -58,15 +58,19 @@ function wgt(xml) {
     assert.equal(empty.length, 4, 'sized');
     assert.equal(empty[0], 0, 'zero filled');
     assert.equal(Buffer.alloc(3, 7)[0], 7, 'fill honoured');
+    function LegacyBuffer(size) { return realAlloc(size, 0xa5); }
+    LegacyBuffer.from = Buffer.from;
+    compat.install({Buffer: LegacyBuffer});
+    assert.deepEqual(Array.from(LegacyBuffer.alloc(4)), [0, 0, 0, 0], 'Node 4 without allocUnsafe must also zero memory');
   } finally { Buffer.alloc = realAlloc; }
 
   // 5. Buffer.from(string) — on Node 4.4 this is the inherited TypedArray.from.
   const realFrom = Buffer.from;
   // Node 4.4's Buffer.from is the inherited TypedArray.from, which rejects
-  // strings with "this is not a typed array". Modern V8 accepts strings there,
+  // strings, arrays and Buffers with "this is not a typed array". Modern V8 accepts strings there,
   // so the old behaviour is reproduced explicitly.
   Buffer.from = function (value) {
-    if (typeof value === 'string') throw new TypeError('this is not a typed array');
+    if (typeof value === 'string' || Array.isArray(value) || Buffer.isBuffer(value)) throw new TypeError('this is not a typed array');
     return realFrom.apply(Buffer, arguments);
   };
   try {
@@ -75,6 +79,10 @@ function wgt(xml) {
     assert.equal(Buffer.from('abc').toString(), 'abc', 'utf8 strings');
     assert.equal(Buffer.from('e9', 'hex').length, 1, 'explicit encodings');
     assert.deepEqual(Array.from(Buffer.from([1, 2, 3])), [1, 2, 3], 'arrays still work');
+    assert.equal(Buffer.from([0]).toString('hex'), '00', 'input HMAC delimiter');
+    const original = realFrom('secret'), copied = Buffer.from(original);
+    original[0] = 0;
+    assert.equal(copied.toString(), 'secret', 'Buffer input is copied, not shared');
   } finally {
     Object.defineProperty(Buffer, 'from', { value: realFrom, configurable: true, writable: true });
   }
