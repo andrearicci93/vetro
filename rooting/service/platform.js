@@ -6,6 +6,22 @@ var crypto = require('crypto');
 var sdb = require('./sdb.js');
 var tarGz = require('./tar.js').tarGz;
 var RootAgentServer = require('./root-agent.js').RootAgentServer;
+var TunnelServer = require('./sdb-tunnel.js').TunnelServer;
+var SDB_TUNNEL_PORT = 26201;
+var SDB_TUNNEL_PORT_ERROR = null;
+(function () {
+    // Node 4.4 has no Number.isInteger. Reject out-of-range or non-integer
+    // values instead of silently falling back to the default port.
+    var raw = process.env.VETRO_SDB_TUNNEL_PORT;
+    if (raw === undefined || raw === '') return;
+    var n = Number(raw);
+    if (!isFinite(n) || Math.floor(n) !== n || n < 1 || n > 65535) {
+        SDB_TUNNEL_PORT_ERROR = 'invalid VETRO_SDB_TUNNEL_PORT: ' + raw;
+        return;
+    }
+    SDB_TUNNEL_PORT = n;
+})();
+var tunnelServer = null;
 var debloatCommands = require('./debloat-commands.js');
 var STAGE = '/home/owner/share/tmp/sdk_tools';
 
@@ -17,6 +33,7 @@ var state = {
     running: false,
     unsupported: false,
     rooting: { backend: 'sdb-archive', phase: 'stopped', failure: null },
+    sdbTunnel: { listening: false },
     agent: { connected: false }
 };
 
@@ -207,6 +224,35 @@ function transportCode(error) {
     return error && codes.indexOf(error.code) >= 0 ? error.code : 'sdbError';
 }
 
+// sdbd accepts a single host connection. When the tunnel is listening it owns
+// that connection and multiplexes every client, so Vetro must go through it too
+// instead of opening a competing direct connection to 26101.
+function sdbTarget() {
+    var tunnel = state.sdbTunnel;
+    if (tunnel && tunnel.listening && tunnel.port) {
+        return { host: '127.0.0.1', port: tunnel.port, timeout: 8000 };
+    }
+    return { host: '127.0.0.1', port: 26101, timeout: 8000 };
+}
+
+function startTunnel(cb) {
+    if (SDB_TUNNEL_PORT_ERROR) {
+        state.sdbTunnel = { listening: false, error: SDB_TUNNEL_PORT_ERROR };
+        cb();
+        return;
+    }
+    var server = new TunnelServer({ port: SDB_TUNNEL_PORT });
+    tunnelServer = server;
+    server.start(function (err, port) {
+        // A stop() during startup replaced the server: do not resume launching.
+        if (tunnelServer !== server) { if (!err) server.close(); return; }
+        state.sdbTunnel = err
+            ? { listening: false, error: String(err.message || err) }
+            : { listening: true, port: port };
+        cb();
+    });
+}
+
 function startAgent() {
     if (state.running) return;
     state.running = true;
@@ -245,11 +291,14 @@ function startAgent() {
         }
     });
 
-    agentServer.start(function (port) {
-        if (!state.running) return;
-        state.agentPort = port;
-        prepareForRuntime(port);
-        relaunch();
+    startTunnel(function () {
+        if (!state.running || !agentServer) return;
+        agentServer.start(function (port) {
+            if (!state.running) return;
+            state.agentPort = port;
+            prepareForRuntime(port);
+            relaunch();
+        });
     });
 }
 
@@ -306,7 +355,7 @@ function relaunch() {
     pushAttempt(entry);
 
     rootPhase('sdb-handshake');
-    sdb.connect({ host: '127.0.0.1', port: 26101, timeout: 8000 })
+    sdb.connect(sdbTarget())
         .then(function (client) {
             if (!state.running || gen !== launchGen || agentConnected) {
                 sdb.close(client);
@@ -383,6 +432,9 @@ function stop() {
     if (agentServer) agentServer.close();
     agentServer = null;
     agentConnected = false;
+    if (tunnelServer) tunnelServer.close();
+    tunnelServer = null;
+    state.sdbTunnel = { listening: false };
     launching = false;
     state.agent = {connected: false};
 }
@@ -391,7 +443,7 @@ function install(packageId, wgtPath) {
         return Promise.reject(new Error('invalid package ID or WGT path'));
     }
     var dispatched = false;
-    return sdb.connect({host: '127.0.0.1', port: 26101, timeout: 8000}).then(function (client) {
+    return sdb.connect(sdbTarget()).then(function (client) {
         dispatched = true;
         return sdb.exec(client, 'shell:0 vd_appinstall ' + packageId + ' ' + wgtPath, {timeout: 120000})
             .finally(function () {sdb.close(client);});
