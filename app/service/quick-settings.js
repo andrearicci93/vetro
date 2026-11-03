@@ -28,7 +28,12 @@ var GROUPS = [
         description: 'Voice interaction framework, speech-to-text, far-field and on-device voice, voice app and music assistant.',
         ids: ['com.samsung.tv.vif', 'com.samsung.tv.farfieldvoice', 'com.samsung.tv.ondevice-voice',
             'com.samsung.tv.voiceassistant-music', 'com.samsung.tv.cnvoice', 'com.samsung.tv.cnvoice-assistant',
-            'org.tizen.voice-app', 'org.tizen.voice-app-service', 'org.tizen.voice-client', 'org.tizen.stt-client']}
+            'org.tizen.voice-app', 'org.tizen.voice-app-service', 'org.tizen.voice-client', 'org.tizen.stt-client']},
+    // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
+    // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
+    {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,
+        description: 'Disables Samsung’s Home (First Screen, com.samsung.tv.csfs), so that the Home key no longer opens it. It does not turn on the Vetro launcher. Meant for anyone using a third-party launcher.',
+        ids: ['com.samsung.tv.csfs']}
 ];
 var ALLOWED_IDS = GROUPS.reduce(function (all, g) { return all.concat(g.ids); }, []);
 var ID = /^[A-Za-z0-9_.-]{1,180}$/;

@@ -101,3 +101,9 @@ function harness(opts){
  }
  console.log('PASS quick settings: group state, one-script apply, verified readback, rollback, stop of running members, exclusions');
 })().catch(e=>{console.error(e);process.exitCode=1});
+// Samsung Home: one component, no microphone flag, a confirmation, and a section of its own.
+{const g=quick.find('samsung-home');
+ assert.deepEqual(g.ids,['com.samsung.tv.csfs']);assert.equal(g.section,'home');assert.equal(g.confirm,true);assert.ok(!g.microphone);
+ assert.ok(quick.ALLOWED_IDS.includes('com.samsung.tv.csfs'));
+ assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:true,onboot:false,autorestart:false}]).status,'off');
+ assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:false}]).status,'on');}
