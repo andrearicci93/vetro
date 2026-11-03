@@ -95,6 +95,45 @@ function launchService() {
     tizen.application.launch('vetrotvapp.svc', ok, ko);
   });
 }
+// Some TVs (The Frame 2025, Tizen 9) block apps from reaching local services over loopback: the request
+// to 127.0.0.1 never answers. The service listens on every interface, so the TV's own LAN address is tried next.
+function answers(base) {
+  return new Promise(function (ok) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', base + '/status', true);
+    xhr.timeout = 3000;
+    xhr.onload = function () { ok(xhr.status === 200); };
+    xhr.onerror = xhr.ontimeout = function () { ok(false); };
+    try { xhr.send(); } catch (e) { ok(false); }
+  });
+}
+function lanAddresses() {
+  if (typeof tizen === 'undefined' || !tizen.systeminfo) return Promise.resolve([]);
+  return Promise.all(['ETHERNET_NETWORK', 'WIFI_NETWORK'].map(function (prop) {
+    return new Promise(function (ok) {
+      var t = setTimeout(function () { ok(null); }, 3000);
+      try {
+        tizen.systeminfo.getPropertyValue(prop, function (v) { clearTimeout(t); ok(v && v.ipAddress || null); },
+          function () { clearTimeout(t); ok(null); });
+      } catch (e) { clearTimeout(t); ok(null); }
+    });
+  })).then(function (ips) { return ips.filter(function (ip) { return ip && ip !== '0.0.0.0'; }); });
+}
+function pickBase() {
+  var port = BASE.split(':').pop();
+  return answers(BASE).then(function (yes) {
+    if (yes) return BASE;
+    return lanAddresses().then(function (ips) {
+      return ips.reduce(function (p, ip) {
+        return p.then(function (found) {
+          if (found) return found;
+          var base = 'http://' + ip + ':' + port;
+          return answers(base).then(function (y) { return y ? base : null; });
+        });
+      }, Promise.resolve(null));
+    }).then(function (found) { if (found) BASE = found; return BASE; });
+  });
+}
 function reach(tries) {
   return fetch(BASE + '/status').then(function (r) { return r.status; }, function (e) {
     if (tries <= 1) throw e;
@@ -164,7 +203,7 @@ var jobs = [
       return Object.keys(report.settings).length; }],
   ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }],
   ['remoteApi8001', function () { return tryConnect(8001); }],
-  ['serviceReach', function () { return reach(8); }, 25000]
+  ['serviceReach', function () { return pickBase().then(function () { return reach(8); }); }, 25000]
 ];
 
 // ---- the screen -------------------------------------------------------------------------------------------

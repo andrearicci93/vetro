@@ -18,6 +18,7 @@ async function run(options) {
   XHR.prototype.open = function (method, url) { this.method = method; this.url = url; };
   XHR.prototype.setRequestHeader = function () {};
   XHR.prototype.send = function (body) {
+    if (o.loopbackBlocked && this.url.startsWith('http://127.0.0.1:')) { sent.push({method: this.method, url: this.url, blocked: true}); return this.onerror(); }
     if (this.method === 'POST') {
       sent.push({method: this.method, url: this.url, body: JSON.parse(body)});
       this.status = 200; this.responseText = JSON.stringify(o.probeResponse); this.onload();
@@ -39,7 +40,7 @@ async function run(options) {
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]),
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
       package: {getPackagesInfo: ok => ok([{id: 'vetrotvapp', version: '0.1.0'}])},
-      systeminfo: {getPropertyValue: (name, ok) => ok({model: 'TV'})}
+      systeminfo: {getPropertyValue: (name, ok) => ok(name === 'WIFI_NETWORK' && o.lanIp ? {ipAddress: o.lanIp} : {model: 'TV'})}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
     btoa: s => Buffer.from(s).toString('base64'), clearTimeout,
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
@@ -93,6 +94,16 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(good.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/screen'));
   assert.ok(good.screen.innerHTML.includes('Running in the background'));
   assert.ok(good.screen.innerHTML.includes('You can close this screen, Vetro keeps running without it.'));
+  // Loopback blocked for apps (The Frame 2025): the page finds the service through the TV's own LAN address.
+  const lan = await run({loopbackBlocked: true, lanIp: '192.0.2.42'});
+  const lanPosts = lan.sent.filter(s => s.method === 'POST' && !s.blocked);
+  assert.equal(lanPosts.length, 1, 'report must be sent through the LAN address');
+  assert.equal(lanPosts[0].url, 'http://192.0.2.42:8099/probe');
+  assert.ok(lan.sent.some(s => s.method === 'GET' && s.url === 'http://192.0.2.42:8099/screen'));
+  assert.ok(lan.screen.innerHTML.includes('Running in the background'));
+  // No LAN address known: unchanged behaviour, loopback only.
+  const noLan = await run({loopbackBlocked: true});
+  assert.ok(noLan.sent.every(s => s.url.startsWith('http://127.0.0.1:')));
   assert.ok(good.screen.innerHTML.includes('http://192.168.1.42:8099'));
   assert.ok(good.screen.innerHTML.includes('QE55Q80A'), 'model comes from the TV itself');
   assert.ok(good.screen.innerHTML.includes('V0.3.5 &middot; QE55Q80A 2310.0 &middot; svc ok &middot; root ok'), 'the support line');

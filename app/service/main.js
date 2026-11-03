@@ -115,6 +115,21 @@ function screenSummary() {
 }
 
 // --- HTTP routing ---------------------------------------------------------
+// Loopback, or one of the TV's own LAN addresses: some TVs (The Frame 2025, Tizen 9) block apps from
+// loopback, so the widget reaches the service through the TV's LAN address. Another device cannot
+// connect with the TV's own address as its source.
+function fromThisTv(address) {
+    var a = String(address || '');
+    if (['127.0.0.1', '::1', '::ffff:127.0.0.1'].indexOf(a) >= 0) return true;
+    a = a.replace(/^::ffff:/, '');
+    try {
+        var nets = os.networkInterfaces();
+        return Object.keys(nets).some(function (name) {
+            return (nets[name] || []).some(function (n) { return n.family === 'IPv4' && !n.internal && n.address === a; });
+        });
+    } catch (e) { return false; }
+}
+
 function serveJson(res, obj, code) {
     if (res.destroyed || res.writableEnded) return;
     res.writeHead(code || 200, { 'content-type': 'application/json; charset=utf-8',
@@ -385,7 +400,7 @@ function handleProbe(req, res) {
     }
     // The widget posts from the TV itself. This keeps LAN clients from rewriting the
     // stored model, firmware and API probe that diagnostics report.
-    if (['127.0.0.1', '::1', '::ffff:127.0.0.1'].indexOf(req.socket && req.socket.remoteAddress) < 0) {
+    if (!fromThisTv(req.socket && req.socket.remoteAddress)) {
         return serveJson(res, { error: 'Probe reports are accepted from the TV only' }, 403);
     }
     readJsonBody(req, res, function (parsed) {
