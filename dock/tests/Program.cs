@@ -68,6 +68,14 @@ namespace Launcher.Tests
         private static int Main()
         {
             HomeCloseGuardTests.Run();
+            T.Run("custom Home shortcut preserves its system position and Samsung fallback", () =>
+            {
+                var result = Catalog.Parse("customhome\tAeroTizen\tsys:DclHome001.Home\tcom.samsung.tv.csfs\n");
+                T.Eq(result.Entries.Length, 1, "custom shortcut parses");
+                T.True(result.Entries[0].IsSystem, "shortcut stays in the pinned system group");
+                T.Eq(result.Entries[0].AppId, "DclHome001.Home", "chosen application launches");
+                T.Eq(result.Entries[0].FallbackAppId, "com.samsung.tv.csfs", "Samsung Home remains the fallback");
+            });
             T.Run("catalog parses well-formed lines", () =>
             {
                 var r = Catalog.Parse("# comment\nnetflix\tNetflix\torg.tizen.netflix-app\n\ntvplus\tTV Plus\tcom.x.y\torg.tizen.tv-viewer\n");
@@ -618,6 +626,60 @@ namespace Launcher.Tests
                 T.Eq(r2.Count, 1, "overflowed line discarded, the next one works");
             });
 
+
+            T.Run("Mapped Home belongs to the remapper", () =>
+            {
+                var home = new HomeKeyHandler { Mapped = true };
+                T.Eq(home.FromEvdev(0, false), HomeKeyAction.None, "physical Home cannot open the launcher");
+                T.Eq(home.FromWindow(1, true), HomeKeyAction.None, "window Home cannot duplicate the mapped toggle");
+                T.Eq(home.FromEvdev(2, true), HomeKeyAction.None, "physical Home cannot hide the launcher");
+                home.Mapped = false;
+                T.Eq(home.FromEvdev(3, false), HomeKeyAction.Show, "standalone mode still owns Home");
+            });
+
+            T.Run("Home: evdev opens the dock and the matching window event leaves it open", () =>
+            {
+                var home = new HomeKeyHandler();
+                T.Eq(home.FromEvdev(0, false), HomeKeyAction.Show, "first press opens the dock");
+                T.Eq(home.FromWindow(0.02, true), HomeKeyAction.None, "matching Evas event cannot close it");
+                T.Eq(home.FromEvdev(0.60, true), HomeKeyAction.Hide, "a separate press closes it");
+                T.Eq(home.FromWindow(0.62, false), HomeKeyAction.None, "queued window event leaves it hidden");
+                T.Eq(home.FromEvdev(1.20, false), HomeKeyAction.Show, "next press can open it again");
+            });
+
+            T.Run("Home: window-first delivery closes the dock only once", () =>
+            {
+                var home = new HomeKeyHandler();
+                T.Eq(home.FromWindow(0, true), HomeKeyAction.Hide, "focused window handles the press");
+                T.Eq(home.FromEvdev(0.02, false), HomeKeyAction.None, "matching evdev event cannot reopen it");
+                T.Eq(home.FromWindow(0.03, true), HomeKeyAction.None, "duplicate window event is also ignored");
+                T.Eq(home.FromEvdev(0.60, false), HomeKeyAction.Show, "later physical press still opens");
+            });
+
+            T.Run("Home: a hidden window cannot swallow the physical opening press", () =>
+            {
+                var home = new HomeKeyHandler();
+                T.Eq(home.FromWindow(0, false), HomeKeyAction.None, "hidden window ignores Home");
+                T.Eq(home.FromEvdev(0.01, false), HomeKeyAction.Show, "physical press is still accepted");
+            });
+
+            T.Run("Home: duplicate devices do not extend the debounce window", () =>
+            {
+                var home = new HomeKeyHandler();
+                T.Eq(home.FromEvdev(0, false), HomeKeyAction.Show, "first device opens");
+                T.Eq(home.FromEvdev(0.20, true), HomeKeyAction.None, "duplicate device ignored");
+                T.Eq(home.FromWindow(0.34, true), HomeKeyAction.None, "late duplicate window event ignored");
+                T.Eq(home.FromEvdev(0.40, true), HomeKeyAction.Hide, "separate press is timed from accepted press");
+            });
+
+            T.Run("Home: the same handler covers a visible inputs panel and later wake", () =>
+            {
+                var home = new HomeKeyHandler();
+                T.Eq(home.FromEvdev(0, false), HomeKeyAction.Show, "apps opened");
+                T.Eq(home.FromEvdev(1, true), HomeKeyAction.Hide, "Home closes the active inputs page");
+                T.Eq(home.FromWindow(1.01, false), HomeKeyAction.None, "paired window event cannot reopen apps");
+                T.Eq(home.FromEvdev(3600, false), HomeKeyAction.Show, "first press after a long idle works");
+            });
 
             T.Run("evdev: key presses are decoded, releases and repeats ignored", () =>
             {

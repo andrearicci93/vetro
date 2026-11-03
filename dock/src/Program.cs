@@ -45,7 +45,7 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
+        private static readonly HomeKeyHandler HomeKeys = new HomeKeyHandler();
 
         // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
         // the key), so after each Home press the app is closed again, a few times because its start is slow.
@@ -61,7 +61,6 @@ namespace Launcher
         private static bool _guardKillRequested;
         private static int _homeCode = -1;
         private static bool _learn;
-        private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
         private static readonly List<int> _inputFds = new List<int>();
         private static readonly List<EvdevReader> _inputReaders = new List<EvdevReader>();
@@ -215,6 +214,7 @@ namespace Launcher
         /// </summary>
         private static void SetupInput(string[] args)
         {
+            if (HomeKeys.Mapped) return;
             int code;
             string want = Arg(args, "--home-code") ?? Environment.GetEnvironmentVariable("TVLAUNCHER_HOME_CODE");
             if (want != null && int.TryParse(want, out code) && code > 0 && code < 768) _homeCode = code;
@@ -309,6 +309,15 @@ namespace Launcher
             CancelIdle();
             StopClock();
             if (_ctl.Hide()) StartAnimator();
+        }
+
+        private static void ApplyHome(HomeKeyAction action)
+        {
+            if (action == HomeKeyAction.None) return;
+            Log("home: " + action.ToString().ToLowerInvariant());
+            ArmGuard();
+            if (action == HomeKeyAction.Show) ShowDock();
+            else if (action == HomeKeyAction.Hide) HideDock();
         }
 
         // ------------------------------------------------------------------ pages
@@ -514,6 +523,11 @@ namespace Launcher
             {
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                if (key == "XF86Home")
+                {
+                    ApplyHome(HomeKeys.FromWindow(Efl.ecore_time_get(), _ctl.IsActive));
+                    return;
+                }
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -532,7 +546,6 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
                         HideDock();
                         break;
                 }
@@ -582,13 +595,10 @@ namespace Launcher
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
                         if (code != _homeCode) continue;
-                        double now = Efl.ecore_time_get();
-                        // The focused dock also gets XF86Home through evas and hides itself: count it once.
-                        if (now - _lastHome < HomeDebounceSeconds) continue;
-                        _lastHome = now;
+                        HomeKeyAction action = HomeKeys.FromEvdev(Efl.ecore_time_get(), _ctl.IsActive);
+                        if (action == HomeKeyAction.None) continue;
                         _perfWhy = "home";
-                        if (_ctl.IsActive) HideDock(); else ShowDock();
-                        ArmGuard();
+                        ApplyHome(action);
                     }
                 }
             }
@@ -783,13 +793,23 @@ namespace Launcher
                 }
                 if (SendLaunch(e.AppId)) { Log("launch " + e.AppId); return; }
                 Log("launch failed: " + e.AppId);
+                if (e.FallbackAppId == "com.samsung.tv.csfs")
+                {
+                    LaunchApp(new AppEntry("samsunghome", "Samsung Home", e.FallbackAppId, null));
+                    return;
+                }
                 if (e.FallbackAppId != null && SendLaunch(e.FallbackAppId)) { Log("launch " + e.FallbackAppId + " (fallback)"); return; }
                 // Last resort: the platform's command line launcher.
                 if (Efl.ecore_exe_run("exec /usr/bin/app_launcher -s " + (e.FallbackAppId ?? e.AppId) + " >/dev/null 2>&1", IntPtr.Zero) == IntPtr.Zero)
                     throw new InvalidOperationException("Platform launch command did not start");
                 Log("launch via app_launcher: " + (e.FallbackAppId ?? e.AppId));
             }
-            catch (Exception ex) { Log("launch error: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Log("launch error: " + ex.Message);
+                if (e.AppId != "com.samsung.tv.csfs" && e.FallbackAppId == "com.samsung.tv.csfs")
+                    LaunchApp(new AppEntry("samsunghome", "Samsung Home", e.FallbackAppId, null));
+            }
         }
 
         // ------------------------------------------------------------------ warm-up
@@ -847,6 +867,13 @@ namespace Launcher
 
         private static int Main(string[] args)
         {
+            // Handle control before instance acquisition, logging, or EFL setup.
+            // An absent directory must not redirect a control write to /tmp.
+            if (Flag(args, "--control"))
+            {
+                string directory = Arg(args, "--dir") ?? Environment.GetEnvironmentVariable("TVLAUNCHER_DIR") ?? "/home/owner";
+                return ControlPipe.Send(Path.Combine(directory, "tvlauncher.fifo"), Arg(args, "--control"));
+            }
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
             _dir = ResolveDir(args);
@@ -921,7 +948,8 @@ namespace Launcher
 
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
                 SetupFifo();
-                string guard = Arg(args, "--kill-on-home");
+                HomeKeys.Mapped = Flag(args, "--mapped-home");
+                string guard = HomeKeys.Mapped ? null : Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
                     if (Catalog.ValidAppId(guard)) { _guardApp = guard; Log("guard: " + guard + " uses Ecore child-exit events; explicit launches cancel pending closes"); }

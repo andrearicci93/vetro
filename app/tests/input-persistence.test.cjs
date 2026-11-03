@@ -2,7 +2,8 @@
 const assert=require('assert').strict, path=require('path'), EventEmitter=require('events');
 const load=require('./service-harness.cjs'), root=path.resolve(__dirname,'..');
 let disk=JSON.stringify({rules:[{id:'remote',enabled:true,trigger:{type:'physical',value:'67'},actions:[{type:'launch',appId:'example.app'}]}]}), ready=true, node='/dev/input/event4', writesFail=false;
-const starts=[], commands=[];
+const starts=[], commands=[];let temporary='';
+class Dock {constructor(){this.enabled=false;}readState(){return {enabled:this.enabled};}async enable(){this.enabled=true;}async disable(){this.enabled=false;}supervise(){return Promise.resolve();}}
 class Bridge {
  constructor(execute,onEvent){this.onEvent=onEvent;this.current={mode:'off',connected:false};}
  inventory(){return Promise.resolve([{name:'Smart Control',node,unique:true,selectable:true}]);}
@@ -10,7 +11,7 @@ class Bridge {
  stop(){this.current={mode:'off',connected:false};}
  async start(device,mode,tokens){assert.ok(ready);assert.ok(device==='Smart Control'||device===node);starts.push({device,mode,tokens});this.current={mode,connected:true,device:'Smart Control',node};return this.status();}
 }
-function boot(){const timers=[];const service=load(root,{dependencies:{fs:{readFileSync:p=>p.endsWith('vetro-remap.json')?disk:'',writeFileSync:(p,s)=>{if(writesFail)throw Error('disk full');disk=s;}},'./physical-input.js':{Bridge},'./platform.js':{start(){},status:()=>({agent:{connected:ready}}),execute:cmd=>{commands.push(cmd);return Promise.resolve({exit_code:0,stdout:''});}}},setInterval:fn=>{timers.push(fn);return {unref(){}};}});service.tick=async()=>{timers.forEach(fn=>fn());await new Promise(r=>setImmediate(r));};return service;}
+function boot(){const timers=[];const service=load(root,{dependencies:{fs:{readFileSync:p=>p.endsWith('vetro-remap.json')?disk:'',writeFileSync:(p,s)=>{if(writesFail)throw Error('disk full');if(p.endsWith('.tmp'))temporary=s;else disk=s;},renameSync:()=>{disk=temporary;},unlinkSync:()=>{}},'./physical-input.js':{Bridge},'./dock.js':{Dock},'./platform.js':{start(){},status:()=>({agent:{connected:ready}}),execute:cmd=>{commands.push(cmd);return Promise.resolve({exit_code:0,stdout:''});}}},setInterval:fn=>{timers.push(fn);return {unref(){}};}});service.tick=async()=>{timers.forEach(fn=>fn());await new Promise(r=>setImmediate(r));};return service;}
 function post(service,body,url='/input'){return new Promise(resolve=>{const req=new EventEmitter();req.method='POST';req.url=url;service.router(req,{writeHead(code){this.code=code;},end(s){resolve(JSON.parse(s));}});req.emit('data',Buffer.from(JSON.stringify(body)));req.emit('end');});}
 (async()=>{
  let service=boot();await service.tick();assert.equal(starts.length,0);
@@ -25,6 +26,13 @@ function post(service,body,url='/input'){return new Promise(resolve=>{const req=
  await post(service,{rules:[]},'/remap');let count=starts.length;await service.tick();assert.equal(starts.length,count,'no helper without physical shortcuts');
  await post(service,{rules},'/remap');await service.tick();assert.equal(starts.length,count+1,'interception resumes when shortcuts return');
  await post(service,{mode:'off'});count=starts.length;service=boot();await service.tick();assert.equal(starts.length,count,'explicit off must survive restart');
- writesFail=true;result=await post(service,{device:node,mode:'filter'});assert.equal(result.ok,false,'unsaved interception must not report success');assert.equal(service.context.physical.status().policy.mode,'off');
- console.log('PASS input persistence: delayed boot, changed event node, reconnection, temporary listening, rule edits, persistent off, disk failure');
+ const launcherRules=[{id:'home',enabled:true,trigger:{type:'physical',value:'63'},actions:[{type:'launcher'}]}];
+ await post(service,{rules:launcherRules},'/remap');await post(service,{device:node,mode:'filter'});
+ service=boot();await service.tick();let toggles=0;service.context.dock.toggle=()=>{toggles++;return true;};
+ commands.length=0;service.context.physical.onEvent({action:'down',decision:'blocked',code:63});await service.context.actionQueue;
+ assert.equal(toggles,1,'launcher action survives saved rule validation and interception restoration');
+ assert.deepEqual(commands,[],'restored launcher shortcut does not inject Home or close an app');
+ await post(service,{mode:'off'});
+ writesFail=true;result=await post(service,{device:node,mode:'filter'});assert.equal(result.ok,false,'unsaved interception must not report success');assert.equal(service.context.physical.status().policy.mode,'filter','failed master change preserves the independently assigned Home route');
+ console.log('PASS input persistence: delayed boot, changed event node, reconnection, temporary listening, rule edits, restored launcher action, persistent off, disk failure');
 })().catch(e=>{console.error(e);process.exitCode=1;});

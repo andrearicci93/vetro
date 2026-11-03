@@ -23,14 +23,14 @@ Vetro runs on your Samsung TV with root access and gives you a dashboard, open f
 
 A fast, glass-style launcher on the Home key. It shows the same apps and icons as Samsung's Home, in the same order, and comes back by itself after a restart or a standby. Samsung's Home is one press away (the **Samsung Home** button), and nothing is removed.
 
-**It frees memory.** While the launcher is on, Samsung's Home is closed. On the Q80A that is about 150 MB of RAM that the launcher replaces with about 20–30 MB: available RAM went from **533 MB to 662 MB, about 24% more**. Method and numbers in the [performance evidence](app/docs/PERFORMANCE.md).
+Home is handled by the saved remote assignment. The overlay opens over the current screen and leaves Samsung Home available.
 
 <p align="center">
   <img src="app/docs/images/launcher-on-tv.jpg" alt="The Vetro launcher at the bottom of the TV screen: the apps from Samsung's Home, a Source hint, and Settings and Samsung Home buttons" width="1000">
   <br><em>The launcher as the TV draws it (captured from the Q80A, over a plain backdrop instead of the video).</em>
 </p>
 
-Turn it on in the **Launcher** tab, which also previews the bar. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
+Turn on **Vetro launcher** in the **Launcher** tab to assign Home to it. If remote setup is needed, choose **Detect Home and enable Vetro** there and press Home once. The tab also previews the bar. **Fix TizenTube** gives that tile the YouTube icon and closes Samsung's YouTube before TizenTube starts. The launcher is in beta.
 
 <p align="center">
   <img src="app/docs/images/launcher-dashboard.jpg" alt="The Launcher tab of the dashboard: a preview of the bar, the launcher switch and the Fix TizenTube switch" width="1000">
@@ -62,6 +62,12 @@ Quick settings and Task manager share the same inventory: disable an assistant i
 ## Remapper
 
 Do what you want with the remote. Press a button, choose an app, and the button opens it. Shortcuts survive restarts, and a key can also trigger an MQTT message for Home Assistant.
+
+Home appears in Remapper with **Samsung Home** as its default. Use **Edit** to
+choose an installed app or **Toggle Vetro launcher**. Both Launcher and Remapper
+show the same assignment. Every saved rule has **Edit**; **Restore default**
+returns Home to Samsung's native behavior. **Enable remote shortcuts** controls
+the other physical shortcuts. [Set up Home and edit shortcuts →](app/docs/REMOTE-LAUNCHER.md)
 
 <p align="center">
   <img src="app/docs/images/remapper-dashboard.jpg" alt="The Remapper tab: listen to a remote key, choose an app and save the shortcut" width="1000">

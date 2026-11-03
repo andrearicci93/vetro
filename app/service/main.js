@@ -25,7 +25,8 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
-var dock = new (require('./dock.js').Dock)({execute: agentExecute});
+var dock = new (require('./dock.js').Dock)({execute: agentExecute, mappedHome: true});
+var HomeRouting = require('./home-routing.js');
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
@@ -227,10 +228,13 @@ function readJsonBody(req, res, cb, maxBytes) {
 // The TV agent executes commands serially. Start each request's timeout only
 // when it is actually sent, rather than while it waits behind other probes.
 var commandQueue=Promise.resolve(), queuedCommands=0;
-function agentExecute(cmd, timeoutMs) {
+function agentExecute(cmd, timeoutMs, guard) {
     if(queuedCommands>=32)return Promise.reject(new Error('TV is busy; try again in a few seconds'));
     queuedCommands++;
-    var result=commandQueue.then(function(){return platform.execute(cmd,timeoutMs||30000);});
+    var result=commandQueue.then(function(){return Promise.resolve(guard ? guard() : true).then(function(allowed){
+        if (!allowed) throw Error('Launch cancelled because power or the startup choice changed');
+        return platform.execute(cmd,timeoutMs||30000);
+    });});
     commandQueue=result.catch(function(){});
     return result.finally(function(){queuedCommands--;});
 }
@@ -283,6 +287,7 @@ function handleControl(req, res) {
         if (!cmd) {
             return serveJson(res, { error: 'unknown key ' + key, keys: control.KEYS }, 400);
         }
+        if(key!=='XF86PowerOff')noteRemoteActivity();
         agentExecute(cmd, 10000).then(function (r) {
             serveJson(res, { ok: r.exit_code === 0, key: key, exit_code: r.exit_code, output: r.stdout, stderr: r.stderr });
         }).catch(function (e) {
@@ -372,6 +377,16 @@ var remapStore = (function () {
 })();
 try { remapStore.rules = remap.validateRules(remapStore.rules || []); }
 catch (e) { remapStore.rules = []; }
+// Translate an enabled standalone launcher to the shared assignment once. A
+// missing remote binding remains visible as setup-needed; no device is guessed.
+if (remapStore.homeVersion !== 1) {
+    if (dock.readState().enabled && !HomeRouting.rule(remapStore) && remapStore.rules.length < 50) {
+        var homeId='physical_63', homeSuffix=0;
+        while(remapStore.rules.some(function(r){return r.id===homeId;}))homeId='vetro_home_'+(++homeSuffix);
+        remapStore.rules.push({id:homeId,enabled:true,trigger:{type:'physical',value:'63'},actions:[{type:'launcher'}]});
+    }
+    remapStore.homeVersion=1;
+}
 function saveRemap() {
     try { fs.writeFileSync(REMAP_PATH, JSON.stringify(remapStore)); return true; } catch (e) { return false; }
 }
@@ -489,59 +504,120 @@ function handleSettings(req, res) {
 }
 
 function handleRemap(req, res) {
-    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token });
+    if (req.method === 'GET') return serveJson(res, {rules: remapStore.rules, revision: remapStore.revision || 0, home: homeRouting.status(), paired: !!remapStore.token});
     readJsonBody(req, res, function (parsed) {
-        var rules;
-        try { rules = remap.validateRules(parsed.rules); }
-        catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
-        stopInput(); inputPaused=false;
-        remapStore.rules = rules;
-        bridge.setTopics(rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-        serveJson(res, { ok: true, persisted: saveRemap(), rules: rules });
+        if (!parsed || !Array.isArray(parsed.rules)) return serveJson(res, {error:'Rules must be an array'}, 400);
+        homeRouting.change(parsed.rules, {device: parsed.device, expectedRevision: parsed.expectedRevision})
+            .then(function (r) { r.home = homeRouting.status(); serveJson(res, r); })
+            .catch(function (e) { serveJson(res, {error: e.message, code: e.code || null, home: homeRouting.status()}, 409); });
+    });
+}
+function homeDockStatus(d) {
+    d.home = homeRouting.status(); d.home.revision = remapStore.revision || 0;
+    d.runtimeEnabled = d.enabled; d.enabled = d.home.launcher;
+    if (d.home.launcher && d.running !== true) d.home.ready = false;
+    return d;
+}
+function handleDock(req, res) {
+    readJsonBody(req, res, function (p) {
+        if (!p || typeof p.action !== 'string') return serveJson(res, {error:'Launcher action required'}, 400);
+        if (homeRouting.busy) return serveJson(res, {error: 'A remote shortcut change is already in progress'}, 409);
+        var t = p.action === 'enable' || p.action === 'disable' ?
+            homeRouting.setLauncher(p.action === 'enable', {device: p.device, expectedRevision: p.expectedRevision}).then(function () { return dock.status(); }) :
+            p.action === 'refresh' ? dock.refresh() : p.action === 'fixTizenTube' ? dock.setFixTizenTube(p.on) :
+            p.action === 'homeShortcut' ? (p.appId === null ? dock.setHomeShortcut(null) : inventory(true).then(function (d) {
+                if (d.registryError) throw Error('TV registry unavailable');
+                return dock.setHomeShortcut({appId:p.appId,label:p.label},d.apps);
+            })) : Promise.reject(Error('Invalid dock action'));
+        t.then(function (d) { serveJson(res, homeDockStatus(d)); }).catch(function (e) {
+            serveJson(res, {ok:false,error:e.message,code:e.code || null,home:homeRouting.status()},409);
+        });
     });
 }
 
 function runActions(actions) {
-    var sent=0, skipped=[],mqttSent=0;
+    if(actions.some(function(a){return a.type!=='key'||a.key!=='KEY_POWER';}))noteRemoteActivity();
+    var sent=0, skipped=[],mqttSent=0, launcherFallback=null;
     return actions.reduce(function(chain,a){return chain.then(function(){
         var command;
         if(a.type==='mqtt'){bridge.publish(a.topic,a.payload);sent++;mqttSent++;return;}
-        if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
+        if(a.type==='launcher'){
+            return Promise.resolve(dock.toggle()).then(function(delivered){
+                if(delivered){sent++;return;}
+                launcherFallback='Launcher unavailable; sent Samsung Home instead: '+(dock.lastControl&&dock.lastControl.reason||'unavailable');
+                return agentExecute(control.injectCommand('XF86Home'),10000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Native Home fallback failed');sent++;});
+            });
+        }
+        else if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
-    });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
+    });},Promise.resolve()).then(function(){var result={ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};if(launcherFallback)result.launcherFallback=launcherFallback;return result;});
 }
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
+var remoteActivitySequence=0, remoteActivityAt=0;
+function noteRemoteActivity(event) {
+    if(event && (event.action!=='down'||event.key==='XF86PowerOff'||event.code===116))return;
+    remoteActivitySequence++;remoteActivityAt=Date.now();
+}
+function remoteActivity() {
+    var p=physical && physical.status().policy;
+    return {ready:!!p && p.connected && p.mode==='filter' && !inputPaused,
+        sequence:remoteActivitySequence,lastAt:remoteActivityAt,generation:inputGeneration};
+}
 var physical=new PhysicalInput(agentExecute,function(event){
+    noteRemoteActivity(event);
     if(event.action!=='down'||event.decision!=='blocked')return;
-    var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
+    if (homeRouting && homeRouting.busy) return;
+    var actions=remap.resolve(remapStore.rules,'physical',String(event.code)), generation=inputGeneration;
     if(pendingActions>=8){inputPaused=true;physical.stop();inputError='input action queue exceeded';return;}
     pendingActions++;
-    actionQueue=actionQueue.then(function(){return runActions(actions);}).catch(function(e){inputError=e.message;inputPaused=true;physical.stop();}).finally(function(){pendingActions--;});
+    actionQueue=actionQueue.then(function(){return generation===inputGeneration?runActions(actions):{ok:true};}).then(function(r){inputError=r.launcherFallback||null;}).catch(function(e){inputError=e.message;inputPaused=true;physical.stop();}).finally(function(){pendingActions--;});
 });
-var inputObservers=[], inputPaused=false, inputRestoring=false;
+var inputObservers=[], inputPaused=false, inputRestoring=false, inputGeneration=0;
 function inputPreference(){var p=remapStore.input;return p&&p.enabled===true&&typeof p.device==='string'?p:{enabled:false};}
 function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
-function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
-function restoreInput(){
-    var preference=inputPreference();
-    if(!preference.enabled||inputPaused||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
-    inputRestoring=true;
-    physical.inventory().then(function(list){
-        if(inputPaused||inputPreference()!==preference)return;
-        var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
-        var keyed=candidates.filter(function(d){try{return /[1-9a-f]/i.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
-        // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
-        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
-        if(!device)throw new Error('Saved physical remote is unavailable');
-        return physical.start(device.node,'filter',inputTokens());
-    }).then(function(){inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
+function hasRemoteKeys(d) {
+    try { return /[1-9a-f]/i.test(fs.readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8')); }
+    catch (e) { return false; }
 }
-function stopInput(){inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+var homeRouting = new HomeRouting.HomeRouting({
+    get: function () { return remapStore; }, dock: dock,
+    inputStatus: inputSnapshot, devices: function () { return physical.inventory(); }, hasKeys: hasRemoteKeys,
+    apps: function () { return inventory(true); }, applyInput: applyInputPlan,
+    save: function (next) {
+        var temporary = REMAP_PATH + '.tmp';
+        try { fs.writeFileSync(temporary,JSON.stringify(next)); fs.renameSync(temporary,REMAP_PATH); }
+        catch (e) { try { fs.unlinkSync(temporary); } catch (ignored) {} throw Error('Shortcuts could not be saved: '+e.message); }
+        remapStore=next;
+        bridge.setTopics(next.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt';}).map(function(r){return r.trigger.value;}));
+    }
+});
+function inputTokens(){return HomeRouting.plan(remapStore).tokens;}
+function startInputPlan() {
+    var plan=HomeRouting.plan(remapStore), generation=inputGeneration;
+    if (!plan.tokens.length) return Promise.resolve();
+    if (!platform.status().agent.connected) return Promise.reject(Error('Root service is not ready. Home setup was not completed.'));
+    return physical.inventory().then(function(list){
+        if(generation!==inputGeneration||inputPaused)throw Error('Remote setup cancelled');
+        var candidates=list.filter(function(d){return d.selectable&&d.name===plan.remote.device;});
+        var keyed=candidates.filter(hasRemoteKeys);
+        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===plan.remote.node;})||null;
+        if(!device)throw Error('Saved physical remote is unavailable. Detect Home again.');
+        return physical.start(device.node,'filter',plan.tokens);
+    });
+}
+function applyInputPlan() { stopInput(); inputPaused=false; return startInputPlan().then(function(){inputError=null;}); }
+function restoreInput(){
+    if(inputPaused||inputRestoring||homeRouting.busy||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
+    inputRestoring=true;
+    return startInputPlan().then(function(){inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
+}
+function stopInput(){++inputGeneration;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+
 function inputSnapshot(){
     if(!inputObservers.length)return Object.assign({},physical.status(),{preference:inputPreference()});
     var events=[],connected=false,errors=[];
@@ -550,11 +626,24 @@ function inputSnapshot(){
     return {policy:{mode:'observe',device:'auto',connected:connected},preference:inputPreference(),events:events.slice(-30),error:errors.join('; ')||null};
 }
 function handleInput(req,res){
-    if(req.method==='GET')return physical.inventory().then(function(list){serveJson(res,{devices:list,status:inputSnapshot(),error:inputError});}).catch(function(e){serveJson(res,{devices:[],status:inputSnapshot(),error:e.message});});
+    if(req.method==='GET')return physical.inventory().then(function(list){serveJson(res,{devices:list,status:inputSnapshot(),home:homeRouting.status(),error:inputError});}).catch(function(e){serveJson(res,{devices:[],status:inputSnapshot(),error:e.message});});
     readJsonBody(req,res,function(p){
-        var tokens=inputTokens();
+        if(!p||typeof p.mode!=='string')return serveJson(res,{error:'Input mode required'},400);
+        if(homeRouting.busy)return serveJson(res,{error:'A remote shortcut change is already in progress'},409);
+        var tokens=remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});
         inputError=null;
-        if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput();return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
+        if(p.mode==='off'||p.mode==='resume'){
+            try { if(p.mode==='off') {
+                var bound=HomeRouting.binding(remapStore), previousHome=remapStore.home;
+                if(bound)remapStore.home=Object.assign({},bound,{code:HomeRouting.code(remapStore)});
+                try { saveInputPreference(Object.assign({},remapStore.input,{enabled:false})); }
+                catch(e){remapStore.home=previousHome;throw e;}
+            } } catch(e){return serveJson(res,{ok:false,error:e.message},503);}
+            return applyInputPlan().then(function(){serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});})
+                .catch(function(e){inputError=e.message;serveJson(res,{ok:false,error:e.message,status:inputSnapshot()},503);});
+        }
+        var home=HomeRouting.binding(remapStore), homeRule=HomeRouting.rule(remapStore);
+        if(p.mode==='filter'&&home&&homeRule&&homeRule.enabled&&p.device!==home.node&&p.device!==home.device)return serveJson(res,{error:'Select the remote assigned to Home, or detect Home on the new remote first'},409);
         if(p.mode!=='observe'&&p.mode!=='filter')return serveJson(res,{error:'invalid input mode'},400);
         if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         inputPaused=true;
@@ -562,7 +651,7 @@ function handleInput(req,res){
             stopInput();return physical.inventory().then(function(list){
                 var candidates=list.filter(function(d){return d.selectable;});
                 if(!candidates.length)throw new Error('no physical remote devices found');
-                inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
+                inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,noteRemoteActivity);});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
             }).then(function(){var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
             .catch(function(e){stopInput();serveJson(res,{ok:false,error:e.message},503);});
@@ -572,10 +661,16 @@ function handleInput(req,res){
         physical.start(p.device,p.mode,tokens).then(function(status){
             if(p.mode==='filter'){saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node});inputPaused=false;}
             serveJson(res,{ok:true,persisted:p.mode==='filter',status:inputSnapshot()});
-        }).catch(function(e){physical.stop();serveJson(res,{ok:false,error:e.message},503);});
+        }).catch(function(e){
+            physical.stop();
+            if(p.mode!=='filter')return serveJson(res,{ok:false,error:e.message},503);
+            return applyInputPlan().then(function(){serveJson(res,{ok:false,error:e.message,status:inputSnapshot()},503);})
+                .catch(function(restore){serveJson(res,{ok:false,error:e.message+'. Remote restore not confirmed: '+restore.message,status:inputSnapshot()},503);});
+        });
     });
 }
 function handleRemapRun(req,res){readJsonBody(req,res,function(p){
+    noteRemoteActivity();
     if(typeof p.type!=='string'||typeof p.value!=='string')return serveJson(res,{error:'type and value required'},400);
     runActions(remap.resolve(remapStore.rules,p.type,p.value,p.payload)).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
 });}
@@ -605,7 +700,7 @@ http.createServer(function (req, res) {
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
-        if (url === '/dock') return readJsonBody(req,res,function(p){var t=p.action==='enable'?dock.enable():p.action==='disable'?dock.disable():p.action==='refresh'?dock.refresh():p.action==='fixTizenTube'?dock.setFixTizenTube(p.on):Promise.reject(Error('Invalid dock action'));t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
+        if (url === '/dock') return handleDock(req,res);
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
@@ -622,7 +717,7 @@ http.createServer(function (req, res) {
     }
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/dock/icon') {var slug=require('url').parse(req.url,true).query.slug,png=dock.iconFile(slug);if(!png)return serveJson(res,{error:'icon unavailable'},404);res.writeHead(200,{'content-type':'image/png','cache-control':'private, max-age=60','X-Content-Type-Options':'nosniff'});return res.end(png);}
-    if (url === '/dock') return dock.status({preview: true}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
+    if (url === '/dock') return dock.status({preview: true}).then(function(d){serveJson(res,homeDockStatus(d))}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);

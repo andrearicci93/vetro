@@ -42,3 +42,5 @@ jobs:
         run: dotnet run --project dock/native-tests/Launcher.NativeTests.csproj --configuration Release
       - name: Compile TV launcher
         run: dotnet build dock/Launcher.csproj --configuration Release -p:UseAppHost=false
+      - name: Headless launcher control and privilege boundary
+        run: sudo env DOTNET_ROLL_FORWARD=Major python3 dock/control-tests/test_control.py "$(command -v dotnet)" dock/bin/Release/netcoreapp3.1/tvlauncher-dotnet.dll
