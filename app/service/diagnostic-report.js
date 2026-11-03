@@ -13,7 +13,6 @@ var HASH_RE = /^[a-f0-9]{64}$/;
 var SAFE_TEXT_RE = /^[A-Za-z0-9 .,()_\-\/&+:']{1,100}$/;
 var SENSITIVE_TEXT_RE = /(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i;
 var PRIVILEGE_RE = /^(?:tizen|samsung)\/[A-Za-z0-9_.\/-]{1,80}$/;
-var DEVICE_RE = /^\d{1,2}\.\d{1,2}\.\d{1,2}$/;
 var ADDRESS_START_RE = /^(?:\d|[a-f0-9]*:)/i;
 var LAUNCHER_RE = /tizentube/i;
 function token(v) {

@@ -12,22 +12,75 @@ There was no 0.4.0 release: it was preliminary work and is part of this one. The
 5. **Ads and privacy:** stop more of what the TV sends out.
 6. **Important hotfixes** from `main`, merged.
 
+## Consolidation — 2026-11-03
+
+The local release work and the remote Linux CI fixes are integrated, together with PRs #88, #106, #107,
+#108 and #109. This includes Restore the TV / Remove Vetro, Disable Samsung Home, performance work,
+rooting diagnostics and compatibility fallbacks, the TV screen progress and root guidance, model and
+Tizen version diagnostics, missing launcher log handling, app-list Retry, non-launchable Settings
+components and the optional Home ad-picture host. No TV installation or device test is claimed by this consolidation.
+
+The source is a test candidate, not a published release. The public release is still 0.3.5.
+
+Local consolidation checks pass: 81 application suites, 11 integration suites, 19 diagnostic-parser tests,
+release hygiene/architecture audit and `git diff --check`. Hosted CI on the consolidated head is separate.
+
 ## State
 
-| Part | In the branch | Checked | Not checked |
+| Part | In the branch | Checked | Still to check |
 | --- | --- | --- | --- |
-| Plugin host, install, update, remove, safe mode | yes | 70 test suites; install, update and refusal run against a fake list in a browser | on a TV (Node 4.4 / 12); the real GitHub list (the repository does not exist yet) |
-| Plugin pages under sign-in (session in the URL) | yes | host tests, routing test | with a paired browser on a TV |
-| Plugin guide, scaffolder, `check`/`pack`/`index` | yes | `new`, `check`, `pack`, `index` run on a computer | a plugin written by someone else, from scratch, using only the guide |
-| Sign-in (PR #9, zerodevb) | merged | author ran the same auth module on a Q60A (Tizen 6, Node 12.4) with a different app showing the code: unpaired requests got 401, pairing worked | this branch's package: the TV screen showing the code (new screen, adapted here), the service opening Vetro on pairing |
-| Viewing-data stop, Stop Ambient, domain filter, ad list | yes (from the preliminary 0.4.0 work) | Q80A, with a real restart (see CHANGELOG) | other models |
+| Plugin host, install, update, remove, safe mode | yes | host, install, signature and bundled-launcher fixtures | full cycle on the TV, including a reboot |
+| Plugin pages under sign-in | yes | session/routing fixtures | paired browser on the TV |
+| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | the list is currently unsigned; the package's plugin public key is null, so unsigned installs remain possible and are labelled as file installs |
+| Sign-in (PR #9, zerodevb) | yes | auth fixtures; contributor's earlier module test on a Q60A | the consolidated TV widget, code display and automatic opening on pairing |
+| Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | release public key (currently null), dashboard download/apply, reboot after swap |
+| Restore the TV / Remove Vetro; Disable Samsung Home | yes | restore, Quick settings and UI fixtures | read-only restore plan and reversible actions on a TV; data erasure only after other tests |
+| TV screen and diagnostic fixes (#88, #106, #107, #108, #109) | yes | dedicated app, shell and parser fixtures | progress, root guidance, model/Tizen version, launcher status and app-list behaviour on the TV |
+| Viewing-data stop, Stop Ambient, domain filter, ad list | yes | earlier Q80A restart checks (see CHANGELOG) | consolidated package and other models |
+| Tizen 4 / Node 4.4 | syntax checks and fallbacks included | integration fixtures, including packaged ES5 syntax | real hardware; unsupported root remains app-only, not a claim that the root agent works on Node 4.4 |
 
-## Before it can ship
+## TV test session
 
-1. **Build and install on the Q80A**, then: pair a browser (code on the TV screen, wrong code, expiry), pair a script and run `boot-test.py` with `VETRO_TOKEN`, install and switch on a plugin with a page, update it, reboot and check that safe mode does not trigger.
-2. **Create the plugin list repository** (`andrearicci93/vetro-plugins`), or the default address answers 404 and the dashboard says so. A local copy with `notepad` and `tv-uptime` exists on the maintainer's computer. Nothing is published.
-3. **Tizen 4 / Node 4.4:** the plugin host and the sign-in module are written in ES5 and avoid `crypto.timingSafeEqual`, but none of it ran on Node 4.4 yet.
-4. Decide the open pull requests below.
+Record the package SHA-256 and source revision, TV model, firmware, Tizen version and actual results.
+Keep raw diagnostic exports and tokens outside the repository. An unchecked item is not a pass.
+The complete unsigned integration WGT is for an installer that supplies signing, such as Apps2Samsung;
+`vetro-app-only.wgt` does not contain the TV root integration.
+
+1. **Baseline.** Export diagnostics from the current installation and note launcher, remaps, Quick settings,
+   DNS and boot/restart choices before installing. Keep the previously working WGT available.
+2. **Install and first launch.** Install the consolidated integration package. If the installer needs a PC
+   connection, restore Host PC IP to `127.0.0.1` afterwards. Check the TV screen's steps and elapsed time,
+   service availability and authenticated UID-0 agent. Confirm version `0.5.0` and the expected source revision.
+3. **Pairing.** Use an unpaired/private browser: API requests must get 401. Request a code, check it appears
+   on the TV, try a wrong code then the right one; in a separate attempt let it expire. Reload a pending
+   pairing. Confirm the paired browser works and a second unpaired browser still gets 401. Pair scripts
+   separately following [SIGN-IN.md](SIGN-IN.md); keep `VETRO_TOKEN` private.
+4. **Diagnostics and dashboard.** Export a new report: check model, firmware, Tizen version and their sources,
+   root state and probe progress. Read launcher status before its first log exists. Confirm Settings components
+   are absent from Remapper targets. If an app-list read fails or stalls, check the reason and Retry.
+5. **Launcher and plugin cycle.** Check Home, Samsung Home, Back, Settings, Source and launching an app.
+   Check Remapper and saved interception. Install `tv-uptime`, enable it, open its page, restart the service,
+   then disable/remove it. Use the example/scaffolder for a local plugin update cycle. This build's unsigned
+   catalog does not establish signature enforcement. Keep Disable Samsung Home for a separate reversible
+   test with another launcher and a Home mapping already working.
+6. **Restart and cold boot.** Close the foreground app: service and root agent must keep running. Power-cycle
+   the TV and wait without opening Vetro from the TV or PC. Check root recovery, pairing, launcher/plugins,
+   saved remaps and settings; record whether plugin safe mode triggered. Run [boot-test.py](BOOT-TEST.md)
+   with `VETRO_TOKEN` to capture startup timing and evidence of a changed boot.
+7. **Restore.** First review the read-only Restore the TV plan and its limitations. After the persistence tests,
+   exercise Restore on the intended test configuration, inspect each result and verify the state on the TV.
+   Remove saved data only as a final, deliberate cleanup: it deletes pairing, plugins and restore records.
+8. **Updater, separate session prerequisite.** The current package has no update public key and refuses every
+   bundle. Before exercising signed update, tamper refusal or rollback, build/install a candidate containing
+   the intended test or release public key and use a matching signed bundle. Follow [UPDATING.md](UPDATING.md).
+   Do not count the earlier Q80A result as validation of this consolidated package.
+
+## Before publication
+
+- Complete and record the TV session above, including a cold boot.
+- Configure the update public key and a separately signed plugin catalog; retain private keys outside Git.
+- Re-run the complete CI checks on the final source and build the final package from that revision.
+- Resolve remaining overlapping PR scope and update release notes; credit zerodevb for pairing.
 
 ## Ads and privacy: what exists, what could go further
 
@@ -58,12 +111,13 @@ Candidate work, in the order of value over risk. Each needs a test on a TV befor
 
 Not planned: Netflix (investigated, no durable switch, see CHANGELOG notes), anything that needs a firmware change.
 
-## Open pull requests that touch the same files
+## Other pull requests and scope
 
-| PR | What | Note for 0.5.0 |
-| --- | --- | --- |
-| #9 | pairing sign-in | **merged into this branch**; close it on GitHub when 0.5.0 ships, and thank zerodevb in the release notes |
-| #69 | fixes for the 0.3.5 redesign (domenix) | edits the TV screen, where the sign-in code now lives: expect a conflict in `app/index.html` |
-| #75 | Tizen 4 on Node 4.4 (Merennor) | touches service start-up; check it against `plugin-host.js` and `auth.js` |
-| #74 | relaunch diagnostics (maintainer) | not in the theme. It adds a read-only watcher that records, in the Diagnostics report, when the TV starts an app again after Vetro stopped it (HbbTV, `csfs`), so that reports from other TVs show which app and when. Not merged here |
-| #30, #34, #55, #56, #57, #59, #80, #43, #23, #24 | launcher and remote | out of theme |
+The five PRs consolidated here target `release-0.5.0`: #88 (Tizen version), #106 (screen progress and model),
+#107 (root guidance), #108 (launcher status), #109 (dashboard fixes). #105 (Linux CI fixes) was already
+on the remote release branch. #75 (Tizen 4 startup) is also already integrated.
+
+#9's pairing implementation is integrated, but its PR remains open against `main`; close it when the
+release reaches `main`, and credit zerodevb. #69 (TV screen redesign fixes), #74 (relaunch diagnostics)
+and the remaining launcher/remote PRs have not been included by this consolidation. Assess their overlap
+separately rather than treating them as requirements for tonight's test candidate.
