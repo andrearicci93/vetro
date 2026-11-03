@@ -25,9 +25,9 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
-var dock = new (require('./dock.js').Dock)({execute: agentExecute, checkRuntime: buildInfo.rootMethod === 'remote-pc'});
-var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
-var wins = new (require('./quick-wins.js').Wins)(agentExecute);
+var dock = new (require('./dock.js').Dock)({execute: agentExecute, checkRuntime: buildInfo.rootMethod === 'remote-pc', runtime: buildInfo.inputRuntime});
+var hbbtv = new (require('./hbbtv.js').Control)(agentExecute, null, {manageService: buildInfo.inputRuntime === 'tizen55'});
+var wins = new (require('./quick-wins.js').Wins)(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 var presence = new (require('./presence.js').Presence)(agentExecute);
 var tvState = new (require('./tv-state.js').Store)(agentExecute);
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
@@ -39,10 +39,11 @@ var TOGGLE_IDS = debloat.VERIFIED_GLOBAL_IDS.concat(quickSettings.ALLOWED_IDS);
 // The package builder writes a non-default port into build-info.js (VETRO_PORT=... node build.cjs);
 // VETRO_PORT at run time still wins for local runs.
 var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
-// Manual Remote PC builds allow explicit actions without replaying saved changes.
+// Remote PC builds opt into saved input/preferences separately from MQTT and startup flags.
 var READ_ONLY = buildInfo.readOnly === true || process.env.VETRO_READ_ONLY === '1';
 var AUTOMATIC_RESTORE = !READ_ONLY && buildInfo.automaticRestore !== false;
 var INPUT_RESTORE = !READ_ONLY && (AUTOMATIC_RESTORE || buildInfo.restoreInput === true);
+var PREFERENCE_RESTORE = !READ_ONLY && (AUTOMATIC_RESTORE || buildInfo.restorePreferences === true);
 
 // --- telemetry reader (service side, uid 5001) ---------------------------
 // Reads /proc and /sys directly via fs. No platform command is needed. Every read
@@ -670,7 +671,7 @@ platform.start();
 // A short tick notices the moment the root agent connects, so after a boot the dock starts at once
 // instead of waiting for the next 10 s round.
 var dockAgentWas=false,dockTicks=0;
-var dockTimer=setInterval(function(){if(!AUTOMATIC_RESTORE)return;var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
+var dockTimer=setInterval(function(){if(!PREFERENCE_RESTORE)return;var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
 // Retry after boot and helper disconnects, including late adapter availability.
 var inputRestoreTimer=setInterval(function(){if(INPUT_RESTORE)restoreInput();},5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
 
@@ -703,11 +704,11 @@ var tvStateTimer=setInterval(function(){
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
 
 // Restore only an explicitly saved local domain filter once the adapter is ready.
-var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++dnsRestoreAttempts>12){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
+var dnsRestoreAttempts=0,dnsRestoreBusy=false;var dnsRestoreTimer=setInterval(function(){if(!PREFERENCE_RESTORE||dnsRestoreAttempts>=12){clearInterval(dnsRestoreTimer);return}if(!dnsRestoreBusy&&platform.status().agent.connected){dnsRestoreBusy=true;dnsRestoreAttempts++;dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){}).finally(function(){dnsRestoreBusy=false})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
 
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0,winsBootBusy=false;var winsBootTimer=setInterval(function(){if(!PREFERENCE_RESTORE||winsBootAttempts>=12){clearInterval(winsBootTimer);return}if(!winsBootBusy&&platform.status().agent.connected){winsBootBusy=true;winsBootAttempts++;wins.boot(hbbtv).then(function(){clearInterval(winsBootTimer)}).catch(function(){}).finally(function(){winsBootBusy=false})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
 var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

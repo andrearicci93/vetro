@@ -18,11 +18,11 @@ materials. The browser management HTTP interface currently requires a trusted
 LAN and has no login; agent authentication does not authenticate browser users.
 
 Remote PC builds have three build-time modes: `diagnostics` (default, HTTP
-mutations blocked), `manual` (explicit actions enabled, automatic feature
-restores disabled) and `automatic` (explicit actions and restores enabled).
+mutations blocked), `manual` (explicit actions plus opted-in saved preferences) and `automatic` (explicit actions and restores enabled).
 `build-info.js` records `remotePcMode`, `readOnly` and `automaticRestore`.
 `restoreInput` can independently restore explicitly saved remote interception
-in manual mode without starting the other feature restores. `VETRO_READ_ONLY=1`
+in manual mode. `restorePreferences` separately restores saved Launcher, local
+DNS and Quick Wins choices without starting MQTT or modifying startup flags. `VETRO_READ_ONLY=1`
 still forces HTTP read-only operation and disables restores.
 The Remote PC adapter also requires a feature-enabled mode to expose its
 package installation and package-state methods. Missing root rejects commands;

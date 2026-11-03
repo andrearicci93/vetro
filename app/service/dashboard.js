@@ -472,7 +472,7 @@ function bindComponentControls(a){
  $('launchApp').onclick=function(){if(this.disabled)return;return runUiOperation('component-launch','Open app',a.name||a.appId,this,function(){return api('/apps/launch',{appId:a.appId}).then(function(){return {resultLabel:'Requested',message:'Launch command accepted. Check the TV screen to confirm the app opened.'}})})};
  $('refreshDetail').onclick=function(){var button=this;button.disabled=true;return loadApps(true,true).then(function(){return api('/monitor').then(drawMonitor)}).then(function(){var row=inventory.find(function(r){return r.appId===a.appId});if(row)detail(a.appId);else{closeDetail();say('Component is no longer installed.')}}).catch(function(e){$('componentProgress').textContent='Refresh failed: '+e.message}).finally(function(){button.disabled=false})};
 }
-function dnsState(d){quickData.dns=d;renderQuick();$('dnsEnabled').checked=d.enabled;$('dnsEnabled').disabled=!d.enabled&&!d.domains.length;$('dnsDomains').value=d.domains.join('\\n');$('dnsStatus').textContent=d.applied?'Filter applied on TV · '+d.domains.length+' domains'+(d.namespaceWarnings&&d.namespaceWarnings.length?' · '+d.namespaceWarnings.length+' inaccessible namespaces':''):d.enabled?'Filter configured, but not applied':'Filter off';$('dnsResolvers').textContent='Current DNS servers (read-only): '+d.resolvers.join(' · ');}
+function dnsState(d){quickData.dns=d;renderQuick();$('dnsEnabled').checked=d.enabled;$('dnsEnabled').disabled=!d.enabled&&!d.domains.length;$('dnsDomains').value=d.domains.join('\\n');$('dnsStatus').textContent=d.applied?'Filter applied on TV · '+d.domains.length+' domains'+(d.verification&&d.verification.checked?(d.verification.ipv4Blocked?' · resolver verified: ':' · resolver bypass: ')+d.verification.domain:' · resolver not verified')+(d.namespaceWarnings&&d.namespaceWarnings.length?' · '+d.namespaceWarnings.length+' inaccessible namespaces':''):d.enabled?'Filter configured, but not applied':'Filter off';$('dnsResolvers').textContent='Current DNS servers (read-only): '+d.resolvers.join(' · ');}
 function loadDns(){api('/dns').then(dnsState).catch(function(e){$('dnsStatus').textContent=e.message})}
 function domainButtons(domains){return domains.map(function(d){return '<button data-domain="'+esc(d)+'">+ '+esc(d)+'</button>'}).join(' ');}
 $('dnsCandidates').innerHTML=${JSON.stringify(require('./blocklist.js').publicGroups())}.map(function(g){return '<h4>'+esc(g.label)+'</h4><p class="section-note">'+esc(g.note)+'</p>'+domainButtons(g.hosts)}).join('');
@@ -486,7 +486,7 @@ return runUiOperation('dns','Domain filter','TV hosts',this,function(mark){retur
  dnsState(d);
  var message=p.enabled?'Configuration saved. System hosts: '+(d.applied?'filter detected':'filter not detected')+'.':'Filter disabled. System hosts: '+(d.applied?'filter still detected':'filter not detected')+'.';
  var warnings=(d.namespaceWarnings||[]).length,partial=p.enabled!==d.applied||warnings>0;
- return {state:partial?'warning':'success',resultLabel:'State read',message:message+(warnings?' '+warnings+' inaccessible namespaces.':'')+' Custom DNS servers unchanged. App caches and private resolvers may bypass hosts. Blocking real app requests has not been verified.'};
+ return {state:partial?'warning':'success',resultLabel:'State read',message:message+(warnings?' '+warnings+' inaccessible namespaces.':'')+' Custom DNS servers unchanged. App caches and private resolvers may bypass hosts. Blocking real app requests has not been verified. Exact domains only; an existing ad or a different subdomain may still appear.'};
 })});};
 $('observeDns').onclick=function(){var b=this;b.disabled=true;$('dnsObserved').textContent='Observing requests…';api('/dns',{action:'observe'}).then(function(d){$('dnsObserved').innerHTML=d.domains.length?domainButtons(d.domains):'No UDP DNS requests observed during this capture.'}).catch(function(e){$('dnsObserved').textContent=e.message}).finally(function(){b.disabled=false})};
 document.querySelectorAll('[data-mode]').forEach(function(b){b.onclick=function(){switchPanel(b.dataset.mode)}});
@@ -543,9 +543,9 @@ var quickData={dns:null,leftovers:null,leftoversError:null,hbbtvError:null,wins:
 var groupTitles={'tracking-all':'Disable all advertising and tracking','voice-all':'Disable all voice assistants',alexa:'Disable Alexa',google:'Disable Google Assistant',bixby:'Disable Bixby',voice:'Disable the other voice services'};
 var winCopy={
  hbbtv:{title:'Disable HbbTV',desc:'Stops the red-button app and the service that keeps starting it again, so it stays off after a source change, a wake-up or a restart. Frees about 22 MB of memory.',
-  detail:'Sets the HbbTV menu value to Off, stops the HbbTV service first and then the app (the service starts the app again if it is left running), and does the same after every restart of the TV. Switch off to restore the previous value and start both again.'},
+  detail:'Sets the HbbTV menu value to Off, stops the HbbTV service first and then the app (the service starts the app again if it is left running), and does the same after every restart of the TV. On Tizen 5.5 it also disables the HbbTV service through Samsung’s package manager to prevent automatic relaunch. Switch off to restore the previous value and start both again.'},
  multiscreen:{title:'Disable MultiScreen autostart',desc:'Samsung loads Multi View in the background at every restart of the TV. This stops that; Multi View still opens when you ask for it, and its first launch takes a few seconds longer. Frees about 15 MB.',
-  detail:'Adds the file disable_preloading that Samsung’s own start-up unit checks, and stops the app now. Switch off to remove the file; nothing else is changed.'},
+  detail:'Sets the preload flag used by this TV and stops its Multi View start-up unit and app now. On Tizen 5.5 the flag is restored after a restart. Switch off to remove the flag; Multi View remains available on demand.'},
  ambient:{title:'Stop Ambient (partial block)',desc:'Stops the Ambient app now and after every restart of the TV, which frees about 59 MB. The block is partial: Samsung’s screen service starts the app again within seconds, and no setting turns that off, so the memory comes back until the next stop.',
   detail:'Stops org.tizen.ambientapp now and once after each restart of the TV. screend, Samsung’s screen daemon, watches the app and launches it again when it ends (only a firmware feature of the model switches that off), so it can reappear after a few seconds. Samsung’s start-up script and the system image are not touched. Switch off to start it again.'},
  firmware:{title:'Disable automatic firmware update',desc:'Same as Support › Software Update › Auto update. A new firmware can remove root access, so updates only happen when you start them.',
@@ -570,11 +570,12 @@ function groupItem(g){
 }
 function winItem(id){
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
+ if(id==='ambient'&&w.mode==='disabled')c={title:'Disable Ambient',desc:'Stops Ambient and prevents Samsung from starting it again. Opening Ambient manually is also blocked until you turn this off.',detail:'Disables only org.tizen.ambientapp through Samsung’s package manager and checks that the app stopped. Switch off to restore its previous activation state. The screen service and the system image stay unchanged.'};
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
- if(quickData.wins&&st==='on')state=id==='ambient'?chip('Partly done · Samsung may start it again','partial'):chip(id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
- if(st==='partial')state=chip('Partly done · Samsung started it again','partial');
+ if(quickData.wins&&st==='on')state=id==='ambient'?w.mode==='disabled'?chip('Done · Ambient is disabled','on'):chip('Partly done · Samsung may start it again','partial'):chip(id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
+ if(st==='partial')state=chip(id==='multiscreen'?'Saved · preload flag needs restoring':'Partly done · Samsung started it again','partial');
  if(st==='off'&&w.running)state=chip('Running now','');
- var control=quickData.wins&&st&&st!=='unknown'?switchMarkup('data-win-switch="'+id+'"',st==='on',busy,c.title):'';
+ var control=quickData.wins&&st&&st!=='unknown'?switchMarkup('data-win-switch="'+id+'"',st==='on'||st==='partial'&&w.chosen===true,busy,c.title):'';
  return quickItem(id,c.title,c.desc,state,control,'<details><summary>What this changes</summary><p>'+esc(c.detail)+'</p></details>');
 }
 function hbbtvItem(){

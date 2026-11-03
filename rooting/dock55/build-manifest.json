@@ -1,0 +1,22 @@
+{
+  "target": "netcoreapp3.0",
+  "sources": {
+    "dock/src/Core/Catalog.cs": "f641998f49acda493b6393a0aa21c68e69fd8d811d6d8eab3e4458348d150220",
+    "dock/src/Core/Commands.cs": "304db6ad69bda4d693c14fe2f421ee5ee17fee11ac629cbf63f3e9712f3bab40",
+    "dock/src/Core/Controller.cs": "a3e17f6fd148e2c725402fd2b3b267d8bff40e612b89127921a160c23d1e8683",
+    "dock/src/Core/Design.cs": "1b92d00f2387ad82460df6c6a16eab56de193fedfc55d7db30eacbe19942e80f",
+    "dock/src/Core/Evdev.cs": "15490b0035938da721dd17317eff8a5e3d1cfb4af2a559b5bfc110e0cbc4845b",
+    "dock/src/Core/IconPrep.cs": "2c54dbab2357b2763101c5e22383cd2d6ad5bba1d4694894903cf601b2fe6af4",
+    "dock/src/Core/LabelFader.cs": "2dc28b58f76ae2dfb51b552523bdb2b089875b91e9de38a39aa5d02fb26917ca",
+    "dock/src/Core/Layout.cs": "437558930008a9fc3c4555a47b79105c6d955507d66eccb4a59e63bd93461c00",
+    "dock/src/Native/Efl.cs": "5032026190e1f84f3a61a738fb95698c0e310ef14d12b68c97023f0362b98e94",
+    "dock/src/Native/Libc.cs": "0a4d32a7d95f0a13f933655dec3c5da6f5c1ecb067a743f86b20524145418421",
+    "dock/src/Program.cs": "3e9dc345be607658d0593f203907dc6ca67f7f34e54a6d6725af2e127867de74",
+    "dock/src/Ui/Dock.cs": "2f1b399fb6a91ae65114db2c9be52ffdc2947b4f163e87c28625cb00fcf8974e"
+  },
+  "dllSha256": "d4a257d8977c706410243ff72947419ae02109f6973f9f2ded79e77e2fd5b1f2",
+  "compilerSha256": "cb2a56fea20d8e58177951c90473e8da75ddf0cce70ec1aa62ff01d066191bec",
+  "referenceAssemblies": 165,
+  "hardwareVerified": false,
+  "firmwareAssembliesPackaged": false
+}

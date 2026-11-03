@@ -84,6 +84,9 @@ async function main() {
             assert.equal(info.remotePcMode, mode);
             assert.equal(info.inputRuntime, 'tizen55');
             assert.equal(info.restoreInput, mode !== 'diagnostics');
+            assert.equal(info.restorePreferences, mode !== 'diagnostics');
+            const dockRuntime=JSON.parse(files.find(f=>decodeURIComponent(f.uri)==='native/dock/tvlauncher-dotnet.runtimeconfig.json').data.toString());
+            assert.equal(dockRuntime.runtimeOptions.tfm,'netcoreapp3.0');
             assert.equal(info.readOnly, mode === 'diagnostics');
             assert.equal(info.automaticRestore, mode === 'automatic');
             const runtime = JSON.parse(files.find(f => decodeURIComponent(f.uri) === 'payload/SamsungTvRemoteInputAgent.runtimeconfig.json').data.toString());

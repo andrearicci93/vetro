@@ -30,8 +30,17 @@ function collectIntegration() {
     }
     const files = require('../app/build.cjs').collectFiles().filter(file => decodeURIComponent(file.uri) !== 'service/platform.js');
     if (rootMethod === 'remote-pc') {
+        const dockManifest = JSON.parse(fs.readFileSync(path.join(__dirname,'dock55','build-manifest.json'),'utf8'));
         const compiled = JSON.parse(fs.readFileSync(path.join(__dirname,'payload55','build-manifest.json'),'utf8'));
         const digest = file => require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+        if (dockManifest.target !== 'netcoreapp3.0' || dockManifest.dllSha256 !== digest(path.join(__dirname,'dock55','tvlauncher-dotnet.dll')) ||
+            Object.keys(dockManifest.sources).some(name => dockManifest.sources[name] !== digest(path.join(__dirname,'..',name)))) {
+            throw new Error('Rebuild the Tizen 5.5 launcher: its source or binary differs from the build manifest');
+        }
+        files.forEach(file => {
+            const name = decodeURIComponent(file.uri);
+            if (/^native\/dock\/tvlauncher-dotnet\.(dll|runtimeconfig\.json)$/.test(name)) file.data = fs.readFileSync(path.join(__dirname,'dock55',path.basename(name)));
+        });
         if (compiled.target !== 'netcoreapp3.0' || compiled.sourceSha256 !== digest(path.join(__dirname,'payload','SamsungTvRemoteInputAgent.cs')) ||
             compiled.dllSha256 !== digest(path.join(__dirname,'payload55','SamsungTvRemoteInputAgent.dll'))) {
             throw new Error('Rebuild the Tizen 5.5 input helper: its source or binary differs from the build manifest');
@@ -46,7 +55,7 @@ function collectIntegration() {
     });
     if (rootMethod === 'remote-pc') {
         const metadata = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js');
-        const flags = {rootMethod: 'remote-pc', remotePcMode, inputRuntime: 'tizen55', restoreInput: remotePcMode !== 'diagnostics',
+        const flags = {rootMethod: 'remote-pc', remotePcMode, inputRuntime: 'tizen55', restoreInput: remotePcMode !== 'diagnostics', restorePreferences: remotePcMode !== 'diagnostics',
             readOnly: remotePcMode === 'diagnostics', automaticRestore: remotePcMode === 'automatic'};
         metadata.data = Buffer.concat([metadata.data, Buffer.from('\nObject.assign(module.exports, ' + JSON.stringify(flags) + ');\n')]);
     }
