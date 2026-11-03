@@ -12,6 +12,7 @@ var TRIGGER_TYPES = ['physical', 'key', 'mqtt', 'http'];
 
 function validateAction(a) {
     if (!a || typeof a !== 'object') throw new Error('invalid action');
+    if (a.type === 'launcher') return {type: 'launcher'};
     if (a.type === 'key') {
         if (typeof a.key !== 'string' || !KEY_RE.test(a.key)) throw new Error('invalid key: ' + a.key);
         return {type: 'key', key: a.key};

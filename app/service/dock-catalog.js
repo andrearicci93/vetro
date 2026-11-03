@@ -15,6 +15,16 @@ var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
 var ICON_FILE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
+var HOME_APP = 'com.samsung.tv.csfs';
+var HOME_LABEL_MAX = 12;
+function homeShortcut(value) {
+    if (value == null) return null;
+    if (!value || typeof value.appId !== 'string' || !APP_ID.test(value.appId) || typeof value.label !== 'string') throw Error('Choose an installed app and a button label');
+    var label = value.label.trim();
+    if (!label || label.length > HOME_LABEL_MAX || /[\u0000-\u001f\u007f]/.test(label)) throw Error('Button label must contain 1–12 characters');
+    if (value.appId === HOME_APP) return null;
+    return {appId: value.appId, label: label};
+}
 var VIEWER = 'org.tizen.tv-viewer';
 // Fix TizenTube: TizenTube is a sideloaded app that stands in for YouTube. Samsung's own YouTube
 // (a Cobalt process) has to be closed before TizenTube starts, and the tile borrows the icon
@@ -50,6 +60,7 @@ function script() {
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
+        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'H|\'||hex(app_id) FROM package_app_info;" 2>/dev/null',
         'true'
     ].join('\n');
 }
@@ -63,7 +74,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(/\r$/, '');
         var f = line.split('|');
@@ -75,6 +86,8 @@ function parse(text) {
                 out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1'};
             } else if (f[0] === 'I' && f.length === 3) {
                 if (iconOk(f[2])) out.icons[f[1]] = f[2];
+            } else if (f[0] === 'H' && f.length === 2) {
+                var installedId = unhex(f[1]); if (APP_ID.test(installedId)) out.installed[installedId] = true;
             } else if (f[0] === 'P' && f.length === 3) {
                 var icon = unhex(f[2]), id = unhex(f[1]);
                 if (iconOk(icon) && !out.packageIcons[id]) out.packageIcons[id] = icon;
@@ -110,7 +123,7 @@ function build(parsed, options) {
     var entries = [], skipped = [], slugs = {};
     function add(slug, label, appId, icon) {
         var base = slug, n = 2;
-        while (slugs[slug] || slug === 'source' || slug === 'settings') slug = base.slice(0, 36) + '-' + n++;
+        while (slugs[slug] || slug === 'source' || slug === 'settings' || slug === 'samsunghome' || slug === 'customhome') slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
         entries.push({slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null});
         return entries[entries.length - 1];
@@ -137,7 +150,12 @@ function build(parsed, options) {
             if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
         }
     });
-    return {entries: entries, skipped: skipped};
+    var shortcut = null;
+    try { shortcut = homeShortcut(options.homeShortcut); } catch (e) { skipped.push({item: 'Home shortcut', reason: 'Invalid setting; Samsung Home is used'}); }
+    if (shortcut && !(parsed.installed && Object.prototype.hasOwnProperty.call(parsed.installed, shortcut.appId))) {
+        skipped.push({item: shortcut.label, reason: 'Custom Home app is unavailable; Samsung Home is used'}); shortcut = null;
+    }
+    return {entries: entries, skipped: skipped, homeShortcut: shortcut};
 }
 
 function tsv(built) {
@@ -145,7 +163,9 @@ function tsv(built) {
     built.entries.forEach(function (e) {
         lines.push([e.slug, e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(/\t+$/, ''));
     });
-    return lines.concat(SYSTEM_ROWS).join('\n') + '\n';
+    var system = SYSTEM_ROWS.slice();
+    if (built.homeShortcut) system[1] = ['customhome', built.homeShortcut.label, 'sys:' + built.homeShortcut.appId, HOME_APP].join('\t');
+    return lines.concat(system).join('\n') + '\n';
 }
 
 // The registry can point at an icon that is no longer there (TV Plus does). One more read-only
@@ -185,4 +205,4 @@ function load(execute, options) {
     });
 }
 
-module.exports = {iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {homeShortcut: homeShortcut, HOME_LABEL_MAX: HOME_LABEL_MAX, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};

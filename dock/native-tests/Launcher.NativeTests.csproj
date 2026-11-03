@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../src/Core/HomeCloseGuard.cs" Link="HomeCloseGuard.cs" />
+    <Compile Include="../src/Native/Efl.cs" Link="Efl.cs" />
+    <Compile Include="../src/Native/EcoreChildProcess.cs" Link="EcoreChildProcess.cs" />
+  </ItemGroup>
+</Project>

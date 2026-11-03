@@ -1,0 +1,85 @@
+'use strict';
+const assert=require('assert').strict;
+const {HomeRouting,plan}=require('../service/home-routing.js');
+const home=action=>({id:'physical_63',enabled:true,trigger:{type:'physical',value:'63'},actions:[action]});
+const other={id:'volume',enabled:true,trigger:{type:'physical',value:'115'},actions:[{type:'key',key:'KEY_VOLUP'}]};
+function fixture(){
+ const f={store:{rules:[other],input:{enabled:false}},running:false,policy:{mode:'off',connected:false},starts:0,stops:0,saves:0,failInput:0,failSave:false,devices:[{name:'Smart Control',node:'/dev/input/event6',selectable:true}],apps:[{appId:'netflix.app',show:true,disabled:false}]};
+ const dock={readState:()=>({enabled:f.running}),enable:async()=>{f.starts++;f.running=true;},disable:async()=>{f.stops++;f.running=false;}};
+ f.routing=new HomeRouting({get:()=>f.store,save:s=>{if(f.failSave)throw Error('disk full');f.store=s;f.saves++;},dock,
+  devices:async()=>f.devices,hasKeys:()=>true,apps:async()=>({apps:f.apps}),inputStatus:()=>({policy:f.policy}),
+  applyInput:async()=>{if(f.inputWait)await f.inputWait;if(f.failInput-->0)throw Error('helper unavailable');const p=plan(f.store);f.policy={mode:p.tokens.length?'filter':'off',connected:!!p.tokens.length,blocked:p.tokens};}});
+ return f;
+}
+(async()=>{
+ let f=fixture();assert.equal(f.routing.status().action,null);
+ await assert.rejects(f.routing.setLauncher(true),/Detect Home/);assert.equal(f.starts,0);assert.equal(f.saves,0);
+ await f.routing.setLauncher(true,{device:'/dev/input/event6',expectedRevision:0});
+ assert.equal(f.running,true);assert.equal(f.routing.status().launcher,true);assert.equal(f.routing.status().ready,true);
+ assert.deepEqual(f.policy.blocked,['63']);assert.equal(f.store.input.enabled,false,'enabling Home does not resume paused shortcuts');
+ assert.deepEqual(f.store.rules[0],other);
+ const saved=JSON.stringify(f.store);
+ await assert.rejects(f.routing.change([other,home({type:'launch',appId:'missing'})]),/installed/);assert.equal(JSON.stringify(f.store),saved);
+ await assert.rejects(f.routing.change([other,home({type:'launcher'}),{...home({type:'launcher'}),id:'duplicate'}]),/only one/);
+ await assert.rejects(f.routing.setLauncher(false,{expectedRevision:0}),/changed/);assert.equal(JSON.stringify(f.store),saved);
+ await f.routing.change([other,home({type:'launch',appId:'netflix.app'})]);
+ assert.equal(f.running,false);assert.equal(f.routing.status().launcher,false);assert.equal(f.routing.status().action.appId,'netflix.app');
+ assert.equal(f.store.rules.filter(r=>r.trigger.value==='63').length,1);
+ const appStore=JSON.stringify(f.store);await f.routing.setLauncher(false);assert.equal(JSON.stringify(f.store),appStore,'off does not erase a different Home destination');
+ await f.routing.setLauncher(true);assert.equal(f.routing.status().launcher,true);assert.equal(f.starts,2);
+ await f.routing.setLauncher(false);assert.equal(f.routing.status().action,null);assert.equal(f.running,false);assert.deepEqual(f.policy.blocked,[]);assert.deepEqual(f.store.rules,[other]);
+ f=fixture();f.store.input={enabled:true,device:'Smart Control',node:'/dev/input/event6'};
+ f.store.rules.push(home({type:'launcher'}));f.running=true;
+ assert.deepEqual(plan(f.store).tokens,['63','115'],'existing enabled Home mapping migrates through its saved remote');
+ await f.routing.setLauncher(false);assert.deepEqual(f.policy.blocked,['115'],'other active rules survive disabling Vetro');
+ assert.equal(f.store.input.enabled,true);
+ f=fixture();f.failSave=true;
+ await assert.rejects(f.routing.setLauncher(true,{device:'/dev/input/event6'}),/disk full/);
+ assert.equal(f.running,false);assert.deepEqual(f.store.rules,[other]);assert.deepEqual(f.policy.blocked,[]);
+ f=fixture();await f.routing.setLauncher(true,{device:'/dev/input/event6'});const before=JSON.stringify(f.store);f.failInput=1;
+ await assert.rejects(f.routing.change([other,home({type:'launch',appId:'netflix.app'})]),/helper unavailable/);
+ assert.equal(JSON.stringify(f.store),before);assert.equal(f.running,true);assert.deepEqual(f.policy.blocked,['63'],'failed remapping restores previous Home');
+ f=fixture();f.store.input={enabled:false,device:'Smart Control',node:'/dev/input/event6'};
+ f.devices.push({name:'Smart Control',node:'/dev/input/event16',selectable:true});
+ await f.routing.setLauncher(true);assert.equal(f.store.home.node,'/dev/input/event6');
+ f.devices=f.devices.filter(d=>d.node!=='/dev/input/event6');await f.routing.change([other,home({type:'launch',appId:'netflix.app'})]);assert.equal(f.store.home.node,'/dev/input/event16','a unique surviving remote can change node');
+ let release;f.routing.o.apps=()=>new Promise(r=>{release=r});
+ const pending=f.routing.change([other,home({type:'launch',appId:'netflix.app'})],{device:'/dev/input/event16'});
+ await new Promise(r=>setImmediate(r));await assert.rejects(f.routing.setLauncher(true),/already in progress/);
+ release({apps:f.apps});await pending;
+ f=fixture();f.store.input={enabled:true,device:'Smart Control',node:'/dev/input/event6'};
+ f.store.home={code:'63',device:'Smart Control',node:'/dev/input/event6'};
+ f.devices=[{name:'Smart Control',node:'/dev/input/event6',selectable:true,unique:false},{name:'Smart Control',node:'/dev/input/event16',selectable:true,unique:false}];
+ const initial=JSON.stringify(f.store);
+ await assert.rejects(f.routing.change([other,home({type:'launcher'})],{device:'/dev/input/event16'}),/Pause other remote shortcuts/);
+ assert.equal(JSON.stringify(f.store),initial,'a different capture interface cannot replace the saved remote');
+ await f.routing.change([other,home({type:'launcher'})]);
+ assert.equal(f.store.home.node,'/dev/input/event6');assert.equal(f.store.input.node,'/dev/input/event6');assert.equal(f.store.input.enabled,true);
+ assert.deepEqual(f.policy.blocked,['63','115'],'reusing the saved Home identity preserves the other shortcuts');
+ f.devices.push({name:'Other Remote',node:'/dev/input/event20',selectable:true,unique:true});
+ await assert.rejects(f.routing.setLauncher(true,{device:'/dev/input/event20'}),/same remote/);
+ assert.equal(f.store.input.enabled,true,'a real conflict does not silently pause shortcuts');
+ for(const extras of [[],[{...other,enabled:false}],[{id:'web',enabled:true,trigger:{type:'http',value:'open'},actions:[{type:'key',key:'KEY_HOME'}]}]]){
+  f=fixture();f.store.rules=extras;f.store.input={enabled:true,device:'Smart Control',node:'/dev/input/event6'};
+  f.devices=[{name:'Smart Control',node:'/dev/input/event6',selectable:true,unique:false},{name:'Smart Control',node:'/dev/input/event16',selectable:true,unique:false}];
+  await f.routing.setLauncher(true,{device:'/dev/input/event16',expectedRevision:0});
+  assert.equal(f.store.input.enabled,true,'Home saves with the switch on and no other active physical mappings');
+  assert.equal(f.store.home.node,'/dev/input/event16');assert.equal(f.store.input.node,'/dev/input/event16');
+  assert.deepEqual(f.policy.blocked,['63']);assert.deepEqual(f.store.rules.slice(0,-1),extras);
+  assert.equal(f.routing.status().busy,false);assert.equal(f.routing.status().phase,null);
+ }
+ f=fixture();f.store.rules=[];f.store.input={enabled:true,device:'Old Remote',node:'/dev/input/event99'};
+ f.inputWait=new Promise(r=>{release=r});
+ const saving=f.routing.setLauncher(true,{device:'/dev/input/event6',expectedRevision:0});
+ await new Promise(r=>setImmediate(r));
+ assert.equal(f.store.revision,1,'the assignment exists before applying input finishes');
+ assert.equal(f.routing.status().busy,true);assert.equal(f.routing.status().phase,'applying-remote');assert.equal(f.routing.status().ready,false);
+ release();await saving;assert.equal(f.store.input.enabled,true);assert.equal(f.store.input.device,'Smart Control');
+ assert.equal(f.routing.status().phase,null);assert.equal(f.routing.status().ready,true);
+ f=fixture();f.store.rules=[];f.store.input={enabled:true,device:'Old Remote',node:'/dev/input/event99'};
+ const rollback=JSON.stringify(f.store);f.failInput=1;
+ await assert.rejects(f.routing.setLauncher(true,{device:'/dev/input/event6'}),/helper unavailable/);
+ assert.equal(JSON.stringify(f.store),rollback,'failure restores the enabled switch and its original binding too');
+ assert.equal(f.routing.status().phase,null);assert.equal(f.routing.status().busy,false);
+ console.log('PASS shared Home: one assignment, native default, paused shortcuts, app edits, re-enable, migration, device identity, rollback, revisions and serialization');
+})().catch(e=>{console.error(e);process.exitCode=1;});

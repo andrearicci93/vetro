@@ -51,7 +51,35 @@ function Dock(options) {
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
+    this.lastControl = null;
+    this.mappedHome = options.mappedHome === true;
 }
+
+// The app service cannot assume access to the root launcher's private files.
+// Run the headless, nonblocking pipe client through the existing root adapter.
+// Only an explicit not-sent result permits falling back to the native Home key.
+Dock.prototype.toggle = function () {
+    var self = this;
+    function record(state, reason) {
+        self.lastControl = {at: self.now(), state: state, reason: reason};
+        return state === 'sent';
+    }
+    if (this.busy) return Promise.resolve(record('not-sent', 'launcher restarting'));
+    if (!this.readState().enabled) return Promise.resolve(record('not-sent', 'launcher disabled'));
+    if (!this.installed()) return Promise.resolve(record('not-sent', 'launcher files unavailable'));
+    var command = '/usr/bin/dotnet ' + q(path.join(this.dir, DLL)) + ' --control toggle --dir ' + q(RUN_DIR);
+    return Promise.resolve().then(function () { return self.execute(command, 5000); }).then(function (r) {
+        var frames = String(r && r.stdout || '').split(/\r?\n/).filter(function (line) { return line.indexOf('VETRO_LAUNCHER_CONTROL_V1\t') === 0; });
+        var match = frames.length === 1 && /^VETRO_LAUNCHER_CONTROL_V1\t(sent|not-sent|unknown)\t([a-z-]+)\t(\d+)$/.exec(frames[0]);
+        if (!r || r.timed_out || !match) throw Error('Launcher command outcome unknown; Home was not replayed');
+        if (match[1] === 'sent' && match[2] === 'ok' && match[3] === '0' && r.exit_code === 0) return record('sent', 'toggle delivered');
+        if (match[1] === 'not-sent' && r.exit_code === 3) return record('not-sent', match[2] + (match[3] === '0' ? '' : ' (errno ' + match[3] + ')'));
+        throw Error('Launcher command outcome unknown; Home was not replayed');
+    }).catch(function (error) {
+        record('unknown', 'Launcher command was not confirmed; Home was not replayed');
+        throw Error(self.lastControl.reason);
+    });
+};
 
 Dock.prototype.installed = function () {
     try { return fs.existsSync(path.join(this.dir, DLL)) && fs.existsSync(path.join(this.dir, 'res', 'glass_tile.png')); }
@@ -61,9 +89,10 @@ Dock.prototype.installed = function () {
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
+        var shortcut = null; try { shortcut = catalog.homeShortcut(s && s.homeShortcut); } catch (ignored) {}
+        return {homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+    } catch (e) { return {homeShortcut: null, enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -147,7 +176,7 @@ Dock.prototype.status = function (options) {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
+    var base = {homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy, lastControl: this.lastControl,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
         entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
@@ -167,7 +196,7 @@ Dock.prototype.statusNow = function () {
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
     var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
-        ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
+        ' --hidden' + (this.mappedHome ? ' --mapped-home' : ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP);
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -188,7 +217,7 @@ Dock.prototype.stopLines = function () {
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
-    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
+    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube, homeShortcut: this.readState().homeShortcut}).then(function (c) {
         try { fs.writeFileSync(self.appsFile, c.tsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -244,13 +273,14 @@ Dock.prototype.enable = function () {
     return this.launch().then(function () {
         self.patchState({enabled: true, since: self.now()});
         self.failures = 0; self.nextTry = 0;
+        if (self.mappedHome) return;
         // Not fatal: the launcher works either way, only the picture at power-on differs.
         return self.turnOffAutorun()
             .catch(function (e) { self.lastError = 'The launcher is on, but Autorun Smart Hub could not be switched off: ' + e.message; });
     }).then(function () {
         // Samsung's Home is idle in the background; closing it frees its memory, and Settings or
         // Source opened from the dock start it again on demand.
-        return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+        if (!self.mappedHome) return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
@@ -298,6 +328,27 @@ Dock.prototype.entries = function () {
 };
 Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }
+};
+
+// Change only the pinned shortcut. Physical Home handling and the root service stay as configured.
+Dock.prototype.setHomeShortcut = function (value, available) {
+    var self = this, shortcut;
+    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    if (shortcut && !(available || []).some(function (app) { return app.appId === shortcut.appId && app.show && !app.disabled; })) {
+        return Promise.reject(Error('Choose an installed, enabled app with a visible launch entry'));
+    }
+    if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
+    var previous = this.readState(); this.busy = true;
+    try { this.patchState({homeShortcut: shortcut}); }
+    catch (e) { this.busy = false; return Promise.reject(e); }
+    return (previous.enabled ? this.launch() : this.writeCatalog()).then(function () { return self.status(); }).catch(function (error) {
+        try { self.patchState({homeShortcut: previous.homeShortcut}); }
+        catch (restoreError) { throw Error(error.message + '; previous shortcut could not be restored: ' + restoreError.message); }
+        return (previous.enabled ? self.launch() : self.writeCatalog()).then(function () { throw error; }, function (restoreError) {
+            throw Error(error.message + '; previous setting saved but launcher recovery needs attention: ' + restoreError.message);
+        });
+    }).finally(function () { self.busy = false; });
 };
 
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
