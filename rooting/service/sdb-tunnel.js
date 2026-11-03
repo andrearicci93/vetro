@@ -32,6 +32,11 @@ NAMES.forEach(function (name) {
 
 var HEADER_BYTES = 24;
 var MAX_PAYLOAD = 4096;
+// The SDK's file-sync client sends a DATA/DONE envelope in the same WRTE as its
+// file bytes (4111 bytes for a 4095-byte file), even when CNXN advertises 4096.
+// This is a framing safety bound, not the negotiated write size. Relay those
+// vendor frames unchanged in either direction, with a finite allocation limit.
+var MAX_FRAME_BYTES = 1024 * 1024;
 var VERSION = 0x01000000;
 var FIRST_STREAM_ID = 0x40000000;
 
@@ -69,7 +74,7 @@ function decodeAll(buffer) {
         var magic = buffer.readUInt32LE(offset + 20);
         if (((command ^ 0xffffffff) >>> 0) !== magic) return { bad: true };
         var length = buffer.readUInt32LE(offset + 12);
-        if (length > MAX_PAYLOAD) return { bad: true };
+        if (length > MAX_FRAME_BYTES) return { bad: true };
         if (buffer.length - offset < HEADER_BYTES + length) break;
         packets.push({
             command: command,

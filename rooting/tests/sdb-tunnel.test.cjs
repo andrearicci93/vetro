@@ -57,7 +57,7 @@ function fakeSdbd(state) {
           if (remoteId === undefined) continue;
           const text = payload.toString('ascii').replace(/\0$/, '');
           send('OKAY', remoteId, arg0, null);
-          send('WRTE', remoteId, arg0, 'echo:' + text);
+          send('WRTE', remoteId, arg0, state.binary ? payload : 'echo:' + text);
         } else if (command === 'CLSE') {
           const remoteId = streams.get(arg0);
           streams.delete(arg0);
@@ -94,6 +94,40 @@ function echo(client, text) {
     });
     stream.on('error', (e) => { clearTimeout(timer); reject(e); });
     stream.write(text);
+  });
+}
+
+// Real SDK file-sync writes include DATA/DONE framing beyond the advertised 4096 bytes.
+// Use a wire client: the small service-side client deliberately enforces its own 4096-byte payload limit.
+function binaryRoundTrip(port, payload) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1');
+    let buffer = Buffer.alloc(0), sent = false;
+    const timer = setTimeout(() => finish(new Error('binary frame was dropped')), 1500);
+    function finish(err, value) { clearTimeout(timer); socket.destroy(); err ? reject(err) : resolve(value); }
+    socket.on('error', finish);
+    socket.on('close', () => { if (!sent) finish(new Error('closed before binary transfer')); });
+    socket.on('connect', () => socket.write(encode('CNXN', 0x01000000, 4096, 'host::')));
+    socket.on('data', chunk => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length >= HEADER) {
+        const length = buffer.readUInt32LE(12);
+        if (buffer.length < HEADER + length) break;
+        const command = buffer.toString('ascii', 0, 4), remote = buffer.readUInt32LE(4);
+        const data = buffer.slice(HEADER, HEADER + length);
+        buffer = buffer.slice(HEADER + length);
+        if (command === 'CNXN') socket.write(encode('OPEN', 7, 0, 'sync:'));
+        else if (command === 'OKAY' && !sent) {
+          sent = true;
+          const packet = encode('WRTE', 7, remote, payload);
+          socket.write(packet.slice(0, 17));
+          setImmediate(() => { if (!socket.destroyed) socket.write(packet.slice(17)); });
+        } else if (command === 'WRTE') {
+          socket.write(encode('OKAY', 7, remote, null));
+          finish(null, Buffer.from(data));
+        }
+      }
+    });
   });
 }
 
@@ -141,6 +175,21 @@ async function main() {
     }
   });
 
+  await check('relays real SDK file-sync frames beyond 4096 bytes in both directions', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0, binary: true};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      for (const size of [4111, 65552, 262160]) {
+        const payload = Buffer.alloc(size);
+        for (let i = 0; i < size; i++) payload[i] = i % 251;
+        const returned = await binaryRoundTrip(port, payload);
+        assert.deepEqual(returned, payload, 'binary data must survive header fragmentation and ID rewriting');
+      }
+      assert.equal(state.connections, 1, 'large frames reuse the same upstream');
+    } finally { tunnel.close(); fake.close(); }
+  });
+
   await check('close() destroys active relay sessions instead of waiting for them', async () => {
     const state = {connections: 0, services: [], closedStreams: 0};
     const fake = fakeSdbd(state);
@@ -155,6 +204,29 @@ async function main() {
     assert.equal(socket.destroyed, true);
     tunnel.close();
     fake.close();
+  });
+
+  await check('rejects unbounded frame lengths without dropping a healthy client', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    const healthy = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+    try {
+      (await echo(healthy, 'before-invalid')).close();
+      await new Promise((resolve, reject) => {
+        const bad = net.connect(port, '127.0.0.1');
+        const timer = setTimeout(() => { bad.destroy(); reject(new Error('oversized header not rejected')); }, 1500);
+        bad.on('error', () => {});
+        bad.on('close', () => { clearTimeout(timer); resolve(); });
+        bad.on('connect', () => {
+          const header = encode('WRTE', 7, 0, null);
+          header.writeUInt32LE(1024 * 1024 + 1, 12);
+          bad.write(header);
+        });
+      });
+      (await echo(healthy, 'after-invalid')).close();
+      assert.equal(state.connections, 1);
+    } finally { sdb.close(healthy); tunnel.close(); fake.close(); }
   });
 
   await check('rejects an out-of-range listening port before listen()', async () => {
