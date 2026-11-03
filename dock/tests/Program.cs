@@ -67,6 +67,7 @@ namespace Launcher.Tests
 
         private static int Main()
         {
+            HomeCloseGuardTests.Run();
             T.Run("catalog parses well-formed lines", () =>
             {
                 var r = Catalog.Parse("# comment\nnetflix\tNetflix\torg.tizen.netflix-app\n\ntvplus\tTV Plus\tcom.x.y\torg.tizen.tv-viewer\n");
