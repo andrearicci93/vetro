@@ -35,7 +35,8 @@ var MAX_PAYLOAD = 4096;
 // The SDK's file-sync client sends a DATA/DONE envelope in the same WRTE as its
 // file bytes (4111 bytes for a 4095-byte file), even when CNXN advertises 4096.
 // This is a framing safety bound, not the negotiated write size. Relay those
-// vendor frames unchanged in either direction, with a finite allocation limit.
+// vendor frames with a finite allocation limit. Split writes before forwarding
+// to the legacy upstream, which still enforces our 4096-byte negotiation.
 var MAX_FRAME_BYTES = 1024 * 1024;
 var VERSION = 0x01000000;
 var FIRST_STREAM_ID = 0x40000000;
@@ -247,6 +248,13 @@ Pool.prototype.onUpstreamPacket = function (packet) {
             stream = this.streams.get(packet.arg1);
             if (!stream) break;
             if (stream.remoteId < 0) stream.remoteId = packet.arg0;
+            if (stream.pendingWrite) {
+                if (stream.pendingWrite.offset < stream.pendingWrite.payload.length) {
+                    this.writeFragment(packet.arg1, stream);
+                    break;
+                }
+                stream.pendingWrite = null;
+            }
             stream.client.writePacket(CMD.OKAY, packet.arg0, stream.clientId, null);
             break;
         case CMD.WRTE:
@@ -269,6 +277,15 @@ Pool.prototype.onUpstreamPacket = function (packet) {
     }
 };
 
+// One client WRTE earns one OKAY, after every upstream fragment was acknowledged.
+Pool.prototype.writeFragment = function (id, stream) {
+    var pending = stream.pendingWrite;
+    var end = Math.min(pending.offset + MAX_PAYLOAD, pending.payload.length);
+    var data = pending.payload.slice(pending.offset, end);
+    pending.offset = end;
+    this.sendUpstream(encode(CMD.WRTE, id, pending.remoteId, data));
+};
+
 Pool.prototype.onClientPacket = function (client, packet) {
     var upstreamId;
     switch (packet.command) {
@@ -285,7 +302,10 @@ Pool.prototype.onClientPacket = function (client, packet) {
         case CMD.WRTE:
             upstreamId = client.streams.get(packet.arg0);
             if (upstreamId === undefined) break;
-            this.sendUpstream(encode(CMD.WRTE, upstreamId, packet.arg1, packet.payload));
+            var stream = this.streams.get(upstreamId);
+            if (stream.pendingWrite) { client.socket.destroy(); break; }
+            stream.pendingWrite = {payload: packet.payload, offset: 0, remoteId: packet.arg1};
+            this.writeFragment(upstreamId, stream);
             break;
         case CMD.OKAY:
             upstreamId = client.streams.get(packet.arg0);

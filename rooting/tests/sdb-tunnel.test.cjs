@@ -46,6 +46,7 @@ function fakeSdbd(state) {
         const arg1 = buffer.readUInt32LE(offset + 8);
         const payload = buffer.slice(offset + HEADER, offset + HEADER + length);
         offset += HEADER + length;
+        if (command === 'WRTE' && length > 4096) { socket.destroy(); return; }
         if (command === 'CNXN') send('CNXN', 0x01000000, 4096, null);
         else if (command === 'OPEN') {
           const remoteId = nextRemote++;
@@ -102,7 +103,7 @@ function echo(client, text) {
 function binaryRoundTrip(port, payload) {
   return new Promise((resolve, reject) => {
     const socket = net.connect(port, '127.0.0.1');
-    let buffer = Buffer.alloc(0), sent = false;
+    let buffer = Buffer.alloc(0), sent = false, chunks = [], received = 0, acknowledgements = 0;
     const timer = setTimeout(() => finish(new Error('binary frame was dropped')), 1500);
     function finish(err, value) { clearTimeout(timer); socket.destroy(); err ? reject(err) : resolve(value); }
     socket.on('error', finish);
@@ -122,9 +123,15 @@ function binaryRoundTrip(port, payload) {
           const packet = encode('WRTE', 7, remote, payload);
           socket.write(packet.slice(0, 17));
           setImmediate(() => { if (!socket.destroyed) socket.write(packet.slice(17)); });
+        } else if (command === 'OKAY') {
+          acknowledgements++;
         } else if (command === 'WRTE') {
+          chunks.push(Buffer.from(data)); received += data.length;
           socket.write(encode('OKAY', 7, remote, null));
-          finish(null, Buffer.from(data));
+          if (received === payload.length) {
+            assert.equal(acknowledgements, 1, 'one ACK for the original client write');
+            finish(null, Buffer.concat(chunks));
+          }
         }
       }
     });
@@ -175,7 +182,7 @@ async function main() {
     }
   });
 
-  await check('relays real SDK file-sync frames beyond 4096 bytes in both directions', async () => {
+  await check('fragments SDK file-sync frames for a strict 4096-byte upstream', async () => {
     const state = {connections: 0, services: [], closedStreams: 0, binary: true};
     const fake = fakeSdbd(state), sdbPort = await listen(fake);
     const {tunnel, port} = await startTunnel(sdbPort);
