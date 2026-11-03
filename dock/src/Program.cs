@@ -56,7 +56,9 @@ namespace Launcher
         private static readonly HomeCloseGuard HomeGuard = new HomeCloseGuard();
         private static readonly Efl.TaskCb GuardCb = OnGuard;
         private static IntPtr _guardTimer;
-        private static Process _guardProcess;
+        private static readonly EcoreChildProcess GuardProcess = new EcoreChildProcess();
+        private static double _guardStarted;
+        private static bool _guardKillRequested;
         private static int _homeCode = -1;
         private static bool _learn;
         private static double _lastHome = -100;
@@ -613,29 +615,38 @@ namespace Launcher
             _guardTimer = IntPtr.Zero;
             try
             {
-                if (_guardProcess != null)
+                if (GuardProcess.IsRunning)
                 {
-                    if (!_guardProcess.HasExited) { ScheduleGuard(); return 0; }
-                    _guardProcess.Dispose();
-                    _guardProcess = null;
+                    if (!_guardKillRequested && Efl.ecore_time_get() - _guardStarted >= 5)
+                    {
+                        Log("guard: close timed out; stopping pid=" + GuardProcess.Pid);
+                        _guardKillRequested = true;
+                        GuardProcess.Kill();
+                    }
+                    ScheduleGuard();
+                    return 0;
+                }
+                ChildExit result;
+                if (GuardProcess.TryTakeExit(out result))
+                {
+                    Log("guard: close finished pid=" + result.Pid + " rc=" + result.Code + " signal=" + result.Signal);
                     HomeGuard.CloseFinished();
                 }
                 if (HomeGuard.TryBeginClose(Efl.ecore_time_get()))
                 {
                     try
                     {
-                        // exec replaces the shell, so the tracked process is the actual close
-                        // command. No detached child can survive it and close a newly opened Home.
-                        // The app id is validated at startup; no user text reaches the shell.
-                        var start = new ProcessStartInfo("/bin/sh") { UseShellExecute = false };
-                        start.ArgumentList.Add("-c");
-                        start.ArgumentList.Add("exec /usr/bin/app_launcher -k " + _guardApp + " >/dev/null 2>&1");
-                        _guardProcess = Process.Start(start);
-                        if (_guardProcess == null) throw new InvalidOperationException("Home close command did not start");
+                        // Ecore already owns child-exit delivery. A managed Process
+                        // can miss that delivery and remain HasExited=false forever.
+                        // exec keeps the tracked child identical to the close command.
+                        GuardProcess.Start("exec /usr/bin/app_launcher -k " + _guardApp + " >/dev/null 2>&1");
+                        _guardStarted = Efl.ecore_time_get();
+                        _guardKillRequested = false;
+                        Log("guard: close started pid=" + GuardProcess.Pid);
                     }
                     catch
                     {
-                        HomeGuard.CloseFinished();
+                        if (!GuardProcess.IsRunning) HomeGuard.CloseFinished();
                         throw;
                     }
                 }
@@ -645,8 +656,7 @@ namespace Launcher
                 // If command supervision fails, stop the burst and drop any queued launch.
                 // Never dispatch it while a close command's completion is unknown.
                 HomeGuard.Release(null);
-                HomeGuard.CloseFinished();
-                if (_guardProcess != null) { _guardProcess.Dispose(); _guardProcess = null; }
+                if (!GuardProcess.IsRunning) HomeGuard.CloseFinished();
                 Log("guard: " + ex.Message);
             }
             ScheduleGuard();
@@ -744,6 +754,7 @@ namespace Launcher
         {
             if (_guardApp != null && e.AppId == _guardApp)
             {
+                Log("guard: explicit Home selected; cancelling pending closes");
                 HomeGuard.Release(() => LaunchAppNow(e));
                 ScheduleGuard();
                 return;
@@ -774,7 +785,8 @@ namespace Launcher
                 Log("launch failed: " + e.AppId);
                 if (e.FallbackAppId != null && SendLaunch(e.FallbackAppId)) { Log("launch " + e.FallbackAppId + " (fallback)"); return; }
                 // Last resort: the platform's command line launcher.
-                Process.Start(new ProcessStartInfo("/usr/bin/app_launcher", "-s " + (e.FallbackAppId ?? e.AppId)) { UseShellExecute = false });
+                if (Efl.ecore_exe_run("exec /usr/bin/app_launcher -s " + (e.FallbackAppId ?? e.AppId) + " >/dev/null 2>&1", IntPtr.Zero) == IntPtr.Zero)
+                    throw new InvalidOperationException("Platform launch command did not start");
                 Log("launch via app_launcher: " + (e.FallbackAppId ?? e.AppId));
             }
             catch (Exception ex) { Log("launch error: " + ex.Message); }
@@ -912,7 +924,7 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; Log("guard: " + guard + " is closed after each Home press; explicit launches cancel pending closes"); }
+                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; Log("guard: " + guard + " uses Ecore child-exit events; explicit launches cancel pending closes"); }
                     else Log("guard: bad app id ignored");
                 }
                 SetupInput(args);
