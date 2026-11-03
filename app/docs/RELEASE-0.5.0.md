@@ -44,14 +44,47 @@ interception on and off, after closing/reopening the launcher and after a cold b
 double navigation, unintended Home closing and a frozen exit animation. Timing gains reported by the PR
 author on an S95F are not measurements of this integrated build on the Q80A.
 
+## Q80A test session — 2026-11-03
+
+Installed candidate: `0e633e16be8cad3e429dabc2dd683f20594d1eda` (Vetro 0.5.0, bundled launcher 1.1.0).
+The signed in-place installation was checked against all 89 candidate payload file hashes, and the
+launcher process was restarted to load the rebuilt DLL. Launcher choices, input preference, remap
+rules and DNS configuration matched the pre-install snapshot.
+
+Owner-reported results:
+
+- Still selection works; the owner considers it of limited use. Normal movement, Home and Back work.
+- Samsung Home opens in about 4–5 seconds; app launching works.
+- Persistence, plugin operation and pairing passed the owner's tests. No separate boot-id/timing trace
+  was captured here; detailed negative-pairing and plugin lifecycle cases are not individually recorded.
+- Country switch needs a VPN for the intended service-country behaviour on this setup. Treat this as
+  the owner's observed result, not proof that changing the value bypasses Samsung's regional checks.
+- Plugin update awaits the public `tv-uptime` 1.0.1 catalog entry and package.
+- Restore the TV and deleting Vetro's saved data are explicitly deferred by the owner; do not run them.
+- Signed self-update and rollback remain to test and need a build with the update public key configured.
+
+The owner-provided diagnostic export identifies a QE50Q80AATXZT, firmware T-NKM2DEUC-2310.0,
+Tizen 6.0, service Node v12.4.0 and the expected source revision. All 17 sections are `ok`; the
+root agent is connected with UID 0, rooting phase is `connected` with no failure, and the launcher
+is running with zero failures and no error. The widget completed all nine reported steps in about
+4 seconds, with no slow steps. Its probe was about 19 minutes old at export time. The method probe
+confirmed 29 controls; exporting this does not test writing them.
+
+`sourceDirty: true` reflects the three untracked research notes present at package-build time;
+those notes were excluded and the installed payload hashes matched the candidate. The component
+section reports registered boot/restart flags enabled for `vetrotvapp.svc`, differing from the manifest
+values it read. Keep that distinction when interpreting the export. Its own persistence fields remain
+`unknown`, as expected for a single snapshot; the separate owner report supplies the persistence result.
+Raw diagnostics and pairing credentials are kept outside tracked source.
+
 ## State
 
 | Part | In the branch | Checked | Still to check |
 | --- | --- | --- | --- |
 | Plugin host, install, update, remove, safe mode | yes | host, install, signature and bundled-launcher fixtures | full cycle on the TV, including a reboot |
-| Plugin pages under sign-in | yes | session/routing fixtures | paired browser on the TV |
+| Plugin pages under sign-in | yes | session/routing fixtures; owner reports plugin works on TV | update and detailed lifecycle cases |
 | Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | the list is currently unsigned; the package's plugin public key is null, so unsigned installs remain possible and are labelled as file installs |
-| Sign-in (PR #9, zerodevb) | yes | auth fixtures; contributor's earlier module test on a Q60A | the consolidated TV widget, code display and automatic opening on pairing |
+| Sign-in (PR #9, zerodevb) | yes | fixtures, live script pairing and owner-reported pairing pass on this Q80A | negative and expiry cases not individually recorded |
 | Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | release public key (currently null), dashboard download/apply, reboot after swap |
 | Restore the TV / Remove Vetro; Disable Samsung Home | yes | restore, Quick settings and UI fixtures | read-only restore plan and reversible actions on a TV; data erasure only after other tests |
 | TV screen and diagnostic fixes (#88, #106, #107, #108, #109) | yes | dedicated app, shell and parser fixtures | progress, root guidance, model/Tizen version, launcher status and app-list behaviour on the TV |
