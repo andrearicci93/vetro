@@ -10,6 +10,7 @@ const store=new Store(async c=>{calls++;command=c;return {exit_code:0,stdout:'{"
 (async()=>{
  const [a,b]=await Promise.all([store.read(),store.read()]);assert.equal(calls,1);assert.equal(a,b);
  assert.match(command,/dotnet .*TvState\.dll/);assert.equal(a.volume,0);assert.equal(a.muted,false);
+ const native=new Store(async cmd=>{const script=Buffer.from(cmd.split(' ')[1],'base64').toString();assert.match(script,/dotnet-launcher --standalone/);assert.match(script,/mktemp/);assert.match(script,/trap/);assert.equal(require('child_process').spawnSync('/bin/sh',['-n'],{input:script}).status,0);return {exit_code:0,stdout:'{"volume":5,"muted":false,"sourceType":14}'};},{tizen55:true});assert.equal((await native.read()).source,'HDMI2');
  await assert.rejects(new Store(async()=>({exit_code:1,stdout:''})).read(),/unavailable/);
  let sent=[];
  class Client extends EventEmitter{connect(){}close(){}publish(t,p,o){sent.push({topic:t,payload:p,retain:o&&o.retain});}subscribe(){}}

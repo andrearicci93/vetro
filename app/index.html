@@ -194,6 +194,7 @@ function checks(d) {
   }
   if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
   else if (d.root.connected) out.push(['ok', 'Root access', 'Connected', null, 'root ok']);
+  else if (d.root.method === 'remote-pc' && d.root.setupRequired) out.push(['warn', 'Root access', 'Setup required', 'The service is running. Complete the guided Remote PC setup from your computer.', 'ROOT SETUP', 'warn']);
   else if (d.root.mode === 'app-only') out.push(['warn', 'Root access', 'Not available', 'This is the app-only package. Features that need root are off.', 'ROOT NO', 'warn']);
   else out.push(['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad']);
   root = !!(d && d.root.connected);

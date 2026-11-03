@@ -1,0 +1,10 @@
+{
+  "target": "netcoreapp3.0",
+  "source": "rooting/payload/SamsungTvRemoteInputAgent.cs",
+  "sourceSha256": "5448495beeb23a9f4e96283b7b542b7497861c2eb693ce51e5bbe458b19d6e2d",
+  "dllSha256": "5d55d927f736e6e0a16d0c08eeaaed7f277593111712d82211efdfb23054503f",
+  "compilerSha256": "cb2a56fea20d8e58177951c90473e8da75ddf0cce70ec1aa62ff01d066191bec",
+  "referenceAssemblies": 165,
+  "hardwareVerified": false,
+  "firmwareAssembliesPackaged": false
+}

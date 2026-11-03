@@ -25,17 +25,22 @@ function fixture(options) {
         homeData: options.homeData == null ? HOME_DATA : options.homeData, log: options.log || ''};
     const execute = async function (cmd) {
         tv.scripts.push(cmd);
+        if (cmd.includes('--check-runtime')) return {exit_code:0,stdout:'Vetro launcher runtime ready; pointer=4'};
+        if (cmd.includes('/usr/bin/dotnet --info')) return options.runtimeMissing
+            ? {exit_code: 127, stderr: 'Launcher requires /usr/bin/dotnet, which is unavailable on this TV'}
+            : {exit_code: 0, stdout: '.NET Core runtime fixture'};
         if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
         const script = Buffer.from(cmd.split(' ')[1], 'base64').toString();
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
+        if (script.includes('base64 -d >')) return {exit_code:0,stdout:''};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
         if (script.includes('setsid nohup')) { tv.started = script; if (!tv.neverStarts) tv.running = true; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
         if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=4242' : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
         throw new Error('unexpected command: ' + script);
     };
-    const dock = new Dock({execute: execute, dir: dir, stateFile: path.join(tmp, 'state.json'), appsFile: path.join(tmp, 'apps.tsv'),
+    const dock = new Dock({execute: execute, checkRuntime: options.checkRuntime, runtime: options.runtime, dir: dir, stateFile: path.join(tmp, 'state.json'), appsFile: path.join(tmp, 'apps.tsv'),
         sleep: async ms => { tv.clock += ms; }, now: () => tv.clock});
     return {dock, tv, tmp};
 }
@@ -46,6 +51,33 @@ function fixture(options) {
     assert.equal((await f.dock.status()).installed, false);
     await assert.rejects(f.dock.enable(), /not in this Vetro package/);
     assert.equal(f.tv.scripts.length, 1, 'only the status probe ran');
+
+    // A working Node root channel alone cannot run the .NET launcher.
+    f = fixture({checkRuntime: true, runtimeMissing: true});
+    await assert.rejects(f.dock.enable(), /Launcher requires/);
+    assert.equal(f.tv.scripts.length, 1, 'missing runtime: only a read-only runtime check, no cleanup command');
+    assert.equal(f.dock.readState().enabled, false);
+    assert.equal(f.tv.csfs, true);
+    assert.equal(f.tv.autorun, 1);
+    assert.equal(fs.existsSync(f.dock.appsFile), false, 'no catalog written before runtime verification');
+    fs.writeFileSync(f.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+    assert.equal(await f.dock.supervise(true), 'failed');
+    assert.equal(f.tv.scripts.length, 3, 'supervision only probes status and runtime; it cannot launch without .NET');
+    assert.equal(f.tv.csfs, true);
+    f = fixture({checkRuntime: true});
+    await f.dock.enable();
+    assert.ok(f.tv.scripts[0].includes('/usr/bin/dotnet --info'), 'runtime verified before the catalog or any start');
+    assert.equal(f.tv.running, true);
+
+    f = fixture({checkRuntime:true,runtime:'tizen55'});
+    await f.dock.enable();
+    assert.ok(f.tv.scripts[0].includes('--check-runtime'));
+    assert.equal(f.dock.entries().length,3,'Tizen 5.5 preview retains the generated catalog despite an unreadable root-written file');
+    assert.ok(f.tv.started.includes('System::Privileged'));
+    assert.ok(f.tv.started.includes('/usr/bin/dotnet-launcher --standalone'));
+    assert.ok(!f.tv.started.includes('/usr/bin/dotnet '));
+    const syntax=require('child_process').spawnSync('/bin/sh',['-n'],{input:f.tv.started,encoding:'utf8'});
+    assert.equal(syntax.status,0,syntax.stderr);
 
     // Switching on: app list first, then the dock, then the setting, then Samsung's Home is closed.
     f = fixture();

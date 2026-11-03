@@ -779,6 +779,7 @@ namespace Launcher
 
         private static int Main(string[] args)
         {
+            if (Flag(args, "--check-runtime")) { Console.WriteLine("Vetro launcher runtime ready; pointer=" + IntPtr.Size); return 0; }
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
             _dir = ResolveDir(args);

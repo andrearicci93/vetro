@@ -19,9 +19,6 @@ var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
 var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
-var PID_FILE = RUN_DIR + '/tvlauncher.pid';
-var FIFO = RUN_DIR + '/tvlauncher.fifo';
-var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
@@ -39,9 +36,15 @@ function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function Dock(options) {
     options = options || {};
     this.execute = options.execute;
+    this.checkRuntime = options.checkRuntime === true;
+    this.runtime = options.runtime;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
-    this.appsFile = options.appsFile || APPS_FILE;
+    this.runDir = options.runDir || (this.runtime === 'tizen55' ? path.resolve(this.dir, '..', '..', 'shared', 'vetro-dock') : RUN_DIR);
+    this.pidFile = path.join(this.runDir, 'tvlauncher.pid');
+    this.fifo = path.join(this.runDir, 'tvlauncher.fifo');
+    this.logFile = path.join(this.runDir, 'tvlauncher.log');
+    this.appsFile = options.appsFile || (this.runtime === 'tizen55' ? path.join(this.runDir, 'apps.tsv') : APPS_FILE);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -50,6 +53,7 @@ function Dock(options) {
     this.nextTry = 0;
     this.lastError = null;
     this.lastCatalog = null;
+    this.catalogText = null;
     this.refreshPending = false;
 }
 
@@ -116,11 +120,12 @@ function check(r, what) {
 
 // What is running right now. Only the dock's own pid counts, and only if that pid is our dll.
 Dock.prototype.probe = function () {
+    var ready = this.runtime === 'tizen55' ? ' && grep -q " elm_run$" ' + q(this.logFile) : '';
     var script = [
-        'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
-        'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
+        'p=$(cat ' + q(this.pidFile) + ' 2>/dev/null)',
+        'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + ready + '; then echo "dock=$p"; else echo "dock="; fi',
         'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || ps | grep -q "[c]sfs"; then echo "home=1"; else echo "home=0"; fi',
-        'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null'
+        'echo "log:"; tail -n 6 ' + q(this.logFile) + ' 2>/dev/null; true'
     ].join('\n');
     return this.execute(wrap(script), 8000).then(function (r) {
         var out = check(r, 'Status');
@@ -165,12 +170,18 @@ Dock.prototype.statusNow = function () {
 // agent had been relaunched at wake). In its own unit it survives standby. KillSignal is SIGKILL because the
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
-    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
+    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + (this.runtime === 'tizen55' ? q(this.runDir) : RUN_DIR);
     var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
         ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
+    if (this.runtime === 'tizen55') {
+        var child = 'printf %s System::Privileged > /proc/self/attr/current || exit 1; cd ' + q(this.dir) + '; exec env ' + env +
+            ' /usr/bin/dotnet-launcher --standalone ' + q(path.join(this.dir, DLL)) + ' ' + args.slice(DLL.length + 1);
+        return [this.runDirectoryScript(), this.stopLines(), 'rm -f ' + q(this.fifo), ': > ' + q(this.logFile),
+            'setsid nohup /bin/sh -c ' + q(child) + ' </dev/null >/dev/null 2>&1 &', 'echo started'].join('\n');
+    }
     return [
         this.stopLines(),
-        'rm -f ' + FIFO,
+        'rm -f ' + q(this.fifo),
         'cd ' + q(this.dir),
         'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
@@ -182,17 +193,32 @@ Dock.prototype.startScript = function () {
 // The dock ignores SIGTERM, so it takes kill -9; only a pid that is really our dll is touched.
 Dock.prototype.stopLines = function () {
     return 'systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
-        'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
-        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE;
+        'p=$(cat ' + q(this.pidFile) + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
+        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + q(this.pidFile);
+};
+
+// Samsung's .NET launcher drops capabilities. /home/owner is 0750 on the
+// Q74T, so root without DAC override cannot use it for pid/fifo/log or catalogs.
+// Keep these files in Vetro's app directory, writable by root and readable by
+// the dashboard. The root channel alone writes the catalog on this profile.
+Dock.prototype.runDirectoryScript = function () {
+    return 'test ! -L ' + q(this.runDir) + ' || exit 1\n' +
+        'mkdir -p ' + q(this.runDir) + '\n' +
+        'test "$(stat -c %u ' + q(this.runDir) + ')" = 0 || exit 1\nchmod 755 ' + q(this.runDir);
 };
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
     return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
-        try { fs.writeFileSync(self.appsFile, c.tsv); }
-        catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
-        self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
-        return c;
+        var save;
+        if (self.runtime === 'tizen55') {
+            save = self.execute(wrap('set -e\n' + self.runDirectoryScript() + '\necho ' + Buffer.from(c.tsv).toString('base64') +
+                ' | base64 -d > ' + q(self.appsFile) + '\nchmod 644 ' + q(self.appsFile)), 8000).then(function (r) { check(r, 'Catalog write'); });
+        } else {
+            try { fs.writeFileSync(self.appsFile, c.tsv); save = Promise.resolve(); }
+            catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
+        }
+        return save.then(function () { if(self.runtime === 'tizen55')self.catalogText = c.tsv; self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()}; return c; });
     });
 };
 
@@ -212,9 +238,26 @@ Dock.prototype.waitRunning = function () {
 
 // `quick` is the start after a boot or a crash: it uses the list saved by the last start, so the
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
+Dock.prototype.ensureRuntime = function () {
+    if (!this.checkRuntime) return Promise.resolve();
+    // This read-only probe must precede catalog writes, stopping an old dock,
+    // changing Autorun or closing Home. A connected Node agent does not prove .NET exists.
+    var probe = this.runtime === 'tizen55'
+        ? 'test -x /usr/bin/dotnet-launcher && /bin/sh -c ' + q('printf %s System::Privileged > /proc/self/attr/current || exit 1; exec /usr/bin/dotnet-launcher --standalone ' + q(path.join(this.dir, DLL)) + ' --check-runtime')
+        : 'if [ ! -x /usr/bin/dotnet ]; then echo "Launcher requires /usr/bin/dotnet, which is unavailable on this TV" >&2; exit 127; fi\n/usr/bin/dotnet --info';
+    return this.execute(probe, 8000)
+        .then(function (r) { check(r, 'Launcher .NET runtime check'); })
+        .catch(function (error) {
+            error.code = 'dock-runtime-unavailable';
+            throw error;
+        });
+};
+
 Dock.prototype.launch = function (quick) {
     var self = this, saved = quick && this.hasSavedApps();
-    return (saved ? Promise.resolve() : this.writeCatalog()).then(function () {
+    return this.ensureRuntime().then(function () {
+        return saved ? null : self.writeCatalog();
+    }).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
         if (saved) self.refreshPending = true;
@@ -231,7 +274,7 @@ Dock.prototype.refreshCatalogLater = function () {
 };
 
 Dock.prototype.hasSavedApps = function () {
-    try { return fs.statSync(this.appsFile).size > 0; } catch (e) { return false; }
+    try { return !!this.catalogText || fs.statSync(this.appsFile).size > 0; } catch (e) { return false; }
 };
 
 // Turn the dock on: build the app list from Samsung's Home, start the dock, and only then
@@ -253,6 +296,7 @@ Dock.prototype.enable = function () {
         return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
+        if (e.code === 'dock-runtime-unavailable') throw e;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
     }).finally(function () { self.busy = false; });
 };
@@ -294,7 +338,7 @@ function parseTsv(text) {
     }).filter(function (e) { return /^[a-z0-9_-]{1,40}$/.test(e.slug || '') && e.label; });
 }
 Dock.prototype.entries = function () {
-    try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
+    try { return parseTsv(this.catalogText || fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
 Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }

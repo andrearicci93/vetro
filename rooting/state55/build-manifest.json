@@ -1,0 +1,11 @@
+{
+  "target": "netcoreapp3.0",
+  "sources": {
+    "app/native/TvState.cs": "3346d3b7732ffbfa06e21824c4e2660afa4e1c24e645aa40b18b33e96ae07b49"
+  },
+  "dllSha256": "6ebd094903056df0b7490b64147683df05fc60e54c9e08dbf1f436d99798e33e",
+  "compilerSha256": "cb2a56fea20d8e58177951c90473e8da75ddf0cce70ec1aa62ff01d066191bec",
+  "referenceAssemblies": 165,
+  "hardwareVerified": false,
+  "firmwareAssembliesPackaged": false
+}

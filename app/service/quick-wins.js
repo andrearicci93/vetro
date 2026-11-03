@@ -15,12 +15,14 @@
 //
 // HbbTV has its own module (hbbtv.js) because its menu value must be restored exactly.
 var execError = require('./exec-error.js');
+var activation = require('./app-activation.js');
 var fs = require('fs');
 
 var FILE = '/opt/usr/home/owner/share/vetro-quick-wins.json';
 var AUTOUPDATE = 'db/menu/support/softwareupdate/autoupdate';
 var MULTISCREEN_ID = 'com.samsung.tv.multiscreen';
 var MULTISCREEN_FLAG = '/home/owner/apps_rw/com.samsung.tv.multiscreen/data/disable_preloading';
+var MULTISCREEN_BOOT_FLAG = '/tmp/multiview_disable_preloading';
 var AMBIENT_ID = 'org.tizen.ambientapp';
 // Samsung's own background launch (ambient_start.sh), used to undo the win without opening the screen saver.
 var AMBIENT_LAUNCH = 'U=$(tzplatform-get TZ_SYS_DEFAULT_USER | sed "s/TZ_SYS_DEFAULT_USER=//"); ' +
@@ -64,6 +66,7 @@ function parse(text) {
 function Wins(execute, options) {
     options = options || {};
     this.execute = execute;
+    this.tizen55 = options.tizen55 === true;
     this.fs = options.fs || fs;
     this.file = options.file || FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
@@ -79,10 +82,11 @@ Wins.prototype.load = function () {
         var o = JSON.parse(this.fs.readFileSync(this.file, 'utf8'));
         return {
             hbbtv: o.hbbtv === true, ambient: o.ambient === true,
+            ambientDisabledPrevious: typeof o.ambientDisabledPrevious === 'boolean' ? o.ambientDisabledPrevious : null,
             autoupdatePrevious: Number.isInteger(o.autoupdatePrevious) && o.autoupdatePrevious > 0 ? o.autoupdatePrevious : null,
             ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null
         };
-    } catch (e) { return {hbbtv: false, ambient: false, autoupdatePrevious: null, ambientBoot: null}; }
+    } catch (e) { return {hbbtv: false, ambient: false, ambientDisabledPrevious: null, autoupdatePrevious: null, ambientBoot: null}; }
 };
 Wins.prototype.save = function (patch) {
     var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
@@ -99,12 +103,19 @@ Wins.prototype.remember = function (id, on) {
 
 Wins.prototype.read = function () {
     var self = this;
-    return this.execute(wrap(READ), 10000).then(function (r) {
-        var s = parse(check(r)), mine = self.load();
+    var script = READ + (this.tizen55 ? '\necho __Q74T__\n[ -e ' + MULTISCREEN_BOOT_FLAG + ' ] && echo preload=1 || echo preload=0\n' + activation.readScript(AMBIENT_ID) : '');
+    return this.execute(wrap(script), 10000).then(function (r) {
+        var output = check(r), s = parse(output), mine = self.load();
+        var extra = output.split('__Q74T__')[1], disabled = self.tizen55 ? activation.parse((extra || '').trim().split('\n').slice(1).join('\n')) : null;
         var firmware = s.autoupdate === null ? {status: 'unknown'} : {status: s.autoupdate === 0 ? 'on' : 'off', value: s.autoupdate};
-        var multiscreen = s.multiscreenFlag === null ? {status: 'unknown'} : {status: s.multiscreenFlag ? 'on' : 'off', running: s.multiscreenRunning === true};
+        var multiscreen = s.multiscreenFlag === null ? {status: 'unknown'} : {status: s.multiscreenFlag ? (self.tizen55 && !/preload=1/.test(extra || '') ? 'partial' : 'on') : 'off', running: s.multiscreenRunning === true};
         var ambient = s.ambientRunning === null ? {status: 'unknown'}
             : {status: !mine.ambient ? 'off' : s.ambientRunning ? 'partial' : 'on', running: s.ambientRunning, chosen: mine.ambient};
+        if (self.tizen55) {
+            multiscreen.chosen = s.multiscreenFlag;
+            ambient.disabled = disabled; ambient.mode = 'disabled';
+            ambient.status = !mine.ambient ? 'off' : disabled && !s.ambientRunning ? 'on' : 'partial';
+        }
         return {ts: Date.now(), wins: {firmware: firmware, multiscreen: multiscreen, ambient: ambient}};
     });
 };
@@ -151,6 +162,9 @@ Wins.prototype.multiscreen = function (on) {
     var script = on
         ? 'set -e\ntouch ' + MULTISCREEN_FLAG + '\nchown owner:system_share ' + MULTISCREEN_FLAG + '\nchmod 664 ' + MULTISCREEN_FLAG + '\n' + stop(MULTISCREEN_ID)
         : 'rm -f ' + MULTISCREEN_FLAG;
+    if (this.tizen55) script = on
+        ? 'set -e\ntouch ' + MULTISCREEN_FLAG + '\ntouch ' + MULTISCREEN_BOOT_FLAG + '\nsystemctl stop com.samsung.tv.multiscreen.service\n' + stop(MULTISCREEN_ID)
+        : 'rm -f ' + MULTISCREEN_FLAG + ' ' + MULTISCREEN_BOOT_FLAG;
     return this.execute(wrap(script), 12000).then(check).then(function () { return self.read(); }).then(function (state) {
         if ((state.wins.multiscreen.status === 'on') !== on) throw Error('The TV did not keep the change');
         return {id: 'multiscreen', changed: true, status: state.wins.multiscreen.status};
@@ -160,6 +174,7 @@ Wins.prototype.multiscreen = function (on) {
 // Ambient is stopped now and again at each boot. Turning it off lets Samsung's own launch run again.
 Wins.prototype.ambient = function (on) {
     var self = this;
+    if (this.tizen55) return this.ambientActivation(on);
     if (on) this.save({ambient: true});
     var script = on ? stop(AMBIENT_ID) : AMBIENT_LAUNCH;
     if (!on) this.save({ambient: false, ambientBoot: null});
@@ -169,12 +184,41 @@ Wins.prototype.ambient = function (on) {
     });
 };
 
+// Q74T: stopping alone makes screend immediately reload Ambient. Activation is
+// persistent and reversible, and prevents a manual Ambient launch until undone.
+Wins.prototype.ambientActivation = function (on) {
+    var self = this, before = this.load(), disabledBefore;
+    return this.read().then(function (state) {
+        disabledBefore = state.wins.ambient.disabled;
+        var previous = before.ambientDisabledPrevious;
+        if (previous === null) previous = disabledBefore;
+        self.save({ambient: on, ambientDisabledPrevious: previous});
+        var target = on ? true : previous;
+        return activation.set(self.execute, AMBIENT_ID, target).then(function () {
+            return !on && !target ? self.execute(wrap(AMBIENT_LAUNCH), 12000).then(check) : null;
+        }).then(function () { return self.read(); }).then(function (after) {
+            if (after.wins.ambient.disabled !== target || on && after.wins.ambient.running) throw Error('Ambient activation not confirmed');
+            if (!on) self.save({ambientDisabledPrevious: null, ambientBoot: null});
+            return {id: 'ambient', changed: true, status: after.wins.ambient.status};
+        }).catch(function (e) {
+            return activation.set(self.execute, AMBIENT_ID, disabledBefore).then(function () {
+                self.save(before); throw Error(e.message + ' · previous activation restored');
+            }, function () { throw Error(e.message + ' · restore not confirmed'); });
+        });
+    });
+};
+
 // After each boot: HbbTV's flag lives in /tmp and AmbientApp is started by the firmware 15 s after boot,
 // so both are handled here, once the TV adapter is connected. Resolves with what it did.
 Wins.prototype.boot = function (hbbtv) {
     var self = this, mine = this.load(), did = [], id = this.bootId();
-    var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function () {}) : Promise.resolve();
+    var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function (e) { if (self.tizen55) throw e; }) : Promise.resolve();
     return start.then(function () {
+        return self.tizen55 ? self.read().then(function (s) {
+            return s.wins.multiscreen.status === 'partial' ? self.multiscreen(true).then(function () { did.push('multiscreen'); }) : null;
+        }) : null;
+    }).then(function () {
+        if (self.tizen55) return !self.skipAmbient && mine.ambient ? self.ambientActivation(true).then(function () { did.push('ambient'); return did; }) : did;
         if (self.skipAmbient || !mine.ambient || (id && mine.ambientBoot === id)) return did;
         var n = 0;
         function poll() {

@@ -21,7 +21,7 @@ function availableMb(meminfo) {
 function build(deps) {
     var agent = (deps.platform || {}).agent || {}, policy = (deps.input || {}).policy || {}, preference = (deps.input || {}).preference || {};
     var launcher = deps.launcher || {};
-    return {
+    var result = {
         version: deps.version,
         port: deps.port,
         address: address(deps.interfaces),
@@ -32,6 +32,11 @@ function build(deps) {
             failures: launcher.failures || 0, hasError: launcher.error === true},
         memory: {availableMb: availableMb(deps.meminfo)}
     };
+    if ((deps.platform || {}).rootMethod === 'remote-pc') {
+        result.root.method = 'remote-pc';
+        result.root.setupRequired = deps.platform.setupRequired === true;
+    }
+    return result;
 }
 
 module.exports = {address: address, availableMb: availableMb, build: build};

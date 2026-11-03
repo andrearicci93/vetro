@@ -5,3 +5,8 @@ const output=JSON.stringify({type:'a(oa{sv})',data:[[['/net/connman/service/exam
 const d=networkDecode(output);assert.equal(d.configurationError,null);assert.equal(d.active.ipv4.Method,'dhcp');assert.equal(d.active.autoConnect,false);assert.deepEqual(d.active.nameserversConfigured,['ipv4.dhcp']);assert.equal(d.interfaces[1].addresses.length,0);assert.equal(d.interfaces[0].addresses.length,2);assert.equal(d.defaultRoutes6[0].gateway,'fe80::1');assert.equal(d.writable,false);
 const fallback=networkDecode(output.replace(/^[^\n]+/,'not JSON'));assert.ok(fallback.configurationError);assert.equal(fallback.interfaces[0].addresses[0].address,'192.0.2.91/24');assert.equal(fallback.active,null);
 (async()=>{let calls=0;const store=new Store(async()=>{calls++;return {exit_code:0,stdout:output};});await Promise.all([store.readNetwork(),store.readNetwork()]);assert.equal(calls,1);console.log('PASS network settings: ConnMan variants, DHCP origins, active route, offline Wi-Fi, IPv6, partial failure and shared request');})().catch(e=>{console.error(e);process.exitCode=1});
+
+const legacy='a(oa{sv}) 1 "/net/connman/service/example" 7 "Name" s "Wired" "Type" s "ethernet" "State" s "ready" "AutoConnect" b false "Ethernet" a{sv} 2 "Interface" s "eth0" "MTU" q 1500 "IPv4" a{sv} 2 "Method" s "manual" "Address" s "192.0.2.91" "Nameservers" as 1 "192.0.2.53"';
+const old=networkDecode(legacy+output.slice(output.indexOf('\n__LINKS__')));
+assert.equal(old.configurationError,null);assert.equal(old.active.interface,'eth0');assert.equal(old.active.autoConnect,false);assert.equal(old.active.ipv4.Method,'manual');assert.deepEqual(old.active.nameservers,['192.0.2.53']);
+assert.ok(networkDecode('a(oa{sv}) 1 "/incomplete"').configurationError);

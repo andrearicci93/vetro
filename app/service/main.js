@@ -25,11 +25,11 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
-var dock = new (require('./dock.js').Dock)({execute: agentExecute});
-var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
-var wins = new (require('./quick-wins.js').Wins)(agentExecute);
+var dock = new (require('./dock.js').Dock)({execute: agentExecute, checkRuntime: buildInfo.rootMethod === 'remote-pc', runtime: buildInfo.inputRuntime});
+var hbbtv = new (require('./hbbtv.js').Control)(agentExecute, null, {manageService: buildInfo.inputRuntime === 'tizen55'});
+var wins = new (require('./quick-wins.js').Wins)(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 var presence = new (require('./presence.js').Presence)(agentExecute);
-var tvState = new (require('./tv-state.js').Store)(agentExecute);
+var tvState = new (require('./tv-state.js').Store)(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
 var menuSettings = new (require('./menu-settings.js').Catalog)(agentExecute);
 var quickSettings = require('./quick-settings.js');
@@ -39,6 +39,11 @@ var TOGGLE_IDS = debloat.VERIFIED_GLOBAL_IDS.concat(quickSettings.ALLOWED_IDS);
 // The package builder writes a non-default port into build-info.js (VETRO_PORT=... node build.cjs);
 // VETRO_PORT at run time still wins for local runs.
 var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
+// Remote PC builds opt into saved input/preferences separately from MQTT and startup flags.
+var READ_ONLY = buildInfo.readOnly === true || process.env.VETRO_READ_ONLY === '1';
+var AUTOMATIC_RESTORE = !READ_ONLY && buildInfo.automaticRestore !== false;
+var INPUT_RESTORE = !READ_ONLY && (AUTOMATIC_RESTORE || buildInfo.restoreInput === true);
+var PREFERENCE_RESTORE = !READ_ONLY && (AUTOMATIC_RESTORE || buildInfo.restorePreferences === true);
 
 // --- telemetry reader (service side, uid 5001) ---------------------------
 // Reads /proc and /sys directly via fs. No platform command is needed. Every read
@@ -352,7 +357,7 @@ function handleDebloatAction(req, res) {
     });
 }
 
-var tvSettings=new TVSettings(agentExecute);
+var tvSettings=new TVSettings(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 
 // --- probe, app inventory, settings, remapper -----------------------------
 // The widget UI collects data through the public Tizen/Samsung web APIs and
@@ -497,7 +502,9 @@ function handleRemap(req, res) {
         stopInput(); inputPaused=false;
         remapStore.rules = rules;
         bridge.setTopics(rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-        serveJson(res, { ok: true, persisted: saveRemap(), rules: rules });
+        var persisted = saveRemap();
+        if (persisted) restoreInput();
+        serveJson(res, { ok: true, persisted: persisted, rules: rules });
     });
 }
 
@@ -519,7 +526,7 @@ var physical=new PhysicalInput(agentExecute,function(event){
     if(pendingActions>=8){inputPaused=true;physical.stop();inputError='input action queue exceeded';return;}
     pendingActions++;
     actionQueue=actionQueue.then(function(){return runActions(actions);}).catch(function(e){inputError=e.message;inputPaused=true;physical.stop();}).finally(function(){pendingActions--;});
-});
+}, {helperRuntime: buildInfo.inputRuntime});
 var inputObservers=[], inputPaused=false, inputRestoring=false;
 function inputPreference(){var p=remapStore.input;return p&&p.enabled===true&&typeof p.device==='string'?p:{enabled:false};}
 function saveInputPreference(preference){
@@ -562,7 +569,7 @@ function handleInput(req,res){
             stopInput();return physical.inventory().then(function(list){
                 var candidates=list.filter(function(d){return d.selectable;});
                 if(!candidates.length)throw new Error('no physical remote devices found');
-                inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
+                inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){}, {helperRuntime: buildInfo.inputRuntime});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
             }).then(function(){var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
             .catch(function(e){stopInput();serveJson(res,{ok:false,error:e.message},503);});
@@ -582,6 +589,12 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
 
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
+    // The widget's loopback-only report is diagnostic input, not a TV action.
+    // handleProbe still validates its source, schema and body limit.
+    var diagnosticReport = url === '/probe' && req.method === 'POST';
+    if (READ_ONLY && !diagnosticReport && req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+        return serveJson(res, {error: 'This experimental build provides read-only diagnostics'}, 403);
+    }
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res);
@@ -658,9 +671,9 @@ platform.start();
 // A short tick notices the moment the root agent connects, so after a boot the dock starts at once
 // instead of waiting for the next 10 s round.
 var dockAgentWas=false,dockTicks=0;
-var dockTimer=setInterval(function(){var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
+var dockTimer=setInterval(function(){if(!PREFERENCE_RESTORE)return;var up=!!platform.status().agent.connected,edge=up&&!dockAgentWas;dockAgentWas=up;if(edge||++dockTicks>=5){dockTicks=0;dock.supervise(up).catch(function(){});}},2000);if(dockTimer.unref)dockTimer.unref();
 // Retry after boot and helper disconnects, including late adapter availability.
-var inputRestoreTimer=setInterval(restoreInput,5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
+var inputRestoreTimer=setInterval(function(){if(INPUT_RESTORE)restoreInput();},5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
 
 // MQTT bridge: publishes telemetry + Home Assistant discovery when a broker
 // is configured (persistent owner config, /tmp fallback). No-op without config.
@@ -672,7 +685,7 @@ var bridge = new MqttBridge(readTelemetry,function(m){
  actionQueue=actionQueue.then(function(){return runActions(actions);}).then(function(r){bridge.event('trigger','Rule executed: '+m.topic+' · '+r.sent+' action(s)');}).catch(function(e){bridge.event('error','MQTT rule: '+e.message);}).finally(function(){pendingActions--;});
 });
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-bridge.start();
+if (AUTOMATIC_RESTORE) bridge.start();
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
@@ -691,11 +704,11 @@ var tvStateTimer=setInterval(function(){
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
 
 // Restore only an explicitly saved local domain filter once the adapter is ready.
-var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRestoreAttempts>12){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
+var dnsRestoreAttempts=0,dnsRestoreBusy=false;var dnsRestoreTimer=setInterval(function(){if(!PREFERENCE_RESTORE||dnsRestoreAttempts>=12){clearInterval(dnsRestoreTimer);return}if(!dnsRestoreBusy&&platform.status().agent.connected){dnsRestoreBusy=true;dnsRestoreAttempts++;dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){}).finally(function(){dnsRestoreBusy=false})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
 
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0,winsBootBusy=false;var winsBootTimer=setInterval(function(){if(!PREFERENCE_RESTORE||winsBootAttempts>=12){clearInterval(winsBootTimer);return}if(!winsBootBusy&&platform.status().agent.connected){winsBootBusy=true;winsBootAttempts++;wins.boot(hbbtv).then(function(){clearInterval(winsBootTimer)}).catch(function(){}).finally(function(){winsBootBusy=false})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
-var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
+var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(!AUTOMATIC_RESTORE||++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
