@@ -577,7 +577,7 @@ function handleRemap(req, res) {
     if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token });
     readJsonBody(req, res, function (parsed) {
         var rules;
-        try { rules = remap.validateRules(parsed.rules); }
+        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules)); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
         stopInput(); inputPaused=false;
         remapStore.rules = rules;
@@ -591,6 +591,7 @@ function runActions(actions) {
     return actions.reduce(function(chain,a){return chain.then(function(){
         var command;
         if(a.type==='mqtt'){bridge.publish(a.topic,a.payload);sent++;mqttSent++;return;}
+        if(a.type==='launch'&&!remap.launchable(a.appId)){skipped.push('launch:not-an-app');return;}
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}

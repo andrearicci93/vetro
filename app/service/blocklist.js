@@ -43,7 +43,13 @@ var GROUPS = [
         ]},
     {id: 'probable', label: 'Probable ACR starting point · unverified', evidence: 'unverified',
         note: 'Likely where the viewing-data service learns its servers. It is not in the firmware and nobody has confirmed it, so treat it as a guess and watch what the TV asks for.',
-        hosts: [{host: 'gpm.samsungqbe.com'}]}
+        hosts: [{host: 'gpm.samsungqbe.com'}]},
+    // #79: on one The Frame (LS03B, T-PTMAKUC-1720.7) the Home ads stopped only after this host was blocked AND the
+    // pictures already downloaded were moved out of Home's cache. Blocking alone leaves the cached ads on screen. Seen on
+    // one TV only, so it is offered on its own and stays out of the exported lists (optional).
+    {id: 'home-images', label: 'Home screen ad pictures · reported once', evidence: 'reported', optional: true,
+        note: 'The picture server of the ads in Samsung\u2019s Home row, reported on one TV (#79). Blocking it stops new ad pictures; ads already downloaded stay until Home\u2019s picture cache is cleared. It may also hide other Home pictures.',
+        hosts: [{host: 'cdn-stv.adgrx.com'}]}
 ];
 // Names the TV needs to work. The local filter refuses them and exports never include them.
 var ESSENTIAL = [
@@ -56,8 +62,9 @@ var ESSENTIAL = [
 ];
 
 function hosts(group) { return group.hosts.map(function (h) { return h.host; }); }
+// The exported lists: optional groups are only offered in the dashboard.
 function all() {
-    return GROUPS.reduce(function (list, g) { return list.concat(hosts(g)); }, []).filter(function (h, i, a) { return a.indexOf(h) === i; });
+    return GROUPS.filter(function (g) { return !g.optional; }).reduce(function (list, g) { return list.concat(hosts(g)); }, []).filter(function (h, i, a) { return a.indexOf(h) === i; });
 }
 function essential(domain) {
     var d = String(domain || '').toLowerCase().trim();
@@ -66,6 +73,6 @@ function essential(domain) {
 }
 // What the dashboard shows: no component names.
 function publicGroups() {
-    return GROUPS.map(function (g) { return {id: g.id, label: g.label, evidence: g.evidence, note: g.note, hosts: hosts(g)}; });
+    return GROUPS.map(function (g) { return {id: g.id, label: g.label, evidence: g.evidence, note: g.note, optional: g.optional === true, hosts: hosts(g)}; });
 }
 module.exports = {GROUPS: GROUPS, ESSENTIAL: ESSENTIAL, all: all, essential: essential, publicGroups: publicGroups};
