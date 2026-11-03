@@ -78,6 +78,37 @@ values it read. Keep that distinction when interpreting the export. Its own pers
 `unknown`, as expected for a single snapshot; the separate owner report supplies the persistence result.
 Raw diagnostics and pairing credentials are kept outside tracked source.
 
+## Q80A SDB tunnel validation — 2026-11-03
+
+Installed and verified candidate: `55cbb9fd001ac854ebe92eed68c1bf08238b49c2`.
+All 90 installed payload hashes match the signed package. The service, root agent (UID 0) and
+multiplexed tunnel on port 26201 are online; Developer Mode Host PC IP remains `127.0.0.1`.
+Dock, input, DNS, remap and plugin configuration match their pre-install snapshots.
+
+The real SDK exposed two transfer failures: the initial decoder rejected file-sync envelopes larger
+than 4096 bytes, and accepting those envelopes alone still failed at the TV's SDB daemon. The tunnel
+now splits client writes into 4096-byte upstream fragments and returns one client acknowledgement
+only after all fragments have been acknowledged. A strict upstream fixture verifies this behaviour,
+binary contents and acknowledgement count. All 12 integration suites pass.
+
+Actual-TV verification with Samsung's SDK passed all 12 checks: capability and installed-app queries,
+SHA-256 checked push/pull at 0, 1, 4095, 4096, 4097, 262144 and 4194304 bytes, three concurrent
+roughly 1 MiB round trips alongside capability/app-list queries, root availability and ten reconnect
+cycles. Sampled service/root availability stayed healthy. A separate TCP forwarding test reached
+Vetro HTTP through a temporary SDK forwarding rule, which was then removed.
+
+The original Apps2Samsung desktop beta attempted direct port 26101 and failed to read installed apps
+with “Remote closed stream while reading”. Updating from the official `v3.2.0-beta` macOS arm64 DMG
+asset dated 2026-11-03 resolved this. The actual desktop interface now lists 16 apps including
+**Vetro v0.5.0**, in addition to successful standalone Core-engine checks. The DMG SHA-256 matched
+the release asset digest: `ea8e04195859d9a20ba3c95676068d2d1eaf34e29a3cd670340411bc824c3cbc`.
+The previous desktop bundle was retained locally for rollback.
+
+These checks did not launch a foreground TV app, install a test app through SDB, exercise reverse
+forwarding or reboot the TV. They do not establish those behaviours or replace the deferred restore,
+data-erasure and signed self-updater tests. Raw app lists, credentials, signed packages and detailed
+operational artifacts remain outside tracked source.
+
 ## State
 
 | Part | In the branch | Checked | Still to check |
