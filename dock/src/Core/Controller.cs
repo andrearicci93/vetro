@@ -37,6 +37,8 @@ namespace Launcher.Core
 
         /// <summary>True: the selection moves at constant speed over <see cref="Design.FocusSeconds"/>; false: the damped spring.</summary>
         public bool Linear { get; set; }
+        /// <summary>True: the selection jumps to its target; nothing moves between items (--no-motion).</summary>
+        public static bool Instant;
 
         private readonly DockLayout _layout;
 
@@ -208,6 +210,7 @@ namespace Launcher.Core
             if (index >= _layout.Count) index = _layout.Count - 1;
             if (index == FocusTarget) return KeyAction.None;
             FocusTarget = index;
+            if (Instant) { FocusPos = index; _vel = 0f; _from = index; _runT = 0; Scroll = _layout.ScrollFor(FocusPos); return KeyAction.Moved; }
             _from = FocusPos; _runT = 0;   // a new run for the linear motion, starting wherever the focus is now
             return KeyAction.Moved;
         }

@@ -267,6 +267,16 @@ If step 2 shows the model does not fit, nothing after it is built and 0.5.0 ship
 - Tests: `plugin-bundled.test.cjs`, `plugin-launcher.test.cjs`, and the existing `http.test.cjs`, which already exercised
   `/dock` and `/dock/icon` and passes unchanged. Full suite: 76 suites.
 
+## Launcher test candidate — 2026-11-03
+
+The #23/#24 launcher changes retain the bundled-plugin boundary. Supervision and actions, including
+`noMotion` (Still selection), belong to `plugin-launcher.js`; `/dock` and `/dock/icon` remain aliases.
+The native program and `dock.js` still ship with Vetro. Vetro's signed updater replaces these files and
+restarts or rolls back the launcher with the service. This candidate does not add a separately installable
+or independently updatable launcher: replacing the bundled plugin from a catalog remains future work.
+The native DLL is rebuilt from the combined sources, retaining generation-based cancellation for the
+multi-app Home guard. Hardware validation remains required before release.
+
 ## Next decision: replacing a bundled plugin from the list
 
 To make the launcher plugin updatable on its own, the host must let a version from the list take the place of the bundled one.

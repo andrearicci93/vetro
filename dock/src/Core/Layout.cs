@@ -153,6 +153,11 @@ namespace Launcher.Core
 
         public int RowCenterY { get { return Top + PadTop + FocusIcon / 2; } }
 
+        /// <summary>False (--no-motion): the selected icon neither grows nor rises; the glow and the ring alone mark it.</summary>
+        public static bool Grow = true;
+        /// <summary>False (--no-motion): the glow keeps <see cref="Design.GlowColor"/> for every icon instead of the icon's own colour.</summary>
+        public static bool GlowFromIcon = Design.GlowFromIcon;
+
         public Box IconBox(int i, float focusPos, float scroll, int slide)
         {
             if (IsPinned(i))
@@ -164,7 +169,7 @@ namespace Launcher.Core
                 p.Y = PillTop(i) + slide;
                 return p;
             }
-            float amount = Amount(focusPos, i);
+            float amount = Grow ? Amount(focusPos, i) : 0f;
             // Even sizes only: an odd size would put the centre half a pixel off and the icon would wobble
             // sideways while it grows. FocusIcon - Icon is even (checked by the tests).
             int size = Icon + 2 * (int)Math.Round((FocusIcon - Icon) / 2f * amount);
@@ -215,13 +220,14 @@ namespace Launcher.Core
         {
             bool pill = IsPinned(i);
             int pad = pill ? PillGlowPad : HighlightPad;
-            int w = (pill ? PillItemW : FocusIcon) + 2 * pad;
-            int h = (pill ? PillItemH : FocusIcon) + 2 * pad;
+            int iconSide = Grow ? FocusIcon : Icon;   // without growth the glow hugs the icon as it is
+            int w = (pill ? PillItemW : iconSide) + 2 * pad;
+            int h = (pill ? PillItemH : iconSide) + 2 * pad;
             int cx = (int)Math.Round(Left + PadX + ItemCenter(i, scroll));
             Box b;
             b.W = w; b.H = h;
             b.X = cx - w / 2;
-            b.Y = (pill ? PillTop(i) - pad : RowCenterY - h / 2 - Design.Lift) + slide;   // the glow rises with the selected icon
+            b.Y = (pill ? PillTop(i) - pad : RowCenterY - h / 2 - (Grow ? Design.Lift : 0)) + slide;   // the glow rises with the selected icon
             return b;
         }
 

@@ -9,7 +9,7 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube, on}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion, on}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //
 // Plain ES5, like every module the TV loads.
@@ -35,7 +35,7 @@ function definition(dock, options) {
     return {
         id: 'launcher',
         name: 'Launcher',
-        version: '1.0.0',
+        version: '1.1.0',
         apiVersion: 1,
         bundled: true,
         author: 'Vetro',
@@ -58,6 +58,7 @@ function definition(dock, options) {
                 if (p.action === 'disable') return dock.disable();
                 if (p.action === 'refresh') return dock.refresh();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
+                if (p.action === 'noMotion') return dock.setNoMotion(p.on);
                 return Promise.reject(new Error('Invalid dock action'));
             }
 

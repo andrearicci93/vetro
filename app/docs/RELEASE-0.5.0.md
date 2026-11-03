@@ -25,6 +25,25 @@ The source is a test candidate, not a published release. The public release is s
 Local consolidation checks pass: 81 application suites, 11 integration suites, 19 diagnostic-parser tests,
 release hygiene/architecture audit and `git diff --check`. Hosted CI on the consolidated head is separate.
 
+## Launcher follow-up — #23 / #24
+
+The input and CoBA Home changes are now integrated as part of the bundled launcher plugin (version 1.1.0).
+Still selection is dispatched through that plugin, including the legacy `/dock` alias. The native program
+is rebuilt with raw navigation and compositor-echo handling, optional instant selection, generation checks
+for every guarded Home process, cancellation when Samsung Home is selected, CoBA command-line fallback,
+and app/source launch after the fade-out. This is still distributed and updated with Vetro; independent
+launcher updates from the plugin list are not implemented.
+
+The rebuilt launcher passes 5,075 desktop checks, including real-shell tests of cancellation between
+Home targets and the CoBA fallback. These are local checks, not hardware validation.
+
+For tonight's launcher checks, start with Still selection **off**, then repeat with it **on**. Try single,
+rapid and held navigation keys, OK/Back, short and long Home, a second real Home press, Samsung Home
+selected immediately after Home and after 1–2 seconds, app launch, Settings and Source. Repeat with remote
+interception on and off, after closing/reopening the launcher and after a cold boot. Check for skipped or
+double navigation, unintended Home closing and a frozen exit animation. Timing gains reported by the PR
+author on an S95F are not measurements of this integrated build on the Q80A.
+
 ## State
 
 | Part | In the branch | Checked | Still to check |
@@ -114,7 +133,8 @@ Not planned: Netflix (investigated, no durable switch, see CHANGELOG notes), any
 ## Other pull requests and scope
 
 The five PRs consolidated here target `release-0.5.0`: #88 (Tizen version), #106 (screen progress and model),
-#107 (root guidance), #108 (launcher status), #109 (dashboard fixes). #105 (Linux CI fixes) was already
+#107 (root guidance), #108 (launcher status), #109 (dashboard fixes). #23 and #24 are integrated
+with the launcher adaptations documented above. #105 (Linux CI fixes) was already
 on the remote release branch. #75 (Tizen 4 startup) is also already integrated.
 
 #9's pairing implementation is integrated, but its PR remains open against `main`; close it when the

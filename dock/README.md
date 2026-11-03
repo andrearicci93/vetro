@@ -4,6 +4,12 @@ A glass launcher for a rooted Samsung Tizen TV, written in C# against the TV's o
 libraries and run with the TV's `dotnet`. Vetro starts and stops it from its **Launcher**
 tab; it is off until you turn it on.
 
+The launcher is a bundled Vetro plugin: `app/service/plugin-launcher.js` owns supervision and API
+actions, and the existing `/dock` URLs are aliases. Its native files still ship with Vetro and are
+updated and rolled back together with Vetro; installing a replacement launcher from the catalog is
+not implemented. **Still selection** is an optional setting in that plugin, off by default. It skips
+focus movement, icon growth/lift and per-icon glow colours; entrance and exit fades remain.
+
 When it is on, the Home key opens this launcher instead of Samsung's Home. The dock shows
 the same apps, in the same order and with the same icons as Samsung's Home row, read
 from the TV at start-up, and ends with two outline pills, Settings and Samsung Home.
@@ -40,4 +46,8 @@ name labels and no clock, so the label styling options are not carried either.
 dotnet build -c Release Launcher.csproj   # targets netcoreapp3.1, the runtime on the TV
 ```
 
-Vetro's package build copies the result into `app/native/dock/`.
+Run `sh dock/build.sh` from the repository root to build and copy the native DLL and runtime config
+into `app/native/dock/`. The package builder reads those copies; it does not compile C# automatically.
+After changing native sources, rebuild before packaging. Run `dotnet run --project dock/tests` for the
+pure logic, raw-input echo, Home guard cancellation and system-launch fallback checks (the shell
+fixtures run on a Unix desktop and never access a TV).

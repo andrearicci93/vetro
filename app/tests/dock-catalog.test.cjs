@@ -120,3 +120,8 @@ assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
     await assert.rejects(catalog.load(async () => ({exit_code: 0, timed_out: true, stdout: ''})), /unavailable/);
     console.log('PASS dock catalog: Home row, registry and icons become the dock list');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+// CoBA uses its Home launcher, keeping csfs as a fallback; older TVs keep their original pill.
+const coba = catalog.build(catalog.parse(OUTPUT + '\nH|com.samsung.tv.coba.newhome'));
+assert.ok(catalog.tsv(coba).includes('samsunghome\tSamsung Home\tsys:com.samsung.tv.coba.newhome\tcom.samsung.tv.csfs'));
+assert.equal(catalog.parse('H|bad;command').homeApp, null);
