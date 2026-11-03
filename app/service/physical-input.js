@@ -2,15 +2,25 @@
 // Local authenticated evdev bridge. The optional integration supplies the native
 // helper; this feature never acquires privileges or uses the LAN remote API.
 var net = require('net'), crypto = require('crypto'), path = require('path');
-function quote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+// Regular expressions compiled once at module load, not on every call.
+var QUOTE_RE = /'/g;
+var BLANK_LINE_RE = /\n\s*\n/;
+var DEVICE_NAME_RE = /^N: Name="(.*)"$/m;
+var DEVICE_HANDLERS_RE = /^H: Handlers=(.*)$/m;
+var EVENT_NODE_RE = /\bevent\d+\b/;
+var REMOTE_NAME_RE = /smart control|rc device|mcirb/i;
+var NOT_REMOTE_NAME_RE = /keyboard|mouse|panel|forwarded/i;
+var KEY_CODE_RE = /^\d{1,3}$/;
+var MAC_HEX_RE = /^[a-f0-9]{64}$/;
+function quote(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
 function devices(text) {
-    return String(text).split(/\n\s*\n/).map(function (block) {
-        var n = /^N: Name="(.*)"$/m.exec(block), h = /^H: Handlers=(.*)$/m.exec(block);
-        var node = h && /\bevent\d+\b/.exec(h[1]);
+    return String(text).split(BLANK_LINE_RE).map(function (block) {
+        var n = DEVICE_NAME_RE.exec(block), h = DEVICE_HANDLERS_RE.exec(block);
+        var node = h && EVENT_NODE_RE.exec(h[1]);
         return n && node ? {name:n[1], node:'/dev/input/' + node[0]} : null;
     }).filter(Boolean).map(function (d, i, all) {
         d.unique = all.filter(function (x) {return x.name === d.name;}).length === 1;
-        d.selectable = /smart control|rc device|mcirb/i.test(d.name) && !/keyboard|mouse|panel|forwarded/i.test(d.name);
+        d.selectable = REMOTE_NAME_RE.test(d.name) && !NOT_REMOTE_NAME_RE.test(d.name);
         return d;
     });
 }
@@ -36,7 +46,7 @@ Bridge.prototype.start = function (device, mode, tokens) {
     var self=this;
     if (mode==='off') {self.stop(); return Promise.resolve(self.status());}
     if (mode!=='observe' && mode!=='filter') return Promise.reject(new Error('invalid input mode'));
-    if (!Array.isArray(tokens) || tokens.some(function(t){return !/^\d{1,3}$/.test(t) || +t>767;})) return Promise.reject(new Error('invalid input codes'));
+    if (!Array.isArray(tokens) || tokens.some(function(t){return !KEY_CODE_RE.test(t) || +t>767;})) return Promise.reject(new Error('invalid input codes'));
     if (mode==='filter' && !tokens.length) return Promise.reject(new Error('save a physical rule before enabling interception'));
     var requestGeneration=self.generation;
     return self.inventory().then(function(list){
@@ -61,7 +71,7 @@ Bridge.prototype.start = function (device, mode, tokens) {
                     while((split=buffer.indexOf('\n'))>=0){
                         var line=buffer.slice(0,split);buffer=buffer.slice(split+1);var last=line.lastIndexOf('\t'), payload=line.slice(0,last), mac=line.slice(last+1);
                         var expected=crypto.createHmac('sha256',secret).update(nonce).update(Buffer.from([0])).update(payload).digest();
-                        if(!/^[a-f0-9]{64}$/.test(mac)||!crypto.timingSafeEqual(expected,Buffer.from(mac,'hex'))){fail(new Error('invalid input authentication'));return;}
+                        if(!MAC_HEX_RE.test(mac)||!crypto.timingSafeEqual(expected,Buffer.from(mac,'hex'))){fail(new Error('invalid input authentication'));return;}
                         var fields=payload.split('\t');
                         if(!authenticated){
                             if(fields.length!==9||fields[0]!=='AUTH'||fields[2]!=='0'||fields[3]!=='0'||Buffer.from(fields[4],'base64').toString()!==selected.name||Buffer.from(fields[5],'base64').toString()!==selected.node||fields[8]!==mode){fail(new Error('unexpected input helper identity'));return;}

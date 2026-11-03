@@ -1,4 +1,7 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var RULE_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+var KEY_CODE_RE = /^\d{1,3}$/;
 
 // Rules map physical evdev codes, foreground widget keys, or HTTP/MQTT triggers
 // to native key injection and app launch through the platform adapter.
@@ -34,7 +37,7 @@ function validateRules(rules) {
     var ids = {};
     var result=rules.map(function (r) {
         if (!r || typeof r !== 'object') throw new Error('invalid rule');
-        if (typeof r.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(r.id)) throw new Error('invalid rule id');
+        if (typeof r.id !== 'string' || !RULE_ID_RE.test(r.id)) throw new Error('invalid rule id');
         if (ids[r.id]) throw new Error('duplicate rule id: ' + r.id);
         ids[r.id] = true;
         var t = r.trigger;
@@ -43,7 +46,7 @@ function validateRules(rules) {
         }
         if(t.type==='mqtt'&&!TOPIC_RE.test(t.value))throw Error('invalid MQTT trigger topic');
         if(t.payload!=null&&(t.type!=='mqtt'||typeof t.payload!=='string'||t.payload.length>256))throw Error('invalid MQTT trigger payload');
-        if (t.type === 'physical' && (!/^\d{1,3}$/.test(t.value) || +t.value > 767)) throw new Error('invalid physical input code');
+        if (t.type === 'physical' && (!KEY_CODE_RE.test(t.value) || +t.value > 767)) throw new Error('invalid physical input code');
         if (!Array.isArray(r.actions) || !r.actions.length || r.actions.length > MAX_ACTIONS) {
             throw new Error('rule ' + r.id + ' needs 1..' + MAX_ACTIONS + ' actions');
         }

@@ -1,4 +1,9 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+// (state() is also sent to the dashboard as text, so it keeps its own literals.)
+var EXIT_CODES_RE = /^(\S+) (\d+)$/;
+var RUNNING_RE = /^\s*([A-Za-z0-9_.-]+) \((\d+)\)/;
+var RESTORE_FLAGS_FOR_RE = /^(\S+) (\d+|none)$/;
 // Quick Settings groups: one switch per feature, applied as the global
 // disabled flag on every installed member, as the Debloater does for a single
 // component. Disabling also stops members that are still running, so the
@@ -95,12 +100,12 @@ function stopCommand(ids) {
 }
 function exitCodes(text) {
     var out = {};
-    String(text || '').split('\n').forEach(function (l) { var m = /^(\S+) (\d+)$/.exec(l.trim()); if (m) out[m[1]] = +m[2]; });
+    String(text || '').split('\n').forEach(function (l) { var m = EXIT_CODES_RE.exec(l.trim()); if (m) out[m[1]] = +m[2]; });
     return out;
 }
 function running(text) {
     var out = [];
-    String(text || '').split('\n').forEach(function (l) { var m = /^\s*([A-Za-z0-9_.-]+) \((\d+)\)/.exec(l); if (m) out.push(m[1]); });
+    String(text || '').split('\n').forEach(function (l) { var m = RUNNING_RE.exec(l); if (m) out.push(m[1]); });
     return out;
 }
 
@@ -110,7 +115,7 @@ function restoreFlagsFor(result, deps) {
     if (!result.changed.length) return Promise.resolve(result);
     return deps.execute(restoreFlagsCommand(result.changed), 60000).then(function (r) {
         var codes = {};
-        String(r.stdout || '').split('\n').forEach(function (l) { var m = /^(\S+) (\d+|none)$/.exec(l.trim()); if (m) codes[m[1]] = m[2]; });
+        String(r.stdout || '').split('\n').forEach(function (l) { var m = RESTORE_FLAGS_FOR_RE.exec(l.trim()); if (m) codes[m[1]] = m[2]; });
         result.changed.forEach(function (id) { if (codes[id] === '0') result.flagsRestored.push(id); else if (codes[id] !== 'none') result.flagsNotRestored.push(id); });
         deps.invalidate();
         return deps.inventory(true);

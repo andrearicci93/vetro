@@ -1,5 +1,11 @@
 'use strict';
 var execError = require('./exec-error.js');
+// Regular expressions compiled once at module load, not on every call.
+var DOT_RE = /\./g;
+var VCONF_INT32_RE = /value = (-?\d+) \(Int32\)/;
+var FLAG_SET_RE = /__FLAG__\s*1/;
+var RUN_SET_RE = /__RUN__\s*1/;
+var SVC_SET_RE = /__SVC__\s*1/;
 // Q80A native menu verified 2026-10-13: Off=19, On=20.
 // Recognize legacy Vetro value 0 as Off; new writes use the native menu value.
 //
@@ -13,7 +19,7 @@ var execError = require('./exec-error.js');
 // Off never starts anything. On removes both flag files and starts the service and the app.
 var fs=require('fs'),KEY='db/menu/system/data-service',FILE='/opt/usr/home/owner/share/vetro-hbbtv.json';
 var APP='org.tizen.hbbtv',SERVICE='org.tizen.hbbtv-service',FLAG='/tmp/hbbtv_do-not-relaunch',RUNFLAG='/tmp/hbbtv_app_running';
-function listed(id){return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*'+id.replace(/\./g,'\\.')+'[[:space:]]"';}
+function listed(id){return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*'+id.replace(DOT_RE,'\\.')+'[[:space:]]"';}
 // -t may exit non-zero when the app is already gone (the scripts run under set -e), and the process can take a
 // moment to leave the list: wait up to 5 s.
 function stopOf(id){return 'if '+listed(id)+'; then app_launcher -t '+id+' || true; i=0; while '+listed(id)+' && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done; fi';}
@@ -23,8 +29,8 @@ function check(r){if(r.exit_code||r.timed_out)throw execError.failed(r,r.stderr|
 function Control(execute,storage){this.execute=execute;this.fs=storage||fs;this.busy=false;}
 Control.prototype.read=function(){var self=this;
  var script='vconftool get '+KEY+' 2>&1\necho __FLAG__\n[ -e '+FLAG+' ] && echo 1 || echo 0\necho __RUN__\n'+listed(APP)+' && echo 1 || echo 0\necho __SVC__\n'+listed(SERVICE)+' && echo 1 || echo 0';
- return this.execute(wrap(script),8000).then(function(r){var out=check(r),m=/value = (-?\d+) \(Int32\)/.exec(out);if(!m)throw Error('HbbTV value unreadable');
-  var flag=/__FLAG__\s*1/.test(out),running=/__RUN__\s*1/.test(out),service=/__SVC__\s*1/.test(out),v=Number(m[1]),saved=null,valueOff=v===0||v===19;
+ return this.execute(wrap(script),8000).then(function(r){var out=check(r),m=VCONF_INT32_RE.exec(out);if(!m)throw Error('HbbTV value unreadable');
+  var flag=FLAG_SET_RE.test(out),running=RUN_SET_RE.test(out),service=SVC_SET_RE.test(out),v=Number(m[1]),saved=null,valueOff=v===0||v===19;
   try{var b=JSON.parse(self.fs.readFileSync(FILE,'utf8'));if(Number.isInteger(b.value)&&b.value>0&&b.value!==19&&b.value<=2147483647)saved=b.value;}catch(e){}
   // off: all four hold. valueOff without the rest is the state Samsung's own menu leaves behind: HbbTV still loaded.
   return {value:v,off:valueOff&&flag&&!running&&!service,valueOff:valueOff,flag:flag,running:running,serviceRunning:service,restoreValue:saved,canRestore:saved!==null,source:KEY,verification:'Menu value, brake file and process list; the red button must be checked on the TV'};});};

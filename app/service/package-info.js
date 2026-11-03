@@ -2,6 +2,15 @@
 // Read only config.xml from a bounded WGT ZIP. No extraction or shell parsing.
 var fs = require('fs');
 var zlib = require('zlib');
+// Regular expressions compiled once at module load, not on every call.
+var DOCTYPE_RE = /<!DOCTYPE|<!ENTITY/i;
+var XML_COMMENT_RE = /<!--[\s\S]*?-->/g;
+var PACKAGE_ID_RE = /^[A-Za-z0-9_.-]{1,128}$/;
+// Stateful (global) regexes used with exec(): each use resets lastIndex first.
+var XMLNS_RE = /xmlns:([A-Za-z_][\w.-]*)\s*=\s*(["'])(.*?)\2/g;
+var APPLICATION_TAG_RE = /<([A-Za-z_][\w.-]*):application\b([^<>]*)>/g;
+var PACKAGE_ATTR_RE = /(?:^|\s)package\s*=\s*(["'])(.*?)\1/g;
+var WGT_PATH_RE = /^\/[A-Za-z0-9_./-]+\.wgt$/;
 var MAX_WGT = 32 * 1024 * 1024;
 var MAX_CONFIG = 65536;
 function crc32(data) {
@@ -13,17 +22,20 @@ function crc32(data) {
     return (crc ^ 0xffffffff) >>> 0;
 }
 function manifestId(xml) {
-    if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('unsupported XML declarations');
-    xml = xml.replace(/<!--[\s\S]*?-->/g, '');
+    if (DOCTYPE_RE.test(xml)) throw new Error('unsupported XML declarations');
+    xml = xml.replace(XML_COMMENT_RE, '');
     var namespaces = {};
-    var re = /xmlns:([A-Za-z_][\w.-]*)\s*=\s*(["'])(.*?)\2/g, match;
+    var re = XMLNS_RE, match;
+    re.lastIndex = 0;
     while ((match = re.exec(xml))) namespaces[match[1]] = match[3];
-    var applications = [], tags = /<([A-Za-z_][\w.-]*):application\b([^<>]*)>/g;
+    var applications = [], tags = APPLICATION_TAG_RE;
+    tags.lastIndex = 0;
     while ((match = tags.exec(xml))) {
         if (namespaces[match[1]] !== 'http://tizen.org/ns/widgets') continue;
-        var attrs = match[2], id = /(?:^|\s)package\s*=\s*(["'])(.*?)\1/g;
+        var attrs = match[2], id = PACKAGE_ATTR_RE;
+        id.lastIndex = 0;
         var value = id.exec(attrs);
-        if (!value || id.exec(attrs) || !/^[A-Za-z0-9_.-]{1,128}$/.test(value[2])) throw new Error('invalid package ID');
+        if (!value || id.exec(attrs) || !PACKAGE_ID_RE.test(value[2])) throw new Error('invalid package ID');
         applications.push(value[2]);
     }
     if (applications.length !== 1) throw new Error('expected one Tizen application in config.xml');
@@ -100,7 +112,7 @@ function fromBuffer(zip) {
     });
 }
 function read(wgtPath) {
-    if (typeof wgtPath !== 'string' || !/^\/[A-Za-z0-9_./-]+\.wgt$/.test(wgtPath)) return Promise.reject(new Error('expected an absolute .wgt path without spaces or shell characters'));
+    if (typeof wgtPath !== 'string' || !WGT_PATH_RE.test(wgtPath)) return Promise.reject(new Error('expected an absolute .wgt path without spaces or shell characters'));
     var fd = -1;
     function close() {
         return new Promise(function (resolve) {

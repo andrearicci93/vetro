@@ -14,6 +14,15 @@ var fs = require('fs');
 var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
+// Regular expressions compiled once at module load, not on every call.
+var QUOTE_RE = /'/g;
+var AUTORUN_VALUE_RE = /value = (\d+)/;
+var PROBE_DOCK_RE = /^dock=(\d+)$/m;
+var PROBE_HOME_RE = /^home=(\d)$/m;
+var TARGET_SYSTEM_RE = /^(?:sys|key|panel):/;
+var TARGET_PANEL_RE = /^panel:/;
+var TARGET_SOURCE_RE = /^source:/;
+var SLUG_RE = /^[a-z0-9_-]{1,40}$/;
 
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
@@ -34,7 +43,7 @@ var RETRY_FIRST_MS = 30000;
 var RETRY_MAX_MS = 300000;
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
-function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+function q(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
 
 function Dock(options) {
     options = options || {};
@@ -76,7 +85,7 @@ Dock.prototype.patchState = function (patch) {
 // turning the launcher off puts it back. Only a change made here is ever undone here.
 Dock.prototype.readAutorun = function () {
     return this.execute(wrap('vconftool get ' + AUTORUN_KEY + ' 2>&1'), 6000).then(function (r) {
-        var m = /value = (\d+)/.exec(check(r, 'Autorun read'));
+        var m = AUTORUN_VALUE_RE.exec(check(r, 'Autorun read'));
         if (!m) throw new Error('Autorun Smart Hub could not be read');
         return +m[1];
     });
@@ -124,7 +133,7 @@ Dock.prototype.probe = function () {
     ].join('\n');
     return this.execute(wrap(script), 8000).then(function (r) {
         var out = check(r, 'Status');
-        var pid = /^dock=(\d+)$/m.exec(out), home = /^home=(\d)$/m.exec(out);
+        var pid = PROBE_DOCK_RE.exec(out), home = PROBE_HOME_RE.exec(out);
         return {running: !!pid, pid: pid ? +pid[1] : null, samsungHome: home ? home[1] === '1' : null,
             log: out.split('log:\n')[1] ? out.split('log:\n')[1].trim() : ''};
     });
@@ -290,8 +299,8 @@ function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
         var f = l.split('\t'), target = f[2] || '';
         return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null,
-            system: /^(?:sys|key|panel):/.test(target), panel: /^panel:/.test(target), source: /^source:/.test(target) ? +target.slice(7) : null};
-    }).filter(function (e) { return /^[a-z0-9_-]{1,40}$/.test(e.slug || '') && e.label; });
+            system: TARGET_SYSTEM_RE.test(target), panel: TARGET_PANEL_RE.test(target), source: TARGET_SOURCE_RE.test(target) ? +target.slice(7) : null};
+    }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
@@ -318,7 +327,7 @@ Dock.prototype.setFixTizenTube = function (on) {
 // The file behind one tile of the preview: the app's own icon when the list names one that is a
 // safe path, else the dock's packaged icon. Returns a Buffer or null.
 Dock.prototype.iconFile = function (slug) {
-    if (!/^[a-z0-9_-]{1,40}$/.test(String(slug))) return null;
+    if (!SLUG_RE.test(String(slug))) return null;
     var all = this.entries().concat(this.inputEntries()), entry = all.filter(function (e) { return e.slug === slug; })[0];
     if (!entry) return null;
     var files = [];

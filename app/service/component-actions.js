@@ -1,7 +1,11 @@
 'use strict';
 var protectedApp=require('./debloat.js').isProtected;
+// Regular expressions compiled once at module load, not on every call.
+// (availability() is also sent to the dashboard as text, so it keeps its own literals.)
+var APP_ID_RE = /^[A-Za-z0-9_.-]{1,180}$/;
+var PROTECTED_APP_RE = /^vetrotvapp(?:\.|$)/;
 function wrap(s){return 'echo '+Buffer.from(s).toString('base64')+' | base64 -d | sh';}
-function validId(s){return typeof s==='string'&&/^[A-Za-z0-9_.-]{1,180}$/.test(s);}
+function validId(s){return typeof s==='string'&&APP_ID_RE.test(s);}
 // Shared by the HTTP backend and browser: unavailable commands carry a reason.
 function availability(a,rows,verifiedIds){
  function protectedRow(r){return !!r&&(r.protected===true||/^vetrotvapp(?:\.|$)/.test(r.appId||'')||/^com\.samsung\.tv\.coba\.adagent(?:\.|$)/.test(r.appId||'')||/^com\.samsung\.tv\.coba\.adagent(?:\.|$)/.test(r.packageId||''));}
@@ -19,7 +23,7 @@ function availability(a,rows,verifiedIds){
 function validate(p,rows){
  if(!p||!validId(p.appId))throw Error('Invalid app ID');
  var a=rows.find(function(a){return a.appId===p.appId});if(!a)throw Error('App not installed');
- if(protectedApp(a.appId)||protectedApp(a.packageId)||/^vetrotvapp(?:\.|$)/.test(a.appId))throw Error('Protected component');
+ if(protectedApp(a.appId)||protectedApp(a.packageId)||PROTECTED_APP_RE.test(a.appId))throw Error('Protected component');
  if(['stop','flags','uninstall'].indexOf(p.action)<0)throw Error('Invalid action');
  if(p.action==='flags'&&(['onboot','autorestart'].indexOf(p.flag)<0||typeof p.enabled!=='boolean'))throw Error('Invalid flag');
  if(p.action==='flags'&&typeof a[p.flag]!=='boolean')throw Error('Startup flag is unavailable; refresh the inventory');

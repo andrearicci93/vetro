@@ -14,6 +14,12 @@
 var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
+// Regular expressions compiled once at module load, not on every call.
+var SAFE_PATH_RE = /^[A-Za-z0-9_.\/-]+$/;
+var SHA256_RE = /^[0-9a-f]{64}$/;
+var BUILD_INFO_RE = /module\.exports = (\{[\s\S]*\});\s*$/;
+var DEFAULT_PORT_RE = /\b8099\b/g;
+var DOCK_PATH_RE = /^native\/dock\//;
 
 var FORMAT = 'vetro-update';
 var MAX_FILES = 300;
@@ -55,7 +61,7 @@ function writeJson(file, value) {
     fs.writeFileSync(temp, JSON.stringify(value) + '\n');
     fs.renameSync(temp, file);
 }
-function sq(v) { if (!/^[A-Za-z0-9_.\/-]+$/.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
+function sq(v) { if (!SAFE_PATH_RE.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
 
 // The TV's UEP refuses to run a shell script FILE that is not signed ("the file is NOT signed"), but runs text given to
 // `sh -c`. So nothing is ever written to disk and executed: detached jobs are passed inline, as base64 to keep quoting simple.
@@ -87,7 +93,7 @@ function verifyBundle(raw, publicKey) {
     names.forEach(function (n) {
         if (!okPath(n)) throw fail('Path not allowed in an update: ' + n);
         var meta = m.files[n], text = b.files[n];
-        if (!meta || !/^[0-9a-f]{64}$/.test(meta.sha256) || typeof text !== 'string') throw fail('File missing from the update: ' + n);
+        if (!meta || !SHA256_RE.test(meta.sha256) || typeof text !== 'string') throw fail('File missing from the update: ' + n);
         var buf = Buffer.from(text, 'base64');
         total += buf.length;
         if (total > MAX_BYTES) throw fail('The update is too large');
@@ -100,7 +106,7 @@ function verifyBundle(raw, publicKey) {
 
 // build-info.js is a small generated module: module.exports = {...};
 function parseBuildInfo(buf) {
-    var m = /module\.exports = (\{[\s\S]*\});\s*$/.exec(buf.toString('utf8'));
+    var m = BUILD_INFO_RE.exec(buf.toString('utf8'));
     if (!m) return null;
     try { return JSON.parse(m[1]); } catch (e) { return null; }
 }
@@ -168,7 +174,7 @@ Updater.prototype._adapt = function (files) {
     var port = this.buildInfo.port, out = {};
     Object.keys(files).forEach(function (n) { out[n] = files[n]; });
     if (port && port !== 8099) {
-        if (out['index.html']) out['index.html'] = Buffer.from(out['index.html'].toString('utf8').replace(/\b8099\b/g, String(port)));
+        if (out['index.html']) out['index.html'] = Buffer.from(out['index.html'].toString('utf8').replace(DEFAULT_PORT_RE, String(port)));
         var info = out['service/build-info.js'] && parseBuildInfo(out['service/build-info.js']);
         if (info) { info.port = port; out['service/build-info.js'] = renderBuildInfo(info); }
     }
@@ -186,7 +192,7 @@ Updater.prototype.apply = function (raw, expectedSha256) {
     if (!parsed.changed.length) return Promise.resolve({ ok: true, changed: 0, note: 'Nothing to change' });
     this.busy = true;
     var from = this.buildInfo.version, to = parsed.manifest.version, changed = parsed.changed;
-    var dock = changed.some(function (n) { return /^native\/dock\//.test(n); });
+    var dock = changed.some(function (n) { return DOCK_PATH_RE.test(n); });
     return Promise.resolve().then(function () {
         var staging = self._file('staging');
         rmrf(staging);

@@ -19,10 +19,20 @@
 
 var crypto = require('crypto');
 var fs = require('fs');
+// Regular expressions compiled once at module load, not on every call.
+var HOST_PORT_RE = /:\d+$/;
+var HOST_BRACKETS_RE = /^\[|\]$/g;
+var IPV4_HOST_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+var IPV6_HOST_RE = /^[0-9a-f:]+$/i;
+var BEARER_RE = /^Bearer\s+([0-9a-f]{64})$/i;
+var PAIR_NAME_CHARS_RE = /[^\w .()+-]/g;
+var NON_DIGIT_RE = /\D/g;
 
 var STORE_PATH = process.env.VETRO_AUTH_PATH || '/opt/usr/home/owner/share/vetro-auth.json';
 var COOKIE = 'vetro_session';
 var PAIR_COOKIE = 'vetro_pair';   // the pairing id, kept by the browser that asked for the code so a reload does not lose it
+var SESSION_COOKIE_RE = new RegExp('(?:^|;\\s*)' + COOKIE + '=([0-9a-f]{64})');
+var PAIR_COOKIE_RE = new RegExp('(?:^|;\\s*)' + PAIR_COOKIE + '=([0-9a-f]{32})');
 var KEY_DAYS = 365;
 var CODE_MS = 2 * 60000;
 var MAX_TRIES = 5;
@@ -75,8 +85,8 @@ function tvApp(req) {
     return isLoopback(req) && (o === undefined || o === 'null');
 }
 function hostOk(req) {
-    var host = String((req.headers || {}).host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
-    return host === '' || host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /^[0-9a-f:]+$/i.test(host);
+    var host = String((req.headers || {}).host || '').replace(HOST_PORT_RE, '').replace(HOST_BRACKETS_RE, '');
+    return host === '' || host === 'localhost' || IPV4_HOST_RE.test(host) || IPV6_HOST_RE.test(host);
 }
 function originOk(req) {
     var o = (req.headers || {}).origin;
@@ -85,13 +95,13 @@ function originOk(req) {
 
 function keyOf(req) {
     var h = req.headers || {};
-    var m = /^Bearer\s+([0-9a-f]{64})$/i.exec(h.authorization || '');
+    var m = BEARER_RE.exec(h.authorization || '');
     if (m) return m[1];
-    m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([0-9a-f]{64})').exec(h.cookie || '');
+    m = SESSION_COOKIE_RE.exec(h.cookie || '');
     return m ? m[1] : null;
 }
 function pairIdOf(req) {
-    var m = new RegExp('(?:^|;\\s*)' + PAIR_COOKIE + '=([0-9a-f]{32})').exec((req.headers || {}).cookie || '');
+    var m = PAIR_COOKIE_RE.exec((req.headers || {}).cookie || '');
     return m ? m[1] : null;
 }
 // True when this request comes from the browser that started the pairing that is still waiting.
@@ -126,7 +136,7 @@ function startPair(req, res, onPair) {
     if (live(now).length >= MAX_SESSIONS) return json(res, 409, {error: FULL});
     lastPairAt = now;
     body(req, function (p) {
-        var name = String(p.name || 'Browser').replace(/[^\w .()+-]/g, '').slice(0, 40) || 'Browser';
+        var name = String(p.name || 'Browser').replace(PAIR_NAME_CHARS_RE, '').slice(0, 40) || 'Browser';
         pending = {id: crypto.randomBytes(16).toString('hex'), code: String(1000000 + crypto.randomBytes(4).readUInt32BE(0) % 1000000).slice(1),
             name: name, expires: now + CODE_MS, tries: 0};
         if (onPair) try { onPair(); } catch (e) {}
@@ -141,7 +151,7 @@ function confirmPair(req, res) {
         var pid = p.id || pairIdOf(req);
         if (!pending || pending.expires < now) return json(res, 410, {error: 'This code expired; start again'});
         if (!pid || !same(pending.id, pid)) return json(res, 410, {error: 'This code was asked for by another browser or tab; start again'});
-        if (!same(pending.code, String(p.code || '').replace(/\D/g, ''))) {
+        if (!same(pending.code, String(p.code || '').replace(NON_DIGIT_RE, ''))) {
             if (++pending.tries >= MAX_TRIES) pending = null;
             return json(res, 403, {error: pending ? 'Wrong code' : 'Too many wrong codes; start again'});
         }

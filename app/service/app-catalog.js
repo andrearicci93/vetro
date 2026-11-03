@@ -3,6 +3,9 @@
 // Vetro's assessment from the Q80A firmware manifests (app-facts.js) and device
 // tests; they are guidance, not a guarantee for other models or firmware.
 var facts = require('./app-facts.js');
+// Regular expressions compiled once at module load, not on every call.
+var VETRO_ID_RE = /^vetrotvapp/;
+var SYSTEM_ID_RE = /^org\.tizen\.|^com\.samsung\./;
 
 var AREAS = {
     tracking: 'Advertising and tracking',
@@ -109,10 +112,10 @@ function describe(row) {
     var pkg = row.packageId || row.appId, fact = facts.packages[pkg] || null;
     var area = areaOf(pkg, row.appId);
     var role = AREA_ROLE[area];
-    if (/^vetrotvapp/.test(pkg) || pkg === 'com.samsung.tv.coba.adagent') role = 'keep';
+    if (VETRO_ID_RE.test(pkg) || pkg === 'com.samsung.tv.coba.adagent') role = 'keep';
     // An app the user installed from a store is not a system service, even when no name rule knows it
     // (the wiki list of three other TVs had 35 of them filed under "System services / Keep").
-    if (area === 'system' && row.origin === 'installed' && !/^org\.tizen\.|^com\.samsung\./.test(pkg)) { area = 'media'; role = AREA_ROLE.media; }
+    if (area === 'system' && row.origin === 'installed' && !SYSTEM_ID_RE.test(pkg)) { area = 'media'; role = AREA_ROLE.media; }
     if (area === 'media' && row.origin === 'installed') role = 'optional';
     var purpose = PURPOSE[row.appId] || PURPOSE[pkg] || (fact && fact.description) || null;
     return {

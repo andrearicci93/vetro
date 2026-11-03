@@ -10,6 +10,15 @@
 // privilege URIs are shortened to "tizen/<name>" or "samsung/<name>", and executables are reported by file name.
 var execError = require('./exec-error.js');
 var facts = require('./app-facts.js');
+// Regular expressions compiled once at module load, not on every call.
+var CR_END_RE = /\r$/;
+var ATTRIBUTE_RE = /([A-Za-z][A-Za-z0-9-]*)="([^"]*)"/g;   // stateful: reset lastIndex before each use
+var TAGGED_LINE_RE = /^([PNH])\|(.*)$/;
+var DESCRIPTION_TAG_RE = /^<description[^>]*>([^<]*)<\/description>/;
+var SENSITIVE_TEXT_RE = /(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i;
+var PRIVILEGE_TAG_RE = /^<privilege>([^<]*)<\/privilege>/;
+var APPLICATION_TAG_RE = /^<(service|ui)-application\s([^>]*)>?/;
+var HASH_LINE_RE = /^([a-f0-9]{64})\s+(\/\S+)$/;
 
 var MAX_PACKAGES = 220;       // the export grows by about 600 bytes per package
 var MAX_EXES = 40;            // executables hashed; only components that start at boot
@@ -75,8 +84,8 @@ function hashScript(paths) {
 function parseManifests(text) {
     var out = {}, cur = null;
     String(text || '').split('\n').forEach(function (line) {
-        line = line.replace(/\r$/, '');
-        var m = /^([PNH])\|(.*)$/.exec(line);
+        line = line.replace(CR_END_RE, '');
+        var m = TAGGED_LINE_RE.exec(line);
         if (m) {
             if (m[1] === 'P' && PACKAGE_ID.test(m[2])) cur = out[m[2]] = {manifest: 'found', sha256: null, description: null, privileges: [], components: {}};
             else if (m[1] === 'N' && PACKAGE_ID.test(m[2])) { out[m[2]] = {manifest: 'missing', sha256: null, description: null, privileges: [], components: {}}; cur = null; }
@@ -84,13 +93,14 @@ function parseManifests(text) {
             return;
         }
         if (!cur) return;
-        var d = /^<description[^>]*>([^<]*)<\/description>/.exec(line);
-        if (d) { if (cur.description === null && DESCRIPTION.test(d[1].trim()) && !/(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i.test(d[1])) cur.description = d[1].trim(); return; }
-        var pr = /^<privilege>([^<]*)<\/privilege>/.exec(line);
+        var d = DESCRIPTION_TAG_RE.exec(line);
+        if (d) { if (cur.description === null && DESCRIPTION.test(d[1].trim()) && !SENSITIVE_TEXT_RE.test(d[1])) cur.description = d[1].trim(); return; }
+        var pr = PRIVILEGE_TAG_RE.exec(line);
         if (pr) { var u = PRIVILEGE.exec(pr[1].trim()); if (u && cur.privileges.length < MAX_PRIVILEGES) cur.privileges.push((u[1] === 'tizen.org' ? 'tizen/' : 'samsung/') + u[2]); return; }
-        var c = /^<(service|ui)-application\s([^>]*)>?/.exec(line);
+        var c = APPLICATION_TAG_RE.exec(line);
         if (c) {
-            var attrs = {}, re = /([A-Za-z][A-Za-z0-9-]*)="([^"]*)"/g, a;
+            var attrs = {}, re = ATTRIBUTE_RE, a;
+            re.lastIndex = 0;
             while ((a = re.exec(c[2])) !== null) attrs[a[1]] = a[2];
             if (APP_ID.test(attrs.appid || '')) cur.components[attrs.appid] = {
                 kind: c[1] === 'service' ? 'service' : 'ui', exec: EXEC.test(attrs.exec || '') && attrs.exec.indexOf('..') < 0 ? attrs.exec : null,
@@ -102,7 +112,7 @@ function parseManifests(text) {
 function parseHashes(text) {
     var out = {};
     String(text || '').split('\n').forEach(function (line) {
-        var m = /^([a-f0-9]{64})\s+(\/\S+)$/.exec(line.replace(/\r$/, ''));
+        var m = HASH_LINE_RE.exec(line.replace(CR_END_RE, ''));
         if (m && EXEC.test(m[2])) out[m[2]] = m[1];
     });
     return out;

@@ -1,5 +1,13 @@
 'use strict';
 var execError = require('./exec-error.js');
+// Regular expressions compiled once at module load, not on every call.
+var SECTIONS_RE = /^__(\w+)__$/;
+var VCONF_VALUE_RE = /value = (.*) \(([^)]*)\)/;
+var INTEGER_RE = /^-?\d+$/;
+var DIGITS_RE = /^\d+$/;
+var TRUE_RE = /^(true|1)$/i;
+var FALSE_RE = /^(false|0)$/i;
+var PAIR_BIT_RE = /^[^:]+:[01]$/;
 
 // Privacy dashboard data: aggregates the TV's privacy/consent state that is
 // readable without a web runtime. Values come from vconf (Buxton2) and the
@@ -14,16 +22,16 @@ function check(r) { if (r.exit_code || r.timed_out) throw execError.failed(r, r.
 function sections(text) {
     var out = {}, key = null;
     String(text || '').split('\n').forEach(function (l) {
-        var m = /^__(\w+)__$/.exec(l);
+        var m = SECTIONS_RE.exec(l);
         if (m) { key = m[1]; out[key] = []; } else if (key) out[key].push(l);
     });
     return out;
 }
 function vconfVal(lines) {
-    var m = /value = (.*) \(([^)]*)\)/.exec((lines || []).join(' ').trim());
+    var m = VCONF_VALUE_RE.exec((lines || []).join(' ').trim());
     return m ? m[1] : null;
 }
-function num(v) { return v == null ? null : (/^-?\d+$/.test(v) ? Number(v) : v); }
+function num(v) { return v == null ? null : (INTEGER_RE.test(v) ? Number(v) : v); }
 
 function Privacy(execute) { this.execute = execute; this.cached = null; }
 
@@ -44,13 +52,13 @@ Privacy.prototype.read = function () {
         var s = sections(check(r));
         var hbbtv = vconfVal(s.HBBTV);
         var data = {
-            hbbtv: { dataService: num(hbbtv), off: hbbtv == null ? null : (hbbtv === '0' || hbbtv === '19'), appRunning: /^\d+$/.test((s.HBBTVAPP || []).join('').trim()) ? Number(s.HBBTVAPP.join('').trim()) > 0 : null },
+            hbbtv: { dataService: num(hbbtv), off: hbbtv == null ? null : (hbbtv === '0' || hbbtv === '19'), appRunning: DIGITS_RE.test((s.HBBTVAPP || []).join('').trim()) ? Number(s.HBBTVAPP.join('').trim()) > 0 : null },
             doNotTrack: num(vconfVal(s.DNT)),
             acr: { recognitionStatus: num(vconfVal(s.ACR)), reset: num(vconfVal(s.ACRRESET)) },
             adId: { psidPresent: vconfVal(s.PSID) == null ? null : !!String(vconfVal(s.PSID)).trim() },
-            tvPlusConsent: /^(true|1)$/i.test(vconfVal(s.TCF) || '') ? true : /^(false|0)$/i.test(vconfVal(s.TCF) || '') ? false : null,
-            agreementsAvailable: (s.AGREE_STATUS || []).join('').trim() === '0' ? true : s.AGREE_STATUS ? false : (s.AGREE || []).some(function(l){return /^[^:]+:[01]$/.test(l.trim());}) ? true : null,
-            agreements: (s.AGREE || []).map(function (l) { return l.trim(); }).filter(function(l){return /^[^:]+:[01]$/.test(l);}).map(function (l) {
+            tvPlusConsent: TRUE_RE.test(vconfVal(s.TCF) || '') ? true : FALSE_RE.test(vconfVal(s.TCF) || '') ? false : null,
+            agreementsAvailable: (s.AGREE_STATUS || []).join('').trim() === '0' ? true : s.AGREE_STATUS ? false : (s.AGREE || []).some(function(l){return PAIR_BIT_RE.test(l.trim());}) ? true : null,
+            agreements: (s.AGREE || []).map(function (l) { return l.trim(); }).filter(function(l){return PAIR_BIT_RE.test(l);}).map(function (l) {
                 var i = l.indexOf(':');
                 return { id: l.slice(0, i), agreed: l.slice(i + 1) === '1' };
             }),

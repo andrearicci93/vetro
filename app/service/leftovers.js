@@ -1,4 +1,14 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var GLOB_PATH_RE = /^[A-Za-z0-9_.\[\]*? -]+$/;
+var PLAIN_PATH_RE = /^[A-Za-z0-9_.\/ -]+$/;
+var SPACES_RE = /\s+/;
+var DIGITS_RE = /^\d+$/;
+var SIZE_LINE_RE = /^S (before|after) ?(.*)$/;
+var ERROR_LINE_RE = /^E (\d) (\w+)$/;
+var FILE_LINE_RE = /^F (\d) (\d+) ([01]) ([A-Za-z0-9+/=]+)$/;
+var CANDIDATE_LINE_RE = /^([KYZ]) (log|bitmap|webcache) (\d+) (\/[A-Za-z0-9_.\/ -]+)$/;
+var DIRECTORY_LINE_RE = /^([DX]) (\d) (\d+) ([A-Za-z0-9+/=]+)$/;
 // Install leftovers, ported from Apps2Samsung's TV Toolbox (MIT, see
 // THIRD_PARTY_NOTICES.md): the platform pushes every package to the staging
 // folder before installing it and never removes it. Only files directly in the
@@ -40,7 +50,7 @@ function script(clear, dirs, storagePath, extras) {
         ' done\n i=$((i+1))\ndone\n' + (extras ? extrasScript(clear, extras) : '') + 'echo "S after $(' + storage + ')"\n';
 }
 
-function sq(v, glob) { if (!(glob ? /^[A-Za-z0-9_.\[\]*? -]+$/ : /^[A-Za-z0-9_.\/ -]+$/).test(v)) throw new Error('Unsafe path'); return "'" + v + "'"; }
+function sq(v, glob) { if (!(glob ? GLOB_PATH_RE : PLAIN_PATH_RE).test(v)) throw new Error('Unsafe path'); return "'" + v + "'"; }
 // K: found, Y: deleted, Z: could not delete. "N apps" means the list of running apps could not be read, so nothing that
 // depends on an app being closed is touched. Plain files only (no links, no extra hard links), old enough, and for the
 // logs not open (fuser; if fuser is missing they count as open). The first version forked several processes per file and
@@ -70,8 +80,8 @@ function extrasScript(clear, x) {
 
 function name(b64) { try { return Buffer.from(b64, 'base64').toString('utf8'); } catch (e) { return null; } }
 function storage(line) {
-    var f = String(line || '').trim().split(/\s+/);
-    return f.length === 2 && /^\d+$/.test(f[0]) && /^\d+$/.test(f[1]) ? {totalBytes: +f[0] * 1024, availableBytes: +f[1] * 1024} : null;
+    var f = String(line || '').trim().split(SPACES_RE);
+    return f.length === 2 && DIGITS_RE.test(f[0]) && DIGITS_RE.test(f[1]) ? {totalBytes: +f[0] * 1024, availableBytes: +f[1] * 1024} : null;
 }
 
 function parse(text, dirs) {
@@ -80,18 +90,18 @@ function parse(text, dirs) {
         extras: [], extrasDeleted: [], extrasFailed: [], appsUnreadable: false};
     String(text || '').split('\n').forEach(function (l) {
         var m;
-        if ((m = /^S (before|after) ?(.*)$/.exec(l))) out[m[1] === 'before' ? 'storageBefore' : 'storageAfter'] = storage(m[2]);
-        else if ((m = /^E (\d) (\w+)$/.exec(l))) {
+        if ((m = SIZE_LINE_RE.exec(l))) out[m[1] === 'before' ? 'storageBefore' : 'storageAfter'] = storage(m[2]);
+        else if ((m = ERROR_LINE_RE.exec(l))) {
             // A missing tmp/ subfolder is normal; anything else is reported.
             if (!(m[2] === 'missing' && m[1] !== '0')) out.errors.push({path: dirs[+m[1]], error: m[2]});
-        } else if ((m = /^F (\d) (\d+) ([01]) ([A-Za-z0-9+/=]+)$/.exec(l))) {
+        } else if ((m = FILE_LINE_RE.exec(l))) {
             out.files.push({name: name(m[4]), path: dirs[+m[1]] + '/' + name(m[4]), size: +m[2], isPackage: m[3] === '1'});
         } else if (l === 'N apps') {
             out.appsUnreadable = true;
-        } else if ((m = /^([KYZ]) (log|bitmap|webcache) (\d+) (\/[A-Za-z0-9_.\/ -]+)$/.exec(l))) {
+        } else if ((m = CANDIDATE_LINE_RE.exec(l))) {
             var item = {kind: m[2], label: KINDS[m[2]], path: m[4], size: +m[3]};
             (m[1] === 'K' ? out.extras : m[1] === 'Y' ? out.extrasDeleted : out.extrasFailed).push(item);
-        } else if ((m = /^([DX]) (\d) (\d+) ([A-Za-z0-9+/=]+)$/.exec(l))) {
+        } else if ((m = DIRECTORY_LINE_RE.exec(l))) {
             (m[1] === 'D' ? out.deleted : out.failed).push({name: name(m[4]), path: dirs[+m[2]] + '/' + name(m[4]), size: +m[3]});
         }
     });

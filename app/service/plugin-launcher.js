@@ -14,7 +14,14 @@
 //
 // Plain ES5, like every module the TV loads.
 
-var url = require('url');
+// ?slug=... read straight from the query string: the one parameter does not need a URL parser.
+var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
+var PLUS_RE = /\+/g;
+function slugOf(rawUrl) {
+    var m = SLUG_QUERY_RE.exec(rawUrl || '');
+    if (!m) return undefined;
+    try { return decodeURIComponent(m[1].replace(PLUS_RE, ' ')); } catch (e) { return undefined; }
+}
 
 var TICK_MS = 2000;          // how often the supervision looks at the root agent
 var ROUND_TICKS = 5;         // every 5th tick (10 s) the launcher is checked even if nothing changed
@@ -85,7 +92,7 @@ function definition(dock, options) {
                         return true;
                     }
                     if (sub === 'icon' && req.method === 'GET') {
-                        var png = dock.iconFile(url.parse(req.url, true).query.slug);
+                        var png = dock.iconFile(slugOf(req.url));
                         if (!png) { vetro.json(res, { error: 'icon unavailable' }, 404); return true; }
                         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=60', 'X-Content-Type-Options': 'nosniff' });
                         res.end(png);

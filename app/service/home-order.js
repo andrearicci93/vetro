@@ -1,4 +1,7 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var CR_RE = /\r/g;
+var DIGITS_RE = /^\d+$/;
 
 // Home app order: the ordered list stored in the CoBA ".appLayerCache" file
 // under the csfs data dir (or the home.media one on TVs with the new Home). Each line is a section item:
@@ -24,12 +27,12 @@ function wrap(script) { return 'echo ' + Buffer.from(script).toString('base64') 
 function check(r) { if (r.exit_code || r.timed_out) throw Error(r.stderr || r.stdout || 'Home order unavailable'); return r.stdout || ''; }
 
 function parse(text) {
-    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    var lines = String(text || '').replace(CR_RE, '').split('\n');
     if (lines.length < 3) throw Error('Unrecognized Home order');
     var end = lines.findIndex(function (l) { return TERMS.indexOf(l.trim()) >= 0; });
     if (end < 0) throw Error('Home order terminator missing');
     var version = lines[0].trim();
-    if (!/^\d+$/.test(version)) throw Error('Unrecognized Home order version');
+    if (!DIGITS_RE.test(version)) throw Error('Unrecognized Home order version');
     var entries = lines.slice(1, end).map(function (l) { return l.trim(); }).filter(Boolean);
     if (entries.length > MAX) throw Error('Too many Home order entries');
     validate(entries);

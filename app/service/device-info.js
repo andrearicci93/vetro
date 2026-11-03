@@ -4,6 +4,10 @@
 // both empty. /etc/prd_info.ini and /etc/tizen-release are world-readable text files; this reads two lines of them.
 // The commercial model is not in either file, so it still comes from the widget.
 var execError = require('./exec-error.js');
+// Regular expressions compiled once at module load, not on every call.
+var CR_END_RE = /\r$/;
+var VERSION_LINE_RE = /^Version=(.+?);?$/;
+var TIZEN_LINE_RE = /^Tizen=(.+)$/;
 
 var FIRMWARE = /^T-[A-Z0-9]{2,12}(?:-\d{4})?-\d{1,5}\.\d{1,3}$/;
 var TIZEN = /(\d{1,2}\.\d{1,2}\.\d{1,2})/;
@@ -21,10 +25,10 @@ function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base
 function parse(text) {
     var out = {firmware: null, tizenVersion: null};
     String(text || '').split('\n').forEach(function (line) {
-        line = line.replace(/\r$/, '').trim();
-        var m = /^Version=(.+?);?$/.exec(line);
+        line = line.replace(CR_END_RE, '').trim();
+        var m = VERSION_LINE_RE.exec(line);
         if (m && FIRMWARE.test(m[1]) && !out.firmware) out.firmware = m[1];
-        m = /^Tizen=(.+)$/.exec(line);
+        m = TIZEN_LINE_RE.exec(line);
         if (m && !out.tizenVersion) { var v = TIZEN.exec(m[1]); if (v) out.tizenVersion = v[1]; }
     });
     return out;

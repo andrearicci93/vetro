@@ -1,4 +1,6 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var APP_ID_RE = /^[A-Za-z0-9_.-]+$/;
 
 // Application features: classify package rows and validate debloat targets.
 // State changes are delegated to the platform adapter.
@@ -52,7 +54,7 @@ function listCommand() {
 // Feature validation is independent of the platform's command transport.
 function validateTargets(appIds, enabled) {
     if (!Array.isArray(appIds) || appIds.some(function (id) {
-        return typeof id !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(id);
+        return typeof id !== 'string' || !APP_ID_RE.test(id);
     })) throw new Error('invalid application IDs');
     if (!enabled && appIds.some(function (id) {
         return id === SMART_HUB_DEPENDENCY || id.indexOf(SMART_HUB_DEPENDENCY + '.') === 0;

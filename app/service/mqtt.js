@@ -9,6 +9,8 @@
 
 var net = require('net');
 var tls = require('tls');
+// Regular expressions compiled once at module load, not on every call.
+var WILDCARD_RE = /[+#]/;
 
 function encodeRemainingLength(n) {
     var out = [];
@@ -49,7 +51,7 @@ function MqttClient(opts) {
     this.tls = opts.tls === true;
     this.ca = opts.ca || undefined;
     this.will=opts.will||null;
-    if(this.will && (typeof this.will.topic!=='string'||!this.will.topic||/[+#]/.test(this.will.topic)||Buffer.byteLength(this.will.topic)>65535||Buffer.byteLength(String(this.will.payload))>65535))throw Error('Invalid MQTT will');
+    if(this.will && (typeof this.will.topic!=='string'||!this.will.topic||WILDCARD_RE.test(this.will.topic)||Buffer.byteLength(this.will.topic)>65535||Buffer.byteLength(String(this.will.payload))>65535))throw Error('Invalid MQTT will');
     this._packetId = 0;this._subscriptions = {};this._pingOutstanding=false;
 
     this._socket = null;

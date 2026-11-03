@@ -20,6 +20,12 @@ var debloat = require('./debloat.js');
 var quickSettings = require('./quick-settings.js');
 var homeOrder = require('./home-order.js');
 var ledger = require('./disabled-ledger.js');
+// Regular expressions compiled once at module load, not on every call.
+var HOME_LINE_RE = /^HO\|(\d+)\|(\d+)$/m;
+var CR_END_RE = /\r$/;
+var FLAG_PAIR_RE = /^(true|false)\|(true|false)$/;
+var VETRO_ID_RE = /^vetrotvapp(\.|$)/;
+var LEFT_COUNT_RE = /left=(\d+)/;
 
 var DB = '/opt/dbspace/.pkgmgr_parser.db';
 var BACKUPS = '/home/owner/share/vetro/startup-backups';
@@ -57,18 +63,18 @@ var FLAGS_SCRIPT = 'for f in ' + BACKUPS + '/*; do\n [ -f "$f" ] || continue\n i
     ' echo "SF|$id|$b|$c"\ndone\ntrue';
 
 function parseHome(text) {
-    var m = /^HO\|(\d+)\|(\d+)$/m.exec(String(text || ''));
+    var m = HOME_LINE_RE.exec(String(text || ''));
     if (!m) return null;
     return {backups: +m[1], same: +m[2]};
 }
 function parseFlags(text) {
     var rows = [];
     String(text || '').split('\n').forEach(function (l) {
-        var f = l.replace(/\r$/, '').split('|');
+        var f = l.replace(CR_END_RE, '').split('|');
         if (f[0] !== 'SF' || f.length < 4) return;
         var id = f[1], backup = f[2] + '|' + f[3], current = f.slice(4).join('|');
-        if (!ID.test(id) || !/^(true|false)\|(true|false)$/.test(backup)) return;
-        rows.push({appId: id, backup: backup, current: /^(true|false)\|(true|false)$/.test(current) ? current : null});
+        if (!ID.test(id) || !FLAG_PAIR_RE.test(backup)) return;
+        rows.push({appId: id, backup: backup, current: FLAG_PAIR_RE.test(current) ? current : null});
     });
     return rows;
 }
@@ -78,7 +84,7 @@ function provenComponents(apps, ledgerIds) {
     var verified = debloat.VERIFIED_GLOBAL_IDS;
     return (apps || []).filter(function (a) {
         if (a.disabled !== true) return false;
-        if (debloat.isProtected(a.appId) || debloat.isProtected(a.packageId) || /^vetrotvapp(\.|$)/.test(a.appId || '')) return false;
+        if (debloat.isProtected(a.appId) || debloat.isProtected(a.packageId) || VETRO_ID_RE.test(a.appId || '')) return false;
         return ledgerIds.indexOf(a.appId) >= 0 || verified.indexOf(a.appId) >= 0 || a.system === false;
     }).map(function (a) { return a.appId; });
 }
@@ -343,7 +349,7 @@ Restore.prototype.eraseData = function () {
         }
         return d.execute(wrap(ERASE_SCRIPT), 30000);
     }).then(function (r) {
-        var text = out(r, 'Removing Vetro’s data'), m = /left=(\d+)/.exec(text);
+        var text = out(r, 'Removing Vetro’s data'), m = LEFT_COUNT_RE.exec(text);
         return {ok: true, left: m ? +m[1] : null, finish: function () { try { d.removeAuth(); } catch (e) { /* the file may be gone already */ } }};
     });
 };

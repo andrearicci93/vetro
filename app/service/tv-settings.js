@@ -1,7 +1,27 @@
 'use strict';
 var execError = require('./exec-error.js');
+// Regular expressions compiled once at module load, not on every call.
+var DECODE_REPLY_RE = /^([iyu]{2})\s+(-?\d+)\s+(-?\d+)\s*$/;
+var DOT_RE = /\./g;
+var METHOD_TAG_RE = /<method name="(\w+)"\s*(?:\/>|>([\s\S]*?)<\/method>)/g;
+var ARG_TAG_RE = /<arg\b([^>]*)\/?>/g;
+var TYPE_ATTR_RE = /type="([^"]+)"/;
+var DIRECTION_ATTR_RE = /direction="(\w+)"/;
+var TABLE_ELLIPSIS_RE = /…|\.\.\.\s/;
+var TABLE_METHOD_RE = /^\.(\w+)\s+method\s+(\S+)\s+(\S+)/;
+var SIGNATURE_COUNT_RE = / \d+/g;
+var SIGNATURE_SPACE_RE = / /g;
+var SET_OK_RE = /^i 0\s*$/;
+var NETWORK_SECTION_RE = /__(LINKS|ADDR|ROUTES|ROUTES6)__\n/;
+var LINK_LINE_RE = /^\d+: ([^:@]+)(?:@[^:]+)?:.*?mtu (\d+).*?state (\S+)/;
+var MAC_LINE_RE = /link\/ether ([0-9a-f:]+)/i;
+var ADDRESS_LINE_RE = /^\d+: (\S+)\s+(inet6?) (\S+).*?scope (\S+)/;
+var DEFAULT_ROUTE_RE = /^default /;
+var ROUTE_DEV_RE = /\bdev (\S+)/;
+var ROUTE_VIA_RE = /\bvia (\S+)/;
 // Native controls identified on the Q80A; no arbitrary D-Bus method or key.
 var INTERFACE='org.tizen.tv.avoc.AvOutputControl';
+var INTERFACE_BLOCK_RE=new RegExp('<interface name="'+INTERFACE.replace(DOT_RE,'\\.')+'">([\\s\\S]*?)</interface>');
 var INTROSPECT_XML='busctl --system --xml-interface introspect org.tizen.tv.avoc /org/tizen/tv/avoc '+INTERFACE+' 2>/dev/null; true';
 var INTROSPECT_TABLE='busctl --system introspect org.tizen.tv.avoc /org/tizen/tv/avoc '+INTERFACE+' 2>/dev/null; true';
 var PREFIX='busctl --system call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl ';
@@ -36,13 +56,13 @@ var ITEMS=[
  {id:'digitalAudioFormat',label:'Digital audio output format',group:'audio',get:'GetNordigUserDigitalAudioOutputFormat',args:'',coded:true},
  {id:'earc',label:'eARC',group:'audio',get:'GetEarcEnable',args:'',coded:true}
 ];
-function decode(text){var m=/^([iyu]{2})\s+(-?\d+)\s+(-?\d+)\s*$/.exec(String(text));if(!m)throw Error('Unrecognized setting response');if(+m[3]!==0)throw Error('Setting unavailable (code '+m[3]+')');return +m[2];}
+function decode(text){var m=DECODE_REPLY_RE.exec(String(text));if(!m)throw Error('Unrecognized setting response');if(+m[3]!==0)throw Error('Setting unavailable (code '+m[3]+')');return +m[2];}
 // Preferred: busctl --xml-interface, where each <arg> carries its own type and direction.
-function parseIntrospectXml(text){var methods={},n=0,body=String(text||''),block=new RegExp('<interface name="'+INTERFACE.replace(/\./g,'\\.')+'">([\\s\\S]*?)</interface>').exec(body);if(!block)return {methods:methods,count:0};
- block[1].replace(/<method name="(\w+)"\s*(?:\/>|>([\s\S]*?)<\/method>)/g,function(all,name,inner){var input='',reply='';String(inner||'').replace(/<arg\b([^>]*)\/?>/g,function(x,attrs){var type=/type="([^"]+)"/.exec(attrs),dir=/direction="(\w+)"/.exec(attrs);if(!type)return;if(dir&&dir[1]==='out')reply+=type[1];else input+=type[1];});methods[name]={input:input,reply:reply};n++;});return {methods:methods,count:n};}
+function parseIntrospectXml(text){var methods={},n=0,body=String(text||''),block=INTERFACE_BLOCK_RE.exec(body);if(!block)return {methods:methods,count:0};
+ block[1].replace(METHOD_TAG_RE,function(all,name,inner){var input='',reply='';String(inner||'').replace(ARG_TAG_RE,function(x,attrs){var type=TYPE_ATTR_RE.exec(attrs),dir=DIRECTION_ATTR_RE.exec(attrs);if(!type)return;if(dir&&dir[1]==='out')reply+=type[1];else input+=type[1];});methods[name]={input:input,reply:reply};n++;});return {methods:methods,count:n};}
 // Fallback: the padded table ".SetContrast  method  yi  i  -". A shortened cell ("…") means the layout cannot be trusted.
-function parseIntrospect(text){var methods={},n=0,body=String(text||'');if(/…|\.\.\.\s/.test(body))return {methods:methods,count:0};body.split('\n').forEach(function(line){var m=/^\.(\w+)\s+method\s+(\S+)\s+(\S+)/.exec(line);if(m){methods[m[1]]={input:m[2]==='-'?'':m[2],reply:m[3]==='-'?'':m[3]};n++;}});return {methods:methods,count:n};}
-function inputSignature(args){return String(args||'').replace(/ \d+/g,'').replace(/ /g,'');}
+function parseIntrospect(text){var methods={},n=0,body=String(text||'');if(TABLE_ELLIPSIS_RE.test(body))return {methods:methods,count:0};body.split('\n').forEach(function(line){var m=TABLE_METHOD_RE.exec(line);if(m){methods[m[1]]={input:m[2]==='-'?'':m[2],reply:m[3]==='-'?'':m[3]};n++;}});return {methods:methods,count:n};}
+function inputSignature(args){return String(args||'').replace(SIGNATURE_COUNT_RE,'').replace(SIGNATURE_SPACE_RE,'');}
 // Compares an item with what this TV exposes; null when nothing was introspected.
 function confirm(x,probe){if(!probe||!probe.count)return null;var g=probe.methods[x.get],s=x.set&&probe.methods[x.set];if(!g||(x.set&&!s))return 'missing';if(g.input!==inputSignature(x.args)||(x.set&&s.input!==x.signature))return 'signature-mismatch';return 'confirmed';}
 function check(r){if(r.exit_code||r.timed_out)throw execError.failed(r,r.stderr||'TV read failed');return r.stdout;}
@@ -61,16 +81,16 @@ Store.prototype.write=function(p){var self=this,x=ITEMS.find(function(x){return 
  if(!Number.isInteger(p.value)||p.value<x.min||p.value>x.max||!Number.isInteger(p.expected))return Promise.reject(Error('Invalid value'));
  if(this.busy)return Promise.reject(Error('Change already in progress'));this.busy=true;
  function get(){return self.execute(PREFIX+x.get+' '+x.args,5000).then(function(r){return decode(check(r));});}
- function set(v){return self.execute(PREFIX+x.set+' '+x.signature+' '+v+(x.signature.length>1?' 0':''),5000).then(function(r){if(!/^i 0\s*$/.test(check(r)))throw Error('TV rejected the change');});}
+ function set(v){return self.execute(PREFIX+x.set+' '+x.signature+' '+v+(x.signature.length>1?' 0':''),5000).then(function(r){if(!SET_OK_RE.test(check(r)))throw Error('TV rejected the change');});}
  return get().then(function(before){if(before!==p.expected)throw Error('TV value changed; refresh before saving');return set(p.value).then(get).then(function(after){if(after!==p.value)throw Error('Readback does not match');return {ok:true,verified:true,id:x.id,previous:before,value:after};}).catch(function(e){return set(before).then(get).then(function(restored){e.message+=' · restore '+(restored===before?'confirmed':'not confirmed');throw e;},function(){throw Error(e.message+' · restore not confirmed');});});}).finally(function(){self.cached=null;self.busy=false;});
 };
 function unwrap(v){if(v&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,'type')&&Object.prototype.hasOwnProperty.call(v,'data'))return unwrap(v.data);if(Array.isArray(v))return v.map(unwrap);if(v&&typeof v==='object'){var o={};Object.keys(v).forEach(function(k){o[k]=unwrap(v[k]);});return o;}return v;}
 function networkDecode(output){
- var parts=String(output).split(/__(LINKS|ADDR|ROUTES|ROUTES6)__\n/),sections={connman:parts[0]};for(var i=1;i<parts.length;i+=2)sections[parts[i]]=parts[i+1];
+ var parts=String(output).split(NETWORK_SECTION_RE),sections={connman:parts[0]};for(var i=1;i<parts.length;i+=2)sections[parts[i]]=parts[i+1];
  var services=[],serviceError=null;try{var raw=JSON.parse(sections.connman.trim());services=unwrap(raw).data;/* outer tuple contains the services array */if(!services)services=unwrap(raw);if(services.length===1&&Array.isArray(services[0])&&Array.isArray(services[0][0]))services=services[0];services=services.map(function(pair){var p=pair[1],eth=p.Ethernet||{};return {name:p.Name||eth.Interface||p.Type,type:p.Type,state:p.State,interface:eth.Interface,mac:eth.Address,mtu:eth.MTU,autoConnect:p.AutoConnect,ipv4:p.IPv4||{},ipv4Configured:p['IPv4.Configuration']||{},ipv6:p.IPv6||{},ipv6Configured:p['IPv6.Configuration']||{},nameservers:p.Nameservers||[],nameserversConfigured:p['Nameservers.Configuration']||[],proxy:p.Proxy||{},mdns:p.mDNS,signal:p.Strength==null?null:p.Strength,security:p.Security||[]};});}catch(e){serviceError='ConnMan configuration unavailable';}
- var interfaces=[];String(sections.LINKS||'').split('\n').forEach(function(line){var m=/^\d+: ([^:@]+)(?:@[^:]+)?:.*?mtu (\d+).*?state (\S+)/.exec(line);if(!m||m[1]==='lo')return;var mac=/link\/ether ([0-9a-f:]+)/i.exec(line);interfaces.push({name:m[1],state:m[3],mtu:+m[2],mac:mac?mac[1]:null,addresses:[]});});
- String(sections.ADDR||'').split('\n').forEach(function(line){var m=/^\d+: (\S+)\s+(inet6?) (\S+).*?scope (\S+)/.exec(line);if(!m)return;var item=interfaces.find(function(x){return x.name===m[1]});if(item)item.addresses.push({family:m[2]==='inet'?'IPv4':'IPv6',address:m[3],scope:m[4]});});
- function routes(text){return String(text||'').split('\n').filter(function(l){return /^default /.test(l)}).map(function(l){var dev=/\bdev (\S+)/.exec(l),via=/\bvia (\S+)/.exec(l);return {interface:dev?dev[1]:null,gateway:via?via[1]:null};});}
+ var interfaces=[];String(sections.LINKS||'').split('\n').forEach(function(line){var m=LINK_LINE_RE.exec(line);if(!m||m[1]==='lo')return;var mac=MAC_LINE_RE.exec(line);interfaces.push({name:m[1],state:m[3],mtu:+m[2],mac:mac?mac[1]:null,addresses:[]});});
+ String(sections.ADDR||'').split('\n').forEach(function(line){var m=ADDRESS_LINE_RE.exec(line);if(!m)return;var item=interfaces.find(function(x){return x.name===m[1]});if(item)item.addresses.push({family:m[2]==='inet'?'IPv4':'IPv6',address:m[3],scope:m[4]});});
+ function routes(text){return String(text||'').split('\n').filter(function(l){return DEFAULT_ROUTE_RE.test(l)}).map(function(l){var dev=ROUTE_DEV_RE.exec(l),via=ROUTE_VIA_RE.exec(l);return {interface:dev?dev[1]:null,gateway:via?via[1]:null};});}
  var defaults=routes(sections.ROUTES),defaults6=routes(sections.ROUTES6),active=services.find(function(x){return defaults.some(function(r){return r.interface===x.interface})})||services.find(function(x){return x.state==='online'||x.state==='ready'})||null;
  return {source:'ConnMan + kernel interfaces and routes',services:services,interfaces:interfaces,active:active,defaultRoutes:defaults,defaultRoutes6:defaults6,configurationError:serviceError,writable:false,writeReason:'Network writes and connection recovery have not been tested'};
 }

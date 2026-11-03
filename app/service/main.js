@@ -24,6 +24,27 @@ var AppRegistry = require('./app-registry.js');
 var PhysicalInput = require('./physical-input.js').Bridge;
 var renderDashboard = require('./dashboard.js');
 var SystemMonitor = require('./system-monitor.js').Monitor;
+// Regular expressions compiled once at module load, not on every call.
+var WHITESPACE_RE = /\s+/;
+var PROCESSOR_LINE_RE = /^processor/mg;
+var CPU_TOTAL_LINE_RE = /^cpu /;
+var CPU_CORE_LINE_RE = /^cpu[0-9]/;
+var THERMAL_ZONE_RE = /^thermal_zone\d+$/;
+var THERMAL_DEVICE_RE = /thermal$/;
+var APP_ID_RE = /^[A-Za-z0-9_.-]+$/;
+var DIAGNOSTICS_QUERY_RE = /(?:\?|&)diagnostics=1(?:&|$)/;
+var REFRESH_QUERY_RE = /refresh=1/;
+var APP_ID_QUERY_RE = /[?&]appId=([^&#]*)/;
+var PLUS_RE = /\+/g;
+var APP_ID_120_RE = /^[A-Za-z0-9_.-]{1,120}$/;
+var WHITESPACE_CHAR_RE = /\s/g;
+var FORMAT_QUERY_RE = /(?:^|&)format=(hosts|domains)(?:&|$)/;
+var KEY_CAPABILITY_RE = /[1-9a-f]/i;
+var PLUGIN_SESSION_API_RE = /^\/plugins\/[^\/]+\/s\/[0-9a-f]{32}\/api(?:\/|$)/;
+var COMPONENTS_QUERY_RE = /(?:\?|&)components=1(?:&|$)/;
+var MENU_ID_QUERY_RE = /[?&]id=([^&]+)/;
+var SCOPE_QUERY_RE = /[?&]scope=([^&]*)/;
+var MONITOR_SCOPE_RE = /^(summary|full)$/;
 var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
@@ -63,11 +84,11 @@ function readTelemetry() {
     };
 
     var up = tryRead('/proc/uptime');
-    if (up) out.uptime_s = parseFloat(up.split(/\s+/)[0]);
+    if (up) out.uptime_s = parseFloat(up.split(WHITESPACE_RE)[0]);
     else out.uptime_s = null;
 
     var cpuinfo = tryReadRaw('/proc/cpuinfo');
-    if (cpuinfo) out.cpu_cores = (cpuinfo.match(/^processor/mg) || []).length;
+    if (cpuinfo) out.cpu_cores = (cpuinfo.match(PROCESSOR_LINE_RE) || []).length;
     else out.cpu_cores = null;
 
     var freq = tryRead('/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq');
@@ -80,8 +101,8 @@ function readTelemetry() {
 
     var stat = tryReadRaw('/proc/stat');
     if (stat) {
-        out.cpu_stat = (stat.split('\n').filter(function (l) { return /^cpu /.test(l); })[0] || '').trim();
-        out.cpu_percpu = stat.split('\n').filter(function (l) { return /^cpu[0-9]/.test(l); }).join(';');
+        out.cpu_stat = (stat.split('\n').filter(function (l) { return CPU_TOTAL_LINE_RE.test(l); })[0] || '').trim();
+        out.cpu_percpu = stat.split('\n').filter(function (l) { return CPU_CORE_LINE_RE.test(l); }).join(';');
     } else {
         out.cpu_stat = null;
         out.cpu_percpu = null;
@@ -91,14 +112,14 @@ function readTelemetry() {
     ['/sys/class/thermal', '/sys/devices/virtual/thermal'].forEach(function (dir) {
         if (temp) return;
         var zones = [];
-        try { zones = fs.readdirSync(dir).filter(function (n) { return /^thermal_zone\d+$/.test(n); }).sort(); } catch (e) { zones = []; }
+        try { zones = fs.readdirSync(dir).filter(function (n) { return THERMAL_ZONE_RE.test(n); }).sort(); } catch (e) { zones = []; }
         zones.forEach(function (zone) { if (!temp) temp = tryRead(dir + '/' + zone + '/temp'); });
     });
     // Samsung's TVs have no Linux thermal zones (nothing under /sys/class/thermal): the SoC driver exposes the
     // temperature in whole degrees, as <soc>/<name>.thermal/temperature (56 on a Q80A), readable by everyone.
     if (!temp) {
         var soc = '/sys/devices/platform/soc', names = [];
-        try { names = fs.readdirSync(soc).filter(function (n) { return /thermal$/.test(n); }).sort(); } catch (e) { names = []; }
+        try { names = fs.readdirSync(soc).filter(function (n) { return THERMAL_DEVICE_RE.test(n); }).sort(); } catch (e) { names = []; }
         names.forEach(function (n) { if (!temp) temp = tryRead(soc + '/' + n + '/temperature'); });
     }
     if (temp) { var t = parseInt(temp, 10); out.soctemp_c = (t > 1000) ? (t / 1000) : t; }
@@ -356,7 +377,7 @@ function handleDebloatAction(req, res) {
         var kind = parsed.kind || 'ads';     // "ads" | "privacy"
         var appIds = parsed.appIds;          // optional explicit list
         if (appIds != null && (!Array.isArray(appIds) || appIds.some(function (id) {
-            return typeof id !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(id);
+            return typeof id !== 'string' || !APP_ID_RE.test(id);
         }))) {
             return serveJson(res, { error: 'appIds must be an array of application IDs' }, 400);
         }
@@ -413,7 +434,7 @@ function saveRemap() {
 
 function handleProbe(req, res) {
     if (req.method === 'GET') {
-        if (/(?:\?|&)diagnostics=1(?:&|$)/.test(req.url || '')) {
+        if (DIAGNOSTICS_QUERY_RE.test(req.url || '')) {
             return serveJson(res, {report: state, service: serviceApiProbe()});
         }
         return serveJson(res, state);
@@ -511,16 +532,22 @@ function handleLeftovers(req,res) {
         leftovers.clear().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
     });
 }
-function handleApps(req,res) {inventory(/refresh=1/.test(req.url)).then(function(data){serveJson(res,data);});}
+function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);});}
 var iconCache = {};
+// ?appId=... read straight from the query string: the one parameter does not need a URL parser.
+function appIdOf(rawUrl) {
+    var m = APP_ID_QUERY_RE.exec(rawUrl || '');
+    if (!m) return undefined;
+    try { return decodeURIComponent(m[1].replace(PLUS_RE, ' ')); } catch (e) { return undefined; }
+}
 function handleIcon(req,res) {
-    var id=require('url').parse(req.url,true).query.appId;
-    if (!id || !/^[A-Za-z0-9_.-]{1,120}$/.test(id)) return serveJson(res,{error:'invalid appId'},400);
+    var id=appIdOf(req.url);
+    if (!id || !APP_ID_120_RE.test(id)) return serveJson(res,{error:'invalid appId'},400);
     function send(icon){res.writeHead(200,{'content-type':icon.mime,'cache-control':'private, max-age=3600','X-Content-Type-Options':'nosniff'});res.end(icon.data);}
     if(iconCache[id])return send(iconCache[id]);
     inventory(false).then(function(data){var row=data.apps.find(function(r){return r.appId===id;}), command=AppRegistry.iconCommand(row);
         if(!command)throw new Error('no readable icon');
-        return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error('icon unavailable');var data=Buffer.from(r.stdout.replace(/\s/g,''),'base64');
+        return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error('icon unavailable');var data=Buffer.from(r.stdout.replace(WHITESPACE_CHAR_RE,''),'base64');
             var png=data.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), jpg=data[0]===255&&data[1]===216;
             if((!png&&!jpg)||data.length>262144)throw new Error('unsupported icon');
             var icon={data:data,mime:png?'image/png':'image/jpeg'};if(Object.keys(iconCache).length<100)iconCache[id]=icon;send(icon);
@@ -528,14 +555,14 @@ function handleIcon(req,res) {
     }).catch(function(){serveJson(res,{error:'icon unavailable'},404);});
 }
 function handleLaunch(req,res) {readJsonBody(req,res,function(p){
-    if(typeof p.appId!=='string'||! /^[A-Za-z0-9_.-]{1,120}$/.test(p.appId))return serveJson(res,{error:'invalid appId'},400);
+    if(typeof p.appId!=='string'||! APP_ID_120_RE.test(p.appId))return serveJson(res,{error:'invalid appId'},400);
     inventory(false).then(function(data){if(!data.apps.some(function(r){return r.appId===p.appId;}))throw new Error('application not installed');return runActions([{type:'launch',appId:p.appId}]);})
         .then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{error:e.message},503);});
 });}
 
 function handleBlocklist(req, res) {
     var q = (req.url || '').split('?')[1] || '';
-    var m = /(?:^|&)format=(hosts|domains)(?:&|$)/.exec(q);
+    var m = FORMAT_QUERY_RE.exec(q);
     var body = apps.blocklist(m ? m[1] : 'domains');
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
     res.end(body);
@@ -591,7 +618,7 @@ function restoreInput(){
     physical.inventory().then(function(list){
         if(inputPaused||inputPreference()!==preference)return;
         var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
-        var keyed=candidates.filter(function(d){try{return /[1-9a-f]/i.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
+        var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
         // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
         var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
         if(!device)throw new Error('Saved physical remote is unavailable');
@@ -643,12 +670,12 @@ function showPairingCode() { runActions([{type: 'launch', appId: 'vetrotvapp.app
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
     // A sandboxed plugin page carries no sign-in cookie; its URL holds a session token the plugin host checks.
-    if (/^\/plugins\/[^\/]+\/s\/[0-9a-f]{32}\/api(?:\/|$)/.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
+    if (PLUGIN_SESSION_API_RE.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
     if (auth.gate(req, res, url, {open: platform.status().mode === 'app-only', onPair: showPairingCode})) return;
     if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson, readBody);
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
-        return downloadDiagnostics(res, /(?:\?|&)components=1(?:&|$)/.test(req.url || ''));
+        return downloadDiagnostics(res, COMPONENTS_QUERY_RE.test(req.url || ''));
     }
     // Packaged widget documents use an opaque (null) origin. Allow only its
     // probe/status exchange, including the JSON POST preflight.
@@ -696,8 +723,8 @@ http.createServer(function (req, res) {
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/privacy') return privacy.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
-    if (url === '/tv-menu') { var q=/[?&]id=([^&]+)/.exec(req.url||''), menuId=null; try { if(q)menuId=decodeURIComponent(q[1]); } catch(e) { return serveJson(res,{error:'Invalid menu ID'},400); } return (q?menuSettings.read(menuId):menuSettings.load()).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)}); }
-    if (url === '/monitor') { var scope=/[?&]scope=([^&]*)/.exec(req.url||'');if(scope&&!/^(summary|full)$/.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full').then(function(d){d.telemetry=readTelemetry();serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
+    if (url === '/tv-menu') { var q=MENU_ID_QUERY_RE.exec(req.url||''), menuId=null; try { if(q)menuId=decodeURIComponent(q[1]); } catch(e) { return serveJson(res,{error:'Invalid menu ID'},400); } return (q?menuSettings.read(menuId):menuSettings.load()).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)}); }
+    if (url === '/monitor') { var scope=SCOPE_QUERY_RE.exec(req.url||'');if(scope&&!MONITOR_SCOPE_RE.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full').then(function(d){d.telemetry=readTelemetry();serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
     if (url === '/startup') return Promise.all([inventory(false),monitor.startup().catch(function(e){return {error:e.message};})]).then(function(d){serveJson(res,{apps:d[0].apps,services:Array.isArray(d[1])?d[1]:[],serviceError:d[1].error||null});});
     if (url === '/telemetry') return serveJson(res, readTelemetry());
     if (url === '/leftovers') return handleLeftovers(req,res);

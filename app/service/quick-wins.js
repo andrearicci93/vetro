@@ -30,6 +30,12 @@
 // HbbTV has its own module (hbbtv.js) because its menu value must be restored exactly.
 var execError = require('./exec-error.js');
 var fs = require('fs');
+// Regular expressions compiled once at module load, not on every call.
+var DOT_RE = /\./g;
+var CR_END_RE = /\r$/;
+var VCONF_INT32_RE = /value = (-?\d+) \(Int32\)/;
+var DIGITS_RE = /^\d+$/;
+var UP_RE = /up/;
 
 var FILE = '/opt/usr/home/owner/share/vetro-quick-wins.json';
 var AUTOUPDATE = 'db/menu/support/softwareupdate/autoupdate';
@@ -67,7 +73,7 @@ function check(r) {
     if (r.exit_code || r.timed_out) throw execError.failed(r, r.stderr || r.stdout || 'TV unavailable');
     return r.stdout || '';
 }
-function running(id) { return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*' + id.replace(/\./g, '\\.') + '[[:space:]]"'; }
+function running(id) { return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*' + id.replace(DOT_RE, '\\.') + '[[:space:]]"'; }
 // -t may exit non-zero when the app is already gone (the scripts run under set -e), and the process can take a
 // moment to leave the list: wait up to 5 s.
 function stop(id) {
@@ -88,13 +94,13 @@ var READ = [
 function parse(text) {
     var out = {autoupdate: null, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null};
     String(text || '').split('\n').forEach(function (line) {
-        var f = line.replace(/\r$/, '').split('|');
-        if (f[0] === 'AU') { var m = /value = (-?\d+) \(Int32\)/.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
+        var f = line.replace(CR_END_RE, '').split('|');
+        if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
         else if (f[0] === 'MS') out.multiscreenFlag = f[1] === '1';
         else if (f[0] === 'MR') out.multiscreenRunning = f[1] === '1';
         else if (f[0] === 'AR') out.ambientRunning = f[1] === '1';
-        else if (f[0] === 'TB' && /^\d+$/.test(f[1])) out.telemetryBrakes = Number(f[1]);
-        else if (f[0] === 'TR' && /^\d+$/.test(f[1])) out.telemetryRunning = Number(f[1]);
+        else if (f[0] === 'TB' && DIGITS_RE.test(f[1])) out.telemetryBrakes = Number(f[1]);
+        else if (f[0] === 'TR' && DIGITS_RE.test(f[1])) out.telemetryRunning = Number(f[1]);
     });
     return out;
 }
@@ -139,9 +145,12 @@ Wins.prototype.remember = function (id, on) {
 };
 
 Wins.prototype.read = function () {
-    var self = this;
-    return this.execute(wrap(READ), 10000).then(function (r) {
-        var s = parse(check(r)), mine = self.load();
+    var self = this, mine = this.load(), read = this.execute(wrap(READ), 10000);
+    // The DNS filter's answer needs nothing from the TV read, and whether it is asked depends only on the saved choice:
+    // start both together so the second does not wait for the first to come back.
+    var dnsAsked = mine.telemetry && self.dns ? self.dns.status().then(function (d) { return !!(d.enabled && d.applied && d.domains.indexOf(TELEMETRY_HOST) >= 0); }, function () { return null; }) : null;
+    return read.then(function (r) {
+        var s = parse(check(r));
         var firmware = s.autoupdate === null ? {status: 'unknown'} : {status: s.autoupdate === 0 ? 'on' : 'off', value: s.autoupdate};
         var multiscreen = s.multiscreenFlag === null ? {status: 'unknown'} : {status: s.multiscreenFlag ? 'on' : 'off', running: s.multiscreenRunning === true};
         var ambient = s.ambientRunning === null ? {status: 'unknown'}
@@ -149,9 +158,8 @@ Wins.prototype.read = function () {
         var telemetry = s.telemetryRunning === null ? {status: 'unknown'}
             : {status: !mine.telemetry ? 'off' : s.telemetryRunning ? 'partial' : 'on', running: s.telemetryRunning, brakes: s.telemetryBrakes, chosen: mine.telemetry};
         var wins = {firmware: firmware, multiscreen: multiscreen, ambient: ambient, telemetry: telemetry};
-        if (!mine.telemetry || !self.dns) return {ts: Date.now(), wins: wins};
-        return self.dns.status().then(function (d) { telemetry.dnsBlocked = !!(d.enabled && d.applied && d.domains.indexOf(TELEMETRY_HOST) >= 0); }, function () { telemetry.dnsBlocked = null; })
-            .then(function () { return {ts: Date.now(), wins: wins}; });
+        if (!dnsAsked) return {ts: Date.now(), wins: wins};
+        return dnsAsked.then(function (blocked) { telemetry.dnsBlocked = blocked; return {ts: Date.now(), wins: wins}; });
     });
 };
 
@@ -170,7 +178,7 @@ Wins.prototype.firmware = function (on) {
     var self = this;
     function get() {
         return self.execute(wrap('vconftool get ' + AUTOUPDATE + ' 2>&1'), 6000).then(function (r) {
-            var m = /value = (-?\d+) \(Int32\)/.exec(check(r));
+            var m = VCONF_INT32_RE.exec(check(r));
             if (!m) throw Error('Auto update setting unreadable');
             return Number(m[1]);
         });
@@ -270,7 +278,7 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
     var n = 0;
     function poll() {
         return self.execute(wrap(running(AMBIENT_ID) + ' && echo up || echo down'), 8000).then(function (r) {
-            if (/up/.test(r.stdout || '') && !r.exit_code) {
+            if (UP_RE.test(r.stdout || '') && !r.exit_code) {
                 return self.execute(wrap(AMBIENT_OFF + '\nsleep 1\ntrue'), 15000).then(function () {
                     did.push('ambient');
                     if (id) self.save({ambientBoot: id});

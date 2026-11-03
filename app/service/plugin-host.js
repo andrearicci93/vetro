@@ -17,6 +17,11 @@
 var fs = require('fs');
 var crypto = require('crypto');
 var path = require('path');
+// Regular expressions compiled once at module load, not on every call.
+var PLUGIN_PATH_RE = /^\/plugins(?:\/([^\/]+)(?:\/(.*))?)?$/;
+var SESSION_SUB_RE = /^s\//;
+var SESSION_API_RE = /^s\/([0-9a-f]{32})\/(api(?:\/.*)?)$/;
+var API_SUB_RE = /^api(?:\/(.*))?$/;
 
 var API_VERSION = 1;
 var PERMISSIONS = ['exec'];
@@ -530,7 +535,7 @@ PluginHost.prototype.dispatch = function (id, req, res, sub, json) {
 // plugin cannot shadow a Vetro route or another plugin's.
 // Returns true when the request belonged to the host.
 PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
-    var m = /^\/plugins(?:\/([^\/]+)(?:\/(.*))?)?$/.exec(pathname);
+    var m = PLUGIN_PATH_RE.exec(pathname);
     if (!m) return false;
     var id = m[1], sub = m[2];
     if (!id) {
@@ -601,12 +606,12 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
         json(res, this.status(id));
         return true;
     }
-    if (sub !== undefined && /^s\//.test(sub)) {
-        var scoped = /^s\/([0-9a-f]{32})\/(api(?:\/.*)?)$/.exec(sub);
+    if (sub !== undefined && SESSION_SUB_RE.test(sub)) {
+        var scoped = SESSION_API_RE.exec(sub);
         if (!scoped || !this._sessionOk(id, scoped[1])) { json(res, { error: 'This plugin page has expired: open it again from the dashboard' }, 401); return true; }
         sub = scoped[2];
     }
-    var api = /^api(?:\/(.*))?$/.exec(sub);
+    var api = API_SUB_RE.exec(sub);
     if (!api) { json(res, { error: 'Not found' }, 404); return true; }
     if (req.method === 'OPTIONS' && req.headers && req.headers.origin === 'null') {
         // CORS preflight from a sandboxed plugin page (opaque origin) so it can POST JSON.

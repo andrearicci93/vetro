@@ -1,4 +1,6 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var AVAILABLE_MB_RE = /^MemAvailable:\s+(\d+)\s*kB/m;
 // GET /screen: the few facts the TV screen (index.html) shows. Everything is read in memory or from /proc;
 // the only root command is the launcher's pid check, and only while the launcher is on.
 
@@ -12,7 +14,7 @@ function address(interfaces) {
 }
 
 function availableMb(meminfo) {
-    var m = /^MemAvailable:\s+(\d+)\s*kB/m.exec(meminfo || '');
+    var m = AVAILABLE_MB_RE.exec(meminfo || '');
     return m ? Math.round(Number(m[1]) / 1024) : null;
 }
 

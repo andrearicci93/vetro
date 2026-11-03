@@ -1,4 +1,14 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var HEX_RE = /^(?:[a-fA-F0-9]{2})*$/;
+var CR_END_RE = /\r$/;
+var SOURCE_ID_RE = /^[sd]\/[A-Za-z0-9_]+@\S+$/;
+var NON_ALNUM_RE = /[^a-z0-9]+/g;
+var EDGE_DASHES_RE = /^-+|-+$/g;
+var LABEL_CONTROL_RE = /[\u0000-\u001f\u007f|]/g;
+var LABEL_SPACES_RE = /\s+/g;
+var YOUTUBE_ICON_RE = /^youtube$/i;
+var TRAILING_TABS_RE = /\t+$/;
 // The dock's app list, built from what Samsung's own Home reads, so the two start out the same:
 //   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2); TVs with the new Home
 //                              (com.samsung.tv.home.media, 2022 and later) keep it in that package's data dir instead
@@ -56,7 +66,7 @@ function script() {
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function unhex(v) {
-    if (!/^(?:[a-fA-F0-9]{2})*$/.test(v)) throw new Error('invalid registry field');
+    if (!HEX_RE.test(v)) throw new Error('invalid registry field');
     return Buffer.from(v, 'hex').toString('utf8');
 }
 
@@ -65,12 +75,12 @@ function unhex(v) {
 function parse(text) {
     var out = {order: [], registry: {}, icons: {}, packageIcons: {}};
     String(text || '').split('\n').forEach(function (line) {
-        line = line.replace(/\r$/, '');
+        line = line.replace(CR_END_RE, '');
         var f = line.split('|');
         try {
             if (f[0] === 'O') {
                 var entry = f.slice(1).join('|').trim();
-                if (/^[sd]\/[A-Za-z0-9_]+@\S+$/.test(entry)) out.order.push(entry);
+                if (SOURCE_ID_RE.test(entry)) out.order.push(entry);
             } else if (f[0] === 'R' && f.length === 5) {
                 out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1'};
             } else if (f[0] === 'I' && f.length === 3) {
@@ -85,12 +95,12 @@ function parse(text) {
 }
 
 function slugify(text) {
-    var s = String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 36);
+    var s = String(text).toLowerCase().replace(NON_ALNUM_RE, '-').replace(EDGE_DASHES_RE, '').slice(0, 36);
     return s || 'app';
 }
 
 function cleanLabel(text, fallback) {
-    var s = String(text || '').replace(/[\u0000-\u001f\u007f|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40).trim();
+    var s = String(text || '').replace(LABEL_CONTROL_RE, ' ').replace(LABEL_SPACES_RE, ' ').trim().slice(0, 40).trim();
     return s || fallback;
 }
 
@@ -100,7 +110,7 @@ function youtubeIcon(parsed) {
     var found = null;
     Object.keys(parsed.registry).forEach(function (id) {
         var r = parsed.registry[id];
-        if (!found && !r.hidden && /^youtube$/i.test(r.title.trim()) && !TIZENTUBE.test(r.appId) && parsed.icons[id]) found = parsed.icons[id];
+        if (!found && !r.hidden && YOUTUBE_ICON_RE.test(r.title.trim()) && !TIZENTUBE.test(r.appId) && parsed.icons[id]) found = parsed.icons[id];
     });
     return found;
 }
@@ -143,7 +153,7 @@ function build(parsed, options) {
 function tsv(built) {
     var lines = ['# written by Vetro from the TV\'s own Home row; do not edit, it is rebuilt every time the dock starts'];
     built.entries.forEach(function (e) {
-        lines.push([e.slug, e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(/\t+$/, ''));
+        lines.push([e.slug, e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(TRAILING_TABS_RE, ''));
     });
     return lines.concat(SYSTEM_ROWS).join('\n') + '\n';
 }
