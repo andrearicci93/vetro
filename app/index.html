@@ -164,6 +164,11 @@ var jobs = [
           getLocalSet: 'localSet', getSmartTVServerType: 'smartHubServer'}[m];
         try { report.settings[id] = webapis.productinfo[m](); } catch (e) {}
       });
+      // Tizen platform version ("6.5", "9.0", ...). Public API, no root needed; absent or refused on some firmware.
+      try {
+        var pv = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version');
+        if (typeof pv === 'string' && pv) report.settings.platformVersion = pv;
+      } catch (e) {}
       return Object.keys(report.settings).length; }],
   ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }],
   ['remoteApi8001', function () { return tryConnect(8001); }],

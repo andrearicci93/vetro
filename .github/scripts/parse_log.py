@@ -82,8 +82,10 @@ def analyze(text):
         if device.get('firmwareSource') == 'service-read':
             findings.append(('Firmware source', 'Read from the TV by the Vetro service; the widget probe had not arrived'))
         tizen = device.get('tizenVersion')
-        if isinstance(tizen, str) and re.fullmatch(r'\d{1,2}\.\d{1,2}\.\d{1,2}', tizen):
+        if isinstance(tizen, str) and re.fullmatch(r'\d{1,2}\.\d{1,2}(?:\.\d{1,3}){0,2}', tizen):
             findings.append(('Tizen version', tizen))
+        else:
+            findings.append(('Tizen version', 'Unknown (not reported by this TV or this package)'))
         revision = report.get('sourceRevision')
         if isinstance(revision, str) and re.fullmatch(r'[a-f0-9]{40}', revision):
             dirty = report.get('sourceDirty')

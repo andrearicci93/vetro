@@ -11,7 +11,8 @@ var ITEMS = [
     {id: 'firmware', api: 'productinfo', method: 'getFirmware', writable: false},
     {id: 'modelCode', api: 'productinfo', method: 'getModelCode', writable: false},
     {id: 'localSet', api: 'productinfo', method: 'getLocalSet', writable: false},
-    {id: 'smartHubServer', api: 'productinfo', method: 'getSmartTVServerType', writable: false}
+    {id: 'smartHubServer', api: 'productinfo', method: 'getSmartTVServerType', writable: false},
+    {id: 'platformVersion', api: 'systeminfo', method: 'getCapability', writable: false}
 ];
 
 var BY_ID = {};

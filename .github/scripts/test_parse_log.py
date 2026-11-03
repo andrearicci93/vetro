@@ -35,6 +35,15 @@ class ParserTests(unittest.TestCase):
         self.assertNotIn('<script>',s)
         self.assertNotIn('unrecognised)',s,'launcher, quickWins and components are known sections')
 
+    def test_tizen_version_two_parts_and_unknown(self):
+        s = p.markdown(p.analyze(self.report(device={'realModel':'QE65S95D','firmware':'T-PTMDDEUC-0090-2130.0','tizenVersion':'9.0','tizenVersionSource':'widget-capability'})))
+        self.assertIn('| Tizen version | 9.0 |',s)
+        s = p.markdown(p.analyze(self.report(device={'realModel':'QE65S95D','firmware':'T-PTMDDEUC-0090-2130.0','tizenVersion':None,'tizenVersionSource':'unknown'})))
+        self.assertIn('| Tizen version | Unknown',s)
+        s = p.markdown(p.analyze(self.report(device={'tizenVersion':'<script>'})))
+        self.assertNotIn('<script>',s)
+        self.assertIn('| Tizen version | Unknown',s)
+
     def test_components_not_requested_is_not_a_failure(self):
         report = json.dumps({'format':'vetro-diagnostics','schemaVersion':1,'sections':{'components':{'status':'unavailable','reason':'not-requested'},'hbbtv':{'status':'unavailable','reason':'command-failed','exitCode':1}}})
         s = p.markdown(p.analyze(report))
