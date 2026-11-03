@@ -169,7 +169,8 @@ function downloadDiagnostics(res, withComponents) {
         // The widget's probe wins. The service adds the firmware and Tizen version it reads itself; that read starts at once
         // (a few milliseconds, ahead of the slow ones) and gives up after 8 s, so it can only add to the probe.
         device: function () {
-            return require('./device-info.js').merge(Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt}), agentExecute, 8000);
+            var info = require('./device-info.js');
+            return info.merge(Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt}), agentExecute, 8000, info.httpGet);
         },
         inventory: later(function () { return inventory(false); }),
         settings: later(function () { return tvSettings.read(); }),
@@ -445,7 +446,7 @@ function handleProbe(req, res) {
         return serveJson(res, { error: 'Probe reports are accepted from the TV only' }, 403);
     }
     readJsonBody(req, res, function (parsed) {
-        try { state = probe.sanitize(parsed); }
+        try { state = probe.carry(state, probe.sanitize(parsed)); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
         serveJson(res, { ok: true, persisted: probe.save(state) });
     }, probe.MAX_JSON);

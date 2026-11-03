@@ -39,6 +39,31 @@ REASONS = {
 }
 
 
+STEP_NAMES = {'serviceLaunch', 'tizenObject', 'webapisObject', 'productinfo', 'supportedKeys', 'serviceReach', 'remoteApi8001', 'systeminfoBattery', 'apps', 'packages'}
+
+
+def screen_progress(screen):
+    # How far the Vetro screen on the TV got before it sent the report it left behind.
+    if not isinstance(screen, dict):
+        return 'Unknown (report from an older Vetro screen, or the screen never sent one)'
+    def count(v):
+        return v if type(v) is int and 0 <= v <= 100 else None
+    done, total, nxt = count(screen.get('done')), count(screen.get('of')), screen.get('next')
+    slow = [s for s in screen.get('slow') or [] if s in STEP_NAMES] if isinstance(screen.get('slow'), list) else []
+    secs = screen.get('elapsedSeconds')
+    took = f' in about {secs} s' if type(secs) is int and 0 <= secs < 10**6 else ''
+    if screen.get('partial') is True:
+        text = f'Stopped after step {done} of {total}' if done is not None and total is not None else 'Stopped before the end'
+        text += (f' (next: {nxt})' if nxt in STEP_NAMES else '') + took + '; the screen was closed or stuck'
+    elif screen.get('partial') is False:
+        text = 'All steps finished' + took
+    else:
+        text = 'Unknown'
+    if slow:
+        text += '; no answer in time: ' + ', '.join(slow)
+    return text
+
+
 def safe_token(value):
     return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,100}', value) else 'Unknown'
 
@@ -79,6 +104,8 @@ def analyze(text):
         age = device.get('probeAgeMinutes')
         if device.get('source') == 'widget-probe':
             findings.append(('Model/firmware source', 'Reported by the Vetro widget' + (f'; last probe about {age} min before export' if type(age) is int and 0 <= age < 10**7 else '; probe age unknown') + ' (not read live)'))
+        if device.get('modelSource') == 'service-api':
+            findings.append(('Model source', "Read by the Vetro service from the TV's local API; the widget probe had not arrived"))
         if device.get('firmwareSource') == 'service-read':
             findings.append(('Firmware source', 'Read from the TV by the Vetro service; the widget probe had not arrived'))
         tizen = device.get('tizenVersion')
@@ -105,6 +132,7 @@ def analyze(text):
         probe = data('probe')
         reach = probe.get('serviceReach', {})
         findings.append(('Loopback service probe', 'Succeeded when probed' if isinstance(reach, dict) and reach.get('available') is True else 'Unknown or failed'))
+        findings.append(('TV screen checks', screen_progress(probe.get('screen'))))
         inventory = data('inventory').get('apps')
         if isinstance(inventory, list):
             findings.append(('App components', str(len(inventory))))

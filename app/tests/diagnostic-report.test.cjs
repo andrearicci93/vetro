@@ -1,6 +1,23 @@
 'use strict';
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const report=require('../service/diagnostic-report');
+const probeStore=require('../service/probe');
+{
+ // An early report (the TV screen closed after the first steps) keeps the app and package lists of the last full one.
+ const full={probe:{apps:{ok:true},packages:{ok:true}},apps:[{id:'a'}],packages:[{id:'p'}]};
+ const early=probeStore.carry(full,{probe:{serviceReach:{ok:true}},apps:[],packages:[],settings:{model:'M'}});
+ assert.deepEqual(early.apps,[{id:'a'}]);assert.deepEqual(early.packages,[{id:'p'}]);assert.deepEqual(early.carried,['apps','packages']);
+ const verdict=probeStore.carry(early,{probe:{apps:{ok:true,value:0}},apps:[],packages:[]});
+ assert.deepEqual(verdict.apps,[],'a step that ran wins, even with an empty list');assert.deepEqual(verdict.packages,[{id:'p'}]);assert.deepEqual(verdict.carried,['packages']);
+ const fresh=probeStore.carry(null,{probe:{},apps:[]});assert.equal(fresh.carried,undefined,'nothing earlier: nothing carried');
+ const failed=probeStore.carry(full,{probe:{apps:{ok:false,error:'no answer in 8 s'}},apps:[]});assert.deepEqual(failed.apps,[],'a step that ran and failed is not hidden by older data');
+ // How far the TV screen got: fixed step names, no widget error text
+ const pr=report.projectors.probe({probe:{serviceReach:{ok:true},apps:{ok:false,error:'no answer in 8 s'},packages:{ok:false,error:'skipped: secret <x>'},remoteApi8001:{ok:false,error:'refused'}},
+  progress:{partial:true,done:6,of:9,next:'remoteApi8001',elapsedMs:41400},carried:['apps','junk']}).screen;
+ assert.deepEqual(pr,{partial:true,done:6,of:9,next:'remoteApi8001',elapsedSeconds:41,slow:['apps','packages'],carried:['apps']});
+ assert.equal(report.projectors.probe({probe:{},progress:{next:'<script>'}}).screen.next,null);
+ assert.equal(report.projectors.probe({probe:{}}).screen,null,'an older widget sends no progress');
+}
 (async()=>{
  const secret='PERSONAL_SENTINEL@example.com';
  const poison={username:secret,password:secret,serial:secret,hostname:secret,bootId:secret,token:secret,error:null,unknown:secret};

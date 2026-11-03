@@ -78,5 +78,49 @@ assert.equal(info.parse('Version=T-A1-1.1;\nVersion=T-NKM2DEUC-2301.1;').firmwar
     assert.deepEqual((({tizenVersion, tizenVersionSource}) => ({tizenVersion, tizenVersionSource}))(dev({tizenVersion: '9.0', tizenVersionSource: 'widget-capability'})), {tizenVersion: '9.0', tizenVersionSource: 'widget-capability'});
     assert.deepEqual((({tizenVersion, tizenVersionSource}) => ({tizenVersion, tizenVersionSource}))(dev({})), {tizenVersion: null, tizenVersionSource: 'unknown'}, 'no data: the report says unknown');
     assert.equal(dev({tizenVersion: '9.0', tizenVersionSource: '<script>'}).tizenVersionSource, 'service-read', 'the source is one of a fixed list');
-    console.log('PASS device info: firmware and Tizen version read from /etc, parsed strictly, marked by source');
+    // The model from the TV's local API (127.0.0.1:8001/api/v2/), when the widget posted none (#101)
+    const api = JSON.stringify({device: {modelName: 'QN77S95CAFXZA', model: '23_PONTUSM_QTV', ip: '192.0.2.10', id: 'uuid:secret', wifiMac: 'aa:bb'}, uri: 'http://192.0.2.10:8001/api/v2/'});
+    assert.deepEqual(info.parseApi(api), {modelName: 'QN77S95CAFXZA'}, 'only the model name is kept');
+    ['<b>x</b>', 'uuid:1234-5678', '192.0.2.10', '', 'ab'].forEach(bad =>
+        assert.equal(info.parseApi(JSON.stringify({device: {modelName: bad}})).modelName, null, 'refused: ' + bad));
+    assert.deepEqual(info.parseApi('not json'), {modelName: null});
+    assert.deepEqual(info.parseApi(null), {modelName: null});
+    const urls = [];
+    const get = async (url, ms) => { urls.push([url, ms]); return api; };
+    const fromApi = await info.merge({receivedAt: 5}, down, 1000, get);
+    assert.equal(fromApi.realModel, 'QN77S95CAFXZA');
+    assert.equal(fromApi.modelSource, 'service-api');
+    assert.deepEqual(urls, [['http://127.0.0.1:8001/api/v2/', 3000]], 'loopback only, with a time limit');
+    assert.equal(JSON.stringify(fromApi).includes('192.0.2.10'), false, 'no address comes along');
+    urls.length = 0;
+    const widgetModel = await info.merge({model: 'QE55Q80A'}, down, 1000, get);
+    assert.equal(widgetModel.realModel, undefined, 'the widget model is not replaced');
+    assert.equal(widgetModel.modelSource, undefined);
+    assert.equal(urls.length, 0, 'and the API is not asked');
+    assert.equal((await info.merge({}, down, 1000, async () => { throw new Error('refused'); })).realModel, undefined, 'API down: nothing invented');
+    const t0 = Date.now();
+    const both = await info.merge({}, () => new Promise(() => {}), 80, () => new Promise(() => {}));
+    assert.ok(Date.now() - t0 < 1000, 'a stuck agent and a stuck API: still within the limit');
+    assert.equal(both.tizenVersionSource, 'unknown');
+    const stuckAgent = await info.merge({}, () => new Promise(() => {}), 80, get);
+    assert.equal(stuckAgent.realModel, 'QN77S95CAFXZA', 'a stuck root agent does not cost the API model');
+    // httpGet against a real local server: body, time limit, size cap
+    const http = require('http');
+    const srv = http.createServer((req, res) => {
+        if (req.url === '/slow') return;
+        if (req.url === '/big') { res.end('x'.repeat(70000)); return; }
+        res.end(api);
+    });
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const base = 'http://127.0.0.1:' + srv.address().port;
+    assert.equal(await info.httpGet(base + '/api/v2/', 1000), api);
+    await assert.rejects(info.httpGet(base + '/slow', 100), /timeout/);
+    await assert.rejects(info.httpGet(base + '/big', 1000), /too large/);
+    srv.close();
+    // In the report: where the model came from
+    assert.equal(dev({realModel: 'QN77S95CAFXZA', modelSource: 'service-api'}).modelSource, 'service-api');
+    assert.equal(dev({model: 'QE55Q80A'}).modelSource, 'widget-probe');
+    assert.equal(dev({}).modelSource, null, 'no model, no source');
+    assert.equal(dev({model: 'QE55Q80A', modelSource: '<x>'}).modelSource, 'widget-probe', 'the source is one of a fixed list');
+    console.log('PASS device info: firmware and Tizen version read from /etc, parsed strictly, marked by source; model from the local API');
 })().catch(e => { console.error(e); process.exitCode = 1; });
