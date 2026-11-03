@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--references', type=Path, required=True, help='Existing .NET Core 3.0 reference/runtime assembly directory')
     parser.add_argument('--compiler', type=Path, help='Existing Roslyn csc.dll; otherwise discovered beside dotnet')
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--state', action='store_true', help='Build the native audio/source reader instead')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     dotnet = args.dotnet.resolve(strict=True)
@@ -35,8 +36,9 @@ def main():
         compiler = compilers[0]
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    dll = output / 'tvlauncher-dotnet.dll'
-    sources = sorted((repo / 'dock/src').rglob('*.cs'))
+    name = 'TvState' if args.state else 'tvlauncher-dotnet'
+    dll = output / (name + '.dll')
+    sources = [repo / 'app/native/TvState.cs'] if args.state else sorted((repo / 'dock/src').rglob('*.cs'))
     env = dict(os.environ, DOTNET_CLI_HOME=str(repo / 'rooting/dist/dotnet-home'),
                DOTNET_CLI_TELEMETRY_OPTOUT='1', DOTNET_SKIP_FIRST_TIME_EXPERIENCE='1')
     subprocess.run([str(dotnet), str(compiler), '-nologo', '-noconfig', '-nostdlib+',
@@ -46,7 +48,7 @@ def main():
     runtime = {'runtimeOptions': {'tfm': 'netcoreapp3.0', 'framework': {
         'name': 'Microsoft.NETCore.App', 'version': '3.0.0'}, 'configProperties': {
         'System.GC.Concurrent': False, 'System.Globalization.Invariant': True}}}
-    (output / 'tvlauncher-dotnet.runtimeconfig.json').write_text(json.dumps(runtime, indent=2) + '\n')
+    (output / (name + '.runtimeconfig.json')).write_text(json.dumps(runtime, indent=2) + '\n')
     digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     result = {'target': 'netcoreapp3.0', 'sources': {str(p.relative_to(repo)): digest(p) for p in sources}, 'dllSha256': digest(dll),
               'compilerSha256': digest(compiler), 'referenceAssemblies': len(refs),

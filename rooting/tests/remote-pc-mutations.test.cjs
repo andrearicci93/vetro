@@ -87,6 +87,8 @@ async function main() {
             assert.equal(info.restorePreferences, mode !== 'diagnostics');
             const dockRuntime=JSON.parse(files.find(f=>decodeURIComponent(f.uri)==='native/dock/tvlauncher-dotnet.runtimeconfig.json').data.toString());
             assert.equal(dockRuntime.runtimeOptions.tfm,'netcoreapp3.0');
+            assert.equal(JSON.parse(files.find(f=>decodeURIComponent(f.uri)==='native/TvState.runtimeconfig.json').data.toString()).runtimeOptions.tfm,'netcoreapp3.0');
+            assert.ok(files.find(f=>decodeURIComponent(f.uri)==='native/TvState.dll').data.equals(fs.readFileSync(path.resolve(__dirname,'../state55/TvState.dll'))));
             assert.equal(info.readOnly, mode === 'diagnostics');
             assert.equal(info.automaticRestore, mode === 'automatic');
             const runtime = JSON.parse(files.find(f => decodeURIComponent(f.uri) === 'payload/SamsungTvRemoteInputAgent.runtimeconfig.json').data.toString());

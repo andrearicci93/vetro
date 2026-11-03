@@ -37,8 +37,11 @@ function collectIntegration() {
             Object.keys(dockManifest.sources).some(name => dockManifest.sources[name] !== digest(path.join(__dirname,'..',name)))) {
             throw new Error('Rebuild the Tizen 5.5 launcher: its source or binary differs from the build manifest');
         }
+        const stateManifest=JSON.parse(fs.readFileSync(path.join(__dirname,'state55','build-manifest.json'),'utf8'));
+        if(stateManifest.target!=='netcoreapp3.0' || stateManifest.dllSha256!==digest(path.join(__dirname,'state55','TvState.dll')) || Object.keys(stateManifest.sources).some(name=>stateManifest.sources[name]!==digest(path.join(__dirname,'..',name)))) throw new Error('Rebuild the Tizen 5.5 state reader');
         files.forEach(file => {
             const name = decodeURIComponent(file.uri);
+            if (/^native\/TvState\.(dll|runtimeconfig\.json)$/.test(name)) file.data=fs.readFileSync(path.join(__dirname,'state55',path.basename(name)));
             if (/^native\/dock\/tvlauncher-dotnet\.(dll|runtimeconfig\.json)$/.test(name)) file.data = fs.readFileSync(path.join(__dirname,'dock55',path.basename(name)));
         });
         if (compiled.target !== 'netcoreapp3.0' || compiled.sourceSha256 !== digest(path.join(__dirname,'payload','SamsungTvRemoteInputAgent.cs')) ||

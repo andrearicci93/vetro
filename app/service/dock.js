@@ -53,6 +53,7 @@ function Dock(options) {
     this.nextTry = 0;
     this.lastError = null;
     this.lastCatalog = null;
+    this.catalogText = null;
     this.refreshPending = false;
 }
 
@@ -217,7 +218,7 @@ Dock.prototype.writeCatalog = function () {
             try { fs.writeFileSync(self.appsFile, c.tsv); save = Promise.resolve(); }
             catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         }
-        return save.then(function () { self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()}; return c; });
+        return save.then(function () { if(self.runtime === 'tizen55')self.catalogText = c.tsv; self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()}; return c; });
     });
 };
 
@@ -273,7 +274,7 @@ Dock.prototype.refreshCatalogLater = function () {
 };
 
 Dock.prototype.hasSavedApps = function () {
-    try { return fs.statSync(this.appsFile).size > 0; } catch (e) { return false; }
+    try { return !!this.catalogText || fs.statSync(this.appsFile).size > 0; } catch (e) { return false; }
 };
 
 // Turn the dock on: build the app list from Samsung's Home, start the dock, and only then
@@ -337,7 +338,7 @@ function parseTsv(text) {
     }).filter(function (e) { return /^[a-z0-9_-]{1,40}$/.test(e.slug || '') && e.label; });
 }
 Dock.prototype.entries = function () {
-    try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
+    try { return parseTsv(this.catalogText || fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
 Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }

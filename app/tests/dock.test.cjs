@@ -72,6 +72,7 @@ function fixture(options) {
     f = fixture({checkRuntime:true,runtime:'tizen55'});
     await f.dock.enable();
     assert.ok(f.tv.scripts[0].includes('--check-runtime'));
+    assert.equal(f.dock.entries().length,3,'Tizen 5.5 preview retains the generated catalog despite an unreadable root-written file');
     assert.ok(f.tv.started.includes('System::Privileged'));
     assert.ok(f.tv.started.includes('/usr/bin/dotnet-launcher --standalone'));
     assert.ok(!f.tv.started.includes('/usr/bin/dotnet '));

@@ -29,7 +29,7 @@ var dock = new (require('./dock.js').Dock)({execute: agentExecute, checkRuntime:
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute, null, {manageService: buildInfo.inputRuntime === 'tizen55'});
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 var presence = new (require('./presence.js').Presence)(agentExecute);
-var tvState = new (require('./tv-state.js').Store)(agentExecute);
+var tvState = new (require('./tv-state.js').Store)(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
 var menuSettings = new (require('./menu-settings.js').Catalog)(agentExecute);
 var quickSettings = require('./quick-settings.js');
@@ -357,7 +357,7 @@ function handleDebloatAction(req, res) {
     });
 }
 
-var tvSettings=new TVSettings(agentExecute);
+var tvSettings=new TVSettings(agentExecute, {tizen55: buildInfo.inputRuntime === 'tizen55'});
 
 // --- probe, app inventory, settings, remapper -----------------------------
 // The widget UI collects data through the public Tizen/Samsung web APIs and
