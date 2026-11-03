@@ -491,6 +491,53 @@ namespace Launcher.Tests
                 T.Eq(c.Key("KP_Enter", out idx), KeyAction.Launch, "keypad enter launches");
             });
 
+            T.Run("controller: pause/red/delete keys trigger kill", () =>
+            {
+                DockLayout l; var c = NewController(4, out l);
+                c.Show(); while (c.Tick(1 / 60.0)) { }
+                int idx;
+                c.Key("Right", out idx);
+                foreach (string k in new[] { "XF86AudioPause", "XF86AudioPlay", "XF86AudioPlayPause", "MediaPlayPause", "Pause", "p", "P", "XF86PlayBack", "PlayBack", "XF86Red", "Delete", "r", "R" })
+                {
+                    T.Eq(c.Key(k, out idx), KeyAction.Kill, k + " triggers kill");
+                    T.Eq(idx, 1, "kill targets focused index");
+                }
+            });
+
+            T.Run("sysinfo: parse meminfo available memory", () =>
+            {
+                string sample = "MemTotal:        1416756 kB\nMemFree:          125000 kB\nMemAvailable:     268692 kB\nBuffers:           12000 kB\n";
+                int kb = SysInfo.ParseMemAvailableKb(sample);
+                T.Eq(kb, 268692, "parses MemAvailable in kB");
+                T.Eq(kb / 1024, 262, "converts to MB");
+
+                string fallback = "MemTotal: 1000000 kB\nMemFree: 100000 kB\nBuffers: 20000 kB\nCached: 30000 kB\n";
+                T.Eq(SysInfo.ParseMemAvailableKb(fallback), 150000, "fallback to free+buffers+cached");
+
+                T.Eq(SysInfo.ParseMemAvailableKb(""), -1, "empty returns -1");
+                T.Eq(SysInfo.ParseMemAvailableKb(null), -1, "null returns -1");
+            });
+
+            T.Run("sysinfo: format clock and mem display", () =>
+            {
+                T.Eq(SysInfo.FormatClockAndMem("17:15", 262), "17:15  \u00b7  RAM 262 MB", "formats clock with RAM");
+                T.Eq(SysInfo.FormatClockAndMem("17:15", -1), "17:15", "negative mem yields clock only");
+                T.Eq(SysInfo.FormatClockAndMem("17:15", 0), "17:15", "zero mem yields clock only");
+            });
+
+            T.Run("catalog: parse running app ids from app_launcher -S", () =>
+            {
+                string sample = "\t appId (PID)\n\t  org.tizen.volume-app (492)\n\t  NuvioTV002.Nuvio (5639)\n\t  com.samsung.tv.cobalt-yt (15423)\n";
+                var running = Catalog.ParseRunningAppIds(sample);
+                T.Eq(running.Count, 3, "parses 3 running apps");
+                T.True(running.Contains("NuvioTV002.Nuvio"), "contains Nuvio");
+                T.True(running.Contains("com.samsung.tv.cobalt-yt"), "contains Cobalt YouTube");
+                T.True(!running.Contains("org.tizen.browser"), "does not contain unlisted app");
+
+                T.Eq(Catalog.ParseRunningAppIds("").Count, 0, "empty returns empty set");
+                T.Eq(Catalog.ParseRunningAppIds(null).Count, 0, "null returns empty set");
+            });
+
             T.Run("controller: back/home/exit hide, unknown keys ignored", () =>
             {
                 DockLayout l; var c = NewController(4, out l);
@@ -856,6 +903,13 @@ namespace Launcher.Tests
                 T.Eq(r.Entries[0].KillFirst, "com.samsung.tv.cobalt-yt", "kill-first id kept");
                 T.Eq(r.Entries[1].KillFirst, null, "none by default");
                 T.True(Catalog.ValidAppId(r.Entries[0].KillFirst), "and it is a plain id");
+                var runningCobalt = new HashSet<string> { "com.samsung.tv.cobalt-yt" };
+                T.True(r.Entries[0].IsRunning(runningCobalt), "running via KillFirst recognized");
+                T.True(!r.Entries[1].IsRunning(runningCobalt), "other entry not running");
+                var runningOwn = new HashSet<string> { "x.TizenTube" };
+                T.True(r.Entries[0].IsRunning(runningOwn), "running via AppId recognized");
+                T.True(!r.Entries[0].IsRunning(new HashSet<string> { "other.app" }), "unrelated app not running");
+                T.True(!r.Entries[0].IsRunning(null), "null set handled safely");
                 var bad = Catalog.Parse("a\tA\tx.a\t\t\tbad id;rm\n");
                 T.Eq(bad.Entries.Length, 0, "an id that is not plain drops the line");
                 T.Eq(bad.Problems.Length, 1, "and reports it");
@@ -1079,6 +1133,17 @@ namespace Launcher.Tests
                 for (int i = 0; i < 20000; i++) once();
                 long after = GC.GetAllocatedBytesForCurrentThread();
                 T.Eq(after - before, 0L, "bytes allocated over 20000 iterations of 30 frames (sink " + sink + ")");
+            });
+
+            T.Run("home guard: multi-target lockout includes media and sidebar, excludes quicklaunch", () =>
+            {
+                string cmd = HomeGuard.BuildCommand("com.samsung.tv.csfs");
+                T.True(cmd.Contains("app_launcher -k com.samsung.tv.csfs"), "kills csfs");
+                T.True(cmd.Contains("app_launcher -k com.samsung.tv.home.sidebar"), "kills sidebar");
+                T.True(cmd.Contains("app_launcher -k com.samsung.tv.home.media"), "kills homemedia");
+                T.True(!cmd.Contains("quicklaunch"), "preserves quicklaunch");
+                T.True(cmd.StartsWith("( sleep 0.15;"), "starts with 0.15s gap");
+                T.True(cmd.EndsWith(") >/dev/null 2>&1 &"), "forks into background");
             });
 
             Console.WriteLine();

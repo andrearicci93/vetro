@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using Launcher.Core;
 using Launcher.Native;
 using Launcher.Ui;
@@ -45,16 +46,14 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
+        private const double HomeDebounceSeconds = 0.50;
 
         // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
         // the key), so after each Home press the app is closed again, a few times because its start is slow.
         // Off by default; the app id is checked as plain id characters because it goes on a command line.
-        // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
-        // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
+        // One process: a single shell runs every sleep and every kill (via HomeGuard), so the dock itself spawns
+        // once per Home press instead of five times from the loop.
         private static string _guardApp, _guardCmd;
-        private const double GuardFirst = 0.15;
-        private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
         private static int _homeCode = -1;
         private static bool _learn;
         private static double _lastHome = -100;
@@ -109,6 +108,8 @@ namespace Launcher
         /// </summary>
         private static string SetupEnvironment()
         {
+            try { Libc.setpriority(0, 0, -15); } catch (Exception) { }
+
             string want = (Environment.GetEnvironmentVariable("TVLAUNCHER_ENGINE") ?? "").ToLowerInvariant();
             bool egl = want == "egl" || (want != "shm" && Directory.Exists("/dev/dri"));
 
@@ -135,8 +136,10 @@ namespace Launcher
                 Libc.setenv("EVAS_GL_NO_BLACKLIST", "1", 0);
                 Libc.setenv("ECORE_EVAS_COMP_NOSYNC", "1", 0);
                 Libc.setenv("ECORE_VSYNC_DRM_ALL", "1", 0);
-                Libc.setenv("ECORE_EVAS_GL_SYNC_DRAW_DONE", "1", 0);
-                Libc.setenv("EVAS_GL_PARTIAL_DISABLE", "1", 0);
+                // Allow non-blocking asynchronous GPU draw and enable partial rendering
+                // to prevent GPU pipeline stalls when running over heavy 3D/DALi apps (such as Nuvio).
+                Libc.setenv("ECORE_EVAS_GL_SYNC_DRAW_DONE", "0", 1);
+                Libc.setenv("EVAS_GL_PARTIAL_DISABLE", "0", 1);
             }
             return egl ? "wayland_egl" : "wayland_shm";
         }
@@ -239,7 +242,7 @@ namespace Launcher
                 int index = _inputFds.Count;
                 IntPtr handler = Efl.ecore_main_fd_handler_add(fd, Efl.EcoreFdRead, InputCb, (IntPtr)index, IntPtr.Zero, IntPtr.Zero);
                 _inputFds.Add(fd);
-                _inputReaders.Add(new EvdevReader());
+                _inputReaders.Add(new EvdevReader { ReportRepeats = true });
                 _inputPaths.Add(node);
                 _inputHandlers.Add(handler);
                 added++;
@@ -290,11 +293,13 @@ namespace Launcher
 
         private static void ShowDock()
         {
+            if (_learn) Log("ShowDock invoked (isActive=" + _ctl.IsActive + ")");
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
+            RefreshRunningApps();
             StartClock();
             StartAnimator();
             ResetIdle();
@@ -302,8 +307,14 @@ namespace Launcher
 
         private static void HideDock()
         {
+            if (_learn) Log("HideDock invoked (why=" + _perfWhy + ")");
             CancelIdle();
             StopClock();
+            if (_killRefreshTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_killRefreshTimer);
+                _killRefreshTimer = IntPtr.Zero;
+            }
             if (_ctl.Hide()) StartAnimator();
         }
 
@@ -341,9 +352,37 @@ namespace Launcher
             SelectPage(_inputsCtl, _inputsDock);
         }
 
-        // ------------------------------------------------------------------ clock
+        // ------------------------------------------------------------------ clock & running apps
 
-        private static string ClockText() { return DateTime.Now.ToString("HH:mm"); }
+        private static HashSet<string> _runningApps = new HashSet<string>(StringComparer.Ordinal);
+
+        private static void RefreshRunningApps()
+        {
+            try
+            {
+                const string tmp = "/tmp/dock_running.txt";
+                Libc.system("/usr/bin/app_launcher -S > " + tmp + " 2>/dev/null");
+                if (File.Exists(tmp))
+                {
+                    string text = File.ReadAllText(tmp);
+                    try { File.Delete(tmp); } catch { }
+                    _runningApps = Catalog.ParseRunningAppIds(text);
+                    _appsDock.SetRunningApps(_runningApps);
+                }
+            }
+            catch (Exception ex) { Log("running-apps: " + ex.Message); }
+        }
+
+        private static string ClockText()
+        {
+            string t = DateTime.Now.ToString("HH:mm");
+            if (Design.ShowSysInfo)
+            {
+                int ram = SysInfo.GetAvailableMemMb();
+                t = SysInfo.FormatClockAndMem(t, ram);
+            }
+            return t;
+        }
 
         /// <summary>
         /// Shows the time and arms one timer for the next minute change. It runs only while the dock
@@ -521,6 +560,9 @@ namespace Launcher
                     case KeyAction.Launch:
                         Activate((_ctl == _appsCtl ? _apps : _inputs)[index]);
                         break;
+                    case KeyAction.Kill:
+                        KillFocusedApp((_ctl == _appsCtl ? _apps : _inputs)[index]);
+                        break;
                     case KeyAction.OpenPanel:
                         OpenInputs();
                         break;
@@ -528,7 +570,16 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
+                        if (key == "XF86Home")
+                        {
+                            double now = Efl.ecore_time_get();
+                            if (now - _lastHome < HomeDebounceSeconds)
+                            {
+                                if (_learn) Log("evas XF86Home debounced (" + (now - _lastHome).ToString("0.000") + "s < " + HomeDebounceSeconds + "s), ignoring Hide");
+                                break;
+                            }
+                            _lastHome = now;
+                        }
                         HideDock();
                         break;
                 }
@@ -577,6 +628,16 @@ namespace Launcher
                     {
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
+                        if (code == 244 || code == 660 || code == 164 || code == 207 || code == 201 || code == 119)
+                        {
+                            if (_ctl.IsActive)
+                            {
+                                int idx = _ctl.FocusTarget;
+                                AppEntry entry = (_ctl == _appsCtl ? _apps : _inputs)[idx];
+                                KillFocusedApp(entry);
+                            }
+                            continue;
+                        }
                         if (code != _homeCode) continue;
                         double now = Efl.ecore_time_get();
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
@@ -602,10 +663,7 @@ namespace Launcher
         /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
         private static string GuardCommand(string appId)
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
-            var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
-            foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
-            return sb.Append(" ) >/dev/null 2>&1 &").ToString();
+            return HomeGuard.BuildCommand(appId);
         }
 
         // ------------------------------------------------------------------ launching
@@ -620,6 +678,62 @@ namespace Launcher
                 return Efl.app_control_send_launch_request(ac, IntPtr.Zero, IntPtr.Zero) == 0;
             }
             finally { Efl.app_control_destroy(ac); }
+        }
+
+        private static double _lastKillTime = -100;
+        private static IntPtr _killRefreshTimer;
+        private static readonly Efl.TaskCb KillRefreshCb = OnKillRefresh;
+
+        private static byte OnKillRefresh(IntPtr data)
+        {
+            _killRefreshTimer = IntPtr.Zero;
+            try
+            {
+                if (_ctl.IsActive)
+                {
+                    StartClock();
+                    _dock.Apply(_ctl);
+                }
+            }
+            catch (Exception ex) { Log("kill-refresh: " + ex.Message); }
+            return 0;
+        }
+
+        /// <summary>Single-tap Pause terminates the focused app in background, clears running dot and refreshes RAM HUD.</summary>
+        private static void KillFocusedApp(AppEntry e)
+        {
+            if (e == null || e.IsSystem || e.AppId == null) return;
+            if (_runningApps != null && !e.IsRunning(_runningApps)) return;
+            double now = Efl.ecore_time_get();
+            if (now - _lastKillTime < 0.5) return;
+            _lastKillTime = now;
+            Log("kill-app: " + e.AppId + (e.KillFirst != null ? " (" + e.KillFirst + ")" : ""));
+            var cmd = new StringBuilder();
+            cmd.Append("/usr/bin/app_launcher -t ").Append(e.AppId).Append(" 2>/dev/null; ");
+            cmd.Append("/usr/bin/app_launcher -k ").Append(e.AppId).Append(" 2>/dev/null; ");
+            if (e.KillFirst != null)
+            {
+                cmd.Append("/usr/bin/app_launcher -t ").Append(e.KillFirst).Append(" 2>/dev/null; ");
+                cmd.Append("/usr/bin/app_launcher -k ").Append(e.KillFirst).Append(" 2>/dev/null; ");
+            }
+            if (e.FallbackAppId != null)
+            {
+                cmd.Append("/usr/bin/app_launcher -t ").Append(e.FallbackAppId).Append(" 2>/dev/null; ");
+                cmd.Append("/usr/bin/app_launcher -k ").Append(e.FallbackAppId).Append(" 2>/dev/null; ");
+            }
+            Libc.system("( " + cmd.ToString() + " ) >/dev/null 2>&1 &");
+            if (_runningApps != null)
+            {
+                if (e.AppId != null) _runningApps.Remove(e.AppId);
+                if (e.KillFirst != null) _runningApps.Remove(e.KillFirst);
+                if (e.FallbackAppId != null) _runningApps.Remove(e.FallbackAppId);
+                _appsDock.SetRunningApps(_runningApps);
+            }
+            StartClock();
+            _dock.Apply(_ctl);
+            if (_killRefreshTimer != IntPtr.Zero) Efl.ecore_timer_del(_killRefreshTimer);
+            _killRefreshTimer = Efl.ecore_timer_add(0.4, KillRefreshCb, IntPtr.Zero);
+            ResetIdle();
         }
 
         /// <summary>OK on an entry: open a page, switch input, or launch; everything but a page closes the dock.</summary>

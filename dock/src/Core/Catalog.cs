@@ -64,6 +64,16 @@ namespace Launcher.Core
             Slug = slug; Label = label; AppId = appId; FallbackAppId = fallbackAppId; Key = key;
             SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst;
         }
+
+        /// <summary>True when this app (or an associated process like Cobalt for TizenTube) is in the running set.</summary>
+        public bool IsRunning(HashSet<string> running)
+        {
+            if (running == null) return false;
+            if (AppId != null && running.Contains(AppId)) return true;
+            if (KillFirst != null && running.Contains(KillFirst)) return true;
+            if (FallbackAppId != null && running.Contains(FallbackAppId)) return true;
+            return false;
+        }
     }
 
     internal sealed class CatalogResult
@@ -125,6 +135,23 @@ namespace Launcher.Core
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
         /// <summary>True for a plain Tizen app id (letters, digits, dot, dash, underscore): safe to put on a command line.</summary>
         public static bool ValidAppId(string s) { return s != null && IsAppId(s); }
+
+        /// <summary>Parses the output of 'app_launcher -S' and returns a set of valid running app IDs.</summary>
+        public static HashSet<string> ParseRunningAppIds(string text)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            if (string.IsNullOrEmpty(text)) return set;
+            string[] lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (line.Length == 0 || line.StartsWith("appId", StringComparison.OrdinalIgnoreCase)) continue;
+                int paren = line.IndexOf('(');
+                string id = paren > 0 ? line.Substring(0, paren).Trim() : line;
+                if (ValidAppId(id)) set.Add(id);
+            }
+            return set;
+        }
         // Plain digits, at most five: it is only ever formatted back into a number string.
         private static bool IsSourceType(string s, out int value)
         {

@@ -29,6 +29,7 @@ namespace Launcher.Core
         }
 
         public int RecordSize { get { return _record; } }
+        public bool ReportRepeats { get; set; }
 
         public List<int> Feed(byte[] data, int count)
         {
@@ -60,7 +61,7 @@ namespace Launcher.Core
             int type = rec[_typeOffset] | (rec[_typeOffset + 1] << 8);
             int code = rec[_typeOffset + 2] | (rec[_typeOffset + 3] << 8);
             int value = rec[_typeOffset + 4] | (rec[_typeOffset + 5] << 8) | (rec[_typeOffset + 6] << 16) | (rec[_typeOffset + 7] << 24);
-            if (type == EvKey && value == 1) into.Add(code);
+            if (type == EvKey && (value == 1 || (ReportRepeats && value == 2))) into.Add(code);
         }
     }
 
@@ -113,6 +114,11 @@ namespace Launcher.Core
         {
             if (name == null || node == null) return;
             string lower = name.ToLowerInvariant();
+            if (lower.Contains("smart control"))
+            {
+                if (!lower.Contains("mouse")) into.Add(node);
+                return;
+            }
             if (Any(lower, Remote) && !Any(lower, Excluded)) into.Add(node);
         }
     }
