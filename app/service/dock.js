@@ -61,9 +61,10 @@ Dock.prototype.installed = function () {
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
+        var shortcut = null; try { shortcut = catalog.homeShortcut(s && s.homeShortcut); } catch (ignored) {}
+        return {homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+    } catch (e) { return {homeShortcut: null, enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -147,7 +148,7 @@ Dock.prototype.status = function (options) {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
+    var base = {homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
         entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
@@ -188,7 +189,7 @@ Dock.prototype.stopLines = function () {
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
-    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
+    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube, homeShortcut: this.readState().homeShortcut}).then(function (c) {
         try { fs.writeFileSync(self.appsFile, c.tsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -298,6 +299,27 @@ Dock.prototype.entries = function () {
 };
 Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }
+};
+
+// Change only the pinned shortcut. Physical Home handling and the root service stay as configured.
+Dock.prototype.setHomeShortcut = function (value, available) {
+    var self = this, shortcut;
+    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    if (shortcut && !(available || []).some(function (app) { return app.appId === shortcut.appId && app.show && !app.disabled; })) {
+        return Promise.reject(Error('Choose an installed, enabled app with a visible launch entry'));
+    }
+    if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
+    var previous = this.readState(); this.busy = true;
+    try { this.patchState({homeShortcut: shortcut}); }
+    catch (e) { this.busy = false; return Promise.reject(e); }
+    return (previous.enabled ? this.launch() : this.writeCatalog()).then(function () { return self.status(); }).catch(function (error) {
+        try { self.patchState({homeShortcut: previous.homeShortcut}); }
+        catch (restoreError) { throw Error(error.message + '; previous shortcut could not be restored: ' + restoreError.message); }
+        return (previous.enabled ? self.launch() : self.writeCatalog()).then(function () { throw error; }, function (restoreError) {
+            throw Error(error.message + '; previous setting saved but launcher recovery needs attention: ' + restoreError.message);
+        });
+    }).finally(function () { self.busy = false; });
 };
 
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.

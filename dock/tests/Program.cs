@@ -67,6 +67,14 @@ namespace Launcher.Tests
 
         private static int Main()
         {
+            T.Run("custom Home shortcut preserves its system position and Samsung fallback", () =>
+            {
+                var result = Catalog.Parse("customhome\tAeroTizen\tsys:DclHome001.Home\tcom.samsung.tv.csfs\n");
+                T.Eq(result.Entries.Length, 1, "custom shortcut parses");
+                T.True(result.Entries[0].IsSystem, "shortcut stays in the pinned system group");
+                T.Eq(result.Entries[0].AppId, "DclHome001.Home", "chosen application launches");
+                T.Eq(result.Entries[0].FallbackAppId, "com.samsung.tv.csfs", "Samsung Home remains the fallback");
+            });
             T.Run("catalog parses well-formed lines", () =>
             {
                 var r = Catalog.Parse("# comment\nnetflix\tNetflix\torg.tizen.netflix-app\n\ntvplus\tTV Plus\tcom.x.y\torg.tizen.tv-viewer\n");

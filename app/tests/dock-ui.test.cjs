@@ -4,6 +4,7 @@ const html = require('../service/dashboard.js')();
 const nodes = {};
 const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textContent: '', innerHTML: '', disabled: false, focus() {}});
 const calls = [];
+let homeSaveWait = null, homeSaveError = null, ignoreHomeSave = false, dockReadWait = null;
 let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false,
     entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}]};
 const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
@@ -11,10 +12,15 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         const body = opts && opts.body ? JSON.parse(opts.body) : null;
         calls.push({url, body});
         let data = {};
-        if (url === '/dock' && !body) data = dock;
+        if (url === '/dock' && !body) { data = dock; if (dockReadWait) await dockReadWait; }
         else if (url === '/dock') {
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
+            if (body.action === 'homeShortcut') {
+                if (homeSaveWait) await homeSaveWait;
+                if (homeSaveError) return {ok: false, json: async () => ({error: homeSaveError})};
+                if (!ignoreHomeSave) dock = Object.assign({}, dock, {homeShortcut: body.appId ? {appId: body.appId, label: body.label} : null});
+            }
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
             data = dock;
         } else if (url.startsWith('/apps')) data = {apps: [], summary: {total: 0}, source: 'package registry + public probe'};
@@ -120,6 +126,81 @@ const tick = () => new Promise(r => setImmediate(r));
     page = el('dockBody').innerHTML;
     assert.doesNotMatch(page, /TizenTube is not installed/); assert.match(page, /TizenTube is not in Samsung’s Home row/, 'installed but without a tile: the other chip'); assert.doesNotMatch(page, /data-dock-fix[^>]* disabled/);
     sandbox.inventory = [];
+
+    sandbox.inventory = [{appId: 'DclHome001.Home', name: 'AeroTizen', show: true, disabled: false},
+        {appId: 'hidden.service', name: 'Hidden helper', show: false, disabled: false}];
+    sandbox.renderDock(); page = el('dockBody').innerHTML;
+    assert.match(page, /Samsung Home \(default\)/); assert.match(page, /maxlength="12"/);
+    assert.match(page, /DclHome001.Home/); assert.ok(!page.includes('hidden.service'));
+    el('dockHomeApp').value = 'DclHome001.Home';
+    el('dock').onchange({target: {dataset: {dockHomeApp: ''}, value: 'DclHome001.Home'}});
+    assert.equal(el('dockHomeLabel').value, 'AeroTizen');
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}}); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body,
+        {action: 'homeShortcut', appId: 'DclHome001.Home', label: 'AeroTizen'});
+    el('dockHomeApp').value = '';
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}}); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'homeShortcut', appId: null, label: null});
+
+    // Saving can restart the launcher: keep the submitted fields visible while it runs.
+    sandbox.inventory.push({appId: 'org.tizen.netflix-app', name: 'Netflix', show: true, disabled: false});
+    el('dockHomeApp').value = 'org.tizen.netflix-app';
+    el('dockHomeLabel').value = 'Netflix';
+    let finishHomeSave;
+    homeSaveWait = new Promise(resolve => { finishHomeSave = resolve; });
+    const savingHome = el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}});
+    await tick();
+    assert.match(el('dockBody').innerHTML, /value="org\.tizen\.netflix-app" selected/, 'pending save must not reset the app to Samsung Home');
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="Netflix"/, 'pending save must keep the submitted label');
+    assert.match(el('dockBody').innerHTML, /data-dock-home-save disabled>Saving…/, 'saving is visible beside the fields');
+    finishHomeSave(); await savingHome; homeSaveWait = null;
+    assert.equal(sandbox.dockHomeDraft, null, 'only a confirmed save clears the draft');
+    await sandbox.loadDock();
+    assert.match(el('dockBody').innerHTML, /value="org\.tizen\.netflix-app" selected/, 'confirmed selection survives a status reload');
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="Netflix"/);
+
+    // An older GET response must not overwrite a save that finished after it began.
+    let finishDockRead;
+    dockReadWait = new Promise(resolve => { finishDockRead = resolve; });
+    const oldRead = sandbox.loadDock();
+    el('dockHomeLabel').value = 'Streaming';
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}});
+    finishDockRead(); await oldRead; dockReadWait = null;
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="Streaming"/, 'late status response cannot restore the old label');
+
+    // Status and inventory renders must not erase unsaved edits.
+    el('dockHomeApp').value = 'DclHome001.Home';
+    el('dock').onchange({target: {dataset: {dockHomeApp: ''}, value: 'DclHome001.Home'}});
+    el('dockHomeLabel').value = 'My Home';
+    el('dock').oninput({target: el('dockHomeLabel')});
+    await sandbox.loadDock();
+    assert.match(el('dockBody').innerHTML, /value="DclHome001\.Home" selected/);
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="My Home"/);
+    await sandbox.loadApps();
+    assert.match(el('dockBody').innerHTML, /value="DclHome001\.Home" selected/, 'even an inventory without the chosen app keeps the draft');
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="My Home"/);
+
+    // A service error is explained beside the unchanged draft, ready for correction.
+    homeSaveError = 'TV registry unavailable';
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}});
+    assert.match(el('dockBody').innerHTML, /value="DclHome001\.Home" selected/);
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="My Home"/);
+    assert.match(el('dockBody').innerHTML, /role="alert" >Save could not be confirmed\. TV registry unavailable/);
+    assert.equal(sandbox.operationEntries[0].state, 'warning');
+    homeSaveError = null;
+
+    // A 200 response containing the old setting is not a successful save.
+    ignoreHomeSave = true;
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}});
+    assert.equal(sandbox.operationEntries[0].state, 'warning');
+    assert.match(el('dockBody').innerHTML, /TV returned a different Home shortcut/);
+    assert.match(el('dockBody').innerHTML, /id="dockHomeLabel"[^>]*value="My Home"/);
+    ignoreHomeSave = false;
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockHomeSave: ''}})}});
+    assert.equal(sandbox.operationEntries[0].state, 'success');
+    assert.equal(sandbox.dockHomeDraft, null);
+    assert.equal(sandbox.dockHomeError, null);
+    assert.match(sandbox.previewTile({slug: 'customhome', label: '<Home>'}, 92, true, false), /&lt;Home&gt;/);
 
     // A package without the dock cannot be switched on.
     dock = Object.assign({}, dock, {installed: false});
