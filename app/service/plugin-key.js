@@ -1,6 +1,4 @@
 'use strict';
-// Public half of the key that signs the public plugin list (PEM text), or null while none is set. It is NOT the key that
-// signs Vetro updates (update-key.js): a compromised plugin list must not be able to push code as a Vetro update.
-// A plugin installs only with a verified list signature, or in Developer mode (also required when this key is absent).
-// Make the pair with `node scripts/vetro-plugin.cjs keygen <folder>`; sign the list with `... sign <index.json> <private.pem>`.
-module.exports = null;
+// Public verification key for the reviewed Vetro Shards catalog. Private key stays outside Git.
+// Separate from Vetro update-key.js; unsigned files still require Developer mode.
+module.exports = "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAuP0DErsztTVW6ULSC4m3\nl5p60g1zlZHmWLBxqSAlsXivEHH8ae2kJa0FMY/5OC2NTImgC0Udfu1mDnYGI3jd\npJ6lkxM26oOjyoR5YaPwO8s1HgDI156dGylcw7daUXjyKa6gt95WExosiyog3yhN\niljqBgRcD1vdtZKkcGHqGd7vKGqmrbx5C7iDkWtUEAv6AsJCapZEBUoEaMkn27va\nzLib5HRTN9+SfctJpHxFx59y9Tgx6hjfry0k+SHBQS/us8x+a535GVdbnRACDh7a\nFBye+YpEsJ8UE3fREdeYZB0TJAu2Xh337uo2jt423BsvCYaZR+BbrnOwxdedQJYN\n1iFr3dSgWeiJlGJpoavzYJRDmkIeAHQNKJSSWy6qjkW5WQZZ1iFkVSGne5l/sTeg\nuVKrtsprg2YW3yvQqrDbB75HNzcbTM3kq5xzxadhw2AYLV++UwtH6yCU+ZaEQmJQ\nj+mc5EivSPP37W1tWyW/J2BY8ugOfZoO3pm2PmoFEE0rAgMBAAE=\n-----END PUBLIC KEY-----\n";

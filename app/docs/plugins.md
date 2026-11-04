@@ -19,18 +19,18 @@ below, cannot be removed, and keeps running in safe mode. Plugins in the list ar
 
 ## Use plugins
 
-Open **Plugins** in the dashboard.
+Open **Vetro Shards** in the dashboard. Shards are plugins.
 
-- **Show available plugins** reads the public list (a file on GitHub) in your browser, so the browser
+- **Load plugin catalog** reads the public list (a file on GitHub) in your browser, so the browser
   needs internet; the TV does not. The list is also read once when the page opens.
 - **Install** downloads the bundle in the browser and uploads it to the TV. The TV checks it against the
   SHA-256 the list publishes and installs it **switched off**. Nothing in it runs until you switch it on.
 - **Update**: a plugin whose list version is higher shows "Update to x.y.z". If it was running it is switched
   off, replaced, and switched on again, unless the new version asks for different permissions: then it
   stays off and you review it first. No restart is needed.
-- **From a file**: pick a `.vplugin` file (needs Developer mode in a build with the list key). Nothing verifies who wrote it.
+- **From a file**: pick a `.vplugin` file (always needs Developer mode). Nothing verifies who wrote it.
 - **Remove** deletes the plugin and its saved settings. A running plugin must be switched off first.
-- A plugin with a page appears in the sidebar while it runs.
+- A running plugin with a page gets a tab inside Vetro Shards.
 - Folders copied by hand into the plugin folder (shown on the page, `/opt/usr/home/owner/share/vetro-plugins/`
   on the TV) are loaded at the next start of Vetro.
 
@@ -44,7 +44,7 @@ node scripts/vetro-plugin.cjs check my-plugin   # the checks the TV runs + loads
 node scripts/vetro-plugin.cjs pack my-plugin    # my-plugin-0.1.0.vplugin + SHA-256
 ```
 
-Try it: **Plugins → or from a file → pick the `.vplugin` → switch it on.**
+Try it: **Vetro Shards → Install from a file or develop a plugin → choose the `.vplugin` → switch it on.**
 Edit, `pack` again, install again: it updates in place and comes back switched off.
 
 ### manifest.json
@@ -58,7 +58,7 @@ Edit, `pack` again, install again: it updates in place and comes back switched o
 | `description`, `author` | no | up to 160 / 60 chars, shown in the list |
 | `permissions` | no | `[]` or `["exec"]` (see below) |
 | `main` | no | entry file, default `index.js` |
-| `ui` | no | `{ "label": "…" }` (1–24 chars): adds a page in the sidebar while the plugin runs |
+| `ui` | no | `{ "label": "…" }` (1–24 chars): adds a tab inside Vetro Shards while the plugin runs |
 
 ### index.js
 
@@ -112,7 +112,7 @@ A real boundary needs the plugin to run in a separate unprivileged process; that
 
 ## Signed list and Developer mode
 
-The public list is signed with its own key, **different from the key that signs Vetro updates**, so a compromised list
+The catalog publishing pipeline signs entries with its own key, **different from the key that signs Vetro updates**, so a compromised list
 cannot push code as a Vetro update. Each entry carries a `signature` over its id, version and bundle SHA-256.
 
 - A build that has the list key installs a plugin only with the list's signature, or when **Developer mode** is on
@@ -128,7 +128,7 @@ For the list's maintainer: `node scripts/vetro-plugin.cjs keygen <folder>` makes
 ## Publish on GitHub
 
 The dashboard reads a list from a GitHub repository: by default
-`https://raw.githubusercontent.com/andrearicci93/vetro-plugins/main/index.json`, changeable with the
+`https://raw.githubusercontent.com/andrearicci93/vetro-plugins/catalog/index.json`, changeable with the
 `VETRO_PLUGIN_REGISTRY` environment variable (so you can run a list of your own).
 
 The list repository is laid out like this:
@@ -142,11 +142,23 @@ scripts/build.cjs                packs plugins/ into dist/ and writes index.json
 
 To add or update a plugin:
 
-1. Put the plugin folder in `plugins/<id>/` (start from `node scripts/vetro-plugin.cjs new <id>` in the Vetro repo).
-2. Run `node scripts/build.cjs`. It writes `dist/<id>-<version>.vplugin` and the entry in `index.json`.
-3. Open a pull request with the source, `dist/` and `index.json`. CI fails if they are out of date. A maintainer spot-checks the code.
-4. A change needs a new `version`: the hash in `index.json` must always describe a published version. Users then
-   see "Update" in the dashboard.
+1. Put the plugin source in `plugins/<id>/`; run `npm ci --ignore-scripts` and `node scripts/build.cjs`.
+2. Open a PR with source, generated `dist/` and `index.json`. CI checks ES5 syntax,
+   bundle consistency, published-version immutability and increasing versions.
+3. Isolated smoke-test jobs exercise the factory, start, status, UI, stop and restart
+   on Node 4.4.7, 12.4.0 and 20. They have no signing key or TV connection.
+4. A maintainer reviews the source. `main` requires a passing aggregate check and a
+   code-owner approval; repository administrators retain their existing bypass.
+5. After merge, CI runs again. Only the protected `shards-catalog` deployment environment
+   can use the private key. The publisher verifies and signs the catalog without
+   executing plugin code, then pushes only public files to the `catalog` branch.
+6. Users refresh the catalog in Vetro Shards. Installs remain off until enabled;
+   updates remain a user action, not a forced installation.
+
+The deployed list is `catalog/index.json`; the source `main/index.json` remains a
+reproducible build input. A green PR does not publish anything. Repository workflows
+must be merged before this automatic publisher can run. Runtime smoke tests are
+contract checks, not a sandbox or a substitute for TV testing and source review.
 
 `index.json` entry:
 

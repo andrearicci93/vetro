@@ -104,8 +104,9 @@ No changes from this audit have been installed on a TV. Before final 0.5.0:
 2. Confirm default SDB is unreachable from the LAN; test the persistent dashboard toggle across restarts and
    confirm switching off disconnects network clients while the root helper remains healthy.
 3. Validate no-key/Developer mode plugin UI and the install/update/disable/remove cycle.
-4. Provision the intended update key and independently signed catalog. Both public-key
-   modules are still null; no unsigned updater bypass was introduced.
+4. Provision the intended update key and publish the independently signed catalog. The catalog
+   public key is now configured; its publication workflow still needs to merge and run.
+   The updater key remains null; no unsigned updater bypass was introduced.
 5. Exercise signed updater success/tamper refusal/rollback on that final key-bearing
    package. Earlier TV results and this audit's fixtures do not substitute for it.
 

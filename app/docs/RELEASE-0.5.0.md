@@ -139,7 +139,7 @@ operational artifacts remain outside tracked source.
 | --- | --- | --- | --- |
 | Plugin host, install, update, remove, safe mode | yes | host, install, signature and bundled-launcher fixtures | full cycle on the TV, including a reboot |
 | Plugin pages under sign-in | yes | session/routing fixtures; owner reports plugin works on TV | update and detailed lifecycle cases |
-| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | the list is currently unsigned; the package's plugin public key is null, so unsigned installs require Developer mode and are labelled as file installs |
+| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | candidate public key configured; signed-catalog pipeline in [catalog PR #2](https://github.com/andrearicci93/vetro-plugins/pull/2); merge workflow, complete first signed publication, then test installation without Developer mode |
 | Sign-in (PR #9, zerodevb) | yes | fixtures, live script pairing and owner-reported pairing pass on this Q80A | negative and expiry cases not individually recorded |
 | Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | release public key (currently null), dashboard download/apply, reboot after swap |
 | Restore the TV / Remove Vetro; Disable Samsung Home | yes | restore, Quick settings and UI fixtures | read-only restore plan and reversible actions on a TV; data erasure only after other tests |
