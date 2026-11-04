@@ -28,3 +28,7 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 - Copy is English, short, and says what changes on the TV. A feature that is not finished carries a **Beta** chip.
 - The mobile navigation sheet and details drawer isolate background controls while open, contain keyboard focus and return it on dismissal. Sidebar navigation exposes the current page; segmented views expose their pressed state.
 - Under 620 px the sidebar becomes a sheet: a top bar with the brand and a **Menu** button opens it, so every page, the service state and Sign out stay reachable. Tab rows and filter chips scroll sideways and run to the screen edge, which shows there is more.
+
+## Character and feedback
+
+Vetro should feel like a precise glass remote: light catches at the point of control, and feedback follows confirmed device state. The compact TV-link plate distinguishes local preview, connected TV, waiting for the root agent, and unreachable service. A single screen reveal acknowledges a real connection; it does not loop. Purpose icons help scan Quick settings. A captured remote key gains a keycap treatment; completed actions use a quiet checkmark, while uncertain results retain the warning treatment and history. Reduced motion keeps all state cues without movement. No sounds, invented progress, or new runtime assets are introduced.
