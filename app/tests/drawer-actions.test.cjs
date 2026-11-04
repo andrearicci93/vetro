@@ -9,7 +9,7 @@ class Node {
 }
 const el=id=>nodes[id]||(nodes[id]=new Node());
 const app={appId:'MCmYXNxgcu.DisneyPlusService',packageId:'MCmYXNxgcu',name:'DisneyPlusPreviewService',system:false,removable:true,disabled:false,show:false,onboot:false,autorestart:true};
-const sandbox={document:{getElementById:el,createElement:()=>new Node(),querySelectorAll:()=>[],addEventListener(){}},console,setInterval(){},setTimeout(){},clearTimeout(){},confirm:()=>true,fetch:async url=>({ok:true,json:async()=>url.startsWith('/apps')?{apps:[app],summary:{total:1}}:url==='/remap'?{rules:[]}:url==='/input'?{devices:[],status:{events:[]}}:url.startsWith('/monitor')?{ts:Date.now(),cpu:{cores:[]},memory:{},network:[],processes:[]}:{} })};
+const sandbox={document:{body:{classList:{contains:()=>false}},querySelector:el,getElementById:el,createElement:()=>new Node(),querySelectorAll:()=>[],addEventListener(){}},console,setInterval(){},setTimeout(){},clearTimeout(){},confirm:()=>true,fetch:async url=>({ok:true,json:async()=>url.startsWith('/apps')?{apps:[app],summary:{total:1}}:url==='/remap'?{rules:[]}:url==='/input'?{devices:[],status:{events:[]}}:url.startsWith('/monitor')?{ts:Date.now(),cpu:{cores:[]},memory:{},network:[],processes:[]}:{} })};
 vm.runInNewContext(require('../service/dashboard')().match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
 (async()=>{
  await new Promise(r=>setImmediate(r));sandbox.inventory=[app];sandbox.detail(app.appId);
