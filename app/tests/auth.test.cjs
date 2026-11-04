@@ -28,6 +28,7 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.equal((await call('POST', '/exec', tv)).handled, false);
   assert.equal((await call('GET', '/status', {ip: '127.0.0.1', headers: {host: '127.0.0.1:8099'}})).handled, false);
   assert.equal((await call('POST', '/exec')).code, 401);
+  assert.equal((await call('POST', '/sdb-access')).code, 401);
   assert.equal((await call('POST', '/exec', {ip: '127.0.0.1', headers: {origin: 'http://evil.example', host: '127.0.0.1:8099'}})).code, 401);
   const page = await call('GET', '/');
   assert.equal(page.code, 200); assert.match(page.body, /Pair with your TV/);
@@ -64,6 +65,7 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   const cookie = {cookie: 'vetro_session=' + ok.body.token};
   assert.equal((await call('POST', '/exec', {headers: Object.assign({origin: 'http://192.168.1.10:8099'}, cookie)})).handled, false);
   assert.equal((await call('POST', '/exec', {headers: {authorization: 'Bearer ' + ok.body.token}})).handled, false);
+  assert.equal((await call('POST', '/sdb-access', {headers: {authorization: 'Bearer ' + ok.body.token}})).handled, false);
   assert.equal((await call('POST', '/exec', {headers: Object.assign({origin: 'http://evil.example'}, cookie)})).code, 403);
   assert.equal((await call('GET', '/auth/devices', {headers: cookie})).body.devices[0].name, 'Mac');
   // Paired clients may reach the TV by name (tv.local, Home Assistant); the cookie stays bound to that host.

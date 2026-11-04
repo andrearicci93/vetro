@@ -1,6 +1,6 @@
 'use strict';
 // The plugin list key: a bundle installs with the list's signature, or in Developer mode; a wrong or missing signature
-// is refused once a key is configured; without a key the host behaves as before. Not the same key as the update key.
+// is refused regardless of whether a key is configured. Not the same key as the update key.
 const assert = require('assert').strict;
 const fs = require('fs');
 const os = require('os');
@@ -54,10 +54,12 @@ function call(h, method, url, body) {
     h3.remove('hello'); assert.equal(h3._readState().trust.hello, undefined);
     // a signature with no key configured cannot be checked, so it is not trusted
     assert.throws(() => host(null).install(b, h1, sign('hello', '1.0.0', h1)), /no plugin list key/);
-    // no key configured: as before
-    const h4 = host(null); assert.equal(h4.install(b, h1).trust, 'file');
+    // No key cannot silently bypass Developer mode.
+    const h4 = host(null); assert.throws(() => h4.install(b, h1), /Developer mode/);
+    await call(h4, 'POST', '/plugins/developer', '{"on":true}');
+    assert.equal(h4.install(b, h1).trust, 'file');
     assert.equal((await call(h4, 'GET', '/plugins')).body.signed, false);
     // "developer" is not a plugin id
     assert.throws(() => host(null).install(bundle('developer', '1.0.0')), /Invalid plugin id|Unknown|not allowed|reserved/i);
-    console.log('PASS plugin list signature: signed install, wrong key/version/hash/id refused, Developer mode, trust shown, no key = old behaviour');
+    console.log('PASS plugin list signature: signed install, wrong key/version/hash/id refused, Developer mode, trust shown, no-key installs also require Developer mode');
 })().catch(e => { console.error(e); process.exit(1); });

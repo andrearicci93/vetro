@@ -51,7 +51,12 @@ function collectFiles() {
         : PORT_FILES.includes(name) && port !== DEFAULT_PORT
         ? Buffer.from(fs.readFileSync(path.join(__dirname,name),'utf8').replace(/\b8099\b/g, String(port)))
         : fs.readFileSync(path.join(__dirname,name))}))
-        .concat(dockFiles.map(file => ({uri: encodeURIComponent(file.name), data: fs.readFileSync(file.source)})));
+        .concat(dockFiles.map(file => ({uri: encodeURIComponent(file.name), data: fs.readFileSync(file.source)})))
+        .concat([
+            {uri: 'LICENSE', data: fs.readFileSync(path.join(__dirname, '..', 'LICENSE'))},
+            {uri: 'THIRD_PARTY_NOTICES.md', data: fs.readFileSync(path.join(__dirname, '..', 'THIRD_PARTY_NOTICES.md'))},
+            {uri: encodeURIComponent('notices/LICENSE-phosphor.txt'), data: fs.readFileSync(path.join(__dirname, '..', 'dock/tools/glyphs/LICENSE-phosphor.txt'))}
+        ]);
 }
 function zip(files) {
     const chunks = [], directory = []; let offset = 0;

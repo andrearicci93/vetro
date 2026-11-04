@@ -7,6 +7,17 @@ trusted isolated LAN. Do not
 forward its ports, expose it publicly or enable unrestricted access from other
 networks. Root-agent authentication is a separate internal protocol from the dashboard sign-in.
 
+The experimental SDB tunnel accepts only loopback clients by default. A paired
+user can enable **Quick settings → Maintenance → Developer access → Allow SDB
+from the local network**. The choice persists across service restarts. SDB itself
+has no Vetro pairing: any reachable client then gets developer access to the TV.
+Turning the switch off disconnects existing network SDB clients while retaining
+Vetro's local streams. HTTP sign-out alone does not revoke SDB access.
+
+The integration keeps one IPv4 listener on port 26201 and rejects remote clients
+before processing SDB frames while the switch is off; the listener is not rebound
+when the switch changes. `VETRO_SDB_TUNNEL_PORT` changes the port, not authentication.
+
 Plugins (`app/docs/plugins.md`) are third-party code that runs inside Vetro's service process. There is **no sandbox**:
 the host guards failures, but a plugin can use everything Vetro can, including running commands as root, whatever
 permissions it declares (permissions are labels, not limits). They are off until switched on and can only be installed

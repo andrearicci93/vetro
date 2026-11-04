@@ -11,6 +11,7 @@ const M = { id: 'demo', name: 'Demo', version: '1', apiVersion: 1, permissions: 
 (async () => {
     const dir = tmp();
     const host = new PluginHost({ dir, stableMs: 10 });
+    host._writeState({enabled:{},developer:true});
     host.start();
 
     // install from a packed example: lands off, hash reported, no restart needed

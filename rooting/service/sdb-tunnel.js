@@ -14,10 +14,10 @@
 // arg1 on device->client packets). CNXN is answered locally, so sdbd sees one
 // handshake no matter how many clients are connected.
 //
-// This has the same reach as pointing Host PC IP at any LAN host would: a
-// client that can connect here can push and install on the TV. The LAN is
-// already fully trusted by the rest of Vetro (see SECURITY.md), so this adds
-// no new class of exposure, only another door into the same room.
+// SDB clients do not carry Vetro's HTTP pairing token. Keep the listener on
+// loopback by default. The integration binds one shared listener with remote
+// admission off until its persisted dashboard toggle is enabled; off revokes
+// remote clients without interrupting local streams (see SECURITY.md).
 
 var net = require('net');
 var SDB_PORT = require('./sdb.js').SDB_PORT;
@@ -338,13 +338,36 @@ Pool.prototype.close = function () {
 function TunnelServer(opts) {
     opts = opts || {};
     this.port = opts.port === undefined ? 0 : opts.port;
-    this.bindHost = opts.bindHost || '0.0.0.0';
+    this.bindHost = opts.bindHost || '127.0.0.1';
+    this.lanEnabled = opts.lanEnabled === true;
+    this.remoteClients = new Set();
     this.sdbHost = opts.sdbHost || '127.0.0.1';
     this.sdbPort = opts.sdbPort || SDB_PORT;
     this.log = opts.log || function () {};
     this._server = null;
     this._pool = null;
 }
+
+// The same pool and local client sockets stay alive when LAN access changes.
+// Refuse remote clients before parsing any SDB frame, and revoke existing ones on off.
+TunnelServer.prototype.acceptClient = function (client) {
+    var self = this, address = client.remoteAddress;
+    var local = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+    if (!local) {
+        if (!this.lanEnabled) { client.destroy(); return; }
+        this.remoteClients.add(client);
+        client.on('close', function () { self.remoteClients.delete(client); });
+    }
+    this._pool.addClient(client);
+};
+TunnelServer.prototype.setLan = function (enabled) {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid SDB access state');
+    this.lanEnabled = enabled;
+    if (!enabled) {
+        this.remoteClients.forEach(function (client) { client.destroy(); });
+        this.remoteClients.clear();
+    }
+};
 
 TunnelServer.prototype.start = function (cb) {
     var self = this;
@@ -366,7 +389,7 @@ TunnelServer.prototype.start = function (cb) {
     this._server = net.createServer(function (client) {
         // One multiplexed upstream for every client: sdbd sees a single host
         // connection, while each client keeps its own CNXN and stream ids.
-        self._pool.addClient(client);
+        self.acceptClient(client);
     });
     this._server.on('error', function (e) { done(e); });
     this._server.listen(this.port, this.bindHost, function () {
@@ -378,6 +401,7 @@ TunnelServer.prototype.start = function (cb) {
 };
 
 TunnelServer.prototype.close = function () {
+    this.setLan(false);
     if (this._pool) { this._pool.close(); this._pool = null; }
     if (this._server) { try { this._server.close(); } catch (e) {} this._server = null; }
 };

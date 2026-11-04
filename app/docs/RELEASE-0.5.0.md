@@ -78,6 +78,14 @@ values it read. Keep that distinction when interpreting the export. Its own pers
 `unknown`, as expected for a single snapshot; the separate owner report supplies the persistence result.
 Raw diagnostics and pairing credentials are kept outside tracked source.
 
+## Hardening after the candidate — 2026-11-04
+
+See [HARDENING-0.5.0.md](HARDENING-0.5.0.md) for corrections, regression coverage,
+PR attribution and release gates. The SDB tunnel now admits only loopback clients by default;
+LAN access requires the persistent switch in Quick settings → Maintenance → Developer access. The earlier
+LAN tunnel checks below refer to the previous installed candidate, not this default.
+Unsigned plugin installs now require Developer mode even without a catalog key.
+
 ## Q80A SDB tunnel validation — 2026-11-03
 
 Installed and verified candidate: `55cbb9fd001ac854ebe92eed68c1bf08238b49c2`.
@@ -115,7 +123,7 @@ operational artifacts remain outside tracked source.
 | --- | --- | --- | --- |
 | Plugin host, install, update, remove, safe mode | yes | host, install, signature and bundled-launcher fixtures | full cycle on the TV, including a reboot |
 | Plugin pages under sign-in | yes | session/routing fixtures; owner reports plugin works on TV | update and detailed lifecycle cases |
-| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | the list is currently unsigned; the package's plugin public key is null, so unsigned installs remain possible and are labelled as file installs |
+| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | the list is currently unsigned; the package's plugin public key is null, so unsigned installs require Developer mode and are labelled as file installs |
 | Sign-in (PR #9, zerodevb) | yes | fixtures, live script pairing and owner-reported pairing pass on this Q80A | negative and expiry cases not individually recorded |
 | Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | release public key (currently null), dashboard download/apply, reboot after swap |
 | Restore the TV / Remove Vetro; Disable Samsung Home | yes | restore, Quick settings and UI fixtures | read-only restore plan and reversible actions on a TV; data erasure only after other tests |
@@ -164,7 +172,7 @@ The complete unsigned integration WGT is for an installer that supplies signing,
 - Complete and record the TV session above, including a cold boot.
 - Configure the update public key and a separately signed plugin catalog; retain private keys outside Git.
 - Re-run the complete CI checks on the final source and build the final package from that revision.
-- Resolve remaining overlapping PR scope and update release notes; credit zerodevb for pairing.
+- Resolve remaining overlapping PR scope and update release notes. README now credits zerodevb, Firaenix and Merennor for the included work.
 
 ## Ads and privacy: what exists, what could go further
 

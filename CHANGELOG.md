@@ -2,33 +2,159 @@
 
 ## 0.5.0 — Security, Plugin and Launcher update (unreleased)
 
-The theme of this release: Vetro is closed to other people on your network (sign-in), opens up to add-ons (plugins), and stops more of what the TV sends out (ads and privacy). There was no 0.4.0 release: that work was preliminary and is part of this one.
+Pairing for the dashboard and API, plugins with the launcher bundled, stronger privacy controls,
+and safer restore and state changes. There was no 0.4.0 release: its preliminary work is included here.
 
-- **Launcher input and Home compatibility (#23, #24).** Navigation reads raw remote presses while the launcher is visible and discards their delayed compositor echoes. Optional **Still selection** jumps focus without icon zoom or lift. The bundled launcher's plugin API owns this setting; `/dock` remains an alias. On CoBA TVs the Home guard closes the sidebar and media windows as well as `csfs`; selecting Samsung Home cancels every remaining kill, and the Home tile tries CoBA's launcher with `csfs` as the command-line fallback. App and source launch requests wait for the dock's fade-out instead of blocking the animation. The native DLL is rebuilt from the integrated sources and continues to ship and update with Vetro. Desktop and fixture checks pass; the integrated behaviour still needs TV validation.
-- **The launcher is the first bundled plugin.** Bundled plugins ship in the package, are on by default, keep running in safe mode and cannot be removed or replaced by an installed bundle. The launcher's supervision and routes now run through the plugin host; `/dock` and `/dock/icon` stay as aliases, so the dashboard and scripts are unchanged. This is the groundwork for launchers written or customised by other people ([PLUGIN-ARCHITECTURE.md](app/docs/PLUGIN-ARCHITECTURE.md)). Covered by the test suite; not tried on a TV yet.
-- **Restore the TV and remove Vetro cleanly.** *Quick settings, Maintenance* has two new sections. **Restore the TV** first shows, read-only, what Vetro changed (launcher and Autorun Smart Hub, third-party plugins, remote interception, the Home Assistant bridge, the Quick settings groups, components disabled in the Task manager, the four Maintenance wins, HbbTV, domain blocking, the Home order, start-at-boot and restart flags) and puts it all back after one confirmation. Each step reads back on the TV, and a step that fails does not stop the others. Only components Vetro can show it disabled are switched on again: the ones disabled from the Task manager are now recorded in a list (`disabled-by-vetro`), the verified viewing-data set and apps you installed are covered, and what the firmware ships disabled (factory, hotel, aging apps) is left alone. Quick settings groups are Vetro's own switches, so their members are switched on even if the firmware had them off; the plan says so. What has no record, packages removed from the Task manager and values written in the TV settings pages, is listed as not restorable. **Remove Vetro** then offers, only once nothing is left to put back and after a second confirmation, to delete Vetro's saved data on the TV (the restore values, settings, rules, plugins and pairing, which a package uninstall leaves behind), and lists the ways to remove the app: the TV's Apps screen first, Apps2Samsung's desktop or Android app as an alternative, then Developer Mode and the Home Assistant device. New routes: `GET /restore` (plan) and `POST /restore` with `{"action":"run"}` or `{"action":"erase"}`.
-- **Disable Samsung Home, for third-party launchers.** *Quick settings, Home* has a new switch that disables Samsung's Home (`com.samsung.tv.csfs`) in one click, like the other Quick settings groups (boot and restart flags cleared and put back, included in *Restore the TV*). It does not turn on the Vetro launcher. The confirmation says that the Home key opens nothing afterwards and has to be mapped to the other launcher by hand with the Remapper. Not yet tried on a TV.
-- **TV screen and diagnostics:** progress names and elapsed time, early probe reports, model fallback from the TV's local API, Tizen version with its source, and guidance when root is unavailable (#88, #106, #107). Launcher status no longer fails when its log does not exist (#108).
-- **Dashboard fixes:** an unavailable, empty or slow app list offers Retry; Samsung Settings components are excluded from app-launch targets and rejected in new remap rules; an optional Home ad-picture host is offered separately from the exported blocklists (#109).
-- **Hotfixes from `main`:** the Tizen 10 web service start, the Node 4.4 TV adapter (Tizen 4) and the 0.3.5 fixes are merged in.
+### Sign-in, plugins and updates
 
-- **Update Vetro from the dashboard, launcher included.** *Diagnostics, Software update* checks GitHub when you press the button and replaces Vetro's files in place with the root helper: no computer, no Apps2Samsung, no Host PC IP change. The update is a file signed with a key whose public half is inside the package; anything else is refused. If the launcher's files changed it is restarted by the new version, and if the new version (or its launcher) does not start within four minutes, the old files are put back by themselves. Tested on a Q80A with a test key, including a deliberately broken update. A change to `config.xml` still needs a reinstall. [How it works](app/docs/UPDATING.md).
-- **Plugins: the list is signed, and the warnings say what is true.** A plugin runs inside Vetro and can do what Vetro can do, including running commands as root, whatever permissions it lists: permissions are labels, not limits, and the dashboard and the guide now say so. The public list is signed with its own key (not the update key); plugins the list has not signed, and plugins from a file, need **Developer mode** (off by default); each plugin shows where it came from. Running plugins in a separate unprivileged process works on the Q80A and is written up in [PLUGIN-ISOLATION.md](app/docs/PLUGIN-ISOLATION.md), but is not in this release.
-- **Launcher: the Samsung Home button opens Samsung Home even right after Home.** The launcher closes Samsung's Home for 2.8 seconds after each Home press so that the dock stays on screen. If you chose *Samsung Home* in that window, the Home that had just started was closed again and the button seemed to do nothing. Choosing it now cancels the pending closings. Reproduced and checked on a Q80A (button pressed 1.2 s and 2.7 s after Home). Samsung Home still takes about five seconds to appear, because it starts from nothing.
-- **Dashboard and API sign-in** ([#5](https://github.com/andrearicci93/vetro/issues/5)): unpaired LAN clients are refused. A browser or script pairs once with a 6-digit code that only the TV shows (the Vetro app displays it) and receives a random key, sent as an `HttpOnly`, `SameSite=Strict` cookie or `Authorization: Bearer`. Only key hashes are stored. Browser requests whose `Origin` does not match the host are refused, including pairing itself (cross-site requests); the no-key bypass for TV apps needs an IP or `localhost` host (DNS rebinding), while paired devices may use any host name; only one pairing runs at a time and wrong codes are limited. At most 20 devices can be paired (a 21st gets a clear error); key-file read or write failures are logged and reported to the pairing device. The TV widget on loopback and app-only mode need no pairing. `app/scripts` send `VETRO_TOKEN`. See [sign-in](app/docs/SIGN-IN.md). Written by zerodevb ([#9](https://github.com/andrearicci93/vetro/pull/9)). The sign-in code appears in the dashboard card of the TV screen with the name of the browser that asked, and plugin pages get a session limited to their own routes.
-- **Dashboard reorganised.** *MQTT* is now **Home Assistant** (house icon; the MQTT fields stay, since that is how it connects). **Plugins** moved under *Remapper* in the first group and the *Vetro* group is gone. A running plugin that has a page no longer adds an entry to the sidebar: it gets a horizontal tab next to **Manage** inside Plugins, and the Manage page was laid out again (a short visible notice about third-party code, the full text one click away, then *Installed*, then *Add a plugin*). **Quick settings** are split in tabs: *Privacy and ads*, *Voice*, *Memory* and *Maintenance* (storage and the automatic firmware update). Tabs answer the arrow keys, Home and End. Names: *Dashboard* is **Resource monitor**, *Diagnostics* is **Diagnostic report**, *History* is **Session history**, *Network* is **Connections**; the domain switch in Quick settings is **Enable domain blocking** (it applies every saved domain, not only the built-in list) and **Multi View** is no longer called MultiScreen there.
-- **Clear leftovers goes beyond installer packages.** On a Q80A with the TV on, a read-only survey of the disk found little that is safe to delete, so the list is short and closed: package files in the staging folder (as before), the rotated network logs `inm-manager.log.<n>` older than 7 days, Prime Video's `tmp_bitmap<n>` pictures older than a day, and the `Code Cache` and `GPUCache` folders under `apps_rw/<package>/data` of web apps that are not running. Files must be plain (no links, no extra hard links), old enough and not open (`fuser`); app caches and pictures are skipped when the list of running apps cannot be read; Vetro's own folders are never touched. The list shows where each item is before you confirm, and the folders themselves stay. Not touched on purpose: the cache folders of Netflix and YouTube (their crash handlers keep files there), `*.bak`, `*.old`, `/tmp`, logs that are open, anything under a package's `data` except those two cache folders. On the survey TV this is about 15 MiB of logs and pictures plus about 47 MiB of web caches. Each folder is read with one `find` and one `stat`, because a first version that started several processes per file did not finish in time on the test TV (340 Prime Video pictures). Tested against a scratch tree in `sh` and `dash`; the listing is being timed on a TV.
-- **App catalogue: names seen on three other TVs.** Following the wiki of apps collected from issues #14, #17 and #26: the privacy-choice screen (`coba.privacychoice`), the ad agent service (`adagent-service`) and the PISA control service count as advertising and tracking; the Amazon Alexa app, Salute, the device assistant, the Google full-screen app and the text-to-speech download service count as voice assistants; and an app installed from a store is no longer filed as a system service to keep.
-- **Quick settings and Startup now work together.** Turning a Quick settings group off disables its components and also clears *Start at boot* and *Restart automatically* on them, so a disabled component no longer sits in the Task manager Startup list with its flags still on. The previous flag values are kept on the TV (`/home/owner/share/vetro/quick-flags/<app>`) and put back when you turn the group on again; if that fails, the dashboard names the components to check. A group whose components are all disabled but some still start at boot or restart reads *Partly done · N still start at boot or restart* and turning it off again finishes the job. If the flags cannot be cleared, the whole change is rolled back. Both views read the same app list, so a change in one shows in the other at once, the component page in the Startup tab says which Quick settings switch covers it, and the Startup list is reloaded after a Quick settings change. Not tried on a TV: the flag clearing and restore run as a root script against the package database, like the Startup toggles.
-- **Pairing survives a reload.** If you reloaded the sign-in page while a code was on the TV screen, the new page had lost the pairing id: the code on the TV could not be confirmed and *Show a code* answered that a pairing was in progress, until the code expired two minutes later and a fresh one worked. The browser that asked for the code now keeps a short-lived `vetro_pair` cookie (2 minutes, `HttpOnly`, `SameSite=Strict`, path `/auth`); after a reload the page offers the code field again, and a different browser is told another device is pairing and for how long. A waiting code is still never replaced. The TV screen shows how long the code stays valid and removes it when that time is up, even if the service stops answering.
-- **Advertising list: the canary ad configuration host.** `rtb-config-canary.samsungads.com` is named by the ad agent (`adagent-service`) as well as by the ad framework and Samsung TV Plus, next to `rtb-config.samsungads.com` which was already listed. It is in the firmware strings; whether the TV asks for it, and what happens when it is blocked, was not tested.
-- **Plugins (API 1, experimental):** add-ons written by other people. A plugin is a folder or a single `.vplugin` text file with a manifest and an entry file; it is installed from the dashboard (a public list read from GitHub in the browser, or a file), lands switched off, and its code is not even read until you switch it on. Plugins can add a page to the sidebar (sandboxed frame, with a session limited to that plugin) and ask for the `exec` permission, which the dashboard shows before you install. The host guards every call, switches off a plugin that keeps failing, and starts the next boot in safe mode if one did not finish (plugins stay listed so the culprit can be switched off or removed). Updates come from the dashboard: a plugin with a newer version in the list shows *Update*, which turns it off, replaces it, keeps its saved settings and turns it on again, unless the new version asks for different permissions. A written warning says that plugins are third-party code, spot-checked and not audited, with no guarantee and no responsibility on the author of Vetro. Developer tools: `scripts/vetro-plugin.cjs new|check|pack|index` and a guide in `docs/plugins.md`. This is fault isolation, not a security sandbox. Checked on a test server with a fake list; not tried on a TV.
-- **Diagnostic export: component details (opt-in).** The Diagnostics panel has a new switch, *Include details about unrecognised components*. On, the report adds what the package manifests of the components Vetro has no description for declare: description, privileges, whether they ask to start at boot and whether the TV registered that (`differs`), and SHA-256 checksums of the manifest and of the programs that start at boot. It makes reports from other TVs comparable (the same checksum on two TVs is the same program) and would have shown the #25 and #26 startup problem at a glance. Off by default; a few hundred small files read in small steps at the lowest priority, stopping after about a minute. On the Q80A, with 220 packages, it took 3 s, the longest single read was 0.4 s, and other root commands waited at most 0.2 s. No paths, addresses, URLs or author names. The community report check (`parse_log.py`) now knows the `launcher`, `quickWins` and `components` sections and lists components whose start flags differ from their manifest.
-- **Diagnostic export: firmware and Tizen version read by the service.** Two of the last four community reports (#17, #25) had no model and no firmware, because those values come from a probe the Vetro page has to post. The service now reads the firmware (`/etc/prd_info.ini`) and the Tizen version (`/etc/tizen-release`) itself and says where each came from (`firmwareSource`, `tizenVersion`). The commercial model still needs the probe.
-- **Less work per request and per refresh.** Regular expressions are compiled once when a module loads instead of on every request or every line read (sign-in cookies, the router, the system monitor, the TV settings and input parsers, the dashboard's text helpers); the two `url.parse` calls for icons are gone; and the dashboard asks for independent data at the same time (app list with Remapper rules at start, app list with the restore plan, the Quick wins DNS check with the TV read). Commands to the TV still go one at a time, as before.
-- **Version in the sidebar:** the footer under the app count and the connection state now says which Vetro build is running (*Vetro 0.5.0*), read from the service's `/status`.
-- **Stop Ambient now holds.** On the Q80A, `screend` (Samsung's screen daemon) started `org.tizen.ambientapp` again within 2–7 s of any stop, so 0.3.0 could only offer a partial block. `ambient_app_enable=0` and `app_disable=true` in the package registry do not change that. What does: stop `screend`, kill the app, start `screend` again. `screend` does not launch the app by itself when it starts (only Samsung's `ambient_start.sh` does, at boot), so it stays off: it was still off after several minutes, and a launch made the way `ambient_start.sh` makes it was caught and ended within seconds. After each restart Vetro waits for that script to launch the app and ends it the same way. Checked on a Q80A with a real restart on 2026-10-25: Ambient was not running 337 s after the TV came back, with `screend` active and the picture normal. The win is now called **Stop Ambient** (no longer "partial block"). Opening Ambient yourself still works, and `screend` starts it again after you close it until the next stop.
-- **Stop viewing-data collection (new quick win):** stops `contents-recognition-service` (recognises the app, content type and channel on screen), `canalysis`, `pisa-service` and `adagent-service` (analytics and ads), `mirroring-recognition-manager`, `contents-ui-detector-service` and `contents-ott-detector-service` (find thumbnails and app screens in the picture; the second is started by the recogniser, not by a unit), `kpi-logging` (key presses), `emergency-log-transmitter` and `devicetracker`, now and again after every restart. `canalysis` and `pisa-service` are held off across restarts by the files their own start-up units check (`/opt/usr/share/systemd/system/canalysis-daemon` and `pisa-service`; the second also covers `adagent-service`); the others are stopped at each boot, twice, 45 s apart, because some start late. `data-service`, which collects KPI logs (its configuration lists remote keys, apps, channels, volume and the advertising ID as sources; its log endpoints are on `lcprd1.samsungcloudsolution.net`, which is the address the TV was connected to; what it sends is encrypted and was not inspected), is started again over D-Bus by other components; the win adds that host to the saved list of the domain filter, and says *Uploads can resume* until **Block ad and tracking domains** is on. If the filter is off, it is not switched on for you. Switching off starts the services again and removes the host if Vetro added it. Tried on a Q80A on 2026-10-25: a restart brought back every service that has no brake file, which is why the boot step exists. With the boot step installed, a second restart left all eight stopped from the first reading (112 s after boot) to the last (376 s); only `data-service` ran, as expected, and the second pass at about 170 s changed nothing visible. Some features that report back to Samsung, such as targeted suggestions, may stop updating. `canalysis` also works on logo recognition for HDMI inputs and `pisa-service` starts feature services and handles ad terms, so source recognition or some consent screens may change; neither was tested.
+- **Dashboard and API pairing** ([#5](https://github.com/andrearicci93/vetro/issues/5),
+  [#9](https://github.com/andrearicci93/vetro/pull/9), by **zerodevb**). LAN clients pair
+  using a six-digit code shown only on the TV, then authenticate with an HttpOnly,
+  SameSite=Strict cookie or a bearer token. Only key hashes are stored. Browser origin
+  checks protect pairing and authenticated requests; the TV-app bypass requires loopback
+  and an IP/localhost host. One pairing at a time, limited wrong attempts and at most
+  20 paired devices. Pending pairing survives a browser reload; file failures are reported.
+  The TV widget and app-only mode keep their existing access. [Sign-in guide](app/docs/SIGN-IN.md).
+- **Experimental plugins, API 1.** Install, update and remove `.vplugin` bundles from a
+  public catalog or a file; bundles land switched off. Updates preserve saved settings,
+  and changed permission labels require another enable decision. Repeated failures stop
+  a third-party plugin; an interrupted boot triggers safe mode. Plugin pages open as tabs
+  inside Plugins, in sandboxed frames with sessions restricted to their own routes.
+  Plugin code still runs inside Vetro with its full capabilities, including root commands:
+  permission labels and failure guards are not a security sandbox.
+  [Guide and developer tools](app/docs/plugins.md).
+- **Catalog signature verification.** Signed bundles use a catalog key separate from the
+  updater key; unsigned installs require **Developer mode**, off by default, even when
+  no catalog key is configured. Invalid signatures are refused. Each installed plugin
+  shows its provenance. The current catalog is unsigned and this candidate has no catalog
+  key; signature support does not mean the published catalog is already signed.
+- **The launcher is the first bundled plugin.** Its supervision and routes run through
+  the host; `/dock` and `/dock/icon` remain aliases. Bundled plugins run in safe mode and
+  cannot be removed or replaced by external bundles. The launcher still ships and updates
+  with Vetro; separate launcher updates through the catalog are not implemented.
+  [Architecture](app/docs/PLUGIN-ARCHITECTURE.md).
+- **Signed in-place updates, including the launcher.** Software update checks GitHub on
+  request, verifies the bundle, replaces files through the root helper and restarts the
+  launcher when needed. A failed startup triggers automatic rollback within four minutes;
+  manual rollback is also supported. Changes to `config.xml` still need a reinstall.
+  Update and deliberately broken-update rollback were tested earlier on a Q80A with a
+  test key. **This candidate has no update public key and refuses every update bundle.**
+  [Update guide](app/docs/UPDATING.md).
+
+### Launcher and remote compatibility
+
+- **CoBA Home and input responsiveness** ([#23](https://github.com/andrearicci93/vetro/pull/23),
+  [#24](https://github.com/andrearicci93/vetro/pull/24), adapted from **Firaenix**).
+  While visible, the launcher reads raw navigation keys and discards delayed compositor
+  echoes. Optional **Still selection** moves focus without icon zoom or lift. The Home
+  guard closes CoBA sidebar/media windows as well as `csfs`; choosing Samsung Home cancels
+  remaining closes. The Home tile tries CoBA's launcher with `csfs` as fallback. App and
+  source launches follow the fade-out. The rebuilt DLL remains part of the package.
+- **Samsung Home immediately after Home.** Choosing its tile no longer lets a pending
+  Home guard close it again. The earlier fix was reproduced on a Q80A; Samsung Home still
+  takes roughly four to five seconds to start on the tested setup.
+- **Disable Samsung Home for another launcher.** Quick settings → Home can disable
+  `com.samsung.tv.csfs`, clearing and later restoring its startup flags. This does not
+  enable the Vetro launcher: the owner must map Home to the other launcher separately.
+  The switch asks for confirmation and is included in Restore the TV.
+- **Compatibility fixes from `main`.** Includes Tizen 10 service startup, the 0.3.5 fixes,
+  and the Node 4.4 integration adapter/fallback for older TVs
+  ([#75](https://github.com/andrearicci93/vetro/pull/75), by **Merennor**).
+  Starting the service on Node 4.4 does not make the root helper supported there.
+
+### Quick settings, privacy and maintenance
+
+- **Quick settings and Startup share state.** Disabling a group clears its members'
+  boot/restart flags and saves the original values; enabling restores them, including
+  components enabled elsewhere in the meantime. A disabled group with remaining startup
+  flags shows a partial result. Failed flag clearing rolls back the change, and failed
+  restoration names the affected components.
+- **Restore the TV / Remove Vetro.** A read-only plan lists restorable changes to the
+  launcher/Smart Hub autorun, plugins, remote interception, Home Assistant, SDB access,
+  groups, individually disabled components, maintenance wins, HbbTV, DNS, Home order and
+  startup flags. Steps continue after individual failures and report their results.
+  Unreadable state preserves backups and blocks data removal; pending autorun restoration
+  remains visible even with the launcher off. Firmware-disabled components outside Vetro's
+  recorded/verified scope stay alone; Quick settings groups explicitly restore their
+  members. Removed packages, unrecorded TV-setting values and plugin-owned changes cannot
+  be restored. A separate confirmation removes saved data and pairing after restore checks.
+- **SDB LAN access toggle.** Quick settings → Maintenance → Developer access offers
+  **Allow SDB from the local network**, off by default and persistent across restarts.
+  Enabling requires confirmation through the authenticated dashboard. Turning it off
+  disconnects network SDB clients while preserving Vetro's local connection; Restore
+  turns it off too. Admitted SDB clients have developer access without HTTP pairing.
+  The tunnel multiplexes clients through one upstream and handles SDK file-sync framing.
+  [Security](SECURITY.md) · [Integration guide](rooting/README.md).
+- **Stop Ambient.** The Q80A stop now cycles `screend` around the app termination so the
+  firmware does not immediately restart Ambient. At boot Vetro waits for Samsung's
+  launch and stops it again. A Q80A restart check kept Ambient stopped with `screend`
+  active and the picture normal. Opening Ambient manually remains possible.
+- **Stop viewing-data collection.** Stops recognition, analytics, ad and usage-log
+  services now and at boot, with a second pass 45 seconds later for late starters.
+  The usage-log host is added to the saved domain list without enabling DNS blocking
+  behind the owner's back. Undo restarts services and removes only the host Vetro added.
+  Earlier Q80A restart checks confirmed the intended services stayed stopped; `data-service`
+  can still run, so uploads may resume unless domain blocking is enabled. Recognition,
+  targeted suggestions and consent-screen effects remain firmware-dependent and unverified.
+- **Undo during startup is respected.** Pending telemetry-stop retries and Ambient
+  polling stop enforcing a choice after it is undone. Synchronous storage errors release
+  the Quick wins mutation lock instead of leaving all later changes busy.
+- **Clear leftovers.** Extends staging-package cleanup to old rotated network logs,
+  Prime Video temporary pictures and closed web apps' `Code Cache`/`GPUCache` contents.
+  Rules exclude symlinks, extra hard links, open files and Vetro's own data; unreadable
+  running-app state skips app caches/pictures. Listing batches directory reads instead
+  of spawning processes per file. Native Netflix/YouTube caches and arbitrary app data
+  remain excluded. Shell fixtures cover listing and deletion; the consolidated cleanup
+  still needs TV validation.
+- **Catalog and domain candidates.** Adds app classifications from reports #14, #17 and
+  #26, and `rtb-config-canary.samsungads.com` as a firmware-derived, untested candidate.
+  The separately offered `cdn-stv.adgrx.com` Home-picture host (#79/#109) stays out of
+  exported default lists; blocking it alone does not remove already cached pictures.
+
+### Dashboard, diagnostics and performance
+
+- **Navigation by task.** MQTT becomes Home Assistant; Plugins sits under Remapper.
+  Quick settings uses Privacy and ads, Voice, Memory, Maintenance and Home tabs with
+  keyboard navigation. Views use Resource monitor, Diagnostic report, Session history
+  and Connections; the sidebar shows the running version.
+- **App-list recovery and launch targets** (#89, #100, #109). Failed, empty or slow
+  inventory reads show their state and Retry. Samsung Settings components are excluded
+  from launch pickers and refused in new remaps; old rules load but skip those actions.
+- **TV screen and device information** (#88, #106, #107). Named steps, elapsed time,
+  early probe reports and root guidance distinguish unavailable/unsupported root from
+  startup. Firmware and Tizen version can be read by the service; a missing model can
+  fall back to the TV's local API. Values retain their source. Missing launcher logs
+  no longer turn a not-running status into a probe failure (#82/#108).
+- **Opt-in component diagnostics.** Export manifest descriptions, requested privileges,
+  boot/restart registration differences and checksums for unrecognised components,
+  without file contents or paths. Reads are bounded and low priority; a Q80A sample
+  with 220 packages took about three seconds. Community analysis understands launcher,
+  Quick wins and component sections.
+- **Fresh state with less repeated work.** Inventory invalidation prevents pre-mutation
+  reads from satisfying readback. Concurrent forced monitor reads share a fresh sample;
+  post-action app/process refreshes and independent boot jobs start together. Existing
+  improvements compile regular expressions once, remove icon URL-parser overhead and
+  overlap independent startup, restore and DNS reads. TV commands and dependent
+  write/readback/rollback chains remain ordered. No new TV latency benchmark is claimed.
+
+### Credits and validation
+
+README now credits zerodevb (#9), Firaenix (#23/#24) and Merennor (#75), including
+adapted contributions whose PR remains open. Existing contributor/upstream credits
+remain intact. Both WGT variants carry full license notices; integration also carries
+the root-research notice.
+
+Local checks: **83 application suites, 13 integration suites, 5,075 native launcher
+checks, 19 diagnostic-parser tests and 6 boot-recorder tests**; unsigned app-only and
+integration builds, ZIP integrity, release hygiene/architecture and `git diff --check`.
+Linux fixture corrections from #105 are included. Hosted CI on the final commit is separate.
+
+The owner reported launcher, plugin, pairing and persistence success on the earlier
+Q80A candidate; SDK/Apps2Samsung SDB transfer checks also passed on that installation.
+**The hardening changes and SDB toggle have not been installed on a TV.** Restore,
+data erasure, final plugin lifecycle cases and signed self-update remain release gates.
+See the [release test record](app/docs/RELEASE-0.5.0.md) and
+[hardening audit](app/docs/HARDENING-0.5.0.md) for exact revisions, evidence and limits.
 
 ## 0.3.5 — 2026-10-29
 

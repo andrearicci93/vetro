@@ -81,7 +81,7 @@ function PluginHost(opts) {
     this.registry = opts.registry || null;     // URL of the plugin list the dashboard shows
     this.external = opts.external !== false;   // load plugin folders from dir
     // Public key of the plugin list (PEM), a different key from the one that signs Vetro updates. Without it
-    // signatures cannot be checked and installs behave as before.
+    // signatures cannot be checked; unsigned installs still require Developer mode.
     this.registryKey = opts.registryKey || null;
     this.services = opts.services || {};        // what Vetro lends to bundled plugins only (ctx.vetro)
     this.entries = Object.create(null);
@@ -256,7 +256,7 @@ PluginHost.prototype._trustFor = function (id, version, sha, signature) {
         if (!ok) throw new Error('The signature does not match the plugin list key');
         return 'registry';
     }
-    if (this.registryKey && !this._readState().developer) {
+    if (!this._readState().developer) {
         throw new Error('This plugin is not signed by the plugin list. Switch on Developer mode to install it anyway.');
     }
     return 'file';

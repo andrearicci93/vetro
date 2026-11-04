@@ -15,3 +15,5 @@ assert(appPlatform.includes('app-only'));
 assert(tvPlatform.includes('tv-integration'));
 assert(!standalone.some(x=>decodeURIComponent(x.uri).startsWith('payload/')));
 console.log('PASS integration package boundary: one TV adapter, active payloads, no certificates or historical tools; app-only remains isolated');
+
+assert.ok(require('../build.cjs').collectIntegration().some(f => decodeURIComponent(f.uri) === 'notices/LICENSE-samsung-tv-root.txt' && f.data.equals(require('fs').readFileSync(require('path').join(__dirname, '../tools/samsung-tv-root-master/LICENSE')))), 'integration retains the complete upstream notice');

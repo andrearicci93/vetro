@@ -108,6 +108,21 @@ const noWait=()=>Promise.resolve();
  t=tv();w=new qw.Wins(t.execute,{fs:store(),sleep:noWait,bootId:()=>'b'});
  assert.deepEqual(await w.boot(fake),[]);assert.equal(calls.length,0,'not chosen: untouched');
  w.remember('hbbtv',true);assert.deepEqual(await w.boot(fake),['hbbtv']);
+ // Cancelling a saved choice during boot must cancel the delayed enforcement too.
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:async()=>{await w.apply('telemetry',false);},bootId:()=>'cancel-t',skipAmbient:true});
+ w.remember('telemetry',true);did=await w.boot(null);
+ assert.equal(t.s.telOffRuns,1,'the delayed pass must not stop collectors after undo');
+ assert.equal(t.s.telBrakes,0);assert.deepEqual(did,[]);
+ t=tv({ambRun:false});io=store();w=new qw.Wins(t.execute,{fs:io,sleep:async()=>{await w.apply('ambient',false);},bootId:()=>'cancel-a'});
+ w.remember('ambient',true);did=await w.boot(null);
+ assert.equal(t.s.ambRun,true,'undo during boot polling keeps Ambient running');assert.deepEqual(did,[]);
+ // A synchronous storage failure must release the mutation lock.
+ w=new qw.Wins(t.execute,{fs:{readFileSync(){throw Error('absent')},writeFileSync(){throw Error('disk full')}}});
+ await assert.rejects(w.apply('ambient',true),/disk full/);assert.equal(w.busy,false);
+ // Editing another win must not suppress an independent boot job.
+ t=tv();w=new qw.Wins(t.execute,{fs:store(),sleep:noWait,bootId:()=>'independent',skipAmbient:true});
+ w.remember('telemetry',true);w.busy=true;w.changing='firmware';
+ assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
  // Misuse
  await assert.rejects(w.apply('nope',true),/Unknown/);await assert.rejects(w.apply('firmware','yes'),/Invalid/);
  assert.throws(()=>w.remember('firmware',true),/Unknown/);

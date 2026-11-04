@@ -98,3 +98,11 @@ Source: https://phosphoricons.com
 License: MIT. The bold glyphs in `dock/tools/glyphs/` (gear, television, HDMI
 numbers, sign-in) are used to draw the dock's Settings, Source and input icons.
 The full notice is kept in `dock/tools/glyphs/LICENSE-phosphor.txt`.
+
+## Packaged notices
+
+Both WGT variants include this file, Vetro's `LICENSE` and the complete Phosphor
+notice at `notices/LICENSE-phosphor.txt`. The integration WGT also includes the
+root research notice at `notices/LICENSE-samsung-tv-root.txt`; remote-helper notices
+remain alongside the payload. Contributor acknowledgements are in the repository
+README and release changelog, including adapted contributions from still-open PRs.

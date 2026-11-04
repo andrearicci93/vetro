@@ -22,6 +22,7 @@ var SDB_TUNNEL_PORT_ERROR = null;
     SDB_TUNNEL_PORT = n;
 })();
 var tunnelServer = null;
+var SDB_ACCESS_FILE = '/opt/usr/home/owner/share/vetro-sdb-access.json';
 var debloatCommands = require('./debloat-commands.js');
 var STAGE = '/home/owner/share/tmp/sdk_tools';
 
@@ -235,13 +236,42 @@ function sdbTarget() {
     return { host: '127.0.0.1', port: 26101, timeout: 8000 };
 }
 
+function readSdbPreference() {
+    try {
+        var saved = JSON.parse(fs.readFileSync(SDB_ACCESS_FILE, 'utf8'));
+        if (!saved || typeof saved.enabled !== 'boolean') throw new Error('Invalid saved SDB access state');
+        return saved.enabled;
+    } catch (e) { if (e.code === 'ENOENT') return false; throw e; }
+}
+function sdbAccess() {
+    return {available: !!tunnelServer && state.sdbTunnel.listening === true,
+        enabled: readSdbPreference(), active: !!tunnelServer && tunnelServer.lanEnabled === true && state.sdbTunnel.listening === true,
+        port: state.sdbTunnel.port || SDB_TUNNEL_PORT};
+}
+function setSdbAccess(enabled) {
+    return Promise.resolve().then(function () {
+        if (typeof enabled !== 'boolean') throw new Error('Invalid SDB access state');
+        if (enabled && (!tunnelServer || !state.sdbTunnel.listening)) throw new Error('SDB tunnel is not available');
+        var tmp = SDB_ACCESS_FILE + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify({enabled: enabled}) + '\n', {mode: 384});
+        fs.renameSync(tmp, SDB_ACCESS_FILE);
+        if (tunnelServer) tunnelServer.setLan(enabled);
+        var result = sdbAccess();
+        if (result.enabled !== enabled || (tunnelServer && result.active !== enabled)) throw new Error('SDB access was not confirmed');
+        return result;
+    });
+}
+
 function startTunnel(cb) {
     if (SDB_TUNNEL_PORT_ERROR) {
         state.sdbTunnel = { listening: false, error: SDB_TUNNEL_PORT_ERROR };
         cb();
         return;
     }
-    var server = new TunnelServer({ port: SDB_TUNNEL_PORT });
+    var enabled = false;
+    try { enabled = readSdbPreference(); } catch (e) { /* unreadable settings never grant LAN access */ }
+    // One shared listener/pool: the admission gate changes without interrupting Vetro's local SDB streams.
+    var server = new TunnelServer({ port: SDB_TUNNEL_PORT, bindHost: '0.0.0.0', lanEnabled: enabled });
     tunnelServer = server;
     server.start(function (err, port) {
         // A stop() during startup replaced the server: do not resume launching.
@@ -459,4 +489,4 @@ function setApplicationsEnabled(appIds, enabled) {
     } catch (error) { return Promise.reject(error); }
 }
 module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute,
-    install: install, setApplicationsEnabled: setApplicationsEnabled};
+    sdbAccess: sdbAccess, setSdbAccess: setSdbAccess, install: install, setApplicationsEnabled: setApplicationsEnabled};

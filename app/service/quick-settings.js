@@ -112,17 +112,18 @@ function running(text) {
 // Turning a group back on gives its members the boot and auto-restart values they had before it was turned off.
 // This is best effort: the components are enabled already, so a failure is reported rather than undone.
 function restoreFlagsFor(result, deps) {
-    if (!result.changed.length) return Promise.resolve(result);
-    return deps.execute(restoreFlagsCommand(result.changed), 60000).then(function (r) {
+    var ids = result.state.enabled;
+    if (!ids.length) return Promise.resolve(result);
+    return deps.execute(restoreFlagsCommand(ids), 60000).then(function (r) {
         var codes = {};
         String(r.stdout || '').split('\n').forEach(function (l) { var m = RESTORE_FLAGS_FOR_RE.exec(l.trim()); if (m) codes[m[1]] = m[2]; });
-        result.changed.forEach(function (id) { if (codes[id] === '0') result.flagsRestored.push(id); else if (codes[id] !== 'none') result.flagsNotRestored.push(id); });
+        ids.forEach(function (id) { if (codes[id] === '0') result.flagsRestored.push(id); else if (codes[id] !== 'none') result.flagsNotRestored.push(id); });
         deps.invalidate();
         return deps.inventory(true);
     }).then(function (d) {
         if (!d.registryError) { result.apps = d.apps; result.state = state(find(result.id), d.apps); }
         return result;
-    }).catch(function () { result.flagsNotRestored = result.changed.slice(); result.flagsRestored = []; return result; });
+    }).catch(function () { result.flagsNotRestored = ids.slice(); result.flagsRestored = []; return result; });
 }
 
 // deps: execute(cmd, timeoutMs), inventory(refresh) -> {apps, registryError}, invalidate().

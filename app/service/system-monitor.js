@@ -57,7 +57,10 @@ function parseUnits(text){var split=String(text||'').split('__FILES__'),units={}
 function Monitor(execute){this.execute=execute;this.streams={};this.storage=null;this.storageAt=0;this.unitsAt=0;this.units=null;this.unitsPending=null;}
 // Separate deltas and in-flight requests prevent summary reads from corrupting
 // per-process rates. Default full preserves the existing diagnostic API.
-Monitor.prototype.snapshot=function(scope,force){var self=this;scope=scope||'full';if(scope!=='full'&&scope!=='summary')return Promise.reject(Error('Unsupported monitor scope'));var stream=this.streams[scope]||(this.streams[scope]={});if(force){if(stream.pending)return stream.pending.catch(function(){}).then(function(){return self.snapshot(scope,true)});stream.cached=null;}if(stream.cached&&Date.now()-stream.cached.ts<2000)return Promise.resolve(stream.cached);if(stream.pending)return stream.pending;
+Monitor.prototype.snapshot=function(scope,force){var self=this;scope=scope||'full';if(scope!=='full'&&scope!=='summary')return Promise.reject(Error('Unsupported monitor scope'));var stream=this.streams[scope]||(this.streams[scope]={});if(force){if(stream.pending){
+ if(!stream.refreshPending)stream.refreshPending=stream.pending.catch(function(){}).then(function(){stream.refreshPending=null;return self.snapshot(scope,true)});
+ return stream.refreshPending;
+}stream.cached=null;}if(stream.cached&&Date.now()-stream.cached.ts<2000)return Promise.resolve(stream.cached);if(stream.pending)return stream.pending;
 var withStorage=!this.storage||Date.now()-this.storageAt>=30000,cmd=LIGHT+(scope==='full'?'; '+DETAILS:'')+(withStorage?'; '+STORAGE:'');
 stream.pending=this.execute(cmd,15000).then(function(r){if(r.exit_code||r.timed_out)throw execError.failed(r,'snapshot unavailable');var result=parse(r.stdout,stream.previous,Date.now());if(!result.sample.cpu.cpu||!result.data.memory.totalBytes||(scope==='full'&&!result.data.processCount))throw execError.coded('incomplete','incomplete system snapshot');
  if(withStorage&&result.data.storage){self.storage=result.data.storage;self.storageAt=result.data.ts;}if(result.data.bootId&&self.storageBoot&&self.storageBoot!==result.data.bootId&&!withStorage){self.storage=null;self.storageAt=0;}self.storageBoot=result.data.bootId;

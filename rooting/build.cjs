@@ -29,6 +29,7 @@ function collectIntegration() {
     fs.readdirSync(path.join(__dirname,'payload')).sort().forEach(name => {
         files.push({uri: encodeURIComponent('payload/' + name), data: fs.readFileSync(path.join(__dirname,'payload',name))});
     });
+    files.push({uri: encodeURIComponent('notices/LICENSE-samsung-tv-root.txt'), data: fs.readFileSync(path.join(__dirname, 'tools/samsung-tv-root-master/LICENSE'))});
     return files;
 }
 

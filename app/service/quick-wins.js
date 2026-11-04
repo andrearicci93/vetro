@@ -117,6 +117,7 @@ function Wins(execute, options) {
     // The local DNS filter (local-dns.js): status() and apply(enabled, domains). Without it the host is not blocked.
     this.dns = options.dns || null;
     this.busy = false;
+    this.changing = null;
 }
 
 // What Vetro itself switched on, and the values to put back. Plain JSON in the share folder.
@@ -168,9 +169,11 @@ Wins.prototype.apply = function (id, on) {
     if (IDS.indexOf(id) < 0) return Promise.reject(Error('Unknown quick win'));
     if (typeof on !== 'boolean') return Promise.reject(Error('Invalid state'));
     if (this.busy) return Promise.reject(Error('A quick win is already being changed'));
-    this.busy = true;
-    var task = id === 'firmware' ? this.firmware(on) : id === 'multiscreen' ? this.multiscreen(on) : id === 'telemetry' ? this.telemetry(on) : this.ambient(on);
-    return task.then(function (result) { self.busy = false; return result; }, function (e) { self.busy = false; throw e; });
+    this.busy = true; this.changing = id;
+    var task = Promise.resolve().then(function () {
+        return id === 'firmware' ? self.firmware(on) : id === 'multiscreen' ? self.multiscreen(on) : id === 'telemetry' ? self.telemetry(on) : self.ambient(on);
+    });
+    return task.then(function (result) { self.busy = false; self.changing = null; return result; }, function (e) { self.busy = false; self.changing = null; throw e; });
 };
 
 // Auto update: readback after the write, and the previous value is put back if the TV does not confirm it.
@@ -258,15 +261,20 @@ Wins.prototype.telemetry = function (on) {
 Wins.prototype.boot = function (hbbtv) {
     var self = this, mine = this.load(), did = [], id = this.bootId();
     var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function () {}) : Promise.resolve();
-    return start.then(function () { return Promise.all([self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did)]); }).then(function () { return did; });
+    return Promise.all([start, self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did)]).then(function () { return did; });
 };
 
 // Some of these services start a minute or more after the TV answers, so the stop is repeated once.
 Wins.prototype.bootTelemetry = function (mine, id, did) {
     var self = this;
     if (!mine.telemetry || (id && mine.telemetryBoot === id)) return Promise.resolve();
-    function pass() { return self.execute(wrap(TELEMETRY_OFF), 30000).then(function () {}, function () {}); }
-    return pass().then(function () { return self.sleep(TELEMETRY_RETRY_MS); }).then(pass).then(function () {
+    function chosen() { return self.changing !== 'telemetry' && self.load().telemetry; }
+    function pass() {
+        if (!chosen()) return Promise.resolve(false);
+        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { check(r); return true; }, function () { return false; });
+    }
+    return pass().then(function () { return self.sleep(TELEMETRY_RETRY_MS); }).then(pass).then(function (applied) {
+        if (!applied || !chosen()) return;
         did.push('telemetry');
         if (id) self.save({telemetryBoot: id});
     });
@@ -277,9 +285,13 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
     if (self.skipAmbient || !mine.ambient || (id && mine.ambientBoot === id)) return Promise.resolve();
     var n = 0;
     function poll() {
+        if (self.changing === 'ambient' || !self.load().ambient) return Promise.resolve();
         return self.execute(wrap(running(AMBIENT_ID) + ' && echo up || echo down'), 8000).then(function (r) {
+            if (self.changing === 'ambient' || !self.load().ambient) return;
             if (UP_RE.test(r.stdout || '') && !r.exit_code) {
-                return self.execute(wrap(AMBIENT_OFF + '\nsleep 1\ntrue'), 15000).then(function () {
+                return self.execute(wrap(AMBIENT_OFF + '\nsleep 1\ntrue'), 15000).then(function (r) {
+                    check(r);
+                    if (!self.load().ambient) return;
                     did.push('ambient');
                     if (id) self.save({ambientBoot: id});
                 });

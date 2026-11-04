@@ -70,6 +70,11 @@ function harness(opts){
   assert.ok(!h.calls.some(c=>/quick-flags/.test(c)),'no flag script runs when the disable step failed');assert.deepEqual(h.flags[alexa[0]],f[alexa[0]],'live flags untouched');
   assert.throws(()=>quick.clearFlagsCommand(['a;b']),/Invalid app ID/);assert.throws(()=>quick.restoreFlagsCommand(['$(x)']),/Invalid app ID/);
  }
+ // A component enabled elsewhere still needs its saved Quick settings flags restored.
+ h=harness({disabled:[]});h.saved[alexa[0]]={onboot:true,autorestart:false};
+ r=await quick.apply('alexa',false,h.deps);
+ assert.deepEqual(r.changed,[]);assert.deepEqual(r.flagsRestored,[alexa[0]]);
+ assert.equal(h.flags[alexa[0]].onboot,true);assert.deepEqual(h.saved,{});
  // Area groups: members are whatever the Task manager files under the area, minus role keep and protected components
  {
   const trk=[{appId:'t.one',packageId:'t.one',area:'tracking',role:'tracking',disabled:false},{appId:'org.tizen.pisa-control-service',packageId:'com.samsung.tv.pisa-service',area:'tracking',role:'tracking',disabled:true},

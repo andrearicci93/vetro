@@ -115,7 +115,7 @@ cannot push code as a Vetro update. Each entry carries a `signature` over its id
   (Plugins, Add a plugin). Developer mode is off by default and asks for confirmation. It is what you need for your own
   plugins and for **or from a file**.
 - Each installed plugin shows where it came from: signed by the plugin list, installed from a file, or copied in by hand.
-- A build without a list key behaves as before (SHA-256 only), and says so.
+- A build without a list key cannot verify signatures. Unsigned installs require Developer mode even in that build; SHA-256 alone does not establish who published a plugin.
 
 For the list's maintainer: `node scripts/vetro-plugin.cjs keygen <folder>` makes the pair (paste the public key into
 `app/service/plugin-key.js`); `node scripts/vetro-plugin.cjs sign <index.json> <private.pem> [dist-folder]` adds the

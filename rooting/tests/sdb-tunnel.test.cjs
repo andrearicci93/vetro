@@ -2,6 +2,7 @@
 const assert = require('assert').strict;
 const net = require('net');
 const {TunnelServer} = require('../service/sdb-tunnel.js');
+assert.equal(new TunnelServer().bindHost, '127.0.0.1', 'SDB must not bypass pairing through an implicit LAN listener');
 const sdb = require('../service/sdb.js');
 
 const HEADER = 24;

@@ -15,8 +15,21 @@ function fixture(n,boot){return '__BOOT__\n'+(boot||'boot-a')+'\n__CPU__\ncpu '+
   const prev=parse(fixture(10),null,1000);const reboot=parse(fixture(1,'boot-b'),prev.sample,2000);assert.equal(reboot.data.cpu.percent,null);assert.equal(reboot.data.processes[0].majorFaultsPerSecond,null);assert.equal(reboot.data.io.zram0.readBytesPerSecond,null);
   let resolve,count=0;const shared=new Monitor(()=>{count++;return new Promise(r=>resolve=r)});const a=shared.snapshot('summary'),b=shared.snapshot('summary');assert.equal(a,b);resolve({exit_code:0,stdout:fixture(10)});await a;assert.equal(count,1);
   const fresh=shared.snapshot('summary',true);assert.equal(count,2,'forced post-action sample bypasses a fresh cached snapshot');resolve({exit_code:0,stdout:fixture(11)});await fresh;
+  let release;const starts=[];
+  const coalesced=new Monitor(()=>new Promise(r=>{starts.push(1);release=r;}));
+  const stale=coalesced.snapshot('summary');
+  const postA=coalesced.snapshot('summary',true),postB=coalesced.snapshot('summary',true);
+  release({exit_code:0,stdout:fixture(20)});await stale;await new Promise(r=>setImmediate(r));
+  assert.equal(starts.length,2);release({exit_code:0,stdout:fixture(21)});await postA;
+  await new Promise(r=>setImmediate(r));
+  assert.equal(starts.length,2,'concurrent forced reads share the trailing sample');await postB;
+  // A new force after the trailing sample started must get a still newer sample.
+  const preMutation=coalesced.snapshot('summary',true);
+  const laterMutation=coalesced.snapshot('summary',true);
+  release({exit_code:0,stdout:fixture(22)});await preMutation;await new Promise(r=>setImmediate(r));
+  assert.equal(starts.length,4);release({exit_code:0,stdout:fixture(23)});await laterMutation;
   let attempts=0;const recover=new Monitor(async()=>++attempts===1?{exit_code:1}:{exit_code:0,stdout:fixture(10)});await assert.rejects(recover.snapshot('summary'));assert.equal((await recover.snapshot('summary')).scope,'summary');
  }finally{Date.now=original;}
- const harness=require('./service-harness.cjs')(require('path').resolve(__dirname,'..'));let requested=[];harness.context.monitor={snapshot:async s=>{requested.push(s);return {scope:s};}};async function get(url){return new Promise(resolve=>harness.router({method:'GET',url},{writeHead(status){this.status=status},end(body){resolve({status:this.status,body:JSON.parse(body)})}}));}assert.equal((await get('/monitor?scope=summary')).body.scope,'summary');assert.equal((await get('/monitor')).body.scope,'full');assert.equal((await get('/monitor?scope=wrong')).status,400);assert.deepEqual(requested,['summary','full']);
+ const harness=require('./service-harness.cjs')(require('path').resolve(__dirname,'..'));let requested=[];harness.context.monitor={snapshot:async (s,force)=>{requested.push(s);return {scope:s,forced:force};}};async function get(url){return new Promise(resolve=>harness.router({method:'GET',url},{writeHead(status){this.status=status},end(body){resolve({status:this.status,body:JSON.parse(body)})}}));}assert.equal((await get('/monitor?scope=summary')).body.scope,'summary');assert.equal((await get('/monitor')).body.scope,'full');assert.equal((await get('/monitor?scope=wrong')).status,400);assert.equal((await get('/monitor?refresh=1')).body.forced,true);assert.equal((await get('/monitor?xrefresh=1')).body.forced,false);assert.deepEqual(requested,['summary','full','full','full']);
  console.log('PASS monitor scopes: lightweight commands, independent deltas, storage cache, missing counters, reboot and retry');
 })().catch(e=>{console.error(e);process.exitCode=1});

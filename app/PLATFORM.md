@@ -49,3 +49,14 @@ and declared outgoing/reverse package dependencies. It falls back to the probe
 if unavailable and labels the source. Icons use installed app IDs, approved
 registry paths, PNG/JPEG signatures and a 256 KiB limit. Missing or unsupported
 icons use initials. Declared dependencies are not a complete runtime graph.
+
+## SDB developer access
+
+`GET /sdb-access` returns `{available, enabled, active, port}`. The paired-dashboard
+`POST /sdb-access` accepts only `{enabled: boolean}`. The TV adapter supplies
+`sdbAccess()` and `setSdbAccess(enabled)`; app-only reports unavailable and refuses
+changes. `enabled` is the persisted preference; `active` is the current LAN admission
+state. Enabling requires a listening tunnel; disabling remains possible when the
+tunnel is unavailable. Atomic preference writes and readback precede success.
+Turning off destroys network client sockets without closing the shared upstream or
+loopback streams. Restore includes this setting and blocks changes during its run.

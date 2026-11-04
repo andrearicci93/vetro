@@ -168,5 +168,27 @@ function tv(start) {
   res = await r.run();
   assert.equal(res.steps.find(s => s.id === 'hbbtv').status, 'failed');
 
+  await assert.rejects(r.eraseData(), e => e.statusCode === 409 && /HbbTV/.test(e.message));
+  assert.equal(t.s.erased, 0, 'unknown state must preserve restore backups');
+  t = tv(); r = new Restore(t.deps); await r.run();
+  t.deps.hbbtv.read = () => Promise.reject(Error('offline after restore'));
+  res = await r.run(); assert.equal(res.complete, false);
+  assert.ok(res.remaining.includes('hbbtv'), 'unknown readback prevents completion');
+  t = tv(); r = new Restore(t.deps); await r.run();
+  t.deps.execute = () => Promise.reject(Error('ledger unavailable'));
+  plan = await r.publicPlan();
+  assert.equal(plan.items.find(i => i.id === 'components').state, 'unknown');
+  t = tv(); r = new Restore(t.deps); await r.run();
+  t.deps.wins.read = async () => ({wins:{firmware:{status:'unknown'},multiscreen:{status:'off'},ambient:{status:'off'},telemetry:{status:'off'}}});
+  plan = await r.publicPlan();assert.equal(plan.items.find(i => i.id === 'win-firmware').state, 'unknown');
+  await assert.rejects(r.eraseData(), /Automatic firmware updates/);
+  t = tv(); r = new Restore(t.deps); await r.run();
+  t.deps.dock.readState = () => ({enabled:false,autorunWas:1});
+  plan = await r.publicPlan();assert.equal(plan.items.find(i => i.id === 'launcher').state, 'changed');
+  t = tv();let sdbOn=true;
+  t.deps.sdb={status:()=>({enabled:sdbOn,active:sdbOn}),off:async()=>{sdbOn=false;return {enabled:false,active:false};}};
+  r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='sdb').state,'changed');
+  await assert.rejects(r.eraseData(),/SDB developer access/);res=await r.run();assert.equal(sdbOn,false);assert.equal(res.complete,true);
+  assert.equal(res.steps.find(i=>i.id==='sdb').status,'done');
   console.log('restore: ok');
 })().catch(e => { console.error(e); process.exit(1); });

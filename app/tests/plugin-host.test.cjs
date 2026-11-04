@@ -163,6 +163,7 @@ h3.start();
     const fdir = tmp();
     const crashing = new PluginHost({ dir: fdir, stableMs: 60000 });
     crashing.start();
+    crashing._writeState({enabled:{},developer:true});
     crashing.install(JSON.stringify({ format: 'vetro-plugin', version: 1, manifest: { id: 'culprit', apiVersion: 1 }, files: { 'index.js': 'global.__culpritRan=1;module.exports=function(){return {}}' } }));
     crashing.setEnabled('culprit', true);
     crashing.stableTimer && clearTimeout(crashing.stableTimer);

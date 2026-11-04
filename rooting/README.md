@@ -52,3 +52,19 @@ The currently installed integration reacquired an authenticated UID-0 agent afte
 one owner-confirmed cold boot without a manual launch on 2026-10-11. Latest source
 changes have not been deployed. This observation is specific to the Q80A/firmware
 in the [release audit](../app/docs/RELEASE-AUDIT.md), not a universal guarantee.
+
+## Experimental SDB tunnel
+
+The integration multiplexes its SDB connection through port 26201. Network access
+is off by default: only loopback clients are admitted. Enable **Quick settings →
+Maintenance → Developer access → Allow SDB from the local network** to connect from
+Apps2Samsung or Samsung's SDK. The choice persists across restarts in
+`/opt/usr/home/owner/share/vetro-sdb-access.json`. Turning it off drops network
+clients immediately; Vetro's internal connection remains alive. Restore the TV
+also turns it off before data removal.
+
+A shared IPv4 listener stays bound; the toggle controls client admission, before
+any SDB frame is processed. `VETRO_SDB_TUNNEL_PORT` chooses a different port (1–65535).
+The old environment-only LAN opt-in is replaced by the persistent dashboard switch.
+SDB does not use HTTP pairing and grants developer access to every admitted client;
+see [SECURITY.md](../SECURITY.md).

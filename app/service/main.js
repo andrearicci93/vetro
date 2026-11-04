@@ -33,7 +33,7 @@ var THERMAL_ZONE_RE = /^thermal_zone\d+$/;
 var THERMAL_DEVICE_RE = /thermal$/;
 var APP_ID_RE = /^[A-Za-z0-9_.-]+$/;
 var DIAGNOSTICS_QUERY_RE = /(?:\?|&)diagnostics=1(?:&|$)/;
-var REFRESH_QUERY_RE = /refresh=1/;
+var REFRESH_QUERY_RE = /(?:\?|&)refresh=1(?:&|$)/;
 var APP_ID_QUERY_RE = /[?&]appId=([^&#]*)/;
 var PLUS_RE = /\+/g;
 var APP_ID_120_RE = /^[A-Za-z0-9_.-]{1,120}$/;
@@ -398,7 +398,7 @@ function handleDebloatAction(req, res) {
         if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
         var id=appIds[0],desired=action==='disable',original;
         inventory(true).then(function(d){var row=d.apps.find(function(a){return a.appId===id;});if(d.registryError)throw Error('App registry unavailable');if(!row){var missing=Error('App not installed');missing.statusCode=409;throw missing;}var capability=ComponentActions.availability(row,d.apps,TOGGLE_IDS).toggle;if(!capability.allowed){var unavailable=Error(capability.reason);unavailable.statusCode=409;throw unavailable;}original=row.disabled;if(original===desired)return {ok:true,verified:true,changed:false,appId:id,disabled:desired};
-            return agentExecute('pkgcmd '+(desired?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'App state unchanged');registryAt=0;return inventory(true);}).then(function(after){var r=after.apps.find(function(a){return a.appId===id;});if(after.registryError||!r||r.disabled!==desired)throw Error('Global flag not confirmed');return {ok:true,verified:true,changed:true,appId:id,disabled:r.disabled,scope:'Global flag confirmed; running processes may remain until the next launch'};}).catch(function(e){return agentExecute('pkgcmd '+(original?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Restore not confirmed');registryAt=0;return inventory(true);}).then(function(d){var restored=d.apps.find(function(a){return a.appId===id;});throw Error(e.message+' · '+(restored&&restored.disabled===original&&!d.registryError?'previous flag restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});
+            return agentExecute('pkgcmd '+(desired?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'App state unchanged');invalidateInventory();return inventory(true);}).then(function(after){var r=after.apps.find(function(a){return a.appId===id;});if(after.registryError||!r||r.disabled!==desired)throw Error('Global flag not confirmed');return {ok:true,verified:true,changed:true,appId:id,disabled:r.disabled,scope:'Global flag confirmed; running processes may remain until the next launch'};}).catch(function(e){return agentExecute('pkgcmd '+(original?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Restore not confirmed');invalidateInventory();return inventory(true);}).then(function(d){var restored=d.apps.find(function(a){return a.appId===id;});throw Error(e.message+' · '+(restored&&restored.disabled===original&&!d.registryError?'previous flag restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});
         }).then(function(d){
             // Remember what Vetro disabled, so that "Restore the TV" switches on those and not what the firmware ships disabled.
             if(d.changed===false&&desired)return d;
@@ -448,15 +448,24 @@ function handleProbe(req, res) {
     readJsonBody(req, res, function (parsed) {
         try { state = probe.carry(state, probe.sanitize(parsed)); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
+        invalidateInventory();
         serveJson(res, { ok: true, persisted: probe.save(state) });
     }, probe.MAX_JSON);
 }
 
-var registryCache = null, registryAt = 0, registryPending = null;
+var registryCache = null, registryAt = 0, registryPending = null, registryGeneration = 0, registryPendingGeneration = 0;
+function invalidateInventory() { registryAt = 0; registryCache = null; registryGeneration++; }
 function inventory(refresh) {
     if (!refresh && registryCache && Date.now()-registryAt<60000) return Promise.resolve(registryCache);
-    if (registryPending) return registryPending;
-    registryPending=AppRegistry.load(agentExecute,state).then(function(data){registryCache=data;registryAt=Date.now();return data;})
+    if (registryPending) {
+        // A read started before a mutation cannot verify that mutation. Wait for it,
+        // then share a new read with every caller waiting on the same invalidation.
+        if (registryPendingGeneration !== registryGeneration) return registryPending.then(function () { return inventory(refresh); });
+        return registryPending;
+    }
+    var generation = registryGeneration;
+    registryPendingGeneration = generation;
+    registryPending=AppRegistry.load(agentExecute,state).then(function(data){if(generation===registryGeneration){registryCache=data;registryAt=Date.now();}return data;})
         .catch(function(e){var rows=apps.normalize(state.apps,state.packages);return {apps:rows,summary:apps.summarize(rows),source:'public probe',registryError:String(e.message||e),collectedAt:state.receivedAt||null};})
         .finally(function(){registryPending=null;});
     return registryPending;
@@ -470,7 +479,7 @@ function handleComponentAction(req,res) {
             try { a=ComponentActions.validate(p,d.apps); }
             catch(e) { e.statusCode=400;throw e; }
             return agentExecute(ComponentActions.command(p,a),30000).then(function(r) {
-                registryAt=0;
+                invalidateInventory();
                 if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Action incomplete');
                 return Promise.all([inventory(true),p.action==='stop'?monitor.snapshot('full',true):Promise.resolve(null)]).then(function(results) {
                     var after=results[0], row=after.apps.find(function(x){return x.appId===p.appId});
@@ -486,22 +495,35 @@ function handleComponentAction(req,res) {
 }
 function handleQuick(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
-    quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){registryAt=0;}})
+    quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}})
         .then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 });}
+function sdbAccess() {
+    return platform.sdbAccess ? platform.sdbAccess() : {available:false,enabled:false,active:false,port:null};
+}
+function handleSdbAccess(req,res) {
+    if(req.method==='GET') { try { return serveJson(res,sdbAccess()); } catch(e) { return serveJson(res,{error:e.message},503); } }
+    readJsonBody(req,res,function(p){
+        if(typeof p.enabled!=='boolean')return serveJson(res,{error:'Invalid SDB access state'},400);
+        if(debloatBusy)return serveJson(res,{error:'App change already in progress'},409);
+        if(!platform.setSdbAccess)return serveJson(res,{error:'SDB access is unavailable'},503);
+        platform.setSdbAccess(p.enabled).then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
+    });
+}
 function handleWins(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
     wins.apply(p.id,p.on).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
 });}
 // Restore the TV: puts back what Vetro changed, then (separately) removes Vetro's data. See restore.js.
 var restoreTv = new (require('./restore.js').Restore)({
-    execute: agentExecute, inventory: inventory, invalidate: function(){registryAt=0;},
+    execute: agentExecute, inventory: inventory, invalidate: function(){invalidateInventory();},
     wins: wins, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock,
     plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
     input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
         off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
     mqtt: {enabled: function(){var c=require('./mqtt-bridge.js').readConfig();return !!c&&c.enabled!==false&&!!c.host;},
         off: function(){var m=require('./mqtt-bridge.js'),c=Object.assign({},m.readConfig(),{enabled:false});m.saveConfig(c);bridge.configure(c);}},
+    sdb: {status:sdbAccess, off:function(){return platform.setSdbAccess(false);}},
     afterHbbtv: function(){privacy.cached=null;},
     removeAuth: function(){try{fs.unlinkSync(auth.STORE_PATH);}catch(e){}}
 });
@@ -696,6 +718,7 @@ http.createServer(function (req, res) {
         if (url === '/exec') return handleExec(req, res);
         if (url === '/debloat') return handleDebloatAction(req, res);
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
+        if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
         if (url === '/restore') return handleRestore(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
@@ -721,12 +744,13 @@ http.createServer(function (req, res) {
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/restore') return handleRestore(req,res);
+    if (url === '/sdb-access') return handleSdbAccess(req,res);
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/privacy') return privacy.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/tv-menu') { var q=MENU_ID_QUERY_RE.exec(req.url||''), menuId=null; try { if(q)menuId=decodeURIComponent(q[1]); } catch(e) { return serveJson(res,{error:'Invalid menu ID'},400); } return (q?menuSettings.read(menuId):menuSettings.load()).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)}); }
-    if (url === '/monitor') { var scope=SCOPE_QUERY_RE.exec(req.url||'');if(scope&&!MONITOR_SCOPE_RE.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full').then(function(d){d.telemetry=readTelemetry();serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
+    if (url === '/monitor') { var scope=SCOPE_QUERY_RE.exec(req.url||'');if(scope&&!MONITOR_SCOPE_RE.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full',REFRESH_QUERY_RE.test(req.url)).then(function(d){d.telemetry=readTelemetry();serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
     if (url === '/startup') return Promise.all([inventory(false),monitor.startup().catch(function(e){return {error:e.message};})]).then(function(d){serveJson(res,{apps:d[0].apps,services:Array.isArray(d[1])?d[1]:[],serviceError:d[1].error||null});});
     if (url === '/telemetry') return serveJson(res, readTelemetry());
     if (url === '/leftovers') return handleLeftovers(req,res);
@@ -829,4 +853,4 @@ var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRest
 var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
-var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){registryAt=0;if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
+var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

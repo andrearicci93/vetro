@@ -58,7 +58,7 @@ function build(folder) {
     updater.verifyBundle(built.raw, publicPem);
     const keyInPackage = require('../app/service/update-key.js');
     if (keyInPackage && keyInPackage.trim() !== publicPem.trim()) throw new Error('This key does not match app/service/update-key.js: TVs would refuse the bundle');
-    if (!require('../app/service/plugin-key.js')) console.warn('Warning: app/service/plugin-key.js has no key, so plugins install without a signature check (this is a different key from the update key)');
+    if (!require('../app/service/plugin-key.js')) console.warn('Warning: app/service/plugin-key.js has no key, so unsigned plugins require Developer mode (this is a different key from the update key)');
     if (!keyInPackage) console.warn('Warning: app/service/update-key.js has no key yet, so no installed Vetro will accept this bundle');
     const dir = path.resolve(folder);
     fs.mkdirSync(dir, { recursive: true });

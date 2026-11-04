@@ -296,7 +296,7 @@ dd{margin:0;overflow-wrap:anywhere}
 <div id="quickPanel-voice" class="stack" role="tabpanel" aria-labelledby="qtab-voice" hidden><section class="quick-group" aria-labelledby="quickVoiceTitle"><h2 id="quickVoiceTitle">Voice assistants</h2><p class="quick-callout">Disabling one also turns off the remote’s microphone button and voice control.</p><div id="quickVoice"></div></section></div>
 <div id="quickPanel-memory" class="stack" role="tabpanel" aria-labelledby="qtab-memory" hidden><section class="quick-group" aria-labelledby="quickMemoryTitle"><h2 id="quickMemoryTitle">Free memory</h2><div id="quickMemory"><p class="section-note">Reading the TV…</p></div></section></div>
 <div id="quickPanel-home" class="stack" role="tabpanel" aria-labelledby="qtab-home" hidden><section class="quick-group" aria-labelledby="quickHomeTitle"><h2 id="quickHomeTitle">Home screen</h2><p class="quick-callout">With Samsung’s Home disabled, the Home key opens nothing until you map it to another launcher with the Remapper. Turn this off to get Samsung’s Home back.</p><div id="quickHome"></div></section></div>
-<div id="quickPanel-maintenance" class="stack" role="tabpanel" aria-labelledby="qtab-maintenance" hidden><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 id="quickStorageTitle">Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickControlTitle"><h2 id="quickControlTitle">Firmware updates</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickRestoreTitle"><h2 id="quickRestoreTitle">Restore the TV</h2><div id="quickRestore"></div></section><section class="quick-group" aria-labelledby="quickRemoveTitle"><h2 id="quickRemoveTitle">Remove Vetro</h2><div id="quickRemove"></div></section></div></section>
+<div id="quickPanel-maintenance" class="stack" role="tabpanel" aria-labelledby="qtab-maintenance" hidden><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 id="quickStorageTitle">Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickControlTitle"><h2 id="quickControlTitle">Firmware updates</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group" aria-labelledby="quickSdbTitle"><h2 id="quickSdbTitle">Developer access</h2><div id="quickSdb"></div></section><section class="quick-group" aria-labelledby="quickRestoreTitle"><h2 id="quickRestoreTitle">Restore the TV</h2><div id="quickRestore"></div></section><section class="quick-group" aria-labelledby="quickRemoveTitle"><h2 id="quickRemoveTitle">Remove Vetro</h2><div id="quickRemove"></div></section></div></section>
 <section id="dashboard" hidden><div class="metric-grid">
 <div class="metric"><div class="label">CPU</div><div id="cpuValue" class="value">—</div><small id="cpuMeta">Start live updates to sample the TV</small></div>
 <div class="metric"><div class="label">Available RAM</div><div id="ramValue" class="value">—</div><small id="ramMeta">—</small></div>
@@ -495,8 +495,8 @@ function runComponentAction(a,p){
   if(r.verified!==true)throw Error('The service did not confirm the requested state.');
   verified=true;outcome=componentOutcome(p,r);if(p.action==='uninstall'){closeDetail();}
   operationUpdate(entry,'pending',outcome+' Refreshing views…');
-  /* After the action the monitor must come second: its 2-second cache could otherwise answer with a sample from before the change. */
-  return loadApps(true,true).then(function(){return api('/monitor').then(drawMonitor)});
+  /* Force a post-action sample; inventory and processes can now refresh together. */
+  return Promise.all([loadApps(true,true),api('/monitor?refresh=1')]).then(function(r){return drawMonitor(r[1])});
  }).then(function(){operationUpdate(entry,'success',outcome+' App list and processes refreshed.');return true}).catch(function(e){
   inventoryNeedsRefresh=true;
   operationUpdate(entry,'warning',verified?outcome+' State confirmed, but the view could not refresh: '+e.message+'. Refresh the view; do not repeat the command.':'Result not confirmed: '+e.message+'. The command may have taken effect. Refresh the state before trying again.');
@@ -673,8 +673,23 @@ function renderQuick(){
 }
 function loadLeftovers(){quickData.leftoversError=null;return api('/leftovers').then(function(d){if(!Array.isArray(d.files))throw Error('Staging folder unreadable');quickData.leftovers=d;}).catch(function(e){quickData.leftoversError=e.message;}).finally(renderQuick);}
 function loadWins(){quickData.winsError=null;return api('/wins').then(function(d){if(!d.wins)throw Error('Quick wins unreadable');quickData.wins=d;}).catch(function(e){quickData.winsError=e.message;}).finally(renderQuick);}
+var sdbData=null,sdbError=null,sdbBusy=false,sdbConfirm=false;
+function renderSdbAccess(){
+ var d=sdbData,can=d&&(d.available||d.enabled),on=d&&d.enabled;
+ var state=sdbError?chip(sdbError,'partial'):!d?chip('Reading…'):d.active?chip('LAN access on · port '+d.port,'warn'):d.enabled?chip('Saved on · tunnel unavailable','partial'):chip('LAN access off');
+ var confirm=sdbConfirm?'<div class="inline-confirm" role="group" aria-label="Confirm SDB access"><p>Allow developer access from your network? Any device that can reach this port can use SDB without a Vetro pairing code, including installing apps and running shell commands.</p><div class="row"><button data-sdb-cancel>Cancel</button><button class="primary" data-sdb-confirm>Enable LAN access</button></div></div>':'';
+ $('quickSdb').innerHTML='<div class="quick-item"><div><h3>Allow SDB from the local network</h3><p>Lets Apps2Samsung and the Samsung SDK connect to port '+esc(d&&d.port||26201)+'. Off by default. Turning it off disconnects network SDB clients; Vetro keeps its internal connection.</p><div class="quick-state">'+state+'</div></div>'+switchMarkup('data-sdb-access',!!on,sdbBusy||!can||!!sdbError,'Allow SDB from the local network')+'</div>'+confirm+'<button data-sdb-refresh'+(sdbBusy?' disabled':'')+'>Refresh SDB state</button>';
+}
+function loadSdbAccess(){return api('/sdb-access').then(function(d){if(typeof d.enabled!=='boolean'||typeof d.active!=='boolean')throw Error('SDB state unavailable');sdbData=d;sdbError=null;}).catch(function(e){sdbError=e.message;}).finally(renderSdbAccess);}
+function setSdbAccess(on){
+ if(sdbBusy)return;sdbBusy=true;sdbConfirm=false;renderSdbAccess();
+ return runUiOperation('sdb-access',on?'Enable SDB LAN access':'Disable SDB LAN access','Developer access',null,function(mark){
+  return api('/sdb-access',{enabled:on}).then(function(d){sdbData=d;if(d.enabled!==on||d.active!==on)throw Error('SDB access was not confirmed');var message=on?'SDB LAN access enabled.':'SDB LAN access off; network clients disconnected.';mark(message,'State read back');return {resultLabel:'State read back',message:message};});
+ }).finally(function(){sdbBusy=false;return loadSdbAccess();});
+}
 function loadQuick(){
  renderQuick();
+ loadSdbAccess();
  api('/hbbtv').then(function(d){if(!Number.isInteger(d.value))throw Error('HbbTV state unreadable');hbbtvData=d;quickData.hbbtvError=null;}).catch(function(e){quickData.hbbtvError=e.message;}).finally(renderQuick);
  api('/dns').then(function(d){if(!Array.isArray(d.domains))throw Error('Filter state unreadable');dnsState(d);}).catch(function(){renderQuick();});
  loadWins();
@@ -731,12 +746,16 @@ function clearLeftovers(){
  })}).finally(function(){quickBusy=false;renderQuick();});
 }
 $('quick').onchange=function(e){var x=e.target,ds=x.dataset||{};
+ if(ds.sdbAccess!=null){if(sdbBusy)return;if(x.checked){x.checked=false;sdbConfirm=true;renderSdbAccess();return}return setSdbAccess(false);}
  if(ds.quickToggle!=null){var g=quickGroups.filter(function(y){return y.id===ds.quickToggle})[0];if(x.checked&&g&&(g.microphone||g.confirm)){x.checked=false;quickConfirm=g.id;renderQuick();var c=document.querySelector('[data-quick-confirm]');if(c)c.focus();return}return applyQuick(ds.quickToggle,x.checked);}
  if(ds.hbbtvDisable!=null)return setHbbtv(!x.checked);
  if(ds.winSwitch!=null)return setWin(ds.winSwitch,x.checked);
  if(ds.dnsSwitch!=null)return setDns(x.checked);
 };
-$('quick').onclick=function(e){var b=e.target.closest?e.target.closest('button'):null;if(!b)return;var ds=b.dataset;
+$('quick').onclick=function(e){
+ if(e.target.dataset&&e.target.dataset.sdbRefresh!=null)return loadSdbAccess();
+ if(e.target.dataset&&e.target.dataset.sdbCancel!=null){sdbConfirm=false;renderSdbAccess();return}
+ if(e.target.dataset&&e.target.dataset.sdbConfirm!=null)return setSdbAccess(true);var b=e.target.closest?e.target.closest('button'):null;if(!b)return;var ds=b.dataset;
  if(ds.quickCancel!=null){var id=quickConfirm;quickConfirm=null;renderQuick();var s=document.querySelector('[data-quick-toggle="'+id+'"]');if(s)s.focus();return}
  if(ds.quickConfirm!=null)return applyQuick(ds.quickConfirm,true);
  if(ds.quickApp!=null)return detail(ds.quickApp);
@@ -897,7 +916,6 @@ function showPluginTab(id,quiet){
  api('/plugins/'+encodeURIComponent(id2)+'/session',{}).then(function(d){if(pluginView===id2)$('pluginFrame').src=d.path}).catch(function(e){if(pluginView===id2)$('pageSubtitle').textContent=p.name+' · could not open: '+e.message});
  if(!quiet)renderPluginTabs();
 }
-function openPluginPage(id){var p=pluginPages().filter(function(q){return q.id===id})[0];if(!p)return;if(currentPanel!=='plugins')switchPanel('plugins');showPluginTab(id)}
 // Arrow keys, Home and End move between tabs of any tablist (activation follows focus).
 document.addEventListener('keydown',function(e){var t=e.target;if(!t||!t.getAttribute||t.getAttribute('role')!=='tab')return;var list=t.parentNode,tabs=[].slice.call(list.querySelectorAll('[role=tab]')),i=tabs.indexOf(t),n=e.key==='ArrowRight'?i+1:e.key==='ArrowLeft'?i-1:e.key==='Home'?0:e.key==='End'?tabs.length-1:-1;if(n<0)return;e.preventDefault();var next=tabs[(n+tabs.length)%tabs.length];next.focus();next.click()});
 var pluginSig='',registryChecked=false;
@@ -942,13 +960,13 @@ function pluginAddPanel(d){
  else if(registryError)list='<p class="quick-callout">'+esc(registryError)+'</p>';
  else if(registryData){
   list=registryData.plugins.length?registryData.plugins.map(function(e){
-   var have=installed[e.id],same=have&&!verNewer(e.version,have.version),verified=checksumOk(e),locked=false,unsigned=d.signed&&!d.developer&&!e.signature;
+   var have=installed[e.id],same=have&&!verNewer(e.version,have.version),verified=checksumOk(e),unsigned=!d.developer&&(!d.signed||!e.signature);
    var label=!verified?'No checksum':unsigned?'Not signed':!have?'Install':same?'Installed':'Update to '+e.version;
-   return '<div class="quick-item"><div><h3>'+esc(e.name)+' <small>'+esc(e.version)+(e.author?' · '+esc(e.author):'')+'</small></h3><p>'+esc(e.description||'')+'</p><div class="quick-state">'+(e.permissions&&e.permissions.length?chip('Says it needs: '+e.permissions.map(permName).join(', '),'warn'):chip('No special permissions'))+'</div></div><div class="quick-actions"><button data-registry-install="'+esc(e.id)+'" '+(same||locked||!verified||unsigned||pluginBusy?'disabled':'')+' type="button">'+esc(label)+'</button></div></div>';
+   return '<div class="quick-item"><div><h3>'+esc(e.name)+' <small>'+esc(e.version)+(e.author?' · '+esc(e.author):'')+'</small></h3><p>'+esc(e.description||'')+'</p><div class="quick-state">'+(e.permissions&&e.permissions.length?chip('Says it needs: '+e.permissions.map(permName).join(', '),'warn'):chip('No special permissions'))+'</div></div><div class="quick-actions"><button data-registry-install="'+esc(e.id)+'" '+(same||!verified||unsigned||pluginBusy?'disabled':'')+' type="button">'+esc(label)+'</button></div></div>';
   }).join(''):'<p class="notice">The list has no plugins yet.</p>';
  }
  var note=pluginNote?'<p class="quick-callout" role="status">'+esc(pluginNote)+'</p>':'';
- return '<div class="panel"><h3>Add a plugin</h3><p class="section-note">Plugins land switched off. Each download is checked against the SHA-256 the list publishes'+(d.signed?' and its signature, which shows it is the file the list published':'')+'. That catches a corrupted or swapped file; it does not show that the code is safe.</p>'+note+(d.signed?'<div class="quick-item"><div><h3>Developer mode</h3><p>Allows plugins that the list has not signed: your own, or from a file. Off by default.</p></div>'+switchMarkup('data-plugin-developer',d.developer,pluginBusy,'Developer mode')+'</div>':'')+'<div class="quick-actions"><button type="button" data-registry-refresh '+(registryLoading?'disabled':'')+'>'+(registryError?'Try again':registryData?'Refresh list':'Show available plugins')+'</button><label class="file-pick">or from a file <input type="file" accept=".vplugin,.json" data-plugin-file'+(d.signed&&!d.developer?' disabled title="Turn on Developer mode first"':'')+'></label></div>'+list+'</div>';
+ return '<div class="panel"><h3>Add a plugin</h3><p class="section-note">Plugins land switched off. Each download is checked against the SHA-256 the list publishes'+(d.signed?' and its signature, which shows it is the file the list published':'')+'. That catches a corrupted or swapped file; it does not show that the code is safe.</p>'+note+('<div class="quick-item"><div><h3>Developer mode</h3><p>Allows plugins that the list has not signed: your own, or from a file. Off by default.</p></div>'+switchMarkup('data-plugin-developer',d.developer,pluginBusy,'Developer mode')+'</div>')+'<div class="quick-actions"><button type="button" data-registry-refresh '+(registryLoading?'disabled':'')+'>'+(registryError?'Try again':registryData?'Refresh list':'Show available plugins')+'</button><label class="file-pick">or from a file <input type="file" accept=".vplugin,.json" data-plugin-file'+(!d.developer?' disabled title="Turn on Developer mode first"':'')+'></label></div>'+list+'</div>';
 }
 function confirmPlugin(what){return confirm(what+' Third-party code: spot-checked, not audited, no guarantee, and the author of Vetro takes no responsibility for it. Continue?')}
 function installBundle(text,sha,label,opts){

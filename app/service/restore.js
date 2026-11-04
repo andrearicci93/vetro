@@ -100,7 +100,7 @@ function groupMembers(apps) {
 
 // The plan. Read-only. Each item: {id, label, detail, state: changed|clean|unknown|manual, count?}.
 Restore.prototype.plan = function () {
-    var d = this.d, self = this;
+    var d = this.d;
     return Promise.all([
         attempt(function () { return d.inventory(true).then(function (r) { if (r.registryError) throw new Error('App registry unavailable'); return r.apps; }); }),
         attempt(function () { return d.wins.read(); }),
@@ -112,7 +112,8 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.plugins.list(); }),
         attempt(function () { return d.dock.readState(); }),
         attempt(function () { return d.input.active(); }),
-        attempt(function () { return d.mqtt.enabled(); })
+        attempt(function () { return d.mqtt.enabled(); }),
+        attempt(function () { return d.sdb ? d.sdb.status() : null; })
     ]).then(function (x) {
         var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10];
         var items = [];
@@ -126,7 +127,7 @@ Restore.prototype.plan = function () {
         function flag(item, on, count) { if (item.state === 'clean' && on) item.state = 'changed'; if (count != null) item.count = count; }
 
         var it = add('launcher', 'Launcher', 'Switches the Vetro launcher off, so Samsung’s Home is back, and puts Autorun Smart Hub back as it was.', dock);
-        if (!dock.error) flag(it, dock.value.enabled === true);
+        if (!dock.error) flag(it, dock.value.enabled === true || dock.value.autorunWas != null);
 
         var third = plug.error ? [] : plug.value.filter(function (p) { return !p.bundled && p.enabled; });
         it = add('plugins', 'Third-party plugins', 'Switches every plugin that is on off. The plugin files stay until you remove Vetro’s data. What a plugin changed on its own is not undone.', plug);
@@ -138,12 +139,17 @@ Restore.prototype.plan = function () {
         it = add('mqtt', 'Home Assistant bridge', 'Stops publishing the TV state to your broker. The saved settings stay.', mqtt);
         if (!mqtt.error) flag(it, mqtt.value === true);
 
+        if (d.sdb) {
+            it = add('sdb', 'SDB developer access', 'Switches off network SDB access and disconnects its network clients. Vetro keeps its local connection.', x[11]);
+            if (!x[11].error) flag(it, x[11].value.enabled || x[11].value.active);
+        }
+
         var groupIds = apps.error ? [] : groupMembers(apps.value);
         it = add('groups', 'Quick settings groups', 'Switches on the components of the advertising, tracking and voice groups, with their start at boot and restart as they were. A group is Vetro’s own, so its components are switched on even if the firmware had them off.', apps);
         if (!apps.error) flag(it, groupIds.length > 0, groupIds.length);
 
         var compIds = apps.error ? [] : provenComponents(apps.value, led.error ? [] : led.value).filter(function (id) { return groupIds.indexOf(id) < 0; });
-        it = add('components', 'Components disabled in the Task manager', 'Switches on again the components Vetro disabled one by one (its own list), the verified viewing-data set and apps you installed. Components the firmware ships disabled are left alone.', apps);
+        it = add('components', 'Components disabled in the Task manager', 'Switches on again the components Vetro disabled one by one (its own list), the verified viewing-data set and apps you installed. Components the firmware ships disabled are left alone.', apps.error ? apps : led);
         if (!apps.error) flag(it, compIds.length > 0, compIds.length);
 
         var w = wins.error ? null : wins.value.wins;
@@ -153,7 +159,9 @@ Restore.prototype.plan = function () {
             ['firmware', 'Automatic firmware updates', w && w.firmware && w.firmware.status === 'on', 'Puts the automatic update value back to what it was.']
         ].forEach(function (c) {
             var item = add('win-' + c[0], c[1], c[3], wins);
-            if (!wins.error) flag(item, !!c[2]);
+            var win = w && w[c[0]];
+            if (!wins.error && (!win || win.status === 'unknown')) { item.state = 'unknown'; item.error = 'Quick win state unavailable'; }
+            else if (!wins.error) flag(item, !!c[2]);
         });
 
         it = add('hbbtv', 'HbbTV', 'Puts the HbbTV menu value back, removes the brake file and starts its service and app.', hb);
@@ -207,6 +215,7 @@ Restore.prototype.run = function () {
             }],
             ['remote', function () { return Promise.resolve(d.input.off()).then(function () { return 'The remapper no longer listens to the remote.'; }); }],
             ['mqtt', function () { return Promise.resolve(d.mqtt.off()).then(function () { return 'The bridge is off.'; }); }],
+            ['sdb', function () { return d.sdb.off().then(function(s){if(s.enabled||s.active)throw new Error('SDB LAN access is still on');return 'SDB LAN access off; network clients disconnected.';}); }],
             ['groups', function () { return self.runGroups(); }],
             ['components', function () { return self.runComponents(); }],
             ['win-telemetry', function () { return self.runWin('telemetry', 'Services started again; the DNS block Vetro added is lifted.'); }],
@@ -236,7 +245,7 @@ Restore.prototype.run = function () {
             return self.publicPlan();
         }).then(function (after) {
             var failed = steps.filter(function (s) { return s.status === 'failed'; }).length;
-            return {ok: true, complete: failed === 0 && after.pending === 0, steps: steps, remaining: after.items.filter(function (i) { return i.state === 'changed'; }).map(function (i) { return i.id; }), notes: NOTES.slice()};
+            return {ok: true, complete: failed === 0 && after.items.every(function (i) { return i.state === 'clean'; }), steps: steps, remaining: after.items.filter(function (i) { return i.state !== 'clean'; }).map(function (i) { return i.id; }), notes: NOTES.slice()};
         });
     });
 };
@@ -341,7 +350,7 @@ var ERASE_SCRIPT = [
 Restore.prototype.eraseData = function () {
     var d = this.d;
     return this.plan().then(function (plan) {
-        var pending = plan.items.filter(function (i) { return i.state === 'changed'; });
+        var pending = plan.items.filter(function (i) { return i.state === 'changed' || i.state === 'unknown'; });
         if (pending.length) {
             var e = new Error('Restore the TV first: ' + pending.map(function (i) { return i.label; }).join(', ') + ' still to put back.');
             e.statusCode = 409;
