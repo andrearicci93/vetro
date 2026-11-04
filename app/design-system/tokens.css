@@ -17,6 +17,9 @@
   --vetro-text: var(--vetro-white);
   --vetro-text-muted: #aab8d1;
   --vetro-border: #344360;
+  --vetro-control-border: #7183a2;
+  --vetro-warning: #e2b867;
+  --vetro-on-warning: #101c35;
   --vetro-action: var(--vetro-blue-700);
   --vetro-action-hover: #0e3095;
   --vetro-on-action: var(--vetro-white);
@@ -67,6 +70,7 @@
   --vetro-text: #101c35;
   --vetro-text-muted: #52617a;
   --vetro-border: #bcc9de;
+  --vetro-control-border: #657898;
   --vetro-link: var(--vetro-blue-700);
   --vetro-focus: var(--vetro-blue-600);
   --vetro-glass-fill: rgba(245, 248, 255, .92);

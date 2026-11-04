@@ -17,6 +17,8 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 ## Rules
 
 - About 80% of the interface stays neutral (`--vetro-bg`, `--vetro-surface`, `--vetro-border`). Blue marks actions and selections.
+- Form fields and ordinary controls use `--vetro-control-border` for a boundary with at least 3:1 contrast against the adjacent surfaces; `--vetro-border` stays quiet on decorative separators.
+- Warning confirmations pair `--vetro-warning` with `--vetro-on-warning`, including on hover.
 - Actions use Cobalto (`--vetro-action`) with light text; Luce (`--vetro-blue-400`) is for details and the progress bar. Links and focus use `--vetro-link`.
 - Controls are 44 px high with an 8 px radius; surfaces have a 16 px radius. Focus is a 2 px ring, 3 px away.
 - Glass and gradients are for small overlays and brand moments only. Everyday surfaces are solid.

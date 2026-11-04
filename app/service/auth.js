@@ -266,12 +266,12 @@ function decorate(html) { return html.indexOf('</body>') >= 0 ? html.replace('</
 
 // The sign-in page uses the dashboard's tokens (design-system/tokens.css, dark) with the same control sizes.
 var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark">' +
-'<title>Vetro sign-in</title><style>:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--action:#123bb5;--action-hover:#0e3095;--link:#8fbaff;--danger:rgb(239,138,128)}' +
+'<title>Vetro sign-in</title><style>:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--control-border:#7183a2;--action:#123bb5;--action-hover:#0e3095;--link:#8fbaff;--danger:rgb(239,138,128)}' +
 '*{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px}' +
 'main{width:100%;max-width:420px;padding:32px;background:var(--surface);border:1px solid var(--border);border-radius:16px}' +
 '.brand{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 16px}h1{font-size:24px;line-height:1.15;font-weight:500;letter-spacing:-.02em;margin:0 0 8px}p{color:var(--muted);margin:0 0 24px;font-size:14px}' +
 'label{display:block;font-size:14px;color:var(--muted);margin-bottom:8px}' +
-'input,button{font:inherit;height:44px;border-radius:8px;border:1px solid var(--border);width:100%}' +
+'input,button{font:inherit;height:44px;border-radius:8px;border:1px solid var(--control-border);width:100%}' +
 'input{background:var(--raised);color:var(--text);font-size:24px;letter-spacing:8px;text-align:center;padding:0 16px}' +
 'button{margin-top:16px;background:var(--action);border-color:var(--action);color:var(--text);font-weight:600;cursor:pointer}button:hover{background:var(--action-hover);border-color:var(--action-hover)}' +
 '#s1 button{margin-top:0}input:focus-visible,button:focus-visible{outline:2px solid var(--link);outline-offset:3px}' +
