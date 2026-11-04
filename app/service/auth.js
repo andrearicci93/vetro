@@ -253,7 +253,7 @@ function gate(req, res, url, options) {
 // button style), so nothing floats over the toasts. On a narrow screen, where the footer is hidden, they join the bar; without a sidebar they stay at the bottom left.
 var BAR = '<div id="gaAuth"><button type="button" id="gaOut">Sign out</button><button type="button" id="gaAll">Sign out all devices</button></div>' +
     '<style>#gaAuth{display:flex;flex-wrap:wrap;gap:var(--s1,4px);padding:var(--s3,12px) 0 0}' +
-    '#gaAuth button{height:32px;padding:0 var(--s3,12px);font-size:var(--fs-s,12px);color:var(--muted,#aab8d1);background:transparent}' +
+    '#gaAuth button{height:auto;min-height:44px;padding:0 var(--s3,12px);font-size:var(--fs-s,12px);color:var(--muted,#aab8d1);background:transparent}' +
     '#gaAuth button:hover{color:var(--text,#f5f8ff)}' +
     '#gaAuth.loose{position:fixed;left:12px;bottom:12px;z-index:3;padding:0}' +
     '@media(max-width:620px){#gaAuth{flex-wrap:nowrap;white-space:nowrap;padding:0}}</style>' +
