@@ -20,7 +20,8 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 - Form fields and ordinary controls use `--vetro-control-border` for a boundary with at least 3:1 contrast against the adjacent surfaces; `--vetro-border` stays quiet on decorative separators.
 - Warning confirmations pair `--vetro-warning` with `--vetro-on-warning`, including on hover.
 - Actions use Cobalto (`--vetro-action`) with light text; Luce (`--vetro-blue-400`) is for details and the progress bar. Links and focus use `--vetro-link`.
-- Controls are 44 px high with an 8 px radius; surfaces have a 16 px radius. Focus is a 2 px ring, 3 px away.
+- Dashboard type uses the system sans at 16 px for body/form input, 14 px for secondary explanations and dense navigation/tables, 18 px for section headings and 24 px for page titles, all through rem-based tokens. Prose uses a 70ch maximum and 1.6 line height; code and package identifiers keep the system monospace.
+- Controls are at least 44 px high with an 8 px radius; surfaces have a 16 px radius. Focus is a 2 px ring, 3 px away.
 - Glass and gradients are for small overlays and brand moments only. Everyday surfaces are solid.
 - **Never a coloured top border on a rounded card**: a thicker line on top makes coloured "ears" at the corners. Give a card a theme colour with a faint background, a uniform border and a coloured label or icon.
 - A switch is a **win**: its title says what you get ("Disable HbbTV", "Disable automatic firmware update"), and *on* means the win is applied. A chip under the title says *Done* or *Partly done*, in plain words.

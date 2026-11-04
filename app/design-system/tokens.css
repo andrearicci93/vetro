@@ -39,6 +39,8 @@
   --vetro-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
   --vetro-text-small: .875rem;
   --vetro-text-body: 1rem;
+  --vetro-text-section: 1.125rem;
+  --vetro-prose-measure: 70ch;
   --vetro-text-title: 1.5rem;
   --vetro-text-display: 2.5rem;
   --vetro-weight-regular: 400;
