@@ -32,3 +32,7 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 ## Character and feedback
 
 Vetro should feel like a precise glass remote: light catches at the point of control, and feedback follows confirmed device state. Connection status stays in the sidebar footer. Purpose icons help scan Quick settings. A captured remote key gains a keycap treatment; completed actions use a quiet checkmark, while uncertain results retain the warning treatment and history. Reduced motion keeps all state cues without movement. No sounds, invented progress, or new runtime assets are introduced.
+
+## Layout
+
+General settings pair Software update and Storage only when the content area can fit two columns of at least `--vetro-column-min` (26rem). Firmware, Restore and Remove stay full width, in DOM and keyboard order. Columns return to a linear flow as the container narrows or text grows; cards have no fixed heights or masonry reordering. Quick settings section headings and content use 12px internal spacing, with 24px between the main General groups. The lengthy removal procedure is a native disclosure; its open state and focus survive view refreshes, and restoration/deletion controls remain outside it. The Launcher preview follows the same content-width column rule. Live sampling controls wrap without widening the page.

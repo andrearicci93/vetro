@@ -57,6 +57,7 @@
   --vetro-space-12: 48px;
   --vetro-radius-control: 8px;
   --vetro-radius-surface: 16px;
+  --vetro-column-min: 26rem;
   --vetro-control-height: 44px;
   --vetro-focus-width: 2px;
   --vetro-focus-offset: 3px;
