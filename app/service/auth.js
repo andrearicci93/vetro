@@ -38,9 +38,28 @@ var CODE_MS = 2 * 60000;
 var MAX_TRIES = 5;
 var MAX_SESSIONS = 20;
 
+var MODE_PATH = STORE_PATH + '.mode';
+var pairingDisabled = loadMode();
 var sessions = load();
 var pending = null;          // {id, code, name, expires, tries}
 var lastPairAt = 0;
+
+// Pairing is required unless an explicit, readable persistent opt-out says otherwise.
+function loadMode() {
+    try { return JSON.parse(fs.readFileSync(MODE_PATH, 'utf8')).disabled === true; }
+    catch (e) { return false; }
+}
+function pairingMode() { return {disabled: pairingDisabled}; }
+function setPairingMode(disabled) {
+    if (typeof disabled !== 'boolean') throw new Error('Invalid pairing mode');
+    var tmp = MODE_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({disabled: disabled}) + '\n', {mode: 384});
+    fs.renameSync(tmp, MODE_PATH);
+    if (loadMode() !== disabled) throw new Error('Pairing mode was not confirmed');
+    pairingDisabled = disabled;
+    pending = null;
+    return pairingMode();
+}
 
 // A missing file just means nothing is paired yet; any other failure is logged, since it signs everyone out.
 function load() {
@@ -207,6 +226,14 @@ function gate(req, res, url, options) {
 
     var s = sessionOf(req);
     if (s && !originOk(req)) return json(res, 403, {error: 'Cross-site request refused'}), true;
+    if (!s && pairingDisabled) {
+        // Opting out of pairing does not opt out of same-origin/rebinding checks.
+        // Opaque origins remain reserved for the TV's loopback-only widget above.
+        if (!hostOk(req) || !originOk(req) || (req.headers || {}).origin === 'null') {
+            return json(res, 403, {error: 'Use an IP address or localhost with a matching browser origin'}), true;
+        }
+        return false;
+    }
     if (!s) {
         if ((url === '/' || url === '/index.html') && req.method === 'GET') {
             res.writeHead(200, {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store'});
@@ -263,6 +290,6 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 'fetch("/auth/state").then(function(r){return r.json()}).then(function(d){if(!d.pending)return;if(d.mine)enter(d.expiresIn);else busy(d.expiresIn,false)}).catch(function(){});' +
 '</script></body></html>';
 
-module.exports = {gate: gate, decorate: decorate, tvApp: tvApp, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
+module.exports = {pairingMode: pairingMode, setPairingMode: setPairingMode, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
     _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
     _unthrottle: function () { lastPairAt = 0; }};

@@ -40,7 +40,7 @@ namespace Launcher.Tests
                 T.Eq(nav.Press(63, true, 8), null, "Home has its own debounce");
             });
 
-            T.Run("still selection: jumps, stable icon geometry, scrolling and normal motion restored", () =>
+            T.Run("reduce motion: instant visibility, pages, focus and stable icon geometry", () =>
             {
                 bool instant = Controller.Instant, grow = DockLayout.Grow, glow = DockLayout.GlowFromIcon;
                 try
@@ -48,6 +48,14 @@ namespace Launcher.Tests
                     Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false;
                     var layout = new DockLayout(20, 1920, 1080);
                     var ctl = new Controller(layout); ctl.Show(); int index;
+                    T.Eq(ctl.Phase, Phase.Shown, "show has no fade or cascade"); T.Eq(ctl.Presence, 1f, "fully opaque immediately");
+                    for (int i = 0; i < ctl.Count; i++) { T.Eq(ctl.ItemPresence(i), 1f, "no stagger"); T.Eq(ctl.ItemSlide(i), 0, "no entrance slide"); }
+                    T.True(!ctl.Tick(0), "no animation frames needed while shown");
+                    var panel = new Controller(layout, PageKind.Panel); panel.AdoptVisibility(ctl, .55f);
+                    T.Eq(panel.Phase, Phase.Shown, "panel is immediate"); T.Eq(panel.Presence, 1f, "no page pop");
+                    ctl.AdoptVisibility(panel, .55f);
+                    ctl.Hide(); T.Eq(ctl.Phase, Phase.Hidden, "no hide transition"); T.Eq(ctl.Presence, 0f, "hidden immediately");
+                    T.Eq(ctl.Slide, 0, "no exit slide"); T.True(!ctl.Tick(0), "no frames needed after hiding"); ctl.Show();
                     ctl.Key("Right", out index);
                     T.Eq(ctl.FocusPos, 1f, "focus changes without waiting for a frame");
                     var selected = layout.IconBox(1, 1, ctl.Scroll, 0);

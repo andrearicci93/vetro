@@ -12,8 +12,8 @@ apps.push({appId:'com.samsung.tv.acr-service-app',packageId:'com.samsung.tv.acr-
 // Quick settings are split in horizontal tabs, one panel each, with the usual tab semantics
 assert.match(html,/<div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings">/);
 const qtabs=[...html.matchAll(/data-quick-tab="(\w+)" aria-controls="quickPanel-(\w+)" aria-selected="(true|false)" tabindex="(0|-1)"/g)];
-assert.deepEqual(qtabs.map(m=>m[1]),['privacy','voice','memory','maintenance','home']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
-assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1'],'roving tabindex');
+assert.deepEqual(qtabs.map(m=>m[1]),['general','privacy','voice','memory','home','developer']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
+assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1','-1'],'roving tabindex');
 ['quickTracking','quickVoice','quickMemory','quickStorage','quickControl','quickHome'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
 let restoreDone=false;
 const restoreState=()=>({ok:true,pending:restoreDone?0:2,notes:['Packages removed from the Task manager cannot be brought back from here.'],items:[

@@ -350,10 +350,13 @@ Dock.prototype.setNoMotion = function (on) {
 Dock.prototype.iconFile = function (slug) {
     if (!SLUG_RE.test(String(slug))) return null;
     var all = this.entries().concat(this.inputEntries()), entry = all.filter(function (e) { return e.slug === slug; })[0];
-    if (!entry) return null;
+    var systemIcon = slug === 'settings' || slug === 'samsunghome';
+    if (!entry && !systemIcon) return null;
     var files = [];
-    if (entry.icon && catalog.iconPathOk(entry.icon)) files.push(entry.icon);
+    if (entry && entry.icon && catalog.iconPathOk(entry.icon)) files.push(entry.icon);
     files.push(path.join(this.dir, 'res', 'icons', slug + '.png'));
+    // Local app-only runs use source assets; WGTs carry the same files under native/dock/res.
+    if (systemIcon) files.push(path.join(__dirname, '..', '..', 'dock', 'res', 'icons', slug + '.png'));
     for (var i = 0; i < files.length; i++) {
         try {
             var data = fs.readFileSync(files[i]);

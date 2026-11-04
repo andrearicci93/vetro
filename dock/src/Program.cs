@@ -841,7 +841,7 @@ namespace Launcher
         {
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
-            // --no-motion: the selection jumps and the icons keep their size; the bar still fades in and out.
+            // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");

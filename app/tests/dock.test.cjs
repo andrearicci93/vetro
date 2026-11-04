@@ -261,3 +261,5 @@ function fixture(options) {
 
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+{ const local=new (require('../service/dock.js').Dock)({execute:()=>Promise.reject(Error('no TV'))}); for(const slug of ['settings','samsunghome']) { const icon=local.iconFile(slug); assert.ok(icon && icon.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'local preview system icon: '+slug); } }

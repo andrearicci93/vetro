@@ -37,7 +37,7 @@ namespace Launcher.Core
 
         /// <summary>True: the selection moves at constant speed over <see cref="Design.FocusSeconds"/>; false: the damped spring.</summary>
         public bool Linear { get; set; }
-        /// <summary>True: the selection jumps to its target; nothing moves between items (--no-motion).</summary>
+        /// <summary>True: all visual transitions are immediate, including show, hide, pages and focus (--no-motion).</summary>
         public static bool Instant;
 
         private readonly DockLayout _layout;
@@ -97,17 +97,18 @@ namespace Launcher.Core
         /// Vertical offset of the bar, shadow and divider, in pixels (0 when fully shown). While the cascade runs they
         /// only fade; the items rise one after the other (<see cref="ItemSlide"/>).
         /// </summary>
-        public int Slide { get { return _cascade && Phase == Phase.Showing ? 0 : (int)Math.Round((1f - Ease(Presence)) * DockLayout.SlideDistance); } }
+        public int Slide { get { return Instant ? 0 : _cascade && Phase == Phase.Showing ? 0 : (int)Math.Round((1f - Ease(Presence)) * DockLayout.SlideDistance); } }
 
         /// <summary>0..1: how far item <paramref name="i"/> has come in. It follows the bar's own presence once the cascade is over (and when hiding).</summary>
         public float ItemPresence(int i)
         {
+            if (Instant) return Presence;
             double t = (_enter - i * StaggerSeconds) / ShowSeconds;
             float c = t <= 0 ? 0f : (t >= 1 ? 1f : (float)t);
             return Math.Min(Presence, c);
         }
 
-        public int ItemSlide(int i) { return (int)Math.Round((1f - Ease(ItemPresence(i))) * DockLayout.SlideDistance); }
+        public int ItemSlide(int i) { return Instant ? 0 : (int)Math.Round((1f - Ease(ItemPresence(i))) * DockLayout.SlideDistance); }
 
         public static float Ease(float t)
         {
@@ -119,6 +120,7 @@ namespace Launcher.Core
         public bool Show()
         {
             if (Phase == Phase.Shown || Phase == Phase.Showing) return false;
+            if (Instant) { Phase = Phase.Shown; Presence = 1f; _cascade = false; _enter = CascadeSeconds; SetFocus(FocusTarget); return true; }
             // From hidden the items cascade in; turning back from a half-finished hide there is nothing left to stagger.
             _cascade = Phase == Phase.Hidden;
             _enter = _cascade ? 0 : CascadeSeconds;
@@ -129,6 +131,7 @@ namespace Launcher.Core
         public bool Hide()
         {
             if (Phase == Phase.Hidden || Phase == Phase.Hiding) return false;
+            if (Instant) { Phase = Phase.Hidden; Presence = 0f; return true; }
             Phase = Phase.Hiding;
             return true;
         }
@@ -147,6 +150,7 @@ namespace Launcher.Core
             _cascade = false; _enter = CascadeSeconds;
             if (Phase == Phase.Shown || Phase == Phase.Showing)
             {
+                if (Instant) { Presence = 1f; Phase = Phase.Shown; SetFocus(FocusTarget); from.Phase = Phase.Hidden; from.Presence = 0f; return; }
                 if (Presence > pop) Presence = pop;
                 Phase = Phase.Showing;
             }

@@ -113,7 +113,8 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.dock.readState(); }),
         attempt(function () { return d.input.active(); }),
         attempt(function () { return d.mqtt.enabled(); }),
-        attempt(function () { return d.sdb ? d.sdb.status() : null; })
+        attempt(function () { return d.sdb ? d.sdb.status() : null; }),
+        attempt(function () { return d.pairing ? d.pairing.status() : null; })
     ]).then(function (x) {
         var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10];
         var items = [];
@@ -142,6 +143,11 @@ Restore.prototype.plan = function () {
         if (d.sdb) {
             it = add('sdb', 'SDB developer access', 'Switches off network SDB access and disconnects its network clients. Vetro keeps its local connection.', x[11]);
             if (!x[11].error) flag(it, x[11].value.enabled || x[11].value.active);
+        }
+
+        if (d.pairing) {
+            it = add('pairing', 'Dashboard pairing', 'Requires pairing again for dashboard and API access. Previously paired devices stay paired.', x[12]);
+            if (!x[12].error) flag(it, x[12].value.disabled);
         }
 
         var groupIds = apps.error ? [] : groupMembers(apps.value);
@@ -215,6 +221,7 @@ Restore.prototype.run = function () {
             }],
             ['remote', function () { return Promise.resolve(d.input.off()).then(function () { return 'The remapper no longer listens to the remote.'; }); }],
             ['mqtt', function () { return Promise.resolve(d.mqtt.off()).then(function () { return 'The bridge is off.'; }); }],
+            ['pairing', function () { var s=d.pairing.restore();if(s.disabled)throw new Error('Pairing is still disabled');return 'Pairing required again; unpaired devices must sign in.'; }],
             ['sdb', function () { return d.sdb.off().then(function(s){if(s.enabled||s.active)throw new Error('SDB LAN access is still on');return 'SDB LAN access off; network clients disconnected.';}); }],
             ['groups', function () { return self.runGroups(); }],
             ['components', function () { return self.runComponents(); }],

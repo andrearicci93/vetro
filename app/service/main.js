@@ -397,6 +397,7 @@ function handleDebloatAction(req, res) {
         if (!appIds || appIds.length!==1) return serveJson(res,{ok:false,error:'Select one installed component to disable or enable.'},409);
         if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
         var id=appIds[0],desired=action==='disable',original;
+        if(id==='com.samsung.tv.csfs'&&desired&&dock.readState().enabled){debloatBusy=false;return serveJson(res,{ok:false,error:'Turn off the Vetro launcher before disabling Samsung Home'},409);}
         inventory(true).then(function(d){var row=d.apps.find(function(a){return a.appId===id;});if(d.registryError)throw Error('App registry unavailable');if(!row){var missing=Error('App not installed');missing.statusCode=409;throw missing;}var capability=ComponentActions.availability(row,d.apps,TOGGLE_IDS).toggle;if(!capability.allowed){var unavailable=Error(capability.reason);unavailable.statusCode=409;throw unavailable;}original=row.disabled;if(original===desired)return {ok:true,verified:true,changed:false,appId:id,disabled:desired};
             return agentExecute('pkgcmd '+(desired?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'App state unchanged');invalidateInventory();return inventory(true);}).then(function(after){var r=after.apps.find(function(a){return a.appId===id;});if(after.registryError||!r||r.disabled!==desired)throw Error('Global flag not confirmed');return {ok:true,verified:true,changed:true,appId:id,disabled:r.disabled,scope:'Global flag confirmed; running processes may remain until the next launch'};}).catch(function(e){return agentExecute('pkgcmd '+(original?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Restore not confirmed');invalidateInventory();return inventory(true);}).then(function(d){var restored=d.apps.find(function(a){return a.appId===id;});throw Error(e.message+' · '+(restored&&restored.disabled===original&&!d.registryError?'previous flag restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});
         }).then(function(d){
@@ -494,10 +495,19 @@ function handleComponentAction(req,res) {
     });
 }
 function handleQuick(req,res) {readJsonBody(req,res,function(p){
+    if(p.id==='samsung-home'&&dock.readState().enabled)return serveJson(res,{ok:false,error:'Turn off the Vetro launcher before changing Samsung Home'},409);
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
     quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}})
         .then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 });}
+function handlePairingMode(req,res) {
+    if(req.method==='GET')return serveJson(res,auth.pairingMode());
+    readJsonBody(req,res,function(p){
+        if(typeof p.disabled!=='boolean')return serveJson(res,{error:'Invalid pairing mode'},400);
+        if(debloatBusy)return serveJson(res,{error:'App change already in progress'},409);
+        try { serveJson(res,auth.setPairingMode(p.disabled)); } catch(e) { serveJson(res,{error:e.message},503); }
+    });
+}
 function sdbAccess() {
     return platform.sdbAccess ? platform.sdbAccess() : {available:false,enabled:false,active:false,port:null};
 }
@@ -523,6 +533,7 @@ var restoreTv = new (require('./restore.js').Restore)({
         off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
     mqtt: {enabled: function(){var c=require('./mqtt-bridge.js').readConfig();return !!c&&c.enabled!==false&&!!c.host;},
         off: function(){var m=require('./mqtt-bridge.js'),c=Object.assign({},m.readConfig(),{enabled:false});m.saveConfig(c);bridge.configure(c);}},
+    pairing: {status:function(){return auth.pairingMode();}, restore:function(){return auth.setPairingMode(false);}},
     sdb: {status:sdbAccess, off:function(){return platform.setSdbAccess(false);}},
     afterHbbtv: function(){privacy.cached=null;},
     removeAuth: function(){try{fs.unlinkSync(auth.STORE_PATH);}catch(e){}}
@@ -718,6 +729,7 @@ http.createServer(function (req, res) {
         if (url === '/exec') return handleExec(req, res);
         if (url === '/debloat') return handleDebloatAction(req, res);
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
+        if (url === '/pairing-mode') return handlePairingMode(req,res);
         if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
         if (url === '/restore') return handleRestore(req,res);
@@ -744,6 +756,7 @@ http.createServer(function (req, res) {
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/restore') return handleRestore(req,res);
+    if (url === '/pairing-mode') return handlePairingMode(req,res);
     if (url === '/sdb-access') return handleSdbAccess(req,res);
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
@@ -771,7 +784,7 @@ http.createServer(function (req, res) {
     if (url === '/remap') return handleRemap(req, res);
     if (url === '/' || url === '/index.html') return serveHtml(res, auth.decorate(dashboardHtml()));
     serveJson(res, { error: 'not found' }, 404);
-}).listen(PORT, function () {
+}).listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0', function () {
     console.log('VETRO listening on ' + PORT);
 });
 

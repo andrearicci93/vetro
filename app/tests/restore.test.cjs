@@ -190,5 +190,9 @@ function tv(start) {
   r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='sdb').state,'changed');
   await assert.rejects(r.eraseData(),/SDB developer access/);res=await r.run();assert.equal(sdbOn,false);assert.equal(res.complete,true);
   assert.equal(res.steps.find(i=>i.id==='sdb').status,'done');
+  t = tv();let pairingDisabled=true;
+  t.deps.pairing={status:()=>({disabled:pairingDisabled}),restore:()=>{pairingDisabled=false;return {disabled:false};}};
+  r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='pairing').state,'changed');
+  await assert.rejects(r.eraseData(),/Dashboard pairing/);res=await r.run();assert.equal(pairingDisabled,false);assert.equal(res.complete,true);
   console.log('restore: ok');
 })().catch(e => { console.error(e); process.exit(1); });

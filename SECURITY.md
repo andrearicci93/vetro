@@ -1,14 +1,21 @@
 # Security and responsible reports
 
 Vetro is experimental privileged software. The browser management interface and API
-require pairing with a code shown on the TV (see `app/docs/SIGN-IN.md`), but traffic
+require pairing by default with a code shown on the TV (see `app/docs/SIGN-IN.md`), but traffic
 is plain HTTP and keys could be copied by anyone watching the LAN. Deploy only on a
 trusted isolated LAN. Do not
 forward its ports, expose it publicly or enable unrestricted access from other
 networks. Root-agent authentication is a separate internal protocol from the dashboard sign-in.
 
+**Disable pairing mode** in Quick settings → Developer settings → Pairing is an explicit
+persistent opt-out. After its warning and confirmation, any local-network client
+can access dashboard/API operations, including root commands, without a token.
+Origin/host checks remain, and the pairing code remains TV-only. Turning the switch
+off requires pairing immediately; existing paired keys remain valid. Restore the TV
+also puts pairing back on. This switch does not control SDB access.
+
 The experimental SDB tunnel accepts only loopback clients by default. A paired
-user can enable **Quick settings → Maintenance → Developer access → Allow SDB
+user can enable **Quick settings → Developer settings → Developer access → Allow SDB
 from the local network**. The choice persists across service restarts. SDB itself
 has no Vetro pairing: any reachable client then gets developer access to the TV.
 Turning the switch off disconnects existing network SDB clients while retaining

@@ -78,6 +78,22 @@ values it read. Keep that distinction when interpreting the export. Its own pers
 `unknown`, as expected for a single snapshot; the separate owner report supplies the persistence result.
 Raw diagnostics and pairing credentials are kept outside tracked source.
 
+## Settings and preview follow-up
+
+The current UI opens Quick settings on General; Software update has moved there
+from Diagnostic report, alongside cleanup, firmware updates and restore/removal.
+Pairing and SDB controls are in the final Developer settings tab. Samsung Home
+changes are locked while Vetro's launcher is enabled, including the backend paths.
+Plugins now links to its repository/guide and separates the catalog, installed
+plugins and file-install instructions. The confusing Task manager role label was
+removed; commercial components remain in their area.
+
+Still selection is now called Reduce motion and also disables native show/hide,
+cascade and page transitions. The compatibility fields remain `noMotion` and
+`--no-motion`. The launcher DLL was rebuilt and passes 5,124 desktop checks. Local
+preview Settings/Samsung Home pills work without a TV catalog. These changes have
+not been installed on a TV; earlier candidate observations below remain historical.
+
 ## Hardening after the candidate — 2026-11-04
 
 See [HARDENING-0.5.0.md](HARDENING-0.5.0.md) for corrections, regression coverage,

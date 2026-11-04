@@ -44,3 +44,25 @@ A plugin page runs in a sandboxed frame without the dashboard's cookie, so it ca
 ## Limits
 
 Traffic is still plain HTTP: a device that can watch your LAN traffic could copy a key. Keep the TV on a trusted network and do not forward its ports. Other apps installed on the TV are trusted like the Vetro widget. To revoke every key from the TV side, a TV app can `POST /auth/signout-all`; deleting the auth file and restarting the service has the same effect.
+
+## Disable pairing mode
+
+Quick settings → Developer settings → Pairing has a **Disable pairing mode** switch, off
+by default. Enabling it requires an in-page warning and confirmation: every device
+on the local network can then use the dashboard/API without a code or token,
+including root commands. A warning stays visible in Developer settings while it is on.
+The choice persists across restarts.
+
+Turn the switch off to require pairing again immediately. The page reloads, so an
+unpaired browser sees sign-in. Existing paired keys remain valid. Cross-site and
+host protections remain enforced, and `/auth/pending` still exposes codes only to
+the TV's own widget. Restore the TV restores the requirement for pairing.
+
+Authenticated `GET /pairing-mode` reads `{disabled: boolean}`;
+`POST /pairing-mode` sets the same bounded boolean. In disabled mode the normal
+same-origin/IP-host LAN access can also restore pairing. The preference is stored
+atomically next to the key store, in `vetro-auth.json.mode`, without rewriting keys.
+
+For a computer-only preview, run `VETRO_BIND_HOST=127.0.0.1 npm start` from `app/`.
+This uses the standalone app-only adapter, with no TV operations; app-only already
+allows local access regardless of the pairing preference.

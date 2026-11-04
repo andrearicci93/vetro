@@ -90,9 +90,9 @@ patches were incorporated. Their overlap still needs a separate merge decision.
 
 ## Verification and release gates
 
-- Application suite: 83 suites (including the new inventory concurrency suite).
+- Application suite: 85 suites (including the new inventory concurrency suite).
 - Rooting suite: 13 suites, including packaged Node 4 syntax checks.
-- Native launcher: 5,075 checks, zero failures.
+- Native launcher: 5,124 checks, zero failures.
 - Diagnostic parser: 19 tests. Boot recorder: 6 tests with a simulated HTTP outage.
 - Both unsigned WGT variants built in `/tmp`; ZIP integrity and required notices checked.
 - Release hygiene/architecture audit and `git diff --check` passed.
@@ -108,3 +108,29 @@ No changes from this audit have been installed on a TV. Before final 0.5.0:
    modules are still null; no unsigned updater bypass was introduced.
 5. Exercise signed updater success/tamper refusal/rollback on that final key-bearing
    package. Earlier TV results and this audit's fixtures do not substitute for it.
+
+## Pairing-mode follow-up
+
+Developer settings now includes a persistent **Disable pairing mode** switch with an
+in-page warning, explicit confirmation and an active-state warning. Requiring
+pairing again immediately removes unpaired access and preserves existing keys;
+restore also requires pairing. `pairing-mode.test.cjs` covers persistence,
+paired/unpaired requests, origin/host restrictions, code privacy, storage failure
+and corrupt-state fallback. Dashboard and restore fixtures cover confirmation and
+cross-feature reset. These changes have not been tested on a TV.
+
+## Settings and launcher follow-up
+
+Quick settings starts on General; software update, cleanup, firmware updates and
+restore/removal live there. Pairing and SDB access move to the final Developer
+settings tab. Plugins has direct repository/guide links and separate catalog,
+installed plugins and file-install guidance. The Task manager no longer displays
+the unused-at-home role label/filter.
+
+Samsung Home changes are blocked in both Quick settings and the Task manager while
+the Vetro launcher is enabled. Home-state fixtures cover the UI and API interlock.
+Reduce motion retains the saved `noMotion`/`--no-motion` compatibility fields but
+now removes show/hide, cascade and page animations too. Native tests pass and the
+shipped launcher DLL was rebuilt. Local preview pills now load packaged/source
+Settings and Samsung Home assets without needing a TV catalog. These changes have
+not been installed or verified on a TV.

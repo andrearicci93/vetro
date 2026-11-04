@@ -1,4 +1,8 @@
-# Plugins (API 1, experimental)
+# Vetro Shards — plugins (API 1, experimental)
+
+**Vetro Shards** is Vetro’s plugin system. A Shard is a plugin that adds features to the TV.
+The dashboard uses the Shards name; API routes, `.vplugin` bundles, manifests and developer
+tools retain their existing `plugin` names for compatibility.
 
 > **Third-party code.** Plugins are written by other people, not by the author of Vetro. A plugin
 > runs inside Vetro with the same access as Vetro itself, **including running commands as root**, whatever

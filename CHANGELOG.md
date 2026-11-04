@@ -15,6 +15,12 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   and an IP/localhost host. One pairing at a time, limited wrong attempts and at most
   20 paired devices. Pending pairing survives a browser reload; file failures are reported.
   The TV widget and app-only mode keep their existing access. [Sign-in guide](app/docs/SIGN-IN.md).
+- **Disable pairing mode, with a warning.** Developer settings → Pairing can explicitly
+  allow dashboard/API access without a code or token. The switch is off by default,
+  asks for confirmation and displays a persistent warning while access is open.
+  The choice survives restart; turning it off immediately requires pairing again,
+  preserving existing keys. Origin/host protections and the TV-only pairing-code
+  endpoint remain enforced. Restore the TV requires pairing again.
 - **Experimental plugins, API 1.** Install, update and remove `.vplugin` bundles from a
   public catalog or a file; bundles land switched off. Updates preserve saved settings,
   and changed permission labels require another enable decision. Repeated failures stop
@@ -46,7 +52,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 - **CoBA Home and input responsiveness** ([#23](https://github.com/andrearicci93/vetro/pull/23),
   [#24](https://github.com/andrearicci93/vetro/pull/24), adapted from **Firaenix**).
   While visible, the launcher reads raw navigation keys and discards delayed compositor
-  echoes. Optional **Still selection** moves focus without icon zoom or lift. The Home
+  echoes. Optional **Reduce motion** disables launcher animations: show/hide, page transitions, scrolling, focus movement, icon zoom and lift. The existing saved preference remains compatible. The Home
   guard closes CoBA sidebar/media windows as well as `csfs`; choosing Samsung Home cancels
   remaining closes. The Home tile tries CoBA's launcher with `csfs` as fallback. App and
   source launches follow the fade-out. The rebuilt DLL remains part of the package.
@@ -56,7 +62,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 - **Disable Samsung Home for another launcher.** Quick settings → Home can disable
   `com.samsung.tv.csfs`, clearing and later restoring its startup flags. This does not
   enable the Vetro launcher: the owner must map Home to the other launcher separately.
-  The switch asks for confirmation and is included in Restore the TV.
+  The switch asks for confirmation and is included in Restore the TV. It is unavailable while the Vetro launcher is on; the API also refuses the conflicting change, including from the Task manager.
 - **Compatibility fixes from `main`.** Includes Tizen 10 service startup, the 0.3.5 fixes,
   and the Node 4.4 integration adapter/fallback for older TVs
   ([#75](https://github.com/andrearicci93/vetro/pull/75), by **Merennor**).
@@ -78,7 +84,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   recorded/verified scope stay alone; Quick settings groups explicitly restore their
   members. Removed packages, unrecorded TV-setting values and plugin-owned changes cannot
   be restored. A separate confirmation removes saved data and pairing after restore checks.
-- **SDB LAN access toggle.** Quick settings → Maintenance → Developer access offers
+- **SDB LAN access toggle.** Quick settings → Developer settings → Developer access offers
   **Allow SDB from the local network**, off by default and persistent across restarts.
   Enabling requires confirmation through the authenticated dashboard. Turning it off
   disconnects network SDB clients while preserving Vetro's local connection; Restore
@@ -114,9 +120,23 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 ### Dashboard, diagnostics and performance
 
 - **Navigation by task.** MQTT becomes Home Assistant; Plugins sits under Remapper.
-  Quick settings uses Privacy and ads, Voice, Memory, Maintenance and Home tabs with
-  keyboard navigation. Views use Resource monitor, Diagnostic report, Session history
+  Quick settings opens on **General** (Software update, storage cleanup, firmware
+  updates, Restore the TV and Remove Vetro), followed by Privacy and ads, Voice, Memory,
+  Home and **Developer settings** (pairing and SDB access). Tabs support keyboard navigation.
+  Software update has moved out of Diagnostic report. Views use Resource monitor, Diagnostic report, Session history
   and Connections; the sidebar shows the running version.
+- **Vetro Shards.** The plugin system now has its own name and a three-fragment
+  outline icon in the sidebar. The heading, introduction and instructions explicitly
+  identify Shards as plugins. Existing API routes, manifests and `.vplugin` files
+  keep their technical names for compatibility.
+- **Plugin-page guidance.** Direct repository and guide links, a three-step install
+  guide, separate Installed plugins and Plugin catalog sections, and file/developer
+  installation options grouped under a disclosure.
+- **Launcher preview in local runs.** Settings and Samsung Home use real system-icon
+  assets even without a TV catalog; example app tiles and failed image loads have
+  readable fallbacks. The preview reflects Reduce motion's stable icon geometry.
+- **Task manager roles.** Removed the confusing “Not used at home” label and filter;
+  commercial-mode components remain discoverable through their area.
 - **App-list recovery and launch targets** (#89, #100, #109). Failed, empty or slow
   inventory reads show their state and Retry. Samsung Settings components are excluded
   from launch pickers and refused in new remaps; old rules load but skip those actions.
@@ -144,7 +164,7 @@ adapted contributions whose PR remains open. Existing contributor/upstream credi
 remain intact. Both WGT variants carry full license notices; integration also carries
 the root-research notice.
 
-Local checks: **83 application suites, 13 integration suites, 5,075 native launcher
+Local checks: **85 application suites, 13 integration suites, 5,124 native launcher
 checks, 19 diagnostic-parser tests and 6 boot-recorder tests**; unsigned app-only and
 integration builds, ZIP integrity, release hygiene/architecture and `git diff --check`.
 Linux fixture corrections from #105 are included. Hosted CI on the final commit is separate.

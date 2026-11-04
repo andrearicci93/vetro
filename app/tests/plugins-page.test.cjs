@@ -46,3 +46,17 @@ const scopedAt = mainSrc.indexOf("/s\\/[0-9a-f]{32}\\/api");
 const gateAt = mainSrc.indexOf('auth.gate(req, res, url');
 assert.ok(scopedAt > 0 && gateAt > 0 && scopedAt < gateAt, 'plugin session URLs are routed before the sign-in gate');
 console.log('plugin sessions: ok');
+
+assert.match(html,/href="https:\/\/github.com\/andrearicci93\/vetro-plugins"[^>]*>Browse plugin repository/);
+assert.match(html,/Plugin guide ↗/);
+assert.match(html,/class="plugin-steps"/);
+assert.match(html,/Install from a file or develop a plugin/);
+assert.doesNotMatch(html,/copy a plugin folder into/,'setup guidance does not expose installation internals');
+
+const shardsNav=/<button data-tab="plugins"[^>]*>([\s\S]*?)<\/button>/.exec(html)[1];
+assert.match(shardsNav,/>Vetro Shards$/);
+assert.match(shardsNav,/M4 3h9l-4 7-6-2 1-5Z/,'approved three-fragment icon');
+assert.doesNotMatch(shardsNav,/M9 3v4M15 3v4/,'plug icon replaced');
+assert.match(html,/plugins:\['Vetro Shards','The plugin system for Vetro/);
+assert.match(html,/Shards are plugins that add features to Vetro/);
+assert.match(html,/Installed Shards<\/h2>/);assert.match(html,/Shard catalog<\/h2>/);

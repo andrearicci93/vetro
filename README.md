@@ -75,7 +75,7 @@ Do what you want with the remote. Press a button, choose an app, and the button 
 - **TV settings:** adjust supported picture controls and selected advanced settings, with read-back and restore.
 - **MQTT and Home Assistant:** publish the TV's state and discovery and trigger actions from exact topics. [Setup guide](app/docs/mqtt/README.md).
 - **Dashboard:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.
-- **Plugins:** add-ons written by other people, installed from a public list or a file, off until you switch them on. They are third-party code, not sandboxed (a plugin can do what Vetro can, including running commands as root) and only spot-checked: read the warning in [the plugin guide](app/docs/plugins.md), which also explains how to write and publish one.
+- **Vetro Shards (plugins):** Vetro’s plugin system, with add-ons written by other people, installed from a public list or a file, off until you switch them on. They are third-party code, not sandboxed (a plugin can do what Vetro can, including running commands as root) and only spot-checked: read the warning in [the plugin guide](app/docs/plugins.md), which also explains how to write and publish one.
 - **Updates:** update Vetro from the dashboard, launcher included, with no computer and no reinstall. Updates are signed and put back by themselves if the new version does not start. [How it works](app/docs/UPDATING.md).
 - **Diagnostics:** download a redacted report to share in an issue. [Report format](app/docs/DIAGNOSTIC-EXPORT.md).
 

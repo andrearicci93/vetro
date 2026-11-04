@@ -85,7 +85,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.equal((page.match(/\/dock\/icon\?slug=/g) || []).length, 3);
     assert.match(page, /src="\/dock\/icon\?slug=netflix"/);
     assert.match(page, /<i class="lp-divider"><\/i>[^]*lp-oval[^]*slug=settings/, 'Settings is an oval pill after the divider');
-    assert.match(page, /class="lp-tile lp-sel"[^>]*><img alt="" src="\/dock\/icon\?slug=netflix"/, 'the first app is the selected one');
+    assert.match(page, /class="lp-tile lp-sel"[^>]*><img alt="Netflix" src="\/dock\/icon\?slug=netflix"/, 'the first app is the selected one');
     assert.doesNotMatch(page, /lp-label/, 'no name or clock row: the design shows none');
     assert.match(page, /<div class="lp-hint">Source/, 'the hint over the bar');
     assert.match(sandbox.operationEntries[0].message, /Launcher on and running\. Press Home on the remote to open it\./, 'recorded in Actions');
