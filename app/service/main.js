@@ -71,6 +71,9 @@ var dock = new dockModule.Dock({execute: agentExecute,
         });
     }});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
+// #135: factory, hotel and shop apps, and the Aging key AgingApp can leave at 1 (factory-apps.js).
+var factoryApps = require('./factory-apps.js');
+var factoryTest = new factoryApps.FactoryTest(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter});
 var presence = new (require('./presence.js').Presence)(agentExecute);
 var tvState = new (require('./tv-state.js').Store)(agentExecute);
@@ -206,6 +209,7 @@ function downloadDiagnostics(res, withComponents) {
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         quickWins: later(function () { return wins.read(); }),
+        factoryTest: later(function () { return factoryTest.read(); }),
         // Opt-in: the manifests of the components the catalog does not know. Without the box ticked the section says so.
         components: withComponents
             ? later(function () { return inventory(false).then(function (inv) { return require('./component-facts.js').read(agentExecute, inv.apps); }); })
@@ -500,7 +504,14 @@ function handleComponentAction(req,res) {
             var a;
             try { a=ComponentActions.validate(p,d.apps); }
             catch(e) { e.statusCode=400;throw e; }
+            var factoryResult;
             return agentExecute(ComponentActions.command(p,a),30000).then(function(r) {
+                // #135: AgingApp stopped this way leaves db/FactoryApp/Aging at 1, and the TV starts the test again at every boot.
+                // Put it back to 0 (only if it reads exactly 1), right after the stop command and whatever it answered:
+                // the process check below can fail on its own, and a stuck AgingApp is when the key matters most.
+                var factory=p.action==='stop'&&factoryApps.isAging(a.appId)?factoryTest.reset().catch(function(e){return {changed:false,error:e.message};}):Promise.resolve(undefined);
+                return factory.then(function(f){factoryResult=f;return r;});
+            }).then(function(r) {
                 invalidateInventory();
                 if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Action incomplete');
                 return Promise.all([inventory(true),p.action==='stop'?monitor.snapshot('full',true):Promise.resolve(null)]).then(function(results) {
@@ -509,10 +520,10 @@ function handleComponentAction(req,res) {
                         p.action==='uninstall'?!after.registryError&&!after.apps.some(function(x){return x.packageId===a.packageId}):
                         !results[1].processes.some(function(x){return x.appId===p.appId});
                     debloatBusy=false;serveJson(res,{ok:verified,verified:verified,action:p.action,appId:p.appId,packageId:a.packageId,changed:p.action==='flags'?a[p.flag]!==p.enabled:undefined,
-                        error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps});
+                        error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps,factoryTest:factoryResult});
                 });
-            });
-        }).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503)});
+            }).catch(function(e){if(factoryResult)e.factoryTest=factoryResult;throw e;});
+        }).catch(function(e){debloatBusy=false;serveJson(res,e.factoryTest?{ok:false,error:e.message,factoryTest:e.factoryTest}:{ok:false,error:e.message},e.statusCode||503)});
     });
 }
 // Samsung's Home for the custom launcher mode: the same group switch the Quick settings page used to carry, run from the service.
@@ -568,8 +579,17 @@ var restoreTv = new (require('./restore.js').Restore)({
     pairing: {status:function(){return auth.pairingMode();}, restore:function(){return auth.setPairingMode(false);}},
     sdb: {status:sdbAccess, off:function(){return platform.setSdbAccess(false);}},
     afterHbbtv: function(){privacy.cached=null;},
+    factoryTest: factoryTest,
     removeAuth: function(){try{fs.unlinkSync(auth.STORE_PATH);}catch(e){}}
 });
+// #135: GET reads db/FactoryApp/Aging; POST {action:'reset'} writes 0 only when it reads exactly 1, then reads it again.
+function handleFactoryTest(req,res) {
+    if(req.method==='GET')return factoryTest.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
+    readJsonBody(req,res,function(p){
+        if(p.action!=='reset')return serveJson(res,{error:'Invalid factory test action'},400);
+        factoryTest.reset().then(function(d){serveJson(res,Object.assign({ok:true},d));}).catch(function(e){serveJson(res,{ok:false,error:e.message},e.message.indexOf('in progress')>=0?409:503);});
+    });
+}
 function handleRestore(req,res) {
     if(req.method==='GET')return restoreTv.publicPlan().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
     readJsonBody(req,res,function(p){
@@ -622,8 +642,13 @@ function handleIcon(req,res) {
 }
 function handleLaunch(req,res) {readJsonBody(req,res,function(p){
     if(typeof p.appId!=='string'||! APP_ID_120_RE.test(p.appId))return serveJson(res,{error:'invalid appId'},400);
-    inventory(false).then(function(data){if(!data.apps.some(function(r){return r.appId===p.appId;}))throw new Error('application not installed');return runActions([{type:'launch',appId:p.appId}]);})
-        .then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{error:e.message},503);});
+    inventory(false).then(function(data){var row=data.apps.find(function(r){return r.appId===p.appId;});if(!row)throw new Error('application not installed');
+        // #135: the service decides, not only the dashboard. Blocked: never. Not used at home: only with confirmed:true.
+        var level=factoryApps.risk(row.appId,row.packageId),refused;
+        if(level==='blocked'){refused=new Error(row.appId+' '+factoryApps.BLOCKED_MESSAGE);refused.statusCode=403;throw refused;}
+        if(level==='confirm'&&p.confirmed!==true){refused=new Error(row.appId+' '+factoryApps.CONFIRM_MESSAGE);refused.statusCode=409;refused.needsConfirmation=true;throw refused;}
+        return runActions([{type:'launch',appId:p.appId}],true);})
+        .then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,e.needsConfirmation?{error:e.message,needsConfirmation:true}:{error:e.message},e.statusCode||503);});
 });}
 
 function handleBlocklist(req, res) {
@@ -642,7 +667,7 @@ function handleRemap(req, res) {
     if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token });
     readJsonBody(req, res, function (parsed) {
         var rules;
-        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules)); }
+        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
         stopInput(); inputPaused=false;
         remapStore.rules = rules;
@@ -651,12 +676,17 @@ function handleRemap(req, res) {
     });
 }
 
-function runActions(actions) {
+// Package ID of an installed app from the last registry read, if there is one (rules only carry the app ID).
+function packageOf(appId){var row=registryCache&&registryCache.apps.find(function(r){return r.appId===appId;});return row?row.packageId:null;}
+// direct: the Task manager's "Open app", already checked in handleLaunch. Anything else comes from a rule (remapper, MQTT, HTTP).
+function runActions(actions, direct) {
     var sent=0, skipped=[],mqttSent=0;
     return actions.reduce(function(chain,a){return chain.then(function(){
         var command;
         if(a.type==='mqtt'){bridge.publish(a.topic,a.payload);sent++;mqttSent++;return;}
         if(a.type==='launch'&&!remap.launchable(a.appId)){skipped.push('launch:not-an-app');return;}
+        // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
+        if(a.type==='launch'&&!direct&&remap.ruleRisk(a.appId,packageOf)){skipped.push('launch:factory-app');return;}
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
@@ -765,6 +795,7 @@ http.createServer(function (req, res) {
         if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
         if (url === '/restore') return handleRestore(req,res);
+        if (url === '/factory-test') return handleFactoryTest(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
@@ -792,6 +823,7 @@ http.createServer(function (req, res) {
     if (url === '/sdb-access') return handleSdbAccess(req,res);
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
+    if (url === '/factory-test') return handleFactoryTest(req,res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/privacy') return privacy.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/tv-menu') { var q=MENU_ID_QUERY_RE.exec(req.url||''), menuId=null; try { if(q)menuId=decodeURIComponent(q[1]); } catch(e) { return serveJson(res,{error:'Invalid menu ID'},400); } return (q?menuSettings.read(menuId):menuSettings.load()).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)}); }

@@ -20,6 +20,12 @@ function launchable(appId) {
     return !(id === NOT_LAUNCHABLE_PREFIX || id.indexOf(NOT_LAUNCHABLE_PREFIX + '.') === 0);
 }
 var NOT_LAUNCHABLE_MESSAGE = 'is part of Samsung\u2019s Settings, not an app: it cannot be opened by its ID';
+// Factory, hotel and shop apps (#135, factory-apps.js): a rule runs from a key press or a message, with nobody in front of
+// the screen to confirm, so a rule never opens them. packageOf (optional) gives the package ID of an installed app.
+var factoryApps = require('./factory-apps.js');
+function ruleRisk(appId, packageOf) {
+    return factoryApps.risk(appId, typeof packageOf === 'function' ? packageOf(appId) : null);
+}
 
 function validateAction(a) {
     if (!a || typeof a !== 'object') throw new Error('invalid action');
@@ -82,11 +88,14 @@ function resolve(rules, type, value, payload) {
 }
 
 // New rules only: rules saved by an older version still load (validateRules), and runActions skips the action.
-function checkLaunchable(rules) {
+function checkLaunchable(rules, packageOf) {
     (rules || []).forEach(function (r) { (r.actions || []).forEach(function (a) {
-        if (a.type === 'launch' && !launchable(a.appId)) throw new Error(a.appId + ' ' + NOT_LAUNCHABLE_MESSAGE);
+        if (a.type !== 'launch') return;
+        if (!launchable(a.appId)) throw new Error(a.appId + ' ' + NOT_LAUNCHABLE_MESSAGE);
+        var level = ruleRisk(a.appId, packageOf);
+        if (level) throw new Error(a.appId + ' ' + (level === 'blocked' ? factoryApps.BLOCKED_MESSAGE : factoryApps.RULE_MESSAGE));
     }); });
     return rules;
 }
 module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, launchable: launchable,
-    checkLaunchable: checkLaunchable, NOT_LAUNCHABLE_PREFIX: NOT_LAUNCHABLE_PREFIX};
+    checkLaunchable: checkLaunchable, ruleRisk: ruleRisk, NOT_LAUNCHABLE_PREFIX: NOT_LAUNCHABLE_PREFIX};

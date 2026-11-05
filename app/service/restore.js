@@ -114,9 +114,10 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.input.active(); }),
         attempt(function () { return d.mqtt.enabled(); }),
         attempt(function () { return d.sdb ? d.sdb.status() : null; }),
-        attempt(function () { return d.pairing ? d.pairing.status() : null; })
+        attempt(function () { return d.pairing ? d.pairing.status() : null; }),
+        attempt(function () { return d.factoryTest ? d.factoryTest.read() : {present: false, active: false}; })
     ]).then(function (x) {
-        var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10];
+        var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13];
         var items = [];
         function add(id, label, detail, read, extra) {
             var item = {id: id, label: label, detail: detail, state: 'clean'};
@@ -189,6 +190,10 @@ Restore.prototype.plan = function () {
             else flag(it, home.value.backups > 0 && home.value.same < home.value.backups);
         }
 
+        // #135: not a Vetro setting, but Vetro's Task manager could open AgingApp, which leaves this key at 1. Only exactly 1 counts.
+        it = add('factory-test', 'Factory colour test', 'Sets db/FactoryApp/Aging back to 0, so the TV stops starting Samsung’s colour test (AgingApp) at every boot. Restart the TV afterwards.', factory);
+        if (!factory.error) flag(it, factory.value.active === true);
+
         var changedFlags = flags.error ? [] : flags.value.filter(function (r) { return r.current !== r.backup; });
         it = add('startup-flags', 'Start at boot and restart', 'Puts back the start-at-boot and restart values you changed in the Task manager.', flags);
         if (!flags.error) flag(it, changedFlags.length > 0, changedFlags.length);
@@ -241,7 +246,8 @@ Restore.prototype.run = function () {
                 });
             }],
             ['home-order', function () { return d.homeOrder.restore().then(function () { return 'Home order put back. Restart the TV to see it.'; }); }],
-            ['startup-flags', function () { return self.runFlags(plan._data.flags); }]
+            ['startup-flags', function () { return self.runFlags(plan._data.flags); }],
+            ['factory-test', function () { return d.factoryTest.reset().then(function (r) { return r.message; }); }]
         ];
         return order.reduce(function (chain, step) {
             return chain.then(function () {
