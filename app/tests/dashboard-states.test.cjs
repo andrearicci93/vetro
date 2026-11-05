@@ -52,9 +52,11 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  sandbox.pairingData={disabled:true};sandbox.renderPairingMode();assert.match(el('quickPairing').innerHTML,/Pairing is disabled/);
  el('quick').onchange({target:{dataset:{pairingDisabled:''},checked:false}});assert.equal(modes[1],false);
  sandbox.inventory=[{appId:'com.samsung.tv.csfs',packageId:'com.samsung.tv.csfs',disabled:false}];
- sandbox.launcherEnabled=true;sandbox.renderQuick();assert.match(el('quickHome').innerHTML,/data-quick-toggle="samsung-home" disabled/);
- assert.match(el('quickHome').innerHTML,/Turn off the Vetro launcher/);
- sandbox.launcherEnabled=false;sandbox.renderQuick();assert.doesNotMatch(el('quickHome').innerHTML,/data-quick-toggle="samsung-home" disabled/);
+ // Samsung Home lives in the Custom launcher tab of the Launcher page, locked while any launcher is on
+ sandbox.dockData={installed:true,mode:'off',enabled:false,entries:[],inputs:[]};
+ sandbox.launcherEnabled=true;sandbox.renderQuick();assert.match(el('dockCustom').innerHTML,/data-quick-toggle="samsung-home" disabled/);
+ assert.match(el('dockCustom').innerHTML,/Turn off the launcher to change Samsung Home/);
+ sandbox.launcherEnabled=false;sandbox.renderQuick();assert.doesNotMatch(el('dockCustom').innerHTML,/data-quick-toggle="samsung-home" disabled/);
  sandbox.inventory=[{appId:'hotel.app',packageId:'hotel',role:'unused',area:'commercial'}];sandbox.render();
  assert.doesNotMatch(el('roleFilters').innerHTML,/data-role="unused"/);assert.doesNotMatch(el('appGrid').innerHTML,/Not used at home|role-unused/);
  assert.equal(sandbox.quickTab,'general');
