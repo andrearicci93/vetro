@@ -24,6 +24,7 @@ function tv(start) {
     ledger: ['org.tizen.ledgered'],
     wins: {firmware: 'on', multiscreen: 'on', ambient: 'on', telemetry: 'on'}, hbbtvOff: true, hbbtvCanRestore: true,
     dnsOn: true, home: {backups: 2, same: 0}, flags: [{appId: 'a.b', backup: 'true|false', current: 'false|false'}, {appId: 'c.d', backup: 'true|true', current: 'true|true'}],
+    aging: 1,   // #135: AgingApp left db/FactoryApp/Aging at 1
     failStep: null, calls: [], order: [], erased: 0, authRemoved: 0
   }, start);
   const fail = id => { if (s.failStep === id) throw new Error('boom ' + id); };
@@ -71,6 +72,8 @@ function tv(start) {
       apply(enabled, domains) { assert.equal(enabled, false); s.order.push('dns'); s.dnsOn = false; return Promise.resolve({enabled: false, applied: false, domains}); }
     },
     homeOrder: {restore() { s.order.push('home'); fail('home'); s.home.same = s.home.backups; return Promise.resolve({}); }},
+    factoryTest: {read: () => Promise.resolve({present: true, value: s.aging, type: 'Int32', active: s.aging === 1}),
+      reset() { s.order.push('factory-test'); fail('factory-test'); s.aging = 0; return Promise.resolve({changed: true, message: 'Factory test turned off. Restart the TV.'}); }},
     removeAuth() { s.authRemoved++; }
   };
   return {s, deps};
@@ -88,9 +91,9 @@ function tv(start) {
   // The plan on a changed TV: read-only, and it names every step
   let t = tv(), r = new Restore(t.deps), plan = await r.publicPlan();
   const state = id => plan.items.find(i => i.id === id).state;
-  ['launcher', 'plugins', 'remote', 'mqtt', 'groups', 'components', 'win-telemetry', 'win-ambient', 'win-multiscreen', 'win-firmware', 'hbbtv', 'dns', 'home-order', 'startup-flags']
+  ['launcher', 'plugins', 'remote', 'mqtt', 'groups', 'components', 'win-telemetry', 'win-ambient', 'win-multiscreen', 'win-firmware', 'hbbtv', 'dns', 'home-order', 'startup-flags', 'factory-test']
     .forEach(id => assert.equal(state(id), 'changed', id));
-  assert.equal(plan.pending, 14);
+  assert.equal(plan.pending, 15);
   assert.equal(plan.items.find(i => i.id === 'groups').count, alexa.length);
   assert.equal(plan.items.find(i => i.id === 'components').count, 3, 'verified + ledger + user app, nothing else');
   assert.equal(plan.items.find(i => i.id === 'startup-flags').count, 1, 'a backup equal to the current value is not a change');
@@ -106,8 +109,8 @@ function tv(start) {
   // Run: fixed order, every step done, only provable components switched on
   let res = await r.run();
   assert.equal(res.complete, true, JSON.stringify(res));
-  assert.deepEqual(res.steps.map(s => s.status), Array(14).fill('done'));
-  assert.deepEqual(t.s.order.filter(x => !/^pkgcmd/.test(x)), ['launcher', 'plugin:hello', 'remote', 'mqtt', 'win:telemetry', 'win:ambient', 'win:multiscreen', 'win:firmware', 'hbbtv', 'dns', 'home']);
+  assert.deepEqual(res.steps.map(s => s.status), Array(15).fill('done'));
+  assert.deepEqual(t.s.order.filter(x => !/^pkgcmd/.test(x)), ['launcher', 'plugin:hello', 'remote', 'mqtt', 'win:telemetry', 'win:ambient', 'win:multiscreen', 'win:firmware', 'hbbtv', 'dns', 'home', 'factory-test']);
   const enabled = [].concat(...t.s.order.filter(x => /^pkgcmd-A:/.test(x)).map(x => x.slice(9).split(',')));
   assert.deepEqual(enabled.sort(), alexa.concat(['com.samsung.tv.acr', 'org.tizen.ledgered', 'com.example.userapp']).sort());
   ['org.tizen.ep-hotel-factory', 'org.tizen.factory', 'com.samsung.tv.coba.adagent'].forEach(id => {
@@ -132,15 +135,15 @@ function tv(start) {
   res = await r.run();
   assert.equal(res.complete, false);
   assert.equal(res.steps[0].status, 'failed'); assert.match(res.steps[0].message, /boom launcher/);
-  assert.equal(res.steps.filter(s => s.status === 'done').length, 13, 'everything else was done');
+  assert.equal(res.steps.filter(s => s.status === 'done').length, 14, 'everything else was done');
   assert.deepEqual(res.remaining, ['launcher']);
   await assert.rejects(r.eraseData(), /Launcher/);
 
   // A failing component script does not stop the Quick settings groups, wins, DNS or Home
   t = tv({failStep: 'startup-flags'}); r = new Restore(t.deps);
   res = await r.run();
-  assert.equal(res.steps[res.steps.length - 1].status, 'failed');
-  assert.ok(res.steps.slice(0, -1).every(s => s.status === 'done'));
+  assert.equal(res.steps.find(s => s.id === 'startup-flags').status, 'failed');
+  assert.ok(res.steps.filter(s => s.id !== 'startup-flags').every(s => s.status === 'done'), 'the factory test step after it still runs');
 
   // HbbTV whose previous value was never saved is handed back to the user, not guessed
   t = tv({hbbtvCanRestore: false}); r = new Restore(t.deps);
@@ -154,7 +157,7 @@ function tv(start) {
   // A TV that Vetro never touched has nothing to restore, and nothing is sent
   t = tv({launcher: false, plugins: [{id: 'launcher', bundled: true, enabled: true}], remote: false, mqtt: false,
     apps: [{appId: 'org.tizen.factory', packageId: 'org.tizen.factory', disabled: true, system: true}].concat(alexa.map(id => ({appId: id, packageId: id, disabled: false, system: true}))),
-    ledger: [], wins: {firmware: 'off', multiscreen: 'off', ambient: 'off', telemetry: 'off'}, hbbtvOff: false, dnsOn: false, home: {backups: 0, same: 0}, flags: []});
+    ledger: [], wins: {firmware: 'off', multiscreen: 'off', ambient: 'off', telemetry: 'off'}, hbbtvOff: false, dnsOn: false, home: {backups: 0, same: 0}, flags: [], aging: 0});
   r = new Restore(t.deps); plan = await r.publicPlan();
   assert.equal(plan.pending, 0, JSON.stringify(plan.items.filter(i => i.state !== 'clean')));
   res = await r.run();

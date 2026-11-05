@@ -6,6 +6,7 @@
 
 var debloat = require('./debloat.js');
 var catalog = require('./app-catalog.js');
+var factoryApps = require('./factory-apps.js');
 
 // Candidate domains, grouped by evidence in service/blocklist.js. Served by
 // GET /blocklist for an external DNS blocker (Pi-hole, router) and offered as
@@ -77,7 +78,9 @@ function category(r){return classification(r).category;}
 // Area, role, purpose and firmware facts for the Debloater (app-catalog.js).
 function describe(r) {
     var c = catalog.describe(r);
-    return {area: c.area, role: c.role, purpose: c.purpose, referencedBy: c.referencedBy, startsOn: c.startsOn, access: c.access, catalogSource: c.source};
+    // launchRisk (#135): 'blocked' or 'confirm' for factory, hotel and shop apps; see factory-apps.js.
+    return {area: c.area, role: c.role, purpose: c.purpose, referencedBy: c.referencedBy, startsOn: c.startsOn, access: c.access, catalogSource: c.source,
+        launchRisk: factoryApps.risk(r.appId, r.packageId)};
 }
 
 function summarize(rows) {

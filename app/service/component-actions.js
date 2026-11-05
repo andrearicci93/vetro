@@ -16,7 +16,7 @@ function availability(a,rows,verifiedIds){
  return {
   toggle:decision(blocked?'This component is protected.':!known?'App state is unavailable. Refresh the inventory.':!user&&!tested?'Disable is not supported for this system component.':null),
   uninstall:decision(blocked||siblings.some(protectedRow)?'This package contains a protected component.':a.system!==false?'System packages cannot be uninstalled here.':a.removable!==true?'The TV does not mark this package as removable.':typeof a.packageId!=='string'||!/^[A-Za-z0-9_.-]{1,180}$/.test(a.packageId)?'Package identity is unavailable.':null),
-  launch:decision(!known?'App state is unavailable.':a.disabled?'Enable the app before launching it.':a.show!==true?'This is a background component with no launcher entry.':null),
+  launch:decision(a.launchRisk==='blocked'?'Factory test or service menu. Vetro does not open it: it can leave the TV in a factory mode.':!known?'App state is unavailable.':a.disabled?'Enable the app before launching it.':a.show!==true?'This is a background component with no launcher entry.':null),
   flags:decision(blocked?'This component is protected.':null)
  };
 }

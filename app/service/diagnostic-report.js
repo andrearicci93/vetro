@@ -94,6 +94,8 @@ var projectors = {
             manifestSha256:hash(p.manifestSha256),description:text(p.description),privileges:list(p.privileges,40).map(privilege).filter(Boolean),
             components:list(p.components,40).map(function(c){return Object.assign({appId:token(c.appId),kind:['service','ui'].indexOf(c.kind)>=0?c.kind:null,exec:token(c.exec),exeSha256:hash(c.exeSha256)},
                 flags(c,['declaredOnBoot','declaredAutoRestart','taskmanage','registeredOnBoot','registeredAutoRestart','differs']));})};})};},
+    // #135: read only. Whether db/FactoryApp/Aging exists and its value (1 = the factory colour test starts at every boot).
+    factoryTest:function(d){return {present:boolean(d.present),value:numeric(d.value),type:token(d.type),active:boolean(d.active)};},
     serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
