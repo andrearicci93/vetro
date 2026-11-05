@@ -50,7 +50,12 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   launcher when needed. A failed startup triggers automatic rollback within four minutes;
   manual rollback is also supported. Changes to `config.xml` still need a reinstall.
   Update and deliberately broken-update rollback were tested earlier on a Q80A with a
-  test key. **This candidate has no update public key and refuses every update bundle.**
+  test key. The package now carries the release public key (the private half stays
+  offline), so it accepts only bundles signed with it; **update, tamper refusal and
+  rollback with this key have not been tried on a TV yet.** A second update is refused
+  (`pending`) while the first still waits for its confirmation, also after a restart,
+  so the backup of the original files cannot be overwritten ([#116](https://github.com/andrearicci93/vetro/issues/116),
+  reported by **adri0894-web**); going back to the previous version stays possible.
   [Update guide](app/docs/UPDATING.md).
 
 ### Launcher and remote compatibility
@@ -65,10 +70,23 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 - **Samsung Home immediately after Home.** Choosing its tile no longer lets a pending
   Home guard close it again. The earlier fix was reproduced on a Q80A; Samsung Home still
   takes roughly four to five seconds to start on the tested setup.
-- **Disable Samsung Home for another launcher.** Quick settings → Home can disable
-  `com.samsung.tv.csfs`, clearing and later restoring its startup flags. This does not
-  enable the Vetro launcher: the owner must map Home to the other launcher separately.
-  The switch asks for confirmation and is included in Restore the TV. It is unavailable while the Vetro launcher is on; the API also refuses the conflicting change, including from the Task manager.
+- **Custom launcher: your own app on the Home key.** The Launcher page has two tabs,
+  **Vetro launcher** and **Custom launcher**. In the second, one switch and an app picker
+  (apps you installed yourself, with a launcher entry, switched on) make the Home key open
+  that app. Vetro turns Samsung's Home off so it cannot come up over the app and switches
+  off Autorun Smart Hub so the TV does not power on into it; turning the switch off
+  undoes all of it, in the opposite order. The app runs through the same headless native
+  process and supervision as the Vetro launcher, not through the Remapper. If it keeps
+  failing to start, the mode turns itself off after six tries and Samsung's Home returns.
+  The two modes exclude each other in the page and in the service, and any launcher
+  on locks the separate **Samsung Home** switch (now at the bottom of the Custom launcher
+  tab, for people who map a remote button by hand; it asks for confirmation, is included
+  in Restore the TV and is refused by the API and the Task manager while a launcher is on).
+  Quick settings no longer has a Home tab, and the Launcher no longer carries a Beta
+  label. The diagnostic export reports the mode and whether a custom app is set, never
+  its id. **Not tried on a TV. The boot with Samsung's Home disabled is unverified:**
+  the firmware's first-screen script retries `app_launcher -f com.samsung.tv.csfs`
+  until it succeeds, and what that returns for a disabled app is not known.
 - **Compatibility fixes from `main`.** Includes Tizen 10 service startup, the 0.3.5 fixes,
   and the Node 4.4 integration adapter/fallback for older TVs
   ([#75](https://github.com/andrearicci93/vetro/pull/75), by **Merennor**).
@@ -118,6 +136,18 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   of spawning processes per file. Native Netflix/YouTube caches and arbitrary app data
   remain excluded. Shell fixtures cover listing and deletion; the consolidated cleanup
   still needs TV validation.
+- **Factory colour test guard** ([#135](https://github.com/andrearicci93/vetro/issues/135),
+  reported by **9francy9**; PR [#137](https://github.com/andrearicci93/vetro/pull/137)).
+  Opening Samsung's AgingApp from the Task manager and stopping it left
+  `db/FactoryApp/Aging` at 1: the TV started the test at every boot, hid the volume bar and
+  a factory reset did not clear it. AgingApp and the service menus can no longer be opened
+  from Vetro (the service answers 403, not only the buttons); other hotel, shop and factory
+  apps ask for confirmation first; Remapper, MQTT and HTTP rules refuse them, and rules saved
+  by 0.3.5 still load with the action skipped. If the key reads exactly 1, Quick settings shows
+  a banner with **Turn off the factory test**, and stopping AgingApp sets it back to 0 with
+  read-back. Restore the TV has a step for it and the diagnostic export a read-only
+  `factoryTest` section. Tried only against a simulated TV; the real `vconftool` output for
+  this key is assumed to match the other keys.
 - **Catalog and domain candidates.** Adds app classifications from reports #14, #17 and
   #26, and `rtb-config-canary.samsungads.com` as a firmware-derived, untested candidate.
   The separately offered `cdn-stv.adgrx.com` Home-picture host (#79/#109) stays out of
@@ -128,7 +158,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 - **Navigation by task.** MQTT becomes Home Assistant; Plugins sits under Remapper.
   Quick settings opens on **General** (Software update, storage cleanup, firmware
   updates, Restore the TV and Remove Vetro), followed by Privacy and ads, Voice, Memory,
-  Home and **Developer settings** (pairing and SDB access). Tabs support keyboard navigation.
+  and **Developer settings** (pairing and SDB access). Tabs support keyboard navigation.
   Software update has moved out of Diagnostic report. Views use Resource monitor, Diagnostic report, Session history
   and Connections; the sidebar shows the running version.
 - **Vetro Shards.** The plugin system now has its own name and a three-fragment
@@ -170,15 +200,16 @@ adapted contributions whose PR remains open. Existing contributor/upstream credi
 remain intact. Both WGT variants carry full license notices; integration also carries
 the root-research notice.
 
-Local checks: **85 application suites, 13 integration suites, 5,124 native launcher
+Local checks: **88 application suites, 13 integration suites, 5,130 native launcher
 checks, 19 diagnostic-parser tests and 6 boot-recorder tests**; unsigned app-only and
 integration builds, ZIP integrity, release hygiene/architecture and `git diff --check`.
 Linux fixture corrections from #105 are included. Hosted CI on the final commit is separate.
 
 The owner reported launcher, plugin, pairing and persistence success on the earlier
 Q80A candidate; SDK/Apps2Samsung SDB transfer checks also passed on that installation.
-**The hardening changes and SDB toggle have not been installed on a TV.** Restore,
-data erasure, final plugin lifecycle cases and signed self-update remain release gates.
+**The hardening changes, the SDB toggle, the custom launcher and the factory-test guard have
+not been installed on a TV.** Restore, data erasure, final plugin lifecycle cases, the boot
+with the custom launcher on and signed self-update with the release key remain release gates.
 See the [release test record](app/docs/RELEASE-0.5.0.md) and
 [hardening audit](app/docs/HARDENING-0.5.0.md) for exact revisions, evidence and limits.
 

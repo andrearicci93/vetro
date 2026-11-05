@@ -141,7 +141,7 @@ operational artifacts remain outside tracked source.
 | Plugin pages under sign-in | yes | session/routing fixtures; owner reports plugin works on TV | update and detailed lifecycle cases |
 | Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | [first signed publication passed](https://github.com/andrearicci93/vetro-plugins/actions/runs/42027804668); live signature/hash and real PluginHost lifecycle verified locally and on Node 4.4.7 | public key configured and catalog PR #2 merged; test installation without Developer mode and full lifecycle on TV |
 | Sign-in (PR #9, zerodevb) | yes | fixtures, live script pairing and owner-reported pairing pass on this Q80A | negative and expiry cases not individually recorded |
-| Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | release public key (currently null), dashboard download/apply, reboot after swap |
+| Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | dashboard download/apply and reboot after swap with the release key, which is now configured (`update-key.js`); the private half is offline |
 | Restore the TV / Remove Vetro; Disable Samsung Home | yes | restore, Quick settings and UI fixtures | read-only restore plan and reversible actions on a TV; data erasure only after other tests |
 | TV screen and diagnostic fixes (#88, #106, #107, #108, #109) | yes | dedicated app, shell and parser fixtures | progress, root guidance, model/Tizen version, launcher status and app-list behaviour on the TV |
 | Viewing-data stop, Stop Ambient, domain filter, ad list | yes | earlier Q80A restart checks (see CHANGELOG) | consolidated package and other models |
@@ -178,10 +178,12 @@ The complete unsigned integration WGT is for an installer that supplies signing,
 7. **Restore.** First review the read-only Restore the TV plan and its limitations. After the persistence tests,
    exercise Restore on the intended test configuration, inspect each result and verify the state on the TV.
    Remove saved data only as a final, deliberate cleanup: it deletes pairing, plugins and restore records.
-8. **Updater, separate session prerequisite.** The current package has no update public key and refuses every
-   bundle. Before exercising signed update, tamper refusal or rollback, build/install a candidate containing
-   the intended test or release public key and use a matching signed bundle. Follow [UPDATING.md](UPDATING.md).
-   Do not count the earlier Q80A result as validation of this consolidated package.
+8. **Updater.** The package carries the release public key and accepts only bundles signed with the matching
+   private key (`VETRO_UPDATE_KEY=<update-private.pem> node rooting/release.cjs build <folder>`). Install the
+   candidate built from the final revision, then exercise a signed update, a tampered bundle (must be refused),
+   a second apply while the first is pending (must be refused, #116) and a deliberately broken update with its
+   rollback. Follow [UPDATING.md](UPDATING.md). Do not count the earlier Q80A result, made with a test key, as
+   validation of this package.
 
 ## Before publication
 

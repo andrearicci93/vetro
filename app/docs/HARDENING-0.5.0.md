@@ -106,7 +106,7 @@ No changes from this audit have been installed on a TV. Before final 0.5.0:
 3. Validate no-key/Developer mode plugin UI and the install/update/disable/remove cycle.
 4. Provision the intended update key and publish the independently signed catalog. The catalog
    public key is configured and its first signed publication passed on 2026-11-05.
-   The updater key remains null; no unsigned updater bypass was introduced.
+   The updater public key is now configured (the private half is kept offline); no unsigned updater bypass was introduced.
 5. Exercise signed updater success/tamper refusal/rollback on that final key-bearing
    package. Earlier TV results and this audit's fixtures do not substitute for it.
 
