@@ -51,7 +51,7 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 
 Each switch shows *Done* or *Partly done*, so you can see what actually changed. Turning voice off also turns off the remote's microphone button; Vetro asks you to confirm. Domain filtering does not guarantee that every app's ads or telemetry are blocked.
 
-**Task manager** lists every app and service on the TV (338 on the Q80A) with a plain description and a role: **Tracking**, **Not used at home**, **Optional** or **Keep**. Search by name, package or purpose, then disable, stop or uninstall with an in-page confirmation. Protected system components cannot be touched.
+**Task manager** lists every app and service on the TV (338 on the Q80A) with a plain description and a role: **Tracking**, **Not used at home**, **Optional** or **Keep**. Search by name, package or purpose, then disable, stop or uninstall with an in-page confirmation. Protected system components cannot be touched. Apps marked **Not used at home** open only after a warning, and never from a remapper, MQTT or HTTP rule; the factory colour test (AgingApp) and the service menu are never opened. If the colour test was left on, Quick settings offers to turn it off.
 
 <p align="center">
   <img src="app/docs/images/task-manager.jpg" alt="Vetro Task manager filtered to Tracking, with component descriptions, app state and startup flags" width="1000">
