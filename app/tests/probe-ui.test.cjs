@@ -37,7 +37,7 @@ async function run(options) {
     fetch: async () => { if (o.failFetch && o.failFetch.n-- > 0) throw new Error('refused'); return {status: 200}; },
     tizen: {
       tvinputdevice: {getSupportedKeys: () => [{name: 'VolumeUp'}]},
-      application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]),
+      application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => { if (!o.hangApps) ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]); },
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
       package: {getPackagesInfo: ok => { if (!o.hangPackages) ok([{id: 'vetrotvapp', version: '0.1.0'}]); }},
       systeminfo: {getPropertyValue: (name, ok) => { if (!o.hangBuild) ok({model: 'TV'}); }}
@@ -86,20 +86,30 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   // Healthy TV: the probe report is still sent, and the screen says so.
   const good = await run();
   const posts = good.sent.filter(s => s.method === 'POST');
-  // #101: a first report right after the service answers, one per later step, the verdict one, one with the package list
-  assert.equal(posts.length, 5, 'widget must still POST its collected report');
+  // The steps run side by side: a first report once the model and the service answer are in (the TV remote probe is
+  // still open here), then the verdict, then the one with the package list.
+  assert.equal(posts.length, 3, 'widget must still POST its collected report');
   assert.ok(posts.every(p => p.url === 'http://127.0.0.1:8099/probe'));
-  assert.equal(posts[0].body.settings.model, 'QE55Q80A', 'the first report already names the TV');
-  assert.equal(posts[0].body.progress.partial, true);
-  assert.equal(posts[0].body.progress.done, 6);
-  assert.equal(posts[0].body.progress.of, 9);
-  assert.equal(posts[0].body.progress.next, 'remoteApi8001', 'a report left behind says which step came next');
-  assert.equal(posts[0].body.probe.apps, undefined, 'the app list is not read yet');
   const verdict = posts.find(p => p.body.progress.partial === false).body;
+  assert.equal(verdict.settings.model, 'QE55Q80A');
   assert.equal(verdict.apps[0].id, 'vetrotvapp.app');
   assert.equal(verdict.probe.serviceReach.ok, true);
   assert.equal(verdict.probe.packages, undefined, 'the package list is read after the verdict');
   assert.equal(verdict.progress.done, 9);
+  // #101: with one step still open, a first report already names the TV and says which step is open.
+  const slowApps = await run({hangApps: true});
+  const partials = slowApps.sent.filter(s => s.method === 'POST' && s.body.progress.partial);
+  assert.ok(partials[0].body.settings.model, 'the first report already names the TV');
+  const early = partials[partials.length - 1].body;
+  assert.equal(early.progress.partial, true);
+  assert.equal(early.progress.done, 8);
+  assert.equal(early.progress.of, 9);
+  assert.equal(early.progress.next, 'apps', 'a report left behind says which step was still open');
+  assert.equal(early.probe.apps, undefined, 'the app list is not read yet');
+  assert.ok(slowApps.screen.textContent.startsWith('Checking 8 of 9 done \u00b7 Installed apps \u00b7 '), 'the open step is named');
+  // One stuck step costs its own limit only: every other step has answered and been timed before it ends.
+  const answered = Object.keys(early.probe).sort();
+  assert.deepEqual(answered, ['remoteApi8001', 'serviceLaunch', 'serviceReach', 'supportedKeys', 'systeminfoBattery', 'tizenObject', 'webapisObject', 'productinfo'].sort());
   const last = posts[posts.length - 1].body;
   assert.equal(last.probe.packages.ok, true);
   assert.equal(last.packages[0].id, 'vetrotvapp', 'the package list goes out once it is read');
@@ -127,7 +137,7 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(good.timers.some(t => t.ms === 300000), 'an idle screen closes itself');
   key(good, 13);
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
-  assert.equal(good.sent.filter(s => s.method === 'POST').length, 10, 'OK runs the checks again (five reports each time)');
+  assert.equal(good.sent.filter(s => s.method === 'POST').length, 6, 'OK runs the checks again (three reports each time)');
   key(good, 10009);
   assert.equal(good.exits.length, 1, 'Back closes the screen');
   const idle = good.timers.filter(t => t.ms === 300000).pop();
@@ -198,7 +208,7 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(!/slow serviceLaunch|SLOW serviceLaunch/.test(hung.screen.innerHTML));
   // A slow step Vetro does not need is named, but the TV stays green.
   const build = await run({hangBuild: true});
-  build.timers.filter(t => t.ms === 8000).pop().f();
+  build.timers.filter(t => t.ms === 8000).forEach(t => t.f());
   await build.settle();
   assert.ok(build.screen.innerHTML.includes('Running in the background'));
   assert.ok(build.screen.innerHTML.includes('slow: System info'));
@@ -209,7 +219,7 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(waiting.screen.innerHTML.includes('Root access'));
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
   assert.ok(waiting.screen.innerHTML.includes('1&ndash;2 minutes: please do not close this screen'), 'the wait is announced');
-  assert.equal(waiting.screen.textContent, 'Checking 1 of 9 \u00b7 Starting the service \u00b7 0 s', 'the step, its name and its seconds');
+  assert.equal(waiting.screen.textContent, 'Checking 7 of 9 done \u00b7 Starting the service \u00b7 0 s', 'how many are done, which is open and the seconds');
   assert.ok(waiting.intervals.some(t => t.ms === 1000), 'the seconds tick');
   assert.ok(!waiting.screen.innerHTML.includes('<i>OK</i>'), 'no OK key while OK does nothing (#104)');
   assert.ok(good.screen.innerHTML.includes('<i>OK</i>Check again'), 'and back once the checks are done');
@@ -219,10 +229,10 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   await capped.settle();
   const cappedReport = capped.sent.find(s => s.method === 'POST' && s.body.progress.partial === false).body;
   assert.ok(/^skipped/.test(cappedReport.probe.serviceLaunch.error));
-  assert.equal(cappedReport.progress.done, 0);
+  assert.equal(cappedReport.progress.done, 7, 'the steps that did not depend on the stuck one are in');
   assert.ok(!capped.screen.innerHTML.includes('class="c wait"'), 'the verdict is drawn');
-  assert.ok(capped.screen.innerHTML.includes('No answer in time: Starting the service'), 'the stuck step is named');
-  assert.ok(capped.screen.innerHTML.includes('SLOW serviceLaunch'), 'and in the support line');
+  assert.ok(capped.screen.innerHTML.includes('slow: Starting the service, Service answer'), 'the stuck step and the one that waited for it are named');
+  assert.ok(capped.screen.innerHTML.includes('api ok, slow serviceLaunch/serviceReach'), 'and in the support line');
   // The service never answers: no early report (it would fail), and the reason is in the support line (#2).
   const unreachable = await run({screen: null, failFetch: {n: 99}});
   assert.equal(unreachable.sent.filter(s => s.method === 'POST').length, 2, 'only the verdict report and the package one are tried');

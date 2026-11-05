@@ -150,9 +150,9 @@ function tryConnect(port) {
     ws.onerror = function () { clearTimeout(t); reject(new Error('refused')); };
   });
 }
-// The order matters. The model and the service answer come first and a first report goes out right after, so a screen
-// closed early still leaves the TV named in the report (#101). From then on every step sends what it has. The package
-// list is the slow one (#83, #94, #104): it is read after the verdict, so it can no longer hold the screen on "Checking".
+// The steps run side by side, except that the service answer waits for the service start. The model and the service
+// answer open the reports: a first one goes out as soon as both are in, so a screen closed early still leaves the TV
+// named in the report (#101). From then on every step that ends sends what it has. The package list is the slow one (#83, #94, #104): it is read after the verdict, so it can no longer hold the screen on "Checking".
 // Each entry: name, call, time limit (ms), what the screen calls the step.
 var jobs = [
   ['serviceLaunch', launchService, 8000, 'Starting the service'],
@@ -178,7 +178,7 @@ var jobs = [
       report.apps = a.map(function (x) { return {id: x.id, name: x.name, packageId: x.packageId, show: x.show}; });
       return a.length; }); }, 8000, 'Installed apps']
 ];
-var EARLY = 6;   // the service answer: the first report goes out after this step
+var SERVICE_REACH = jobs.map(function (j) { return j[0]; }).indexOf('serviceReach');   // the one step that waits for another
 var later = ['packages', function () { return cb(function (ok, ko) { tizen.package.getPackagesInfo(ok, ko); }).then(function (p) {
     report.packages = p.map(function (x) { return {id: x.id, version: x.version, totalSize: x.totalSize, author: x.author}; });
     return p.length; }); }, 30000, 'Package list'];
@@ -346,15 +346,13 @@ function resetIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(leave, IDLE_MS);
 }
-// Shows how far the checks are, so a slow TV reads as working and not as stuck: the step, its name and its seconds.
-// Seconds that stop moving mean the page itself is blocked; a photo of this line says where.
-function progress(n, label) {
-  step = {n: n, label: label, since: Date.now()};
-  paintProgress();
-}
+// Shows how far the checks are, so a slow TV reads as working and not as stuck: how many are done, which ones are
+// still open and the seconds since the checks began. Seconds that stop moving mean the page itself is blocked; a photo
+// of this line says where.
+var running_ = {}, doneCount_ = function () { return 0; };
 function paintProgress() {
-  var el = document.getElementById('sum');
-  if (el && step) el.textContent = 'Checking ' + step.n + ' of ' + jobs.length + ' \u00b7 ' + step.label + ' \u00b7 ' + Math.floor((Date.now() - step.since) / 1000) + ' s';
+  var el = document.getElementById('sum'), open = Object.keys(running_).map(function (k) { return running_[k]; });
+  if (el && step) el.textContent = 'Checking ' + doneCount_() + ' of ' + jobs.length + ' done \u00b7 ' + (open.join(', ') || 'finishing') + ' \u00b7 ' + Math.floor((Date.now() - step.since) / 1000) + ' s';
 }
 // Reports go out one after the other, each as it was when queued, so a late answer cannot overwrite a newer one.
 function post(ms) {
@@ -366,26 +364,40 @@ function run() {
   if (running) return Promise.resolve();
   running = true; delivered = false;
   var started = Date.now(), closed = false, cap;
+  step = {since: started};
   report = {probe: {}, apps: [], packages: [], settings: {}, progress: {partial: true, done: 0, of: jobs.length, next: jobs[0][0], elapsedMs: 0}};
   render(null, true);
   clearInterval(tick);
   tick = setInterval(paintProgress, 1000);
-  var steps = jobs.reduce(function (p, j, i) {
-    return p.then(function () {
+  // The steps run side by side; only the service answer waits for the service start. A stuck step now costs its own
+  // time limit once, not on top of every other step's.
+  var finished = {}, doneCount = 0;
+  function runStep(i) {
+    var j = jobs[i];
+    if (closed) return Promise.resolve();
+    running_[j[0]] = j[3];
+    paintProgress();
+    return attempt(j[0], j[1], j[2]).then(function () {
       if (closed) return;
-      progress(i + 1, j[3]);
-      return attempt(j[0], j[1], j[2]).then(function () {
-        if (closed) return;
-        report.progress = {partial: true, done: i + 1, of: jobs.length, next: (jobs[i + 1] || later)[0], elapsedMs: Date.now() - started};
-        if (i + 1 >= EARLY && i + 1 < jobs.length && probeOk('serviceReach')) post(4000).then(null, function () {});
-      });
+      delete running_[j[0]];
+      finished[j[0]] = true; doneCount++;
+      var next = jobs.filter(function (x) { return !finished[x[0]]; })[0];
+      report.progress = {partial: true, done: doneCount, of: jobs.length, next: (next || later)[0], elapsedMs: Date.now() - started};
+      paintProgress();
+      // Once the model and the service answer are in, every further step sends what it has.
+      if (doneCount < jobs.length && finished.productinfo && finished.serviceReach && probeOk('serviceReach')) post(4000).then(null, function () {});
     });
-  }, Promise.resolve());
+  }
+  running_ = {}; doneCount_ = function () { return doneCount; };
+  var steps = Promise.all(jobs.map(function (j, i) {
+    if (j[0] === 'serviceReach') return null;
+    return runStep(i).then(function () { return j[0] === 'serviceLaunch' ? runStep(SERVICE_REACH) : null; });
+  }));
   var limit = new Promise(function (resolve) { cap = setTimeout(function () { closed = true; resolve(); }, TOTAL_MS); });
   return Promise.race([steps, limit])
     .then(function () {
       var done = 0;
-      closed = true; clearTimeout(cap); clearInterval(tick); step = null;
+      closed = true; clearTimeout(cap); clearInterval(tick); step = null; running_ = {};
       jobs.forEach(function (j) {
         if (!report.probe[j[0]]) report.probe[j[0]] = {ok: false, error: 'skipped: the checks took over ' + TOTAL_MS / 1000 + ' s'};
         if (!/^skipped/.test(String(report.probe[j[0]].error || ''))) done++;
