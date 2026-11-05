@@ -1,8 +1,8 @@
 # Vetro 0.5.0 hardening — 2026-11-04
 
 Reviewed checkout: `87ddaa6` plus the local hardening changes. This is a source and
-fixture audit, not a claim that every firmware or interaction is bug-free. No TV
-commands, package installs, settings changes, pushes or publication were performed.
+fixture audit, not a claim that every firmware or interaction is bug-free. During the
+initial audit no TV commands, package installs, settings changes, pushes or publication were performed.
 The three pre-existing untracked rooting review documents were left untouched.
 
 ## Corrected behaviour
@@ -105,7 +105,7 @@ No changes from this audit have been installed on a TV. Before final 0.5.0:
    confirm switching off disconnects network clients while the root helper remains healthy.
 3. Validate no-key/Developer mode plugin UI and the install/update/disable/remove cycle.
 4. Provision the intended update key and publish the independently signed catalog. The catalog
-   public key is now configured; its publication workflow still needs to merge and run.
+   public key is configured and its first signed publication passed on 2026-11-05.
    The updater key remains null; no unsigned updater bypass was introduced.
 5. Exercise signed updater success/tamper refusal/rollback on that final key-bearing
    package. Earlier TV results and this audit's fixtures do not substitute for it.
@@ -135,3 +135,25 @@ now removes show/hide, cascade and page animations too. Native tests pass and th
 shipped launcher DLL was rebuilt. Local preview pills now load packaged/source
 Settings and Samsung Home assets without needing a TV catalog. These changes have
 not been installed or verified on a TV.
+
+## Signed Shards publication — 2026-11-05
+
+Catalog PR #2 was merged as `78e4608e99d63c2caf574fbf6f4484d1f457d86d` using the
+existing administrator bypass for this bootstrap. Required checks and code-owner
+review remain enabled for ordinary contributions. The post-merge publisher passed
+all validation, Node 4.4.7/12.4.0/20 lifecycle jobs and signing/publication.
+
+The live `catalog` branch is `fb6eaa8221d3f7d1fa8bdcede0daeb291014e9b8`.
+Downloaded `tv-uptime` 1.0.1 and its signature were verified with Vetro's pinned
+public key. The real PluginHost was tested locally and on actual Node 4.4.7 in
+an offline Linux container: Developer mode off, installation initially disabled,
+unsigned/altered bundles rejected, enable/disable/reinstall/restart/remove passed.
+This exposed and fixed Node 4's default binary string hashing: bundle SHA-256 now
+explicitly uses UTF-8. A regression fixture reproduces that legacy default with
+accented, ellipsis and Japanese text; it fails before the fix and passes after.
+Plugin signature, install, host and Node 4 compatibility suites pass.
+
+[Successful publication run](https://github.com/andrearicci93/vetro-plugins/actions/runs/42027804668).
+These are runtime/contract checks with fake TV command responses, not new hardware
+validation. Installation and the complete lifecycle on the release TV remain a
+release gate. Private signing material remains outside Git.

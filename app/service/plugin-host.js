@@ -173,7 +173,8 @@ function rmrf(target) {
 // expectedSha256 is optional; when given (from the plugin list) a mismatch is refused.
 // The plugin lands switched off; nothing in it runs until the user turns it on.
 PluginHost.prototype.install = function (raw, expectedSha256, signature) {
-    var sha = crypto.createHash('sha256').update(raw).digest('hex');
+    // Node 4 defaults string crypto input to binary; catalog bundles are UTF-8.
+    var sha = crypto.createHash('sha256').update(raw, 'utf8').digest('hex');
     if (expectedSha256 && String(expectedSha256).toLowerCase() !== sha) throw new Error('SHA-256 does not match the expected value');
     var b;
     try { b = JSON.parse(raw); } catch (e) { throw new Error('Not a plugin bundle (invalid JSON)'); }

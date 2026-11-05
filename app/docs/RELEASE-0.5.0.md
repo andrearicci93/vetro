@@ -139,7 +139,7 @@ operational artifacts remain outside tracked source.
 | --- | --- | --- | --- |
 | Plugin host, install, update, remove, safe mode | yes | host, install, signature and bundled-launcher fixtures | full cycle on the TV, including a reboot |
 | Plugin pages under sign-in | yes | session/routing fixtures; owner reports plugin works on TV | update and detailed lifecycle cases |
-| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | repository and index exist | candidate public key configured; signed-catalog pipeline in [catalog PR #2](https://github.com/andrearicci93/vetro-plugins/pull/2); merge workflow, complete first signed publication, then test installation without Developer mode |
+| Plugin list and signing | public repository exists: `andrearicci93/vetro-plugins`, with `tv-uptime` | [first signed publication passed](https://github.com/andrearicci93/vetro-plugins/actions/runs/42027804668); live signature/hash and real PluginHost lifecycle verified locally and on Node 4.4.7 | public key configured and catalog PR #2 merged; test installation without Developer mode and full lifecycle on TV |
 | Sign-in (PR #9, zerodevb) | yes | fixtures, live script pairing and owner-reported pairing pass on this Q80A | negative and expiry cases not individually recorded |
 | Signed updates and rollback | yes | fixtures; earlier Q80A update and deliberately broken-update rollback with a test key | release public key (currently null), dashboard download/apply, reboot after swap |
 | Restore the TV / Remove Vetro; Disable Samsung Home | yes | restore, Quick settings and UI fixtures | read-only restore plan and reversible actions on a TV; data erasure only after other tests |
@@ -186,7 +186,7 @@ The complete unsigned integration WGT is for an installer that supplies signing,
 ## Before publication
 
 - Complete and record the TV session above, including a cold boot.
-- Configure the update public key and a separately signed plugin catalog; retain private keys outside Git.
+- Configure the update public key; the separately signed Shards catalog is published and its public key is configured. Retain private keys outside Git.
 - Re-run the complete CI checks on the final source and build the final package from that revision.
 - Resolve remaining overlapping PR scope and update release notes. README now credits zerodevb, Firaenix and Merennor for the included work.
 

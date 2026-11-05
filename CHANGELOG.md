@@ -33,11 +33,13 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   updater key; unsigned installs require **Developer mode**, off by default, even when
   no catalog key is configured. Invalid signatures are refused. Each installed plugin
   shows its provenance. The candidate pins the catalog public key and reads the signed `catalog` branch.
-  The new publication workflow must be merged and run before this endpoint is available.
+  The first signed catalog is published and verified against this key.
 - **Shard publication pipeline.** Adds ES5 and Node 4.4/12.4/20 lifecycle checks,
   version immutability, code-owner review and a separate post-merge signed-catalog
   publisher. Pull-request jobs receive no signing key; publication does not force
-  installs on TVs. Catalog-repository changes still need to merge before first publication.
+  installs on TVs. The first post-merge publication passed all checks.
+- **Signed Shards on older TVs.** Bundle hashes explicitly use UTF-8, fixing Node 4.4
+  rejecting valid signed plugins that contain accented characters or other Unicode.
 - **The launcher is the first bundled plugin.** Its supervision and routes run through
   the host; `/dock` and `/dock/icon` remain aliases. Bundled plugins run in safe mode and
   cannot be removed or replaced by external bundles. The launcher still ships and updates

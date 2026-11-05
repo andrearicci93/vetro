@@ -156,8 +156,8 @@ To add or update a plugin:
    updates remain a user action, not a forced installation.
 
 The deployed list is `catalog/index.json`; the source `main/index.json` remains a
-reproducible build input. A green PR does not publish anything. Repository workflows
-must be merged before this automatic publisher can run. Runtime smoke tests are
+reproducible build input. A green PR does not publish anything. The automatic publisher
+is active on `main`; its first signed publication succeeded on 2026-11-05. Runtime smoke tests are
 contract checks, not a sandbox or a substitute for TV testing and source review.
 
 `index.json` entry:

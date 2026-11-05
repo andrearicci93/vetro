@@ -31,6 +31,22 @@ function call(h, method, url, body) {
     // signed by the list: installs, and says so
     const ok = h.install(b, h1, sign('hello', '1.0.0', h1));
     assert.equal(ok.trust, 'registry'); assert.equal(h.status('hello').trust, 'registry');
+    // Node 4 defaults crypto string input to binary; catalog hashes use UTF-8 bytes.
+    const unicodeBundle = JSON.parse(bundle('unicode', '1.0.0'));
+    unicodeBundle.files['index.js'] = '// Caffè … 日本語\n' + unicodeBundle.files['index.js'];
+    const unicodeRaw = JSON.stringify(unicodeBundle), unicodeHash = sha(unicodeRaw);
+    const unicodeSignature = sign('unicode', '1.0.0', unicodeHash);
+    const realCreateHash = crypto.createHash;
+    crypto.createHash = function () {
+        const hash = realCreateHash.apply(crypto, arguments), update = hash.update;
+        hash.update = function (data, encoding) {
+            return update.call(this, data, typeof data === 'string' ? (encoding || 'latin1') : encoding);
+        };
+        return hash;
+    };
+    try {
+        assert.equal(host(pub).install(unicodeRaw, unicodeHash, unicodeSignature).trust, 'registry');
+    } finally { crypto.createHash = realCreateHash; }
     // wrong key, wrong version, wrong hash: refused
     assert.throws(() => host(pub).install(b, h1, sign('hello', '1.0.0', h1, other)), /does not match the plugin list key/);
     assert.throws(() => host(pub).install(b, h1, sign('hello', '9.9.9', h1)), /does not match the plugin list key/);
