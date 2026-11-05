@@ -119,6 +119,26 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(f.read('service/a.js'), 'old a');
     assert.equal(f.u.status().busy, false, 'a failed update can be tried again');
 
+    // #116: a second apply while the first still waits for its confirmation is refused and changes nothing
+    f = fixture('0.4.0');
+    await f.u.apply(next);
+    const ranBefore = f.ran.length;
+    await assert.rejects(f.u.apply(bundle('0.4.2', { 'service/a.js': 'newer a' })), /still waiting for its confirmation/);
+    assert.equal(f.ran.length, ranBefore, 'no second root script');
+    assert.equal(f.read('service/a.js'), 'new a', 'files of the first update untouched');
+    assert.equal(f.u.status().pending.to, '0.4.1');
+    // the record is on disk: a fresh instance after a service restart refuses too
+    const again = new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.0', shell: 1 }, execute: () => Promise.reject(new Error('unused')) });
+    await assert.rejects(again.apply(bundle('0.4.2', { 'service/a.js': 'newer a' })), err => err.code === 'pending');
+    // a record left behind by a dead watchdog (older than the waiting time) does not block updates for ever
+    const pendingFile = path.join(f.work, 'pending.json');
+    const rec = JSON.parse(fs.readFileSync(pendingFile, 'utf8')); rec.at = Date.now() - 3600 * 1000; fs.writeFileSync(pendingFile, JSON.stringify(rec));
+    assert.equal(again._pendingUpdate(), null);
+    // and the way out stays open: manual rollback is allowed while pending
+    fs.writeFileSync(pendingFile, JSON.stringify({ from: '0.4.0', to: '0.4.1', dock: false, at: Date.now() }));
+    await f.u.rollback();
+    assert.equal(f.read('service/a.js'), 'old a');
+
     // manual rollback
     f = fixture('0.4.0');
     await f.u.apply(next);

@@ -1,5 +1,6 @@
 'use strict';
-// The update endpoints: status is readable, and without a signing key in the package every bundle is refused.
+// The update endpoints: status is readable, the package carries the release public key, and a bundle that is not
+// signed with it is refused (the missing-key refusal itself is covered in updater.test.cjs).
 const assert = require('assert').strict;
 const EventEmitter = require('events');
 const service = require('./service-harness.cjs')(require('path').resolve(__dirname, '..'));
@@ -14,11 +15,11 @@ function call(method, url, body) {
 }
 (async () => {
   const s = await call('GET', '/update');
-  assert.equal(s.status, 200); assert.equal(s.body.configured, false); assert.equal(s.body.shell, 1);
+  assert.equal(s.status, 200); assert.equal(s.body.configured, true); assert.equal(s.body.shell, 1);
   assert.match(s.body.source, /^https:\/\/raw\.githubusercontent\.com\/.*\/$/);
   const refused = await call('POST', '/update/apply', '{"format":"vetro-update"}');
-  assert.equal(refused.status, 400); assert.equal(refused.body.ok, false); assert.equal(refused.body.code, 'no-key');
+  assert.equal(refused.status, 400); assert.equal(refused.body.ok, false); assert.notEqual(refused.body.code, 'no-key');
   assert.equal((await call('POST', '/update/check', '{}')).status, 400);
   assert.equal((await call('POST', '/update/rollback')).status, 409);
-  console.log('PASS update endpoints: status, refusal without a release key, no rollback without a backup');
+  console.log('PASS update endpoints: status, refusal of an unsigned bundle, no rollback without a backup');
 })().catch(e => { console.error(e); process.exitCode = 1; });

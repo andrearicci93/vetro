@@ -181,9 +181,22 @@ Updater.prototype._adapt = function (files) {
     return out;
 };
 
+// An update that was applied but has not confirmed itself yet (or been rolled back by the watchdog) owns the staging
+// folder, the backup and the pending record. A second apply would overwrite the backup of the ORIGINAL files with the
+// first update's files. The record lives on disk, so this also holds after a service restart; it stops counting once
+// the watchdog's waiting time (plus a margin) has passed, so a record left behind by a dead watchdog cannot block
+// updates forever. rollback() stays allowed: it is the way out of this state.
+Updater.prototype._pendingUpdate = function () {
+    var pending = readJson(this._file('pending.json'));
+    if (!pending) return null;
+    var at = typeof pending.at === 'number' ? pending.at : 0;
+    return Date.now() - at < this.waitSteps * 2000 + 60000 ? pending : null;
+};
+
 Updater.prototype.apply = function (raw, expectedSha256) {
     var self = this;
     if (this.busy) return Promise.reject(fail('An update is already in progress', 'busy'));
+    if (this._pendingUpdate()) return Promise.reject(fail('The previous update is still waiting for its confirmation. Wait for Vetro to restart, or go back to the previous version', 'pending'));
     var parsed;
     try {
         parsed = this._read(raw, expectedSha256);
