@@ -306,10 +306,13 @@ function readJsonBody(req, res, cb, maxBytes) {
 // The TV agent executes commands serially. Start each request's timeout only
 // when it is actually sent, rather than while it waits behind other probes.
 var commandQueue=Promise.resolve(), queuedCommands=0;
-function agentExecute(cmd, timeoutMs) {
+function agentExecute(cmd, timeoutMs, dispatchGuard) {
     if(queuedCommands>=32)return Promise.reject(new Error('TV is busy; try again in a few seconds'));
     queuedCommands++;
-    var result=commandQueue.then(function(){return platform.execute(cmd,timeoutMs||30000);});
+    var result=commandQueue.then(function(){
+        if(dispatchGuard&&!dispatchGuard())throw new Error('TV command cancelled before dispatch');
+        return platform.execute(cmd,timeoutMs||30000);
+    });
     commandQueue=result.catch(function(){});
     return result.finally(function(){queuedCommands--;});
 }
@@ -699,10 +702,11 @@ function handleRemap(req, res) {
 // Package ID of an installed app from the last registry read, if there is one (rules only carry the app ID).
 function packageOf(appId){var row=registryCache&&registryCache.apps.find(function(r){return r.appId===appId;});return row?row.packageId:null;}
 // direct: the Task manager's "Open app", already checked in handleLaunch. Anything else comes from a rule (remapper, MQTT, HTTP).
-function runActions(actions, direct) {
+function runActions(actions, direct, dispatchGuard) {
     var sent=0, skipped=[],mqttSent=0;
     return actions.reduce(function(chain,a){return chain.then(function(){
         var command;
+        if(dispatchGuard&&!dispatchGuard())throw new Error('Input action cancelled');
         if(a.type==='mqtt'){bridge.publish(a.topic,a.payload);sent++;mqttSent++;return;}
         if(a.type==='launch'&&!remap.launchable(a.appId)){skipped.push('launch:not-an-app');return;}
         // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
@@ -710,18 +714,27 @@ function runActions(actions, direct) {
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
-        return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
+        return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
 }
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var physical=new PhysicalInput(agentExecute,function(event){
-    if(event.action!=='down'||event.decision!=='blocked')return;
+    if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){inputPaused=true;physical.stop();inputError='input action queue exceeded';return;}
     pendingActions++;
-    actionQueue=actionQueue.then(function(){return runActions(actions);}).catch(function(e){inputError=e.message;inputPaused=true;physical.stop();}).finally(function(){pendingActions--;});
+    var generation=inputGeneration;
+    function current(){return inputLifecycleActive&&generation===inputGeneration;}
+    actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current()){inputError=e.message;inputPaused=true;physical.stop();}}).finally(function(){pendingActions--;});
 });
 var inputObservers=[], inputPaused=false, inputRestoring=false;
+var inputLifecycleActive=true, inputGeneration=0;
+function startInputLifecycle(){inputLifecycleActive=true;}
+function stopInputLifecycle(){inputLifecycleActive=false;stopInput();}
+if(typeof module!=='undefined'){
+    module.exports.onStart=startInputLifecycle;module.exports.onRequest=startInputLifecycle;
+    module.exports.onStop=stopInputLifecycle;module.exports.onExit=stopInputLifecycle;
+}
 function inputPreference(){var p=remapStore.input;return p&&p.enabled===true&&typeof p.device==='string'?p:{enabled:false};}
 function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
@@ -729,20 +742,20 @@ function saveInputPreference(preference){
 }
 function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
 function restoreInput(){
-    var preference=inputPreference();
-    if(!preference.enabled||inputPaused||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
+    var preference=inputPreference(),generation=inputGeneration;
+    if(!inputLifecycleActive||!preference.enabled||inputPaused||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
     inputRestoring=true;
     physical.inventory().then(function(list){
-        if(inputPaused||inputPreference()!==preference)return;
+        if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||inputPreference()!==preference)return;
         var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
         var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
         // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
         var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
         if(!device)throw new Error('Saved physical remote is unavailable');
         return physical.start(device.node,'filter',inputTokens());
-    }).then(function(){inputError=null;}).catch(function(e){inputError=e.message;}).finally(function(){inputRestoring=false;});
+    }).then(function(){if(generation===inputGeneration)inputError=null;}).catch(function(e){if(generation===inputGeneration)inputError=e.message;}).finally(function(){if(generation===inputGeneration)inputRestoring=false;});
 }
-function stopInput(){inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+function stopInput(){++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
 function inputSnapshot(){
     if(!inputObservers.length)return Object.assign({},physical.status(),{preference:inputPreference()});
     var events=[],connected=false,errors=[];
@@ -753,6 +766,7 @@ function inputSnapshot(){
 function handleInput(req,res){
     if(req.method==='GET')return physical.inventory().then(function(list){serveJson(res,{devices:list,status:inputSnapshot(),error:inputError});}).catch(function(e){serveJson(res,{devices:[],status:inputSnapshot(),error:e.message});});
     readJsonBody(req,res,function(p){
+        if(!inputLifecycleActive)return serveJson(res,{error:'Service input is stopped'},503);
         var tokens=inputTokens();
         inputError=null;
         if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput();return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
@@ -760,20 +774,22 @@ function handleInput(req,res){
         if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         inputPaused=true;
         if(p.mode==='observe'&&p.device==='auto'){
-            stopInput();return physical.inventory().then(function(list){
+            stopInput();var observerGeneration=inputGeneration;return physical.inventory().then(function(list){
+                if(!inputLifecycleActive||observerGeneration!==inputGeneration)throw new Error('Input request cancelled');
                 var candidates=list.filter(function(d){return d.selectable;});
                 if(!candidates.length)throw new Error('no physical remote devices found');
                 inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
             }).then(function(){var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
-            .catch(function(e){stopInput();serveJson(res,{ok:false,error:e.message},503);});
+            .catch(function(e){if(observerGeneration===inputGeneration)stopInput();serveJson(res,{ok:false,error:e.message},503);});
         }
         if(p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
-        stopInput();
+        stopInput();var requestGeneration=inputGeneration;
         physical.start(p.device,p.mode,tokens).then(function(status){
+            if(!inputLifecycleActive||requestGeneration!==inputGeneration)throw new Error('Input request cancelled');
             if(p.mode==='filter'){saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node});inputPaused=false;}
             serveJson(res,{ok:true,persisted:p.mode==='filter',status:inputSnapshot()});
-        }).catch(function(e){physical.stop();serveJson(res,{ok:false,error:e.message},503);});
+        }).catch(function(e){if(requestGeneration===inputGeneration)physical.stop();serveJson(res,{ok:false,error:e.message},503);});
     });
 }
 function handleRemapRun(req,res){readJsonBody(req,res,function(p){
@@ -927,7 +943,7 @@ var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developer
 plugins.register(require('./plugin-launcher.js').definition(dock));
 plugins.start();
 // A deliberate stop is not a crash: close the boot marker so the next start is not put in safe mode.
-['SIGTERM', 'SIGINT'].forEach(function (sig) { process.on(sig, function () { try { plugins.stop(); } catch (e) { /* exiting anyway */ } process.exit(0); }); });
+['SIGTERM', 'SIGINT'].forEach(function (sig) { process.on(sig, function () { stopInputLifecycle(); try { plugins.stop(); } catch (e) { /* exiting anyway */ } process.exit(0); }); });
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
