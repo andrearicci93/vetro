@@ -67,6 +67,15 @@ function key(name, shiftKey = false) {
   assert.equal(document.activeElement, el('menuBtn'));
   assert.equal(el('.main').inert, false);
   assert.equal(el('sidebar').getAttribute('role'), null);
+  context.innerWidth = 844;
+  context.matchMedia = () => ({matches: true});
+  context.setNav(true); key('Escape');
+  assert.equal(document.activeElement, el('menuBtn'), 'landscape touch navigation returns to its visible menu button');
+  context.matchMedia = () => ({matches: false});
+  context.setNav(true); key('Escape');
+  assert.equal(document.activeElement, first, 'persistent desktop navigation returns to the current page');
+  delete context.matchMedia; context.innerWidth = 390;
+
 
   context.render();
   el('roleFilters').querySelector('[data-role="optional"]').focus();
