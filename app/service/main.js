@@ -49,7 +49,27 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
-var dock = new (require('./dock.js').Dock)({execute: agentExecute});
+// Custom launcher mode needs Samsung's Home switched off and on (the Quick settings group, with its read-back and its
+// boot-flag handling) and a look at the chosen app in the registry. Both go through the same app inventory as the rest.
+var dockModule = require('./dock.js');
+var dock = new dockModule.Dock({execute: agentExecute,
+    home: {
+        state: function () {
+            return inventory(true).then(function (d) {
+                if (d.registryError) return 'unknown';
+                var q = require('./quick-settings.js');
+                return q.state(q.find('samsung-home'), d.apps).status;
+            });
+        },
+        disable: function () { return applySamsungHome(true); },
+        restore: function () { return applySamsungHome(false); }
+    },
+    appCheck: function (appId, fresh) {
+        return inventory(!!fresh).then(function (d) {
+            if (d.registryError) throw new Error('App registry unavailable');
+            return dockModule.customAppCheck(d.apps, appId, !!fresh);
+        });
+    }});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter});
 var presence = new (require('./presence.js').Presence)(agentExecute);
@@ -131,6 +151,7 @@ function readTelemetry() {
 // What the TV screen shows. The launcher's pid check is the only root command, and it runs only while the launcher is on.
 function screenSummary() {
     var launcherState = dock.readState(), p = platform.status();
+    launcherState.enabled = launcherState.enabled || !!launcherState.customApp;     // the TV screen shows either launcher as "on"
     var checkLauncher = launcherState.enabled && p.agent.connected ? dock.probe().then(function (r) { return r.running; }, function () { return null; }) : Promise.resolve(null);
     return checkLauncher.then(function (running) {
         return require('./screen-status.js').build({version: buildInfo.version, port: PORT, platform: p, input: inputSnapshot(),
@@ -397,7 +418,7 @@ function handleDebloatAction(req, res) {
         if (!appIds || appIds.length!==1) return serveJson(res,{ok:false,error:'Select one installed component to disable or enable.'},409);
         if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
         var id=appIds[0],desired=action==='disable',original;
-        if(id==='com.samsung.tv.csfs'&&desired&&dock.readState().enabled){debloatBusy=false;return serveJson(res,{ok:false,error:'Turn off the Vetro launcher before disabling Samsung Home'},409);}
+        if(id==='com.samsung.tv.csfs'&&(dock.readState().customApp||desired&&dock.readState().enabled)){debloatBusy=false;return serveJson(res,{ok:false,error:homeLockMessage()},409);}
         inventory(true).then(function(d){var row=d.apps.find(function(a){return a.appId===id;});if(d.registryError)throw Error('App registry unavailable');if(!row){var missing=Error('App not installed');missing.statusCode=409;throw missing;}var capability=ComponentActions.availability(row,d.apps,TOGGLE_IDS).toggle;if(!capability.allowed){var unavailable=Error(capability.reason);unavailable.statusCode=409;throw unavailable;}original=row.disabled;if(original===desired)return {ok:true,verified:true,changed:false,appId:id,disabled:desired};
             return agentExecute('pkgcmd '+(desired?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'App state unchanged');invalidateInventory();return inventory(true);}).then(function(after){var r=after.apps.find(function(a){return a.appId===id;});if(after.registryError||!r||r.disabled!==desired)throw Error('Global flag not confirmed');return {ok:true,verified:true,changed:true,appId:id,disabled:r.disabled,scope:'Global flag confirmed; running processes may remain until the next launch'};}).catch(function(e){return agentExecute('pkgcmd '+(original?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Restore not confirmed');invalidateInventory();return inventory(true);}).then(function(d){var restored=d.apps.find(function(a){return a.appId===id;});throw Error(e.message+' · '+(restored&&restored.disabled===original&&!d.registryError?'previous flag restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});
         }).then(function(d){
@@ -494,8 +515,19 @@ function handleComponentAction(req,res) {
         }).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503)});
     });
 }
+// Samsung's Home for the custom launcher mode: the same group switch the Quick settings page used to carry, run from the service.
+function applySamsungHome(off) {
+    if(debloatBusy)return Promise.reject(new Error('Another app change is in progress. Try again in a moment.'));
+    debloatBusy=true;
+    return quickSettings.apply('samsung-home',off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}})
+        .then(function(d){debloatBusy=false;return d;},function(e){debloatBusy=false;throw e;});
+}
+function homeLockMessage() {
+    var s=dock.readState();
+    return s.customApp?'Turn off the custom launcher before changing Samsung Home':s.enabled?'Turn off the Vetro launcher before changing Samsung Home':null;
+}
 function handleQuick(req,res) {readJsonBody(req,res,function(p){
-    if(p.id==='samsung-home'&&dock.readState().enabled)return serveJson(res,{ok:false,error:'Turn off the Vetro launcher before changing Samsung Home'},409);
+    if(p.id==='samsung-home'&&homeLockMessage())return serveJson(res,{ok:false,error:homeLockMessage()},409);
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
     quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}})
         .then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
@@ -813,7 +845,8 @@ var updater = new Updater({publicKey: require('./update-key.js'), installDir: pa
 // then tells the watchdog it is up (otherwise the old version comes back). The dock is a separate process: a service
 // restart alone leaves it running the old binary.
 function restartDockAfterUpdate() {
-    if (!dock.readState().enabled) return Promise.resolve('off');
+    var launcher = dock.readState();
+    if (!launcher.enabled && !launcher.customApp) return Promise.resolve('off');
     var tries = 0;
     function attempt() {
         return dock.refresh().then(function () { return 'restarted'; }, function (e) {

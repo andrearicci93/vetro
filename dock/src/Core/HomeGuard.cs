@@ -37,4 +37,14 @@ namespace Launcher.Core
             return command.Append(" ) >/dev/null 2>&1 &").ToString();
         }
     }
+
+    // --home-launch APPID (custom launcher mode): the Home key opens this app and the dock is never drawn.
+    internal static class HomeLaunch
+    {
+        // The entry the Home key launches, or null when the id is not plain id characters (it goes on a command line).
+        public static AppEntry Parse(string appId)
+        {
+            return Catalog.ValidAppId(appId) ? new AppEntry("custom", appId, appId, null) : null;
+        }
+    }
 }

@@ -127,8 +127,8 @@ Restore.prototype.plan = function () {
         }
         function flag(item, on, count) { if (item.state === 'clean' && on) item.state = 'changed'; if (count != null) item.count = count; }
 
-        var it = add('launcher', 'Launcher', 'Switches the Vetro launcher off, so Samsung’s Home is back, and puts Autorun Smart Hub back as it was.', dock);
-        if (!dock.error) flag(it, dock.value.enabled === true || dock.value.autorunWas != null);
+        var it = add('launcher', 'Launcher', 'Switches the Vetro launcher or the custom launcher off, so Samsung’s Home is back, and puts Autorun Smart Hub back as it was.', dock);
+        if (!dock.error) flag(it, dock.value.enabled === true || dock.value.autorunWas != null || !!dock.value.customApp);
 
         var third = plug.error ? [] : plug.value.filter(function (p) { return !p.bundled && p.enabled; });
         it = add('plugins', 'Third-party plugins', 'Switches every plugin that is on off. The plugin files stay until you remove Vetro’s data. What a plugin changed on its own is not undone.', plug);
@@ -214,7 +214,11 @@ Restore.prototype.run = function () {
         var byId = {};
         plan.items.forEach(function (i) { byId[i.id] = i; });
         var order = [
-            ['launcher', function () { return d.dock.disable().then(function () { return 'Launcher off; Samsung’s Home is back.'; }); }],
+            ['launcher', function () {
+                // The custom launcher leaves Samsung's Home to the Quick settings groups step below: this run owns the app change lock.
+                if (d.dock.readState().customApp) return d.dock.disableCustom({keepHome: true}).then(function () { return 'Custom launcher off; Samsung’s Home comes back with the groups below.'; });
+                return d.dock.disable().then(function () { return 'Launcher off; Samsung’s Home is back.'; });
+            }],
             ['plugins', function () {
                 plan._data.third.forEach(function (p) { d.plugins.setEnabled(p.id, false); });
                 return 'Switched off: ' + plan._data.third.map(function (p) { return p.name || p.id; }).join(', ') + '.';

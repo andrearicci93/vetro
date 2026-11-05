@@ -100,6 +100,17 @@ namespace Launcher.Tests
                 finally { Directory.Delete(dir, true); }
             });
 
+            T.Run("custom launcher mode: only a plain app id becomes the Home target", () =>
+            {
+                AppEntry e = HomeLaunch.Parse("org.example.projectivy");
+                T.True(e != null, "plain id accepted");
+                T.Eq(e.AppId, "org.example.projectivy", "launches the chosen app");
+                T.True(!e.IsSystem, "an ordinary app, not a system control");
+                T.Eq(HomeLaunch.Parse("app;reboot"), null, "shell metacharacters refused");
+                T.Eq(HomeLaunch.Parse(""), null, "empty id refused");
+                T.Eq(HomeLaunch.Parse(null), null, "missing id refused");
+            });
+
             T.Run("CoBA system launch: fallback follows failed launcher, never a successful one", () =>
             {
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));

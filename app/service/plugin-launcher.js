@@ -9,7 +9,7 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion, on}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|enableCustom|disableCustom, on, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //
 // Plain ES5, like every module the TV loads.
@@ -59,6 +59,8 @@ function definition(dock, options) {
                 if (p.action === 'refresh') return dock.refresh();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
+                if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
+                if (p.action === 'disableCustom') return dock.disableCustom();
                 return Promise.reject(new Error('Invalid dock action'));
             }
 
@@ -77,7 +79,7 @@ function definition(dock, options) {
                 },
                 status: function () {
                     var state = dock.readState();
-                    return { enabled: !!state.enabled, installed: dock.installed() };
+                    return { enabled: !!state.enabled || !!state.customApp, installed: dock.installed() };
                 },
                 route: function (req, res, sub) {
                     if (sub === 'status' && req.method === 'GET') {

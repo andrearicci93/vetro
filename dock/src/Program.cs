@@ -66,6 +66,10 @@ namespace Launcher
         private static int _guardGen;
         private static string _guardFile;
         private static int _homeCode = -1;
+        // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
+        // itself is never shown. Samsung's Home is disabled by the service in this mode, the guard stays on as a net.
+        // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
+        private static AppEntry _homeLaunch;
 
         private static readonly NavigationInput Navigation = new NavigationInput();
         private static double _lastRawHome = -100;
@@ -304,6 +308,7 @@ namespace Launcher
 
         private static void ShowDock()
         {
+            if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
             _pendingLaunch = null;
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
@@ -629,6 +634,7 @@ namespace Launcher
                         _lastHome = now;
                         _lastRawHome = now;
                         _perfWhy = "home";
+                        if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); continue; }
                         if (_ctl.IsActive) HideDock(); else ShowDock();
                         ArmGuard();
                     }
@@ -921,6 +927,12 @@ namespace Launcher
                     _guardApps = HomeGuard.Parse(guard);
                     if (_guardApps != null) { _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
                     else Log("guard: bad app id ignored");
+                }
+                string homeLaunch = Arg(args, "--home-launch");
+                if (homeLaunch != null)
+                {
+                    _homeLaunch = HomeLaunch.Parse(homeLaunch);
+                    Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
                 SetupInput(args);
 

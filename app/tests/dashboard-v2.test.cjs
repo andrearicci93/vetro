@@ -19,14 +19,15 @@ assert.ok(squash(html).includes(squash('--vetro-duration-fast:0ms')), 'reduced m
 // Navigation: the three entries at the top, then the rest
 const nav = /<nav aria-label="Main">([\s\S]*?)<\/nav>/.exec(html)[1];
 assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'dock', 'remote', 'plugins']);
-assert.match(nav, /Launcher<span class="chip beta">Beta<\/span>/);
+assert.match(nav, /Launcher<\/button>/);
+assert.doesNotMatch(nav, /chip beta/);
 assert.match(nav, /Remapper<\/button>/);
 assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Task manager<\/button>/);
 const visible = html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<script>[\s\S]*?<\/script>/, '');
 assert.doesNotMatch(visible, /Debloater/, 'no panel is still called Debloater');
 assert.match(html, /remote:\['Remapper'/);
 assert.match(html, /apps:\['Task manager'/);
-assert.match(html, /id="betaTag" class="chip beta"/);
+assert.doesNotMatch(html, /betaTag/);
 
 // The icon: in the brand block, as the page icon, and served by the service
 assert.match(html, /<link rel="icon" href="\/icon.png">/);
