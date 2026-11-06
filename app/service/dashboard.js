@@ -1211,7 +1211,7 @@ var PLUGIN_WARNING='Plugins are written by third parties, not by the author of V
 function verNewer(a,b){var ok=VERSION_RE;if(!ok.test(String(a))||!ok.test(String(b)))return String(a)!==String(b);var x=String(a).split('.'),y=String(b).split('.');for(var i=0;i<Math.max(x.length,y.length);i++){var m=parseInt(x[i]||'0',10),n=parseInt(y[i]||'0',10);if(m!==n)return m>n}return false}
 function checksumOk(e){return SHA256_I_RE.test((e&&e.sha256)||'')}
 function pluginUpdate(p){var e=((registryData||{}).plugins||[]).filter(function(x){return x.id===p.id})[0];return e&&checksumOk(e)&&verNewer(e.version,p.version)?e:null}
-function permName(x){return x==='exec'?'run commands as root':x}
+function permName(x){return x==='exec'?'run commands as root':x==='native'?'run a bundled native program as root':x}
 function trustName(t){return t==='registry'?'signed by the plugin list':t==='file'?'installed from a file, not signed':'copied in by hand, not signed'}
 function pluginChip(p){var k=p.state==='running'?'on':'';return chip(p.state==='invalid'?'Invalid':p.state==='failed'?'Failed':p.state==='suspended'?'Suspended':p.state==='running'?'Running':'Off',k)}
 function renderPlugins(){

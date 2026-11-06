@@ -33,6 +33,12 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 ### Sign-in, plugins and updates
 
+- **Plugins can ship a helper program.** A plugin that asks for the new `native` permission (with `exec`) can carry
+  up to 4 binaries (256 KB together) in `assets/`. They travel in a version 2 bundle as base64, are declared in the
+  manifest with a SHA-256 that the TV checks on install and every time the folder is read, and are reached with
+  `ctx.asset(name)`. Version 1 bundles are unchanged, and an older Vetro refuses a version 2 bundle. The dashboard shows
+  the permission as "run a bundled native program as root". See `app/docs/plugins.md`.
+
 - **Dashboard and API pairing** ([#5](https://github.com/andrearicci93/vetro/issues/5),
   requested by **PythEch**; [#9](https://github.com/andrearicci93/vetro/pull/9), by **zerodevb**). LAN clients pair
   using a six-digit code shown only on the TV, then authenticate with an HttpOnly,

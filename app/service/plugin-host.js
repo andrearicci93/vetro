@@ -3,7 +3,8 @@
 // in the plugin directory with a manifest.json and an entry file (docs/plugins.md):
 //
 //   manifest: { id, name, version, apiVersion: 1, permissions: ['exec'], main: 'index.js',
-//               ui: { label } (optional: a page in the dashboard sidebar while it runs) }
+//               ui: { label } (optional: a page in the dashboard sidebar while it runs),
+//               assets: [{ name, sha256, size }] (optional, needs 'native': helper binaries, bundle version 2) }
 //   index.js: module.exports = function (ctx) { return { start, stop, status, route } }
 //
 // Most of Vetro's own features are not plugins yet; the launcher is the first bundled one (bundled: true, see
@@ -24,11 +25,19 @@ var SESSION_API_RE = /^s\/([0-9a-f]{32})\/(api(?:\/.*)?)$/;
 var API_SUB_RE = /^api(?:\/(.*))?$/;
 
 var API_VERSION = 1;
-var PERMISSIONS = ['exec'];
+var PERMISSIONS = ['exec', 'native'];
 var ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
 var RESERVED = ['install', 'resume', 'developer'];
 var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
+// Native assets (permission 'native', bundle version 2): helper binaries the plugin runs through 'exec'. Declared in the
+// manifest with a SHA-256 and a size, carried as base64 in the bundle, and stored under <plugin>/assets/.
+var ASSET_MAX_COUNT = 4, ASSET_MAX_BYTES = 256 * 1024;           // decoded, all assets together
+var ASSET_NAME_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+var HEX64_RE = /^[0-9a-f]{64}$/;
+var BASE64_RE = /^[A-Za-z0-9+\/]*={0,2}$/;      // plus a length that is a multiple of 4, see decodeAssets
+// What the install route reads: the text files, the base64 form of the assets (4 bytes per 3) and the JSON around them.
+var BUNDLE_BODY_MAX = BUNDLE_MAX_BYTES + Math.ceil(ASSET_MAX_BYTES / 3) * 4 + 8192;
 var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
 
 // Manifest rules shared by the loader, the installer and `vetro-plugin.cjs pack/check`.
@@ -45,22 +54,77 @@ function checkManifest(m) {
     if (m.author != null && (typeof m.author !== 'string' || m.author.length > 60)) throw new Error('author must be a string of up to 60 characters');
     if (m.ui != null && (typeof m.ui.label !== 'string' || !m.ui.label || m.ui.label.length > 24)) throw new Error('ui.label must be 1-24 characters');
     if (m.main != null && (typeof m.main !== 'string' || !FILE_RE.test(m.main))) throw new Error('main must be a file name inside the plugin folder');
+    checkAssets(m, perms);
+}
+
+// Native assets: declared if and only if the plugin asks for 'native', and 'native' is only useful with 'exec'.
+function checkAssets(m, perms) {
+    var declared = m.assets == null ? [] : m.assets;
+    if (!Array.isArray(declared)) throw new Error('assets must be a list');
+    var wantsNative = perms.indexOf('native') >= 0;
+    if (declared.length && !wantsNative) throw new Error('assets need the native permission');
+    if (wantsNative && !declared.length) throw new Error('the native permission needs at least one asset');
+    if (wantsNative && perms.indexOf('exec') < 0) throw new Error('the native permission needs exec: an asset only runs through it');
+    if (declared.length > ASSET_MAX_COUNT) throw new Error('A plugin declares at most ' + ASSET_MAX_COUNT + ' assets');
+    var seen = Object.create(null), total = 0;
+    declared.forEach(function (a) {
+        if (!a || typeof a !== 'object' || typeof a.name !== 'string' || !ASSET_NAME_RE.test(a.name) || a.name === 'manifest.json' || a.name === 'config.json') {
+            throw new Error('Invalid asset name');
+        }
+        if (seen[a.name]) throw new Error('Duplicate asset ' + a.name);
+        seen[a.name] = true;
+        if (typeof a.sha256 !== 'string' || !HEX64_RE.test(a.sha256)) throw new Error('Asset ' + a.name + ': sha256 must be 64 lowercase hex characters');
+        if (typeof a.size !== 'number' || a.size % 1 !== 0 || a.size < 1 || a.size > ASSET_MAX_BYTES) throw new Error('Asset ' + a.name + ': size must be 1-' + ASSET_MAX_BYTES + ' bytes');
+        total += a.size;
+    });
+    if (total > ASSET_MAX_BYTES) throw new Error('Assets add up to more than ' + (ASSET_MAX_BYTES / 1024) + ' KB');
+}
+
+// Node 4.0-4.4 has a Buffer.from that is the typed array one and silently returns garbage for a string.
+function fromBase64(text) {
+    return Buffer.from && Buffer.from !== Uint8Array.from ? Buffer.from(text, 'base64') : new Buffer(text, 'base64');
+}
+
+function sha256Of(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
+
+// bundle.assets (name -> base64) against manifest.assets: every declared asset present, nothing extra, bytes match the
+// declared size and SHA-256. The decoded bytes are the authority, never the base64 text. Returns name -> Buffer.
+function decodeAssets(b) {
+    var declared = b.manifest.assets || [], out = Object.create(null);
+    var given = b.assets && typeof b.assets === 'object' ? Object.keys(b.assets) : [];
+    if (given.length !== declared.length) throw new Error('The bundle assets do not match the manifest');
+    declared.forEach(function (a) {
+        var text = b.assets[a.name];
+        if (typeof text !== 'string' || !text || text.length % 4 !== 0 || !BASE64_RE.test(text)) throw new Error('Asset ' + a.name + ' is not valid base64');
+        var buf = fromBase64(text);
+        if (buf.length !== a.size) throw new Error('Asset ' + a.name + ' is ' + buf.length + ' bytes, the manifest says ' + a.size);
+        if (sha256Of(buf) !== a.sha256) throw new Error('Asset ' + a.name + ' does not match its SHA-256');
+        out[a.name] = buf;
+    });
+    return out;
 }
 
 // A whole bundle object (parsed JSON): manifest, file names, sizes, entry file. Returns the file names.
 function checkBundle(b) {
-    if (!b || b.format !== 'vetro-plugin' || b.version !== 1 || !b.manifest || !b.files || typeof b.files !== 'object') {
-        throw new Error('Not a plugin bundle (format vetro-plugin, version 1)');
+    // Version 1 is text only. Version 2 adds the assets map and exists so that a Vetro without asset support refuses the
+    // bundle instead of installing the plugin without its helper.
+    if (!b || b.format !== 'vetro-plugin' || (b.version !== 1 && b.version !== 2) || !b.manifest || !b.files || typeof b.files !== 'object') {
+        throw new Error('Not a plugin bundle (format vetro-plugin, version 1 or 2)');
     }
     checkManifest(b.manifest);
+    var hasAssets = !!(b.manifest.assets && b.manifest.assets.length);
+    if (b.version === 1 && (hasAssets || b.assets != null)) throw new Error('A bundle with assets must be version 2');
+    if (b.version === 2 && !hasAssets) throw new Error('A version 2 bundle needs at least one asset');
     var names = Object.keys(b.files), total = 0;
     if (!names.length || names.length > BUNDLE_MAX_FILES) throw new Error('A bundle holds 1 to ' + BUNDLE_MAX_FILES + ' files');
     for (var j = 0; j < names.length; j++) {
         if (!FILE_RE.test(names[j]) || names[j] === 'manifest.json' || typeof b.files[names[j]] !== 'string') throw new Error('Invalid file entry: ' + names[j]);
+        if (hasAssets && (names[j] === 'assets' || names[j].indexOf('assets/') === 0)) throw new Error('Invalid file entry: ' + names[j] + ' (assets/ is where the assets go)');
         total += Buffer.byteLength(b.files[names[j]]);
     }
     if (total > BUNDLE_MAX_BYTES) throw new Error('Bundle is larger than ' + (BUNDLE_MAX_BYTES / 1024) + ' KB');
     if (typeof b.files[b.manifest.main || 'index.js'] !== 'string') throw new Error('Entry file ' + (b.manifest.main || 'index.js') + ' is missing');
+    if (hasAssets) decodeAssets(b);
     return names;
 }
 
@@ -148,6 +212,13 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     var main = path.resolve(folder, manifest.main || 'index.js');
     if (main.indexOf(path.resolve(folder) + path.sep) !== 0) throw new Error('main must stay inside the plugin folder');
     if (!fs.existsSync(main)) throw new Error('entry file ' + (manifest.main || 'index.js') + ' is missing');
+    // Helper binaries are checked against the manifest every time the folder is read: a missing, truncated or
+    // swapped file shows as Invalid with the reason instead of failing later inside start().
+    (manifest.assets || []).forEach(function (a) {
+        var buf;
+        try { buf = fs.readFileSync(path.join(folder, 'assets', a.name)); } catch (e) { throw new Error('asset ' + a.name + ' is missing'); }
+        if (buf.length !== a.size || sha256Of(buf) !== a.sha256) throw new Error('asset ' + a.name + ' does not match the manifest');
+    });
     // The code is only read when the plugin is switched on: installing, listing or booting
     // with it switched off never executes anything from the plugin.
     var create = function (ctx) {
@@ -158,7 +229,7 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     };
     this.register({
         id: id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author, apiVersion: manifest.apiVersion,
-        permissions: manifest.permissions, ui: manifest.ui, create: create
+        permissions: manifest.permissions, ui: manifest.ui, assets: manifest.assets, create: create
     });
 };
 
@@ -172,7 +243,8 @@ function rmrf(target) {
 }
 
 // A bundle is one text file: { format: 'vetro-plugin', version: 1, manifest, files: { name: text } }.
-// Text only on purpose (no binaries, no native code), small, and hashed as received.
+// Text only, small, and hashed as received. Helper binaries travel as base64 in `assets` (version 2): only for a plugin
+// that declares the 'native' permission, each with a SHA-256 in the manifest that is checked on the decoded bytes.
 // expectedSha256 is optional; when given (from the plugin list) a mismatch is refused.
 // The plugin lands switched off; nothing in it runs until the user turns it on.
 PluginHost.prototype.install = function (raw, expectedSha256, signature) {
@@ -182,6 +254,7 @@ PluginHost.prototype.install = function (raw, expectedSha256, signature) {
     var b;
     try { b = JSON.parse(raw); } catch (e) { throw new Error('Not a plugin bundle (invalid JSON)'); }
     var names = checkBundle(b), m = b.manifest, id = m.id;
+    var assets = (m.assets && m.assets.length) ? decodeAssets(b) : null;
     var existing = this.entries[id];
     if (existing && existing.def.bundled) throw new Error(id + ' is part of Vetro and cannot be replaced by a bundle');
     if (existing && existing.instance) throw new Error('Switch the plugin off before updating it');
@@ -199,6 +272,10 @@ PluginHost.prototype.install = function (raw, expectedSha256, signature) {
             }
             fs.writeFileSync(path.join(staging, n), b.files[n]);
         });
+        if (assets) {
+            fs.mkdirSync(path.join(staging, 'assets'));
+            Object.keys(assets).forEach(function (n) { fs.writeFileSync(path.join(staging, 'assets', n), assets[n]); });
+        }
         fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify(m, null, 2) + '\n');
         // An update keeps what the plugin saved (config.json) and can be rolled back.
         try { fs.writeFileSync(path.join(staging, 'config.json'), fs.readFileSync(path.join(target, 'config.json')), { mode: 384 }); } catch (e) { /* first install */ }
@@ -329,6 +406,13 @@ PluginHost.prototype._context = function (entry) {
         execute: function (cmd, timeout) {
             if (!allowed) return Promise.reject(new Error(id + ' has no exec permission'));
             return host.execute(cmd, timeout);
+        },
+        // Absolute path of one of the helper binaries declared in the manifest (permission 'native'). Throws for anything else.
+        asset: function (name) {
+            var declared = entry.def.assets || [];
+            if ((entry.def.permissions || []).indexOf('native') < 0) throw new Error(id + ' has no native permission');
+            for (var k = 0; k < declared.length; k++) if (declared[k].name === name) return path.join(dir, 'assets', name);
+            throw new Error(id + ' declares no asset ' + name);
         }
     };
     // Services of the shell are lent to the plugins that ship with Vetro, not to third parties (docs/PLUGIN-ARCHITECTURE.md).
@@ -503,6 +587,7 @@ PluginHost.prototype.status = function (id) {
         author: entry.def.author || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
+        assets: (entry.def.assets || []).map(function (a) { return { name: a.name, size: a.size, sha256: a.sha256 }; }),
         bundled: !!entry.def.bundled,
         trust: entry.def.bundled ? 'bundled' : st.trust[id] || 'folder',
         enabled: enabled == null ? entry.defaultEnabled : enabled,
@@ -562,7 +647,7 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
             if (err) return json(res, { ok: false, error: err.message }, err.statusCode || 400);
             try { json(res, Object.assign({ ok: true }, host.install(body, req.headers && req.headers['x-vetro-sha256'], req.headers && req.headers['x-vetro-signature']))); }
             catch (e) { json(res, { ok: false, error: e.message }, 400); }
-        }, BUNDLE_MAX_BYTES + 4096);
+        }, BUNDLE_BODY_MAX);
         return true;
     }
     if (id === 'developer') {
@@ -651,4 +736,4 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     return true;
 };
 
-module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle };
+module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, BUNDLE_BODY_MAX: BUNDLE_BODY_MAX, ASSET_MAX_BYTES: ASSET_MAX_BYTES, decodeAssets: decodeAssets, checkManifest: checkManifest, checkBundle: checkBundle };

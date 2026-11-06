@@ -56,9 +56,10 @@ Edit, `pack` again, install again: it updates in place and comes back switched o
 | `name` | no | up to 40 chars, shown in the list |
 | `version` | no | up to 24 chars. Use `1.2.3`: the dashboard offers an update when the list has a higher one |
 | `description`, `author` | no | up to 160 / 60 chars, shown in the list |
-| `permissions` | no | `[]` or `["exec"]` (see below) |
+| `permissions` | no | `[]`, `["exec"]` or `["exec", "native"]` (see below) |
 | `main` | no | entry file, default `index.js` |
 | `ui` | no | `{ "label": "…" }` (1–24 chars): adds a tab inside Vetro Shards while the plugin runs |
+| `assets` | with `native` | `[{ "name", "sha256", "size" }]`: the helper programs shipped in `assets/`. `pack` writes this list for you |
 
 ### index.js
 
@@ -78,10 +79,11 @@ module.exports = function (ctx) {
 ```
 
 `ctx`: `id` · `dir` (your own folder: an update replaces everything in it except `config.json`, so keep your data there) · `config.get()` / `config.set(obj)` (your own `config.json`,
-the only thing kept across updates) · `execute(cmd, timeoutMs)` → Promise (only with the `exec` permission; otherwise it rejects).
+the only thing kept across updates) · `execute(cmd, timeoutMs)` → Promise (only with the `exec` permission; otherwise it rejects) ·
+`asset(name)` → absolute path of a helper program declared in `assets` (only with the `native` permission; otherwise it throws).
 
-A bundle is **text only**: up to 20 files, 512 KB in total, file names `a-z A-Z 0-9 . _ -` and `/`.
-`config.json`, dotfiles and `node_modules` are not packed.
+The code of a plugin is **text**: up to 20 files, 512 KB in total, file names `a-z A-Z 0-9 . _ -` and `/`.
+`config.json`, dotfiles and `node_modules` are not packed. Helper programs are the one exception, see [The `native` permission](#the-native-permission).
 
 ### The plugin page
 
@@ -95,6 +97,23 @@ JSON `POST` works: the host answers the CORS preflight. Dark/light: add `<meta n
 `exec` gives `ctx.execute`, which runs shell commands on the TV as root. Declare it if your plugin uses it: the user sees
 "says it needs: run commands as root" before installing, and the public list looks at these more closely. It is a
 **label, not a limit**: see the next section.
+
+### The `native` permission
+
+A plugin that needs a program of its own (a .NET helper, a native binary) puts it in `assets/` next to `manifest.json`
+and asks for `["exec", "native"]`. `pack` hashes every file in `assets/`, lists them in the manifest of the bundle and
+carries the bytes as base64 (bundle `version` 2; a bundle without assets stays version 1, so an older Vetro refuses a
+version 2 bundle instead of installing the plugin without its helper).
+
+- The TV decodes each asset and refuses the bundle unless its size and SHA-256 match the manifest. The files are stored in
+  `<plugin folder>/assets/`, and the check is repeated whenever the folder is read: a missing or changed file shows as Invalid.
+- `native` needs `exec` (an asset only runs through it) and needs at least one asset; assets without `native` are refused.
+- At most 4 assets, 256 KB together, flat names (`a-z A-Z 0-9 . _ -`, no folders). `assets/` cannot be used for text files.
+- `ctx.asset("tool.dll")` gives the path; run it with `ctx.execute`, which is root. The user sees
+  "run a bundled native program as root" before installing.
+- Like `exec`, it is a **label, not a limit**. What it adds is visibility: the program is declared, its hash is in the manifest
+  that the list signs, and nothing can carry a binary without saying so. Source of the helper must be public, and the README
+  must say how the binary was built (the catalog asks for it).
 
 ## What a plugin can do
 
@@ -194,12 +213,13 @@ HTTP (on the TV, port of the dashboard):
 | | |
 |---|---|
 | `GET /plugins` | list, safe-mode flag, plugin folder, list URL |
-| `POST /plugins/install` | body: bundle text; optional header `X-Vetro-Sha256` |
+| `POST /plugins/install` | body: bundle text (up to 512 KB of text plus 256 KB of assets as base64); optional headers `X-Vetro-Sha256`, `X-Vetro-Signature` |
 | `POST /plugins/<id>/enable` · `disable` · `remove` | |
 | `POST /plugins/resume` | leave safe mode (takes effect after a restart of Vetro) |
 | `* /plugins/<id>/api/<sub>` | your `route()` |
 
 Bundle: `{ "format": "vetro-plugin", "version": 1, "manifest": {…}, "files": { "index.js": "…" } }`.
+With assets: `"version": 2` and `"assets": { "tool.dll": "<base64>" }`, declared in `manifest.assets`.
 
 ## What the host guarantees
 

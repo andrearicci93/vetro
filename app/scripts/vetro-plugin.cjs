@@ -10,17 +10,19 @@
 //   node scripts/vetro-plugin.cjs sign <index.json> <private.pem> [dist-folder]
 //                                                          add a `signature` to every entry (id, version, bundle SHA-256)
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const { checkBundle, BUNDLE_MAX_BYTES, signedText } = require('../service/plugin-host.js');
+const { checkBundle, BUNDLE_BODY_MAX, signedText } = require('../service/plugin-host.js');
 
 const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
 const die = (msg, code) => { console.error(msg); process.exit(code || 1); };
 
-// Folder -> bundle text. Text files only, same rules the TV applies on install.
+// Folder -> bundle text, same rules the TV applies on install. Everything is text except the files in assets/, which
+// are the helper binaries of a plugin with the native permission: they are hashed, declared in the manifest that goes
+// into the bundle, and carried as base64 (bundle version 2). A plugin without assets/ packs as version 1.
 function pack(folder) {
     let manifest;
     try { manifest = JSON.parse(fs.readFileSync(path.join(folder, 'manifest.json'), 'utf8')); }
     catch (e) { throw new Error(path.join(folder, 'manifest.json') + ' is missing or not valid JSON'); }
-    const files = {}, skipped = [];
+    const files = {}, skipped = [], assets = {};
     (function walk(dir, prefix) {
         for (const n of fs.readdirSync(dir).sort()) {
             const full = path.join(dir, n), rel = prefix + n;
@@ -28,15 +30,23 @@ function pack(folder) {
             if (fs.statSync(full).isDirectory()) { walk(full, rel + '/'); continue; }
             if (rel === 'manifest.json') continue;
             const buf = fs.readFileSync(full);
+            if (prefix === 'assets/') { assets[n] = buf; continue; }
             if (buf.includes(0)) throw new Error(rel + ' is a binary file; a bundle holds text only');
             files[rel] = buf.toString('utf8');
         }
     })(folder, '');
-    const bundle = { format: 'vetro-plugin', version: 1, manifest, files };
+    const names = Object.keys(assets);
+    const bundle = { format: 'vetro-plugin', version: names.length ? 2 : 1, manifest, files };
+    if (names.length) {
+        // The manifest in the bundle declares what is in assets/; a hand-written `assets` list in the source is replaced.
+        bundle.manifest = Object.assign({}, manifest, { assets: names.map(n => ({ name: n, sha256: crypto.createHash('sha256').update(assets[n]).digest('hex'), size: assets[n].length })) });
+        bundle.assets = {};
+        names.forEach(n => { bundle.assets[n] = assets[n].toString('base64'); });
+    }
     checkBundle(bundle);                      // throws the same message the TV would show
     const text = JSON.stringify(bundle) + '\n';
-    if (Buffer.byteLength(text) > BUNDLE_MAX_BYTES + 4096) throw new Error('Bundle is too large for the TV to accept');
-    return { id: manifest.id, version: manifest.version, manifest, text, skipped, sha256: sha256(text), size: Buffer.byteLength(text) };
+    if (Buffer.byteLength(text) > BUNDLE_BODY_MAX) throw new Error('Bundle is too large for the TV to accept');
+    return { id: manifest.id, version: manifest.version, manifest: bundle.manifest, text, skipped, sha256: sha256(text), size: Buffer.byteLength(text) };
 }
 
 // The plugin list entry for a packed bundle. `url` is relative to the list file unless absolute.
@@ -55,7 +65,8 @@ function load(folder, manifest) {
     const mod = require(path.resolve(folder, manifest.main || 'index.js'));
     const create = typeof mod === 'function' ? mod : mod && mod.create;
     if (typeof create !== 'function') throw new Error('The entry file must export a function (module.exports = function (ctx) { ... })');
-    const inst = create({ id: manifest.id, dir: path.resolve(folder), config: { get: () => ({}), set: () => {} }, execute: () => Promise.reject(new Error('no exec here')) });
+    const inst = create({ id: manifest.id, dir: path.resolve(folder), config: { get: () => ({}), set: () => {} }, execute: () => Promise.reject(new Error('no exec here')),
+        asset: n => { if (!(manifest.assets || []).some(a => a.name === n)) throw new Error('no asset ' + n); return path.resolve(folder, 'assets', n); } });
     if (!inst || typeof inst !== 'object') throw new Error('The function must return an object: { start, stop, status, route }');
     for (const k of ['start', 'stop', 'status', 'route']) if (inst[k] != null && typeof inst[k] !== 'function') throw new Error(k + ' must be a function');
     if (manifest.ui && typeof inst.route !== 'function') throw new Error('manifest.ui is set, so route(req, res, sub) must serve "ui"');
