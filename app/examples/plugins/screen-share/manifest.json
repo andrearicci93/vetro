@@ -1,0 +1,10 @@
+{
+  "id": "screen-share",
+  "name": "Screen share",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "Live view of what the TV is showing, as a page in the dashboard.",
+  "author": "andrearicci93 and zabique",
+  "permissions": ["exec", "native"],
+  "ui": { "label": "Screen" }
+}

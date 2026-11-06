@@ -143,3 +143,12 @@ original author and message; only a conflict in `runActions` (the `direct` param
 
 - `app/service/main.js`, `app/service/physical-input.js` and the tests `input-service-lifecycle`,
   `physical-input-lifecycle`: cancelling remote-input callbacks and queued actions after the service stops.
+
+## zabique/vetro, branch fork/extras
+
+Source: https://github.com/zabique/vetro/tree/fork/extras
+License: MIT (the fork keeps Vetro's own notice, "Copyright (c) 2026 Vetro contributors"). The screen-share Shard
+(`app/examples/plugins/screen-share/`) and its helper `capture/` (Samsung scaler capture through
+`libvideo-capture`, JPEG encoding with the TV's `libturbojpeg`, MJPEG on 127.0.0.1) are adapted from the fork's
+`capture/` and `app/service/screen-capture.js`. Credit: zabique. The change here is packaging: the helper ships as a
+declared native asset of a plugin, and the JavaScript is rewritten for the plugin API and Node 4.
