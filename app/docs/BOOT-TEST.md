@@ -16,6 +16,7 @@ From the `app` folder, with `TV_IP` set to the TV's LAN address (or pass `--base
 
 ```sh
 export TV_IP=192.0.2.10  # replace with your TV address
+export VETRO_TOKEN=...    # key from pairing, see SIGN-IN.md
 python3 scripts/boot-test.py preflight
 ```
 

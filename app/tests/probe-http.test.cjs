@@ -42,7 +42,20 @@ server.listen(0, '127.0.0.1', async () => {
     });
     assert.equal(remote.code, 403);
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).apps.length, 700);
-    console.log('PASS widget probe HTTP: preflight, report round trip, opaque origin only, loopback writes only');
+    // A TV that blocks loopback (#122) posts from its own LAN address: accepted, while another device on the LAN is not.
+    const auth = require('../service/auth.js');
+    auth._ownAddresses(() => ({eth0: [{family: 'IPv4', internal: false, address: '192.0.2.10'}]}));
+    const post = address => new Promise(resolve => {
+      const res = {headers: {}, setHeader() {}, writeHead(code) {res.code = code;}, end(text) {resolve({code: res.code, text});}};
+      const req = {method: 'POST', url: '/probe', headers: {origin: 'null'}, socket: {remoteAddress: address},
+        on(name, fn) { if (name === 'data') process.nextTick(() => fn(Buffer.from(JSON.stringify({probe: {fromLan: true}, apps: []})))); if (name === 'end') process.nextTick(fn); }};
+      service.router(req, res);
+    });
+    assert.equal((await post('192.0.2.11')).code, 403);
+    assert.equal((await post('192.0.2.10')).code, 200);
+    assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).probe.fromLan, true);
+    auth._ownAddresses();
+    console.log('PASS widget probe HTTP: preflight, report round trip, opaque origin only, writes from the TV only (loopback or its own address)');
   } catch (e) {console.error(e); process.exitCode = 1;}
   finally {server.close();}
 });

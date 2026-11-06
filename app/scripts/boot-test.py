@@ -41,12 +41,20 @@ def compact(route, data):
                       if isinstance(v, dict)}}
 
 
+def auth_headers():
+    """Content type plus the paired key from VETRO_TOKEN, when Vetro's sign-in is on."""
+    headers = {'Content-Type': 'application/json'}
+    if os.environ.get('VETRO_TOKEN'):
+        headers['Authorization'] = 'Bearer ' + os.environ['VETRO_TOKEN']
+    return headers
+
+
 def request(base, route, timeout=0.8, command=None):
     result = {'route': route, 'start': stamp()}
     try:
         body = None if command is None else json.dumps({'cmd': command}).encode()
         req = urllib.request.Request(base + route, data=body,
-                                     headers={'Content-Type': 'application/json'})
+                                     headers=auth_headers())
         # A local TV must not be routed through a configured HTTP proxy.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with opener.open(req, timeout=timeout) as response:

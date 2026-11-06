@@ -23,12 +23,19 @@ const DISTRIBUTOR_PW = process.env.DIST_PW;
 
 function collectIntegration() {
     const files = require('../app/build.cjs').collectFiles().filter(file => decodeURIComponent(file.uri) !== 'service/platform.js');
-    ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js'].forEach(name => {
+    ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js','sdb-tunnel.js','root-preflight.js','root-preflight-capture.js','retry-policy.js'].forEach(name => {
         files.push({uri: encodeURIComponent('service/' + name), data: fs.readFileSync(path.join(__dirname,'service',name))});
     });
-    fs.readdirSync(path.join(__dirname,'payload')).sort().forEach(name => {
-        files.push({uri: encodeURIComponent('payload/' + name), data: fs.readFileSync(path.join(__dirname,'payload',name))});
-    });
+    function addPayloads(relative) {
+        const directory = path.join(__dirname, relative);
+        fs.readdirSync(directory).sort().forEach(name => {
+            const next = relative + '/' + name;
+            if (fs.statSync(path.join(__dirname, next)).isDirectory()) addPayloads(next);
+            else files.push({uri: encodeURIComponent(next), data: fs.readFileSync(path.join(__dirname, next))});
+        });
+    }
+    addPayloads('payload');
+    files.push({uri: encodeURIComponent('notices/LICENSE-samsung-tv-root.txt'), data: fs.readFileSync(path.join(__dirname, 'tools/samsung-tv-root-master/LICENSE'))});
     return files;
 }
 

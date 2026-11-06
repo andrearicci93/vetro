@@ -3,15 +3,19 @@ const assert=require('assert').strict,{Control,FLAG,SERVICE}=require('../service
 // A small TV: the menu value, the brake file in /tmp, whether hbbtv_app and hbbtv_service run. Scripts are read, not run.
 // Like the real one, it starts HbbTV again when the app dies while the service is running (the brake file does not stop that).
 function tv(start){
- const s=Object.assign({value:20,flag:false,running:true,service:true,fail:null,appStarts:0,svcStarts:0},start),scripts=[];
+ const s=Object.assign({value:20,flag:false,running:true,service:true,disabled:false,absent:false,autoRestart:false,fail:null,appStarts:0,svcStarts:0},start),scripts=[];
  const execute=async cmd=>{const sh=Buffer.from(cmd.split(' ')[1],'base64').toString();scripts.push(sh);
-  if(sh.includes('__FLAG__'))return {exit_code:0,stdout:'value = '+s.value+' (Int32)\n__FLAG__\n'+(s.flag?1:0)+'\n__RUN__\n'+(s.running?1:0)+'\n__SVC__\n'+(s.service?1:0)+'\n'};
+  if(sh.includes('__FLAG__'))return {exit_code:0,stdout:'value = '+s.value+' (Int32)\n__FLAG__\n'+(s.flag?1:0)+'\n__RUN__\n'+(s.running?1:0)+'\n__SVC__\n'+(s.service?1:0)+'\n__DIS__\n'+(s.disabled?1:0)+'\n__ABS__\n'+(s.absent?1:0)+'\n'};
   if(s.fail&&s.fail(sh))return {exit_code:1,stdout:'',stderr:'boom'};
   const set=/vconftool set -f -t int \S+ (-?\d+)/.exec(sh);if(set)s.value=Number(set[1]);
   if(sh.includes('touch '+FLAG))s.flag=true;if(/rm -f /.test(sh)&&sh.includes(FLAG))s.flag=false;
   // order inside the script matters: stop the service first, then the app
   sh.split('\n').forEach(line=>{
-   if(line.startsWith('if app_launcher -S')&&line.includes('org\\.tizen\\.hbbtv-service')&&line.includes('-t org.tizen.hbbtv-service'))s.service=false;
+   if(line.startsWith('if ! sqlite3')&&line.includes('pkgcmd -D')&&!s.absent&&!s.noDisable){s.disabled=true;s.service=false;s.pkgcmdRuns=(s.pkgcmdRuns||0)+1;}
+   if(line.startsWith('pkgcmd -D')&&line.includes(SERVICE)&&!s.noDisable){s.disabled=true;s.service=false;}
+   if(line.includes('pkgcmd -A')&&line.includes(SERVICE)&&s.disabled){s.disabled=false;}
+   // QN85A: a service with auto-restart is started again right after a plain stop unless it is disabled
+   if(line.startsWith('if app_launcher -S')&&line.includes('org\\.tizen\\.hbbtv-service')&&line.includes('-t org.tizen.hbbtv-service')){s.service=false;if(s.autoRestart&&!s.disabled){s.service=true;s.svcRestarts=(s.svcRestarts||0)+1;}}
    if(line.startsWith('if app_launcher -S')&&line.includes('-t org.tizen.hbbtv ')){s.running=false;if(s.service)s.running=true;/* the service starts it again */}
    if(line.startsWith('app_launcher -s '+SERVICE)||(line.startsWith('if ! app_launcher -S')&&line.includes('then app_launcher -s '+SERVICE))&&!s.service){s.service=true;s.svcStarts++;}
    if(line==='app_launcher -s org.tizen.hbbtv'){s.running=true;s.appStarts++;}
@@ -49,5 +53,24 @@ function tv(start){
  assert.equal((await c.enforce()).stopped,false,'second time: already off');
  t=tv({value:20,flag:false,running:true,service:true});c=new Control(t.execute,io);
  assert.equal((await c.enforce()).stopped,false,'HbbTV is on in the menu: left alone');assert.equal(t.s.running,true);assert.equal(t.s.service,true);assert.equal(t.s.flag,false);
+ // A service with auto-restart (QN85A, found by zabique): a plain stop is answered by a new service, so Off only holds because the service app is disabled
+ backup=null;t=tv({value:20,flag:false,running:true,service:true,autoRestart:true});c=new Control(t.execute,io);
+ r=await c.change(true,20);assert.equal(r.off,true);assert.equal(r.serviceDisabled,true);assert.equal(t.s.service,false);assert.equal(t.s.disabled,true);assert.equal(t.s.svcRestarts||0,0,'disabled before the stop: nothing to restart');
+ r=await c.change(false,19);assert.equal(r.off,false);assert.equal(t.s.disabled,false,'On enables the service app again');assert.equal(t.s.service,true);
+ // Upgrade path: HbbTV left off by an earlier Vetro (service stopped, not disabled) reads as partly done until enforce disables it
+ t=tv({value:19,flag:true,running:false,service:false,disabled:false});c=new Control(t.execute,io);
+ r=await c.read();assert.equal(r.valueOff,true);assert.equal(r.off,false,'service not disabled: not fully off yet');
+ assert.deepEqual(await c.enforce(),{stopped:true});assert.equal(t.s.disabled,true);assert.equal((await c.read()).off,true);
+ assert.equal((await c.enforce()).stopped,false,'then already off');
+ // Off that cannot disable the service rolls back and says why
+ t=tv({value:20,flag:false,running:true,service:true,autoRestart:true,noDisable:true});backup=null;c=new Control(t.execute,io);
+ await assert.rejects(c.change(true,20),/HbbTV is not fully off: .* · previous state restored/);
+ assert.equal(t.s.value,20);assert.equal(t.s.flag,false);
+ // 2023 and later firmware has no service app at all (24 of 41 rooted TVs in the community reports): Off is the value,
+ // the brake file and the app, as before; nothing is disabled, and an unreadable registry is not taken for "absent".
+ t=tv({value:20,flag:false,running:true,service:false,absent:true});backup=null;c=new Control(t.execute,io);
+ r=await c.change(true,20);assert.equal(r.off,true);assert.equal(r.serviceAbsent,true);assert.equal(r.serviceDisabled,true);assert.equal(t.s.pkgcmdRuns||0,0,'no service app: nothing to disable');assert.equal(t.s.running,false);
+ assert.equal((await c.enforce()).stopped,false,'and enforce sees it already off');
+ r=await c.change(false,19);assert.equal(r.off,false);assert.equal(t.s.appStarts,1);
  console.log('PASS HbbTV: Off = value, brake file, service stopped first, app stopped; never starts anything; exact restore; boot enforcement');
 })().catch(e=>{console.error(e);process.exitCode=1});

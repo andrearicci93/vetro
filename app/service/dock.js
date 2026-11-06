@@ -7,17 +7,36 @@
 // (com.samsung.tv.csfs) itself after each Home press, so a dead dock hands the Home key
 // straight back to Samsung: the worst case of a crash is the TV as it was before.
 //
-// State lives in one small file next to the other Vetro settings. Nothing else on the TV is
-// changed: no package is disabled and the default Home is untouched.
+// State lives in one small file next to the other Vetro settings. In the Vetro launcher mode nothing else on
+// the TV is changed: no package is disabled and the default Home is untouched.
+//
+// The same process also serves the custom launcher mode (the user's own app on the Home key). There it runs
+// headless with --home-launch APPID: the Home key opens that app instead of the dock, and the same guard that the
+// Vetro launcher uses closes Samsung's Home (and its sidebar and media windows) after each press. Samsung's Home is
+// never disabled: on the Q80A the boot script waits for it to start, so a disabled package can keep the TV from
+// finishing its boot (verified 2026-11-06). The two modes exclude each other; `customApp` in the state is the
+// switch for the second one, `enabled` stays the switch of the first.
 
 var fs = require('fs');
 var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
+var atomicFile = require('./atomic-file.js');
+// Regular expressions compiled once at module load, not on every call.
+var QUOTE_RE = /'/g;
+var AUTORUN_VALUE_RE = /value = (\d+)/;
+var PROBE_DOCK_RE = /^dock=(\d+)$/m;
+var PROBE_HOME_RE = /^home=(\d)$/m;
+var TARGET_SYSTEM_RE = /^(?:sys|key|panel):/;
+var TARGET_PANEL_RE = /^panel:/;
+var TARGET_SOURCE_RE = /^source:/;
+var SLUG_RE = /^[a-z0-9_-]{1,40}$/;
 
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
 var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
+var CUSTOM_APPS_FILE = SHARE + '/vetro-dock-custom.tsv';      // the one-line list of the headless custom mode
+var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
@@ -25,6 +44,9 @@ var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
+// 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
+// when only csfs is closed, so the guard and the enable-time kill target all three.
+var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
 var AUTORUN_KEY = 'db/menu/smart_hub/ontvsetting/auto_start';   // Samsung's "Autorun Smart Hub"
 var HOME_CODE = 63;                                   // Home on the forwarded remote Vetro creates
 var START_WAIT_MS = 15000;
@@ -32,9 +54,26 @@ var BOOT_WAIT_MS = 75000;                             // a start in the first mi
 var BOOT_WINDOW_S = 300;
 var RETRY_FIRST_MS = 30000;
 var RETRY_MAX_MS = 300000;
+// Nothing opens the chosen app but the headless process, so one that keeps failing to start must not leave the Home
+// key dead: after this many failed tries (about 12 minutes of back-off) the service turns the mode off and Samsung's
+// Home answers the key again. A start the agent could not attempt does not count.
+var CUSTOM_MAX_FAILURES = 6;
+var APP_CHECK_ROUNDS = 6;                              // the chosen app is looked up every 6th supervision round (about a minute)
+var APP_GONE_ROUNDS = 2;                               // and given up on when two lookups in a row say it is gone
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
-function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+function q(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
+
+var SOURCE_OPTION_KEYS = ['showHomeSources', 'useSourceImages'];
+function legacySourceUsage(file, images) {
+    try {
+        if (fs.statSync(file).size > 65536) return false;
+        return fs.readFileSync(file, 'utf8').split('\n').some(function (line) {
+            var fields = line.split('\t');
+            return /^source:(?:13|14|15|16)$/.test(fields[2] || '') && (!images || !!fields[4]);
+        });
+    } catch (e) { return false; }
+}
 
 function Dock(options) {
     options = options || {};
@@ -42,6 +81,17 @@ function Dock(options) {
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
+    this.customAppsFile = options.customAppsFile || CUSTOM_APPS_FILE;
+    // Custom mode needs two things from the shell: appCheck(appId) -> {ok, label|reason} for the chosen app (rejects
+    // when the registry cannot be read now), and home {restore()} to put Samsung's Home back when an earlier build
+    // of the mode had disabled it (state flag customHomeDisabled, never set by this version).
+    this.home = options.home || null;
+    this.appCheck = options.appCheck || null;
+    this.checkRound = 0;
+    this.goneRounds = 0;
+    this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
+    this.legacyHomeSources = legacySourceUsage(this.appsFile, false);
+    this.legacySourceImages = legacySourceUsage(this.inputsFile, true);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -62,8 +112,24 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            autorunWas: s && s.autorunWas === 1 ? 1 : null};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, autorunWas: null}; }
+            noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
+            customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
+            customHomeDisabled: s && s.customHomeDisabled === true,
+            showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
+            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+        showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
+};
+
+// Source-option migration must never overwrite an unreadable or malformed existing state.
+Dock.prototype.validateSourcePreferenceState = function () {
+    try {
+        var state = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+        if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Invalid launcher state');
+    } catch (e) {
+        if (e.code !== 'ENOENT') throw new Error('Cannot read launcher preferences: ' + e.message);
+    }
 };
 
 // Change some fields of the saved state and keep the rest.
@@ -76,7 +142,7 @@ Dock.prototype.patchState = function (patch) {
 // turning the launcher off puts it back. Only a change made here is ever undone here.
 Dock.prototype.readAutorun = function () {
     return this.execute(wrap('vconftool get ' + AUTORUN_KEY + ' 2>&1'), 6000).then(function (r) {
-        var m = /value = (\d+)/.exec(check(r, 'Autorun read'));
+        var m = AUTORUN_VALUE_RE.exec(check(r, 'Autorun read'));
         if (!m) throw new Error('Autorun Smart Hub could not be read');
         return +m[1];
     });
@@ -104,8 +170,10 @@ Dock.prototype.restoreAutorun = function () {
     }).then(function () { self.patchState({autorunWas: null}); });
 };
 
+// The file also holds `autorunWas`, the only record that Samsung's Autorun Smart Hub was switched off by Vetro: a truncated
+// write would lose it and leave that TV setting off for good. Written whole or not at all, and no temporary file is left behind.
 Dock.prototype.writeState = function (state) {
-    try { fs.writeFileSync(this.stateFile, JSON.stringify(state)); }
+    try { atomicFile.write(fs, this.stateFile, JSON.stringify(state)); }
     catch (e) { throw new Error('The dock setting could not be saved: ' + e.message); }
 };
 
@@ -120,11 +188,13 @@ Dock.prototype.probe = function () {
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
         'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || ps | grep -q "[c]sfs"; then echo "home=1"; else echo "home=0"; fi',
-        'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null'
+        // No log file yet is normal. Without || true the missing file failed the whole read, and the user saw its raw
+        // output, "dock= home=0 log:", as the error (#82).
+        'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
     ].join('\n');
     return this.execute(wrap(script), 8000).then(function (r) {
         var out = check(r, 'Status');
-        var pid = /^dock=(\d+)$/m.exec(out), home = /^home=(\d)$/m.exec(out);
+        var pid = PROBE_DOCK_RE.exec(out), home = PROBE_HOME_RE.exec(out);
         return {running: !!pid, pid: pid ? +pid[1] : null, samsungHome: home ? home[1] === '1' : null,
             log: out.split('log:\n')[1] ? out.split('log:\n')[1].trim() : ''};
     });
@@ -148,7 +218,9 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
+        customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
@@ -166,8 +238,11 @@ Dock.prototype.statusNow = function () {
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
-    var args = DLL + ' --apps ' + q(this.appsFile) + ' --inputs ' + q(path.join(this.dir, 'res', 'inputs.tsv')) +
-        ' --hidden --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_APP;
+    var state = this.readState();
+    // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
+    var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
+        ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
+        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -188,8 +263,11 @@ Dock.prototype.stopLines = function () {
 
 Dock.prototype.writeCatalog = function () {
     var self = this;
-    return catalog.load(this.execute, {fixTizenTube: this.readState().fixTizenTube}).then(function (c) {
-        try { fs.writeFileSync(self.appsFile, c.tsv); }
+    var state = this.readState();
+    // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
+    try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
+        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
         return c;
@@ -213,8 +291,8 @@ Dock.prototype.waitRunning = function () {
 // `quick` is the start after a boot or a crash: it uses the list saved by the last start, so the
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
 Dock.prototype.launch = function (quick) {
-    var self = this, saved = quick && this.hasSavedApps();
-    return (saved ? Promise.resolve() : this.writeCatalog()).then(function () {
+    var self = this, custom = this.readState().customApp, saved = !custom && quick && this.hasSavedApps();
+    return (custom ? this.writeCustomList(custom) : saved ? Promise.resolve() : this.writeCatalog()).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
         if (saved) self.refreshPending = true;
@@ -240,6 +318,7 @@ Dock.prototype.enable = function () {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
     if (!this.installed()) return Promise.reject(new Error('The dock files are not in this Vetro package'));
+    if (this.readState().customApp) return Promise.reject(new Error('Turn off the custom launcher before turning on the Vetro launcher'));
     this.busy = true; this.lastError = null;
     return this.launch().then(function () {
         self.patchState({enabled: true, since: self.now()});
@@ -250,7 +329,7 @@ Dock.prototype.enable = function () {
     }).then(function () {
         // Samsung's Home is idle in the background; closing it frees its memory, and Settings or
         // Source opened from the dock start it again on demand.
-        return self.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+        return self.execute(HOME_KILL.map(function (id) { return 'app_launcher -k ' + id; }).join('; '), 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
@@ -278,11 +357,133 @@ Dock.prototype.disable = function () {
 Dock.prototype.refresh = function () {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
-    if (!this.readState().enabled) return Promise.reject(new Error('The dock is off'));
+    var state = this.readState();
+    if (!state.enabled && !state.customApp) return Promise.reject(new Error('The dock is off'));
     this.busy = true; this.lastError = null;
     return this.launch().then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message; throw e;
     }).finally(function () { self.busy = false; });
+};
+
+// ---- Custom launcher: the user's own app on the Home key --------------------------------------------------------
+//
+// One switch does two things: the Home key opens the chosen app (the headless dock, with the same unit, the same
+// supervision and the same standby survival as the Vetro launcher, and the same guard that closes Samsung's Home
+// after each press), and Autorun Smart Hub is switched off so that the TV does not power on to Samsung's Home.
+// Samsung's Home itself is left alone, so a reboot, a power cut or a failed update can never leave the TV without
+// the first screen its boot waits for. Everything is undone in the opposite order, and only what this mode changed.
+
+// Which installed apps can be the custom launcher: the ones the user installed, with a launcher entry, switched on.
+// This function is also sent to the dashboard as text, so it cannot call anything outside itself.
+function customCandidate(row) {
+    return !!row && row.system === false && row.removable === true && row.show === true && row.disabled === false &&
+        /^[A-Za-z0-9_.-]{1,120}$/.test(row.appId || '') && !/^vetrotvapp(\.|$)/.test(row.appId);
+}
+// The same rule on the registry rows. strict: at the moment of choosing, an unreadable state is a no; when the
+// app is looked up again later it is given the benefit of the doubt.
+function customAppCheck(rows, appId, strict) {
+    var row = (rows || []).filter(function (r) { return r && r.appId === appId; })[0];
+    if (!row) return {ok: false, reason: 'the app is not installed any more.'};
+    if (row.disabled === true) return {ok: false, reason: 'the app is disabled.'};
+    if (typeof row.disabled !== 'boolean') return strict ? {ok: false, reason: 'the state of the app could not be read.'} : {ok: true, label: row.name || appId};
+    if (!customCandidate(row)) return {ok: false, reason: 'only an app you installed yourself, with a launcher entry, can be the custom launcher.'};
+    return {ok: true, label: row.name || appId};
+}
+
+function customLine(appId) { return 'custom\tCustom launcher\t' + appId + '\n'; }
+
+Dock.prototype.writeCustomList = function (appId) {
+    var self = this;
+    return new Promise(function (resolve, reject) {
+        try { atomicFile.write(fs, self.customAppsFile, customLine(appId)); resolve(); }
+        catch (e) { reject(new Error('The custom launcher list could not be saved: ' + e.message)); }
+    });
+};
+
+Dock.prototype.requireCustomParts = function () {
+    if (!this.installed()) return new Error('The dock files are not in this Vetro package');
+    if (!this.appCheck) return new Error('The custom launcher is not available in this build');
+    return null;
+};
+
+// Turn the custom launcher on, or change its app when it is on already. Order: the app is checked, the headless
+// process is started and seen running, and Autorun Smart Hub is switched off. The intent is written before the
+// start, as autorunWas is, so that a crash in the middle leaves something the service can finish or undo.
+Dock.prototype.enableCustom = function (appId) {
+    var self = this, before = this.readState();
+    if (typeof appId !== 'string' || !APP_ID_RE.test(appId)) return Promise.reject(new Error('Choose an app from the list'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var missing = this.requireCustomParts();
+    if (missing) return Promise.reject(missing);
+    if (before.enabled) return Promise.reject(new Error('Turn off the Vetro launcher before turning on the custom launcher'));
+    if (before.customApp === appId) return this.status();
+    this.busy = true; this.lastError = null;
+    var changing = !!before.customApp;
+    return this.appCheck(appId, true).then(function (c) {
+        if (!c || c.ok !== true) throw new Error((c && c.reason) || 'This app cannot be used as a launcher');
+        // Written first: if this process dies now, supervision starts the headless dock for this app.
+        self.patchState({customApp: appId, customSince: changing ? before.customSince : self.now()});
+        return self.launch();
+    }).then(function () {
+        self.failures = 0; self.nextTry = 0; self.goneRounds = 0;
+        if (changing) return null;
+        return self.turnOffAutorun()
+            .catch(function (e) { self.lastError = 'The custom launcher is on, but Autorun Smart Hub could not be switched off: ' + e.message; });
+    }).then(function () {
+        if (changing) return null;
+        // Samsung's Home is idle in the background; closing it frees its memory and clears the screen for the app.
+        return self.execute(HOME_KILL.map(function (id) { return 'app_launcher -k ' + id; }).join('; '), 8000).catch(function () {});
+    }).then(function () { return self.status(); }).catch(function (e) {
+        self.lastError = e.message;
+        return self.undoCustomStart(before).then(function () { throw e; });
+    }).finally(function () { self.busy = false; });
+};
+
+// A start that failed half way: back to the state before it.
+Dock.prototype.undoCustomStart = function (before) {
+    var self = this;
+    function failed(label) { return function (e) { self.lastError = (self.lastError ? self.lastError + ' · ' : '') + label + ': ' + e.message; }; }
+    if (before.customApp) {                          // it was a change of app: the old app goes back
+        try { self.patchState({customApp: before.customApp}); } catch (e) { return Promise.resolve(); }
+        return self.launch().catch(failed('The previous app was not started again'));
+    }
+    try { self.patchState({customApp: null, customSince: null, customHomeDisabled: false}); } catch (e) { failed('The setting was not cleared')(e); }
+    return self.stopDock().catch(function () {}).then(function () { return self.restoreAutorun(); }).catch(failed('Autorun Smart Hub was not put back'));
+};
+
+// Turn the custom launcher off. If an earlier build had disabled Samsung's Home, it goes back first: when it cannot
+// be put back the mode stays on and keeps working, which is better than a Home key that opens nothing.
+// options.keepHome leaves that to the caller (Restore the TV does it as its next step).
+Dock.prototype.disableCustom = function (options) {
+    var self = this, state = this.readState();
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    if (!state.customApp) return this.status();
+    this.busy = true; this.lastError = null;
+    return this.leaveCustom(options).then(function () { return self.status(); }).finally(function () { self.busy = false; });
+};
+
+Dock.prototype.leaveCustom = function (options) {
+    var self = this, state = this.readState();
+    var home = state.customHomeDisabled && !(options && options.keepHome) ? (this.home ? this.home.restore() : Promise.reject(new Error('Samsung Home cannot be put back from here'))) : Promise.resolve();
+    return home.then(function () {
+        self.patchState({customApp: null, customSince: null, customHomeDisabled: false});
+        self.failures = 0; self.nextTry = 0; self.goneRounds = 0;
+        return self.stopDock();
+    }).then(function () {
+        return self.restoreAutorun().catch(function (e) { self.lastError = 'The custom launcher is off, but Autorun Smart Hub was not put back: ' + e.message; });
+    });
+};
+
+// The chosen app is gone (uninstalled or disabled) or the process cannot be started: the Home key goes back to Samsung.
+Dock.prototype.giveUpCustom = function (reason) {
+    var self = this;
+    return this.leaveCustom().then(function () {
+        self.lastError = 'The custom launcher was turned off and Samsung’s Home answers the Home key again: ' + reason;
+        return 'reverted';
+    }, function (e) {
+        self.lastError = reason + ' Samsung’s Home could not be put back: ' + e.message;
+        return 'failed';
+    });
 };
 
 // The list the dock was last given, as the page's preview shows it. Icons are served by iconFile().
@@ -290,16 +491,43 @@ function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
         var f = l.split('\t'), target = f[2] || '';
         return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null,
-            system: /^(?:sys|key|panel):/.test(target), panel: /^panel:/.test(target), source: /^source:/.test(target) ? +target.slice(7) : null};
-    }).filter(function (e) { return /^[a-z0-9_-]{1,40}$/.test(e.slug || '') && e.label; });
+            system: TARGET_SYSTEM_RE.test(target), panel: TARGET_PANEL_RE.test(target), source: TARGET_SOURCE_RE.test(target) ? +target.slice(7) : null};
+    }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
 };
+Dock.prototype.inputListPath = function () {
+    return fs.existsSync(this.inputsFile) ? this.inputsFile : path.join(this.dir, 'res', 'inputs.tsv');
+};
 Dock.prototype.inputEntries = function () {
-    try { return parseTsv(fs.readFileSync(path.join(this.dir, 'res', 'inputs.tsv'), 'utf8')); } catch (e) { return []; }
+    try { return parseTsv(fs.readFileSync(this.inputListPath(), 'utf8')); } catch (e) { return []; }
 };
 
+// Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.
+Dock.prototype.setSourceOption = function (key, on) {
+    var self = this;
+    if (SOURCE_OPTION_KEYS.indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid source option'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    try { this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
+    var before = this.readState();
+    if (before[key] === on) return this.status();
+    var patch = {};
+    patch[key] = on;
+    try { this.patchState(patch); } catch (e) { return Promise.reject(e); }
+    this.busy = true; this.lastError = null;
+    function rebuild() { return before.enabled ? self.launch() : self.writeCatalog(); }
+    return Promise.resolve().then(rebuild).then(function () {
+        if (self.readState()[key] !== on) throw new Error('Source option readback failed');
+        return self.status();
+    }).catch(function (error) {
+        try { self.writeState(before); } catch (restoreError) { throw new Error(error.message + '; settings restore failed: ' + restoreError.message); }
+        return Promise.resolve().then(rebuild).catch(function (restoreError) {
+            self.lastError = error.message + '; catalog restore failed: ' + restoreError.message;
+            throw new Error(self.lastError);
+        }).then(function () { throw error; });
+    }).finally(function () { self.busy = false; });
+};
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
 Dock.prototype.setFixTizenTube = function (on) {
     var self = this;
@@ -315,15 +543,34 @@ Dock.prototype.setFixTizenTube = function (on) {
     });
 };
 
+// Still selection: the focus jumps between tiles and the icons keep their size (the dock's --no-motion).
+// It is a start argument, so a running dock is restarted.
+Dock.prototype.setNoMotion = function (on) {
+    var self = this;
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    try { this.patchState({noMotion: on}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.status();
+    return this.refresh().catch(function (e) {
+        try { self.patchState({noMotion: state.noMotion}); } catch (e2) {}
+        throw e;
+    });
+};
+
 // The file behind one tile of the preview: the app's own icon when the list names one that is a
 // safe path, else the dock's packaged icon. Returns a Buffer or null.
 Dock.prototype.iconFile = function (slug) {
-    if (!/^[a-z0-9_-]{1,40}$/.test(String(slug))) return null;
+    if (!SLUG_RE.test(String(slug))) return null;
     var all = this.entries().concat(this.inputEntries()), entry = all.filter(function (e) { return e.slug === slug; })[0];
-    if (!entry) return null;
+    var systemIcon = slug === 'settings' || slug === 'samsunghome';
+    if (!entry && !systemIcon) return null;
     var files = [];
-    if (entry.icon && catalog.iconPathOk(entry.icon)) files.push(entry.icon);
+    if (entry && entry.icon && catalog.iconPathOk(entry.icon)) files.push(entry.icon);
     files.push(path.join(this.dir, 'res', 'icons', slug + '.png'));
+    // Local app-only runs use source assets; WGTs carry the same files under native/dock/res.
+    if (systemIcon) files.push(path.join(__dirname, '..', '..', 'dock', 'res', 'icons', slug + '.png'));
     for (var i = 0; i < files.length; i++) {
         try {
             var data = fs.readFileSync(files[i]);
@@ -338,19 +585,47 @@ Dock.prototype.iconFile = function (slug) {
 // boot must not cost the user the launcher for good, so after repeated failures it keeps trying
 // every few minutes and reports the reason.
 Dock.prototype.supervise = function (agentConnected) {
-    var self = this, state = this.readState();
-    if (!state.enabled || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
+    var self = this, state = this.readState(), custom = !!state.customApp;
+    if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
-    return this.probe().then(function (p) {
+    return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {
         if (p.running) { self.failures = 0; self.refreshCatalogLater(); return 'running'; }
         return self.launch(true).then(function () { self.failures = 0; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
+    }).then(function (result) {
+        return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;
     }).catch(function (e) {
         self.failures++;
         self.nextTry = self.now() + Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * Math.pow(2, Math.min(self.failures, 8) - 1));
+        if (custom && self.failures >= CUSTOM_MAX_FAILURES) return self.giveUpCustom('the launcher process did not start after ' + self.failures + ' tries. ' + e.message);
         self.lastError = (self.failures >= 4 ? 'The dock has not started after ' + self.failures + ' tries; Vetro keeps trying. ' : '') + e.message;
         return 'failed';
     }).finally(function () { self.busy = false; });
 };
 
-module.exports = {Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE};
+// A build of the custom mode before 0.5.0 final disabled Samsung's Home and flagged it in the state. That package must
+// never stay disabled across a boot, so the first supervision round with the agent connected puts it back and clears
+// the flag. A failure is kept for the next round and does not stop the supervision.
+Dock.prototype.healHome = function (state) {
+    var self = this;
+    if (!state.customHomeDisabled || !this.home || typeof this.home.restore !== 'function') return Promise.resolve();
+    return this.home.restore().then(function () { self.patchState({customHomeDisabled: false}); }).catch(function (e) {
+        self.lastError = 'Samsung Home was disabled by an earlier version and could not be put back yet: ' + e.message;
+    });
+};
+
+// Custom mode only: about once a minute the chosen app is looked up. Two lookups in a row that say it is gone
+// (uninstalled, disabled) end the mode, since the Home key would open nothing. A lookup that fails is not an answer.
+Dock.prototype.checkCustomApp = function (appId) {
+    var self = this;
+    if (!this.appCheck || ++this.checkRound < APP_CHECK_ROUNDS) return Promise.resolve(null);
+    this.checkRound = 0;
+    return this.appCheck(appId).then(function (c) {
+        if (c && c.ok === true) { self.goneRounds = 0; return null; }
+        if (++self.goneRounds < APP_GONE_ROUNDS) return null;
+        return self.giveUpCustom((c && c.reason) || 'the app is no longer available.');
+    }, function () { return null; });
+};
+
+module.exports = {Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
+    customCandidate: customCandidate, customAppCheck: customAppCheck};

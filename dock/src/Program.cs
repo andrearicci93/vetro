@@ -46,16 +46,34 @@ namespace Launcher
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
         private const double HomeDebounceSeconds = 0.35;
+        // The raw press (evdev) opens the dock at once. The system holds Home to tell a short press from a long one
+        // and only then delivers XF86Home to the focused window, which is now the dock: on 2025 firmware that echo
+        // comes about 0.6 s later, well past the debounce. An XF86Home this soon after the raw press is the same
+        // press, not a request to close.
+        private const double HomeEchoSeconds = 1.5;
 
-        // --kill-on-home APPID: the system sends Home to Samsung's own home app as well (it is relaunched by
-        // the key), so after each Home press the app is closed again, a few times because its start is slow.
-        // Off by default; the app id is checked as plain id characters because it goes on a command line.
+        // --kill-on-home APPID[,APPID...]: the system sends Home to Samsung's own home app as well (it is relaunched
+        // by the key), so after each Home press the app is closed again, a few times because its start is slow.
+        // 2025 (RSM/CoBA) firmware splits Home into csfs plus separate sidebar and media windows that stay on top of
+        // the dock when only csfs is closed, so several ids may be given. Off by default; every id is checked as
+        // plain id characters because it goes on a command line.
         // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
         // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
-        private static string _guardApp, _guardCmd;
-        private const double GuardFirst = 0.15;
-        private static readonly double[] GuardGaps = { 0.3, 0.45, 0.7, 1.2 };   // sleeps between the five kills
+        private static string[] _guardApps;
+        // The kills are tied to a generation written to a file: each Home press arms a new one, and launching the guarded
+        // app on purpose (the Samsung Home pill) retires it. Without that, Samsung Home started 1-2 s after a Home press
+        // was closed again by the kills still pending, and the pill seemed to do nothing.
+        private static int _guardGen;
+        private static string _guardFile;
         private static int _homeCode = -1;
+        // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
+        // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
+        // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
+        private static AppEntry _homeLaunch;
+
+        private static readonly NavigationInput Navigation = new NavigationInput();
+        private static double _lastRawHome = -100;
+        private static AppEntry _pendingLaunch;
         private static bool _learn;
         private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
@@ -72,17 +90,41 @@ namespace Launcher
 
         // ------------------------------------------------------------------ logging
 
+        // The process stays resident for weeks, so the file is cut down as it grows and not only at start. Callbacks run
+        // on the main loop, but the lock keeps the byte count and the file in step if anything else ever logs.
+        private static readonly object LogLock = new object();
+        private const long LogLimit = 256 * 1024;
+        private static long _logBytes;
+
         private static void Log(string m)
         {
-            try { File.AppendAllText(_logPath, DateTime.Now.ToString("HH:mm:ss.fff") + " " + m + "\n"); } catch (Exception) { }
+            try
+            {
+                string line = DateTime.Now.ToString("HH:mm:ss.fff") + " " + m + "\n";
+                lock (LogLock)
+                {
+                    _logBytes += System.Text.Encoding.UTF8.GetByteCount(line);
+                    if (_logBytes > LogLimit)
+                    {
+                        _logBytes = System.Text.Encoding.UTF8.GetByteCount(line);
+                        try { File.Delete(_logPath); } catch (Exception) { }
+                    }
+                    File.AppendAllText(_logPath, line);
+                }
+            }
+            catch (Exception) { }
         }
 
         private static void TrimLog()
         {
             try
             {
-                var f = new FileInfo(_logPath);
-                if (f.Exists && f.Length > 256 * 1024) f.Delete();
+                lock (LogLock)
+                {
+                    var f = new FileInfo(_logPath);
+                    if (f.Exists && f.Length > LogLimit) { f.Delete(); _logBytes = 0; }
+                    else _logBytes = f.Exists ? f.Length : 0;
+                }
             }
             catch (Exception) { }
         }
@@ -219,7 +261,7 @@ namespace Launcher
 
             WatchNewNodes();
             Log("home key code " + (_homeCode < 0 ? "not set" : _homeCode.ToString()) + (_learn ? ", learn mode (every key press is logged)" : ""));
-            // The remote's nodes come and go: it reconnects after standby, and Vetro creates its forwarded-remote
+            // The remote's nodes come and go: it reconnects after standby, and Vetro creates its forwarding
             // node some time after this process started. A node that appears later is picked up here.
             _rescanTimer = Efl.ecore_timer_add(RescanSeconds, RescanCb, IntPtr.Zero);
         }
@@ -229,24 +271,35 @@ namespace Launcher
         {
             List<string> nodes;
             try { nodes = InputDevices.RemoteNodes(File.ReadAllText("/proc/bus/input/devices")); }
-            catch (Exception ex) { Log("input: cannot list devices: " + ex.Message); return 0; }
+            catch (Exception ex) { if (!_listFailed) Log("input: cannot list devices: " + ex.Message); _listFailed = true; return 0; }
+            _listFailed = false;
             int added = 0;
             foreach (string node in nodes)
             {
                 if (_inputPaths.Contains(node)) continue;
                 int fd = Libc.open(node, Libc.O_RDONLY | Libc.O_NONBLOCK);
-                if (fd < 0) { Log("input: cannot open " + node + " errno=" + Marshal.GetLastWin32Error()); continue; }
-                int index = _inputFds.Count;
+                if (fd < 0)
+                {
+                    // The rescan comes back every few seconds: say it once per node, or the log fills with the same line.
+                    if (_openFailed.Add(node)) Log("input: cannot open " + node + " errno=" + Marshal.GetLastWin32Error());
+                    continue;
+                }
+                _openFailed.Remove(node);
+                // A node that went away (DropNode) leaves a free slot: take it, so the lists do not grow with every reconnect.
+                int index = _inputFds.IndexOf(-1);
+                bool reuse = index >= 0;
+                if (!reuse) index = _inputFds.Count;
                 IntPtr handler = Efl.ecore_main_fd_handler_add(fd, Efl.EcoreFdRead, InputCb, (IntPtr)index, IntPtr.Zero, IntPtr.Zero);
-                _inputFds.Add(fd);
-                _inputReaders.Add(new EvdevReader());
-                _inputPaths.Add(node);
-                _inputHandlers.Add(handler);
+                if (handler == IntPtr.Zero) { Libc.close(fd); Log("input: cannot watch " + node); continue; }
+                if (reuse) { _inputFds[index] = fd; _inputReaders[index] = new EvdevReader(); _inputPaths[index] = node; _inputHandlers[index] = handler; }
+                else { _inputFds.Add(fd); _inputReaders.Add(new EvdevReader()); _inputPaths.Add(node); _inputHandlers.Add(handler); }
                 added++;
                 Log("input: watching " + node);
             }
             return added;
         }
+        private static bool _listFailed;
+        private static readonly HashSet<string> _openFailed = new HashSet<string>();
 
         private static byte OnRescan(IntPtr data)
         {
@@ -290,9 +343,16 @@ namespace Launcher
 
         private static void ShowDock()
         {
+            if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
+            _pendingLaunch = null;
+            // A key chosen just before the dock closed must not be sent into the dock that opens again.
+            CancelPendingKey();
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
+            // The page may have been put away while its objects were still opaque (a swap to the inputs panel): draw its
+            // state for presence 0 before the window is mapped, or one frame can show it whole before the entrance starts.
+            _dock.Apply(_ctl);
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
             StartClock();
@@ -302,6 +362,7 @@ namespace Launcher
 
         private static void HideDock()
         {
+            _pendingLaunch = null;
             CancelIdle();
             StopClock();
             if (_ctl.Hide()) StartAnimator();
@@ -410,7 +471,14 @@ namespace Launcher
                 bool more = _ctl.Tick(dt);
                 _lastFrame = now;
                 _dock.Apply(_ctl);
-                if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
+                if (_ctl.Phase == Phase.Hidden)
+                {
+                    Efl.evas_object_hide(_win);
+                    // The fade has already rendered on earlier frames; a slow platform launch cannot freeze it.
+                    AppEntry pending = _pendingLaunch;
+                    _pendingLaunch = null;
+                    if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
+                }
                 if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                 if (more) return 1;
             }
@@ -510,6 +578,23 @@ namespace Launcher
             {
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                if (Navigation.IsEcho(key, Efl.ecore_time_get())) return;
+                HandleKey(key);
+            }
+            catch (Exception ex) { Log("key: " + ex); }
+        }
+
+        /// <summary>A navigation key read straight from the input device, acted on only while the dock is up.</summary>
+        private static void NavFromInput(int code)
+        {
+            string key = Navigation.Press(code, _ctl.IsActive, Efl.ecore_time_get());
+            if (key != null) HandleKey(key);
+        }
+
+        private static void HandleKey(string key)
+        {
+            try
+            {
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -528,7 +613,17 @@ namespace Launcher
                         SelectPage(_appsCtl, _appsDock);
                         break;
                     case KeyAction.Hide:
-                        if (key == "XF86Home") _lastHome = Efl.ecore_time_get();
+                        if (key == "XF86Home")
+                        {
+                            double now = Efl.ecore_time_get();
+                            if (now - _lastRawHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastRawHome) * 1000).ToString("0") + " ms after the press"); break; }
+                            _lastHome = now;
+                            HideDock();
+                            // Home reached the dock through evas and not through evdev: the evdev path, which arms the guard,
+                            // will count this press as already handled (_lastHome), so it is armed here.
+                            ArmGuard();
+                            break;
+                        }
                         HideDock();
                         break;
                 }
@@ -577,12 +672,14 @@ namespace Launcher
                     {
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
-                        if (code != _homeCode) continue;
+                        if (code != _homeCode) { NavFromInput(code); continue; }
                         double now = Efl.ecore_time_get();
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
                         if (now - _lastHome < HomeDebounceSeconds) continue;
                         _lastHome = now;
+                        _lastRawHome = now;
                         _perfWhy = "home";
+                        if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); continue; }
                         if (_ctl.IsActive) HideDock(); else ShowDock();
                         ArmGuard();
                     }
@@ -594,18 +691,27 @@ namespace Launcher
 
         private static void ArmGuard()
         {
-            if (_guardCmd == null) return;
-            try { Libc.system(_guardCmd); }   // returns at once: the shell puts the whole chain in the background
+            if (_guardApps == null) return;
+            try
+            {
+                NewGuardGeneration();
+                Libc.system(HomeGuard.Command(_guardApps, _guardFile, _guardGen));   // returns at once: the shell puts the whole chain in the background
+            }
             catch (Exception ex) { Log("guard: " + ex.Message); }
         }
 
-        /// <summary>The app id is plain id characters (checked at start), so it is safe on a command line.</summary>
-        private static string GuardCommand(string appId)
+        /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
+        private static void CancelGuard()
         {
-            string kill = "/usr/bin/app_launcher -k " + appId;
-            var sb = new System.Text.StringBuilder("( sleep " + GuardFirst.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture) + "; " + kill);
-            foreach (double gap in GuardGaps) sb.Append("; sleep ").Append(gap.ToString("0.0##", System.Globalization.CultureInfo.InvariantCulture)).Append("; ").Append(kill);
-            return sb.Append(" ) >/dev/null 2>&1 &").ToString();
+            if (_guardApps == null) return;
+            try { NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
+            catch (Exception ex) { Log("guard cancel: " + ex.Message); }
+        }
+
+        private static void NewGuardGeneration()
+        {
+            _guardGen++;
+            File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         // ------------------------------------------------------------------ launching
@@ -630,8 +736,9 @@ namespace Launcher
                 if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
                 return;
             }
-            if (e.SourceType >= 0) SwitchSource(e); else Launch(e);
+            if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             HideDock();
+            _pendingLaunch = e;
         }
 
         private const string SourceIconDir = "/usr/apps/com.samsung.tv.theme-resource/shared/res/org.tizen.menu/Settings_Popup/device_icon/";
@@ -666,6 +773,13 @@ namespace Launcher
         private const string KeyTool = "/usr/bin/input_keyevent ";
         private static readonly Efl.TaskCb KeyTimerCb = OnKeyTimer;
         private static AppEntry _pendingKey;
+        private static IntPtr _keyTimer;
+
+        private static void CancelPendingKey()
+        {
+            _pendingKey = null;
+            if (_keyTimer != IntPtr.Zero) { Efl.ecore_timer_del(_keyTimer); _keyTimer = IntPtr.Zero; }
+        }
 
         // A remote key is sent only once our window is gone: while it is still mapped it would
         // take the key itself. One-shot timer, so nothing runs while the dock is idle.
@@ -673,6 +787,7 @@ namespace Launcher
         {
             AppEntry e = _pendingKey;
             _pendingKey = null;
+            _keyTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
             try
             {
                 if (e == null) return 0;
@@ -688,8 +803,9 @@ namespace Launcher
         {
             if (e.Key != null)
             {
+                CancelPendingKey();   // two quick activations: the first timer must not fire with the second entry
                 _pendingKey = e;
-                Efl.ecore_timer_add(0.30, KeyTimerCb, IntPtr.Zero);
+                _keyTimer = Efl.ecore_timer_add(0.30, KeyTimerCb, IntPtr.Zero);
                 return;
             }
             LaunchApp(e);
@@ -707,14 +823,18 @@ namespace Launcher
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
-                if (e.AppId == "com.samsung.tv.csfs")
+                if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
+                if (e.SystemApp || e.AppId == "com.samsung.tv.csfs")
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
-                    // the platform's own launcher starts it.
-                    Log("launch " + e.AppId + " rc=" + Libc.system("/usr/bin/app_launcher -s " + e.AppId + " >/dev/null 2>&1 &"));
+                    // the platform's own launcher starts it. The same goes for the other system controls (sys: rows).
+                    Log("launch " + e.AppId + " rc=" + Libc.system(SystemLaunch.Command(e.AppId, e.FallbackAppId)));
                     return;
                 }
-                if (SendLaunch(e.AppId)) { Log("launch " + e.AppId); return; }
+                long t0 = Stopwatch.GetTimestamp();
+                bool sent = SendLaunch(e.AppId);
+                long ms = (Stopwatch.GetTimestamp() - t0) * 1000 / Stopwatch.Frequency;
+                if (sent) { Log("launch " + e.AppId + " request " + ms + " ms"); return; }
                 Log("launch failed: " + e.AppId);
                 if (e.FallbackAppId != null && SendLaunch(e.FallbackAppId)) { Log("launch " + e.FallbackAppId + " (fallback)"); return; }
                 // Last resort: the platform's command line launcher.
@@ -781,6 +901,8 @@ namespace Launcher
         {
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
+            // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
+            if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
@@ -856,8 +978,15 @@ namespace Launcher
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
-                    if (Catalog.ValidAppId(guard)) { _guardApp = guard; _guardCmd = GuardCommand(guard); Log("guard: " + guard + " is closed after each Home press: " + _guardCmd); }
+                    _guardApps = HomeGuard.Parse(guard);
+                    if (_guardApps != null) { _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
                     else Log("guard: bad app id ignored");
+                }
+                string homeLaunch = Arg(args, "--home-launch");
+                if (homeLaunch != null)
+                {
+                    _homeLaunch = HomeLaunch.Parse(homeLaunch);
+                    Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
                 SetupInput(args);
 

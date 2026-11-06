@@ -11,6 +11,7 @@ Strings found in the Q80A firmware image (T-NKM2DEUC) and the component that ref
 | Advertising | `rtb-config.samsungads.com` | pisa-service, ad-web-framework, tvplus |
 | Advertising | `tvp-ads-log.samsungads.com` | pisa-service, ad-web-framework, tvplus |
 | Advertising | `tvp-interactive-ad.samsungads.com` | ad-web-framework, tvplus |
+| Advertising | `rtb-config-canary.samsungads.com` | adagent-service, ad-web-framework, tvplus |
 | Analytics and KPI | `dc.di.atlas.samsung.com`, `regi.di.atlas.samsung.com`, `regi.bigdata.samsung.com` | samsung-analytics |
 | Analytics and KPI | `lcprd1.samsungcloudsolution.net` | data-service-collector |
 | Diagnostic logs | `fc.samsungcloud.tv`, `www.samsungrm.net` | emergency log transmitter, HSMClient, RobustnessMonitor, targetLogClient |

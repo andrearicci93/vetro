@@ -1,7 +1,11 @@
 'use strict';
 var protectedApp=require('./debloat.js').isProtected;
+// Regular expressions compiled once at module load, not on every call.
+// (availability() is also sent to the dashboard as text, so it keeps its own literals.)
+var APP_ID_RE = /^[A-Za-z0-9_.-]{1,180}$/;
+var PROTECTED_APP_RE = /^vetrotvapp(?:\.|$)/;
 function wrap(s){return 'echo '+Buffer.from(s).toString('base64')+' | base64 -d | sh';}
-function validId(s){return typeof s==='string'&&/^[A-Za-z0-9_.-]{1,180}$/.test(s);}
+function validId(s){return typeof s==='string'&&APP_ID_RE.test(s);}
 // Shared by the HTTP backend and browser: unavailable commands carry a reason.
 function availability(a,rows,verifiedIds){
  function protectedRow(r){return !!r&&(r.protected===true||/^vetrotvapp(?:\.|$)/.test(r.appId||'')||/^com\.samsung\.tv\.coba\.adagent(?:\.|$)/.test(r.appId||'')||/^com\.samsung\.tv\.coba\.adagent(?:\.|$)/.test(r.packageId||''));}
@@ -12,14 +16,14 @@ function availability(a,rows,verifiedIds){
  return {
   toggle:decision(blocked?'This component is protected.':!known?'App state is unavailable. Refresh the inventory.':!user&&!tested?'Disable is not supported for this system component.':null),
   uninstall:decision(blocked||siblings.some(protectedRow)?'This package contains a protected component.':a.system!==false?'System packages cannot be uninstalled here.':a.removable!==true?'The TV does not mark this package as removable.':typeof a.packageId!=='string'||!/^[A-Za-z0-9_.-]{1,180}$/.test(a.packageId)?'Package identity is unavailable.':null),
-  launch:decision(!known?'App state is unavailable.':a.disabled?'Enable the app before launching it.':a.show!==true?'This is a background component with no launcher entry.':null),
+  launch:decision(a.launchRisk==='blocked'?'Factory test or service menu. Vetro does not open it: it can leave the TV in a factory mode.':!known?'App state is unavailable.':a.disabled?'Enable the app before launching it.':a.show!==true?'This is a background component with no launcher entry.':null),
   flags:decision(blocked?'This component is protected.':null)
  };
 }
 function validate(p,rows){
  if(!p||!validId(p.appId))throw Error('Invalid app ID');
  var a=rows.find(function(a){return a.appId===p.appId});if(!a)throw Error('App not installed');
- if(protectedApp(a.appId)||protectedApp(a.packageId)||/^vetrotvapp(?:\.|$)/.test(a.appId))throw Error('Protected component');
+ if(protectedApp(a.appId)||protectedApp(a.packageId)||PROTECTED_APP_RE.test(a.appId))throw Error('Protected component');
  if(['stop','flags','uninstall'].indexOf(p.action)<0)throw Error('Invalid action');
  if(p.action==='flags'&&(['onboot','autorestart'].indexOf(p.flag)<0||typeof p.enabled!=='boolean'))throw Error('Invalid flag');
  if(p.action==='flags'&&typeof a[p.flag]!=='boolean')throw Error('Startup flag is unavailable; refresh the inventory');
@@ -30,7 +34,7 @@ function command(p,a){
  if(p.action==='stop')return wrap('app_launcher -k '+a.appId);
  if(p.action==='uninstall')return wrap('pkgcmd -u -n '+a.packageId);
  var field=p.flag==='onboot'?'app_onboot':'app_autorestart',db='/opt/dbspace/.pkgmgr_parser.db';
- return wrap('set -e\nmkdir -p /home/owner/share/vetro/startup-backups\nbackup=/home/owner/share/vetro/startup-backups/'+a.appId+'\nif [ ! -f "$backup" ]; then sqlite3 -readonly '+db+' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\''+a.appId+'\';" > "$backup"; fi\nsqlite3 -bail '+db+' "BEGIN IMMEDIATE; UPDATE package_app_info SET '+field+'=\''+(p.enabled?'true':'false')+'\' WHERE app_id=\''+a.appId+'\'; COMMIT;"\nsqlite3 -readonly '+db+' "SELECT '+field+' FROM package_app_info WHERE app_id=\''+a.appId+'\';"');
+ return wrap('set -e\nmkdir -p /home/owner/share/vetro/startup-backups\nbackup=/home/owner/share/vetro/startup-backups/'+a.appId+'\nif [ ! -f "$backup" ]; then sqlite3 -readonly '+db+' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\''+a.appId+'\';" > "$backup"; fi\nsqlite3 -bail -cmd ".timeout 5000" '+db+' "BEGIN IMMEDIATE; UPDATE package_app_info SET '+field+'=\''+(p.enabled?'true':'false')+'\' WHERE app_id=\''+a.appId+'\'; COMMIT;"\nsqlite3 -readonly '+db+' "SELECT '+field+' FROM package_app_info WHERE app_id=\''+a.appId+'\';"');
 }
 // A public-level certificate can leave Vetro's own service registered without on-boot and auto-restart (#4, S90C),
 // so it never starts after a reboot. Commands that put config.xml's values back; users still cannot change them.

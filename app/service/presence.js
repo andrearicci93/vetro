@@ -6,9 +6,11 @@
 var COMMAND = 'aul_test getallappstatus 2>&1';
 var FOREGROUND = {2: 1, 3: 2};
 var APP_ID = /^[A-Za-z0-9_.-]+$/;
+var APP_STATUS_RE = /pid:\s*(\d+)\s+appid:\s*(\S+)[^=]*?status:\s*(\d+)/g;   // stateful: reset lastIndex before each use
 
 function parse(text) {
-    var re = /pid:\s*(\d+)\s+appid:\s*(\S+)[^=]*?status:\s*(\d+)/g, m, best = null, running = 0;
+    var re = APP_STATUS_RE, m, best = null, running = 0;
+    re.lastIndex = 0;   // the regex is shared and global: always start from the beginning
     while ((m = re.exec(String(text || '')))) {
         if (!APP_ID.test(m[2])) continue;
         running++;

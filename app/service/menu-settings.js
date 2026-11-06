@@ -1,5 +1,14 @@
 'use strict';
 var execError = require('./exec-error.js');
+// Regular expressions compiled once at module load, not on every call.
+var QUOTE_RE = /'/g;
+var DB_PREFIX_RE = /^db\//;
+var VCONF_VALUE_RE = /value = (.*) \(([^)]*)\)/;
+var TRUE_RE = /^(true|1)$/i;
+var FALSE_RE = /^(false|0)$/i;
+var MISSING_FILE_RE = /Error: Get:.*No such file or directory/;
+var INTEGER_RE = /^-?\d+$/;
+var DECIMAL_RE = /^-?\d+(\.\d+)?$/;
 
 // Model menu data keys may identify provider requests or launchable panels,
 // not vconf storage. Read only declared vconf keys or storage candidates;
@@ -12,7 +21,7 @@ var TYPES = { integer: 'int', int32: 'int', uint32: 'int', int64: 'int', uint64:
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function check(r) { if (r.exit_code || r.timed_out) throw execError.failed(r, r.stderr || r.stdout || 'TV menu unavailable'); return r.stdout || ''; }
-function shq(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+function shq(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
 
 function parseMenu(text) {
     var o;
@@ -27,7 +36,7 @@ function parseMenu(text) {
         var list = Array.isArray(d.list) ? d.list.map(function (x) { return { value: String(x.value), label: x['display-value'] == null ? null : String(x['display-value']) }; }) : null;
         var style = (it['setting-ui'] || {}).style || null;
         var action = style === 'application' || style === 'ui-gadget';
-        var storage = !action && (d.provider === 'vconf-dataprovider' || /^db\//.test(d.key));
+        var storage = !action && (d.provider === 'vconf-dataprovider' || DB_PREFIX_RE.test(d.key));
         var capability = action ? 'tv-panel' : storage ? 'storage-candidate' : 'provider-required';
         out.push({
             id: id, group: parent[id] || null, vconfKey: d.key, type: d.type || null, provider: d.provider || null,
@@ -38,11 +47,11 @@ function parseMenu(text) {
 }
 
 function parseValue(text) {
-    var m = /value = (.*) \(([^)]*)\)/.exec(String(text || ''));
+    var m = VCONF_VALUE_RE.exec(String(text || ''));
     return m ? { value: m[1], code: m[2] } : null;
 }
 
-function booleanValue(v){if(/^(true|1)$/i.test(String(v)))return '1';if(/^(false|0)$/i.test(String(v)))return '0';return null;}
+function booleanValue(v){if(TRUE_RE.test(String(v)))return '1';if(FALSE_RE.test(String(v)))return '0';return null;}
 
 function Catalog(execute) { this.execute = execute; this.cache = null; this.busy = false; }
 
@@ -67,7 +76,7 @@ Catalog.prototype.read = function (id) {
         if (!it.readable) return result(it.readStatus);
         return self.execute(wrap('vconftool get ' + shq(it.vconfKey) + ' 2>&1'), 6000).then(function (r) {
             var output = String(r.stdout || '') + '\n' + String(r.stderr || '');
-            if (!r.timed_out && /Error: Get:.*No such file or directory/.test(output)) {
+            if (!r.timed_out && MISSING_FILE_RE.test(output)) {
                 it.readStatus = 'storage-missing'; it.readable = false;
                 return result('storage-missing');
             }
@@ -91,8 +100,8 @@ Catalog.prototype.write = function (id, value) {
         if (!vt) throw Error('Unsupported type: ' + it.type);
         if (!Array.isArray(it.options) || !it.options.length) throw Error('Options not tested; writes unavailable');
         var v = String(value);
-        if (vt === 'int') { if (!/^-?\d+$/.test(v) || !Number.isSafeInteger(Number(v)) || Number(v)<-2147483648 || Number(v)>2147483647) throw Error('Invalid integer value'); }
-        else if (vt === 'double') { if (!/^-?\d+(\.\d+)?$/.test(v) || !Number.isFinite(Number(v))) throw Error('Value is not numeric'); }
+        if (vt === 'int') { if (!INTEGER_RE.test(v) || !Number.isSafeInteger(Number(v)) || Number(v)<-2147483648 || Number(v)>2147483647) throw Error('Invalid integer value'); }
+        else if (vt === 'double') { if (!DECIMAL_RE.test(v) || !Number.isFinite(Number(v))) throw Error('Value is not numeric'); }
         else if (vt === 'bool') { if (v !== '0' && v !== '1' && v !== 'true' && v !== 'false') throw Error('Invalid boolean value'); v = (v === 'true' || v === '1') ? '1' : '0'; }
         else { if (v.length > 128) throw Error('Value too long'); }
         if (it.options && it.options.length && !it.options.some(function (o) { return (vt==='bool'?booleanValue(o.value):o.value) === v; })) throw Error('Value is not an allowed option');

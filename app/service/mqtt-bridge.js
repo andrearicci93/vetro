@@ -11,6 +11,15 @@
 
 var fs = require('fs');
 var MqttClient = require('./mqtt.js').MqttClient;
+// Regular expressions compiled once at module load, not on every call.
+var LEGACY_IDENTITY_RE = /^[a-f0-9]{32}$/i;
+var LEGACY_IDENTITY_RE_2 = /^vetro-[a-f0-9]{16,32}$/;
+var HOST_RE = /^[A-Za-z0-9:._-]+$/;
+var TOPIC_RE = /^[-A-Za-z0-9_.]+(?:\/[-A-Za-z0-9_.]+)*$/;
+var WHITESPACE_RE = /\s+/;
+var TV_SOURCE_RE = /^(TV|HDMI[1-4])$/;
+var PERCENT_RE = /%/g;
+var MEMINFO_LINE_RE = /^(\S+):\s*(\d+)/;
 
 // /tmp is tmpfs: a config written there dies with the TV reboot. The
 // persistent copy lives under the owner's storage and is read first;
@@ -29,13 +38,13 @@ function readConfig() {
 }
 
 function newId(){return 'vetro-'+Math.random().toString(16).slice(2,10)+Math.random().toString(16).slice(2,10)+Math.random().toString(16).slice(2,10);}
-function legacyIdentity(){var file='/opt/usr/home/owner/share/vetro-device-id';try{var machine=fs.readFileSync('/etc/machine-id','utf8').trim();if(/^[a-f0-9]{32}$/i.test(machine))return {id:'vetro-'+machine.toLowerCase(),persistent:true};}catch(e){}try{var old=fs.readFileSync(file,'utf8').trim();if(/^vetro-[a-f0-9]{16,32}$/.test(old))return {id:old,persistent:true};}catch(e){}var id=newId();try{fs.writeFileSync(file,id+'\n',{mode:0o600});return {id:id,persistent:true};}catch(e){return {id:id,persistent:false};}}
+function legacyIdentity(){var file='/opt/usr/home/owner/share/vetro-device-id';try{var machine=fs.readFileSync('/etc/machine-id','utf8').trim();if(LEGACY_IDENTITY_RE.test(machine))return {id:'vetro-'+machine.toLowerCase(),persistent:true};}catch(e){}try{var old=fs.readFileSync(file,'utf8').trim();if(LEGACY_IDENTITY_RE_2.test(old))return {id:old,persistent:true};}catch(e){}var id=newId();try{fs.writeFileSync(file,id+'\n',{mode:0o600});return {id:id,persistent:true};}catch(e){return {id:id,persistent:false};}}
 function publicConfig(cfg){var out=Object.assign({},cfg||{});out.hasPassword=!!out.password;delete out.password;return out;}
 function validateConfig(p,previous){previous=previous||{};if(p.enabled!=null&&typeof p.enabled!=='boolean')throw Error('enabled must be a boolean');var enabled=p.enabled!==false;
- if(typeof p.host!=='string'||p.host.length>253||(!p.host&&enabled)||p.host&&!/^[A-Za-z0-9:._-]+$/.test(p.host))throw Error('Invalid MQTT host');
+ if(typeof p.host!=='string'||p.host.length>253||(!p.host&&enabled)||p.host&&!HOST_RE.test(p.host))throw Error('Invalid MQTT host');
  if(p.port!=null&&(!Number.isInteger(p.port)||p.port<1||p.port>65535))throw Error('Invalid MQTT port');
  if(p.tls!=null&&typeof p.tls!=='boolean')throw Error('Invalid TLS option');
- var prefix=p.topicPrefix||'vetro';if(typeof prefix!=='string'||!/^[-A-Za-z0-9_.]+(?:\/[-A-Za-z0-9_.]+)*$/.test(prefix)||prefix.length>120)throw Error('Invalid topic prefix');
+ var prefix=p.topicPrefix||'vetro';if(typeof prefix!=='string'||!TOPIC_RE.test(prefix)||prefix.length>120)throw Error('Invalid topic prefix');
  ['username','password','deviceName','clientId','ca'].forEach(function(k){if(p[k]!=null&&(typeof p[k]!=='string'||p[k].length>(k==='ca'?32768:k==='password'?1024:120)))throw Error('Invalid field: '+k);});
  return {enabled:enabled,host:p.host,port:p.port||(p.tls?8883:1883),tls:p.tls===true,ca:p.ca||null,username:p.username||null,password:Object.prototype.hasOwnProperty.call(p,'password')?p.password:previous.password||null,topicPrefix:prefix,deviceName:p.deviceName||'Vetro',clientId:p.clientId||previous.clientId||newId()};
 }
@@ -67,7 +76,7 @@ MqttBridge.prototype._publishTelemetry = function () {
 
     pub('soctemp-c', t.soctemp_c);
     pub('cpu-cores', t.cpu_cores);
-    pub('loadavg-1m', t.loadavg ? t.loadavg.split(/\s+/)[0] : null);
+    pub('loadavg-1m', t.loadavg ? t.loadavg.split(WHITESPACE_RE)[0] : null);
     pub('cpu-gov', t.cpu_gov);
     pub('cpu-freq-khz', t.cpu_freq_khz);
     pub('uptime-s', Math.round(t.uptime_s || 0));
@@ -147,7 +156,7 @@ MqttBridge.prototype.publishTvState = function(d) {
     var prefix=(this.config.topicPrefix||'vetro')+'/'+this.identity;
     var values={volume:Number.isInteger(d.volume)&&d.volume>=0&&d.volume<=100?d.volume:null,
         muted:typeof d.muted==='boolean'?(d.muted?'ON':'OFF'):null,
-        source:typeof d.source==='string'&&/^(TV|HDMI[1-4])$/.test(d.source)?d.source:null};
+        source:typeof d.source==='string'&&TV_SOURCE_RE.test(d.source)?d.source:null};
     var self=this;
     Object.keys(values).forEach(function(key){
         var value=values[key],available=value!==null;
@@ -202,7 +211,7 @@ MqttBridge.prototype._connect = function () {
     var cfg = this.config;
     if (!this.running || !cfg || cfg.enabled === false || !cfg.host) return;
 
-    this.identity=encodeURIComponent(cfg.clientId||this.legacyIdentity.id).replace(/%/g,'_');
+    this.identity=encodeURIComponent(cfg.clientId||this.legacyIdentity.id).replace(PERCENT_RE,'_');
     this.availabilityTopic=(cfg.topicPrefix||'vetro')+'/'+this.identity+'/availability';
     var client = new MqttClient({
         host: cfg.host,
@@ -270,7 +279,7 @@ MqttBridge.prototype.publish=function(topic,payload,opts){if(!this.connected||!t
 function parseMeminfo(s) {
     var out = {};
     String(s).split(';').forEach(function (line) {
-        var m = line.match(/^(\S+):\s*(\d+)/);
+        var m = line.match(MEMINFO_LINE_RE);
         if (m) out[m[1]] = parseInt(m[2], 10);
     });
     return out;

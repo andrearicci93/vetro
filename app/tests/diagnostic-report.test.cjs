@@ -1,6 +1,23 @@
 'use strict';
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const report=require('../service/diagnostic-report');
+const probeStore=require('../service/probe');
+{
+ // An early report (the TV screen closed after the first steps) keeps the app and package lists of the last full one.
+ const full={probe:{apps:{ok:true},packages:{ok:true}},apps:[{id:'a'}],packages:[{id:'p'}]};
+ const early=probeStore.carry(full,{probe:{serviceReach:{ok:true}},apps:[],packages:[],settings:{model:'M'}});
+ assert.deepEqual(early.apps,[{id:'a'}]);assert.deepEqual(early.packages,[{id:'p'}]);assert.deepEqual(early.carried,['apps','packages']);
+ const verdict=probeStore.carry(early,{probe:{apps:{ok:true,value:0}},apps:[],packages:[]});
+ assert.deepEqual(verdict.apps,[],'a step that ran wins, even with an empty list');assert.deepEqual(verdict.packages,[{id:'p'}]);assert.deepEqual(verdict.carried,['packages']);
+ const fresh=probeStore.carry(null,{probe:{},apps:[]});assert.equal(fresh.carried,undefined,'nothing earlier: nothing carried');
+ const failed=probeStore.carry(full,{probe:{apps:{ok:false,error:'no answer in 8 s'}},apps:[]});assert.deepEqual(failed.apps,[],'a step that ran and failed is not hidden by older data');
+ // How far the TV screen got: fixed step names, no widget error text
+ const pr=report.projectors.probe({probe:{serviceReach:{ok:true},apps:{ok:false,error:'no answer in 8 s'},packages:{ok:false,error:'skipped: secret <x>'},remoteApi8001:{ok:false,error:'refused'}},
+  progress:{partial:true,done:6,of:9,next:'remoteApi8001',elapsedMs:41400},carried:['apps','junk']}).screen;
+ assert.deepEqual(pr,{partial:true,done:6,of:9,next:'remoteApi8001',elapsedSeconds:41,slow:['apps','packages'],carried:['apps']});
+ assert.equal(report.projectors.probe({probe:{},progress:{next:'<script>'}}).screen.next,null);
+ assert.equal(report.projectors.probe({probe:{}}).screen,null,'an older widget sends no progress');
+}
 (async()=>{
  const secret='PERSONAL_SENTINEL@example.com';
  const poison={username:secret,password:secret,serial:secret,hostname:secret,bootId:secret,token:secret,error:null,unknown:secret};
@@ -19,8 +36,9 @@ const report=require('../service/diagnostic-report');
   privacy:()=>({...poison,adId:{psid:secret},agreements:[secret],doNotTrack:1}),
   serviceApis:()=>({tizenObject:false,application:false,secret}),
   hbbtv:()=>{throw Error(secret);},
-  launcher:()=>({...poison,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,autorunSwitchedOff:true,failures:2,hasError:true,log:secret,
+  launcher:()=>({...poison,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:'com.example.'+secret,failures:2,hasError:true,log:secret,
    apps:{count:11,skipped:[{item:secret,reason:secret}]},entries:[{slug:'tizentube',label:secret,appId:'xvvl3S1TT1.TizenTubeStandalone'},{slug:'x',label:secret,appId:secret}],inputs:[{label:secret}]}),
+  factoryTest:()=>({...poison,key:secret,present:true,value:1,type:'Int32',active:true}),
   quickWins:()=>({wins:{firmware:{status:'on',value:0},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
  };
  const d=await report.collect(readers,100);
@@ -35,8 +53,9 @@ const report=require('../service/diagnostic-report');
  assert.equal(d.sections.startup.data.services[0].bootState,'disabled');
  assert.equal(d.sections.serviceApis.data.tizenObject,false);
  assert.equal(d.sections.hbbtv.status,'unavailable');
- assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:1,appCount:11,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,autorunSwitchedOff:true},'launcher: states and counts only');
+ assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:1,appCount:11,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:true},'launcher: states and counts only (the custom app id is reduced to a yes/no)');
  assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true}});
+ assert.deepEqual(d.sections.factoryTest.data,{present:true,value:1,type:'Int32',active:true},'#135: the Aging key, read only');
  assert.equal(d.sections.probe.data.supportedKeys.keys[0],'VolumeUp');
  assert.equal(d.sections.network.data.services[0].customDnsConfigured,true);
  const timeout=await report.collect({device:()=>new Promise(()=>{}),inventory:()=>Promise.reject(Error(secret))},10);
@@ -49,6 +68,11 @@ const report=require('../service/diagnostic-report');
  const context={fetch:async()=>({ok:true,json:async()=>d}),$:id=>id==='diagnosticStatus'?status:button,Blob:class{constructor(parts){saved=parts.join('');}},URL:{createObjectURL:()=> 'blob:local',revokeObjectURL:()=>{}},document:{createElement:()=>({click:()=>clicks++,remove:()=>{}}),body:{appendChild:()=>{}}},setTimeout:()=>{},Error,JSON,Object};
  const fn=vm.runInNewContext('('+match[1]+')',context);fn.call(button);await new Promise(r=>setImmediate(r));
  assert.equal(clicks,1);assert.equal(JSON.parse(saved).schemaVersion,1);assert.equal(button.disabled,false);assert(status.textContent.includes('Nothing was uploaded'));
- context.fetch=async()=>({ok:false});fn.call(button);await new Promise(r=>setImmediate(r));assert.equal(button.disabled,false);assert(status.textContent.includes('Download failed'));assert.equal(clicks,1);
+ // The opt-in section left out is not a missing section
+ context.fetch=async()=>({ok:true,json:async()=>({format:'vetro-diagnostics',schemaVersion:1,sections:{platform:{status:'ok'},device:{status:'ok'},components:{status:'unavailable',reason:'not-requested'}}})});fn.call(button);await new Promise(r=>setImmediate(r));
+ assert(status.textContent.includes('2 / 2 sections'),status.textContent);assert(!status.textContent.includes('Missing'));
+ context.fetch=async()=>({ok:true,json:async()=>({format:'vetro-diagnostics',schemaVersion:1,sections:{platform:{status:'ok'},hbbtv:{status:'unavailable',reason:'command-failed'},components:{status:'unavailable',reason:'not-requested'}}})});fn.call(button);await new Promise(r=>setImmediate(r));
+ assert(status.textContent.includes('1 / 2 sections')&&status.textContent.includes('Missing'),status.textContent);
+ context.fetch=async()=>({ok:false});fn.call(button);await new Promise(r=>setImmediate(r));assert.equal(button.disabled,false);assert(status.textContent.includes('Download failed'));assert.equal(clicks,3,'a failed download saves no file');
  console.log('PASS diagnostic export: sensitive-field exclusion, technical fields, partial failure, timeout and browser JSON download');
 })().catch(e=>{console.error(e);process.exit(1);});

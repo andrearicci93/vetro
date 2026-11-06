@@ -18,15 +18,27 @@ assert.ok(squash(html).includes(squash('--vetro-duration-fast:0ms')), 'reduced m
 
 // Navigation: the three entries at the top, then the rest
 const nav = /<nav aria-label="Main">([\s\S]*?)<\/nav>/.exec(html)[1];
-assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'dock', 'remote']);
-assert.match(nav, /Launcher<span class="chip beta">Beta<\/span>/);
+assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'dock', 'remote', 'plugins']);
+assert.match(nav, /Launcher<\/button>/);
+assert.doesNotMatch(nav, /chip beta/);
 assert.match(nav, /Remapper<\/button>/);
 assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Task manager<\/button>/);
 const visible = html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<script>[\s\S]*?<\/script>/, '');
 assert.doesNotMatch(visible, /Debloater/, 'no panel is still called Debloater');
 assert.match(html, /remote:\['Remapper'/);
+// Settings and controls is one page with two levels; the old pages and the Monitor group are gone
+assert.deepEqual([...html.matchAll(/<nav aria-label="TV">([\s\S]*?)<\/nav>/g)].map(m => [...m[1].matchAll(/data-tab="(\w+)"/g)].map(x => x[1])), [['apps', 'dashboard', 'tvsettings']]);
+assert.match(html, /tvsettings:\['Settings and controls'/);
+assert.doesNotMatch(html, /data-tab="(control|diagnostics)"|id="control"|id="diagnostics"|TV controls|aria-label="Monitor"/);
+assert.match(html, /data-settings-group="keys"/);
+assert.match(html, /id="quickPanel-developer"[\s\S]*id="downloadDiagnostics"/, 'the diagnostic report sits in Developer settings');
+// Session history is at the bottom of the menu, quiet, with About Vetro under it
+assert.match(html, /<div class="side-low"><button type="button" data-tab="actions" class="quiet"[\s\S]*?<button type="button" id="aboutBtn"/);
+assert.match(html, /<dialog id="aboutDialog"[\s\S]*https:\/\/discord\.gg\/Pe9BmthUar[\s\S]*https:\/\/github\.com\/andrearicci93\/vetro"/);
+assert.match(html, /<img class="about-photo" src="data:image\/jpeg;base64,/);
+assert.match(html, /dns:\['DNS blocking'/);assert.doesNotMatch(html, /Domain blocking|domain blocking/);
 assert.match(html, /apps:\['Task manager'/);
-assert.match(html, /id="betaTag" class="chip beta"/);
+assert.doesNotMatch(html, /betaTag/);
 
 // The icon: in the brand block, as the page icon, and served by the service
 assert.match(html, /<link rel="icon" href="\/icon.png">/);
@@ -46,5 +58,17 @@ res.then(r => {
   assert.equal(r.head['content-type'], 'image/png');
   assert.deepEqual(r.data, fs.readFileSync(path.join(root, 'icon.png')));
   assert.deepEqual([...r.data.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'a real PNG');
+// Markup hygiene: a replaced block once left half of the old Quick settings after the new one, which then showed on every page
+{
+  const body = html.slice(html.indexOf('<body'), html.indexOf('<script>'));
+  const count = re => (body.match(re) || []).length;
+  for (const tag of ['section', 'div', 'nav', 'aside', 'main', 'header', 'footer', 'details', 'table'])
+    assert.equal(count(new RegExp('<' + tag + '\\b', 'g')), count(new RegExp('</' + tag + '>', 'g')), '<' + tag + '> tags are balanced');
+  const ids = [...body.matchAll(/ id="([^"]+)"/g)].map(m => m[1]), dup = ids.filter((id, i) => ids.indexOf(id) !== i);
+  assert.deepEqual(dup, [], 'no id appears twice');
+  // Every panel is a direct child of <main>'s page: a panel must never sit outside its own section
+  const quick = /<section id="quick">([\s\S]*?)<section id="dashboard"/.exec(body)[1];
+  assert.ok(!/quick-layout|quick-column|Keep the TV as it is/.test(quick), 'no leftover of the old two-column Quick settings');
+}
   console.log('PASS dashboard v2: design tokens, nav order, names, beta tag, Vetro icon');
 }).catch(e => { console.error(e); process.exitCode = 1; });

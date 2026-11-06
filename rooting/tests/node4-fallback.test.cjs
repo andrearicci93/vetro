@@ -13,6 +13,9 @@ context.agentServer = { close: function () { context.closed = true; } };
 
 context.prepareForRuntime(4321);
 assert.equal(context.state.unsupported, true, 'an unsupported runtime is recorded');
+assert.equal(context.state.rooting.phase, 'unsupported');
+assert.equal(context.state.rooting.failure.stage, 'preparation');
+assert.equal(context.state.rooting.failure.code, 'platformUnsupported');
 assert.match(context.state.prepareError, /Node 10\.12\+/, 'the reason names the runtime requirement');
 assert.equal(context.closed, true, 'the loopback listener that nothing can reach is closed');
 

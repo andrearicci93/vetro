@@ -3,6 +3,9 @@
 // Vetro's assessment from the Q80A firmware manifests (app-facts.js) and device
 // tests; they are guidance, not a guarantee for other models or firmware.
 var facts = require('./app-facts.js');
+// Regular expressions compiled once at module load, not on every call.
+var VETRO_ID_RE = /^vetrotvapp/;
+var SYSTEM_ID_RE = /^org\.tizen\.|^com\.samsung\./;
 
 var AREAS = {
     tracking: 'Advertising and tracking',
@@ -32,9 +35,9 @@ var AREA_ROLE = {tracking: 'tracking', voice: 'optional', tv: 'keep', home: 'kee
 // Ordered: the first matching rule wins. Patterns match the package ID.
 var RULES = [
     ['system', /^vetrotvapp/],
-    ['tracking', /acr-service|^com\.samsung\.tv\.acr$|canalysis|^com\.samsung\.tv\.iacr$|screen-analysis|contents-recognition|nvision-analysis|vision-data-recognition|targeted-ad|ad-web-framework|^adplatform$|adplayer|samsung-analytics|cis-service-app|cis-api-service-app|coba\.adagent|pisa-service|privacy_app|PrivacyChoices|tv6pbVMQFF|content-grab-service|contents-ott-detector|contents-ui-detector/],
-    ['voice', /alexa|bixby|google-assistant|wakeup-engine|voice|vif$|farfieldvoice|aov-|cnvoice|utterance-recommender|action-planner|fuzzy-search-engine|intelligent-action|stt-|tts-engine|multi-assistant/],
-    ['commercial', /^com\.samsung\.ep[.-]|ep-hotel|ephotel|ep-boot|ep-event|ep-system|^ep-|hotel|factory|AgingApp|cloning|demo-player|remote-shop-care|UsbSyncDisplay|plateau|automation-(alert|app|viewer)|widget_viewer_sdk|hitcomp|remote-service-logging/],
+    ['tracking', /acr-service|^com\.samsung\.tv\.acr$|canalysis|^com\.samsung\.tv\.iacr$|screen-analysis|contents-recognition|nvision-analysis|vision-data-recognition|targeted-ad|ad-web-framework|^adplatform$|adplayer|samsung-analytics|cis-service-app|cis-api-service-app|coba\.adagent|adagent-service|pisa-service|pisa-control-service|privacy_app|coba\.privacychoice|PrivacyChoices|tv6pbVMQFF|content-grab-service|contents-ott-detector|contents-ui-detector/],
+    ['voice', /alexa|Alexa|device-assistant|salute-(assistant|fullscreen)|google-fullscreen|tts-download|vc-elm|bixby|google-assistant|wakeup-engine|voice|vif$|farfieldvoice|aov-|cnvoice|utterance-recommender|action-planner|fuzzy-search-engine|intelligent-action|stt-|tts-engine|multi-assistant/],
+    ['commercial', /^com\.samsung\.ep[.-]|ep-hotel|ephotel|ep-boot|ep-event|ep-system|^ep-|hotel|factory|AgingApp|cloning|demo-player|remote-shop-care|rscm-|UsbSyncDisplay|plateau|automation-(alert|app|viewer)|widget_viewer_sdk|hitcomp|remote-service-logging/],
     ['support', /TVDeviceCare|easy-support|remote-management|request-support|smarthub-connection-test|picture-test|sound-test|video-test|hdmi-troubleshooting|built-in-app-info-viewer|RunningApps|remoteguide|emanual|LzU5yAFXeg/],
     ['ambient', /ambient|coba\.(art|clock|decor|photo|poster|cinemagraph|specialedition|edenview|msview|aodview)$|art-app|-tpl$|cinemagraph|portlandclock|music-flex|bouroullec|weather-viewer|\.aod$|contentimageapp/],
     ['sharing', /coba\.mv|multiview|multiscreen|ScreenMirroring|p2p-asm|airplay|NRi6kdBYJ0|soundmirroring|mobilebff|remoteworkspace|coss|csfw\.provider|SMSourceAPP|5-way-function|remote-workspace|remotepc|remoteapp|knox-browser-autofill|camera-launcher|XPkceUl3N4|coba\.usbcam/],
@@ -109,7 +112,10 @@ function describe(row) {
     var pkg = row.packageId || row.appId, fact = facts.packages[pkg] || null;
     var area = areaOf(pkg, row.appId);
     var role = AREA_ROLE[area];
-    if (/^vetrotvapp/.test(pkg) || pkg === 'com.samsung.tv.coba.adagent') role = 'keep';
+    if (VETRO_ID_RE.test(pkg) || pkg === 'com.samsung.tv.coba.adagent') role = 'keep';
+    // An app the user installed from a store is not a system service, even when no name rule knows it
+    // (the wiki list of three other TVs had 35 of them filed under "System services / Keep").
+    if (area === 'system' && row.origin === 'installed' && !SYSTEM_ID_RE.test(pkg)) { area = 'media'; role = AREA_ROLE.media; }
     if (area === 'media' && row.origin === 'installed') role = 'optional';
     var purpose = PURPOSE[row.appId] || PURPOSE[pkg] || (fact && fact.description) || null;
     return {

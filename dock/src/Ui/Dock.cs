@@ -324,7 +324,7 @@ namespace Launcher.Ui
 
         private int GlowRgb(int i)
         {
-            return i < 0 || _layout.IsPinned(i) || !Design.GlowFromIcon ? Design.GlowColor : _glowRgb[i];
+            return i < 0 || _layout.IsPinned(i) || !DockLayout.GlowFromIcon ? Design.GlowColor : _glowRgb[i];
         }
 
         private static uint[] ReadPixels(IntPtr data, int stride, int w, int h)

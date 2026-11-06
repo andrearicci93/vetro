@@ -17,6 +17,9 @@
   --vetro-text: var(--vetro-white);
   --vetro-text-muted: #aab8d1;
   --vetro-border: #344360;
+  --vetro-control-border: #7183a2;
+  --vetro-warning: #e2b867;
+  --vetro-on-warning: #101c35;
   --vetro-action: var(--vetro-blue-700);
   --vetro-action-hover: #0e3095;
   --vetro-on-action: var(--vetro-white);
@@ -36,6 +39,8 @@
   --vetro-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
   --vetro-text-small: .875rem;
   --vetro-text-body: 1rem;
+  --vetro-text-section: 1.125rem;
+  --vetro-prose-measure: 56ch;
   --vetro-text-title: 1.5rem;
   --vetro-text-display: 2.5rem;
   --vetro-weight-regular: 400;
@@ -52,6 +57,7 @@
   --vetro-space-12: 48px;
   --vetro-radius-control: 8px;
   --vetro-radius-surface: 16px;
+  --vetro-column-min: 26rem;
   --vetro-control-height: 44px;
   --vetro-focus-width: 2px;
   --vetro-focus-offset: 3px;
@@ -67,6 +73,7 @@
   --vetro-text: #101c35;
   --vetro-text-muted: #52617a;
   --vetro-border: #bcc9de;
+  --vetro-control-border: #657898;
   --vetro-link: var(--vetro-blue-700);
   --vetro-focus: var(--vetro-blue-600);
   --vetro-glass-fill: rgba(245, 248, 255, .92);

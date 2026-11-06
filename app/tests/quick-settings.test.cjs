@@ -15,10 +15,17 @@ assert.deepEqual(quick.running('\tcom.samsung.tv.alexa-client (812)\n other (9)\
 assert.ok(quick.ALLOWED_IDS.indexOf('org.tizen.multi-assistant-service')<0&&!quick.ALLOWED_IDS.some(id=>/tts-engine/.test(id)),'system assistant hub and Voice Guide TTS are excluded');
 function decode(cmd){const m=/^echo (\S+) \| base64 -d \| sh$/.exec(cmd);return m?Buffer.from(m[1],'base64').toString():cmd;}
 function harness(opts){
- let disabled=new Set(opts.disabled||[]),calls=[],registryCalls=0;
- return {calls,disabled,deps:{invalidate(){},inventory(){registryCalls++;if(opts.registryError&&registryCalls>1)return Promise.resolve({apps:[],registryError:'x'});return Promise.resolve({apps:alexa.map(id=>({appId:id,disabled:disabled.has(id)}))});},
+ // Fake TV: the disabled set, the startup flags of every member and the files the clear script leaves behind.
+ let disabled=new Set(opts.disabled||[]),calls=[],registryCalls=0,flags={},saved={};
+ alexa.forEach(id=>{flags[id]=(opts.flags&&opts.flags[id])||{onboot:false,autorestart:false};});
+ const idsOf=s=>/for id in (.*?);\s*do/.exec(s)[1].split(' ');
+ return {calls,disabled,flags,saved,deps:{invalidate(){},inventory(){registryCalls++;if(opts.registryError&&registryCalls>1)return Promise.resolve({apps:[],registryError:'x'});return Promise.resolve({apps:alexa.map(id=>({appId:id,disabled:disabled.has(id),onboot:flags[id].onboot,autorestart:flags[id].autorestart}))});},
   execute(cmd){const s=decode(cmd);calls.push(s);
    if(s==='app_launcher -S')return Promise.resolve({exit_code:0,stdout:(opts.running||[]).map((id,i)=>'\t'+id+' ('+(100+i)+')').join('\n')});
+   if(/quick-flags/.test(s)){const ids=idsOf(s),clear=/app_onboot=\'false\',app_autorestart=\'false\'/.test(s);
+    const out=ids.map(id=>{if(clear){if(opts.flagStuck===id)return id+' 0';if(flags[id].onboot||flags[id].autorestart)saved[id]=Object.assign({},flags[id]);flags[id]={onboot:false,autorestart:false};return id+' 0';}
+     if(saved[id]){flags[id]=saved[id];delete saved[id];return id+' 0';}return id+' none';});
+    return Promise.resolve({exit_code:0,stdout:out.join('\n')});}
    const m=/for id in (.*); do (pkgcmd (-D|-A)|app_launcher -k)/.exec(s);const ids=m[1].split(' ');
    if(m[2]==='app_launcher -k')return Promise.resolve({exit_code:0,stdout:ids.map(id=>id+' 0').join('\n')});
    ids.forEach(id=>{if(opts.stuck&&opts.stuck===id&&m[3]==='-D')return;m[3]==='-D'?disabled.add(id):disabled.delete(id);});
@@ -36,6 +43,38 @@ function harness(opts){
  await assert.rejects(quick.apply('nope',true,h.deps),/Unknown quick setting/);
  await assert.rejects(quick.apply('alexa','yes',h.deps),/Invalid state/);
  h=harness({disabled:[],registryError:true});await assert.rejects(quick.apply('alexa',true,h.deps),/App registry unavailable/);
+
+ // Boot and auto-restart: turning a group off clears them, turning it on restores what was there
+ {
+  const f={[alexa[0]]:{onboot:true,autorestart:true},[alexa[1]]:{onboot:true,autorestart:false}};
+  const a=quick.state(quick.find('alexa'),alexa.map(id=>({appId:id,disabled:true,onboot:!!(f[id]&&f[id].onboot),autorestart:!!(f[id]&&f[id].autorestart)})));
+  assert.equal(a.status,'partial','every member disabled but two still start at boot or restart: not done');assert.deepEqual(a.flagged,[alexa[0],alexa[1]]);
+  assert.equal(quick.state(quick.find('alexa'),alexa.map(id=>({appId:id,disabled:false,onboot:true,autorestart:true}))).status,'on','flags on enabled members are normal');
+  assert.deepEqual(quick.state(quick.find('alexa'),rows(alexa)).flagged,[],'rows without flag data are not flagged');
+  h=harness({disabled:[alexa[3]],flags:f});r=await quick.apply('alexa',true,h.deps);
+  assert.equal(r.state.status,'off');assert.deepEqual(r.flagsCleared.sort(),[alexa[0],alexa[1]].sort(),'only members that had a flag are cleared');
+  assert.deepEqual(h.saved,f,'previous values are kept for the restore');assert.ok(alexa.every(id=>!h.flags[id].onboot&&!h.flags[id].autorestart));
+  assert.ok(h.calls.some(c=>/pkgcmd -D/.test(c))&&h.calls.some(c=>/quick-flags/.test(c)),'one script for the disabled flag, one for the startup flags');
+  r=await quick.apply('alexa',false,h.deps);assert.equal(r.state.status,'on');assert.deepEqual(r.flagsRestored.sort(),[alexa[0],alexa[1]].sort(),'only components that had flags saved count as restored');assert.deepEqual(r.flagsNotRestored,[]);
+  assert.deepEqual([h.flags[alexa[0]],h.flags[alexa[1]]],[f[alexa[0]],f[alexa[1]]],'flags are back as they were');assert.deepEqual(h.saved,{});
+  // All disabled already, flags left: only the flags script runs and the group becomes done
+  h=harness({disabled:alexa,flags:f});r=await quick.apply('alexa',true,h.deps);
+  assert.deepEqual(r.changed,[]);assert.equal(r.state.status,'off');assert.ok(!h.calls.some(c=>/pkgcmd/.test(c)),'no disable script when nothing is enabled');
+  // Flags that cannot be cleared roll the whole change back
+  h=harness({disabled:[],flags:f,flagStuck:alexa[0]});
+  await assert.rejects(quick.apply('alexa',true,h.deps),/Startup flags not cleared for .*previous state restored/);
+  assert.equal(h.disabled.size,0,'rollback re-enables the members');assert.deepEqual([h.flags[alexa[0]],h.flags[alexa[1]]],[f[alexa[0]],f[alexa[1]]]);
+  // The disable step failing never reaches the flags script, so rollback must not write saved values over live flags
+  h=harness({disabled:[],flags:f,stuck:alexa[1]});h.saved[alexa[0]]={onboot:false,autorestart:true};
+  await assert.rejects(quick.apply('alexa',true,h.deps),/Not confirmed for/);
+  assert.ok(!h.calls.some(c=>/quick-flags/.test(c)),'no flag script runs when the disable step failed');assert.deepEqual(h.flags[alexa[0]],f[alexa[0]],'live flags untouched');
+  assert.throws(()=>quick.clearFlagsCommand(['a;b']),/Invalid app ID/);assert.throws(()=>quick.restoreFlagsCommand(['$(x)']),/Invalid app ID/);
+ }
+ // A component enabled elsewhere still needs its saved Quick settings flags restored.
+ h=harness({disabled:[]});h.saved[alexa[0]]={onboot:true,autorestart:false};
+ r=await quick.apply('alexa',false,h.deps);
+ assert.deepEqual(r.changed,[]);assert.deepEqual(r.flagsRestored,[alexa[0]]);
+ assert.equal(h.flags[alexa[0]].onboot,true);assert.deepEqual(h.saved,{});
  // Area groups: members are whatever the Task manager files under the area, minus role keep and protected components
  {
   const trk=[{appId:'t.one',packageId:'t.one',area:'tracking',role:'tracking',disabled:false},{appId:'org.tizen.pisa-control-service',packageId:'com.samsung.tv.pisa-service',area:'tracking',role:'tracking',disabled:true},
@@ -49,6 +88,7 @@ function harness(opts){
   const live=new Set(['t.one']),sent=[];
   const deps={invalidate(){},inventory(){return Promise.resolve({apps:trk.map(r=>({...r,disabled:r.appId==='t.one'?!live.has('t.one')?true:false:r.disabled})).map(r=>r.appId==='t.one'?{...r,disabled:!live.has('t.one')}:r)});},
    execute(cmd){const c=decode(cmd);sent.push(c);if(c==='app_launcher -S')return Promise.resolve({exit_code:0,stdout:'\tt.one (7)\n\tother (8)\n'});
+    if(/quick-flags/.test(c)){const fi=/for id in (.*?);\s*do/.exec(c)[1].split(' ');return Promise.resolve({exit_code:0,stdout:fi.map(id=>id+' 0').join('\n')});}
     const m=/for id in (.*); do (pkgcmd (-D|-A)|app_launcher -k)/.exec(c);const ids=m[1].split(' ');if(m[2]==='pkgcmd -D')ids.forEach(id=>{if(id==='t.one')live.delete(id);});return Promise.resolve({exit_code:0,stdout:ids.map(id=>id+' 0').join('\n')});}};
   const r=await quick.apply('tracking-all',true,deps);
   assert.deepEqual(r.changed,['t.one']);assert.deepEqual(r.stopped,['t.one'],'only running members of the group are stopped, not other apps');assert.equal(r.state.status,'off');
@@ -66,3 +106,9 @@ function harness(opts){
  }
  console.log('PASS quick settings: group state, one-script apply, verified readback, rollback, stop of running members, exclusions');
 })().catch(e=>{console.error(e);process.exitCode=1});
+// Samsung Home: one component, no microphone flag, a confirmation, and a section of its own.
+{const g=quick.find('samsung-home');
+ assert.deepEqual(g.ids,['com.samsung.tv.csfs']);assert.equal(g.section,'home');assert.equal(g.confirm,true);assert.ok(!g.microphone);
+ assert.ok(quick.ALLOWED_IDS.includes('com.samsung.tv.csfs'));
+ assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:true,onboot:false,autorestart:false}]).status,'off');
+ assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:false}]).status,'on');}

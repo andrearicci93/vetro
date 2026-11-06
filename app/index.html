@@ -29,8 +29,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
 .dh{display:flex;align-items:baseline}
 .dh small{font-size:22px;letter-spacing:.12em;color:var(--muted)}
-/* Reserved for the PIN of 0.4.0: stays hidden, and the card does not move, until the service sends one. */
+/* The sign-in code: hidden, and the card does not move, until a browser asks to pair. */
 .pin{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
+.pin i{display:block;margin-top:4px;font-size:20px;font-style:normal;letter-spacing:0;text-align:right;color:var(--muted)}
 .pin b{margin-left:12px;font-family:monospace;font-size:30px;letter-spacing:.2em;color:var(--text)}
 .url{margin:10px 0 8px;font-family:monospace;font-size:44px;font-weight:500;color:var(--link);white-space:nowrap}
 .url.off{color:var(--muted)}
@@ -70,6 +71,11 @@ var ICON = 'icon.png';
 var IDLE_MS = 300000;
 var report = {probe: {}, apps: [], packages: [], settings: {}};
 var delivered = false, running = false, idleTimer = null;
+// The whole check stops after TOTAL_MS even if a step is stuck (every step also has its own limit).
+var TOTAL_MS = 100000;
+var step = null, tick = null, posts = Promise.resolve(), lastScreen = null, packagesBusy = false, packagesAgain = false;
+// Dashboard sign-in: the service asks for a 6-digit code that only this screen shows (see service/auth.js).
+var pairing = null;
 // The service keeps running without this page; a resident page only holds memory.
 function leave() { try { tizen.application.getCurrentApplication().exit(); } catch (e) {} }
 // Every probe gets a time limit: a Tizen call whose callback never fires must not leave the screen on "Checking".
@@ -95,6 +101,58 @@ function launchService() {
     tizen.application.launch('vetrotvapp.svc', ok, ko);
   });
 }
+// Some TVs (The Frame 2025, Tizen 9) do not let apps reach a local service over loopback: 127.0.0.1 never answers (#122).
+// The service listens on every interface, so if loopback stays silent the TV's own LAN address is tried, and the first
+// one that answers becomes the base for everything else. Where loopback works nothing changes. The service accepts the
+// TV's own address like loopback, and nothing else. Idea and measurements: skjnldsv (#122, #123). Whether the runtime lets
+// the page call an address that config.xml does not list is not known yet.
+function answers(base) {
+  return new Promise(function (ok) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', base + '/status', true);
+    xhr.timeout = 3000;
+    xhr.onload = function () { ok(xhr.status === 200); };
+    xhr.onerror = xhr.ontimeout = function () { ok(false); };
+    try { xhr.send(); } catch (e) { ok(false); }
+  });
+}
+function lanAddresses() {
+  if (typeof tizen === 'undefined' || !tizen.systeminfo) return Promise.resolve([]);
+  return Promise.all(['ETHERNET_NETWORK', 'WIFI_NETWORK'].map(function (prop) {
+    return new Promise(function (ok) {
+      var t = setTimeout(function () { ok(null); }, 3000);
+      try {
+        tizen.systeminfo.getPropertyValue(prop, function (v) { clearTimeout(t); ok(v && v.ipAddress || null); },
+          function () { clearTimeout(t); ok(null); });
+      } catch (e) { clearTimeout(t); ok(null); }
+    });
+  })).then(function (ips) { return ips.filter(function (ip) { return ip && ip !== '0.0.0.0' && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip); }); });
+}
+var baseChosen = null, lanKnown = null;
+// Resolves true when some address answered (and BASE is then that one), false when none did. A failure is not kept: the
+// service may simply not be up yet, and the next try looks again.
+function pickBase() {
+  if (baseChosen) return Promise.resolve(true);
+  var port = BASE.split(':').pop();
+  return answers(BASE).then(function (yes) {
+    if (yes) { baseChosen = BASE; return true; }
+    return (lanKnown || (lanKnown = lanAddresses())).then(function (ips) {
+      return ips.reduce(function (p, ip) {
+        return p.then(function (found) {
+          if (found) return found;
+          var base = 'http://' + ip + ':' + port;
+          return answers(base).then(function (y) { return y ? base : null; });
+        });
+      }, Promise.resolve(null));
+    }).then(function (found) { if (found) { BASE = found; baseChosen = found; } return !!found; });
+  });
+}
+function settleBase(tries) {
+  return pickBase().then(function (ok) {
+    if (ok || tries <= 1) return ok;
+    return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return settleBase(tries - 1); });
+  });
+}
 function reach(tries) {
   return fetch(BASE + '/status').then(function (r) { return r.status; }, function (e) {
     if (tries <= 1) throw e;
@@ -102,11 +160,11 @@ function reach(tries) {
   });
 }
 function cb(call) { return new Promise(function (ok, ko) { call(ok, ko); }); }
-function sendReport() {
+function sendReport(body, ms) {
   return new Promise(function (resolve, reject) {
     var xhr = new XMLHttpRequest();
     xhr.open('POST', BASE + '/probe', true);
-    xhr.timeout = 10000;
+    xhr.timeout = ms || 10000;
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.onload = function () {
       var result;
@@ -116,7 +174,7 @@ function sendReport() {
     };
     xhr.onerror = function () { reject(new Error('Report send failed')); };
     xhr.ontimeout = function () { reject(new Error('Report send timeout')); };
-    xhr.send(JSON.stringify(report));
+    xhr.send(body);
   });
 }
 // What the TV screen shows: one small JSON read. The launcher check inside it can take a few seconds.
@@ -144,28 +202,40 @@ function tryConnect(port) {
     ws.onerror = function () { clearTimeout(t); reject(new Error('refused')); };
   });
 }
+// The steps run side by side, except that the service answer waits for the service start. The model and the service
+// answer open the reports: a first one goes out as soon as both are in, so a screen closed early still leaves the TV
+// named in the report (#101). From then on every step that ends sends what it has. The package list is the slow one (#83, #94, #104): it is read after the verdict, so it can no longer hold the screen on "Checking".
+// Each entry: name, call, time limit (ms), what the screen calls the step.
 var jobs = [
-  ['serviceLaunch', launchService],
-  ['tizenObject', function () { return typeof tizen !== 'undefined'; }],
-  ['webapisObject', function () { return typeof webapis !== 'undefined'; }],
-  ['supportedKeys', function () { return tizen.tvinputdevice.getSupportedKeys().map(function (k) { return k.name; }); }],
-  ['apps', function () { return cb(function (ok, ko) { tizen.application.getAppsInfo(ok, ko); }).then(function (a) {
-      report.apps = a.map(function (x) { return {id: x.id, name: x.name, packageId: x.packageId, show: x.show}; });
-      return a.length; }); }],
-  ['packages', function () { return cb(function (ok, ko) { tizen.package.getPackagesInfo(ok, ko); }).then(function (p) {
-      report.packages = p.map(function (x) { return {id: x.id, version: x.version, totalSize: x.totalSize, author: x.author}; });
-      return p.length; }); }],
+  ['serviceLaunch', launchService, 8000, 'Starting the service'],
+  ['tizenObject', function () { return typeof tizen !== 'undefined'; }, 8000, 'Tizen API'],
+  ['webapisObject', function () { return typeof webapis !== 'undefined'; }, 8000, 'Samsung API'],
   ['productinfo', function () {
       ['getModel', 'getRealModel', 'getFirmware', 'getModelCode', 'getLocalSet', 'getSmartTVServerType'].forEach(function (m) {
         var id = {getModel: 'model', getRealModel: 'realModel', getFirmware: 'firmware', getModelCode: 'modelCode',
           getLocalSet: 'localSet', getSmartTVServerType: 'smartHubServer'}[m];
         try { report.settings[id] = webapis.productinfo[m](); } catch (e) {}
       });
-      return Object.keys(report.settings).length; }],
-  ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }],
-  ['remoteApi8001', function () { return tryConnect(8001); }],
-  ['serviceReach', function () { return reach(8); }, 25000]
+      // Tizen platform version ("6.5", "9.0", ...). Public API, no root needed; absent or refused on some firmware.
+      try {
+        var pv = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version');
+        if (typeof pv === 'string' && pv) report.settings.platformVersion = pv;
+      } catch (e) {}
+      return Object.keys(report.settings).length; }, 8000, 'Model and firmware'],
+  ['supportedKeys', function () { return tizen.tvinputdevice.getSupportedKeys().map(function (k) { return k.name; }); }, 8000, 'Remote keys'],
+  ['serviceReach', function () { return settleBase(3).then(function () { return reach(8); }); }, 40000, 'Service answer'],
+  ['remoteApi8001', function () { return tryConnect(8001); }, 8000, 'TV remote API'],
+  ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }, 8000, 'System info'],
+  ['apps', function () { return cb(function (ok, ko) { tizen.application.getAppsInfo(ok, ko); }).then(function (a) {
+      report.apps = a.map(function (x) { return {id: x.id, name: x.name, packageId: x.packageId, show: x.show}; });
+      return a.length; }); }, 8000, 'Installed apps']
 ];
+var SERVICE_REACH = jobs.map(function (j) { return j[0]; }).indexOf('serviceReach');   // the one step that waits for another
+var later = ['packages', function () { return cb(function (ok, ko) { tizen.package.getPackagesInfo(ok, ko); }).then(function (p) {
+    report.packages = p.map(function (x) { return {id: x.id, version: x.version, totalSize: x.totalSize, author: x.author}; });
+    return p.length; }); }, 30000, 'Package list'];
+var LABELS = {};
+jobs.concat([later]).forEach(function (j) { LABELS[j[0]] = j[3]; });
 
 // ---- the screen -------------------------------------------------------------------------------------------
 var ICONS = {
@@ -178,15 +248,45 @@ var ICONS = {
 };
 function esc(v) { return String(v).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
 function probeOk(name) { return !!(report.probe[name] && report.probe[name].ok); }
+// Steps that ran out of time, or were skipped because the whole check did. A slow service start does not count once the
+// service has answered: on some TVs the start call never reports back although the service runs.
+function slowSteps() {
+  return Object.keys(report.probe).filter(function (k) {
+    var p = report.probe[k];
+    if (k === 'serviceLaunch' && probeOk('serviceReach')) return false;
+    return p && !p.ok && /^(no answer|skipped)/.test(String(p.error || ''));
+  });
+}
+// Why the service is down, for the support line: what the start and the reach steps said (#2).
+function svcWhy() {
+  var why = [];
+  [['serviceLaunch', 'start'], ['serviceReach', 'reach']].forEach(function (s) {
+    var p = report.probe[s[0]];
+    if (p && !p.ok) why.push(s[1] + ': ' + String(p.error || 'failed').slice(0, 60));
+  });
+  return why.length ? ' (' + why.join('; ') + ')' : '';
+}
 function appVersion() { try { return tizen.application.getCurrentApplication().appInfo.version || null; } catch (e) { return null; } }
 
+// Root not connected: what the service saw decides what the screen asks for (#99, #91, #75). A cold start is what made
+// the agent connect on the TVs we heard from; reinstalling does not help a TV that cannot run it.
+var COLD = 'turn the TV off at the wall (or unplug it) for 30 seconds, then on again';
+function rootCheck(r) {
+  var code = r.code ? ' ' + r.code : '';
+  if (r.reason === 'unsupported') return ['warn', 'Root access', 'Not available on this TV', 'This TV\'s system is too old for the root helper. Vetro works here as an app only: features that need root are off. Reinstalling will not change this.', 'ROOT N/A old-tv', 'warn'];
+  if (r.reason === 'starting') return ['warn', 'Root access', 'Connecting', 'Root usually connects within a minute of the TV starting. Press OK to check again.', 'ROOT WAIT', 'warn'];
+  if (r.reason === 'sdb') return ['bad', 'Root access', 'Not connected', 'The TV refused the local developer connection root needs. Check that Developer Mode is on and Host PC IP is 127.0.0.1, then ' + COLD + '.', 'ROOT DOWN' + code, 'bad'];
+  if (r.reason === 'agent') return ['bad', 'Root access', 'Not connected', 'The root helper started but did not answer. Check that Host PC IP is 127.0.0.1, then ' + COLD + '. If it stays like this, reinstall the root package.', 'ROOT DOWN agent', 'bad'];
+  if (r.reason === 'prepare') return ['bad', 'Root access', 'Not connected', 'Vetro could not prepare the root helper. Reinstall the root package.', 'ROOT DOWN prepare', 'bad'];
+  return ['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad'];
+}
 // One check: [state, name, value, hint, token, tokenState]. state is ok | warn | bad | off | na. The token is the
 // short form for the support line; it is upper case (and coloured) when something is wrong.
 function checks(d) {
-  var out = [], root, api, apiMissing = [], mem, l, i;
+  var out = [], root, api, apiMissing = [], slow, slowHint, mem, l, i;
   if (!d) {
     out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +
-      (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN', 'bad']);
+      (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
   } else {
     var av = appVersion(), mismatch = av && d.version && av !== d.version;
     out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. Reinstall Vetro so both match.', 'SVC ' + d.version + '/APP ' + av, 'warn']
@@ -195,12 +295,12 @@ function checks(d) {
   if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
   else if (d.root.connected) out.push(['ok', 'Root access', 'Connected', null, 'root ok']);
   else if (d.root.mode === 'app-only') out.push(['warn', 'Root access', 'Not available', 'This is the app-only package. Features that need root are off.', 'ROOT NO', 'warn']);
-  else out.push(['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad']);
+  else out.push(rootCheck(d.root));
   root = !!(d && d.root.connected);
   if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
   else if (!d.input.enabled) out.push(['off', 'Remote input', 'Off', null, 'input off']);
   else if (d.input.connected) out.push(['ok', 'Remote input', 'Filtering', null, 'input ok']);
-  else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remote in the dashboard.', 'INPUT LOST', 'bad']);
+  else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remapper in the dashboard.', 'INPUT LOST', 'bad']);
   l = d && d.launcher;
   if (!d) out.push(['na', 'Launcher', 'Unknown', null, 'launcher ?']);
   else if (!l.installed) out.push(['na', 'Launcher', 'Not included', null, 'launcher n/a']);
@@ -209,8 +309,14 @@ function checks(d) {
   else if (l.running === false) out.push(['bad', 'Launcher', l.failures ? 'Failed to start' : 'Not running',
     (l.failures ? 'Tried ' + esc(l.failures) + ' times. ' : '') + 'Open the Launcher tab in the dashboard and read the error.', 'LAUNCHER FAIL' + (l.failures ? ' x' + l.failures : ''), 'bad']);
   else out.push(['warn', 'Launcher', 'Cannot check', 'It needs root access to be checked.', 'LAUNCHER ?', 'warn']);
-  ['tizenObject', 'webapisObject', 'apps', 'packages'].forEach(function (k) { if (!probeOk(k)) apiMissing.push(k.replace('Object', '')); });
-  api = apiMissing.length ? ['warn', 'TV APIs', 'Limited', 'Not available: ' + esc(apiMissing.join(', ')) + '.', 'API ' + apiMissing.join('/'), 'warn'] : ['ok', 'TV APIs', 'Available', null, 'api ok'];
+  // The package list is read after the verdict: not read yet is not missing.
+  ['tizenObject', 'webapisObject', 'apps', 'packages'].forEach(function (k) { if (!probeOk(k) && (k !== 'packages' || report.probe.packages)) apiMissing.push(k.replace('Object', '')); });
+  slow = slowSteps();
+  slowHint = slow.length ? 'No answer in time: ' + esc(slow.map(function (k) { return LABELS[k] || k; }).join(', ')) + '.' : '';
+  if (apiMissing.length) api = ['warn', 'TV APIs', 'Limited', 'Not available: ' + esc(apiMissing.join(', ')) + '.' + (slowHint ? ' ' + slowHint : ''), 'API ' + apiMissing.join('/') + (slow.length ? ' SLOW ' + slow.join('/') : ''), 'warn'];
+  // A slow step whose answer Vetro does not need is named, without turning a healthy TV into a warning.
+  else if (slow.length) api = ['ok', 'TV APIs', 'Available', 'slow: ' + esc(slow.map(function (k) { return LABELS[k] || k; }).join(', ')), 'api ok, slow ' + slow.join('/')];
+  else api = ['ok', 'TV APIs', 'Available', report.probe.packages ? null : 'package list: reading', 'api ok'];
   out.push(api);
   mem = d && d.memory && d.memory.availableMb;
   if (typeof mem !== 'number') out.push(['na', 'Memory', 'Unknown', null, 'mem ?']);
@@ -228,7 +334,7 @@ function cell(c) {
 
 var WAITING = [['Service', 'Starting'], ['Root access', 'Checking'], ['Remote input', 'Checking'], ['Launcher', 'Checking'], ['TV APIs', 'Checking'], ['Memory', 'Checking']];
 function render(d, waiting) {
-  var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = d && typeof d.pin === 'string' ? d.pin : '';
+  var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '';
   list.forEach(function (c) { if (waiting) return; if (c[0] === 'bad') bad++; else if (c[0] === 'warn') warn++; });
   if (waiting) { state = 'wait'; label = 'Checking'; sum = 'Checking'; }
   else if (!d) { state = 'bad'; label = 'Not responding'; sum = 'The service is down'; }
@@ -247,13 +353,13 @@ function render(d, waiting) {
     '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' +
     (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
     '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
-    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b></div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
     '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
-    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. The address appears in a few seconds.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
+    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. This can take 1&ndash;2 minutes: please do not close this screen.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
     '<div class="panel ' + (bad ? 'bad' : warn ? 'warn' : '') + '"><div class="ph"><h2>Diagnostics</h2><div class="sum ' + (state === 'ok' ? '' : state) + '" id="sum">' + esc(sum) + '</div></div>' +
     '<div class="grid">' + cells + '</div>' +
     '<div class="share"><div class="t">Asking for help? Read out or photograph this line.</div><code>' + (waiting ? 'Collecting the details&hellip;' : line.join(' &middot; ')) + '</code></div>' +
-    '<div class="keys"><span><i>OK</i>Check again</span><span><i>Back</i>Close</span></div></div>';
+    '<div class="keys">' + (waiting ? '' : '<span><i>OK</i>Check again</span>') + '<span><i>Back</i>Close</span></div></div>';
 }
 function fit() {
   var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), s = document.getElementById('stage');
@@ -261,25 +367,135 @@ function fit() {
 }
 
 // ---- run ----------------------------------------------------------------------------------------------------
+// Asks the service every 2 s whether a browser is waiting to pair; only loopback may read the code.
+function pinLine() {
+  var left = Math.max(0, Math.ceil((pairing.until - Date.now()) / 1000));
+  return pairing.name + ' · ' + Math.floor(left / 60) + ':' + (left % 60 < 10 ? '0' : '') + left % 60;
+}
+function paintPairing() {
+  var el = document.getElementById('pin');
+  if (pairing && pairing.until <= Date.now()) pairing = null;   // a lost answer must not leave a dead code on screen
+  if (!el) return;
+  el.hidden = !pairing;
+  el.innerHTML = 'PIN<b>' + (pairing ? esc(pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3)) : '') + '</b><i>' + esc(pairing ? pinLine() : '') + '</i>';
+}
+// A soft two-partial "ding" when a new code appears, since the code itself is small to spot from the sofa. A sine with a
+// quick attack and a long exponential fade; no audio file, and any failure (no Web Audio, blocked) stays silent.
+function ding() {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext, ctx, t, g, o, i, parts = [[880, 0.10], [1760, 0.025]];
+    if (!AC) return;
+    ctx = new AC();
+    if (ctx.resume) ctx.resume();
+    t = ctx.currentTime;
+    for (i = 0; i < parts.length; i++) {
+      o = ctx.createOscillator(); g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = parts[i][0];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(parts[i][1], t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 1.5);
+    }
+    setTimeout(function () { try { ctx.close(); } catch (e) {} }, 2000);
+  } catch (e) {}
+}
+function showPairing(p) {
+  var was = pairing && pairing.code;
+  pairing = p && p.code ? {code: String(p.code), name: String(p.name || 'Browser'), until: Date.now() + (+p.expiresIn || 120) * 1000} : null;
+  if (pairing) resetIdle();                       // the screen stays open while a code is waiting
+  if (!pairing && !was) return;
+  paintPairing();
+  if (pairing && pairing.code !== was) ding();
+}
+function checkPairing() {
+  if (document.hidden) return;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', BASE + '/auth/pending', true);
+  xhr.timeout = 3000;
+  xhr.onload = function () { var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return; } showPairing(d); };
+  xhr.send();
+}
 function resetIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(leave, IDLE_MS);
 }
-// Shows how far the checks are, so a slow TV reads as working and not as stuck.
-function progress(n) {
-  var el = document.getElementById('sum');
-  if (el) el.textContent = 'Checking ' + n + ' of ' + jobs.length;
+// Shows how far the checks are, so a slow TV reads as working and not as stuck: how many are done, which ones are
+// still open and the seconds since the checks began. Seconds that stop moving mean the page itself is blocked; a photo
+// of this line says where.
+var running_ = {}, doneCount_ = function () { return 0; };
+function paintProgress() {
+  var el = document.getElementById('sum'), open = Object.keys(running_).map(function (k) { return running_[k]; });
+  if (el && step) el.textContent = 'Checking ' + doneCount_() + ' of ' + jobs.length + ' done \u00b7 ' + (open.join(', ') || 'finishing') + ' \u00b7 ' + Math.floor((Date.now() - step.since) / 1000) + ' s';
+}
+// Reports go out one after the other, each as it was when queued, so a late answer cannot overwrite a newer one.
+function post(ms) {
+  var body = JSON.stringify(report), sent = posts.then(function () { return sendReport(body, ms); });
+  posts = sent.then(null, function () {});
+  return sent;
 }
 function run() {
   if (running) return Promise.resolve();
   running = true; delivered = false;
-  report = {probe: {}, apps: [], packages: [], settings: {}};
+  var started = Date.now(), closed = false, cap;
+  step = {since: started};
+  report = {probe: {}, apps: [], packages: [], settings: {}, progress: {partial: true, done: 0, of: jobs.length, next: jobs[0][0], elapsedMs: 0}};
   render(null, true);
-  return jobs.reduce(function (p, j, i) { return p.then(function () { progress(i + 1); return attempt(j[0], j[1], j[2]); }); }, Promise.resolve())
-    .then(function () { return sendReport().then(function () { delivered = true; }, function () {}); })
+  clearInterval(tick);
+  tick = setInterval(paintProgress, 1000);
+  // The steps run side by side; only the service answer waits for the service start. A stuck step now costs its own
+  // time limit once, not on top of every other step's.
+  var finished = {}, doneCount = 0;
+  function runStep(i) {
+    var j = jobs[i];
+    if (closed) return Promise.resolve();
+    running_[j[0]] = j[3];
+    paintProgress();
+    return attempt(j[0], j[1], j[2]).then(function () {
+      if (closed) return;
+      delete running_[j[0]];
+      finished[j[0]] = true; doneCount++;
+      var next = jobs.filter(function (x) { return !finished[x[0]]; })[0];
+      report.progress = {partial: true, done: doneCount, of: jobs.length, next: (next || later)[0], elapsedMs: Date.now() - started};
+      paintProgress();
+      // Once the model and the service answer are in, every further step sends what it has.
+      if (doneCount < jobs.length && finished.productinfo && finished.serviceReach && probeOk('serviceReach')) post(4000).then(null, function () {});
+    });
+  }
+  running_ = {}; doneCount_ = function () { return doneCount; };
+  var steps = Promise.all(jobs.map(function (j, i) {
+    if (j[0] === 'serviceReach') return null;
+    return runStep(i).then(function () { return j[0] === 'serviceLaunch' ? runStep(SERVICE_REACH) : null; });
+  }));
+  var limit = new Promise(function (resolve) { cap = setTimeout(function () { closed = true; resolve(); }, TOTAL_MS); });
+  return Promise.race([steps, limit])
+    .then(function () {
+      var done = 0;
+      closed = true; clearTimeout(cap); clearInterval(tick); step = null; running_ = {};
+      jobs.forEach(function (j) {
+        if (!report.probe[j[0]]) report.probe[j[0]] = {ok: false, error: 'skipped: the checks took over ' + TOTAL_MS / 1000 + ' s'};
+        if (!/^skipped/.test(String(report.probe[j[0]].error || ''))) done++;
+      });
+      report.progress = {partial: false, done: done, of: jobs.length, next: later[0], elapsedMs: Date.now() - started};
+      return post(10000).then(function () { delivered = true; }, function () {});
+    })
     .then(function () { return readScreen().catch(function () { return null; }); })
-    .then(function (d) { render(d, false); }, function () { render(null, false); })
-    .then(function () { running = false; });
+    .then(function (d) { lastScreen = d; render(d, false); }, function () { lastScreen = null; render(null, false); })
+    .then(function () { running = false; readPackages(); });
+}
+// The package list, after the verdict. When it arrives the report goes out again and the screen is drawn again.
+function readPackages() {
+  if (packagesBusy) { packagesAgain = true; return; }
+  packagesBusy = true;
+  var mine = report;
+  attempt(later[0], later[1], later[2]).then(function () {
+    packagesBusy = false;
+    if (packagesAgain) { packagesAgain = false; if (!running) return readPackages(); }
+    if (running || report !== mine) return;
+    report.progress.packagesDone = true;
+    post(10000).then(null, function () {});
+    render(lastScreen, false);
+  });
 }
 document.addEventListener('visibilitychange', function () { if (document.hidden && delivered) leave(); });
 document.addEventListener('keydown', function (e) {
@@ -291,6 +507,9 @@ document.addEventListener('keydown', function (e) {
 window.addEventListener('resize', fit);
 fit();
 resetIdle();
+checkPairing();
+setInterval(checkPairing, 2000);
+setInterval(function () { if (pairing) paintPairing(); }, 1000);
 // Module scripts run after this classic script and before DOMContentLoaded.
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
 </script>

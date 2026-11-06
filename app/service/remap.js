@@ -1,4 +1,7 @@
 'use strict';
+// Regular expressions compiled once at module load, not on every call.
+var RULE_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+var KEY_CODE_RE = /^\d{1,3}$/;
 
 // Rules map physical evdev codes, foreground widget keys, or HTTP/MQTT triggers
 // to native key injection and app launch through the platform adapter.
@@ -9,6 +12,20 @@ var KEY_RE = /^KEY_[A-Z0-9_]{1,30}$/;
 var APP_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var TOPIC_RE = /^[A-Za-z0-9_\/.-]{1,120}$/;
 var TRIGGER_TYPES = ['physical', 'key', 'mqtt', 'http'];
+// Parts of Samsung's Settings ("CoBA Setting Component", app-facts.js). app_launcher accepts their ID and returns 0, but
+// nothing opens (#100). Not offered as "App to open", refused in new rules, and skipped if an older rule has one.
+var NOT_LAUNCHABLE_PREFIX = 'com.samsung.tv.coba.setting';
+function launchable(appId) {
+    var id = String(appId || '');
+    return !(id === NOT_LAUNCHABLE_PREFIX || id.indexOf(NOT_LAUNCHABLE_PREFIX + '.') === 0);
+}
+var NOT_LAUNCHABLE_MESSAGE = 'is part of Samsung\u2019s Settings, not an app: it cannot be opened by its ID';
+// Factory, hotel and shop apps (#135, factory-apps.js): a rule runs from a key press or a message, with nobody in front of
+// the screen to confirm, so a rule never opens them. packageOf (optional) gives the package ID of an installed app.
+var factoryApps = require('./factory-apps.js');
+function ruleRisk(appId, packageOf) {
+    return factoryApps.risk(appId, typeof packageOf === 'function' ? packageOf(appId) : null);
+}
 
 function validateAction(a) {
     if (!a || typeof a !== 'object') throw new Error('invalid action');
@@ -34,7 +51,7 @@ function validateRules(rules) {
     var ids = {};
     var result=rules.map(function (r) {
         if (!r || typeof r !== 'object') throw new Error('invalid rule');
-        if (typeof r.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(r.id)) throw new Error('invalid rule id');
+        if (typeof r.id !== 'string' || !RULE_ID_RE.test(r.id)) throw new Error('invalid rule id');
         if (ids[r.id]) throw new Error('duplicate rule id: ' + r.id);
         ids[r.id] = true;
         var t = r.trigger;
@@ -43,7 +60,7 @@ function validateRules(rules) {
         }
         if(t.type==='mqtt'&&!TOPIC_RE.test(t.value))throw Error('invalid MQTT trigger topic');
         if(t.payload!=null&&(t.type!=='mqtt'||typeof t.payload!=='string'||t.payload.length>256))throw Error('invalid MQTT trigger payload');
-        if (t.type === 'physical' && (!/^\d{1,3}$/.test(t.value) || +t.value > 767)) throw new Error('invalid physical input code');
+        if (t.type === 'physical' && (!KEY_CODE_RE.test(t.value) || +t.value > 767)) throw new Error('invalid physical input code');
         if (!Array.isArray(r.actions) || !r.actions.length || r.actions.length > MAX_ACTIONS) {
             throw new Error('rule ' + r.id + ' needs 1..' + MAX_ACTIONS + ' actions');
         }
@@ -70,4 +87,15 @@ function resolve(rules, type, value, payload) {
     return out;
 }
 
-module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve};
+// New rules only: rules saved by an older version still load (validateRules), and runActions skips the action.
+function checkLaunchable(rules, packageOf) {
+    (rules || []).forEach(function (r) { (r.actions || []).forEach(function (a) {
+        if (a.type !== 'launch') return;
+        if (!launchable(a.appId)) throw new Error(a.appId + ' ' + NOT_LAUNCHABLE_MESSAGE);
+        var level = ruleRisk(a.appId, packageOf);
+        if (level) throw new Error(a.appId + ' ' + (level === 'blocked' ? factoryApps.BLOCKED_MESSAGE : factoryApps.RULE_MESSAGE));
+    }); });
+    return rules;
+}
+module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, launchable: launchable,
+    checkLaunchable: checkLaunchable, ruleRisk: ruleRisk, NOT_LAUNCHABLE_PREFIX: NOT_LAUNCHABLE_PREFIX};

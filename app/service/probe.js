@@ -39,4 +39,17 @@ function save(report) {
     try { fs.writeFileSync(STORE_PATH, JSON.stringify(report)); return true; } catch (e) { return false; }
 }
 
-module.exports = {STORE_PATH: STORE_PATH, MAX_JSON: MAX_JSON, sanitize: sanitize, load: load, save: save};
+// The TV screen now sends what it has after the first steps and again at the end (#101, #104), and reads the package
+// list after its verdict. A report sent before the app or package list was read keeps the lists of the last report
+// that had them, so an early report does not empty the app inventory. carried names what was kept.
+function carry(previous, next) {
+    var kept = [];
+    ['apps', 'packages'].forEach(function (k) {
+        var ran = next.probe && typeof next.probe === 'object' && next.probe[k];
+        if (!ran && previous && Array.isArray(previous[k]) && previous[k].length) { next[k] = previous[k]; kept.push(k); }
+    });
+    if (kept.length) next.carried = kept; else delete next.carried;
+    return next;
+}
+
+module.exports = {STORE_PATH: STORE_PATH, MAX_JSON: MAX_JSON, sanitize: sanitize, load: load, save: save, carry: carry};

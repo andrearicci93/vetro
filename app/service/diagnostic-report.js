@@ -4,16 +4,27 @@
 var settings = require('./tv-settings.js').ITEMS;
 var buildInfo = require('./build-info.js');
 var execError = require('./exec-error.js');
+// Regular expressions compiled once at module load, not on every call.
+var SAFE_TOKEN_RE = /^[A-Za-z0-9_./ -]+$/;
+var SENSITIVE_TOKEN_RE = /(?:\d{1,3}\.){3}\d{1,3}|(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}|https?:|\/home\/|\/opt\/usr\/|\/Users\//i;
+var MENU_ID_RE = /^[A-Za-z0-9_./+() -]+$/;
+var MENU_ID_PUNCT_RE = /[+()]/g;
+var HASH_RE = /^[a-f0-9]{64}$/;
+var SAFE_TEXT_RE = /^[A-Za-z0-9 .,()_\-\/&+:']{1,100}$/;
+var SENSITIVE_TEXT_RE = /(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i;
+var PRIVILEGE_RE = /^(?:tizen|samsung)\/[A-Za-z0-9_.\/-]{1,80}$/;
+var ADDRESS_START_RE = /^(?:\d|[a-f0-9]*:)/i;
+var LAUNCHER_RE = /tizentube/i;
 function token(v) {
-    if (typeof v !== 'string' || v.length > 180 || !/^[A-Za-z0-9_./ -]+$/.test(v)) return null;
-    if (/(?:\d{1,3}\.){3}\d{1,3}|(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}|https?:|\/home\/|\/opt\/usr\/|\/Users\//i.test(v)) return null;
+    if (typeof v !== 'string' || v.length > 180 || !SAFE_TOKEN_RE.test(v)) return null;
+    if (SENSITIVE_TOKEN_RE.test(v)) return null;
     return v;
 }
 // Menu ids come from the firmware (for example 'anynet+(hdmicec)'); only the
 // address and URL patterns are refused, as in token().
 function menuId(v) {
-    if (typeof v !== 'string' || v.length > 180 || !/^[A-Za-z0-9_./+() -]+$/.test(v)) return null;
-    return token(v.replace(/[+()]/g, '')) === null ? null : v;
+    if (typeof v !== 'string' || v.length > 180 || !MENU_ID_RE.test(v)) return null;
+    return token(v.replace(MENU_ID_PUNCT_RE, '')) === null ? null : v;
 }
 function failure(e) {
     var out = {reason: 'error'};
@@ -30,17 +41,43 @@ function numeric(v) { return typeof v === 'number' && Number.isFinite(v) ? v : n
 function boolean(v) { return typeof v === 'boolean' ? v : null; }
 function numbers(o, keys) { var out={}; keys.forEach(function(k){out[k]=numeric((o||{})[k]);});return out; }
 function flags(o, keys) { var out={}; keys.forEach(function(k){out[k]=boolean((o||{})[k]);});return out; }
+function hash(v) { return typeof v === 'string' && HASH_RE.test(v) ? v : null; }
+// Samsung's own description of a component: plain words only; anything that looks like an address, URL or path is refused.
+function text(v) {
+    if (typeof v !== 'string' || !SAFE_TEXT_RE.test(v)) return null;
+    return SENSITIVE_TEXT_RE.test(v) ? null : v;
+}
+function privilege(v) { return typeof v === 'string' && PRIVILEGE_RE.test(v) ? v : null; }
 function list(v, limit) { return Array.isArray(v) ? v.slice(0,limit||5000) : []; }
 function dependencies(v) { return Array.isArray(v)?list(v).map(function(d){return {packageId:token(d.packageId),type:token(d.type),version:token(d.version)};}):null; }
+// How far the Vetro screen on the TV got before it sent this report (#101, #104). Step names come from a fixed list;
+// the widget's own error texts are not exported, only which steps ran out of time or were skipped.
+var STEPS = ['serviceLaunch','tizenObject','webapisObject','productinfo','supportedKeys','serviceReach','remoteApi8001','systeminfoBattery','apps','packages'];
+function screenProgress(d){var g=(d||{}).progress;if(!g||typeof g!=='object')return null;var probe=(d||{}).probe||{};
+    return {partial:boolean(g.partial),done:numeric(g.done),of:numeric(g.of),next:STEPS.indexOf(g.next)>=0?g.next:null,elapsedSeconds:typeof g.elapsedMs==='number'&&g.elapsedMs>=0?Math.round(g.elapsedMs/1000):null,
+        slow:STEPS.filter(function(k){var p=probe[k];return !!(p&&p.ok===false&&/^(no answer|skipped)/.test(String(p.error||'')));}),
+        carried:list(d.carried,2).filter(function(k){return k==='apps'||k==='packages';})};}
+function choice(v, allowed) { return allowed.indexOf(v) >= 0 ? v : null; }
+function rooting(d) {
+    var r=d.rooting||{}, f=r.failure||{};
+    return {backend:choice(r.backend,['sdb-archive']),
+        phase:choice(r.phase,['stopped','unsupported','preparing','preflight','sdb-handshake','launch-command','agent-callback','connected','retrying']),
+        failure:r.failure?{
+            stage:choice(f.stage,['preparation','preflight','sdb-handshake','launch-command','agent-callback','agent-connection']),
+            code:choice(f.code,['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
+                'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
+                'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError'])
+        }:null};
+}
 var projectors = {
-    platform:function(d){return {mode:token(d.mode),running:boolean(d.running),prepared:boolean(d.prepared),rootAgent:{connected:boolean((d.agent||{}).connected),uid:numeric((d.agent||{}).uid)},runtime:token((d.self||{}).node),persistence:'unknown',backgroundExecution:'unknown'};},
-    device:function(d){var out={};['model','realModel','modelCode','firmware'].forEach(function(k){out[k]=token((d||{})[k]);});out.source='widget-probe';out.probeAgeMinutes=ageMinutes((d||{}).receivedAt);return out;},
-    inventory:function(d){return {source:token(d.source),registryAvailable:!d.registryError,apps:list(d.apps).map(function(a){return Object.assign({appId:token(a.appId),packageId:token(a.packageId),version:token(a.version),type:token(a.type),component:token(a.component),category:token(a.category),origin:token(a.origin),size:numeric(a.size),dependencies:dependencies(a.dependencies),dependents:dependencies(a.dependents)},flags(a,['disabled','onboot','autorestart','show','system','removable','protected']));})};},
+    platform:function(d){return {mode:token(d.mode),running:boolean(d.running),prepared:boolean(d.prepared),rootAgent:{connected:boolean((d.agent||{}).connected),uid:numeric((d.agent||{}).uid)},rooting:rooting(d),rootRuntime:choice((d.preflight||{}).runtime,['3.1','6.0']),runtime:token((d.self||{}).node),persistence:'unknown',backgroundExecution:'unknown'};},
+    device:function(d){var out={};['model','realModel','modelCode','firmware'].forEach(function(k){out[k]=token((d||{})[k]);});out.source='widget-probe';out.probeAgeMinutes=ageMinutes((d||{}).receivedAt);out.firmwareSource=out.firmware===null?null:(d||{}).firmwareSource==='service-read'?'service-read':'widget-probe';out.modelSource=out.realModel===null&&out.model===null?null:(d||{}).modelSource==='service-api'?'service-api':'widget-probe';out.tizenVersion=require('./device-info.js').version((d||{}).tizenVersion);out.tizenVersionSource=out.tizenVersion===null?'unknown':(d||{}).tizenVersionSource==='widget-capability'?'widget-capability':'service-read';return out;},
+    inventory:function(d){return {source:token(d.source),registryAvailable:!d.registryError,dependenciesAvailable:boolean(d.dependenciesAvailable),apps:list(d.apps).map(function(a){return Object.assign({appId:token(a.appId),packageId:token(a.packageId),version:token(a.version),type:token(a.type),component:token(a.component),category:token(a.category),origin:token(a.origin),size:numeric(a.size),dependencies:dependencies(a.dependencies),dependents:dependencies(a.dependents)},flags(a,['disabled','onboot','autorestart','show','system','removable','protected']));})};},
     settings:function(d){return {items:list(d.items).filter(function(x){return settings.some(function(s){return s.id===x.id;});}).map(function(x){return {id:x.id,value:typeof x.value==='boolean'?x.value:numeric(x.value),writable:boolean(x.writable),access:x.access==='verified'?'implemented':token(x.access),probe:token(x.probe),available:!x.error};}),api:d.api&&typeof d.api==='object'?{status:token(d.api.status),methods:numeric(d.api.methods)}:null};},
     catalog:function(d){return {items:list(d.items,1500).map(function(x){return Object.assign({id:menuId(x.id),group:token(x.group),vconfKey:token(x.vconfKey),type:token(x.type),provider:token(x.provider),capability:token(x.capability),readStatus:token(x.readStatus)},flags(x,['readable','writableVerified','danger']));})};},
     monitor:function(d){return {intervalSeconds:numeric(d.intervalSeconds),cpu:{percent:numeric((d.cpu||{}).percent),cores:list((d.cpu||{}).cores,256).map(function(x){return {name:token(x.name),percent:numeric(x.percent)};})},memory:numbers(d.memory,['totalBytes','availableBytes','freeBytes','swapTotalBytes','swapFreeBytes']),zram:numbers(d.zram,['logicalBytes','compressedBytes','physicalBytes']),telemetry:numbers(d.telemetry,['cpu_freq_khz','cpu_cores','soctemp_c']),storage:numbers(d.storage,['totalBytes','availableBytes','usedBytes','usedPercent']),paging:numbers(d.paging,['swapInPagesPerSecond','swapOutPagesPerSecond','majorFaultsPerSecond']),kernelThreadCount:list(d.processes).filter(function(p){return p.kernel===true;}).length,processes:list(d.processes).filter(function(p){return p.kernel!==true;}).map(function(p){return Object.assign({name:token(p.name),appId:token(p.appId),state:token(p.state)},numbers(p,['cpuPercent','rssBytes','virtualBytes','threads','majorFaultsPerSecond','minorFaultsPerSecond']));})};},
     startup:function(d){return {services:list(d).map(function(x){return {name:token(x.name),load:token(x.load),active:token(x.active),sub:token(x.sub),bootState:token(x.bootState)};})};},
-    network:function(d){return {available:!d.configurationError,services:list(d.services,64).filter(function(s){return s.state!=='idle';}).map(function(s){return {type:token(s.type),state:token(s.state),autoConnect:boolean(s.autoConnect),ipv4Method:token((s.ipv4||{}).Method),ipv6Method:token((s.ipv6||{}).Method),customDnsConfigured:Array.isArray(s.nameserversConfigured)?s.nameserversConfigured.some(function(v){return /^(?:\d|[a-f0-9]*:)/i.test(v);}):null};})};},
+    network:function(d){return {available:!d.configurationError,services:list(d.services,64).filter(function(s){return s.state!=='idle';}).map(function(s){return {type:token(s.type),state:token(s.state),autoConnect:boolean(s.autoConnect),ipv4Method:token((s.ipv4||{}).Method),ipv6Method:token((s.ipv6||{}).Method),customDnsConfigured:Array.isArray(s.nameserversConfigured)?s.nameserversConfigured.some(function(v){return ADDRESS_START_RE.test(v);}):null};})};},
     dns:function(d){return {enabled:boolean(d.enabled),applied:boolean(d.applied),domainCount:Array.isArray(d.domains)?d.domains.length:null};},
     mqtt:function(d){return Object.assign({state:['connected','connecting','disconnected','disabled','error'].indexOf(d.state)>=0?d.state:'unknown',hasError:!!d.lastError},flags(d,['connected']),numbers(d,['sent','received']));},
     privacy:function(d){return {doNotTrack:numeric(d.doNotTrack),acr:numbers(d.acr,['recognitionStatus','reset']),hbbtv:Object.assign(numbers(d.hbbtv,['dataService']),flags(d.hbbtv,['off','appRunning'])),tvPlusConsent:boolean(d.tvPlusConsent),agreementsAvailable:boolean(d.agreementsAvailable)};},
@@ -48,14 +85,23 @@ var projectors = {
     // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out.
     launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,
         appCount:numeric((d.apps||{}).count),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
-        tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return /tizentube/i.test(String(e.appId));}):null},
-        flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','autorunSwitchedOff']));},
+        tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
+        flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
+        {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp)});},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
-    probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});return out;},
+    probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});out.screen=screenProgress(d);return out;},
+    // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
+    components:function(d){return {requested:true,complete:boolean(d.complete),packageCount:numeric(d.packageCount),totalUnknown:numeric(d.totalUnknown),truncated:boolean(d.truncated),
+        packages:list(d.packages,300).map(function(p){return {packageId:token(p.packageId),origin:token(p.origin),manifest:['found','missing'].indexOf(p.manifest)>=0?p.manifest:null,
+            manifestSha256:hash(p.manifestSha256),description:text(p.description),privileges:list(p.privileges,40).map(privilege).filter(Boolean),
+            components:list(p.components,40).map(function(c){return Object.assign({appId:token(c.appId),kind:['service','ui'].indexOf(c.kind)>=0?c.kind:null,exec:token(c.exec),exeSha256:hash(c.exeSha256)},
+                flags(c,['declaredOnBoot','declaredAutoRestart','taskmanage','registeredOnBoot','registeredAutoRestart','differs']));})};})};},
+    // #135: read only. Whether db/FactoryApp/Aging exists and its value (1 = the factory colour test starts at every boot).
+    factoryTest:function(d){return {present:boolean(d.present),value:numeric(d.value),type:token(d.type),active:boolean(d.active)};},
     serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
-var SLOW = {startup: 4};
+var SLOW = {startup: 4, components: 3};
 function collect(readers, timeoutMs) {
     return Promise.all(Object.keys(projectors).map(function(name){
         if(typeof readers[name]!=='function')return {name:name,status:'unavailable',reason:'no-reader'};

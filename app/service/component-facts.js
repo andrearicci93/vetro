@@ -1,0 +1,189 @@
+'use strict';
+// What the TV's own package manifests say about the components Vetro's firmware catalog (a single Q80A image) does
+// not know. Diagnostic reports from other TVs list dozens of such packages (com.samsung.tv.iacr, ...) with nothing
+// beyond a name, so they cannot be classified. A manifest has a description, the privileges the package declares and
+// the start flags it asks for. Comparing those with what the registry holds is also how a package that the installer
+// registered differently shows up (issues #25 and #26: on-boot="true" asked, onboot=false registered).
+//
+// Only runs when the user ticks the box in Diagnostics. Read-only, at the lowest priority, in small sequential calls so
+// the other root commands queue between them; the work is capped (packages, executables, bytes, time), and nothing is written. Paths, addresses and URLs never leave this module: the
+// privilege URIs are shortened to "tizen/<name>" or "samsung/<name>", and executables are reported by file name.
+var execError = require('./exec-error.js');
+var facts = require('./app-facts.js');
+// Regular expressions compiled once at module load, not on every call.
+var CR_END_RE = /\r$/;
+var ATTRIBUTE_RE = /([A-Za-z][A-Za-z0-9-]*)="([^"]*)"/g;   // stateful: reset lastIndex before each use
+var TAGGED_LINE_RE = /^([PNH])\|(.*)$/;
+var DESCRIPTION_TAG_RE = /^<description[^>]*>([^<]*)<\/description>/;
+var SENSITIVE_TEXT_RE = /(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i;
+var PRIVILEGE_TAG_RE = /^<privilege>([^<]*)<\/privilege>/;
+var APPLICATION_TAG_RE = /^<(service|ui)-application\s([^>]*)>?/;
+var HASH_LINE_RE = /^([a-f0-9]{64})\s+(\/\S+)$/;
+
+var MAX_PACKAGES = 220;       // the export grows by about 600 bytes per package
+var MAX_EXES = 40;            // executables hashed; only components that start at boot
+var MAX_EXE_BYTES = 4194304;  // larger files are not read
+var BATCH = 30;               // packages per call: the TV runs root commands one after another, so the others get a turn in between
+var HASH_BATCH = 8;           // executables per call
+var BATCH_BYTES = 8388608;    // read at most this much per hashing call
+var BUDGET_MS = 50000;        // no new call is started after this; the section returns what it has
+var MAX_PRIVILEGES = 40;
+var PACKAGE_ID = /^[A-Za-z0-9_.-]{1,120}$/;
+var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
+var PRIVILEGE = /^http:\/\/(tizen\.org|developer\.samsung\.com)\/privilege\/([A-Za-z0-9_.\/-]{1,80})$/;
+var EXEC = /^\/(?:opt\/usr\/apps|usr\/apps)\/[A-Za-z0-9_.-]{1,120}\/[A-Za-z0-9_.\/-]{1,150}$/;
+var HASH = /^[a-f0-9]{64}$/;
+var DESCRIPTION = /^[A-Za-z0-9 .,()_\-\/&+:']{1,100}$/;
+var OWN = /^vetrotvapp(?:\.|$)/;
+
+function wrap(script) { return 'echo ' + Buffer.from(script).toString('base64') + ' | base64 -d | nice -n 19 sh'; }
+function bool(v) { return v === 'true' ? true : v === 'false' ? false : null; }
+
+// Which packages to look up: unknown to the catalog, or Vetro's own. Boot-time ones first, then the rest, capped.
+function select(rows) {
+    var byPackage = {}, order = [];
+    (Array.isArray(rows) ? rows : []).forEach(function (r) {
+        if (!r || !PACKAGE_ID.test(r.packageId || '') || !APP_ID.test(r.appId || '')) return;
+        var known = facts.packages[r.packageId] || facts.packages[r.appId];
+        if (known && !OWN.test(r.packageId)) return;
+        var p = byPackage[r.packageId];
+        if (!p) { p = byPackage[r.packageId] = {packageId: r.packageId, origin: typeof r.origin === 'string' ? r.origin : null, components: []}; order.push(p); }
+        p.components.push({appId: r.appId, registeredOnBoot: r.onboot === true ? true : r.onboot === false ? false : null,
+            registeredAutoRestart: r.autorestart === true ? true : r.autorestart === false ? false : null});
+    });
+    function rank(p) { return OWN.test(p.packageId) ? 0 : p.components.some(function (c) { return c.registeredOnBoot; }) ? 1 : 2; }
+    order.sort(function (a, b) { return rank(a) - rank(b) || (a.packageId < b.packageId ? -1 : 1); });
+    return {targets: order.slice(0, MAX_PACKAGES), total: order.length, truncated: order.length > MAX_PACKAGES};
+}
+
+function manifestScript(ids) {
+    return [
+        'for p in ' + ids.join(' ') + '; do',
+        '  f=/opt/share/packages/$p.xml; [ -f "$f" ] || f=/usr/share/packages/$p.xml',
+        '  if [ -f "$f" ]; then',
+        '    echo "P|$p"; echo "H|$(sha256sum "$f" | cut -c1-64)"',
+        '    head -c 32768 "$f" | grep -E "<(description|service-application|ui-application|privilege)[ >]" | head -n 80 | sed "s/^[[:space:]]*//"',
+        '  else echo "N|$p"; fi',
+        'done',
+        'true'
+    ].join('\n');
+}
+function hashScript(paths) {
+    return [
+        'total=0',
+        'for e in ' + paths.join(' ') + '; do',
+        '  [ -f "$e" ] || continue',
+        '  n=$(wc -c < "$e" | tr -d " ")',
+        '  if [ "$n" -le ' + MAX_EXE_BYTES + ' ] && [ $((total + n)) -le ' + BATCH_BYTES + ' ]; then sha256sum "$e"; total=$((total + n)); fi',
+        'done',
+        'true'
+    ].join('\n');
+}
+
+// One record per package. Lines that do not parse are skipped: one odd manifest must not cost the whole section.
+function parseManifests(text) {
+    var out = {}, cur = null;
+    String(text || '').split('\n').forEach(function (line) {
+        line = line.replace(CR_END_RE, '');
+        var m = TAGGED_LINE_RE.exec(line);
+        if (m) {
+            if (m[1] === 'P' && PACKAGE_ID.test(m[2])) cur = out[m[2]] = {manifest: 'found', sha256: null, description: null, privileges: [], components: {}};
+            else if (m[1] === 'N' && PACKAGE_ID.test(m[2])) { out[m[2]] = {manifest: 'missing', sha256: null, description: null, privileges: [], components: {}}; cur = null; }
+            else if (m[1] === 'H' && cur && HASH.test(m[2])) cur.sha256 = m[2];
+            return;
+        }
+        if (!cur) return;
+        var d = DESCRIPTION_TAG_RE.exec(line);
+        if (d) { if (cur.description === null && DESCRIPTION.test(d[1].trim()) && !SENSITIVE_TEXT_RE.test(d[1])) cur.description = d[1].trim(); return; }
+        var pr = PRIVILEGE_TAG_RE.exec(line);
+        if (pr) { var u = PRIVILEGE.exec(pr[1].trim()); if (u && cur.privileges.length < MAX_PRIVILEGES) cur.privileges.push((u[1] === 'tizen.org' ? 'tizen/' : 'samsung/') + u[2]); return; }
+        var c = APPLICATION_TAG_RE.exec(line);
+        if (c) {
+            var attrs = {}, re = ATTRIBUTE_RE, a;
+            re.lastIndex = 0;
+            while ((a = re.exec(c[2])) !== null) attrs[a[1]] = a[2];
+            if (APP_ID.test(attrs.appid || '')) cur.components[attrs.appid] = {
+                kind: c[1] === 'service' ? 'service' : 'ui', exec: EXEC.test(attrs.exec || '') && attrs.exec.indexOf('..') < 0 ? attrs.exec : null,
+                declaredOnBoot: bool(attrs['on-boot']), declaredAutoRestart: bool(attrs['auto-restart']), taskmanage: bool(attrs.taskmanage)};
+        }
+    });
+    return out;
+}
+function parseHashes(text) {
+    var out = {};
+    String(text || '').split('\n').forEach(function (line) {
+        var m = HASH_LINE_RE.exec(line.replace(CR_END_RE, ''));
+        if (m && EXEC.test(m[2])) out[m[2]] = m[1];
+    });
+    return out;
+}
+
+function build(selection, manifests, hashes, complete) {
+    return {
+        requested: true, complete: complete !== false, packageCount: selection.targets.length, totalUnknown: selection.total, truncated: selection.truncated,
+        packages: selection.targets.map(function (t) {
+            var m = manifests[t.packageId] || {manifest: 'missing', sha256: null, description: null, privileges: [], components: {}};
+            var open = t.origin === 'system' || t.origin === 'preinstalled' || OWN.test(t.packageId);
+            return {
+                packageId: t.packageId, origin: t.origin, manifest: m.manifest, manifestSha256: m.sha256,
+                description: open ? m.description : null, privileges: m.privileges,
+                components: t.components.map(function (c) {
+                    var d = m.components[c.appId] || null;
+                    var differs = d && d.declaredOnBoot !== null && c.registeredOnBoot !== null
+                        ? d.declaredOnBoot !== c.registeredOnBoot || (d.declaredAutoRestart !== null && c.registeredAutoRestart !== null && d.declaredAutoRestart !== c.registeredAutoRestart) : null;
+                    return {
+                        appId: c.appId, kind: d ? d.kind : null, exec: d && d.exec ? d.exec.split('/').pop() : null,
+                        declaredOnBoot: d ? d.declaredOnBoot : null, declaredAutoRestart: d ? d.declaredAutoRestart : null, taskmanage: d ? d.taskmanage : null,
+                        registeredOnBoot: c.registeredOnBoot, registeredAutoRestart: c.registeredAutoRestart, differs: differs,
+                        exeSha256: d && d.exec && hashes[d.exec] ? hashes[d.exec] : null};
+                })};
+        })
+    };
+}
+
+function chunks(list, n) {
+    var out = [];
+    for (var i = 0; i < list.length; i += n) out.push(list.slice(i, i + n));
+    return out;
+}
+
+// Sequential batches. A failure in the first manifest batch fails the section (nothing was read); later on, a failed or
+// out-of-time batch only marks the result incomplete. options.budgetMs: no new call is started after that long.
+function read(execute, rows, options) {
+    var started = Date.now(), budget = options && options.budgetMs > 0 ? options.budgetMs : BUDGET_MS;
+    var selection = select(rows), complete = true, manifests = {}, hashes = {};
+    if (!selection.targets.length) return Promise.resolve(build(selection, manifests, hashes, true));
+    function inTime() { return Date.now() - started <= budget; }
+    var batches = chunks(selection.targets.map(function (t) { return t.packageId; }), BATCH);
+    var step = batches.reduce(function (p, batch, i) {
+        return p.then(function () {
+            if (!complete) return;
+            if (i > 0 && !inTime()) { complete = false; return; }
+            return execute(wrap(manifestScript(batch)), 15000).then(function (r) {
+                if (!r || r.exit_code || r.timed_out) throw execError.failed(r, 'component facts unavailable');
+                Object.assign(manifests, parseManifests(r.stdout));
+            }).catch(function (e) { if (i === 0) throw e; complete = false; });
+        });
+    }, Promise.resolve());
+    return step.then(function () {
+        // Hash the programs of components that start at boot, Vetro's own first; the rest is not worth the disk reads.
+        var paths = [];
+        selection.targets.forEach(function (t) {
+            var m = manifests[t.packageId];
+            if (m) t.components.forEach(function (c) {
+                var d = m.components[c.appId];
+                if (d && d.exec && paths.length < MAX_EXES && paths.indexOf(d.exec) < 0 && (OWN.test(t.packageId) || c.registeredOnBoot || d.declaredOnBoot)) paths.push(d.exec);
+            });
+        });
+        return chunks(paths, HASH_BATCH).reduce(function (p, batch) {
+            return p.then(function () {
+                if (!inTime()) { complete = false; return; }
+                return execute(wrap(hashScript(batch)), 15000).then(function (h) {
+                    if (h && !h.exit_code && !h.timed_out) Object.assign(hashes, parseHashes(h.stdout));
+                }, function () { /* no checksums for this batch; the manifests are still the section */ });
+            });
+        }, Promise.resolve());
+    }).then(function () { return build(selection, manifests, hashes, complete); });
+}
+
+module.exports = {read: read, chunks: chunks, BATCH: BATCH, select: select, parseManifests: parseManifests, parseHashes: parseHashes, build: build, manifestScript: manifestScript, hashScript: hashScript, MAX_PACKAGES: MAX_PACKAGES};

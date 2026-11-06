@@ -9,6 +9,8 @@
 var net = require('net');
 var tls = require('tls');
 var crypto = require('crypto');
+// Regular expressions compiled once at module load, not on every call.
+var UPGRADE_OK_RE = /^HTTP\/1\.1 101/;
 
 var APP_NAME = 'Vetro';
 
@@ -82,7 +84,7 @@ function send(opts, frames) {
             if (!upgraded) {
                 var end = buf.indexOf('\r\n\r\n');
                 if (end === -1) return;
-                if (!/^HTTP\/1\.1 101/.test(buf.toString('latin1', 0, end))) return finish(new Error('websocket upgrade refused'));
+                if (!UPGRADE_OK_RE.test(buf.toString('latin1', 0, end))) return finish(new Error('websocket upgrade refused'));
                 upgraded = true; buf = buf.slice(end + 4);
             }
             var d = decodeFrames(buf); buf = d.rest;

@@ -1,0 +1,4 @@
+'use strict';
+// Public half of the key that signs Vetro updates (PEM text). The private half (update-private.pem) is kept offline by the
+// maintainer and never committed. Generate a new pair with `node rooting/release.cjs keygen <folder>`.
+module.exports = "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA7xUryiIWiCVTDvJTe5TI\nozax0EukmRO2ADm0guVrdJ69HzeDyYUjGzDTWoJ89ICVFCct4mN57XT2FLxFlDQ3\najOP7wsurF6phyN6eXkzeifUITziQjn1lvjNS/4nDyIbtehuA843AnuedYXsy6tE\nI60b5HKckcWt/GFzFVk4iSsFu7eGo0UlGmwIy2BeOH+QhFCH4EV5yWi+SiwKjBcE\nQLiBSatRPVjS9p/PrVTiNHuBc7LV8hYzX6DLaw0XbMrjPEZF9aAy6kkGlVPSX896\ntHsGVA4amKaKIDmo1jjcaWF+59g1DfS5JOGkf8vjOira79/RuDqdWCKcLku8pBLD\nEQfcYCpIvSVnVQ0mZIXUoGwwPH9yaAFIBZZ0K+iZHRqURuibelOWjOgR9VArUugj\nfjWilWi7RwgPdCiU8FTqOkl/GOi9puXDkD1beuPAIgYZBlrwj5+u796g4lfGKMtS\nLTjiu6kLg2ScmPbiyvotPmLt7kIp641i8A2X9c6TR03BAgMBAAE=\n-----END PUBLIC KEY-----\n";

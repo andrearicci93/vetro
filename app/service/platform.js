@@ -11,6 +11,8 @@ module.exports = {
     stop: function () { running = false; },
     status: function () { return {mode: 'app-only', running: running,
         self: {pid: process.pid, node: process.version}, prepared: false, attempts: [], agent: {connected: false}}; },
+    sdbAccess: function () { return {available:false, enabled:false, active:false, port:null}; },
+    setSdbAccess: function () { return unavailable('SDB access'); },
     execute: function () { return unavailable('execute'); },
     install: function () { return unavailable('install'); },
     setApplicationsEnabled: function () { return unavailable('application state'); }
