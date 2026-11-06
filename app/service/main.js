@@ -202,7 +202,7 @@ function downloadDiagnostics(res, withComponents) {
         settings: later(function () { return tvSettings.read(); }),
         catalog: later(function () { return menuSettings.load(); }),
         monitor: function () { return require('./diagnostic-report.js').twoSamples(function (force) { return monitor.snapshot('full', force); }, 1500, 16000).then(function(d){return Object.assign({},d,{telemetry:readTelemetry()});}); },
-        startup: later(function () { return monitor.startup(); }),
+        startup: later(function () { return monitor.startup({wait: 45000}); }),
         network: later(function () { return tvSettings.readNetwork(); }),
         dns: later(function () { return dnsFilter.status(); }),
         mqtt: function () { return bridge.status(); },
@@ -799,12 +799,21 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
 
 var auth = require('./auth.js');
 // The Vetro app polls /auth/pending and shows the code; open it so the code is on screen.
-function showPairingCode() { runActions([{type: 'launch', appId: 'vetrotvapp.app'}]).catch(function () {}); }
+// A request that comes while the root agent is still connecting (a minute or so after boot) used to lose its launch
+// silently and leave the TV without a code. It is tried again every 5 seconds for as long as the code is waiting.
+function showPairingCode(attempt) {
+    attempt = attempt || 0;
+    runActions([{type: 'launch', appId: 'vetrotvapp.app'}]).catch(function () {
+        if (attempt >= 20 || !auth.pendingLive()) return;
+        var t = setTimeout(function () { if (auth.pendingLive()) showPairingCode(attempt + 1); }, 5000);
+        if (t.unref) t.unref();
+    });
+}
 http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
     // A sandboxed plugin page carries no sign-in cookie; its URL holds a session token the plugin host checks.
     if (PLUGIN_SESSION_API_RE.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
-    if (auth.gate(req, res, url, {open: platform.status().mode === 'app-only', onPair: showPairingCode})) return;
+    if (auth.gate(req, res, url, {open: platform.status().mode === 'app-only', onPair: function () { showPairingCode(0); }})) return;
     if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson, readBody);
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
@@ -973,6 +982,10 @@ var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAtt
 // switch was left off with ids still in Samsung's list.
 var keepRemovedTimer=setInterval(function(){if(platform.status().agent.connected&&!debloatBusy&&keepRemoved.enabled())keepRemoved.check().catch(function(){});},10*60000);if(keepRemovedTimer.unref)keepRemovedTimer.unref();
 var keepRemovedBootAttempts=0;var keepRemovedBootTimer=setInterval(function(){if(++keepRemovedBootAttempts>60){clearInterval(keepRemovedBootTimer);return}if(platform.status().agent.connected){clearInterval(keepRemovedBootTimer);keepRemoved.check().catch(function(){});}},5000);if(keepRemovedBootTimer.unref)keepRemovedBootTimer.unref();
+
+// Warm the boot-state cache of the Startup tab (a 12-17 s read on a Q80A, run as a detached job so the root agent is never held up) once
+// the TV has settled, so the first visit to the tab already has it. Tried for up to 5 minutes until the adapter is connected.
+var startupWarmAttempts=0;var startupWarmTimer=setInterval(function(){if(++startupWarmAttempts>30){clearInterval(startupWarmTimer);return}if(platform.status().agent.connected){clearInterval(startupWarmTimer);monitor.startup().catch(function(){});}},10000);if(startupWarmTimer.unref)startupWarmTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
 var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

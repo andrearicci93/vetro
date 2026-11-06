@@ -68,8 +68,33 @@ stream.pending=this.execute(cmd,15000).then(function(r){if(r.exit_code||r.timed_
  if(scope==='summary'){delete result.data.processes;delete result.data.processCount;}
  stream.previous=result.sample;stream.cached=result.data;return result.data;
 }).finally(function(){stream.pending=null;});return stream.pending;};
-Monitor.prototype.startup=function(){var self=this;if(this.units&&Date.now()-this.unitsAt<60000)return Promise.resolve(this.units);if(this.unitsPending)return this.unitsPending;this.unitsPending=this.execute(UNITS_RUNNING,15000).then(function(r){if(r.exit_code||r.timed_out)throw execError.failed(r,'service inventory unavailable');
- // Without the boot states the listing is still useful: bootState stays null (unknown) instead of the whole section failing.
- return self.execute(UNITS_FILES,60000).then(function(f){return f.exit_code||f.timed_out?'':f.stdout;},function(){return '';}).then(function(files){self.units=parseUnits(r.stdout+'\n__FILES__\n'+files);self.unitsAt=Date.now();return self.units;});
-}).finally(function(){self.unitsPending=null;});return this.unitsPending;};
+// The boot-state read (list-unit-files) takes 12-17 s on a Q80A, and the root agent runs one command at a time: done in the
+// agent it held up every other TV command (remote rules, switches) for that long each time the Startup tab or the diagnostic
+// report asked for it. It now runs as a detached, low-priority job that writes a cache file; a call reads that file (instant)
+// and starts the job when the file is missing or older than UNITS_CACHE_MAX_AGE s. Until the first job has finished the boot
+// states are unknown (null) and the running states are still returned.
+var UNITS_CACHE = '/tmp/vetro-unit-files.txt';
+var UNITS_LOCK = '/tmp/vetro-unit-files.lock';
+var UNITS_CACHE_MAX_AGE = 600;
+var UNITS_AGE_RE = /^AGE\|(\d+)$/;
+var UNITS_READ = 'a=999999; [ -f ' + UNITS_CACHE + ' ] && a=$(( $(date +%s) - $(stat -c %Y ' + UNITS_CACHE + ') )); echo "AGE|$a"; [ -f ' + UNITS_CACHE + ' ] && cat ' + UNITS_CACHE + '; ' +
+ 'if [ "$a" -gt ' + UNITS_CACHE_MAX_AGE + ' ]; then l=' + UNITS_LOCK + '; if [ ! -e $l ] || [ $(( $(date +%s) - $(stat -c %Y $l) )) -gt 180 ]; then touch $l; ' +
+ "setsid sh -c 'nice -n 19 " + UNITS_FILES + ' > ' + UNITS_CACHE + '.tmp 2>/dev/null && mv -f ' + UNITS_CACHE + '.tmp ' + UNITS_CACHE + "; rm -f $0' " + UNITS_LOCK + ' >/dev/null 2>&1 </dev/null & fi; fi; true';
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+// options.wait: poll the cache for up to that many ms when the job has not produced it yet (the diagnostic report).
+Monitor.prototype.startup=function(options){var self=this,wait=options&&options.wait||0;
+ // Complete listings stay a minute; one without boot states is only kept briefly so the next call picks them up.
+ if(this.units&&Date.now()-this.unitsAt<(this.unitsComplete?60000:3000))return Promise.resolve(this.units);
+ if(this.unitsPending)return this.unitsPending;
+ this.unitsPending=this.execute(UNITS_RUNNING,15000).then(function(r){if(r.exit_code||r.timed_out)throw execError.failed(r,'service inventory unavailable');
+  var deadline=Date.now()+wait;
+  function read(){
+   // Without the boot states the listing is still useful: bootState stays null (unknown) instead of the whole section failing.
+   return self.execute(UNITS_READ,10000).then(function(f){return f.exit_code||f.timed_out?'':String(f.stdout||'');},function(){return '';}).then(function(out){
+    var lines=out.split('\n'),m=UNITS_AGE_RE.exec(lines[0]||''),files=m?lines.slice(1).join('\n'):'';
+    if(!files.trim()&&Date.now()<deadline)return sleep(3000).then(read);
+    self.units=parseUnits(r.stdout+'\n__FILES__\n'+files);self.unitsAt=Date.now();self.unitsComplete=!!files.trim();return self.units;});
+  }
+  return read();
+ }).finally(function(){self.unitsPending=null;});return this.unitsPending;};
 module.exports={Monitor:Monitor,parse:parse,processStat:processStat,parseUnits:parseUnits};

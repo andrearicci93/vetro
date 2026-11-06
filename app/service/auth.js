@@ -318,7 +318,7 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 'fetch("/auth/state").then(function(r){return r.json()}).then(function(d){if(!d.pending)return;if(d.mine)enter(d.expiresIn);else busy(d.expiresIn,false)}).catch(function(){});' +
 '</script></body></html>';
 
-module.exports = {pairingMode: pairingMode, setPairingMode: setPairingMode, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
+module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingMode: setPairingMode, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
     _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
     _ownAddresses: function (fn) { interfaces = fn || function () { return os.networkInterfaces(); }; ownCache = {at: 0, list: []}; },
     _unthrottle: function () { lastPairAt = 0; }};

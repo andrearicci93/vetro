@@ -18,13 +18,19 @@ first.then(()=>m.snapshot()).then(()=>{assert.equal(count,1,'simultaneous client
 
 const mapped=monitor.parse('__APPS__\n user.ui (12)\n'+snapshot(1000,800,10,1,100),null,1000);assert.equal(mapped.data.processes[0].appId,'user.ui');
 
-// The startup listing is two commands: a slow boot-state read (13-17 s on a Q80A) must not take the running states with it
+// The startup listing: the boot states (12-17 s on a Q80A) come from a cache file written by a detached job, so the root
+// agent, which runs one command at a time, is never held up by them, and the running states never wait for them.
 (async()=>{
- const calls=[];const run=(files)=>new monitor.Monitor((cmd,t)=>{calls.push({cmd,t});
-  if(cmd.indexOf('list-unit-files')>=0)return files==='timeout'?Promise.resolve({timed_out:true,stdout:''}):Promise.resolve({exit_code:0,stdout:'hotel.service disabled\n'});
+ const calls=[];const run=(cache)=>new monitor.Monitor((cmd,t)=>{calls.push({cmd,t});
+  if(cmd.indexOf('echo "AGE|$a"')>=0)return Promise.resolve({exit_code:0,stdout:cache==='ready'?'AGE|5\nhotel.service disabled\n':cache==='late'&&calls.filter(c=>c.cmd.indexOf('AGE|')>=0).length>1?'AGE|5\nhotel.service disabled\n':'AGE|999999\n'});
   return Promise.resolve({exit_code:0,stdout:'hotel.service loaded active running Hotel\n'});});
- const ok=await run('ok').startup();assert.equal(ok[0].bootState,'disabled');
- const l=calls.find(c=>c.cmd.indexOf('list-unit-files')>=0);assert.ok(l.t>=45000,'the boot-state read gets a long limit of its own');assert.ok(calls[0].t<=15000);
- const slow=await run('timeout').startup();assert.equal(slow[0].active,'active');assert.equal(slow[0].bootState,null,'boot states unknown, not the whole listing failed');
- console.log('PASS monitor startup: running states survive a slow or failed boot-state read');
+ const ok=await run('ready').startup();assert.equal(ok[0].bootState,'disabled');
+ assert.ok(!calls.some(c=>/^systemctl list-unit-files/.test(c.cmd)),'list-unit-files never runs in the agent itself');
+ const job=calls.find(c=>c.cmd.indexOf('echo "AGE|$a"')>=0);
+ assert.ok(job.t<=15000,'reading the cache is a short command');
+ assert.match(job.cmd,/setsid sh -c 'nice -n 19 systemctl list-unit-files/,'a missing or old cache starts a detached low-priority job');
+ assert.match(job.cmd,/stat -c %Y/,'the job is not started twice within its lock window');
+ const cold=await run('empty').startup();assert.equal(cold[0].active,'active');assert.equal(cold[0].bootState,null,'no cache yet: boot states unknown, running states still there');
+ const waited=await run('late').startup({wait:10000});assert.equal(waited[0].bootState,'disabled','the report waits for the job');
+ console.log('PASS monitor startup: boot states come from a cache written by a detached job; running states never wait for them');
 })().catch(e=>{console.error(e);process.exitCode=1});

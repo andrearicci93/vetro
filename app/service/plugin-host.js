@@ -631,7 +631,7 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
         return true;
     }
     if (!entry.instance || !entry.instance.route) { json(res, { error: 'Plugin not running' }, 503); return true; }
-    var handled = false;
+    var handled = false, errorsBefore = entry.errors;
     // A plugin page is untrusted content: sandboxed even when opened on its own, and
     // readable by the sandboxed dashboard frame (opaque origin) through CORS.
     res.setHeader('Content-Security-Policy', 'sandbox allow-scripts');
@@ -643,7 +643,10 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     }
     this._guard(entry, function () { handled = entry.instance.route(req, res, api[1] || '') !== false; });
     if (!handled && !res.headersSent) {
-        json(res, { error: entry.state === 'failed' ? 'Plugin failed: ' + entry.lastError : 'Not found' }, entry.state === 'failed' ? 503 : 404);
+        // A route that threw says so (500) instead of looking like a missing route (404), which hid the first failures.
+        if (entry.state === 'failed') json(res, { error: 'Plugin failed: ' + entry.lastError }, 503);
+        else if (entry.errors > errorsBefore) json(res, { error: 'Plugin error: ' + entry.lastError }, 500);
+        else json(res, { error: 'Not found' }, 404);
     }
     return true;
 };

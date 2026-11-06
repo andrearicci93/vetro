@@ -49,7 +49,8 @@ assert.deepEqual(h2.status('web').ui, { label: 'Web' });
 let r = res();
 assert.equal(h2.handle({ method: 'GET' }, r, '/other', json), false);
 r = res(); h2.handle({ method: 'GET' }, r, '/plugins/web/api/x', json);
-assert.equal(r.code, 404);
+assert.equal(r.code, 500);                       // a route that threw is an error, not a missing route
+assert.match(r.body.error, /Plugin error: bad route/);
 r = res(); h2.handle({ method: 'GET' }, r, '/plugins/web/api/x', json);
 assert.equal(h2.status('web').state, 'failed');
 r = res(); h2.handle({ method: 'GET' }, r, '/plugins/web/api/x', json);

@@ -237,9 +237,14 @@ Updater.prototype._applyScript = function (from, to, changed, existing, added, h
         lines.push('[ "$(sha256sum "$S/' + n + '" | cut -d" " -f1)" = "' + hashes[n] + '" ] || { echo "staged file changed: ' + n + '" >&2; exit 3; }');
     });
     existing.forEach(function (n) { lines.push('mkdir -p "$B/' + path.dirname(n) + '"; cp -p "$I/' + n + '" "$B/' + n + '"'); });
-    changed.forEach(function (n) {
-        lines.push('mkdir -p "$I/' + path.dirname(n) + '"; cp "$S/' + n + '" "$I/' + n + '.vnew" && chmod 644 "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"');
-    });
+    // The copy is one && chain, not `set -e` lines: if a copy fails half way (disk full, a read-only folder) the files already
+    // replaced are put back at once, because no watchdog exists yet at this point and a mix of old and new files would
+    // otherwise stay until the next restart. (`set -e` is ignored inside an `||` list, so the chain is explicit.)
+    var chain = changed.map(function (n) {
+        return 'mkdir -p "$I/' + path.dirname(n) + '" && cp "$S/' + n + '" "$I/' + n + '.vnew" && chmod 644 "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"';
+    }).join(' && ');
+    var undo = this._restoreLines(existing, added).concat(changed.map(function (n) { return 'rm -f "$I/' + n + '.vnew"'; }));
+    lines.push(chain + ' || {', undo.join('\n'), 'echo "copy failed: the previous files were put back" >&2; exit 4', '}');
     lines.push("echo '" + JSON.stringify({ from: from, to: to, dock: dock, at: Date.now() }) + "' > \"$W/pending.json\"");
     lines.push(detached(this._watchdog(to, existing, added, dock)), detached('sleep 3; ' + this.restartCommand), 'exit 0');
     return lines.join('\n') + '\n';

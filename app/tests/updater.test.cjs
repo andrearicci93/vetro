@@ -96,6 +96,17 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     assert.ok(!fs.existsSync(path.join(f.work, 'rolled-back')));
     assert.equal(f.u.status().last.state, 'updated'); assert.equal(f.u.status().pending, null);
 
+    // a copy that fails half way (here "native" is a file, so native/dock/x.dll cannot be created, after index.html was
+    // already replaced): the replaced files are put back at once and the apply reports the failure instead of leaving a mix
+    f = fixture('0.4.0');
+    fs.writeFileSync(path.join(f.install, 'native'), 'not a folder');
+    await assert.rejects(f.u.apply(bundle('0.4.1', { 'index.html': 'new html', 'native/dock/x.dll': 'dll', 'service/a.js': 'new a' })), /could not be replaced/);
+    assert.equal(f.read('index.html'), "var BASE = 'http://127.0.0.1:9123';", 'a half-done copy is undone');
+    assert.equal(f.read('service/a.js'), 'old a');
+    assert.ok(!fs.readdirSync(f.install).some(n => /\.vnew$/.test(n)), 'no temp copies left');
+    assert.equal(f.u.status().pending, null, 'nothing waits for a confirmation that will never come');
+    assert.equal(f.u.status().busy, false);
+
     // failure to confirm: the watchdog puts the old files back, removes the added one and restarts
     f = fixture('0.4.0');
     await f.u.apply(next);
