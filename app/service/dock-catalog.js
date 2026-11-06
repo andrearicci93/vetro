@@ -52,8 +52,9 @@ var SYSTEM_ROWS = [
     'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu',
     'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'
 ];
-// 2025 (CoBA) firmware: csfs is only the service; the Home that comes up on screen is started through this app,
-// which then spawns csfs, home.sidebar and home.media. When it is installed the pill starts it instead.
+// Installing a CoBA component does not make it this TV's Home entry point.
+// Prefer an actual visible csfs UI; use CoBA only when csfs is not registered as one.
+var CSFS_HOME = 'com.samsung.tv.csfs';
 var COBA_HOME = 'com.samsung.tv.coba.newhome';
 
 function script() {
@@ -70,7 +71,7 @@ function script() {
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
-        '[ -d /usr/apps/' + COBA_HOME + ' ] || [ -d /opt/usr/apps/' + COBA_HOME + ' ] && echo "H|' + COBA_HOME + '"',
+        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'H|\'||app_id||\'|\'||app_component||\'|\'||app_nodisplay FROM package_app_info WHERE app_id IN (\'' + CSFS_HOME + '\',\'' + COBA_HOME + '\');" 2>/dev/null',
         'true'
     ].join('\n');
 }
@@ -84,6 +85,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
+    var homeUi = {};
     var out = {order: [], registry: {}, icons: {}, packageIcons: {}, sources: {}, homeApp: null, rowFrom: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
@@ -104,11 +106,12 @@ function parse(text) {
             } else if (f[0] === 'P' && f.length === 3) {
                 var icon = unhex(f[2]), id = unhex(f[1]);
                 if (iconOk(icon) && !out.packageIcons[id]) out.packageIcons[id] = icon;
-            } else if (f[0] === 'H' && f.length === 2) {
-                if (f[1].trim() === COBA_HOME) out.homeApp = COBA_HOME;
+            } else if (f[0] === 'H' && f.length === 4) {
+                if ((f[1] === CSFS_HOME || f[1] === COBA_HOME) && f[2] === 'uiapp' && f[3] === 'false') homeUi[f[1]] = true;
             }
         } catch (e) { /* skip the line */ }
     });
+    out.homeApp = homeUi[CSFS_HOME] ? CSFS_HOME : homeUi[COBA_HOME] ? COBA_HOME : null;
     return out;
 }
 
@@ -220,8 +223,7 @@ function tsv(built) {
         lines.push(entryLine(e));
     });
     var system = SYSTEM_ROWS.map(function (row) {
-        // The CoBA home launcher first, Samsung's older home app as the fallback the dock already knows.
-        return built.homeApp ? row.replace('sys:com.samsung.tv.csfs', 'sys:' + built.homeApp + '\tcom.samsung.tv.csfs') : row;
+        return built.homeApp === COBA_HOME ? row.replace('sys:com.samsung.tv.csfs', 'sys:' + COBA_HOME + '\t' + CSFS_HOME) : row;
     });
     return lines.concat(system).join('\n') + '\n';
 }
