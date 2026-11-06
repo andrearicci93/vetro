@@ -27,6 +27,7 @@ var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
 var dock = new (require('./dock.js').Dock)({execute: agentExecute});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
+var shell = require('./shell.js');
 var wins = new (require('./quick-wins.js').Wins)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
 var tvState = new (require('./tv-state.js').Store)(agentExecute);
@@ -601,6 +602,7 @@ http.createServer(function (req, res) {
         if (url === '/input') return handleInput(req,res);
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
+        if (url === '/shell') return readJsonBody(req,res,function(p){shell.run(agentExecute,p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},/^(Missing|Command too|Invalid|Time limit)/.test(e.message)?400:503)});});
         if (url === '/debloat') return handleDebloatAction(req, res);
         if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/wins') return handleWins(req,res);

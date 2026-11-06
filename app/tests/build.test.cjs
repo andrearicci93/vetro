@@ -15,7 +15,7 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/')).sort
     'service/build-info.js', 'service/blocklist.js', 'service/exec-error.js', 'service/app-catalog.js', 'service/app-facts.js', 'service/app-groups.js','service/app-registry.js', 'service/dashboard.js', 'service/physical-input.js', 'service/presence.js', 'service/apps.js', 'service/component-actions.js','service/control.js',     'service/debloat.js', 'service/diagnostic-report.js', 'service/hbbtv.js','service/home-order.js','service/local-dns.js','service/menu-settings.js','service/main.js',
     'service/mqtt-bridge.js', 'service/mqtt.js', 'service/compat.js', 'service/package-info.js',
     'service/platform.js', 'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/leftovers.js', 'service/remap.js',
-    'service/samsung-remote.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
+    'service/samsung-remote.js', 'service/screen-status.js', 'service/settings.js', 'service/shell.js', 'service/system-monitor.js','service/tv-settings.js'
 ].sort());
 const metadata = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js').data.toString();
 const context = {module: {exports: {}}};

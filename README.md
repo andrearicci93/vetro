@@ -72,6 +72,7 @@ Do what you want with the remote. Press a button, choose an app, and the button 
 - **TV settings:** adjust supported picture controls and selected advanced settings, with read-back and restore.
 - **MQTT and Home Assistant:** publish the TV's state and discovery and trigger actions from exact topics. [Setup guide](app/docs/mqtt/README.md).
 - **Dashboard:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.
+- **Shell:** run commands on the TV as root from the dashboard, one at a time; `cd` is remembered between commands. Like the rest of the dashboard it has no login, so keep the TV on a trusted LAN.
 - **Diagnostics:** download a redacted report to share in an issue. [Report format](app/docs/DIAGNOSTIC-EXPORT.md).
 
 ## Install
