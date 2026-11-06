@@ -14,7 +14,7 @@ assert.match(html,/<div id="quickTabs" class="tabs" role="tablist" aria-label="Q
 const qtabs=[...html.matchAll(/data-quick-tab="(\w+)" aria-controls="quickPanel-(\w+)" aria-selected="(true|false)" tabindex="(0|-1)"/g)];
 assert.deepEqual(qtabs.map(m=>m[1]),['general','privacy','voice','memory','developer']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
 assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1'],'roving tabindex');
-['quickTracking','quickVoice','quickMemory','quickStorage','quickControl'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
+['quickTracking','quickVoice','quickMemory','quickKeep','quickStorage','quickControl'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
 assert.ok(!html.includes('qtab-home')&&!html.includes('quickPanel-home')&&!html.includes('id="quickHome"'),'Quick settings has no Home tab any more');
 let restoreDone=false;
 const restoreState=()=>({ok:true,pending:restoreDone?0:2,notes:['Packages removed from the Task manager cannot be brought back from here.'],items:[
@@ -79,12 +79,12 @@ const tick=()=>new Promise(r=>setImmediate(r));
  const fw={dataset:{winSwitch:'firmware'},checked:true};await el('quick').onchange({target:fw});await tick();await tick();
  assert.deepEqual(calls.find(c=>c.url==='/wins'&&c.body).body,{id:'firmware',on:true});
  assert.match(sandbox.operationEntries[0].message,/Auto update off; value 1 → 0 read back/);assert.equal(sandbox.operationEntries[0].resultLabel,'State read back');
- // The Disable tab: AirPlay is a win like the others, and Keep removed apps removed is one global switch with its list
+ // The Disable tab: AirPlay is a win like the others. Keep removed apps removed is one global switch with its list, in General
  assert.match(html,/id="qtab-memory"[^>]*>Disable</);assert.doesNotMatch(html,/>Free memory</);assert.match(html,/Disable what you don’t use/);
  assert.match(el('quickMemory').innerHTML,/<h3>Disable AirPlay<\/h3>/);assert.match(el('quickMemory').innerHTML,/data-win-switch="airplay"(?! checked)/,'AirPlay running: its switch is off');
  assert.match(el('quickMemory').innerHTML,/Casting from an Apple device to this TV does not work while this is on/);
- assert.match(el('quickMemory').innerHTML,/<h3>Keep removed apps removed<\/h3>/);assert.match(el('quickMemory').innerHTML,/data-keep-switch[^>]*checked/);assert.match(el('quickMemory').innerHTML,/On · 2 apps on the list/);
- assert.match(el('quickMemory').innerHTML,/data-keep-allow="MCmYXNxgcu"/);assert.match(el('quickMemory').innerHTML,/select Allow again first/);
+ assert.doesNotMatch(el('quickMemory').innerHTML,/Keep removed apps removed/,'it is a General setting, not in the Disable tab');assert.match(el('quickKeep').innerHTML,/<h3>Keep removed apps removed<\/h3>/);assert.match(el('quickKeep').innerHTML,/data-keep-switch[^>]*checked/);assert.match(el('quickKeep').innerHTML,/On · 2 apps on the list/);
+ assert.match(el('quickKeep').innerHTML,/data-keep-allow="MCmYXNxgcu"/);assert.match(el('quickKeep').innerHTML,/select Allow again first/);
  const kp={dataset:{keepSwitch:''},checked:false};await el('quick').onchange({target:kp});await tick();await tick();
  assert.deepEqual(keepPost,{action:'disable'},'the global switch posts enable or disable');
  assert.match(sandbox.operationEntries[0].message,/Off: the ids Vetro added are taken out of Samsung’s list/);
