@@ -8,7 +8,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 ### Sign-in, plugins and updates
 
 - **Dashboard and API pairing** ([#5](https://github.com/andrearicci93/vetro/issues/5),
-  [#9](https://github.com/andrearicci93/vetro/pull/9), by **zerodevb**). LAN clients pair
+  requested by **PythEch**; [#9](https://github.com/andrearicci93/vetro/pull/9), by **zerodevb**). LAN clients pair
   using a six-digit code shown only on the TV, then authenticate with an HttpOnly,
   SameSite=Strict cookie or a bearer token. Only key hashes are stored. Browser origin
   checks protect pairing and authenticated requests; the TV-app bypass requires loopback
@@ -86,7 +86,8 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   label. The diagnostic export reports the mode and whether a custom app is set, never
   its id. **Not tried on a TV. The boot with Samsung's Home disabled is unverified:**
   the firmware's first-screen script retries `app_launcher -f com.samsung.tv.csfs`
-  until it succeeds, and what that returns for a disabled app is not known.
+  until it succeeds, and what that returns for a disabled app is not known. Related request: [#127](https://github.com/andrearicci93/vetro/issues/127) by **skjnldsv**
+  (an app as the TV's home at power-on); this mode is a different route and does not close it.
 - **Compatibility fixes from `main`.** Includes Tizen 10 service startup, the 0.3.5 fixes,
   and the Node 4.4 integration adapter/fallback for older TVs
   ([#75](https://github.com/andrearicci93/vetro/pull/75), by **Merennor**).
@@ -148,9 +149,9 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   read-back. Restore the TV has a step for it and the diagnostic export a read-only
   `factoryTest` section. Tried only against a simulated TV; the real `vconftool` output for
   this key is assumed to match the other keys.
-- **Catalog and domain candidates.** Adds app classifications from reports #14, #17 and
-  #26, and `rtb-config-canary.samsungads.com` as a firmware-derived, untested candidate.
-  The separately offered `cdn-stv.adgrx.com` Home-picture host (#79/#109) stays out of
+- **Catalog and domain candidates.** Adds app classifications from reports #14 (**Kuzekunn**), #17 (**REVANOX**) and
+  #26 (**antonio1475**), and `rtb-config-canary.samsungads.com` as a firmware-derived, untested candidate.
+  The separately offered `cdn-stv.adgrx.com` Home-picture host (#79, reported by **RyanDChavez**; #109) stays out of
   exported default lists; blocking it alone does not remove already cached pictures.
 
 ### Dashboard, diagnostics and performance
@@ -173,7 +174,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   readable fallbacks. The preview reflects Reduce motion's stable icon geometry.
 - **Task manager roles.** Removed the confusing “Not used at home” label and filter;
   commercial-mode components remain discoverable through their area.
-- **App-list recovery and launch targets** (#89, #100, #109). Failed, empty or slow
+- **App-list recovery and launch targets** ([#89](https://github.com/andrearicci93/vetro/issues/89) by **Ghakizu**, [#100](https://github.com/andrearicci93/vetro/issues/100) by **Licaa21**, #109). Failed, empty or slow
   inventory reads show their state and Retry. Samsung Settings components are excluded
   from launch pickers and refused in new remaps; old rules load but skip those actions.
 - **TV screen and device information** (#88, #106, #107). Named steps, elapsed time,
@@ -181,6 +182,11 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   startup. Firmware and Tizen version can be read by the service; a missing model can
   fall back to the TV's local API. Values retain their source. Missing launcher logs
   no longer turn a not-running status into a probe failure (#82/#108).
+  Reports behind this work: [#82](https://github.com/andrearicci93/vetro/issues/82) **thatrandomtrooper** (launcher status), [#83](https://github.com/andrearicci93/vetro/issues/83) **andreknieriem**,
+  [#94](https://github.com/andrearicci93/vetro/issues/94) **BennoGAP**, [#101](https://github.com/andrearicci93/vetro/issues/101) **Nebarik** and [#104](https://github.com/andrearicci93/vetro/issues/104) **pponce** (the screen stuck on “Checking” or leaving
+  an incomplete report), [#87](https://github.com/andrearicci93/vetro/issues/87) **Hielkez**, [#17](https://github.com/andrearicci93/vetro/issues/17) **REVANOX** and [#25](https://github.com/andrearicci93/vetro/issues/25) **JamesMills818** (firmware and Tizen
+  version missing from reports), [#91](https://github.com/andrearicci93/vetro/issues/91) **FUSIONOF** and [#99](https://github.com/andrearicci93/vetro/issues/99) **lequan2909** (root on Tizen 9/10),
+  [#2](https://github.com/andrearicci93/vetro/issues/2) **Merennor** (Node 4.4).
 - **Opt-in component diagnostics.** Export manifest descriptions, requested privileges,
   boot/restart registration differences and checksums for unrecognised components,
   without file contents or paths. Reads are bounded and low priority; a Q80A sample
@@ -193,12 +199,27 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   overlap independent startup, restore and DNS reads. TV commands and dependent
   write/readback/rollback chains remain ordered. No new TV latency benchmark is claimed.
 
-### Credits and validation
+### Credits
 
-README now credits zerodevb (#9), Firaenix (#23/#24) and Merennor (#75), including
-adapted contributions whose PR remains open. Existing contributor/upstream credits
-remain intact. Both WGT variants carry full license notices; integration also carries
-the root-research notice.
+Code in this release:
+
+- **zerodevb**: dashboard and API pairing, including its Node 4.4 support ([#9](https://github.com/andrearicci93/vetro/pull/9)).
+- **Firaenix**: CoBA multi-app Home guard, still selection (now Reduce motion), raw navigation, delayed Home
+  echoes and the CoBA Samsung Home tile, adapted into the bundled launcher ([#23](https://github.com/andrearicci93/vetro/pull/23), [#24](https://github.com/andrearicci93/vetro/pull/24)).
+- **Merennor**: Node 4.4 support for the integration adapter, and the unsupported-root fallback ([#75](https://github.com/andrearicci93/vetro/pull/75)).
+- Merged from `main` and credited in 0.3.5: **tomcraft** ([#31](https://github.com/andrearicci93/vetro/pull/31), [#32](https://github.com/andrearicci93/vetro/pull/32)), **SalustLab** ([#33](https://github.com/andrearicci93/vetro/pull/33)), **domenix** ([#27](https://github.com/andrearicci93/vetro/pull/27), [#29](https://github.com/andrearicci93/vetro/pull/29), [#52](https://github.com/andrearicci93/vetro/pull/52)),
+  **bertrandom** ([#47](https://github.com/andrearicci93/vetro/pull/47)) and **PatrickSt1991** ([#21](https://github.com/andrearicci93/vetro/pull/21)).
+
+Reports and requests that led to changes (each is named where its change is described above):
+**PythEch** ([#5](https://github.com/andrearicci93/vetro/issues/5), pairing), **skjnldsv** ([#127](https://github.com/andrearicci93/vetro/issues/127), home app), **adri0894-web** ([#116](https://github.com/andrearicci93/vetro/issues/116), second update while one is pending),
+**9francy9** ([#135](https://github.com/andrearicci93/vetro/issues/135), factory colour test), **thatrandomtrooper**, **andreknieriem**, **BennoGAP**, **Nebarik**,
+**pponce**, **Hielkez**, **REVANOX**, **JamesMills818**, **FUSIONOF**, **lequan2909**, **Ghakizu**, **Licaa21**,
+**RyanDChavez**, **Kuzekunn** and **antonio1475**.
+
+README lists the code contributors and the upstream projects, including adapted contributions whose PR
+remains open. Both WGT variants carry full license notices; integration also carries the root-research notice.
+
+### Validation
 
 Local checks: **88 application suites, 13 integration suites, 5,130 native launcher
 checks, 19 diagnostic-parser tests and 6 boot-recorder tests**; unsigned app-only and
