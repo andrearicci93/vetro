@@ -379,12 +379,34 @@ function paintPairing() {
   el.hidden = !pairing;
   el.innerHTML = 'PIN<b>' + (pairing ? esc(pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3)) : '') + '</b><i>' + esc(pairing ? pinLine() : '') + '</i>';
 }
+// A soft two-partial "ding" when a new code appears, since the code itself is small to spot from the sofa. A sine with a
+// quick attack and a long exponential fade; no audio file, and any failure (no Web Audio, blocked) stays silent.
+function ding() {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext, ctx, t, g, o, i, parts = [[880, 0.10], [1760, 0.025]];
+    if (!AC) return;
+    ctx = new AC();
+    if (ctx.resume) ctx.resume();
+    t = ctx.currentTime;
+    for (i = 0; i < parts.length; i++) {
+      o = ctx.createOscillator(); g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = parts[i][0];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(parts[i][1], t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 1.5);
+    }
+    setTimeout(function () { try { ctx.close(); } catch (e) {} }, 2000);
+  } catch (e) {}
+}
 function showPairing(p) {
   var was = pairing && pairing.code;
   pairing = p && p.code ? {code: String(p.code), name: String(p.name || 'Browser'), until: Date.now() + (+p.expiresIn || 120) * 1000} : null;
   if (pairing) resetIdle();                       // the screen stays open while a code is waiting
   if (!pairing && !was) return;
   paintPairing();
+  if (pairing && pairing.code !== was) ding();
 }
 function checkPairing() {
   if (document.hidden) return;
