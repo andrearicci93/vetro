@@ -5,6 +5,7 @@ var path = require('path');
 var crypto = require('crypto');
 var sdb = require('./sdb.js');
 var checkTarget = require('./root-preflight.js').checkTarget;
+var createPreflightRunner = require('./root-preflight-capture.js').createRunner;
 var tarGz = require('./tar.js').tarGz;
 var RootAgentServer = require('./root-agent.js').RootAgentServer;
 var TunnelServer = require('./sdb-tunnel.js').TunnelServer;
@@ -363,14 +364,21 @@ function relaunch() {
     // the single token)
     if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
 
-    var stage = 'preflight';
-    rootPhase('preflight');
+    var stage = 'sdb-handshake';
+    rootPhase('sdb-handshake');
     state.preflight = null;
     var entry = { t: Date.now(), phase: 'launch' };
     pushAttempt(entry);
     Promise.resolve().then(function () {
         if (!state.running || gen !== launchGen || agentConnected) return;
-        return checkTarget();
+        return sdb.connect(sdbTarget());
+    }).then(function (client) {
+        if (!state.running || gen !== launchGen || agentConnected) { if (client) sdb.close(client); return; }
+        launchClient = client;
+        entry.connect = 'ok';
+        stage = 'preflight';
+        rootPhase('preflight');
+        return checkTarget({run: createPreflightRunner(client, buildInjection)});
     }).then(function (assessment) {
         if (!state.running || gen !== launchGen || agentConnected) return;
         state.preflight = assessment;
@@ -391,9 +399,7 @@ function relaunch() {
             e.code = 'token-write-failed';
             throw e;
         }
-        stage = 'sdb-handshake';
-        rootPhase('sdb-handshake');
-        return sdb.connect(sdbTarget());
+        return launchClient;
     })
         .then(function (client) {
             if (!state.running || gen !== launchGen || agentConnected) {
@@ -436,6 +442,7 @@ function relaunch() {
         .catch(function (e) {
             if (!state.running || gen !== launchGen || agentConnected) return;
             launching = false;
+            if (launchClient) sdb.close(launchClient);
             launchClient = null;
             entry.connect = 'fail:' + (e.code || 'error');
             entry.err = String(e.message || e);

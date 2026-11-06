@@ -1,17 +1,8 @@
 'use strict';
 // Runtime/capability checks adapted from chris-ritsen/samsung-tv-root v0.0.12
-// (Unlicense); see THIRD_PARTY_NOTICES.md. Runs locally as the TV service user.
+// (Unlicense); see THIRD_PARTY_NOTICES.md. Commands run through TV-local SDB.
 var fs = require('fs');
-var execFile = require('child_process').execFile;
-
 function failure(code) { var e = new Error(code); e.code = code; return e; }
-function run(file, args) {
-    return new Promise(function (resolve) {
-        execFile(file, args, { timeout: 15000, maxBuffer: 128 * 1024, encoding: 'utf8' }, function (error, stdout, stderr) {
-            resolve({ ok: !error, code: error && error.code, output: String(stdout || '') + String(stderr || '') });
-        });
-    });
-}
 function selectRuntime(versions) {
     if (versions.some(function (v) { return v[0] >= 6; })) return '6.0';
     if (versions.some(function (v) { return v[0] === 3 && v[1] === 1; })) return '3.1';
@@ -51,7 +42,8 @@ function effectiveCapabilities(output, file, required) {
     return required.every(function (name) { return (caps[name] || '').indexOf('e') >= 0; });
 }
 function checkTarget(options) {
-    var opts = options || {}, execute = opts.run || run, files = opts.fs || fs;
+    var opts = options || {}, execute = opts.run, files = opts.fs || fs;
+    if (typeof execute !== 'function') return Promise.reject(failure('preflight-failed'));
     return execute('/usr/bin/dotnet', ['--list-runtimes']).then(function (result) {
         var runtime = detectRuntime(result, files);
         return execute('getcap', ['/usr/bin/dotnet', '/usr/sbin/sdbd-tarlauncher']).then(function (caps) {

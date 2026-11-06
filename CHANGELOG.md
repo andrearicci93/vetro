@@ -5,7 +5,7 @@
 Pairing for the dashboard and API, plugins with the launcher bundled, stronger privacy controls,
 and safer restore and state changes. There was no 0.4.0 release: its preliminary work is included here.
 
-- **Root runtime preflight:** selectively adapt runtime detection, Samsung apphost fallback, effective capability checks and tar support checks from Chris Ritsen and contributors' samsung-tv-root v0.0.12 (Unlicense). Root bootstrap selects matching .NET 3.1 or .NET 6 payloads; diagnostics identify preflight failures and the selected root runtime. Credits and the packaged license are updated. No new exploit or persistence mechanism; offline tests only, not deployed to a TV.
+- **Root runtime preflight:** selectively adapt runtime detection, Samsung apphost fallback, effective capability checks and tar support checks from Chris Ritsen and contributors' samsung-tv-root v0.0.12 (Unlicense). Root bootstrap selects matching .NET 3.1 or .NET 6 payloads; diagnostics identify preflight failures and the selected root runtime. Credits and the packaged license are updated. Probes run through SDB with bounded loopback capture, avoiding `child_process.execFile`, which terminates the Q80A web-service host. No new exploit or persistence mechanism; offline tests only, not deployed to a TV.
 
 ### Sign-in, plugins and updates
 

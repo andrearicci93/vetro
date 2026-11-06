@@ -36,7 +36,7 @@ Root preflight failures use stage `preflight` and fixed codes:
 `runtime-probe-failed`, `runtime-unsupported`, `capabilities-probe-failed`,
 `dotnet-capabilities-missing`, `launcher-capabilities-missing`, `tar-probe-failed`,
 `tar-unsupported`, or `preflight-failed`. They describe read-only checks run as the
-TV service user, not a confirmed firmware incompatibility. `platform.rootRuntime`
+SDK user over TV-local SDB, not a confirmed firmware incompatibility. `platform.rootRuntime`
 is `3.1`, `6.0` (the payload family used for 6+), or null when no complete preflight
 assessment is available. It is separate from the Node.js `runtime` field.
 No raw probe output or resolved runtime paths are exported.

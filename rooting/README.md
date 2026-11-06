@@ -71,13 +71,17 @@ see [SECURITY.md](../SECURITY.md).
 
 ## Runtime preflight (selective v0.0.12 integration)
 
-Before staging a root launch, the adapter checks the TV locally as the service
-user: `/usr/bin/dotnet --list-runtimes`, effective file capabilities via `getcap`,
+Before staging a root launch, the adapter establishes SDB and runs read-only
+checks as the SDK user through the existing injection route:
+`/usr/bin/dotnet --list-runtimes`, effective file capabilities via `getcap`,
 and `/usr/bin/tar --help` for `--to-command`. A Samsung apphost rejecting
 `--list-runtimes` with exit 255 is handled by resolving
 `/usr/share/dotnet.tizen/netcoreapp` and checking both CLR files. Only .NET 3.1
 or 6+ is accepted; the active runtime is detected, never inferred from model/year.
-A failed or unavailable check prevents launch and retains a bounded diagnostic
+The web-service host does not spawn subprocesses: a bounded, loopback-only
+callback captures each probe's output and exit status, with temporary scripts
+removed on success or timeout. A failed or unavailable check prevents launch
+and retains a bounded diagnostic
 failure while the normal boot retry remains available. These local checks do not
 prove SDB injection will work or that a privileged callback will arrive.
 
@@ -98,5 +102,6 @@ The module adapts Chris Ritsen and contributors' `archive_root.py` at v0.0.12;
 see [third-party notices](../THIRD_PARTY_NOTICES.md) for exact provenance and the
 Unlicense. The Python tool is retained with local changes; it was not replaced.
 The upstream host timing-probe retry and frozen-Linux OpenSSL fix are not used by
-this TV-local adapter. This integration has offline test coverage only and has
-not been deployed or validated on a TV.
+this TV-local adapter. The native-spawn failure and corrected service startup
+were checked on the owner's Q80A. Runtime detection, capability checks and
+loopback capture have offline test coverage; .NET 6+ remains untested on hardware.

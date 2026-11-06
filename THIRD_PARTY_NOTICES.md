@@ -14,15 +14,15 @@ The runtime detection, Samsung apphost fallback, effective file-capability check
 and tar preflight in `rooting/service/root-preflight.js` are adapted from
 [`archive_root.py` at v0.0.12](https://github.com/chris-ritsen/samsung-tv-root/blob/v0.0.12/src/samsung_tv_root/archive_root.py)
 (release commit `3b97edf`). Credit: Chris Ritsen and the samsung-tv-root
-contributors, under the Unlicense. Vetro runs these read-only checks locally as
-the TV service user; upstream runs them through its host-side SDB client.
+contributors, under the Unlicense. Vetro captures the read-only commands through
+TV-local SDB as the SDK user, following the upstream SDB callback pattern. This
+avoids spawning subprocesses in Tizen's web-service host.
 The archive launcher and root-agent C# sources in the vendored tree were compared
 with v0.0.12 and are unchanged. `rooting/payload/net6/` compiles those sources for
 .NET 6, alongside the existing .NET 3.1 payloads. This is a selective adaptation,
 not a wholesale upgrade of the vendored Python tool (whose metadata remains 0.0.8).
 The upstream Unlicense remains included as `notices/LICENSE-samsung-tv-root.txt`
 in integration packages.
-
 
 ## Apps2Samsung
 
