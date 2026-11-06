@@ -191,9 +191,9 @@ function build(parsed, options) {
             if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
         }
     });
-    // Without a csfs row (the 2022 Home), the row above is at best the "recent" strip: every other visible
-    // app of the registry follows, by title, so the dock shows the same apps as the Home's app list.
-    if (parsed.rowFrom !== 'csfs') {
+    // A Media hub cache can be a full Home row or just a recent strip. Its directory alone
+    // cannot distinguish them: completion is a choice. With no usable row, keep the registry fallback.
+    if (options.completeAppList === true || (!parsed.order.length && parsed.rowFrom !== 'csfs')) {
         var present = {}, inOrder = {};
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });

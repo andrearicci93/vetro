@@ -15,7 +15,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         else if (url === '/dock') {
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
-            if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
+            if (body.action === 'completeAppList' || body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
             if (body.action === 'disableCustom') dock = Object.assign({}, dock, {mode: 'off', customApp: null, running: false});
@@ -207,5 +207,15 @@ const tick = () => new Promise(r => setImmediate(r));
     custom = el('dockCustom').innerHTML;
     assert.match(custom, /Turn it off in the Vetro launcher tab/); assert.match(custom, /data-custom-switch[^>]* disabled/); assert.match(custom, /<select[^>]* disabled/);
     sandbox.inventory = [];
+    assert.doesNotMatch(el('dockBody').innerHTML, /data-dock-complete-apps[^>]* checked/);
+    await el('dock').onchange({target: {dataset: {dockCompleteApps: ''}, checked: true}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'completeAppList', on: true, expected: false});
+    assert.match(el('dockBody').innerHTML, /data-dock-complete-apps[^>]* checked/);
+    assert.match(sandbox.operationEntries[0].message, /App list preference saved/);
+    await reload();
+    assert.match(el('dockBody').innerHTML, /data-dock-complete-apps[^>]* checked/, 'choice survives a status reload');
+    await el('dock').onchange({target: {dataset: {dockCompleteApps: ''}, checked: false}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'completeAppList', on: false, expected: true});
+    assert.doesNotMatch(el('dockBody').innerHTML, /data-dock-complete-apps[^>]* checked/);
     console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors');
 })().catch(e => { console.error(e); process.exitCode = 1; });
