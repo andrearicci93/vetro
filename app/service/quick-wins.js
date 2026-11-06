@@ -78,13 +78,20 @@ var TELEMETRY_ON = 'rm -f ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND 
 // AirPlay (see the header). The web app's package id differs between stores and models; its app id always ends like this.
 var AIRPLAY_UNITS = ['com.samsung.tv.airplay-service', 'com.samsung.tv.airplay-service-2'];
 var AIRPLAY_FLAGS = AIRPLAY_UNITS.map(function (u) { return TELEMETRY_DIR + u; });
+// A shell loop over the receiver's units that exist on this TV. Two generations are in the community reports: the 2020 and
+// 2021 TVs have both units (airplay-service and airplay-service-2), 2022 and later only airplay-service-2. AirPlay is only
+// offered when every unit that exists carries the ConditionPathExists=! line on its flag file (checked by AP below),
+// because the file trick is read in the Q80A firmware and not known for any other generation.
+function AIRPLAY_EACH(body, init) {
+    return init + '; for u in ' + AIRPLAY_UNITS.join(' ') + '; do if systemctl cat $u.service >/dev/null 2>&1; then ' + body + '; fi; done;';
+}
 var AIRPLAY_WEB_RUNNING = 'app_launcher -S 2>/dev/null | grep -q "\\.AirPlayWebApp[[:space:]]"';
 var AIRPLAY_WEB_STOP = 'for w in $(app_launcher -S 2>/dev/null | awk \'{print $1}\' | grep "\\.AirPlayWebApp$"); do app_launcher -t "$w" >/dev/null 2>&1 || true; done';
 var AIRPLAY_OFF = 'set -e\ntouch ' + AIRPLAY_FLAGS.join(' ') + '\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl stop --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\n' +
     'sleep 1\n' + AIRPLAY_WEB_STOP + '\nsleep 1\ntrue';
 var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS[1] + '.service >/dev/null 2>&1\n' +
-    'systemctl start --no-block ' + AIRPLAY_UNITS[0] + '.service >/dev/null 2>&1 || true\nsleep 1\ntrue';
+    AIRPLAY_UNITS.map(function (u) { return 'systemctl start --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\nsleep 1\ntrue';
 var IDS = ['firmware', 'multiscreen', 'ambient', 'telemetry', 'airplay'];
 var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000;
 
@@ -107,9 +114,10 @@ var READ = [
     running(AMBIENT_ID) + ' && echo "AR|1" || echo "AR|0"',
     'echo "TB|$(ls ' + TELEMETRY_BRAKES.join(' ') + ' 2>/dev/null | wc -l)"',
     'echo "TR|$(ps -eo comm | grep -c -E "^(' + TELEMETRY_PROCS.join('|') + ')$")"',
-    'systemctl cat ' + AIRPLAY_UNITS[0] + '.service >/dev/null 2>&1 && echo "AP|1" || echo "AP|0"',
-    '[ -e ' + AIRPLAY_FLAGS[0] + ' ] && echo "AF|1" || echo "AF|0"',
-    'echo "AS|$(systemctl is-active ' + AIRPLAY_UNITS[0] + '.service 2>/dev/null)"',
+    AIRPLAY_EACH('n=$((n+1)); systemctl cat $u.service 2>/dev/null | grep -q "^ConditionPathExists=!' + TELEMETRY_DIR + '$u$" || bad=$((bad+1))', 'n=0; bad=0') +
+        ' [ $n -gt 0 ] && [ $bad -eq 0 ] && echo "AP|1" || echo "AP|0"',
+    AIRPLAY_EACH('[ -e ' + TELEMETRY_DIR + '$u ] || f=0', 'f=1') + ' echo "AF|$f"',
+    AIRPLAY_EACH('systemctl is-active $u.service >/dev/null 2>&1 && a=active', 'a=inactive') + ' echo "AS|$a"',
     AIRPLAY_WEB_RUNNING + ' && echo "AW|1" || echo "AW|0"',
     'true'
 ].join('\n');

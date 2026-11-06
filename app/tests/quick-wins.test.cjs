@@ -136,6 +136,9 @@ const noWait=()=>Promise.resolve();
  t=tv({apStays:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});
  await assert.rejects(w.apply('airplay',true),/started again right away/);
  t=tv({apPresent:false});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});assert.equal((await w.read()).wins.airplay.status,'unknown','no receiver on this TV');
+ // 2022 and later TVs have only airplay-service-2: the read script loops over the units that exist and offers AirPlay only if each one carries the Condition line on its flag file
+ t=tv({});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});await w.read();
+ assert.ok(t.s.calls.some(s=>/for u in com\.samsung\.tv\.airplay-service com\.samsung\.tv\.airplay-service-2; do if systemctl cat \$u\.service/.test(s)&&s.includes('ConditionPathExists=!/opt/usr/share/systemd/system/$u$')),'AP loops over the units that exist and checks their Condition line');
  t=tv({apFlag:true,apSvc:false,apWeb:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});assert.equal((await w.read()).wins.airplay.status,'partial');
  t=tv({apFlag:true,apWeb:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait,bootId:()=>'ap-b',skipAmbient:true});
  assert.deepEqual(await w.boot(null),[]);w.remember('airplay',true);assert.deepEqual(await w.boot(null),['airplay']);

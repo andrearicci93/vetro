@@ -7,6 +7,7 @@ var FLAG_SET_RE = /__FLAG__\s*1/;
 var RUN_SET_RE = /__RUN__\s*1/;
 var SVC_SET_RE = /__SVC__\s*1/;
 var DIS_SET_RE = /__DIS__\s*1/;
+var ABS_SET_RE = /__ABS__\s*1/;
 // Q80A native menu verified 2026-10-13: Off=19, On=20.
 // Recognize legacy Vetro value 0 as Off; new writes use the native menu value.
 //
@@ -31,8 +32,12 @@ var fs=require('fs'),KEY='db/menu/system/data-service',FILE='/opt/usr/home/owner
 var APP='org.tizen.hbbtv',SERVICE='org.tizen.hbbtv-service',FLAG='/tmp/hbbtv_do-not-relaunch',RUNFLAG='/tmp/hbbtv_app_running';
 var DB='/opt/dbspace/.pkgmgr_parser.db';
 var DISABLED='sqlite3 -readonly '+DB+' "SELECT app_disable FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q true';
+// Not every firmware has the service app: of the 41 rooted TVs in the community reports, 24 (2023 and later) list org.tizen.hbbtv
+// but not org.tizen.hbbtv-service. There is nothing to disable there, and the plain stop was always enough. Absent only
+// counts when the registry answers "0 rows"; an unreadable registry is not "absent", so Off is not claimed on a guess.
+var ABSENT='sqlite3 -readonly '+DB+' "SELECT count(*) FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q "^0$"';
 // Disabling also ends a running service. read() checks the result afterwards, so the tool's exit code is not trusted.
-var DISABLE_SVC='pkgcmd -D -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true';
+var DISABLE_SVC='if ! '+ABSENT+'; then pkgcmd -D -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true; fi';
 var ENABLE_SVC='if '+DISABLED+'; then pkgcmd -A -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true; fi';
 function listed(id){return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*'+id.replace(DOT_RE,'\\.')+'[[:space:]]"';}
 // -t may exit non-zero when the app is already gone (the scripts run under set -e), and the process can take a
@@ -43,13 +48,13 @@ function wrap(s){return 'echo '+Buffer.from(s).toString('base64')+' | base64 -d 
 function check(r){if(r.exit_code||r.timed_out)throw execError.failed(r,r.stderr||r.stdout||'HbbTV unavailable');return r.stdout||'';}
 function Control(execute,storage){this.execute=execute;this.fs=storage||fs;this.busy=false;}
 Control.prototype.read=function(){var self=this;
- var script='vconftool get '+KEY+' 2>&1\necho __FLAG__\n[ -e '+FLAG+' ] && echo 1 || echo 0\necho __RUN__\n'+listed(APP)+' && echo 1 || echo 0\necho __SVC__\n'+listed(SERVICE)+' && echo 1 || echo 0\necho __DIS__\n'+DISABLED+' && echo 1 || echo 0';
+ var script='vconftool get '+KEY+' 2>&1\necho __FLAG__\n[ -e '+FLAG+' ] && echo 1 || echo 0\necho __RUN__\n'+listed(APP)+' && echo 1 || echo 0\necho __SVC__\n'+listed(SERVICE)+' && echo 1 || echo 0\necho __DIS__\n'+DISABLED+' && echo 1 || echo 0\necho __ABS__\n'+ABSENT+' && echo 1 || echo 0';
  return this.execute(wrap(script),8000).then(function(r){var out=check(r),m=VCONF_INT32_RE.exec(out);if(!m)throw Error('HbbTV value unreadable');
-  var flag=FLAG_SET_RE.test(out),running=RUN_SET_RE.test(out),service=SVC_SET_RE.test(out),serviceDisabled=DIS_SET_RE.test(out),v=Number(m[1]),saved=null,valueOff=v===0||v===19;
+  var flag=FLAG_SET_RE.test(out),running=RUN_SET_RE.test(out),service=SVC_SET_RE.test(out),serviceAbsent=ABS_SET_RE.test(out),serviceDisabled=DIS_SET_RE.test(out)||serviceAbsent,v=Number(m[1]),saved=null,valueOff=v===0||v===19;
   try{var b=JSON.parse(self.fs.readFileSync(FILE,'utf8'));if(Number.isInteger(b.value)&&b.value>0&&b.value!==19&&b.value<=2147483647)saved=b.value;}catch(e){}
   // off: all five hold (value, brake file, app stopped, service stopped and disabled). valueOff without the rest is
   // the state Samsung's own menu leaves behind: HbbTV still loaded.
-  return {value:v,off:valueOff&&flag&&!running&&!service&&serviceDisabled,valueOff:valueOff,flag:flag,running:running,serviceRunning:service,serviceDisabled:serviceDisabled,restoreValue:saved,canRestore:saved!==null,source:KEY,verification:'Menu value, brake file and process list; the red button must be checked on the TV'};});};
+  return {value:v,off:valueOff&&flag&&!running&&!service&&serviceDisabled,valueOff:valueOff,flag:flag,running:running,serviceRunning:service,serviceDisabled:serviceDisabled,serviceAbsent:serviceAbsent,restoreValue:saved,canRestore:saved!==null,source:KEY,verification:'Menu value, brake file and process list; the red button must be checked on the TV'};});};
 Control.prototype.change=function(off,expected){var self=this;if(typeof off!=='boolean'||!Number.isInteger(expected))return Promise.reject(Error('Invalid HbbTV state'));if(this.busy)return Promise.reject(Error('HbbTV change already in progress'));this.busy=true;var previous;
  function apply(script){return self.execute(wrap('set -e\n'+script+'\nsleep 1'),25000).then(check);}
  function disable(){return apply('vconftool set -f -t int '+KEY+' 19\ntouch '+FLAG+'\n'+STOP);}

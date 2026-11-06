@@ -105,12 +105,15 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   the firmware dump.
 - **Disable AirPlay.** Files that Samsung's own AirPlay units check before they start keep the receiver off
   across restarts; the units and the hidden web app are stopped. Casting from an Apple device does not work
-  while it is on. Shown in the restore plan.
+  while it is on. Shown in the restore plan. The switch appears only when every receiver unit on the TV carries
+  that condition: the 2020 and 2021 TVs have two units, later TVs only `airplay-service-2`, and the file trick has
+  been read in the Q80A firmware only, so any other TV that does not match shows no switch.
 - **Boot identity.** "Already done in this boot" now compares the boot id and the boot time, because a TV that
   restarts from a saved snapshot can come back with the same boot id. Ambient and the viewing-data services
   are stopped again after such a restart. After the upgrade each stop runs once more, which does no harm.
 - **HbbTV off disables the service app too** (`pkgcmd -D --global`), because on some firmware the service has
-  auto-restart and starts again within a second of a plain stop. A TV that was switched off by an earlier
+  auto-restart and starts again within a second of a plain stop. TVs from 2023 on have no service app (24 of the
+  41 rooted TVs in the community reports), and there Off works as before. A TV that was switched off by an earlier
   Vetro reads "Partly done" until the next start of the service, which puts the missing piece in place.
 - Credit: the AirPlay switch, the boot identity, the HbbTV service disable and Keep removed apps removed come
   from **zabique**'s fork of Vetro (branch `fork/extras`); see Credits.
