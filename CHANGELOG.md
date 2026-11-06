@@ -7,6 +7,8 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 - **Root runtime preflight:** selectively adapt runtime detection, Samsung apphost fallback, effective capability checks and tar support checks from Chris Ritsen and contributors' samsung-tv-root v0.0.12 (Unlicense). Root bootstrap selects matching .NET 3.1 or .NET 6 payloads; diagnostics identify preflight failures and the selected root runtime. Credits and the packaged license are updated. Probes run through SDB with bounded loopback capture, avoiding `child_process.execFile`, which terminates the Q80A web-service host. No new exploit or persistence mechanism; offline tests only, not deployed to a TV.
 
+- **Remapper and the on-screen keyboard** ([#143](https://github.com/andrearicci93/vetro/issues/143), [#59](https://github.com/andrearicci93/vetro/pull/59) by domenix): with interception on, the keys Vetro lets through are re-emitted on a virtual remote that now carries the real remote's name, marked by its own `Phys` value, instead of an unknown name that Tizen's on-screen keyboard ignored. Tested on a Q80A. The input helper is built with `mcs` so it loads on .NET Core 3.1 too.
+
 ### Dashboard layout
 
 - **Settings and controls** replaces *TV settings* and *TV controls*: one page with two levels. The tabs are
