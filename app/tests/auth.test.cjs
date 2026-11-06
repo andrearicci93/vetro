@@ -35,6 +35,22 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   // DNS rebinding: a hostname on loopback doesn't count as the TV itself, so it needs a key like the LAN.
   assert.equal((await call('GET', '/status', {ip: '127.0.0.1', headers: {host: 'evil.example:8099'}})).code, 401);
   assert.equal((await call('GET', '/auth/pending', {ip: '127.0.0.1', headers: {origin: 'null', host: 'evil.example:8099'}})).code, 403);
+  // A TV that blocks loopback (The Frame 2025, #122): its own LAN address counts as the TV, anyone else's does not.
+  auth._ownAddresses(() => ({lo0: [{family: 'IPv4', internal: true, address: '127.0.0.1'}], eth0: [{family: 'IPv6', internal: false, address: 'fe80::1'}, {family: 'IPv4', internal: false, address: '192.168.1.10'}]}));
+  const own = {ip: '192.168.1.10', headers: {origin: 'null', host: '192.168.1.10:8099'}};
+  assert.equal((await call('POST', '/exec', own)).handled, false);
+  assert.equal((await call('POST', '/exec', Object.assign({}, own, {ip: '::ffff:192.168.1.10'}))).handled, false);
+  assert.equal((await call('GET', '/auth/pending', own)).code, 200);
+  assert.equal((await call('POST', '/exec', {ip: '192.168.1.11', headers: own.headers})).code, 401);
+  assert.equal((await call('GET', '/auth/pending', {ip: '192.168.1.11', headers: own.headers})).code, 403);
+  assert.equal((await call('POST', '/exec', {ip: '192.168.1.10', headers: {origin: 'http://evil.example', host: '192.168.1.10:8099'}})).code, 401);
+  assert.equal((await call('GET', '/status', {ip: '192.168.1.10', headers: {host: 'evil.example:8099'}})).code, 401);
+  assert.equal(auth.fromThisTv('192.168.1.10'), true); assert.equal(auth.fromThisTv('::ffff:192.168.1.10'), true);
+  assert.equal(auth.fromThisTv('192.168.1.99'), false); assert.equal(auth.fromThisTv(undefined), false); assert.equal(auth.fromThisTv('0.0.0.0'), false);
+  // An unreadable interface list means nothing extra is trusted.
+  auth._ownAddresses(() => { throw new Error('no interfaces'); });
+  assert.equal((await call('POST', '/exec', own)).code, 401);
+  auth._ownAddresses();
   // Web pages can't start or finish a pairing: the Origin must match the Host.
   assert.equal((await call('POST', '/auth/pair', {headers: {origin: 'http://evil.example'}, body: {}})).code, 403);
   assert.equal((await call('POST', '/auth/confirm', {headers: {origin: 'http://evil.example'}, body: {}})).code, 403);

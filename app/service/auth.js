@@ -18,6 +18,7 @@
 //    show a code, so it stays open.
 
 var crypto = require('crypto');
+var os = require('os');
 var fs = require('fs');
 // Regular expressions compiled once at module load, not on every call.
 var HOST_PORT_RE = /:\d+$/;
@@ -94,10 +95,37 @@ function json(res, code, body, headers) {
     res.end(JSON.stringify(body) + '\n');
 }
 
+// A connection made from this TV itself: loopback, or the TV's own LAN address. Some TVs (The Frame 2025, Tizen 9, #122)
+// block apps from loopback, so the TV app reaches the service through the TV's own address instead. The source address
+// of a connection from another device is that device's, so only a program running on the TV can come from here, which
+// is exactly who may use loopback. Idea and measurements: skjnldsv (#122, #123). The list of the TV's addresses is read
+// at most every five seconds; an address that is not on it is not the TV.
+var LOOPBACK = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+var MAPPED_RE = /^::ffff:/i;
+var OWN_TTL_MS = 5000;
+var ownCache = {at: 0, list: []};
+var interfaces = function () { return os.networkInterfaces(); };
+function ownAddresses() {
+    var now = Date.now();
+    if (now - ownCache.at < OWN_TTL_MS && now >= ownCache.at) return ownCache.list;
+    var list = [];
+    try {
+        var nets = interfaces() || {};
+        Object.keys(nets).forEach(function (name) {
+            (nets[name] || []).forEach(function (n) { if (n && n.family === 'IPv4' && !n.internal && n.address && n.address !== '0.0.0.0') list.push(n.address); });
+        });
+    } catch (e) { list = []; }
+    ownCache = {at: now, list: list};
+    return list;
+}
+function fromThisTv(address) {
+    var a = String(address || '');
+    if (LOOPBACK.indexOf(a) >= 0) return true;
+    return ownAddresses().indexOf(a.replace(MAPPED_RE, '')) >= 0;
+}
 // The fake requests in Vetro's test harness have no socket; real ones always do.
 function isLoopback(req) {
-    var a = req.socket ? req.socket.remoteAddress : '127.0.0.1';
-    return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+    return fromThisTv(req.socket ? req.socket.remoteAddress : '127.0.0.1');
 }
 function tvApp(req) {
     var o = (req.headers || {}).origin;
@@ -290,6 +318,7 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 'fetch("/auth/state").then(function(r){return r.json()}).then(function(d){if(!d.pending)return;if(d.mine)enter(d.expiresIn);else busy(d.expiresIn,false)}).catch(function(){});' +
 '</script></body></html>';
 
-module.exports = {pairingMode: pairingMode, setPairingMode: setPairingMode, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
+module.exports = {pairingMode: pairingMode, setPairingMode: setPairingMode, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
     _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
+    _ownAddresses: function (fn) { interfaces = fn || function () { return os.networkInterfaces(); }; ownCache = {at: 0, list: []}; },
     _unthrottle: function () { lastPairAt = 0; }};

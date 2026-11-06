@@ -473,7 +473,7 @@ function handleProbe(req, res) {
     }
     // The widget posts from the TV itself. This keeps LAN clients from rewriting the
     // stored model, firmware and API probe that diagnostics report.
-    if (['127.0.0.1', '::1', '::ffff:127.0.0.1'].indexOf(req.socket && req.socket.remoteAddress) < 0) {
+    if (!auth.fromThisTv(req.socket && req.socket.remoteAddress)) {
         return serveJson(res, { error: 'Probe reports are accepted from the TV only' }, 403);
     }
     readJsonBody(req, res, function (parsed) {

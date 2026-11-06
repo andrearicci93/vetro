@@ -18,6 +18,7 @@ async function run(options) {
   XHR.prototype.open = function (method, url) { this.method = method; this.url = url; };
   XHR.prototype.setRequestHeader = function () {};
   XHR.prototype.send = function (body) {
+    if (o.loopbackBlocked && /^http:\/\/127\.0\.0\.1/.test(this.url)) return this.onerror && this.onerror();   // The Frame 2025 (#122): the TV app cannot reach loopback
     if (this.method === 'POST') {
       sent.push({method: this.method, url: this.url, body: JSON.parse(body)});
       this.status = 200; this.responseText = JSON.stringify(o.probeResponse); this.onload();
@@ -40,7 +41,7 @@ async function run(options) {
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => { if (!o.hangApps) ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]); },
         getCurrentApplication: () => ({exit: () => exits.push(1), appInfo: {version: o.appVersion}})},
       package: {getPackagesInfo: ok => { if (!o.hangPackages) ok([{id: 'vetrotvapp', version: '0.1.0'}]); }},
-      systeminfo: {getPropertyValue: (name, ok) => { if (!o.hangBuild) ok({model: 'TV'}); }}
+      systeminfo: {getPropertyValue: (name, ok) => { if (o.lan && name === 'WIFI_NETWORK') return ok({ipAddress: o.lan}); if (!o.hangBuild) ok({model: 'TV'}); }}
     }, webapis: {productinfo: {getModel: () => 'QE55Q80A', getFirmware: () => '2310.0'}},
     btoa: s => Buffer.from(s).toString('base64'), clearTimeout, clearInterval: () => {}, setInterval: (f, ms) => { intervals.push({f, ms}); return intervals.length; },
     setTimeout: (f, ms) => { if (ms === 1500) { setImmediate(f); return 0; } timers.push({f, ms}); return timers.length; }
@@ -247,6 +248,20 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(pk.screen.innerHTML.includes('API packages SLOW packages'));
   const pkLast = pk.sent.filter(s => s.method === 'POST').pop().body;
   assert.ok(/^no answer in 30 s/.test(pkLast.probe.packages.error), 'the report says so too');
+  // Loopback blocked (The Frame 2025, #122): the page finds the TV's own address and uses it for the report and the pairing poll.
+  const lan = await run({loopbackBlocked: true, lan: '192.168.1.42'});
+  const lanPosts = lan.sent.filter(s => s.method === 'POST');
+  assert.ok(lanPosts.length > 0 && lanPosts.every(s => s.url.indexOf('http://192.168.1.42:8099/') === 0), 'reports go to the TV address');
+  assert.ok(lan.sent.some(s => /^http:\/\/192\.168\.1\.42:8099\/screen/.test(s.url)), 'and so does the screen');
+  assert.equal(lan.sent.filter(s => /^http:\/\/127\.0\.0\.1/.test(s.url)).every(s => /\/status$/.test(s.url)), true, 'loopback is only asked once, with /status');
+  assert.ok(lan.screen.innerHTML.includes('Running in the background'), 'the verdict is drawn as usual');
+  // The same TV with no usable address: nothing is invented, the service is reported as down.
+  const noLan = await run({loopbackBlocked: true});
+  assert.ok(noLan.sent.every(s => !/^http:\/\/(?!127\.0\.0\.1)/.test(s.url)), 'no other address is tried');
+  assert.ok(noLan.screen.innerHTML.includes('SVC DOWN'));
+  // Loopback works: the LAN address is never used.
+  const normal = await run({lan: '192.168.1.42'});
+  assert.ok(normal.sent.every(s => /^http:\/\/127\.0\.0\.1/.test(s.url)), 'loopback first, and enough');
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
   console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');

@@ -101,6 +101,58 @@ function launchService() {
     tizen.application.launch('vetrotvapp.svc', ok, ko);
   });
 }
+// Some TVs (The Frame 2025, Tizen 9) do not let apps reach a local service over loopback: 127.0.0.1 never answers (#122).
+// The service listens on every interface, so if loopback stays silent the TV's own LAN address is tried, and the first
+// one that answers becomes the base for everything else. Where loopback works nothing changes. The service accepts the
+// TV's own address like loopback, and nothing else. Idea and measurements: skjnldsv (#122, #123). Whether the runtime lets
+// the page call an address that config.xml does not list is not known yet.
+function answers(base) {
+  return new Promise(function (ok) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', base + '/status', true);
+    xhr.timeout = 3000;
+    xhr.onload = function () { ok(xhr.status === 200); };
+    xhr.onerror = xhr.ontimeout = function () { ok(false); };
+    try { xhr.send(); } catch (e) { ok(false); }
+  });
+}
+function lanAddresses() {
+  if (typeof tizen === 'undefined' || !tizen.systeminfo) return Promise.resolve([]);
+  return Promise.all(['ETHERNET_NETWORK', 'WIFI_NETWORK'].map(function (prop) {
+    return new Promise(function (ok) {
+      var t = setTimeout(function () { ok(null); }, 3000);
+      try {
+        tizen.systeminfo.getPropertyValue(prop, function (v) { clearTimeout(t); ok(v && v.ipAddress || null); },
+          function () { clearTimeout(t); ok(null); });
+      } catch (e) { clearTimeout(t); ok(null); }
+    });
+  })).then(function (ips) { return ips.filter(function (ip) { return ip && ip !== '0.0.0.0' && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip); }); });
+}
+var baseChosen = null, lanKnown = null;
+// Resolves true when some address answered (and BASE is then that one), false when none did. A failure is not kept: the
+// service may simply not be up yet, and the next try looks again.
+function pickBase() {
+  if (baseChosen) return Promise.resolve(true);
+  var port = BASE.split(':').pop();
+  return answers(BASE).then(function (yes) {
+    if (yes) { baseChosen = BASE; return true; }
+    return (lanKnown || (lanKnown = lanAddresses())).then(function (ips) {
+      return ips.reduce(function (p, ip) {
+        return p.then(function (found) {
+          if (found) return found;
+          var base = 'http://' + ip + ':' + port;
+          return answers(base).then(function (y) { return y ? base : null; });
+        });
+      }, Promise.resolve(null));
+    }).then(function (found) { if (found) { BASE = found; baseChosen = found; } return !!found; });
+  });
+}
+function settleBase(tries) {
+  return pickBase().then(function (ok) {
+    if (ok || tries <= 1) return ok;
+    return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return settleBase(tries - 1); });
+  });
+}
 function reach(tries) {
   return fetch(BASE + '/status').then(function (r) { return r.status; }, function (e) {
     if (tries <= 1) throw e;
@@ -171,7 +223,7 @@ var jobs = [
       } catch (e) {}
       return Object.keys(report.settings).length; }, 8000, 'Model and firmware'],
   ['supportedKeys', function () { return tizen.tvinputdevice.getSupportedKeys().map(function (k) { return k.name; }); }, 8000, 'Remote keys'],
-  ['serviceReach', function () { return reach(8); }, 25000, 'Service answer'],
+  ['serviceReach', function () { return settleBase(3).then(function () { return reach(8); }); }, 40000, 'Service answer'],
   ['remoteApi8001', function () { return tryConnect(8001); }, 8000, 'TV remote API'],
   ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }, 8000, 'System info'],
   ['apps', function () { return cb(function (ok, ko) { tizen.application.getAppsInfo(ok, ko); }).then(function (a) {

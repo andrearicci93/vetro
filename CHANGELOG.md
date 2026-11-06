@@ -88,6 +88,15 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   the firmware's first-screen script retries `app_launcher -f com.samsung.tv.csfs`
   until it succeeds, and what that returns for a disabled app is not known. Related request: [#127](https://github.com/andrearicci93/vetro/issues/127) by **skjnldsv**
   (an app as the TV's home at power-on); this mode is a different route and does not close it.
+- **The TV app can reach the service through the TV's own address** ([#122](https://github.com/andrearicci93/vetro/issues/122),
+  [#123](https://github.com/andrearicci93/vetro/pull/123), measured and proposed by **skjnldsv** on The Frame 2025,
+  Tizen 9, where apps cannot reach loopback). The TV page asks `127.0.0.1` first; only if that does not answer it
+  tries the TV's own Ethernet and Wi-Fi addresses and keeps the one that answers for the report and the pairing code.
+  Adapted from the PR because of the sign-in: a connection whose source is one of the TV's own addresses now counts as
+  coming from the TV, with the same trust as loopback (a program running on the TV is the only one that can have that
+  source; the host-name and Origin checks are unchanged, and an unreadable address list trusts nothing extra).
+  **Not tried on a TV.** Unknown: whether the web runtime lets the page open a connection to an address that is not
+  in `config.xml` (left unchanged on purpose). Waking from standby or Art Mode, the other half of #122, is not part of this.
 - **Compatibility fixes from `main`.** Includes Tizen 10 service startup, the 0.3.5 fixes,
   and the Node 4.4 integration adapter/fallback for older TVs
   ([#75](https://github.com/andrearicci93/vetro/pull/75), by **Merennor**).
@@ -240,7 +249,7 @@ Code in this release:
   **bertrandom** ([#47](https://github.com/andrearicci93/vetro/pull/47)) and **PatrickSt1991** ([#21](https://github.com/andrearicci93/vetro/pull/21)).
 
 Reports and requests that led to changes (each is named where its change is described above):
-**PythEch** ([#5](https://github.com/andrearicci93/vetro/issues/5), pairing), **skjnldsv** ([#127](https://github.com/andrearicci93/vetro/issues/127), home app), **adri0894-web** ([#116](https://github.com/andrearicci93/vetro/issues/116), second update while one is pending),
+**PythEch** ([#5](https://github.com/andrearicci93/vetro/issues/5), pairing), **skjnldsv** ([#127](https://github.com/andrearicci93/vetro/issues/127), home app; [#122](https://github.com/andrearicci93/vetro/issues/122), loopback blocked), **adri0894-web** ([#116](https://github.com/andrearicci93/vetro/issues/116), second update while one is pending),
 **9francy9** ([#135](https://github.com/andrearicci93/vetro/issues/135), factory colour test), **thatrandomtrooper**, **andreknieriem**, **BennoGAP**, **Nebarik**,
 **pponce**, **Hielkez**, **REVANOX**, **JamesMills818**, **FUSIONOF**, **lequan2909**, **Ghakizu**, **Licaa21**,
 **RyanDChavez**, **Kuzekunn** and **antonio1475**.
