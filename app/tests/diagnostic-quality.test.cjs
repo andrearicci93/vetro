@@ -55,6 +55,13 @@ const execError = require('../service/exec-error');
   const poisoned = report.projectors.platform({rooting: {backend: secret, phase: secret, failure: {stage: secret, code: secret}}});
   assert.deepStrictEqual(poisoned.rooting, {backend: null, phase: null, failure: {stage: null, code: null}});
   assert.deepStrictEqual(report.projectors.platform({}).rooting, {backend: null, phase: null, failure: null});
+  const preflight = report.projectors.platform({preflight: {runtime: '6.0', path: secret},
+    rooting: {phase: 'preflight', failure: {stage: 'preflight', code: 'runtime-unsupported', output: secret}}});
+  assert.equal(preflight.rootRuntime, '6.0');
+  assert.equal(preflight.rooting.phase, 'preflight');
+  assert.deepStrictEqual(preflight.rooting.failure, {stage: 'preflight', code: 'runtime-unsupported'});
+  assert(!JSON.stringify(preflight).includes(secret));
+  assert.equal(report.projectors.platform({preflight: {runtime: secret}}).rootRuntime, null);
   const olderInventory = report.projectors.inventory({dependenciesAvailable: false, apps: [{appId: 'old.app', dependencies: null, dependents: null}]});
   assert.equal(olderInventory.registryAvailable, true);
   assert.equal(olderInventory.dependenciesAvailable, false);

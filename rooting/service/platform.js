@@ -4,6 +4,7 @@ var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
 var sdb = require('./sdb.js');
+var checkTarget = require('./root-preflight.js').checkTarget;
 var tarGz = require('./tar.js').tarGz;
 var RootAgentServer = require('./root-agent.js').RootAgentServer;
 var TunnelServer = require('./sdb-tunnel.js').TunnelServer;
@@ -135,7 +136,7 @@ function cleanStage(keep) {
     return removed;
 }
 
-function prepare(agentPort) {
+function prepare(agentPort, runtime) {
     // crypto.generateKeyPairSync and KeyObject.export need Node 10.12+. Tizen 4
     // and 5.5 run Node 4.4, where the adapter must not touch the file system or
     // keep retrying: report it once and leave the rest of the service running.
@@ -153,12 +154,19 @@ function prepare(agentPort) {
     var privatePem = keys.privateKey.export({ type: 'pkcs8', format: 'pem' });
 
     var bundle = path.join(__dirname, '..', 'payload');
+    if (runtime === '6.0') bundle = path.join(bundle, 'net6');
     var names = [
         'SamsungTvArchiveRoot.dll', 'SamsungTvArchiveRoot.runtimeconfig.json', 'SamsungTvArchiveRoot.deps.json',
         'SamsungTvRootAgent.dll', 'SamsungTvRootAgent.runtimeconfig.json', 'SamsungTvRootAgent.deps.json'
     ];
     names.forEach(function (n) {
-        fs.writeFileSync(path.join(staging, n), fs.readFileSync(path.join(bundle, n)));
+        var data = fs.readFileSync(path.join(bundle, n));
+        if (/\.runtimeconfig\.json$/.test(n)) {
+            var config = JSON.parse(data.toString('utf8'));
+            config.runtimeOptions.rollForward = runtime === '6.0' ? 'Major' : 'LatestPatch';
+            data = JSON.stringify(config);
+        }
+        fs.writeFileSync(path.join(staging, n), data);
     });
 
     fs.writeFileSync(path.join(staging, 'public.pem'), publicPem);
@@ -174,6 +182,7 @@ function prepare(agentPort) {
     // Housekeeping only: a failure here must never fail the preparation.
     var removed = 0;
     try { removed = cleanStage(pkg).length; } catch (e) {}
+    state.preparedRuntime = runtime;
     state.prepared = true;
     state.staging = { pkg: pkg, dir: staging, onDemand: path.join(onDemand, pkg + '.tar.gz'), removedOld: removed };
 }
@@ -286,6 +295,8 @@ function startTunnel(cb) {
 function startAgent() {
     if (state.running) return;
     state.running = true;
+    // Regenerate launch.sh for the current listener port on each lifecycle.
+    state.prepared = false;
     state.unsupported = false;
     state.rooting = { backend: 'sdb-archive', phase: 'preparing', failure: null };
     agentServer = new RootAgentServer({
@@ -326,7 +337,7 @@ function startAgent() {
         agentServer.start(function (port) {
             if (!state.running) return;
             state.agentPort = port;
-            prepareForRuntime(port);
+            if (typeof crypto.generateKeyPairSync !== 'function') prepareForRuntime(port);
             relaunch();
         });
     });
@@ -352,40 +363,38 @@ function relaunch() {
     // the single token)
     if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
 
-    // if the first prepare failed (e.g. staging not writable early at boot),
-    // retry it with the already-assigned agent port
-    if (!state.prepared && state.agentPort) {
-        prepareForRuntime(state.agentPort);
-        if (state.unsupported) { launching = false; return; }
-    }
-
-    if (!state.prepared) {
-        launching = false;
-        persist();
-        scheduleRelaunch();
-        return;
-    }
-    delete state.prepareError;
-    // A missing token is a preparation failure, never a launchable state.
-    try {
-        fs.writeFileSync(STAGE + '/' + pkg + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
-    } catch (e) {
-        launching = false;
-        state.prepareError = String(e.message || e);
-        rootFailure('preparation', 'token-write-failed');
-        persist();
-        scheduleRelaunch();
-        return;
-    }
-
-    var launchCmd = '/usr/bin/dotnet ' + STAGE + '/' + pkg + '/SamsungTvArchiveRoot.dll ' + pkg;
-    var injection = buildInjection(launchCmd);
-
+    var stage = 'preflight';
+    rootPhase('preflight');
+    state.preflight = null;
     var entry = { t: Date.now(), phase: 'launch' };
     pushAttempt(entry);
-
-    rootPhase('sdb-handshake');
-    sdb.connect(sdbTarget())
+    Promise.resolve().then(function () {
+        if (!state.running || gen !== launchGen || agentConnected) return;
+        return checkTarget();
+    }).then(function (assessment) {
+        if (!state.running || gen !== launchGen || agentConnected) return;
+        state.preflight = assessment;
+        stage = 'preparation';
+        rootPhase('preparing');
+        if (!state.prepared || state.preparedRuntime !== assessment.runtime) {
+            state.prepared = false;
+            try { prepare(state.agentPort, assessment.runtime); } catch (e) {
+                state.prepareError = String(e.message || e);
+                e.code = 'prepare-failed';
+                throw e;
+            }
+        }
+        delete state.prepareError;
+        try {
+            fs.writeFileSync(STAGE + '/' + pkg + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
+        } catch (e) {
+            e.code = 'token-write-failed';
+            throw e;
+        }
+        stage = 'sdb-handshake';
+        rootPhase('sdb-handshake');
+        return sdb.connect(sdbTarget());
+    })
         .then(function (client) {
             if (!state.running || gen !== launchGen || agentConnected) {
                 sdb.close(client);
@@ -393,6 +402,8 @@ function relaunch() {
                 return;
             }
             launchClient = client;
+            var launchCmd = '/usr/bin/dotnet ' + STAGE + '/' + pkg + '/SamsungTvArchiveRoot.dll ' + pkg;
+            var injection = buildInjection(launchCmd);
             entry.connect = 'ok';
             rootPhase('launch-command');
             // The launch script returns independently of the agent lifetime.
@@ -423,12 +434,12 @@ function relaunch() {
             }, 30000);
         })
         .catch(function (e) {
-            if (!state.running || gen !== launchGen) return;
+            if (!state.running || gen !== launchGen || agentConnected) return;
             launching = false;
             launchClient = null;
             entry.connect = 'fail:' + (e.code || 'error');
             entry.err = String(e.message || e);
-            rootFailure('sdb-handshake', transportCode(e));
+            rootFailure(stage, stage === 'sdb-handshake' ? transportCode(e) : e.code || 'preflight-failed');
             persist();
             scheduleRelaunch();
         });

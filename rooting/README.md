@@ -68,3 +68,35 @@ any SDB frame is processed. `VETRO_SDB_TUNNEL_PORT` chooses a different port (1â
 The old environment-only LAN opt-in is replaced by the persistent dashboard switch.
 SDB does not use HTTP pairing and grants developer access to every admitted client;
 see [SECURITY.md](../SECURITY.md).
+
+## Runtime preflight (selective v0.0.12 integration)
+
+Before staging a root launch, the adapter checks the TV locally as the service
+user: `/usr/bin/dotnet --list-runtimes`, effective file capabilities via `getcap`,
+and `/usr/bin/tar --help` for `--to-command`. A Samsung apphost rejecting
+`--list-runtimes` with exit 255 is handled by resolving
+`/usr/share/dotnet.tizen/netcoreapp` and checking both CLR files. Only .NET 3.1
+or 6+ is accepted; the active runtime is detected, never inferred from model/year.
+A failed or unavailable check prevents launch and retains a bounded diagnostic
+failure while the normal boot retry remains available. These local checks do not
+prove SDB injection will work or that a privileged callback will arrive.
+
+The root launcher and root agent use the existing .NET 3.1 payloads, or the new
+`payload/net6/` builds for 6+. Runtime configs use `LatestPatch` for 3.1 and
+`Major` for 6+. The latter permits later major runtimes; it is not hardware
+validation. This selection covers the root bootstrap and agent only; the dock
+and remote-input helper retain their existing runtime requirements.
+
+To rebuild the .NET 6 pair from the retained upstream C# sources (requires a .NET
+SDK with net6.0 targeting-pack restore access):
+
+```sh
+node build-root-payloads.cjs
+```
+
+The module adapts Chris Ritsen and contributors' `archive_root.py` at v0.0.12;
+see [third-party notices](../THIRD_PARTY_NOTICES.md) for exact provenance and the
+Unlicense. The Python tool is retained with local changes; it was not replaced.
+The upstream host timing-probe retry and frozen-Linux OpenSSL fix are not used by
+this TV-local adapter. This integration has offline test coverage only and has
+not been deployed or validated on a TV.

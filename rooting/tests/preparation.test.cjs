@@ -9,7 +9,9 @@ service.state.running = true;
 service.prepare = () => { throw new Error('staging unavailable'); };
 service.scheduleRelaunch = () => { retries++; };
 service.relaunch();
+setImmediate(function () {
 assert.equal(connects, 0, 'failed preparation must never launch incomplete payload');
 assert.equal(retries, 1, 'failed preparation must remain recoverable');
 assert.equal(service.launching, false);
 console.log('PASS preparation failure does not launch and schedules recovery');
+});

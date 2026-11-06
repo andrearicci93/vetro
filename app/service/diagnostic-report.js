@@ -61,15 +61,16 @@ function choice(v, allowed) { return allowed.indexOf(v) >= 0 ? v : null; }
 function rooting(d) {
     var r=d.rooting||{}, f=r.failure||{};
     return {backend:choice(r.backend,['sdb-archive']),
-        phase:choice(r.phase,['stopped','unsupported','preparing','sdb-handshake','launch-command','agent-callback','connected','retrying']),
+        phase:choice(r.phase,['stopped','unsupported','preparing','preflight','sdb-handshake','launch-command','agent-callback','connected','retrying']),
         failure:r.failure?{
-            stage:choice(f.stage,['preparation','sdb-handshake','launch-command','agent-callback','agent-connection']),
-            code:choice(f.code,['platformUnsupported','prepare-failed','token-write-failed','agent-disconnected','agent-timeout',
+            stage:choice(f.stage,['preparation','preflight','sdb-handshake','launch-command','agent-callback','agent-connection']),
+            code:choice(f.code,['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
+                'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
                 'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError'])
         }:null};
 }
 var projectors = {
-    platform:function(d){return {mode:token(d.mode),running:boolean(d.running),prepared:boolean(d.prepared),rootAgent:{connected:boolean((d.agent||{}).connected),uid:numeric((d.agent||{}).uid)},rooting:rooting(d),runtime:token((d.self||{}).node),persistence:'unknown',backgroundExecution:'unknown'};},
+    platform:function(d){return {mode:token(d.mode),running:boolean(d.running),prepared:boolean(d.prepared),rootAgent:{connected:boolean((d.agent||{}).connected),uid:numeric((d.agent||{}).uid)},rooting:rooting(d),rootRuntime:choice((d.preflight||{}).runtime,['3.1','6.0']),runtime:token((d.self||{}).node),persistence:'unknown',backgroundExecution:'unknown'};},
     device:function(d){var out={};['model','realModel','modelCode','firmware'].forEach(function(k){out[k]=token((d||{})[k]);});out.source='widget-probe';out.probeAgeMinutes=ageMinutes((d||{}).receivedAt);out.firmwareSource=out.firmware===null?null:(d||{}).firmwareSource==='service-read'?'service-read':'widget-probe';out.modelSource=out.realModel===null&&out.model===null?null:(d||{}).modelSource==='service-api'?'service-api':'widget-probe';out.tizenVersion=require('./device-info.js').version((d||{}).tizenVersion);out.tizenVersionSource=out.tizenVersion===null?'unknown':(d||{}).tizenVersionSource==='widget-capability'?'widget-capability':'service-read';return out;},
     inventory:function(d){return {source:token(d.source),registryAvailable:!d.registryError,dependenciesAvailable:boolean(d.dependenciesAvailable),apps:list(d.apps).map(function(a){return Object.assign({appId:token(a.appId),packageId:token(a.packageId),version:token(a.version),type:token(a.type),component:token(a.component),category:token(a.category),origin:token(a.origin),size:numeric(a.size),dependencies:dependencies(a.dependencies),dependents:dependencies(a.dependents)},flags(a,['disabled','onboot','autorestart','show','system','removable','protected']));})};},
     settings:function(d){return {items:list(d.items).filter(function(x){return settings.some(function(s){return s.id===x.id;});}).map(function(x){return {id:x.id,value:typeof x.value==='boolean'?x.value:numeric(x.value),writable:boolean(x.writable),access:x.access==='verified'?'implemented':token(x.access),probe:token(x.probe),available:!x.error};}),api:d.api&&typeof d.api==='object'?{status:token(d.api.status),methods:numeric(d.api.methods)}:null};},
