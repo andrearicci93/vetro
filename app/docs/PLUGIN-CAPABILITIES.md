@@ -124,7 +124,9 @@ Notes:
 - An API 1 Shard that `require`s `child_process`, `fs` outside its own folder or `http` will **stop working** under
   isolation, by design: that is exactly what the boundary removes. The catalog should be checked for this before
   isolation ships (today it holds one Shard).
-- Under API 1, `exec` stays the only permission; unknown permissions are refused, as now.
+- Under API 1, `exec` and `native` are the only permissions; unknown permissions are refused, as now.
+- A `native` Shard runs its declared helper as root through `exec`. Under isolation it needs the same explicit "run as root"
+  treatment as `exec`, and its assets stay hash-checked on every read.
 
 ## The catalog (vetro-plugins)
 

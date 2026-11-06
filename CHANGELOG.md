@@ -33,6 +33,12 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 ### Sign-in, plugins and updates
 
+- **Screen share, as a Shard.** Adapted from **zabique**'s fork ([zabique/vetro `fork/extras`](https://github.com/zabique/vetro/tree/fork/extras)),
+  this is the first Shard that uses `native`: a live view of the TV picture as a page in the dashboard, taken through
+  Samsung's scaler capture by a small .NET helper (`capture/`, MIT, credits in `THIRD_PARTY_NOTICES.md`). It starts
+  the helper only when someone watches. Tried on a Q80A (firmware 2310.0): about 10 frames per second, at most
+  720x576 pixels (the library's limit on that TV, shown stretched to 16:9). Protected video (HDCP, DRM) shows as black.
+  It lives in `app/examples/plugins/screen-share/` and is not in the plugin list yet.
 - **Plugins can ship a helper program.** A plugin that asks for the new `native` permission (with `exec`) can carry
   up to 4 binaries (256 KB together) in `assets/`. They travel in a version 2 bundle as base64, are declared in the
   manifest with a SHA-256 that the TV checks on install and every time the folder is read, and are reached with

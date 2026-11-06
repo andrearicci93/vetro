@@ -77,13 +77,13 @@ The launcher is not JavaScript. It is a 64 KB .NET assembly (`tvlauncher-dotnet.
 `dotnet` runs as root in its own systemd unit and that draws with EFL. The service only starts, supervises and stops it,
 and writes the list it displays: a tab-separated file (`vetro-dock-apps.tsv`: slug, label, app id, fallback, icon file;
 at most 40 entries; an app id may also be `key:<XF86 key>` to inject a remote key, or `sys:<appId>` for a system pill).
-A plugin bundle is text only and the list's key is deliberately not the key that signs Vetro. That gives three levels:
+A plugin bundle is text, plus any helper programs it declares with the `native` permission ([plugins.md](plugins.md#the-native-permission)), and the list's key is deliberately not the key that signs Vetro. That gives three levels:
 
 | Level | What a plugin does | Needs |
 | --- | --- | --- |
 | **1. Content** | Decides *what the launcher shows*: which apps, their order, extra tiles that inject a key or open an app, profiles ("kids", "cinema"), a different list at night. | A launcher API for plugins (`ctx.launcher`). No change to the .NET code. |
 | **2. Look** | Colours, sizes, radii, glow. | The dock reading a theme file at start. Today the look is compiled in (`Design.cs`, `Layout.cs`); this is a change to the C# dock, not to the plugin API. |
-| **3. A different launcher** | Brings its own renderer. | A native binary in a plugin and a trust model for it. **Not planned**: a text-only bundle cannot carry it, and a root-run binary from the plugin list would erase the separation between the list key and the update key. |
+| **3. A different launcher** | Brings its own renderer. | A native binary in a plugin and a trust model for it. **Not planned**: the `native` permission can now carry a helper program (the screen-share Shard does), but a renderer that draws the whole shell, run as root from the plugin list, would erase the separation between the list key and the update key. |
 
 **What can be updated separately.** The launcher *plugin* (the JavaScript: routes, supervision, catalog logic) can be a
 normal versioned plugin updated from the list. The **.NET assembly stays in the Vetro package** and updates with Vetro.
