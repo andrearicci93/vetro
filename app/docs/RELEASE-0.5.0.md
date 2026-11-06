@@ -168,8 +168,8 @@ The complete unsigned integration WGT is for an installer that supplies signing,
    are absent from Remapper targets. If an app-list read fails or stalls, check the reason and Retry.
 5. **Launcher and plugin cycle.** Check Home, Samsung Home, Back, Settings, Source and launching an app.
    Check Remapper and saved interception. Install `tv-uptime`, enable it, open its page, restart the service,
-   then disable/remove it. Use the example/scaffolder for a local plugin update cycle. This build's unsigned
-   catalog does not establish signature enforcement. **Do not reboot with Samsung Home disabled**: on the Q80A
+   then disable/remove it. Use the example/scaffolder for a local plugin update cycle. The live catalog is signed:
+   check that the install shows trust "registry" (checked against the key in the package on 2026-11-06). **Do not reboot with Samsung Home disabled**: on the Q80A
    the boot script `firstscreen.sh` loops on `app_launcher -f com.samsung.tv.csfs`, which fails for a disabled
    package (checked 2026-11-06 without a reboot), so the TV may never finish its boot. The Custom launcher no
    longer disables it (the dock guard closes it after each Home press); test that on the TV: Home with the
