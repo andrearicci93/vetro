@@ -4,7 +4,7 @@ set -e
 here=$(cd "$(dirname "$0")" && pwd)
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-dotnet build "$here/TvCapture.csproj" -c Release -o "$out" -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true -p:DebugType=none -p:PathMap="$here=/src" -p:BaseIntermediateOutputPath="$out/obj/"
+dotnet build "$here/TvCapture.csproj" -c Release -o "$out" -p:UseAppHost=false -p:Deterministic=true -p:ContinuousIntegrationBuild=true -p:DebugType=none -p:IncludeSourceRevisionInInformationalVersion=false -p:PathMap="$here=/src" -p:BaseIntermediateOutputPath="$out/obj/"
 dest="$here/../app/examples/plugins/screen-share/assets"
 mkdir -p "$dest"
 cp "$out/TvCapture.dll" "$out/TvCapture.runtimeconfig.json" "$dest/"
