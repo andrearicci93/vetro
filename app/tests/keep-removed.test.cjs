@@ -128,9 +128,11 @@ const app = (id, removable = true, system = false) => ({ id, removable, system }
     // The switch is global: off, the list is kept but RESERVED_19 gets only Samsung's entries and nothing is uninstalled.
     t = tv({ rows: { MCmYXNxgcu: '3201901017640' }, reserved: '3201712015358', installed: [app('MCmYXNxgcu')] });
     k = new KeepRemoved(t.execute, { path: fresh() });
+    assert.equal(k.enabled(), true, 'on by default');
+    k.setEnabled(false);
     k.change('set', ['MCmYXNxgcu']);
     r = await k.check();
-    assert.deepEqual([t.reserved, r.removed, t.writes], ['3201712015358', [], 0], 'never enabled: nothing happens');
+    assert.deepEqual([t.reserved, r.removed, t.writes], ['3201712015358', [], 0], 'switched off: nothing happens');
     k.setEnabled(true);
     r = await k.check();
     assert.deepEqual([t.reserved, r.removed], ['3201712015358,3201901017640', ['MCmYXNxgcu']]);
@@ -146,7 +148,7 @@ const app = (id, removable = true, system = false) => ({ id, removable, system }
 
     // learn(): the store id is read before the uninstall and survives Samsung dropping its row afterwards.
     t = tv({ rows: { 'org.tizen.primevideo': '3201910019365' }, reserved: '' });
-    k = new KeepRemoved(t.execute, { path: fresh() });
+    k = new KeepRemoved(t.execute, { path: fresh() }); k.setEnabled(false);
     assert.equal(await k.learn('org.tizen.primevideo'), false, 'off: nothing is read');
     assert.equal(t.cmds.length, 0);
     k.setEnabled(true);

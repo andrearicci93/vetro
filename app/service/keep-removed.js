@@ -18,6 +18,8 @@
 // the user installs again on purpose, so "Allow again" comes first. The state lives outside the app, so it survives a
 // Vetro reinstall.
 //
+// On by default. Until an app is removed the list is empty and nothing touches Samsung's database.
+//
 // Not tested on a running Q80A: the schema and the config rows were read from the firmware dump (rollback-journal
 // mode, so there are no -wal/-shm files for the chown to miss), the write into Samsung's live database has not been
 // tried there.
@@ -111,10 +113,11 @@ function KeepRemoved(execute, opts) {
 }
 
 KeepRemoved.prototype.read = function () {
-    var s = { enabled: false, packages: [], storeIds: {}, owned: [], history: [] };
+    // On until the user switches it off: with an empty list nothing is read from or written to Samsung's database.
+    var s = { enabled: true, packages: [], storeIds: {}, owned: [], history: [] };
     try {
         var j = JSON.parse(fs.readFileSync(this.path, 'utf8'));
-        s.enabled = j.enabled === true;
+        s.enabled = j.enabled !== false;
         s.packages = clean(j.packages);
         Object.keys(j.storeIds || {}).forEach(function (p) { if (ID.test(p) && ID.test(String(j.storeIds[p]))) s.storeIds[p] = String(j.storeIds[p]); });
         s.owned = splitIds((Array.isArray(j.owned) ? j.owned : []).join(','));

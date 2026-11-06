@@ -96,7 +96,7 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 ### Quick settings, privacy and maintenance
 
 - **The Memory tab is now Disable.** It holds what you switch off so that it stays off: HbbTV, Multi View
-  autostart, Ambient and the new **Disable AirPlay**. A global switch, **Keep removed apps removed**, sits in General.
+  autostart, Ambient and the new **Disable AirPlay**. A global switch, **Keep removed apps removed**, sits in General and is on by default.
   Apps removed with the Task manager are put on Samsung's own list of removed apps (webappservice,
   `RESERVED_19`), so its app sync does not install them again; Vetro takes out only the ids it added when
   you switch off, keeps the list so you can switch on again, and offers **Allow again** per app. A slow safety

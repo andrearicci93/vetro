@@ -178,7 +178,7 @@ Restore.prototype.plan = function () {
 
         if (d.keepRemoved) {
             it = add('keep-removed', 'Keep removed apps removed', 'Takes the store ids Vetro added out of Samsung’s list of removed apps, so Samsung may install them again. The list of apps stays saved; Samsung’s own entries are not touched.', keep);
-            if (!keep.error) flag(it, keep.value.enabled === true || keep.value.owned > 0);
+            if (!keep.error) flag(it, keep.value.owned > 0);
         }
 
         it = add('hbbtv', 'HbbTV', 'Puts the HbbTV menu value back, removes the brake file, enables the service app again and starts it and the app.', hb);

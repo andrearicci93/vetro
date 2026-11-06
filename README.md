@@ -45,7 +45,7 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 - **Disable all advertising and tracking**, which includes the ACR viewing-data services.
 - **Enable domain blocking** with a filter on the TV itself, keeping your DNS servers.
 - **Stop viewing-data collection**, which stops the services that recognise what is on screen, log remote key presses and send usage logs, now and after every restart.
-- **Disable HbbTV**, **Multi View autostart** and **Stop Ambient**, which free about 22 MB, 15 MB and 59 MB of RAM, and **Disable AirPlay**. They sit in the **Disable** tab. **Keep removed apps removed**, in General, is a global switch: apps you remove with the Task manager go on Samsung's own list of removed apps, so its app sync does not install them again.
+- **Disable HbbTV**, **Multi View autostart** and **Stop Ambient**, which free about 22 MB, 15 MB and 59 MB of RAM, and **Disable AirPlay**. They sit in the **Disable** tab. **Keep removed apps removed**, in General, is a global switch, on by default: apps you remove with the Task manager go on Samsung's own list of removed apps, so its app sync does not install them again.
 - **Disable all voice assistants**, or Alexa, Google Assistant, Bixby and the other voice services one by one.
 - **Disable automatic firmware update**, so a new firmware does not remove root behind your back.
 
