@@ -90,17 +90,41 @@ namespace Launcher
 
         // ------------------------------------------------------------------ logging
 
+        // The process stays resident for weeks, so the file is cut down as it grows and not only at start. Callbacks run
+        // on the main loop, but the lock keeps the byte count and the file in step if anything else ever logs.
+        private static readonly object LogLock = new object();
+        private const long LogLimit = 256 * 1024;
+        private static long _logBytes;
+
         private static void Log(string m)
         {
-            try { File.AppendAllText(_logPath, DateTime.Now.ToString("HH:mm:ss.fff") + " " + m + "\n"); } catch (Exception) { }
+            try
+            {
+                string line = DateTime.Now.ToString("HH:mm:ss.fff") + " " + m + "\n";
+                lock (LogLock)
+                {
+                    _logBytes += System.Text.Encoding.UTF8.GetByteCount(line);
+                    if (_logBytes > LogLimit)
+                    {
+                        _logBytes = System.Text.Encoding.UTF8.GetByteCount(line);
+                        try { File.Delete(_logPath); } catch (Exception) { }
+                    }
+                    File.AppendAllText(_logPath, line);
+                }
+            }
+            catch (Exception) { }
         }
 
         private static void TrimLog()
         {
             try
             {
-                var f = new FileInfo(_logPath);
-                if (f.Exists && f.Length > 256 * 1024) f.Delete();
+                lock (LogLock)
+                {
+                    var f = new FileInfo(_logPath);
+                    if (f.Exists && f.Length > LogLimit) { f.Delete(); _logBytes = 0; }
+                    else _logBytes = f.Exists ? f.Length : 0;
+                }
             }
             catch (Exception) { }
         }
@@ -247,24 +271,35 @@ namespace Launcher
         {
             List<string> nodes;
             try { nodes = InputDevices.RemoteNodes(File.ReadAllText("/proc/bus/input/devices")); }
-            catch (Exception ex) { Log("input: cannot list devices: " + ex.Message); return 0; }
+            catch (Exception ex) { if (!_listFailed) Log("input: cannot list devices: " + ex.Message); _listFailed = true; return 0; }
+            _listFailed = false;
             int added = 0;
             foreach (string node in nodes)
             {
                 if (_inputPaths.Contains(node)) continue;
                 int fd = Libc.open(node, Libc.O_RDONLY | Libc.O_NONBLOCK);
-                if (fd < 0) { Log("input: cannot open " + node + " errno=" + Marshal.GetLastWin32Error()); continue; }
-                int index = _inputFds.Count;
+                if (fd < 0)
+                {
+                    // The rescan comes back every few seconds: say it once per node, or the log fills with the same line.
+                    if (_openFailed.Add(node)) Log("input: cannot open " + node + " errno=" + Marshal.GetLastWin32Error());
+                    continue;
+                }
+                _openFailed.Remove(node);
+                // A node that went away (DropNode) leaves a free slot: take it, so the lists do not grow with every reconnect.
+                int index = _inputFds.IndexOf(-1);
+                bool reuse = index >= 0;
+                if (!reuse) index = _inputFds.Count;
                 IntPtr handler = Efl.ecore_main_fd_handler_add(fd, Efl.EcoreFdRead, InputCb, (IntPtr)index, IntPtr.Zero, IntPtr.Zero);
-                _inputFds.Add(fd);
-                _inputReaders.Add(new EvdevReader());
-                _inputPaths.Add(node);
-                _inputHandlers.Add(handler);
+                if (handler == IntPtr.Zero) { Libc.close(fd); Log("input: cannot watch " + node); continue; }
+                if (reuse) { _inputFds[index] = fd; _inputReaders[index] = new EvdevReader(); _inputPaths[index] = node; _inputHandlers[index] = handler; }
+                else { _inputFds.Add(fd); _inputReaders.Add(new EvdevReader()); _inputPaths.Add(node); _inputHandlers.Add(handler); }
                 added++;
                 Log("input: watching " + node);
             }
             return added;
         }
+        private static bool _listFailed;
+        private static readonly HashSet<string> _openFailed = new HashSet<string>();
 
         private static byte OnRescan(IntPtr data)
         {
@@ -310,9 +345,14 @@ namespace Launcher
         {
             if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
             _pendingLaunch = null;
+            // A key chosen just before the dock closed must not be sent into the dock that opens again.
+            CancelPendingKey();
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
+            // The page may have been put away while its objects were still opaque (a swap to the inputs panel): draw its
+            // state for presence 0 before the window is mapped, or one frame can show it whole before the entrance starts.
+            _dock.Apply(_ctl);
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
             StartClock();
@@ -578,6 +618,11 @@ namespace Launcher
                             double now = Efl.ecore_time_get();
                             if (now - _lastRawHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastRawHome) * 1000).ToString("0") + " ms after the press"); break; }
                             _lastHome = now;
+                            HideDock();
+                            // Home reached the dock through evas and not through evdev: the evdev path, which arms the guard,
+                            // will count this press as already handled (_lastHome), so it is armed here.
+                            ArmGuard();
+                            break;
                         }
                         HideDock();
                         break;
@@ -728,6 +773,13 @@ namespace Launcher
         private const string KeyTool = "/usr/bin/input_keyevent ";
         private static readonly Efl.TaskCb KeyTimerCb = OnKeyTimer;
         private static AppEntry _pendingKey;
+        private static IntPtr _keyTimer;
+
+        private static void CancelPendingKey()
+        {
+            _pendingKey = null;
+            if (_keyTimer != IntPtr.Zero) { Efl.ecore_timer_del(_keyTimer); _keyTimer = IntPtr.Zero; }
+        }
 
         // A remote key is sent only once our window is gone: while it is still mapped it would
         // take the key itself. One-shot timer, so nothing runs while the dock is idle.
@@ -735,6 +787,7 @@ namespace Launcher
         {
             AppEntry e = _pendingKey;
             _pendingKey = null;
+            _keyTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
             try
             {
                 if (e == null) return 0;
@@ -750,8 +803,9 @@ namespace Launcher
         {
             if (e.Key != null)
             {
+                CancelPendingKey();   // two quick activations: the first timer must not fire with the second entry
                 _pendingKey = e;
-                Efl.ecore_timer_add(0.30, KeyTimerCb, IntPtr.Zero);
+                _keyTimer = Efl.ecore_timer_add(0.30, KeyTimerCb, IntPtr.Zero);
                 return;
             }
             LaunchApp(e);

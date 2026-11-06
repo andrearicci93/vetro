@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('assert').strict, path=require('path'), EventEmitter=require('events');
 const load=require('./service-harness.cjs'), root=path.resolve(__dirname,'..');
-let disk=JSON.stringify({rules:[{id:'remote',enabled:true,trigger:{type:'physical',value:'67'},actions:[{type:'launch',appId:'example.app'}]}]}), ready=true, node='/dev/input/event4', writesFail=false;
+let disk=JSON.stringify({rules:[{id:'remote',enabled:true,trigger:{type:'physical',value:'67'},actions:[{type:'launch',appId:'example.app'}]}]}), ready=true, pending=null, node='/dev/input/event4', writesFail=false;
 const starts=[], commands=[];
 class Bridge {
  constructor(execute,onEvent){this.onEvent=onEvent;this.current={mode:'off',connected:false};}
@@ -10,7 +10,7 @@ class Bridge {
  stop(){this.current={mode:'off',connected:false};}
  async start(device,mode,tokens){assert.ok(ready);assert.ok(device==='Smart Control'||device===node);starts.push({device,mode,tokens});this.current={mode,connected:true,device:'Smart Control',node};return this.status();}
 }
-function boot(){const timers=[];const service=load(root,{dependencies:{fs:{readFileSync:p=>p.endsWith('vetro-remap.json')?disk:'',writeFileSync:(p,s)=>{if(writesFail)throw Error('disk full');disk=s;}},'./physical-input.js':{Bridge},'./platform.js':{start(){},status:()=>({agent:{connected:ready}}),execute:cmd=>{commands.push(cmd);return Promise.resolve({exit_code:0,stdout:''});}}},setInterval:fn=>{timers.push(fn);return {unref(){}};}});service.tick=async()=>{timers.forEach(fn=>fn());await new Promise(r=>setImmediate(r));};return service;}
+function boot(){const timers=[];const service=load(root,{dependencies:{fs:{readFileSync:p=>p.endsWith('vetro-remap.json')?disk:'',writeFileSync:(p,s)=>{if(writesFail)throw Error('disk full');pending=s;},renameSync(){disk=pending;},unlinkSync(){pending=null;}},'./physical-input.js':{Bridge},'./platform.js':{start(){},status:()=>({agent:{connected:ready}}),execute:cmd=>{commands.push(cmd);return Promise.resolve({exit_code:0,stdout:''});}}},setInterval:fn=>{timers.push(fn);return {unref(){}};}});service.tick=async()=>{timers.forEach(fn=>fn());await new Promise(r=>setImmediate(r));};return service;}
 function post(service,body,url='/input'){return new Promise(resolve=>{const req=new EventEmitter();req.method='POST';req.url=url;service.router(req,{writeHead(code){this.code=code;},end(s){resolve(JSON.parse(s));}});req.emit('data',Buffer.from(JSON.stringify(body)));req.emit('end');});}
 (async()=>{
  let service=boot();await service.tick();assert.equal(starts.length,0);

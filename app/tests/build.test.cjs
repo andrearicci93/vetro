@@ -16,7 +16,7 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/')).sort
     'LICENSE', 'THIRD_PARTY_NOTICES.md', 'notices/LICENSE-phosphor.txt',
     'config.xml', 'icon.png', 'index.html', 'native/TvState.dll', 'native/TvState.runtimeconfig.json', 'service/tv-state.js',
     'native/dock/tvlauncher-dotnet.dll', 'native/dock/tvlauncher-dotnet.runtimeconfig.json', 'service/dock.js', 'service/dock-catalog.js',
-    'service/auth.js', 'service/build-info.js', 'service/blocklist.js', 'service/exec-error.js', 'service/factory-apps.js', 'service/device-info.js', 'service/component-facts.js', 'service/about-photo.js','service/app-catalog.js', 'service/app-facts.js', 'service/app-groups.js','service/app-registry.js', 'service/dashboard.js', 'service/physical-input.js', 'service/presence.js', 'service/apps.js', 'service/component-actions.js','service/control.js',     'service/debloat.js', 'service/diagnostic-report.js', 'service/hbbtv.js','service/home-order.js','service/local-dns.js','service/menu-settings.js','service/main.js',
+    'service/auth.js', 'service/build-info.js', 'service/blocklist.js', 'service/exec-error.js', 'service/factory-apps.js', 'service/device-info.js', 'service/component-facts.js', 'service/about-photo.js','service/app-catalog.js', 'service/app-facts.js', 'service/app-groups.js','service/app-registry.js', 'service/atomic-file.js', 'service/dashboard.js', 'service/physical-input.js', 'service/presence.js', 'service/apps.js', 'service/component-actions.js','service/control.js',     'service/debloat.js', 'service/diagnostic-report.js', 'service/hbbtv.js','service/home-order.js','service/local-dns.js','service/menu-settings.js','service/main.js',
     'service/mqtt-bridge.js', 'service/mqtt.js', 'service/compat.js', 'service/package-info.js',
     'service/platform.js',
     'service/plugin-host.js',
@@ -25,6 +25,12 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/')).sort
     'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/keep-removed.js', 'service/leftovers.js', 'service/remap.js',
     'service/samsung-remote.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
 ].sort());
+// A service file that requires a sibling the package does not carry crashes the whole service on the TV at start.
+files.filter(file => /^service\/[^/]+\.js$/.test(decodeURIComponent(file.uri))).forEach(file => {
+    const owner = decodeURIComponent(file.uri), text = file.data.toString(), pattern = /require\('\.\/([^']+)'\)/g;
+    let match;
+    while ((match = pattern.exec(text))) assert.ok(names.includes('service/' + match[1]), owner + ' requires ./' + match[1] + ', which is not in the package');
+});
 const metadata = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js').data.toString();
 const context = {module: {exports: {}}};
 require('vm').runInNewContext(metadata, context);

@@ -65,11 +65,20 @@ function checkBundle(b) {
 }
 
 // Node caches modules by path: without this a removed and re-installed plugin would run its old code.
+// Module paths and stack traces carry the real path (symlinks resolved), so every spelling of the folder is compared: the
+// plain one, the folder's own real path while it exists, and its real parent plus its name (still known after it was deleted).
+function pathsOf(folder) {
+    var plain = path.resolve(folder), out = [plain];
+    function add(p) { if (out.indexOf(p) < 0) out.push(p); }
+    try { add(fs.realpathSync(plain)); } catch (e) { /* not there */ }
+    try { add(path.join(fs.realpathSync(path.dirname(plain)), path.basename(plain))); } catch (e) { /* parent not there */ }
+    return out.map(function (p) { return p + path.sep; });
+}
 function forgetModules(folder) {
-    var parent = path.dirname(path.resolve(folder));
-    try { parent = fs.realpathSync(parent); } catch (e) { /* keep the plain path */ }
-    var prefix = path.join(parent, path.basename(folder)) + path.sep;
-    Object.keys(require.cache).forEach(function (k) { if (k.indexOf(prefix) === 0) delete require.cache[k]; });
+    var prefixes = Array.isArray(folder) ? folder : pathsOf(folder);
+    Object.keys(require.cache).forEach(function (k) {
+        for (var i = 0; i < prefixes.length; i++) if (k.indexOf(prefixes[i]) === 0) { delete require.cache[k]; return; }
+    });
 }
 
 function PluginHost(opts) {
@@ -148,6 +157,7 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     var main = path.resolve(folder, manifest.main || 'index.js');
     if (main.indexOf(path.resolve(folder) + path.sep) !== 0) throw new Error('main must stay inside the plugin folder');
     if (!fs.existsSync(main)) throw new Error('entry file ' + (manifest.main || 'index.js') + ' is missing');
+    if (!this.entries[id]) forgetModules(folder);   // a new entry always reads the files that are there now
     // The code is only read when the plugin is switched on: installing, listing or booting
     // with it switched off never executes anything from the plugin.
     var create = function (ctx) {
@@ -274,8 +284,9 @@ PluginHost.prototype.remove = function (id) {
     if (!entry) throw new Error('Unknown plugin');
     if (entry.def.bundled) throw new Error(id + ' is part of Vetro and cannot be removed');
     if (entry.instance) throw new Error('Switch the plugin off before removing it');
+    var prefixes = pathsOf(path.join(this.dir, id));   // before the folder is gone, so its real path is still known
     rmrf(path.join(this.dir, id));
-    forgetModules(path.join(this.dir, id));
+    forgetModules(prefixes);
     var state = this._readState();
     delete state.enabled[id];
     delete state.trust[id];
@@ -382,6 +393,27 @@ PluginHost.prototype._halt = function (entry) {
     var inst = entry.instance;
     entry.instance = null;
     try { if (inst && inst.stop) inst.stop(); } catch (e) { /* already failing */ }
+};
+
+// An exception that nothing caught: a timer or socket callback of a plugin runs outside every guard above, and an
+// uncaught exception ends the whole process. main.js asks here first. When the stack points into a running plugin's folder,
+// that plugin is stopped and marked failed (one such crash is enough: its callback cannot be guarded) and Vetro goes on.
+// Returns false for anything else, so a bug in Vetro itself still ends the process as before.
+PluginHost.prototype.handleCrash = function (error) {
+    var stack = String(error && error.stack || '');
+    if (!stack || !this.dir) return false;
+    for (var i = 0; i < this.order.length; i++) {
+        var entry = this.entries[this.order[i]];
+        if (!entry || !entry.instance || entry.def.bundled) continue;
+        var inside = pathsOf(path.join(this.dir, entry.def.id)).some(function (prefix) { return stack.indexOf(prefix) >= 0; });
+        if (!inside) continue;
+        entry.errors = this.maxErrors;
+        entry.lastError = String(error && error.message || error);
+        this._halt(entry);
+        entry.state = 'failed';
+        return true;
+    }
+    return false;
 };
 
 PluginHost.prototype._startEntry = function (entry) {

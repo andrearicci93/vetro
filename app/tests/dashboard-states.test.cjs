@@ -77,4 +77,4 @@ const startupHtml = require('../service/dashboard.js')({});
 assert.match(startupHtml, /<option value="flagged">Can start: flag set, app enabled<\/option><option value="flags">Flag set, including disabled apps<\/option>/);
 assert.match(startupHtml, /\(a\.onboot\|\|a\.autorestart\)&&\(mode==='flags'\|\|a\.disabled===false\)/, 'default filter requires an enabled component');
 assert.match(startupHtml, /function mixedCount/, 'a Mixed flag says how many components have it on');
-assert.match(startupHtml, /A disabled app keeps its flags/);
+assert.match(startupHtml, /a disabled app keeps them/);

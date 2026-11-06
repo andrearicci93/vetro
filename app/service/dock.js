@@ -21,6 +21,7 @@ var fs = require('fs');
 var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
+var atomicFile = require('./atomic-file.js');
 // Regular expressions compiled once at module load, not on every call.
 var QUOTE_RE = /'/g;
 var AUTORUN_VALUE_RE = /value = (\d+)/;
@@ -169,8 +170,10 @@ Dock.prototype.restoreAutorun = function () {
     }).then(function () { self.patchState({autorunWas: null}); });
 };
 
+// The file also holds `autorunWas`, the only record that Samsung's Autorun Smart Hub was switched off by Vetro: a truncated
+// write would lose it and leave that TV setting off for good. Written whole or not at all, and no temporary file is left behind.
 Dock.prototype.writeState = function (state) {
-    try { fs.writeFileSync(this.stateFile + '.tmp', JSON.stringify(state)); fs.renameSync(this.stateFile + '.tmp', this.stateFile); }
+    try { atomicFile.write(fs, this.stateFile, JSON.stringify(state)); }
     catch (e) { throw new Error('The dock setting could not be saved: ' + e.message); }
 };
 
@@ -264,7 +267,7 @@ Dock.prototype.writeCatalog = function () {
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
     return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
-        try { fs.writeFileSync(self.appsFile, c.tsv); fs.writeFileSync(self.inputsFile, c.inputsTsv); }
+        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
         return c;
@@ -392,7 +395,7 @@ function customLine(appId) { return 'custom\tCustom launcher\t' + appId + '\n'; 
 Dock.prototype.writeCustomList = function (appId) {
     var self = this;
     return new Promise(function (resolve, reject) {
-        try { fs.writeFileSync(self.customAppsFile, customLine(appId)); resolve(); }
+        try { atomicFile.write(fs, self.customAppsFile, customLine(appId)); resolve(); }
         catch (e) { reject(new Error('The custom launcher list could not be saved: ' + e.message)); }
     });
 };

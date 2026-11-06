@@ -358,14 +358,17 @@ Wins.prototype.bootTelemetry = function (mine, id, did) {
     var self = this;
     if (!mine.telemetry || (id && mine.telemetryBoot === id)) return Promise.resolve();
     function chosen() { return self.changing !== 'telemetry' && self.load().telemetry; }
+    // true only if the stop really ran: a command that came back with an error or a timeout is not a pass, and neither a rejection.
     function pass() {
         if (!chosen()) return Promise.resolve(false);
-        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { check(r); return true; }, function () { return false; });
+        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
     }
-    return pass().then(function () { return self.sleep(TELEMETRY_RETRY_MS); }).then(pass).then(function (applied) {
-        if (!applied || !chosen()) return;
-        did.push('telemetry');
-        if (id) self.save({telemetryBoot: id});
+    return pass().then(function (first) {
+        return self.sleep(TELEMETRY_RETRY_MS).then(pass).then(function (second) {
+            if (!(first || second) || !chosen()) return;
+            did.push('telemetry');
+            if (id) self.save({telemetryBoot: id});
+        });
     });
 };
 

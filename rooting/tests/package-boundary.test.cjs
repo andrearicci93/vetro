@@ -9,6 +9,7 @@ assert(names.includes('payload/SamsungTvRemoteInputAgent.dll'));
 assert(names.includes('service/sdb.js'));
 assert(names.includes('service/root-preflight.js'));
 assert(names.includes('service/root-preflight-capture.js'));
+assert(names.includes('service/retry-policy.js'));
 assert(names.includes('payload/net6/SamsungTvRootAgent.dll'));
 assert(names.includes('payload/net6/SamsungTvArchiveRoot.dll'));
 assert.equal(names.filter(x=>x==='service/platform.js').length,1);

@@ -300,7 +300,7 @@ function checks(d) {
   if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
   else if (!d.input.enabled) out.push(['off', 'Remote input', 'Off', null, 'input off']);
   else if (d.input.connected) out.push(['ok', 'Remote input', 'Filtering', null, 'input ok']);
-  else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remote in the dashboard.', 'INPUT LOST', 'bad']);
+  else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remapper in the dashboard.', 'INPUT LOST', 'bad']);
   l = d && d.launcher;
   if (!d) out.push(['na', 'Launcher', 'Unknown', null, 'launcher ?']);
   else if (!l.installed) out.push(['na', 'Launcher', 'Not included', null, 'launcher n/a']);

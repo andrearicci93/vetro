@@ -44,6 +44,20 @@ interception on and off, after closing/reopening the launcher and after a cold b
 double navigation, unintended Home closing and a frozen exit animation. Timing gains reported by the PR
 author on an S95F are not measurements of this integrated build on the Q80A.
 
+## State-machine review — 2026-11-06
+
+Every state machine in the service, the root adapter, the launcher and the dashboard page was documented in
+[STATE-MACHINES.md](STATE-MACHINES.md) and checked for states and transitions the code can really reach. The
+confirmed bugs are fixed on this line, each with a regression test that fails without its fix. Local checks after the
+change: 99 application suites, 16 integration suites and 5,130 launcher checks, release audit, `git diff --check`.
+
+The plugin list was checked end to end against the key in the package: the live `vetro-plugins` catalog entry for
+`tv-uptime` 1.0.1 has the published hash and size, installs with trust "registry", and a changed bundle or an altered
+signature is refused. This was a desktop check of the package code, not an install on a TV.
+
+The rebuilt launcher DLL has not run on a TV. The list of things only the Q80A can show is in STATE-MACHINES.md,
+section 6 ("Needs a TV"); run it with the TV test session below.
+
 ## Q80A test session — 2026-11-03
 
 Installed candidate: `0e633e16be8cad3e429dabc2dd683f20594d1eda` (Vetro 0.5.0, bundled launcher 1.1.0).

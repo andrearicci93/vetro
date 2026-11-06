@@ -18,6 +18,7 @@
 //    show a code, so it stays open.
 
 var crypto = require('crypto');
+var atomicFile = require('./atomic-file.js');
 var os = require('os');
 var fs = require('fs');
 // Regular expressions compiled once at module load, not on every call.
@@ -72,7 +73,7 @@ function load() {
 }
 // Returns null, or the reason the keys could not be written (also logged).
 function save() {
-    try { fs.writeFileSync(STORE_PATH, JSON.stringify({sessions: sessions}), {mode: 384}); return null; }
+    try { atomicFile.write(fs, STORE_PATH, JSON.stringify({sessions: sessions}), {mode: 384}); return null; }
     catch (e) { console.error('Sign-in: could not save ' + STORE_PATH + ' (' + e.message + ')'); return e.message; }
 }
 function live(now) { return sessions.filter(function (s) { return s.expires > now; }); }

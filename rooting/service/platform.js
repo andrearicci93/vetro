@@ -9,6 +9,7 @@ var createPreflightRunner = require('./root-preflight-capture.js').createRunner;
 var tarGz = require('./tar.js').tarGz;
 var RootAgentServer = require('./root-agent.js').RootAgentServer;
 var TunnelServer = require('./sdb-tunnel.js').TunnelServer;
+var retryPolicy = require('./retry-policy.js');
 var SDB_TUNNEL_PORT = 26201;
 var SDB_TUNNEL_PORT_ERROR = null;
 (function () {
@@ -197,6 +198,7 @@ var launchClient = null;   // temporary SDB connection during launch
 var launching = false;
 var relaunchTimer = null;
 var launchGen = 0;        // invalidates stale retry timers
+var launchFailures = 0;   // consecutive failed launches since the agent last connected: drives the retry delay
 
 function pushAttempt(entry) {
     state.attempts.push(entry);
@@ -306,6 +308,10 @@ function startAgent() {
             if (!state.running) { conn._socket.destroy(); return; }
             if (relaunchTimer) { clearTimeout(relaunchTimer); relaunchTimer = null; }
             agentConnected = true;
+            // A connected agent ends any launch still in flight (it would otherwise keep `launching` set and
+            // block every later relaunch), and the next outage starts again from the short retry delay.
+            launching = false;
+            launchFailures = 0;
             rootPhase('connected');
             state.rooting.failure = null;
             state.agent = {
@@ -350,7 +356,7 @@ function scheduleRelaunch() {
     relaunchTimer = setTimeout(function () {
         relaunchTimer = null;
         relaunch();
-    }, 8000);
+    }, retryPolicy.relaunchDelay(launchFailures));
 }
 
 function relaunch() {
@@ -435,13 +441,17 @@ function relaunch() {
                 if (state.running && gen === launchGen && !agentConnected && !launching) {
                     // Keep a more specific error from this launch when available.
                     if (!entry.err) rootFailure('agent-callback', 'agent-timeout');
+                    launchFailures++;
                     relaunch();
                 }
-            }, 30000);
+            }, retryPolicy.callbackWait(launchFailures));
         })
         .catch(function (e) {
+            // This attempt is over whatever happened around it. Leaving the flag set when the agent connected
+            // meanwhile would make every relaunch after a later disconnect return at once.
+            if (gen === launchGen) launching = false;
             if (!state.running || gen !== launchGen || agentConnected) return;
-            launching = false;
+            launchFailures++;
             if (launchClient) sdb.close(launchClient);
             launchClient = null;
             entry.connect = 'fail:' + (e.code || 'error');
@@ -452,9 +462,11 @@ function relaunch() {
         });
 }
 
+// Both files are capped (retry-policy.js): /tmp is RAM and /opt is a flash partition that is often nearly full.
 function persist() {
-    try { fs.appendFileSync('/opt/usr/home/owner/share/vetro.jsonl', JSON.stringify(state) + '\n'); } catch (e) {}
-    try { fs.appendFileSync('/tmp/vetro.jsonl', JSON.stringify(state) + '\n'); } catch (e) {}
+    var line = JSON.stringify(state) + '\n';
+    retryPolicy.appendBounded(fs, '/opt/usr/home/owner/share/vetro.jsonl', line);
+    retryPolicy.appendBounded(fs, '/tmp/vetro.jsonl', line);
 }
 
 function agentExecute(cmd, timeoutMs) {
@@ -484,6 +496,7 @@ function stop() {
     tunnelServer = null;
     state.sdbTunnel = { listening: false };
     launching = false;
+    launchFailures = 0;
     state.agent = {connected: false};
 }
 function install(packageId, wgtPath) {

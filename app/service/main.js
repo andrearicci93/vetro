@@ -7,6 +7,7 @@ var fs = require('fs');
 var http = require('http');
 var os = require('os');
 var path = require('path');
+var atomicFile = require('./atomic-file.js');
 var MqttBridge = require('./mqtt-bridge.js').MqttBridge;
 var PluginHost = require('./plugin-host.js').PluginHost;
 var Updater = require('./updater.js').Updater;
@@ -81,6 +82,9 @@ var TOGGLE_IDS = debloat.VERIFIED_GLOBAL_IDS.concat(quickSettings.ALLOWED_IDS);
 // The package builder writes a non-default port into build-info.js (VETRO_PORT=... node build.cjs);
 // VETRO_PORT at run time still wins for local runs.
 var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
+// Tasks that wait for the root agent after a boot (DNS filter, quick wins, keep-removed check, Vetro's own startup flags) try every
+// 5 s for this many rounds. The agent can take minutes to come up; the DNS filter used to give up after one (12 rounds).
+var BOOT_RETRIES = 60;
 
 // --- telemetry reader (service side, uid 5001) ---------------------------
 // Reads /proc and /sys directly via fs. No platform command is needed. Every read
@@ -291,7 +295,9 @@ function readJsonBody(req, res, cb, maxBytes) {
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             return serveJson(res, { error: 'expected a JSON object' }, 400);
         }
-        cb(parsed);
+        // This runs inside the request's 'end' event: an exception here would be uncaught and end the whole service.
+        try { cb(parsed); }
+        catch (e) { if (!res.headersSent) serveJson(res, { ok: false, error: 'Request failed: ' + String(e && e.message || e) }, 500); }
     }, maxBytes);
 }
 
@@ -453,7 +459,7 @@ var remapStore = (function () {
 try { remapStore.rules = remap.validateRules(remapStore.rules || []); }
 catch (e) { remapStore.rules = []; }
 function saveRemap() {
-    try { fs.writeFileSync(REMAP_PATH, JSON.stringify(remapStore)); return true; } catch (e) { return false; }
+    try { atomicFile.write(fs, REMAP_PATH, JSON.stringify(remapStore)); return true; } catch (e) { return false; }
 }
 
 function handleProbe(req, res) {
@@ -541,7 +547,7 @@ function homeLockMessage() {
 function handleQuick(req,res) {readJsonBody(req,res,function(p){
     if(p.id==='samsung-home'&&homeLockMessage())return serveJson(res,{ok:false,error:homeLockMessage()},409);
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
-    quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}})
+    Promise.resolve().then(function(){return quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}});})
         .then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 });}
 function handlePairingMode(req,res) {
@@ -566,7 +572,7 @@ function handleSdbAccess(req,res) {
 }
 function handleWins(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
-    wins.apply(p.id,p.on).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
+    Promise.resolve().then(function(){return wins.apply(p.id,p.on);}).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
 });}
 // Keep removed apps removed: {action:'enable'|'disable'} is the global switch, {action:'allow', packages:[...]} takes apps off the
 // list. Each answer says whether Samsung's list was brought in line; the switch is saved either way.
@@ -684,7 +690,7 @@ function handleRemap(req, res) {
         var rules;
         try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
-        stopInput(); inputPaused=false;
+        stopInput(); inputPaused=false; inputFaultUntil=0;
         remapStore.rules = rules;
         bridge.setTopics(rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
         serveJson(res, { ok: true, persisted: saveRemap(), rules: rules });
@@ -713,13 +719,21 @@ var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var physical=new PhysicalInput(agentExecute,function(event){
     if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
-    if(pendingActions>=8){inputPaused=true;physical.stop();inputError='input action queue exceeded';return;}
+    if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
     var generation=inputGeneration;
     function current(){return inputLifecycleActive&&generation===inputGeneration;}
-    actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current()){inputError=e.message;inputPaused=true;physical.stop();}}).finally(function(){pendingActions--;});
+    actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current())pauseInputFault(e.message);}).finally(function(){pendingActions--;});
 });
 var inputObservers=[], inputPaused=false, inputRestoring=false;
+// inputPaused is the user's own pause (listening mode) and lasts until they act. A fault is different: a rule's action failed
+// (broker down, TV busy, agent reconnecting), so the keys are given back to the TV at once, but only for a while. Without
+// the end of this pause one failed press left interception off until the service restarted.
+var INPUT_FAULT_PAUSE_MS=60000, inputFaultUntil=0;
+// Listening pauses interception until the user stops it. A page that was closed or navigated away while listening never says so:
+// when nothing has asked about the input for this long, the pause is dropped and the saved shortcuts work again.
+var INPUT_LISTEN_IDLE_MS=300000, inputSeenAt=Date.now();
+function pauseInputFault(message){inputError=message;inputFaultUntil=Date.now()+INPUT_FAULT_PAUSE_MS;physical.stop();}
 var inputLifecycleActive=true, inputGeneration=0;
 function startInputLifecycle(){inputLifecycleActive=true;}
 function stopInputLifecycle(){inputLifecycleActive=false;stopInput();}
@@ -734,11 +748,12 @@ function saveInputPreference(preference){
 }
 function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
 function restoreInput(){
+    if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput();inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;
-    if(!inputLifecycleActive||!preference.enabled||inputPaused||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
+    if(!inputLifecycleActive||!preference.enabled||inputPaused||Date.now()<inputFaultUntil||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
     inputRestoring=true;
     physical.inventory().then(function(list){
-        if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||inputPreference()!==preference)return;
+        if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||Date.now()<inputFaultUntil||inputPreference()!==preference)return;
         var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
         var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
         // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
@@ -755,33 +770,42 @@ function inputSnapshot(){
     events.sort(function(a,b){return a.time_seconds-b.time_seconds||a.time_microseconds-b.time_microseconds;});
     return {policy:{mode:'observe',device:'auto',connected:connected},preference:inputPreference(),events:events.slice(-30),error:errors.join('; ')||null};
 }
+// A newer request (or a remap save, or switching interception off) has taken over since this one began.
+function superseded(){var e=new Error('Replaced by a newer input request');e.superseded=true;return e;}
 function handleInput(req,res){
+    inputSeenAt=Date.now();
     if(req.method==='GET')return physical.inventory().then(function(list){serveJson(res,{devices:list,status:inputSnapshot(),error:inputError});}).catch(function(e){serveJson(res,{devices:[],status:inputSnapshot(),error:e.message});});
     readJsonBody(req,res,function(p){
         if(!inputLifecycleActive)return serveJson(res,{error:'Service input is stopped'},503);
         var tokens=inputTokens();
-        inputError=null;
+        inputError=null;inputFaultUntil=0;
         if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput();return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
         if(p.mode!=='observe'&&p.mode!=='filter')return serveJson(res,{error:'invalid input mode'},400);
         if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         inputPaused=true;
         if(p.mode==='observe'&&p.device==='auto'){
             stopInput();var observerGeneration=inputGeneration;return physical.inventory().then(function(list){
-                if(!inputLifecycleActive||observerGeneration!==inputGeneration)throw new Error('Input request cancelled');
+                if(!inputLifecycleActive)throw new Error('Input request cancelled');
+                if(observerGeneration!==inputGeneration)throw superseded();
                 var candidates=list.filter(function(d){return d.selectable;});
                 if(!candidates.length)throw new Error('no physical remote devices found');
                 inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
-            }).then(function(){var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
-            .catch(function(e){if(observerGeneration===inputGeneration)stopInput();serveJson(res,{ok:false,error:e.message},503);});
+            }).then(function(){if(observerGeneration!==inputGeneration)throw superseded();var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
+            .catch(function(e){if(inputLifecycleActive&&observerGeneration!==inputGeneration)e=superseded();else stopInput();serveJson(res,{ok:false,error:e.message},e.superseded?409:503);});
         }
         if(p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         stopInput();var requestGeneration=inputGeneration;
         physical.start(p.device,p.mode,tokens).then(function(status){
-            if(!inputLifecycleActive||requestGeneration!==inputGeneration)throw new Error('Input request cancelled');
+            if(!inputLifecycleActive)throw new Error('Input request cancelled');
+            if(requestGeneration!==inputGeneration)throw superseded();
             if(p.mode==='filter'){saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node});inputPaused=false;}
             serveJson(res,{ok:true,persisted:p.mode==='filter',status:inputSnapshot()});
-        }).catch(function(e){if(requestGeneration===inputGeneration)physical.stop();serveJson(res,{ok:false,error:e.message},503);});
+        }).catch(function(e){
+            // physical.start fails with its own "cancelled" error when a newer request stopped it: that is the same case.
+            if(inputLifecycleActive&&requestGeneration!==inputGeneration)e=superseded();else physical.stop();
+            serveJson(res,{ok:false,error:e.message},e.superseded?409:503);
+        });
     });
 }
 function handleRemapRun(req,res){readJsonBody(req,res,function(p){
@@ -943,6 +967,16 @@ var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developer
     services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
 plugins.register(require('./plugin-launcher.js').definition(dock));
 plugins.start();
+// A plugin's timer or socket callback throws outside every guard the host has. Without this the whole service ended with it
+// (and, past the first minute after a boot, came back with the plugin enabled and ended again). Plugin code is stopped and the
+// service goes on; an error from anywhere else is printed and ends the process, as it always did.
+process.on('uncaughtException', function (e) {
+    var handled = false;
+    try { handled = plugins.handleCrash(e); } catch (x) { handled = false; }
+    if (handled) { try { console.error('plugin stopped after an uncaught error: ' + (e && e.message)); } catch (x) { /* none */ } return; }
+    try { console.error(e && e.stack || e); } catch (x) { /* none */ }
+    process.exit(1);
+});
 // A deliberate stop is not a crash: close the boot marker so the next start is not put in safe mode.
 ['SIGTERM', 'SIGINT'].forEach(function (sig) { process.on(sig, function () { stopInputLifecycle(); try { plugins.stop(); } catch (e) { /* exiting anyway */ } process.exit(0); }); });
 
@@ -963,21 +997,21 @@ var tvStateTimer=setInterval(function(){
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
 
 // Restore only an explicitly saved local domain filter once the adapter is ready.
-var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRestoreAttempts>12){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
+var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRestoreAttempts>BOOT_RETRIES){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
 
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Keep removed apps removed: the source fix is written on every change; this is only the safety net, slow, and only
 // while the switch is on. It also runs once when the adapter is up, and once more to take Vetro's ids out if the
 // switch was left off with ids still in Samsung's list.
 var keepRemovedTimer=setInterval(function(){if(platform.status().agent.connected&&!debloatBusy&&keepRemoved.enabled())keepRemoved.check().catch(function(){});},10*60000);if(keepRemovedTimer.unref)keepRemovedTimer.unref();
-var keepRemovedBootAttempts=0;var keepRemovedBootTimer=setInterval(function(){if(++keepRemovedBootAttempts>60){clearInterval(keepRemovedBootTimer);return}if(platform.status().agent.connected){clearInterval(keepRemovedBootTimer);keepRemoved.check().catch(function(){});}},5000);if(keepRemovedBootTimer.unref)keepRemovedBootTimer.unref();
+var keepRemovedBootAttempts=0;var keepRemovedBootTimer=setInterval(function(){if(++keepRemovedBootAttempts>BOOT_RETRIES){clearInterval(keepRemovedBootTimer);return}if(platform.status().agent.connected){clearInterval(keepRemovedBootTimer);keepRemoved.check().catch(function(){});}},5000);if(keepRemovedBootTimer.unref)keepRemovedBootTimer.unref();
 
 // Warm the boot-state cache of the Startup tab (a 12-17 s read on a Q80A, run as a detached job so the root agent is never held up) once
 // the TV has settled, so the first visit to the tab already has it. Tried for up to 5 minutes until the adapter is connected.
 var startupWarmAttempts=0;var startupWarmTimer=setInterval(function(){if(++startupWarmAttempts>30){clearInterval(startupWarmTimer);return}if(platform.status().agent.connected){clearInterval(startupWarmTimer);monitor.startup().catch(function(){});}},10000);if(startupWarmTimer.unref)startupWarmTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
-var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
+var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>BOOT_RETRIES){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

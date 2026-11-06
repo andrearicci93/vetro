@@ -32,7 +32,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.match(aged, /id="launchApp" class="primary" disabled/);assert.match(aged, /Factory test or service menu/);
     assert.doesNotMatch(sandbox.detailMarkup(apps[1]), /id="launchApp" class="primary" disabled/, 'Not used at home: open after a confirmation');
     sandbox.confirmLaunch(apps[1], null);
-    assert.equal(el('componentConfirmation').hidden, false);assert.match(el('componentConfirmation').innerHTML, /Not used at home/);
+    assert.equal(el('componentConfirmation').hidden, false);assert.match(el('componentConfirmation').innerHTML, /hotel, shop or factory app/);
     assert.ok(!calls.some(c => c.url === '/apps/launch'), 'nothing is sent before the confirmation');
     await el('confirmComponentAction').onclick.call(el('confirmComponentAction'));await tick();
     assert.deepEqual(calls.filter(c => c.url === '/apps/launch').map(c => c.body), [{appId: 'org.tizen.cloning', confirmed: true}]);
