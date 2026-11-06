@@ -119,3 +119,13 @@ from it, each marked in the file header:
 - `app/service/quick-wins.js`: the AirPlay win (do-not-start files for Samsung's AirPlay units) and the
   boot identity made of the boot id and the boot time.
 - `app/service/hbbtv.js`: disabling the HbbTV service app so that its auto-restart cannot bring it back.
+
+## pponce's fork of Vetro
+
+Source: https://github.com/pponce/vetro (branch `prep/input-lifecycle-release-20261105`)
+License: MIT, the same licence and copyright line as Vetro ("Vetro contributors"). The commit is included with its
+original author and message; only a conflict in `runActions` (the `direct` parameter from #135 next to the new
+`dispatchGuard`) was resolved here.
+
+- `app/service/main.js`, `app/service/physical-input.js` and the tests `input-service-lifecycle`,
+  `physical-input-lifecycle`: cancelling remote-input callbacks and queued actions after the service stops.

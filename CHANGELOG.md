@@ -115,6 +115,10 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
   auto-restart and starts again within a second of a plain stop. TVs from 2023 on have no service app (24 of the
   41 rooted TVs in the community reports), and there Off works as before. A TV that was switched off by an earlier
   Vetro reads "Partly done" until the next start of the service, which puts the missing piece in place.
+- **Stopping the service stops the remote input.** When the service stops or is replaced, the remote-input
+  helper, its listener and the queued Remapper actions are cancelled, and a late callback from the old service can
+  no longer start a helper, authenticate or send a key into the new one ([#138](https://github.com/andrearicci93/vetro/issues/138),
+  by **pponce**). Defensive; not tried on a TV yet.
 - Credit: the AirPlay switch, the boot identity, the HbbTV service disable and Keep removed apps removed come
   from **zabique**'s fork of Vetro (branch `fork/extras`); see Credits.
 
@@ -229,6 +233,7 @@ Code in this release:
 - **zerodevb**: dashboard and API pairing, including its Node 4.4 support ([#9](https://github.com/andrearicci93/vetro/pull/9)).
 - **Firaenix**: CoBA multi-app Home guard, still selection (now Reduce motion), raw navigation, delayed Home
   echoes and the CoBA Samsung Home tile, adapted into the bundled launcher ([#23](https://github.com/andrearicci93/vetro/pull/23), [#24](https://github.com/andrearicci93/vetro/pull/24)).
+- **pponce** ([fork](https://github.com/pponce/vetro)): cancelling remote-input callbacks and queued actions when the service stops (commit kept with its author, [#138](https://github.com/andrearicci93/vetro/issues/138)).
 - **zabique** (fork `fork/extras`): ideas and first implementations of Keep removed apps removed, Disable AirPlay, the boot identity with the boot time, and the HbbTV service disable, re-written for the Q80A.
 - **Merennor**: Node 4.4 support for the integration adapter, and the unsupported-root fallback ([#75](https://github.com/andrearicci93/vetro/pull/75)).
 - Merged from `main` and credited in 0.3.5: **tomcraft** ([#31](https://github.com/andrearicci93/vetro/pull/31), [#32](https://github.com/andrearicci93/vetro/pull/32)), **SalustLab** ([#33](https://github.com/andrearicci93/vetro/pull/33)), **domenix** ([#27](https://github.com/andrearicci93/vetro/pull/27), [#29](https://github.com/andrearicci93/vetro/pull/29), [#52](https://github.com/andrearicci93/vetro/pull/52)),
