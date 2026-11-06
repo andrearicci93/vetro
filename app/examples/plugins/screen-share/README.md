@@ -28,4 +28,7 @@ Adapted from [zabique/vetro](https://github.com/zabique/vetro/tree/fork/extras) 
 
 ## Status
 
-Not yet tried on a TV. The memory layout the helper uses was read on a QN85A; on other firmware it may report an error instead of a picture.
+Tried on a Q80A (firmware 2310.0, 2026-11-06): the helper works. A single capture takes about 25 ms, colours are right, and the
+helper exits by itself after the last viewer. This TV's capture library returns at most **720x576** pixels whatever size is
+asked, and the picture comes squeezed (the full 16:9 screen in a 5:4 frame), so the page stretches it back to 16:9: it is a
+preview, not a sharp copy. The whole plugin flow (install, switch on, page) has not been run on a TV yet.

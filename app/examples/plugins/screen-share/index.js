@@ -47,7 +47,7 @@ function controlsFrom(reqUrl) {
 
 var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" content="light dark">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<style>body{font:15px system-ui;margin:16px}#v{display:block;max-width:100%;background:#000;border-radius:8px;min-height:120px}' +
+    '<style>body{font:15px system-ui;margin:16px}#v{display:block;width:100%;aspect-ratio:16/9;object-fit:fill;background:#000;border-radius:8px}' +
     '.row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:12px 0}label{display:flex;gap:6px;align-items:center}' +
     '#s{opacity:.75;min-height:1.4em}button,select{font:inherit;padding:6px 10px}</style>' +
     '<body><div class="row"><button id="go">Start</button><button id="stop" hidden>Stop</button>' +
