@@ -112,13 +112,13 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, completeAppList: s && s.completeAppList === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, completeAppList: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -218,7 +218,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, completeAppList: state.completeAppList, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
@@ -266,7 +266,7 @@ Dock.prototype.writeCatalog = function () {
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, completeAppList: state.completeAppList, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
         try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -506,11 +506,21 @@ Dock.prototype.inputEntries = function () {
 
 // Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.
 Dock.prototype.setSourceOption = function (key, on) {
-    var self = this;
     if (SOURCE_OPTION_KEYS.indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid source option'));
+    return this.setCatalogOption(key, on);
+};
+Dock.prototype.setCompleteAppList = function (on, expected) {
+    if (typeof on !== 'boolean' || typeof expected !== 'boolean') return Promise.reject(new Error('Invalid app completion preference'));
+    return this.setCatalogOption('completeAppList', on, expected);
+};
+// Catalog preferences share persistence, readback and rollback; no Samsung setting is changed.
+Dock.prototype.setCatalogOption = function (key, on, expected) {
+    var self = this;
+    if (SOURCE_OPTION_KEYS.concat(['completeAppList']).indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid catalog option'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     try { this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
     var before = this.readState();
+    if (expected !== undefined && before[key] !== expected) return Promise.reject(new Error('Launcher preference changed; refresh before trying again'));
     if (before[key] === on) return this.status();
     var patch = {};
     patch[key] = on;
@@ -518,10 +528,11 @@ Dock.prototype.setSourceOption = function (key, on) {
     this.busy = true; this.lastError = null;
     function rebuild() { return before.enabled ? self.launch() : self.writeCatalog(); }
     return Promise.resolve().then(rebuild).then(function () {
-        if (self.readState()[key] !== on) throw new Error('Source option readback failed');
+        if (self.readState()[key] !== on) throw new Error('Launcher preference readback failed');
         return self.status();
     }).catch(function (error) {
         try { self.writeState(before); } catch (restoreError) { throw new Error(error.message + '; settings restore failed: ' + restoreError.message); }
+        if (self.readState()[key] !== before[key]) throw new Error(error.message + '; settings restore readback failed');
         return Promise.resolve().then(rebuild).catch(function (restoreError) {
             self.lastError = error.message + '; catalog restore failed: ' + restoreError.message;
             throw new Error(self.lastError);

@@ -262,6 +262,37 @@ function fixture(options) {
     assert.equal(f.dock.iconFile('evil'), null, 'a path outside the icon places is never read');
     assert.equal(f.dock.iconFile('net'), null, 'nor one with parent directories');
 
+    // App completion is explicit, persists, refuses stale requests and restores a failed rebuild.
+    const extra = '\nR|' + [hex('browser'), hex('Browser'), hex('org.tizen.browser'), '0'].join('|');
+    f = fixture({homeData: HOME_DATA.replace('F|csfs', 'F|media') + extra});
+    assert.equal(f.dock.readState().completeAppList, false);
+    await f.dock.enable();
+    assert.equal((await f.dock.status()).completeAppList, false);
+    assert.ok(!fs.readFileSync(f.dock.appsFile, 'utf8').includes('org.tizen.browser'));
+    await assert.rejects(f.dock.setCompleteAppList('yes', false), /Invalid app completion/);
+    await assert.rejects(f.dock.setCompleteAppList(true), /Invalid app completion/);
+    await assert.rejects(f.dock.setCompleteAppList(true, true), /preference changed/);
+    await f.dock.setCompleteAppList(true, false);
+    assert.equal(f.dock.readState().completeAppList, true);
+    assert.ok(fs.readFileSync(f.dock.appsFile, 'utf8').includes('org.tizen.browser'));
+    const completionReload = new Dock({execute:f.dock.execute,dir:f.dock.dir,stateFile:f.dock.stateFile,appsFile:f.dock.appsFile});
+    assert.equal(completionReload.readState().completeAppList, true);
+    const completedCatalog = fs.readFileSync(f.dock.appsFile, 'utf8'), completeExec = f.dock.execute;
+    let completionFailure = true;
+    f.dock.execute = async function(cmd) {
+        if (completionFailure && Buffer.from(cmd.split(' ')[1] || '', 'base64').toString().includes('.appLayerCache')) {
+            completionFailure = false; return {exit_code:1,stderr:'completion read failed'};
+        }
+        return completeExec(cmd);
+    };
+    await assert.rejects(f.dock.setCompleteAppList(false, true), /completion read failed/);
+    assert.equal(f.dock.readState().completeAppList, true, 'original preference restored and read back');
+    assert.equal(fs.readFileSync(f.dock.appsFile, 'utf8'), completedCatalog, 'original generated list restored');
+    assert.equal(f.tv.running, true, 'previous launcher restored');
+    f.dock.execute = completeExec;
+    await f.dock.setCompleteAppList(false, true);
+    assert.ok(!fs.readFileSync(f.dock.appsFile, 'utf8').includes('org.tizen.browser'));
+
     // Source switches persist like other launcher options and revert failed changes.
     f = fixture();
     assert.equal(f.dock.readState().showHomeSources,false);

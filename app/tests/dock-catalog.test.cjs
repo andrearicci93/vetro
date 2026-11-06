@@ -144,7 +144,8 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
     const p = catalog.parse(MEDIA);
     assert.equal(p.rowFrom, 'media');
     assert.deepEqual(p.order, ['s/source.layer.hdmi@HDMI1', 'd/webapp@hue', 's/source.layer.hdmi@HDMI4', 's/livetv@HDMI3'], 'numbers are not entries');
-    const b = catalog.build(p, {});
+    assert.deepEqual(catalog.build(p, {}).entries.map(e => e.appId), ['kupCeIdDkX.HueSync'], 'a Media row is mirrored by default, even when it contains one app');
+    const b = catalog.build(p, {completeAppList: true});
     assert.deepEqual(b.entries.map(e => e.appId), ['kupCeIdDkX.HueSync', 'org.tizen.browser', '9Ur5IzDKqV.TizenYouTube'],
         'the recent strip comes first, then the other visible apps by title; hidden apps and Vetro stay out');
     assert.equal(b.entries[2].icon, '/opt/share/webappservice/apps_icon/all/yt/224x224.png', 'completed apps keep their registry icon');
@@ -156,6 +157,7 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
         'R|' + hex('bbb') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0'].join('\n'));
     assert.equal(p.rowFrom, 'csfs');
     assert.deepEqual(catalog.build(p, {}).entries.map(e => e.appId), ['org.tizen.netflix-app']);
+    assert.deepEqual(catalog.build(p, {completeAppList: true}).entries.map(e => e.appId), ['org.tizen.netflix-app', 'org.tizen.browser'], 'explicit completion also works for a csfs row');
 }
 // No row at all but a registry: still a dock.
 {
