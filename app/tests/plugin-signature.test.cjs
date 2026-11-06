@@ -77,5 +77,18 @@ function call(h, method, url, body) {
     assert.equal((await call(h4, 'GET', '/plugins')).body.signed, false);
     // "developer" is not a plugin id
     assert.throws(() => host(null).install(bundle('developer', '1.0.0')), /Invalid plugin id|Unknown|not allowed|reserved/i);
+    // A build with no sign-in (app-only) forbids Developer mode: it cannot be switched on, and a state file that
+    // already says "on" does not let an unsigned bundle in. Signed installs still work.
+    const h5 = new PluginHost({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-sig-')), registryKey: pub, external: false, developerAllowed: () => false });
+    const denied = await call(h5, 'POST', '/plugins/developer', '{"on":true}');
+    assert.equal(denied.status, 403); assert.equal(h5._readState().developer, false);
+    assert.equal((await call(h5, 'POST', '/plugins/developer', '{"on":false}')).status, 200);
+    h5._writeState({ enabled: {}, developer: true });
+    assert.throws(() => h5.install(b, h1), /not allowed in this build/);
+    const listed = (await call(h5, 'GET', '/plugins')).body;
+    assert.equal(listed.developer, false); assert.equal(listed.developerAllowed, false);
+    assert.equal(h5.install(b, h1, sign('hello', '1.0.0', h1)).trust, 'registry');
+    // main.js hands the host that rule from the platform mode
+    assert.match(fs.readFileSync(path.join(__dirname, '../service/main.js'), 'utf8'), /developerAllowed: function \(\) \{ return platform\.status\(\)\.mode !== 'app-only'; \}/);
     console.log('PASS plugin list signature: signed install, wrong key/version/hash/id refused, Developer mode, trust shown, no-key installs also require Developer mode');
 })().catch(e => { console.error(e); process.exit(1); });

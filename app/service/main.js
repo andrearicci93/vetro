@@ -899,7 +899,7 @@ if (updateConfirmTimer.unref) updateConfirmTimer.unref();
 // Third-party plugins (see docs/plugins.md): loaded from the plugin folder, off until switched on, guarded, safe mode after a failed boot.
 // Bundled plugins ship in this package, are on by default, keep running in safe mode and get ctx.vetro (docs/PLUGIN-ARCHITECTURE.md).
 // The launcher is the first one; MQTT, the remapper and the rest are still Vetro's own code.
-var plugins = new PluginHost({registryKey: require('./plugin-key.js'), dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
+var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developerAllowed: function () { return platform.status().mode !== 'app-only'; }, dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
     registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/catalog/index.json',
     services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
 plugins.register(require('./plugin-launcher.js').definition(dock));

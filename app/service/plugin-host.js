@@ -83,6 +83,9 @@ function PluginHost(opts) {
     // Public key of the plugin list (PEM), a different key from the one that signs Vetro updates. Without it
     // signatures cannot be checked; unsigned installs still require Developer mode.
     this.registryKey = opts.registryKey || null;
+    // Developer mode lets unsigned code run inside the service, so a build can forbid it altogether: in app-only
+    // mode nobody signs in, and anyone on the network could otherwise switch it on and install a plugin.
+    this.developerAllowed = typeof opts.developerAllowed === 'function' ? opts.developerAllowed : function () { return true; };
     this.services = opts.services || {};        // what Vetro lends to bundled plugins only (ctx.vetro)
     this.entries = Object.create(null);
     this.order = [];
@@ -256,6 +259,9 @@ PluginHost.prototype._trustFor = function (id, version, sha, signature) {
         } catch (e) { ok = false; }
         if (!ok) throw new Error('The signature does not match the plugin list key');
         return 'registry';
+    }
+    if (!this.developerAllowed()) {
+        throw new Error('This plugin is not signed by the plugin list. Unsigned plugins are not allowed in this build, which has no sign-in.');
     }
     if (!this._readState().developer) {
         throw new Error('This plugin is not signed by the plugin list. Switch on Developer mode to install it anyway.');
@@ -544,7 +550,7 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
         else {
             var all = this.list();      // once: every status() call counts an error from a plugin whose status() throws
             json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry,
-                signed: !!this.registryKey, developer: this._readState().developer,
+                signed: !!this.registryKey, developer: this._readState().developer && this.developerAllowed(), developerAllowed: this.developerAllowed(),
                 plugins: all.filter(function (p) { return !p.bundled; }), bundled: all.filter(function (p) { return p.bundled; }) });
         }
         return true;
@@ -567,6 +573,9 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
             var p;
             try { p = JSON.parse(body); } catch (e) { return json(res, { ok: false, error: 'Invalid JSON' }, 400); }
             if (!p || typeof p.on !== 'boolean') return json(res, { ok: false, error: 'Send {"on": true|false}' }, 400);
+            if (p.on && !self.developerAllowed()) {
+                return json(res, { ok: false, error: 'Developer mode is not available in this build: it has no sign-in, so anyone on the network could use it to run code.' }, 403);
+            }
             var state = self._readState();
             state.developer = p.on;
             self._writeState(state);
