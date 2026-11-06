@@ -75,20 +75,26 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 - **Custom launcher: your own app on the Home key.** The Launcher page has two tabs,
   **Vetro launcher** and **Custom launcher**. In the second, one switch and an app picker
   (apps you installed yourself, with a launcher entry, switched on) make the Home key open
-  that app. Vetro turns Samsung's Home off so it cannot come up over the app and switches
-  off Autorun Smart Hub so the TV does not power on into it; turning the switch off
-  undoes all of it, in the opposite order. The app runs through the same headless native
-  process and supervision as the Vetro launcher, not through the Remapper. If it keeps
-  failing to start, the mode turns itself off after six tries and Samsung's Home returns.
+  that app. Samsung's Home stays installed and enabled: the same guard as the Vetro launcher
+  closes it right after each Home press, and Vetro switches off Autorun Smart Hub so the
+  TV does not power on into it; turning the switch off undoes all of it, in the opposite
+  order. The app runs through the same headless native process and supervision as the Vetro
+  launcher, not through the Remapper. If it keeps failing to start, the mode turns itself
+  off after six tries and the Home key goes back to Samsung. **Why Samsung's Home is not
+  disabled:** on the Q80A (firmware 2310.0) the boot script `firstscreen.sh` retries
+  `app_launcher -f com.samsung.tv.csfs` until the output says "successfully launched", and
+  for a disabled package it answers "not available for the user", so the loop never ends
+  and the TV may never finish its boot (checked on the TV, 2026-11-06, without rebooting).
+  A state left by an earlier build, with Samsung's Home disabled by this mode, is put back
+  by the service at its first check.
   The two modes exclude each other in the page and in the service, and any launcher
   on locks the separate **Samsung Home** switch (now at the bottom of the Custom launcher
-  tab, for people who map a remote button by hand; it asks for confirmation, is included
+  tab, for people who map a remote button by hand; it asks for confirmation and warns that the TV may not finish its boot while it is off, is included
   in Restore the TV and is refused by the API and the Task manager while a launcher is on).
   Quick settings no longer has a Home tab, and the Launcher no longer carries a Beta
   label. The diagnostic export reports the mode and whether a custom app is set, never
-  its id. **Not tried on a TV. The boot with Samsung's Home disabled is unverified:**
-  the firmware's first-screen script retries `app_launcher -f com.samsung.tv.csfs`
-  until it succeeds, and what that returns for a disabled app is not known. Related request: [#127](https://github.com/andrearicci93/vetro/issues/127) by **skjnldsv**
+  its id. **The guard-only version is not tried by hand on a TV yet** (how long Samsung's
+  Home stays visible after a press, with the app already open). Related request: [#127](https://github.com/andrearicci93/vetro/issues/127) by **skjnldsv**
   (an app as the TV's home at power-on); this mode is a different route and does not close it.
 - **The TV app can reach the service through the TV's own address** ([#122](https://github.com/andrearicci93/vetro/issues/122),
   [#123](https://github.com/andrearicci93/vetro/pull/123), measured and proposed by **skjnldsv** on The Frame 2025,

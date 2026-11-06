@@ -11,8 +11,10 @@
 // the TV is changed: no package is disabled and the default Home is untouched.
 //
 // The same process also serves the custom launcher mode (the user's own app on the Home key). There it runs
-// headless with --home-launch APPID: the Home key opens that app instead of the dock, and Samsung's Home is
-// disabled so that it cannot come up over it. The two modes exclude each other; `customApp` in the state is the
+// headless with --home-launch APPID: the Home key opens that app instead of the dock, and the same guard that the
+// Vetro launcher uses closes Samsung's Home (and its sidebar and media windows) after each press. Samsung's Home is
+// never disabled: on the Q80A the boot script waits for it to start, so a disabled package can keep the TV from
+// finishing its boot (verified 2026-11-06). The two modes exclude each other; `customApp` in the state is the
 // switch for the second one, `enabled` stays the switch of the first.
 
 var fs = require('fs');
@@ -51,9 +53,9 @@ var BOOT_WAIT_MS = 75000;                             // a start in the first mi
 var BOOT_WINDOW_S = 300;
 var RETRY_FIRST_MS = 30000;
 var RETRY_MAX_MS = 300000;
-// Samsung's Home is disabled in the custom mode and nothing takes over from it, so a process that keeps failing
-// to start must not leave the Home key dead: after this many failed tries (about 12 minutes of back-off) the
-// service turns the mode off and Samsung's Home is back. A start the agent could not attempt does not count.
+// Nothing opens the chosen app but the headless process, so one that keeps failing to start must not leave the Home
+// key dead: after this many failed tries (about 12 minutes of back-off) the service turns the mode off and Samsung's
+// Home answers the key again. A start the agent could not attempt does not count.
 var CUSTOM_MAX_FAILURES = 6;
 var APP_CHECK_ROUNDS = 6;                              // the chosen app is looked up every 6th supervision round (about a minute)
 var APP_GONE_ROUNDS = 2;                               // and given up on when two lookups in a row say it is gone
@@ -68,8 +70,9 @@ function Dock(options) {
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
     this.customAppsFile = options.customAppsFile || CUSTOM_APPS_FILE;
-    // Custom mode needs two things from the shell: home {state(), disable(), restore()} for Samsung's Home, and
-    // appCheck(appId) -> {ok, label|reason} for the chosen app (rejects when the registry cannot be read now).
+    // Custom mode needs two things from the shell: appCheck(appId) -> {ok, label|reason} for the chosen app (rejects
+    // when the registry cannot be read now), and home {restore()} to put Samsung's Home back when an earlier build
+    // of the mode had disabled it (state flag customHomeDisabled, never set by this version).
     this.home = options.home || null;
     this.appCheck = options.appCheck || null;
     this.checkRound = 0;
@@ -331,10 +334,11 @@ Dock.prototype.refresh = function () {
 
 // ---- Custom launcher: the user's own app on the Home key --------------------------------------------------------
 //
-// One switch does three things: the Home key opens the chosen app (the headless dock, with the same unit, the same
-// supervision and the same standby survival as the Vetro launcher), Samsung's Home is disabled so that it cannot
-// come up over the app, and Autorun Smart Hub is switched off so that the TV does not power on to Samsung's Home.
-// Everything is undone in the opposite order, and only what this mode changed.
+// One switch does two things: the Home key opens the chosen app (the headless dock, with the same unit, the same
+// supervision and the same standby survival as the Vetro launcher, and the same guard that closes Samsung's Home
+// after each press), and Autorun Smart Hub is switched off so that the TV does not power on to Samsung's Home.
+// Samsung's Home itself is left alone, so a reboot, a power cut or a failed update can never leave the TV without
+// the first screen its boot waits for. Everything is undone in the opposite order, and only what this mode changed.
 
 // Which installed apps can be the custom launcher: the ones the user installed, with a launcher entry, switched on.
 // This function is also sent to the dashboard as text, so it cannot call anything outside itself.
@@ -365,14 +369,13 @@ Dock.prototype.writeCustomList = function (appId) {
 
 Dock.prototype.requireCustomParts = function () {
     if (!this.installed()) return new Error('The dock files are not in this Vetro package');
-    if (!this.home || !this.appCheck) return new Error('The custom launcher is not available in this build');
+    if (!this.appCheck) return new Error('The custom launcher is not available in this build');
     return null;
 };
 
 // Turn the custom launcher on, or change its app when it is on already. Order: the app is checked, the headless
-// process is started and seen running, Autorun Smart Hub is switched off, and only then is Samsung's Home
-// disabled (the step that has no cheap way back). The intent is written before each change, as autorunWas is,
-// so that a crash in the middle leaves something the service can finish or undo.
+// process is started and seen running, and Autorun Smart Hub is switched off. The intent is written before the
+// start, as autorunWas is, so that a crash in the middle leaves something the service can finish or undo.
 Dock.prototype.enableCustom = function (appId) {
     var self = this, before = this.readState();
     if (typeof appId !== 'string' || !APP_ID_RE.test(appId)) return Promise.reject(new Error('Choose an app from the list'));
@@ -382,15 +385,11 @@ Dock.prototype.enableCustom = function (appId) {
     if (before.enabled) return Promise.reject(new Error('Turn off the Vetro launcher before turning on the custom launcher'));
     if (before.customApp === appId) return this.status();
     this.busy = true; this.lastError = null;
-    var changing = !!before.customApp, homeStep = false;
+    var changing = !!before.customApp;
     return this.appCheck(appId, true).then(function (c) {
         if (!c || c.ok !== true) throw new Error((c && c.reason) || 'This app cannot be used as a launcher');
-        return self.home.state();
-    }).then(function (homeState) {
-        if (homeState === 'unknown') throw new Error('Samsung Home state could not be read. Refresh the app list and try again.');
         // Written first: if this process dies now, supervision starts the headless dock for this app.
-        self.patchState({customApp: appId, customSince: changing ? before.customSince : self.now(),
-            customHomeDisabled: changing ? before.customHomeDisabled : homeState !== 'off' && homeState !== 'unavailable'});
+        self.patchState({customApp: appId, customSince: changing ? before.customSince : self.now()});
         return self.launch();
     }).then(function () {
         self.failures = 0; self.nextTry = 0; self.goneRounds = 0;
@@ -398,33 +397,30 @@ Dock.prototype.enableCustom = function (appId) {
         return self.turnOffAutorun()
             .catch(function (e) { self.lastError = 'The custom launcher is on, but Autorun Smart Hub could not be switched off: ' + e.message; });
     }).then(function () {
-        if (changing || !self.readState().customHomeDisabled) return null;
-        homeStep = true;
-        return self.home.disable();
+        if (changing) return null;
+        // Samsung's Home is idle in the background; closing it frees its memory and clears the screen for the app.
+        return self.execute(HOME_KILL.map(function (id) { return 'app_launcher -k ' + id; }).join('; '), 8000).catch(function () {});
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
-        return self.undoCustomStart(before, homeStep).then(function () { throw e; });
+        return self.undoCustomStart(before).then(function () { throw e; });
     }).finally(function () { self.busy = false; });
 };
 
-// A start that failed half way: back to the state before it, never leaving Samsung's Home off.
-Dock.prototype.undoCustomStart = function (before, homeStep) {
+// A start that failed half way: back to the state before it.
+Dock.prototype.undoCustomStart = function (before) {
     var self = this;
     function failed(label) { return function (e) { self.lastError = (self.lastError ? self.lastError + ' · ' : '') + label + ': ' + e.message; }; }
-    var step = homeStep ? this.home.restore().catch(failed('Samsung Home was not put back')) : Promise.resolve();
-    return step.then(function () {
-        if (before.customApp) {                      // it was a change of app: the old app goes back
-            try { self.patchState({customApp: before.customApp}); } catch (e) { return null; }
-            return self.launch().catch(failed('The previous app was not started again'));
-        }
-        try { self.patchState({customApp: null, customSince: null, customHomeDisabled: false}); } catch (e) { failed('The setting was not cleared')(e); }
-        return self.stopDock().catch(function () {}).then(function () { return self.restoreAutorun(); }).catch(failed('Autorun Smart Hub was not put back'));
-    });
+    if (before.customApp) {                          // it was a change of app: the old app goes back
+        try { self.patchState({customApp: before.customApp}); } catch (e) { return Promise.resolve(); }
+        return self.launch().catch(failed('The previous app was not started again'));
+    }
+    try { self.patchState({customApp: null, customSince: null, customHomeDisabled: false}); } catch (e) { failed('The setting was not cleared')(e); }
+    return self.stopDock().catch(function () {}).then(function () { return self.restoreAutorun(); }).catch(failed('Autorun Smart Hub was not put back'));
 };
 
-// Turn the custom launcher off. Samsung's Home goes back first: if it cannot be put back the mode stays on and
-// keeps working, which is better than a Home key that opens nothing. options.keepHome leaves that to the caller
-// (Restore the TV does it as its next step).
+// Turn the custom launcher off. If an earlier build had disabled Samsung's Home, it goes back first: when it cannot
+// be put back the mode stays on and keeps working, which is better than a Home key that opens nothing.
+// options.keepHome leaves that to the caller (Restore the TV does it as its next step).
 Dock.prototype.disableCustom = function (options) {
     var self = this, state = this.readState();
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
@@ -445,11 +441,11 @@ Dock.prototype.leaveCustom = function (options) {
     });
 };
 
-// The chosen app is gone (uninstalled or disabled) or the process cannot be started: give Samsung's Home back.
+// The chosen app is gone (uninstalled or disabled) or the process cannot be started: the Home key goes back to Samsung.
 Dock.prototype.giveUpCustom = function (reason) {
     var self = this;
     return this.leaveCustom().then(function () {
-        self.lastError = 'The custom launcher was turned off and Samsung’s Home is back: ' + reason;
+        self.lastError = 'The custom launcher was turned off and Samsung’s Home answers the Home key again: ' + reason;
         return 'reverted';
     }, function (e) {
         self.lastError = reason + ' Samsung’s Home could not be put back: ' + e.message;
@@ -533,7 +529,7 @@ Dock.prototype.supervise = function (agentConnected) {
     if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
-    return this.probe().then(function (p) {
+    return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {
         if (p.running) { self.failures = 0; self.refreshCatalogLater(); return 'running'; }
         return self.launch(true).then(function () { self.failures = 0; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {
@@ -545,6 +541,17 @@ Dock.prototype.supervise = function (agentConnected) {
         self.lastError = (self.failures >= 4 ? 'The dock has not started after ' + self.failures + ' tries; Vetro keeps trying. ' : '') + e.message;
         return 'failed';
     }).finally(function () { self.busy = false; });
+};
+
+// A build of the custom mode before 0.5.0 final disabled Samsung's Home and flagged it in the state. That package must
+// never stay disabled across a boot, so the first supervision round with the agent connected puts it back and clears
+// the flag. A failure is kept for the next round and does not stop the supervision.
+Dock.prototype.healHome = function (state) {
+    var self = this;
+    if (!state.customHomeDisabled || !this.home || typeof this.home.restore !== 'function') return Promise.resolve();
+    return this.home.restore().then(function () { self.patchState({customHomeDisabled: false}); }).catch(function (e) {
+        self.lastError = 'Samsung Home was disabled by an earlier version and could not be put back yet: ' + e.message;
+    });
 };
 
 // Custom mode only: about once a minute the chosen app is looked up. Two lookups in a row that say it is gone

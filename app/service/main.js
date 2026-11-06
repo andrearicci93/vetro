@@ -49,19 +49,11 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
-// Custom launcher mode needs Samsung's Home switched off and on (the Quick settings group, with its read-back and its
-// boot-flag handling) and a look at the chosen app in the registry. Both go through the same app inventory as the rest.
+// Custom launcher mode needs a look at the chosen app in the registry, and a way to put Samsung's Home back when an
+// earlier build of the mode had disabled it (the mode itself never disables it any more: the boot of the TV waits for it).
 var dockModule = require('./dock.js');
 var dock = new dockModule.Dock({execute: agentExecute,
     home: {
-        state: function () {
-            return inventory(true).then(function (d) {
-                if (d.registryError) return 'unknown';
-                var q = require('./quick-settings.js');
-                return q.state(q.find('samsung-home'), d.apps).status;
-            });
-        },
-        disable: function () { return applySamsungHome(true); },
         restore: function () { return applySamsungHome(false); }
     },
     appCheck: function (appId, fresh) {
@@ -535,7 +527,7 @@ function handleComponentAction(req,res) {
         }).catch(function(e){debloatBusy=false;serveJson(res,e.factoryTest?{ok:false,error:e.message,factoryTest:e.factoryTest}:{ok:false,error:e.message},e.statusCode||503)});
     });
 }
-// Samsung's Home for the custom launcher mode: the same group switch the Quick settings page used to carry, run from the service.
+// Samsung's Home put back by the service itself (a leftover of an earlier custom launcher build): the same group switch, run from the service.
 function applySamsungHome(off) {
     if(debloatBusy)return Promise.reject(new Error('Another app change is in progress. Try again in a moment.'));
     debloatBusy=true;

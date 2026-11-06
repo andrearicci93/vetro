@@ -67,7 +67,7 @@ namespace Launcher
         private static string _guardFile;
         private static int _homeCode = -1;
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
-        // itself is never shown. Samsung's Home is disabled by the service in this mode, the guard stays on as a net.
+        // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
         private static AppEntry _homeLaunch;
 

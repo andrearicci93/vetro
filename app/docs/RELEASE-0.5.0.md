@@ -169,8 +169,12 @@ The complete unsigned integration WGT is for an installer that supplies signing,
 5. **Launcher and plugin cycle.** Check Home, Samsung Home, Back, Settings, Source and launching an app.
    Check Remapper and saved interception. Install `tv-uptime`, enable it, open its page, restart the service,
    then disable/remove it. Use the example/scaffolder for a local plugin update cycle. This build's unsigned
-   catalog does not establish signature enforcement. Keep Disable Samsung Home for a separate reversible
-   test with another launcher and a Home mapping already working.
+   catalog does not establish signature enforcement. **Do not reboot with Samsung Home disabled**: on the Q80A
+   the boot script `firstscreen.sh` loops on `app_launcher -f com.samsung.tv.csfs`, which fails for a disabled
+   package (checked 2026-11-06 without a reboot), so the TV may never finish its boot. The Custom launcher no
+   longer disables it (the dock guard closes it after each Home press); test that on the TV: Home with the
+   app already open, how long Samsung's Home stays visible, held and rapid Home presses, then a cold boot with
+   the mode on. The standalone Disable Samsung Home switch is only for a reversible test that ends with it on again.
 6. **Restart and cold boot.** Close the foreground app: service and root agent must keep running. Power-cycle
    the TV and wait without opening Vetro from the TV or PC. Check root recovery, pairing, launcher/plugins,
    saved remaps and settings; record whether plugin safe mode triggered. Run [boot-test.py](BOOT-TEST.md)

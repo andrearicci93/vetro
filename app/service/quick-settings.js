@@ -37,7 +37,7 @@ var GROUPS = [
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
     // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
     {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,
-        description: 'Disables Samsung’s Home (First Screen, com.samsung.tv.csfs), so that the Home key no longer opens it. It does not turn on the Vetro launcher. Meant for anyone using a third-party launcher.',
+        description: 'Disables Samsung’s Home (First Screen, com.samsung.tv.csfs), so that the Home key no longer opens it. It does not turn on the Vetro launcher. Warning: the TV’s boot script keeps retrying to start this app, so on a Q80A (checked on firmware 2310.0) the TV may never finish starting while it is disabled, and getting out of that needs a factory reset. Turn it back on before you restart or switch off the TV. To use another launcher safely, use the Custom launcher in the Launcher tab instead: it leaves Samsung’s Home enabled.',
         ids: ['com.samsung.tv.csfs']}
 ];
 var ALLOWED_IDS = GROUPS.reduce(function (all, g) { return all.concat(g.ids); }, []);
