@@ -7,7 +7,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -16,6 +16,11 @@ jobs:
         run: node app/tests/run.cjs
       - name: Integration fixtures
         run: node rooting/tests/run.cjs
+      - uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Native launcher checks
+        run: dotnet run -c Release --project dock/tests
       - name: Diagnostic parser tests
         run: python3 .github/scripts/test_parse_log.py
       - name: Release hygiene and architecture

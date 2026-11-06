@@ -21,5 +21,7 @@ function call(method, url, body) {
   assert.equal(refused.status, 400); assert.equal(refused.body.ok, false); assert.notEqual(refused.body.code, 'no-key');
   assert.equal((await call('POST', '/update/check', '{}')).status, 400);
   assert.equal((await call('POST', '/update/rollback')).status, 409);
+  // No published update list (GitHub 404) reads as such, not as a GitHub failure.
+  assert.match(require('fs').readFileSync(require('path').join(__dirname, '../service/dashboard.js'), 'utf8'), /r\.status===404&&kind==='update list'\?'No update has been published yet\.'/);
   console.log('PASS update endpoints: status, refusal of an unsigned bundle, no rollback without a backup');
 })().catch(e => { console.error(e); process.exitCode = 1; });
