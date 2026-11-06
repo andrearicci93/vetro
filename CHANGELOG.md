@@ -9,6 +9,8 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 - **Remapper and the on-screen keyboard** ([#143](https://github.com/andrearicci93/vetro/issues/143), [#59](https://github.com/andrearicci93/vetro/pull/59) by domenix): with interception on, the keys Vetro lets through are re-emitted on a virtual remote that now carries the real remote's name, marked by its own `Phys` value, instead of an unknown name that Tizen's on-screen keyboard ignored. Tested on a Q80A. The input helper is built with `mcs` so it loads on .NET Core 3.1 too.
 
+- **HDMI sources in the launcher** ([#34](https://github.com/andrearicci93/vetro/pull/34) by tomcraft): two switches in the Launcher panel, both off by default. *HDMI sources on Home* keeps the HDMI tiles that Samsung's Home row already has, in their positions (it never adds a missing port). *HDMI source images* uses Samsung's own artwork for the sources on Home and on the Sources page instead of the generic icon. Both are saved, rebuild the list, and go back to the previous value if the rebuild fails. Tested by tomcraft on an S95C.
+
 ### Dashboard layout
 
 - **Settings and controls** replaces *TV settings* and *TV controls*: one page with two levels. The tabs are

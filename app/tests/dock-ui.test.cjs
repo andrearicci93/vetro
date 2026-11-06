@@ -15,6 +15,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         else if (url === '/dock') {
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
+            if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
             if (body.action === 'disableCustom') dock = Object.assign({}, dock, {mode: 'off', customApp: null, running: false});
@@ -134,6 +135,22 @@ const tick = () => new Promise(r => setImmediate(r));
     dock = Object.assign({}, dock, {installed: true, enabled: false, error: 'The launcher did not start.'});
     await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick();
     assert.match(el('dockBody').innerHTML, /The launcher did not start\./);
+    dock=Object.assign({},dock,{error:null,showHomeSources:false,useSourceImages:false});
+    await sandbox.loadDock();
+    assert.match(el('dockBody').innerHTML,/HDMI sources on Home/);
+    assert.doesNotMatch(el('dockBody').innerHTML,/Restore original choice|data-dock-source-restore/);
+    assert.match(el('dockBody').innerHTML,/HDMI source images/);
+    await el('dock').onchange({target:{dataset:{dockSourceOption:'showHomeSources'},checked:true}}); await tick();
+    assert.deepEqual(calls.filter(c=>c.body).pop().body,{action:'showHomeSources',on:true});
+    await el('dock').onchange({target:{dataset:{dockSourceOption:'useSourceImages'},checked:true}}); await tick();
+    assert.deepEqual(calls.filter(c=>c.body).pop().body,{action:'useSourceImages',on:true});
+    assert.equal(sandbox.dockData.showHomeSources,true);
+    await el('dock').onchange({target:{dataset:{dockSourceOption:'showHomeSources'},checked:false}}); await tick();
+    assert.equal(sandbox.dockData.showHomeSources,false);
+    assert.equal(sandbox.dockData.useSourceImages,true,'turning the source filter off leaves artwork choice intact');
+    const source={slug:'in-hdmi1',label:'HDMI 1',appId:'source:13'};
+    assert.match(sandbox.previewMarkup({entries:[source],useSourceImages:false}),/slug=in-hdmi1&images=0/);
+    assert.match(sandbox.previewMarkup({entries:[source],useSourceImages:true}),/slug=in-hdmi1&images=1/,'source artwork choice invalidates the preview image cache');
 
     // The Custom launcher tab: the user's own app on the Home key.
     const reload = async () => { await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick(); };
