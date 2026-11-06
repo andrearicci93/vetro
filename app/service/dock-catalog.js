@@ -20,6 +20,9 @@ var TRAILING_TABS_RE = /\t+$/;
 // icons itself; this module never touches an image.
 
 var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
+// The 2022 Home (Tizen 6.5 with the Media, Game and Ambient hubs, e.g. the S95B) keeps no app row in csfs: its
+// Media hub writes the same file name, but with the "recent" strip only (a few inputs and apps). The registry
+// then completes the list, so the dock still shows every visible app (PR #43 by arnaudaprahamian).
 var ORDER_DIR_NEW_HOME = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data';
 var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MAX_ENTRIES = 40;          // the dock refuses more
@@ -56,8 +59,10 @@ var COBA_HOME = 'com.samsung.tv.coba.newhome';
 function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
     return [
-        'B=' + ORDER_DIR,
-        'for d in ' + ORDER_DIR + ' ' + ORDER_DIR_NEW_HOME + '; do if [ -f "$d/.appLayerCache.1" ] || [ -f "$d/.appLayerCache.2" ]; then B=$d; break; fi; done',
+        // F| says which Home the row came from: csfs, or the 2022 Home's Media hub (see ORDER_DIR_NEW_HOME).
+        'B=' + ORDER_DIR + '; M=' + ORDER_DIR_NEW_HOME + '; F=none',
+        'if [ -s "$B/.appLayerCache.1" ] || [ -s "$B/.appLayerCache.2" ]; then F=csfs; elif [ -s "$M/.appLayerCache.1" ] || [ -s "$M/.appLayerCache.2" ]; then B=$M; F=media; fi',
+        'echo "F|$F"',
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
         'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
         '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
@@ -79,12 +84,14 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, sources: {}, homeApp: null};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, sources: {}, homeApp: null, rowFrom: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
         var f = line.split('|');
         try {
-            if (f[0] === 'O') {
+            if (f[0] === 'F' && f.length === 2) {
+                if (f[1] === 'csfs' || f[1] === 'media') out.rowFrom = f[1];
+            } else if (f[0] === 'O') {
                 var entry = f.slice(1).join('|').trim();
                 if (SOURCE_ID_RE.test(entry)) out.order.push(entry);
             } else if (f[0] === 'S' && f.length === 2) {
@@ -184,6 +191,21 @@ function build(parsed, options) {
             if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
         }
     });
+    // Without a csfs row (the 2022 Home), the row above is at best the "recent" strip: every other visible
+    // app of the registry follows, by title, so the dock shows the same apps as the Home's app list.
+    if (parsed.rowFrom !== 'csfs') {
+        var present = {}, inOrder = {};
+        entries.forEach(function (e) { present[e.appId] = true; });
+        parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });
+        Object.keys(parsed.registry).filter(function (id) { return !inOrder[id]; }).map(function (id) { return {id: id, reg: parsed.registry[id]}; })
+            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !present[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
+            .sort(function (a, b) { return a.reg.title.localeCompare(b.reg.title); })
+            .forEach(function (x) {
+                if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: x.reg.appId, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
+                present[x.reg.appId] = true;
+                add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]);
+            });
+    }
     return {entries: entries, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
 }
 
@@ -234,7 +256,8 @@ function load(execute, options) {
     return execute(wrap(script()), 20000).then(function (r) {
         if (r.exit_code || r.timed_out) throw new Error(r.stderr || 'Home data unavailable');
         var parsed = parse(r.stdout);
-        if (!parsed.order.length) throw new Error('The Home row is empty or unreadable');
+        if (!parsed.order.length && parsed.rowFrom === 'csfs') throw new Error('The Home row is empty or unreadable');
+        if (!parsed.order.length && !Object.keys(parsed.registry).length) throw new Error('The Home row and the app registry are empty or unreadable');
         var built = build(parsed, options);
         var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return /^s\/source\.layer\.hdmi@HDMI[1-4]$/.test(entry); });
         if (!built.entries.length && !filteredSources) throw new Error('None of the Home row apps could be matched in the registry');

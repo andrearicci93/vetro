@@ -7,7 +7,7 @@ const {Dock} = require('../service/dock.js');
 
 const hex = s => Buffer.from(s).toString('hex');
 const HOME_DATA = [
-    'O|d/webapp@aaa',
+    'F|csfs', 'O|d/webapp@aaa',
     'R|' + hex('aaa') + '|' + hex('Netflix') + '|' + hex('org.tizen.netflix-app') + '|0',
     'I|aaa|/opt/share/webappservice/apps_icon/all/aaa/224x224.png'
 ].join('\n');
@@ -213,7 +213,7 @@ function fixture(options) {
 
     // Fix TizenTube and the preview data
     const TT = [
-        'O|d/webapp@tt', 'O|d/webapp@aaa',
+        'F|csfs', 'O|d/webapp@tt', 'O|d/webapp@aaa',
         'R|' + hex('tt') + '|' + hex('TizenTube') + '|' + hex('xvvl3S1TT1.TizenTubeStandalone') + '|0',
         'R|' + hex('yt') + '|' + hex('YouTube') + '|' + hex('9Ur5IzDKqV.TizenYouTube') + '|0',
         'R|' + hex('aaa') + '|' + hex('Netflix') + '|' + hex('org.tizen.netflix-app') + '|0',

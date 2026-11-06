@@ -11,6 +11,8 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 - **HDMI sources in the launcher** ([#34](https://github.com/andrearicci93/vetro/pull/34) by tomcraft): two switches in the Launcher panel, both off by default. *HDMI sources on Home* keeps the HDMI tiles that Samsung's Home row already has, in their positions (it never adds a missing port). *HDMI source images* uses Samsung's own artwork for the sources on Home and on the Sources page instead of the generic icon. Both are saved, rebuild the list, and go back to the previous value if the rebuild fails. Tested by tomcraft on an S95C.
 
+- **Launcher on the 2022 Home** ([#43](https://github.com/andrearicci93/vetro/pull/43) by arnaudaprahamian, [#82](https://github.com/andrearicci93/vetro/issues/82)): on TVs whose Home keeps no app row in `csfs` (Tizen 6.5 with the Media, Game and Ambient hubs, such as the S95B), the Media hub only holds the "recent" strip. The launcher now says which Home the row came from and, when it is not `csfs`, adds the other visible apps of the registry by title (never Vetro or hidden apps). A `csfs` row is unchanged. Only the app-list completion is taken; closing the Home hubs, hiding apps from the launcher and skipping uninstalled apps are left for the launcher release. Checked in tests and on a Q80A (unchanged there); not tested on a 2022 set.
+
 ### Dashboard layout
 
 - **Settings and controls** replaces *TV settings* and *TV controls*: one page with two levels. The tabs are
