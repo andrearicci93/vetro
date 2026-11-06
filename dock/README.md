@@ -1,6 +1,6 @@
 # Vetro launcher
 
-A glass launcher for a rooted Samsung Tizen TV, written in C# against the TV's own EFL
+A minimal launcher for a rooted Samsung Tizen TV, written in C# against the TV's own EFL
 libraries and run with the TV's `dotnet`. Vetro starts and stops it from its **Launcher**
 tab; it is off until you turn it on.
 

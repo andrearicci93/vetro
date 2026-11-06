@@ -39,7 +39,7 @@ function definition(dock, options) {
         apiVersion: 1,
         bundled: true,
         author: 'Vetro',
-        description: 'The glass launcher that replaces Samsung\'s Home while it is switched on.',
+        description: 'The minimal launcher that replaces Samsung\'s Home while it is switched on.',
         permissions: ['exec'],     // it runs root commands through the agent; a label, as for every plugin
         create: function (ctx) {
             var vetro = ctx.vetro, timer = null, agentWas = false, ticks = 0;

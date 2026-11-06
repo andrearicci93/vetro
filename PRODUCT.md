@@ -35,7 +35,7 @@ Vetro combines a launcher, debloater, and remapper with a TV-hosted management d
 - Disabling keeps a component installed and can be reversed. Stopping ends a running process. Uninstalling requires an installer to recover. Preserve those distinctions and the existing confirmations and protected-component restrictions.
 - Quick settings and Task manager share an inventory. A switch describes the benefit, and on means that benefit is applied. Report actual outcomes, including partial completion and unavailable or unknown states.
 - Restore the TV reports and reverses supported Vetro changes. Removing Vetro is a separate maintenance workflow.
-- The launcher is beta and optional. It reads the apps, order, and icons from Samsung Home; the native launcher and dashboard have separate implementations and visual authorities.
+- The launcher is optional. It reads the apps, order, and icons from Samsung Home; the native launcher and dashboard have separate implementations and visual authorities.
 - Device operations depend on the optional TV integration adapter and supported firmware privileges. An app-only build is not a working device integration.
 - Compatibility varies by model, firmware, and runtime. The Q80A is the development and test device; distinguish it from community-reported results. Refer to `README.md` for the maintained compatibility record rather than promising a universal range.
 - Older Tizen runtimes can serve parts of the dashboard without supporting the root agent. Show capability limits instead of presenting unsupported actions as available.

@@ -44,7 +44,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{await tick();await tick();
  assert.equal(sandbox.currentPanel,'quick','Quick settings is the first panel');
  assert.ok(!calls.some(c=>c.url.startsWith('/monitor')),'no live sampling at start');
- assert.equal(el('appVersion').textContent,'Vetro 9.9.9','the sidebar footer shows the version the service reports');assert.match(el('connection').textContent,/TV connected/);
+ assert.equal(el('appVersion').textContent,'Vetro 9.9.9','the sidebar footer shows the version the service reports');assert.ok(!html.includes('id="count"')&&!html.includes('>TV manager<'),'no app count in the footer and no TV manager tagline');assert.equal(el('connection').textContent,'Connected','the corner under the logo says Connected or Not connected');
  const voice=el('quickVoice').innerHTML;
  assert.match(voice,/Disable Alexa/);assert.match(voice,/Partly done · 3 of 4 components still enabled/);assert.doesNotMatch(voice,/data-quick-toggle="alexa" checked/,'partly done: the switch is not on yet');
  const memory=el('quickMemory').innerHTML;
