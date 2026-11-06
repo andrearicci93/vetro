@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 — Security, Plugin and Launcher update (unreleased)
+## 0.5.0 — 2026-11-06
 
 Pairing for the dashboard and API, community plugins (Vetro Shards), a custom launcher, more privacy switches, signed in-place updates and a safer Restore the TV. There was no 0.4.0 release: its work is included here.
 
