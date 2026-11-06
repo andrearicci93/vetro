@@ -13,7 +13,8 @@ var sectionIcons={
  remove:'<rect x="6" y="7" width="12" height="14" rx="2"/><path d="M4 7h16M9 7V3h6v4M10 11v6M14 11v6"/>',
  privacy:'<path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z"/><path d="m8 8 8 8"/>',
  voice:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8"/>',
- memory:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+ disable:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+memory:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
  home:'<path d="m3 11 9-8 9 8M5 9v12h14V9M9 21v-7h6v7"/>',
  access:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4M12 14v3"/>'
 };
@@ -373,11 +374,11 @@ button:active:not(:disabled){transform:translateY(1px)}
 <aside class="sidebar" id="sidebar"><div class="brand"><img src="/icon.png" alt="" width="44" height="44"><span>vetro<small id="connection">Checking…</small></span></div><button type="button" id="closeMenu" class="menu-close">Close menu ×</button><nav aria-label="Main"><button data-tab="quick" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Quick settings</button><button data-tab="dock" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="13" width="18" height="7" rx="2.5"/><path d="M7.5 16.5h.01M12 16.5h.01M16.5 16.5h.01M8 8h8"/></svg>Launcher</button><button data-tab="remote" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="8" r="2"/><path d="M10 15h4M10 18h4"/></svg>Remapper</button><button data-tab="plugins" aria-current="false" title="Vetro Shards · Plugin system"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h9l-4 7-6-2 1-5ZM16 3h5v15l-9-7 4-8ZM3 12l6 3 8 6H3v-9Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>Vetro Shards</button></nav><div class="nav-label">TV</div><nav aria-label="TV"><button data-tab="apps" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Task manager</button><button data-tab="tvsettings" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/></svg>TV settings</button><button data-tab="control" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.2"/><path d="m12 5.2-1.6 1.7h3.2zM12 18.8l-1.6-1.7h3.2zM5.2 12l1.7-1.6v3.2zM18.8 12l-1.7-1.6v3.2z"/></svg>TV controls</button></nav><div class="nav-label">Monitor</div><nav aria-label="Monitor"><button data-tab="dashboard" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18a8.5 8.5 0 1 1 15 0"/><path d="m12 14 4-5"/><circle cx="12" cy="14" r="1.2"/></svg>Resource monitor</button><button data-tab="diagnostics" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/></svg>Diagnostic report</button><button data-tab="actions" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.8v4.7h4.7M12 7.5V12l3 2"/></svg>Session history<span id="actionsCount" class="chip nav-count" hidden></span></button></nav><div class="nav-label">Connections</div><nav aria-label="Connections"><button data-tab="dns" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>Domain blocking</button><button data-tab="mqtt" aria-current="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/><path d="M9.5 15.5c1.3-1.6 3.7-1.6 5 0M7.5 13c2.5-2.6 6.5-2.6 9 0"/><circle cx="12" cy="17.6" r=".8"/></svg>Home Assistant</button></nav><footer><span id="appVersion"></span></footer></aside>
 <main class="main"><div class="page"><header class="page-head"><div><h1 id="pageHeading" tabindex="-1"><span id="pageTitle">Quick settings</span></h1><p id="pageSubtitle">Quick wins: each switch frees memory, stops tracking or keeps the TV as it is.</p></div><div class="actions"><span id="sampleStatus" class="live" hidden>Live updates off</span><button id="liveToggle" hidden>Start live · 2 min</button></div></header>
 <div id="debloatModes" class="segmented" role="group" aria-label="Task manager views" hidden><button data-mode="apps" aria-pressed="true">Apps</button><button data-mode="processes" aria-pressed="false">Processes</button><button data-mode="startup" aria-pressed="false">Startup</button></div>
-<section id="quick"><div id="factoryTestBanner" class="inline-confirm" role="status" hidden></div><div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings"><button type="button" role="tab" id="qtab-general" data-quick-tab="general" aria-controls="quickPanel-general" aria-selected="true" tabindex="0">General</button><button type="button" role="tab" id="qtab-privacy" data-quick-tab="privacy" aria-controls="quickPanel-privacy" aria-selected="false" tabindex="-1">Privacy and ads</button><button type="button" role="tab" id="qtab-voice" data-quick-tab="voice" aria-controls="quickPanel-voice" aria-selected="false" tabindex="-1">Voice</button><button type="button" role="tab" id="qtab-memory" data-quick-tab="memory" aria-controls="quickPanel-memory" aria-selected="false" tabindex="-1">Memory</button><button type="button" role="tab" id="qtab-developer" data-quick-tab="developer" aria-controls="quickPanel-developer" aria-selected="false" tabindex="-1">Developer settings</button></div>
+<section id="quick"><div id="factoryTestBanner" class="inline-confirm" role="status" hidden></div><div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings"><button type="button" role="tab" id="qtab-general" data-quick-tab="general" aria-controls="quickPanel-general" aria-selected="true" tabindex="0">General</button><button type="button" role="tab" id="qtab-privacy" data-quick-tab="privacy" aria-controls="quickPanel-privacy" aria-selected="false" tabindex="-1">Privacy and ads</button><button type="button" role="tab" id="qtab-voice" data-quick-tab="voice" aria-controls="quickPanel-voice" aria-selected="false" tabindex="-1">Voice</button><button type="button" role="tab" id="qtab-memory" data-quick-tab="memory" aria-controls="quickPanel-memory" aria-selected="false" tabindex="-1">Disable</button><button type="button" role="tab" id="qtab-developer" data-quick-tab="developer" aria-controls="quickPanel-developer" aria-selected="false" tabindex="-1">Developer settings</button></div>
 <div id="quickPanel-general" class="stack" role="tabpanel" aria-labelledby="qtab-general"><div class="panel"><h2 class="section-title">${sectionIcon('update')}Software update</h2><p id="updateVersion" class="notice">Reading…</p><p class="notice">Vetro checks GitHub only when you select Check for update. It accepts updates signed with the Vetro release key and replaces the files on the TV without reinstalling. If the new version does not start, Vetro restores the previous version automatically.</p><div class="row"><button id="checkUpdate" disabled>Check for update</button><button id="applyUpdate" class="primary" hidden>Update</button><button id="rollbackUpdate" hidden>Go back to the previous version</button></div><p id="updateStatus" class="notice" role="status" aria-live="polite"></p></div><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 class="section-title" id="quickStorageTitle">${sectionIcon('storage')}Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group general-wide" aria-labelledby="quickControlTitle"><h2 class="section-title" id="quickControlTitle">${sectionIcon('firmware')}Firmware updates</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group general-wide" aria-labelledby="quickRestoreTitle"><h2 class="section-title" id="quickRestoreTitle">${sectionIcon('restore')}Restore the TV</h2><div id="quickRestore"></div></section><section class="quick-group general-wide" aria-labelledby="quickRemoveTitle"><h2 class="section-title" id="quickRemoveTitle">${sectionIcon('remove')}Remove Vetro</h2><div id="quickRemove"></div></section></div>
 <div id="quickPanel-privacy" class="stack" role="tabpanel" aria-labelledby="qtab-privacy" hidden><section class="quick-group" aria-labelledby="quickTrackingTitle"><h2 class="section-title" id="quickTrackingTitle">${sectionIcon('privacy')}Advertising and tracking</h2><div id="quickTracking"></div></section></div>
 <div id="quickPanel-voice" class="stack" role="tabpanel" aria-labelledby="qtab-voice" hidden><section class="quick-group" aria-labelledby="quickVoiceTitle"><h2 class="section-title" id="quickVoiceTitle">${sectionIcon('voice')}Voice assistants</h2><p class="quick-callout">Disabling one also turns off the remote’s microphone button and voice control.</p><div id="quickVoice"></div></section></div>
-<div id="quickPanel-memory" class="stack" role="tabpanel" aria-labelledby="qtab-memory" hidden><section class="quick-group" aria-labelledby="quickMemoryTitle"><h2 class="section-title" id="quickMemoryTitle">${sectionIcon('memory')}Free memory</h2><div id="quickMemory"><p class="section-note">Reading the TV…</p></div></section></div>
+<div id="quickPanel-memory" class="stack" role="tabpanel" aria-labelledby="qtab-memory" hidden><section class="quick-group" aria-labelledby="quickMemoryTitle"><h2 class="section-title" id="quickMemoryTitle">${sectionIcon('disable')}Disable what you don’t use</h2><p class="section-note">Each switch stops something that starts by itself. Switch it off again to get it back.</p><div id="quickMemory"><p class="section-note">Reading the TV…</p></div></section></div>
 <div id="quickPanel-developer" class="stack" role="tabpanel" aria-labelledby="qtab-developer" hidden><section class="quick-group" aria-labelledby="quickPairingTitle"><h2 class="section-title" id="quickPairingTitle">${sectionIcon('access')}Pairing</h2><div id="quickPairing"></div></section><section class="quick-group" aria-labelledby="quickSdbTitle"><h2 class="section-title" id="quickSdbTitle">${sectionIcon('access')}Developer access</h2><div id="quickSdb"></div></section></div></section>
 <section id="dashboard" hidden><div class="metric-grid">
 <div class="metric"><div class="label">CPU</div><div id="cpuValue" class="value">—</div><small id="cpuMeta">Start live updates to sample the TV</small></div>
@@ -726,13 +727,15 @@ var launcherEnabled=null;
 var groupTitles={'tracking-all':'Disable all advertising and tracking','voice-all':'Disable all voice assistants',alexa:'Disable Alexa',google:'Disable Google Assistant',bixby:'Disable Bixby',voice:'Disable the other voice services','samsung-home':'Disable Samsung Home'};
 var winCopy={
  hbbtv:{title:'Disable HbbTV',desc:'Stops the red-button app and the service that keeps starting it again, so it stays off after a source change, a wake-up or a restart. Frees about 22 MB of memory.',
-  detail:'Sets the HbbTV menu value to Off, stops the HbbTV service first and then the app (the service starts the app again if it is left running), and does the same after every restart of the TV. Switch off to restore the previous value and start both again.'},
+  detail:'Sets the HbbTV menu value to Off, disables the HbbTV service app (some firmware restarts the service within a second of a plain stop; the Task manager then lists org.tizen.hbbtv-service as disabled), stops the service and then the app, and does the same after every restart of the TV. Switch off to restore the previous value, enable the service app again and start both. The service disable comes from zabique’s fork of Vetro.'},
  multiscreen:{title:'Disable Multi View autostart',desc:'Samsung loads Multi View in the background at every restart of the TV. This stops that; Multi View still opens when you ask for it, and its first launch takes a few seconds longer. Frees about 15 MB.',
   detail:'Adds the file disable_preloading that Samsung’s own start-up unit checks, and stops the app now. Switch off to remove the file; nothing else is changed.'},
  ambient:{title:'Stop Ambient',desc:'Stops the Ambient app now and ends the launch the TV makes each time it starts. Frees about 59 MB. Opening Ambient yourself still works; the TV may start it again after you close it, until the next stop.',
   detail:'Samsung’s screen service (screend) starts org.tizen.ambientapp again within seconds of any stop. Vetro stops screend, ends the app and starts screend again; screend does not launch the app by itself, so it stays off. After each restart Vetro waits for Samsung’s start-up script to launch the app and ends it the same way. Samsung’s script and the system image are not touched. Switch off to start the app again.'},
  telemetry:{title:'Stop viewing-data collection',desc:'Stops the services that recognise what is on screen, record remote key presses and send usage logs to Samsung. They are stopped now and again after every restart of the TV.',
   detail:'Stops contents-recognition-service (recognises the app, content type and channel on screen), canalysis, pisa-service and adagent-service (analytics and ads), mirroring-recognition-manager, contents-ui-detector-service and contents-ott-detector-service (find thumbnails and app screens in the picture), kpi-logging (key presses), emergency-log-transmitter and devicetracker. canalysis and pisa-service are kept off across restarts with the files their own start-up units check; the rest are stopped again at each boot. data-service collects KPI logs (its configuration lists remote keys, apps, channels, volume and the advertising ID among the sources) and its log endpoints are on lcprd1.samsungcloudsolution.net; other components start it again, so that host is also added to the saved list of the domain filter. What it sends was not inspected, the connection is encrypted. Turn on Enable domain blocking to apply it. Switch off to start everything again and remove the host if Vetro added it. Some TV features that report back to Samsung, such as targeted suggestions, may stop updating. canalysis also works on logo recognition for HDMI inputs and pisa-service starts feature services and handles ad terms, so source recognition or some consent screens may change; neither was tested.'},
+ airplay:{title:'Disable AirPlay',desc:'Stops the AirPlay receiver and its hidden web app now and after every restart of the TV. Casting from an Apple device to this TV does not work while this is on.',
+  detail:'Adds the two files Samsung’s own AirPlay units check before they start (com.samsung.tv.airplay-service and airplay-service-2, in /opt/usr/share/systemd/system), stops the units and ends the AirPlay web app, and ends that app again once after a restart if something starts it. Switch off to remove the files and start the receiver again. The method comes from zabique’s fork of Vetro.'},
  firmware:{title:'Disable automatic firmware update',desc:'Same as Support › Software Update › Auto update. A new firmware can remove root access, so updates only happen when you start them.',
   detail:'Writes 0 to db/menu/support/softwareupdate/autoupdate and reads it back. Switch off to restore the previous value.'}
 };
@@ -759,7 +762,7 @@ function groupItem(g){
 function winItem(id){
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
- if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · recognition and logging stopped; data-service may still run':id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
+ if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · recognition and logging stopped; data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
  if(id==='telemetry'&&st==='on'&&w.dnsBlocked===false)state+=chip('Uploads can resume · turn on Enable domain blocking','partial');
  if(st==='partial')state=chip(id==='telemetry'?'Partly done · '+w.running+' service'+(w.running===1?'':'s')+' started again':'Partly done · Samsung started it again','partial');
  if(st==='off'&&w.running)state=chip('Running now','');
@@ -772,7 +775,7 @@ function hbbtvItem(){
  else{
   var blocked=h.off&&!h.canRestore;
   if(h.off)state=chip('Done · HbbTV and its service are stopped','on');
-  else if(h.valueOff)state=chip('Partly done · the menu says Off, but '+(h.running?'the app is still running':h.serviceRunning?'its service can start it again':'the relaunch brake is missing'),'partial');
+  else if(h.valueOff)state=chip('Partly done · the menu says Off, but '+(h.running?'the app is still running':h.serviceRunning?'its service can start it again':!h.flag?'the relaunch brake is missing':'its service is not disabled yet'),'partial');
   control=switchMarkup('data-hbbtv-disable',!!h.off,settingBusy||blocked,c.title)+(blocked?'<p class="section-note">Vetro does not have the previous value. Turn HbbTV on from the TV menu.</p>':'');
  }
  return quickItem('hbbtv',c.title,c.desc,state,control,'<details><summary>What this changes</summary><p>'+esc(c.detail)+'</p></details>');
@@ -780,6 +783,34 @@ function hbbtvItem(){
 var quickTab='general';
 function showQuickTab(id){quickTab=id;document.querySelectorAll('[data-quick-tab]').forEach(function(b){var on=b.dataset.quickTab===id;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;var p=$('quickPanel-'+b.dataset.quickTab);if(p)p.hidden=!on})}
 $('quickTabs').onclick=function(e){var b=e.target.closest&&e.target.closest('[data-quick-tab]');if(b)showQuickTab(b.dataset.quickTab)};
+// Keep removed apps removed (keep-removed.js): a global switch for this tab. The idea and the mechanism are zabique’s.
+function keepItem(){
+ var k=quickData.keep,title='Keep removed apps removed',n=k?k.packages.length:0,state='',control='',extra='';
+ if(!k)state=chip(quickData.keepError||'Reading…',quickData.keepError?'partial':'');
+ else{
+  var src=k.last&&k.last.source&&k.last.source.error;
+  state=k.enabled?chip('On · '+n+' app'+(n===1?'':'s')+' on the list','on'):chip(n?'Off · '+n+' app'+(n===1?'':'s')+' saved, not kept off':'Off');
+  if(k.enabled&&src)state+=chip('Samsung’s list could not be updated · '+src,'partial');
+  if(k.history&&k.history.length)state+=chip('Samsung installed an app again · Vetro removed it again','partial');
+  control=switchMarkup('data-keep-switch',k.enabled,quickBusy||winsBusy||keepBusy,title);
+  extra=n?'<details><summary>'+n+' app'+(n===1?'':'s')+' on the list</summary><ul class="member-list">'+k.packages.map(function(id){return '<li><span class="small-mono">'+esc(id)+'</span><button data-keep-allow="'+esc(id)+'"'+(keepBusy?' disabled':'')+'>Allow again</button></li>'}).join('')+'</ul></details>':'';
+ }
+ return quickItem('keep-removed',title,'Apps you remove with the Task manager are put on Samsung’s own list of removed apps, so its app sync does not install them again. Apps removed from now on are added while this is on.',state,control,
+  extra+'<details><summary>What this changes</summary><p>'+esc('Writes the store ids of the listed apps into webappservice’s list of apps you removed (WASConfigTable RESERVED_19) and takes out only the ids Vetro added when you switch off. Every 10 minutes it also removes a listed app that is installed anyway. That includes one you install again on purpose, so select Allow again first. Apps removed before you switched this on are not on the list. Not tested on a running TV yet.')+'</p></details>');
+}
+var keepBusy=false;
+function setKeep(action,packages){
+ if(quickBusy||winsBusy||keepBusy)return;keepBusy=true;renderQuick();
+ var label=action==='enable'?'Keep removed apps removed':action==='disable'?'Undo · Keep removed apps removed':'Allow removed app again';
+ return runUiOperation('keep',label,'Quick settings',null,function(mark){return api('/keep-removed',{action:action,packages:packages}).then(function(d){
+  quickData.keep=d;
+  var message=action==='enable'?'On: apps you remove from now on stay off the TV.':action==='disable'?'Off: the ids Vetro added are taken out of Samsung’s list; the saved list of apps is kept.':'Allowed again: Samsung may install '+String((packages||[])[0]||'this app')+' again.';
+  if(d.ok===false){var why=d.last&&d.last.source&&d.last.source.error||d.error||'Samsung’s list could not be updated';return {state:'warning',resultLabel:'Saved, not applied',message:message+' But '+why+'.'};}
+  mark(message,'State read back');
+  return {resultLabel:'State read back',message:message};
+ })}).finally(function(){keepBusy=false;renderQuick();});
+}
+function loadKeep(){quickData.keepError=null;return api('/keep-removed').then(function(d){if(typeof d.enabled!=='boolean'||!Array.isArray(d.packages))throw Error('Keep removed unreadable');quickData.keep=d;}).catch(function(e){quickData.keepError=e.message;}).finally(renderQuick);}
 function renderQuick(){
  if(!$('quickTracking'))return;
  renderRestore();
@@ -790,7 +821,7 @@ function renderQuick(){
   d?switchMarkup('data-dns-switch',dnsOn,quickBusy||uiOperationBusy.dns||dnsNoDomains&&!dnsOn,'Enable domain blocking'):'',
   dnsNoDomains?'<div class="quick-actions"><button data-quick-open="dns">Add domains</button></div>':'');
  // Ambient: screend, Samsung’s screen daemon, is stopped around the kill so that it does not start the app again.
- $('quickMemory').innerHTML=hbbtvItem()+winItem('multiscreen')+winItem('ambient');
+ $('quickMemory').innerHTML=hbbtvItem()+winItem('multiscreen')+winItem('ambient')+winItem('airplay')+keepItem();
  $('quickControl').innerHTML=winItem('firmware');
  $('quickTracking').innerHTML=winItem('telemetry')+quickGroups.filter(function(g){return g.section==='tracking'}).map(groupItem).join('')+dns;
  $('quickVoice').innerHTML=quickGroups.filter(function(g){return g.section==='voice'}).map(groupItem).join('');
@@ -855,6 +886,7 @@ function loadQuick(){
  api('/hbbtv').then(function(d){if(!Number.isInteger(d.value))throw Error('HbbTV state unreadable');hbbtvData=d;quickData.hbbtvError=null;}).catch(function(e){quickData.hbbtvError=e.message;}).finally(renderQuick);
  api('/dns').then(function(d){if(!Array.isArray(d.domains))throw Error('Filter state unreadable');dnsState(d);}).catch(function(){renderQuick();});
  loadWins();
+ loadKeep();
  loadLeftovers();
 }
 function applyQuick(id,off){
@@ -882,6 +914,7 @@ var winsBusy=false;
 function winMessage(id,on,d){
  if(d.changed===false)return winCopy[id].title+': already in the requested state.';
  if(id==='firmware')return 'Auto update '+(on?'off':'on')+'; value '+d.previous+' → '+d.value+' read back from the TV.';
+ if(id==='airplay')return 'AirPlay '+(on?'disabled: the receiver is stopped and stays off after a restart (read back).':'back on: the do-not-start files are removed and the receiver was started again.');
  if(id==='multiscreen')return 'Multi View autostart '+(on?'disabled: the preload file is in place and the app is stopped':'back on: the preload file is removed')+' (read back). '+(on?'Multi View still opens on demand.':'It loads again at the next restart.');
  return 'Ambient autostart '+(on?'disabled: the app is stopped and will be stopped after each restart':'back on: Samsung’s own start was run again')+'.';
 }
@@ -914,6 +947,7 @@ $('quick').onchange=function(e){var x=e.target,ds=x.dataset||{};
  if(ds.quickToggle!=null){var g=quickGroups.filter(function(y){return y.id===ds.quickToggle})[0];if(x.checked&&g&&(g.microphone||g.confirm)){x.checked=false;quickConfirm=g.id;renderQuick();var c=document.querySelector('[data-quick-confirm]');if(c)c.focus();return}return applyQuick(ds.quickToggle,x.checked);}
  if(ds.hbbtvDisable!=null)return setHbbtv(!x.checked);
  if(ds.winSwitch!=null)return setWin(ds.winSwitch,x.checked);
+ if(ds.keepSwitch!=null)return setKeep(x.checked?'enable':'disable');
  if(ds.dnsSwitch!=null)return setDns(x.checked);
 };
 $('quick').onclick=function(e){
@@ -926,6 +960,7 @@ $('quick').onclick=function(e){
  if(ds.quickCancel!=null){var id=quickConfirm;quickConfirm=null;renderQuick();var s=document.querySelector('[data-quick-toggle="'+id+'"]');if(s)s.focus();return}
  if(ds.quickConfirm!=null)return applyQuick(ds.quickConfirm,true);
  if(ds.quickApp!=null)return detail(ds.quickApp);
+ if(ds.keepAllow!=null)return setKeep('allow',[ds.keepAllow]);
  if(ds.quickOpen!=null)return switchPanel(ds.quickOpen);
  if(ds.leftoversClear!=null){leftoverConfirm=true;renderQuick();var c=document.querySelector('[data-leftovers-confirm]');if(c)c.focus();return}
  if(ds.leftoversCancel!=null){leftoverConfirm=false;renderQuick();return}

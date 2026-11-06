@@ -75,6 +75,8 @@ var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var factoryApps = require('./factory-apps.js');
 var factoryTest = new factoryApps.FactoryTest(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter});
+// Apps removed through Vetro stay removed (keep-removed.js; idea and mechanism by zabique, github.com/zabique/vetro).
+var keepRemoved = new (require('./keep-removed.js').KeepRemoved)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
 var tvState = new (require('./tv-state.js').Store)(agentExecute);
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
@@ -505,7 +507,9 @@ function handleComponentAction(req,res) {
             try { a=ComponentActions.validate(p,d.apps); }
             catch(e) { e.statusCode=400;throw e; }
             var factoryResult;
-            return agentExecute(ComponentActions.command(p,a),30000).then(function(r) {
+            // Keep removed: Samsung's row, and with it the store id, can be gone once the package is. Read it first.
+            var learned=p.action==='uninstall'?keepRemoved.learn(a.packageId):Promise.resolve(false);
+            return learned.then(function(){return agentExecute(ComponentActions.command(p,a),30000);}).then(function(r) {
                 // #135: AgingApp stopped this way leaves db/FactoryApp/Aging at 1, and the TV starts the test again at every boot.
                 // Put it back to 0 (only if it reads exactly 1), right after the stop command and whatever it answered:
                 // the process check below can fail on its own, and a stuck AgingApp is when the key matters most.
@@ -519,6 +523,8 @@ function handleComponentAction(req,res) {
                     var verified=p.action==='flags'?!!row&&row[p.flag]===p.enabled:
                         p.action==='uninstall'?!after.registryError&&!after.apps.some(function(x){return x.packageId===a.packageId}):
                         !results[1].processes.some(function(x){return x.appId===p.appId});
+                    // Removed on purpose and gone: put it on the list so Samsung's sync does not bring it back (switch on only).
+                    if(verified&&p.action==='uninstall'&&keepRemoved.enabled()){try{keepRemoved.change('add',[a.packageId]);keepRemoved.check().catch(function(){});}catch(e){/* Vetro's own packages are refused */}}
                     debloatBusy=false;serveJson(res,{ok:verified,verified:verified,action:p.action,appId:p.appId,packageId:a.packageId,changed:p.action==='flags'?a[p.flag]!==p.enabled:undefined,
                         error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps,factoryTest:factoryResult});
                 });
@@ -567,10 +573,24 @@ function handleWins(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
     wins.apply(p.id,p.on).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
 });}
+// Keep removed apps removed: {action:'enable'|'disable'} is the global switch, {action:'allow', packages:[...]} takes apps off the
+// list. Each answer says whether Samsung's list was brought in line; the switch is saved either way.
+function handleKeepRemoved(req,res) {readJsonBody(req,res,function(p){
+    if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
+    var task;
+    try {
+        if(p.action==='enable'||p.action==='disable')keepRemoved.setEnabled(p.action==='enable');
+        else if(p.action==='allow')keepRemoved.change('remove',p.packages);
+        else throw Error('Invalid action');
+        task=keepRemoved.check();
+    } catch(e) { debloatBusy=false;return serveJson(res,{ok:false,error:e.message},400); }
+    task.then(function(last){debloatBusy=false;serveJson(res,Object.assign({ok:!last.error&&!(last.source&&last.source.error)},keepRemoved.summary()));})
+        .catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},503);});
+});}
 // Restore the TV: puts back what Vetro changed, then (separately) removes Vetro's data. See restore.js.
 var restoreTv = new (require('./restore.js').Restore)({
     execute: agentExecute, inventory: inventory, invalidate: function(){invalidateInventory();},
-    wins: wins, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock,
+    wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock,
     plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
     input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
         off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
@@ -794,6 +814,7 @@ http.createServer(function (req, res) {
         if (url === '/pairing-mode') return handlePairingMode(req,res);
         if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
+        if (url === '/keep-removed') return handleKeepRemoved(req,res);
         if (url === '/restore') return handleRestore(req,res);
         if (url === '/factory-test') return handleFactoryTest(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
@@ -821,6 +842,7 @@ http.createServer(function (req, res) {
     if (url === '/restore') return handleRestore(req,res);
     if (url === '/pairing-mode') return handlePairingMode(req,res);
     if (url === '/sdb-access') return handleSdbAccess(req,res);
+    if (url === '/keep-removed') return serveJson(res, keepRemoved.summary());
     if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/factory-test') return handleFactoryTest(req,res);
@@ -929,6 +951,12 @@ var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRest
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
 var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>60){clearInterval(winsBootTimer);return}if(platform.status().agent.connected){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+
+// Keep removed apps removed: the source fix is written on every change; this is only the safety net, slow, and only
+// while the switch is on. It also runs once when the adapter is up, and once more to take Vetro's ids out if the
+// switch was left off with ids still in Samsung's list.
+var keepRemovedTimer=setInterval(function(){if(platform.status().agent.connected&&!debloatBusy&&keepRemoved.enabled())keepRemoved.check().catch(function(){});},10*60000);if(keepRemovedTimer.unref)keepRemovedTimer.unref();
+var keepRemovedBootAttempts=0;var keepRemovedBootTimer=setInterval(function(){if(++keepRemovedBootAttempts>60){clearInterval(keepRemovedBootTimer);return}if(platform.status().agent.connected){clearInterval(keepRemovedBootTimer);keepRemoved.check().catch(function(){});}},5000);if(keepRemovedBootTimer.unref)keepRemovedBootTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
 var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>60){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected)return;selfStartupBusy=true;inventory(true).then(function(d){if(d.registryError)throw Error(d.registryError);return ComponentActions.selfStartup(d.apps).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

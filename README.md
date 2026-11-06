@@ -45,7 +45,7 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 - **Disable all advertising and tracking**, which includes the ACR viewing-data services.
 - **Enable domain blocking** with a filter on the TV itself, keeping your DNS servers.
 - **Stop viewing-data collection**, which stops the services that recognise what is on screen, log remote key presses and send usage logs, now and after every restart.
-- **Disable HbbTV**, **Multi View autostart** and **Stop Ambient**, which free about 22 MB, 15 MB and 59 MB of RAM.
+- **Disable HbbTV**, **Multi View autostart** and **Stop Ambient**, which free about 22 MB, 15 MB and 59 MB of RAM, and **Disable AirPlay**. They sit in the **Disable** tab, together with **Keep removed apps removed**: apps you remove with the Task manager go on Samsung's own list of removed apps, so its app sync does not install them again.
 - **Disable all voice assistants**, or Alexa, Google Assistant, Bixby and the other voice services one by one.
 - **Disable automatic firmware update**, so a new firmware does not remove root behind your back.
 
@@ -150,6 +150,7 @@ Thanks to the people who contributed code and documentation to Vetro (including 
 
 - [zerodevb](https://github.com/zerodevb): dashboard and API pairing sign-in ([#9](https://github.com/andrearicci93/vetro/pull/9)).
 - [Firaenix](https://github.com/Firaenix): CoBA multi-app Home guard, still selection, raw navigation and delayed Home echoes, adapted into the bundled launcher ([#23](https://github.com/andrearicci93/vetro/pull/23), [#24](https://github.com/andrearicci93/vetro/pull/24)).
+- [zabique](https://github.com/zabique/vetro) (branch `fork/extras`): the ideas and first implementations of Keep removed apps removed, Disable AirPlay, the boot identity that also uses the boot time, and disabling the HbbTV service app, found and tested on a QN85A and re-written here for the Q80A.
 - [Merennor](https://github.com/Merennor): Node 4.4 compatibility for the integration adapter and unsupported-root fallback on Tizen 4 ([#75](https://github.com/andrearicci93/vetro/pull/75)).
 
 - [tomcraft](https://github.com/tomcraft): direct TV-tuner key, and the remote found again after a restart ([#31](https://github.com/andrearicci93/vetro/pull/31), [#32](https://github.com/andrearicci93/vetro/pull/32)).

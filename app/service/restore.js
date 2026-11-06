@@ -115,9 +115,10 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.mqtt.enabled(); }),
         attempt(function () { return d.sdb ? d.sdb.status() : null; }),
         attempt(function () { return d.pairing ? d.pairing.status() : null; }),
-        attempt(function () { return d.factoryTest ? d.factoryTest.read() : {present: false, active: false}; })
+        attempt(function () { return d.factoryTest ? d.factoryTest.read() : {present: false, active: false}; }),
+        attempt(function () { return d.keepRemoved ? d.keepRemoved.state() : null; })
     ]).then(function (x) {
-        var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13];
+        var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13], keep = x[14];
         var items = [];
         function add(id, label, detail, read, extra) {
             var item = {id: id, label: label, detail: detail, state: 'clean'};
@@ -163,15 +164,24 @@ Restore.prototype.plan = function () {
         [['telemetry', 'Viewing-data and usage-log services', w && w.telemetry && w.telemetry.status !== 'off', 'Starts them again and lifts the DNS block Vetro added for the usage-log host.'],
             ['ambient', 'Ambient autostart', w && w.ambient && w.ambient.status !== 'off', 'Lets Samsung’s own start of the screen saver run again.'],
             ['multiscreen', 'Multi View autostart', w && w.multiscreen && w.multiscreen.status === 'on', 'Removes the preload file, so Multi View loads at boot again.'],
-            ['firmware', 'Automatic firmware updates', w && w.firmware && w.firmware.status === 'on', 'Puts the automatic update value back to what it was.']
-        ].forEach(function (c) {
+            ['firmware', 'Automatic firmware updates', w && w.firmware && w.firmware.status === 'on', 'Puts the automatic update value back to what it was.'],
+            ['airplay', 'AirPlay receiver', w && w.airplay && w.airplay.status !== 'off', 'Removes the do-not-start files, so the AirPlay receiver can start again.']
+        ].filter(function (c) {
+            // A TV without the AirPlay receiver has nothing to put back, so it gets no row.
+            return c[0] !== 'airplay' || wins.error || (w && w.airplay && w.airplay.status !== 'unknown');
+        }).forEach(function (c) {
             var item = add('win-' + c[0], c[1], c[3], wins);
             var win = w && w[c[0]];
             if (!wins.error && (!win || win.status === 'unknown')) { item.state = 'unknown'; item.error = 'Quick win state unavailable'; }
             else if (!wins.error) flag(item, !!c[2]);
         });
 
-        it = add('hbbtv', 'HbbTV', 'Puts the HbbTV menu value back, removes the brake file and starts its service and app.', hb);
+        if (d.keepRemoved) {
+            it = add('keep-removed', 'Keep removed apps removed', 'Takes the store ids Vetro added out of Samsung’s list of removed apps, so Samsung may install them again. The list of apps stays saved; Samsung’s own entries are not touched.', keep);
+            if (!keep.error) flag(it, keep.value.enabled === true || keep.value.owned > 0);
+        }
+
+        it = add('hbbtv', 'HbbTV', 'Puts the HbbTV menu value back, removes the brake file, enables the service app again and starts it and the app.', hb);
         if (!hb.error) {
             var h = hb.value, chosen = false;
             try { chosen = d.wins.load().hbbtv === true; } catch (e) { /* unreadable: only an off state counts */ }
@@ -238,6 +248,8 @@ Restore.prototype.run = function () {
             ['win-ambient', function () { return self.runWin('ambient', 'Samsung’s own Ambient start runs again.'); }],
             ['win-multiscreen', function () { return self.runWin('multiscreen', 'The preload file is removed.'); }],
             ['win-firmware', function () { return self.runWin('firmware', 'Automatic update value put back.'); }],
+            ['win-airplay', function () { return self.runWin('airplay', 'The AirPlay receiver can start again.'); }],
+            ['keep-removed', function () { return self.runKeepRemoved(); }],
             ['hbbtv', function () { return self.runHbbtv(); }],
             ['dns', function () {
                 return d.dns.status().then(function (s) { return d.dns.apply(false, s.domains || []); }).then(function (s) {
@@ -317,6 +329,16 @@ Restore.prototype.runComponents = function () {
 
 Restore.prototype.runWin = function (id, message) {
     return this.d.wins.apply(id, false).then(function () { return message; });
+};
+
+Restore.prototype.runKeepRemoved = function () {
+    var k = this.d.keepRemoved;
+    k.setEnabled(false);
+    return k.check().then(function (r) {
+        if (r.source && r.source.error) throw new Error(r.source.error);
+        if (k.state().owned > 0) throw new Error('Samsung’s list still holds ids Vetro added');
+        return 'Samsung’s list no longer holds the apps Vetro added; the saved list of apps is kept.';
+    });
 };
 
 Restore.prototype.runHbbtv = function () {

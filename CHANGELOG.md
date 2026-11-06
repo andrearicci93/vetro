@@ -95,6 +95,26 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 ### Quick settings, privacy and maintenance
 
+- **The Memory tab is now Disable.** It holds what you switch off so that it stays off: HbbTV, Multi View
+  autostart, Ambient and the new **Disable AirPlay**, plus one global switch, **Keep removed apps removed**.
+  Apps removed with the Task manager are put on Samsung's own list of removed apps (webappservice,
+  `RESERVED_19`), so its app sync does not install them again; Vetro takes out only the ids it added when
+  you switch off, keeps the list so you can switch on again, and offers **Allow again** per app. A slow safety
+  net (every 10 minutes, only while the switch is on) removes a listed app that is installed anyway. The
+  Samsung database write is not tested on a running Q80A yet; the schema and the config rows were read from
+  the firmware dump.
+- **Disable AirPlay.** Files that Samsung's own AirPlay units check before they start keep the receiver off
+  across restarts; the units and the hidden web app are stopped. Casting from an Apple device does not work
+  while it is on. Shown in the restore plan.
+- **Boot identity.** "Already done in this boot" now compares the boot id and the boot time, because a TV that
+  restarts from a saved snapshot can come back with the same boot id. Ambient and the viewing-data services
+  are stopped again after such a restart. After the upgrade each stop runs once more, which does no harm.
+- **HbbTV off disables the service app too** (`pkgcmd -D --global`), because on some firmware the service has
+  auto-restart and starts again within a second of a plain stop. A TV that was switched off by an earlier
+  Vetro reads "Partly done" until the next start of the service, which puts the missing piece in place.
+- Credit: the AirPlay switch, the boot identity, the HbbTV service disable and Keep removed apps removed come
+  from **zabique**'s fork of Vetro (branch `fork/extras`); see Credits.
+
 - **Quick settings and Startup share state.** Disabling a group clears its members'
   boot/restart flags and saves the original values; enabling restores them, including
   components enabled elsewhere in the meantime. A disabled group with remaining startup
@@ -206,6 +226,7 @@ Code in this release:
 - **zerodevb**: dashboard and API pairing, including its Node 4.4 support ([#9](https://github.com/andrearicci93/vetro/pull/9)).
 - **Firaenix**: CoBA multi-app Home guard, still selection (now Reduce motion), raw navigation, delayed Home
   echoes and the CoBA Samsung Home tile, adapted into the bundled launcher ([#23](https://github.com/andrearicci93/vetro/pull/23), [#24](https://github.com/andrearicci93/vetro/pull/24)).
+- **zabique** (fork `fork/extras`): ideas and first implementations of Keep removed apps removed, Disable AirPlay, the boot identity with the boot time, and the HbbTV service disable, re-written for the Q80A.
 - **Merennor**: Node 4.4 support for the integration adapter, and the unsupported-root fallback ([#75](https://github.com/andrearicci93/vetro/pull/75)).
 - Merged from `main` and credited in 0.3.5: **tomcraft** ([#31](https://github.com/andrearicci93/vetro/pull/31), [#32](https://github.com/andrearicci93/vetro/pull/32)), **SalustLab** ([#33](https://github.com/andrearicci93/vetro/pull/33)), **domenix** ([#27](https://github.com/andrearicci93/vetro/pull/27), [#29](https://github.com/andrearicci93/vetro/pull/29), [#52](https://github.com/andrearicci93/vetro/pull/52)),
   **bertrandom** ([#47](https://github.com/andrearicci93/vetro/pull/47)) and **PatrickSt1991** ([#21](https://github.com/andrearicci93/vetro/pull/21)).

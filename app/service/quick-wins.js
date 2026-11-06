@@ -27,6 +27,15 @@
 //             stopped but what ends its uploads is the local DNS filter entry for that host. Stops are queued with
 //             --no-block: waiting for them can pass the 30 s the agent allows a command.
 //
+//   airplay   Samsung's own units com.samsung.tv.airplay-service(-2).service have ConditionPathExists=! on
+//             /opt/usr/share/systemd/system/<unit name> (read in the Q80A firmware), so that file keeps the AirPlay
+//             receiver from starting, also at boot. The hidden web app (<package>.AirPlayWebApp) is stopped now and
+//             once after each boot if something starts it. Removing the files and starting the unit puts the
+//             receiver back; Samsung starts the web app again when it is needed. While this is on, AirPlay and
+//             Samsung's screen mirroring from Apple devices do not work.
+//             Idea and first implementation by zabique (https://github.com/zabique/vetro, branch fork/extras,
+//             tested there on a QN85A), re-written here for the Q80A.
+//
 // HbbTV has its own module (hbbtv.js) because its menu value must be restored exactly.
 var execError = require('./exec-error.js');
 var fs = require('fs');
@@ -36,6 +45,7 @@ var CR_END_RE = /\r$/;
 var VCONF_INT32_RE = /value = (-?\d+) \(Int32\)/;
 var DIGITS_RE = /^\d+$/;
 var UP_RE = /up/;
+var BTIME_RE = /^btime (\d+)$/m;
 
 var FILE = '/opt/usr/home/owner/share/vetro-quick-wins.json';
 var AUTOUPDATE = 'db/menu/support/softwareupdate/autoupdate';
@@ -65,7 +75,17 @@ var TELEMETRY_OFF = 'touch ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND
 var TELEMETRY_ON = 'rm -f ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
     'systemctl reset-failed 2>/dev/null\n' +
     'for u in ' + TELEMETRY_UNITS.slice(0, -1).join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue';
-var IDS = ['firmware', 'multiscreen', 'ambient', 'telemetry'];
+// AirPlay (see the header). The web app's package id differs between stores and models; its app id always ends like this.
+var AIRPLAY_UNITS = ['com.samsung.tv.airplay-service', 'com.samsung.tv.airplay-service-2'];
+var AIRPLAY_FLAGS = AIRPLAY_UNITS.map(function (u) { return TELEMETRY_DIR + u; });
+var AIRPLAY_WEB_RUNNING = 'app_launcher -S 2>/dev/null | grep -q "\\.AirPlayWebApp[[:space:]]"';
+var AIRPLAY_WEB_STOP = 'for w in $(app_launcher -S 2>/dev/null | awk \'{print $1}\' | grep "\\.AirPlayWebApp$"); do app_launcher -t "$w" >/dev/null 2>&1 || true; done';
+var AIRPLAY_OFF = 'set -e\ntouch ' + AIRPLAY_FLAGS.join(' ') + '\n' +
+    AIRPLAY_UNITS.map(function (u) { return 'systemctl stop --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\n' +
+    'sleep 1\n' + AIRPLAY_WEB_STOP + '\nsleep 1\ntrue';
+var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS[1] + '.service >/dev/null 2>&1\n' +
+    'systemctl start --no-block ' + AIRPLAY_UNITS[0] + '.service >/dev/null 2>&1 || true\nsleep 1\ntrue';
+var IDS = ['firmware', 'multiscreen', 'ambient', 'telemetry', 'airplay'];
 var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000;
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
@@ -87,12 +107,17 @@ var READ = [
     running(AMBIENT_ID) + ' && echo "AR|1" || echo "AR|0"',
     'echo "TB|$(ls ' + TELEMETRY_BRAKES.join(' ') + ' 2>/dev/null | wc -l)"',
     'echo "TR|$(ps -eo comm | grep -c -E "^(' + TELEMETRY_PROCS.join('|') + ')$")"',
+    'systemctl cat ' + AIRPLAY_UNITS[0] + '.service >/dev/null 2>&1 && echo "AP|1" || echo "AP|0"',
+    '[ -e ' + AIRPLAY_FLAGS[0] + ' ] && echo "AF|1" || echo "AF|0"',
+    'echo "AS|$(systemctl is-active ' + AIRPLAY_UNITS[0] + '.service 2>/dev/null)"',
+    AIRPLAY_WEB_RUNNING + ' && echo "AW|1" || echo "AW|0"',
     'true'
 ].join('\n');
 
-// Everything the three wins depend on, from one read-only call. A line that is missing stays null.
+// Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
-    var out = {autoupdate: null, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null};
+    var out = {autoupdate: null, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
+        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
@@ -101,8 +126,24 @@ function parse(text) {
         else if (f[0] === 'AR') out.ambientRunning = f[1] === '1';
         else if (f[0] === 'TB' && DIGITS_RE.test(f[1])) out.telemetryBrakes = Number(f[1]);
         else if (f[0] === 'TR' && DIGITS_RE.test(f[1])) out.telemetryRunning = Number(f[1]);
+        else if (f[0] === 'AP') out.airplayPresent = f[1] === '1';
+        else if (f[0] === 'AF') out.airplayFlag = f[1] === '1';
+        else if (f[0] === 'AS') out.airplayService = (f[1] || '').trim() === 'active';
+        else if (f[0] === 'AW') out.airplayWeb = f[1] === '1';
     });
     return out;
+}
+
+// Which boot this is. The kernel's boot_id alone is not enough: on a QN85A the same boot_id came back after a restart
+// (the TV starts from a saved snapshot), so "already done in this boot" stayed true for good and the Ambient and
+// viewing-data stops were skipped. The boot time in /proc/stat (btime) changes with every start, so both are used.
+// If the clock is stepped during a boot, btime moves and the stops run one more time, which does no harm.
+// Found by zabique (https://github.com/zabique/vetro, branch fork/extras).
+function currentBoot() {
+    var id = '', bt = '';
+    try { id = fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(); } catch (e) { /* unreadable: the other half is used */ }
+    try { var m = BTIME_RE.exec(fs.readFileSync('/proc/stat', 'utf8')); if (m) bt = m[1]; } catch (e) { /* same */ }
+    return id || bt ? id + '@' + bt : null;
 }
 
 function Wins(execute, options) {
@@ -111,7 +152,7 @@ function Wins(execute, options) {
     this.fs = options.fs || fs;
     this.file = options.file || FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
-    this.bootId = options.bootId || function () { try { return fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(); } catch (e) { return null; } };
+    this.bootId = options.bootId || currentBoot;
     // Only tests and older builds that do not offer the Ambient win set this: a saved choice is then not acted on.
     this.skipAmbient = !!options.skipAmbient;
     // The local DNS filter (local-dns.js): status() and apply(enabled, domains). Without it the host is not blocked.
@@ -125,12 +166,12 @@ Wins.prototype.load = function () {
     try {
         var o = JSON.parse(this.fs.readFileSync(this.file, 'utf8'));
         return {
-            hbbtv: o.hbbtv === true, ambient: o.ambient === true, telemetry: o.telemetry === true, telemetryDns: o.telemetryDns === true,
+            hbbtv: o.hbbtv === true, ambient: o.ambient === true, telemetry: o.telemetry === true, telemetryDns: o.telemetryDns === true, airplay: o.airplay === true,
             telemetryBoot: typeof o.telemetryBoot === 'string' ? o.telemetryBoot : null,
             autoupdatePrevious: Number.isInteger(o.autoupdatePrevious) && o.autoupdatePrevious > 0 ? o.autoupdatePrevious : null,
             ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null
         };
-    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, telemetryBoot: null, autoupdatePrevious: null, ambientBoot: null}; }
+    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, telemetryBoot: null, autoupdatePrevious: null, ambientBoot: null}; }
 };
 Wins.prototype.save = function (patch) {
     var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
@@ -140,7 +181,7 @@ Wins.prototype.save = function (patch) {
 };
 // Used by the HbbTV route, which does the work itself and only needs the choice remembered for the next boot.
 Wins.prototype.remember = function (id, on) {
-    if (id !== 'hbbtv' && id !== 'ambient' && id !== 'telemetry') throw Error('Unknown quick win');
+    if (id !== 'hbbtv' && id !== 'ambient' && id !== 'telemetry' && id !== 'airplay') throw Error('Unknown quick win');
     var patch = {}; patch[id] = !!on;
     return this.save(patch);
 };
@@ -158,7 +199,11 @@ Wins.prototype.read = function () {
             : {status: !mine.ambient ? 'off' : s.ambientRunning ? 'partial' : 'on', running: s.ambientRunning, chosen: mine.ambient};
         var telemetry = s.telemetryRunning === null ? {status: 'unknown'}
             : {status: !mine.telemetry ? 'off' : s.telemetryRunning ? 'partial' : 'on', running: s.telemetryRunning, brakes: s.telemetryBrakes, chosen: mine.telemetry};
-        var wins = {firmware: firmware, multiscreen: multiscreen, ambient: ambient, telemetry: telemetry};
+        // on: the flag files are there and nothing of the receiver runs; partial: the files are there but something runs.
+        var airplay = s.airplayPresent !== true || s.airplayFlag === null ? {status: 'unknown'}
+            : {status: !s.airplayFlag ? 'off' : (s.airplayService || s.airplayWeb) ? 'partial' : 'on',
+               running: s.airplayService === true || s.airplayWeb === true};
+        var wins = {firmware: firmware, multiscreen: multiscreen, ambient: ambient, telemetry: telemetry, airplay: airplay};
         if (!dnsAsked) return {ts: Date.now(), wins: wins};
         return dnsAsked.then(function (blocked) { telemetry.dnsBlocked = blocked; return {ts: Date.now(), wins: wins}; });
     });
@@ -171,7 +216,7 @@ Wins.prototype.apply = function (id, on) {
     if (this.busy) return Promise.reject(Error('A quick win is already being changed'));
     this.busy = true; this.changing = id;
     var task = Promise.resolve().then(function () {
-        return id === 'firmware' ? self.firmware(on) : id === 'multiscreen' ? self.multiscreen(on) : id === 'telemetry' ? self.telemetry(on) : self.ambient(on);
+        return id === 'firmware' ? self.firmware(on) : id === 'multiscreen' ? self.multiscreen(on) : id === 'telemetry' ? self.telemetry(on) : id === 'airplay' ? self.airplay(on) : self.ambient(on);
     });
     return task.then(function (result) { self.busy = false; self.changing = null; return result; }, function (e) { self.busy = false; self.changing = null; throw e; });
 };
@@ -256,12 +301,48 @@ Wins.prototype.telemetry = function (on) {
     });
 };
 
+// AirPlay: the two "do not start" files for the receiver's units, the units stopped, the web app stopped. Off removes
+// the files and starts the receiver again. Credit: zabique (see the header).
+Wins.prototype.airplay = function (on) {
+    var self = this;
+    this.save({airplay: on});
+    return this.execute(wrap(on ? AIRPLAY_OFF : AIRPLAY_ON), 20000).then(check).then(function () { return self.read(); }).then(function (state) {
+        var st = state.wins.airplay.status;
+        if (on && st !== 'on') throw Error(st === 'partial' ? 'AirPlay was started again right away; it is stopped again at the next boot' : 'The TV did not keep the change');
+        if (!on && st !== 'off') throw Error('The TV did not keep the change');
+        return {id: 'airplay', changed: true, status: st};
+    });
+};
+
 // After each boot: HbbTV's flag lives in /tmp and AmbientApp is started by the firmware 15 s after boot,
-// so both are handled here, once the TV adapter is connected. Resolves with what it did.
+// so both are handled here, once the TV adapter is connected. AirPlay's files survive a boot; its web app is
+// stopped if something starts it in the first minutes. Resolves with what it did.
 Wins.prototype.boot = function (hbbtv) {
     var self = this, mine = this.load(), did = [], id = this.bootId();
     var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function () {}) : Promise.resolve();
-    return Promise.all([start, self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did)]).then(function () { return did; });
+    return Promise.all([start, self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, did)]).then(function () { return did; });
+};
+
+Wins.prototype.bootAirplay = function (mine, did) {
+    var self = this;
+    if (!mine.airplay) return Promise.resolve();
+    var n = 0;
+    function chosen() { return self.changing !== 'airplay' && self.load().airplay; }
+    function poll() {
+        if (!chosen()) return Promise.resolve();
+        return self.execute(wrap(AIRPLAY_WEB_RUNNING + ' && echo up || echo down'), 8000).then(function (r) {
+            if (!chosen()) return;
+            if (UP_RE.test(r.stdout || '') && !r.exit_code) {
+                return self.execute(wrap(AIRPLAY_WEB_STOP + '\nsleep 1\ntrue'), 12000).then(function () { if (chosen()) did.push('airplay'); });
+            }
+            if (++n >= BOOT_POLLS) return null;
+            return self.sleep(BOOT_POLL_MS).then(poll);
+        }, function () {
+            if (++n >= BOOT_POLLS) return null;
+            return self.sleep(BOOT_POLL_MS).then(poll);
+        });
+    }
+    return poll();
 };
 
 // Some of these services start a minute or more after the TV answers, so the stop is repeated once.
@@ -306,4 +387,5 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
     return poll();
 };
 
-module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, FILE: FILE, AUTOUPDATE: AUTOUPDATE, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID};
+module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, FILE: FILE, AUTOUPDATE: AUTOUPDATE, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
+    AIRPLAY_FLAGS: AIRPLAY_FLAGS, AIRPLAY_UNITS: AIRPLAY_UNITS, currentBoot: currentBoot};

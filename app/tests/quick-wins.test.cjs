@@ -2,15 +2,18 @@
 const assert=require('assert').strict,qw=require('../service/quick-wins.js');
 // A small TV. Scripts are interpreted by their effect, never run.
 function tv(start){
- const s=Object.assign({autoupdate:1,ms:false,msRun:true,amb:false,ambRun:false,failSet:false,keep:true,ambStays:false,telRun:8,telStays:0,calls:[]},start);
+ const s=Object.assign({autoupdate:1,ms:false,msRun:true,amb:false,ambRun:false,failSet:false,keep:true,ambStays:false,telRun:8,telStays:0,apPresent:true,apFlag:false,apSvc:true,apWeb:true,apStays:false,calls:[]},start);
  const execute=async cmd=>{const sh=Buffer.from(cmd.split(' ')[1],'base64').toString();s.calls.push(sh);
-  if(sh.includes('echo "AU|'))return {exit_code:0,stdout:'AU|value = '+s.autoupdate+' (Int32)\nMS|'+(s.ms?1:0)+'\nMR|'+(s.msRun?1:0)+'\nAR|'+(s.ambRun?1:0)+'\nTB|'+(s.telBrakes||0)+'\nTR|'+s.telRun+'\n'};
+  if(sh.includes('echo "AU|'))return {exit_code:0,stdout:'AU|value = '+s.autoupdate+' (Int32)\nMS|'+(s.ms?1:0)+'\nMR|'+(s.msRun?1:0)+'\nAR|'+(s.ambRun?1:0)+'\nTB|'+(s.telBrakes||0)+'\nTR|'+s.telRun+'\nAP|'+(s.apPresent?1:0)+'\nAF|'+(s.apFlag?1:0)+'\nAS|'+(s.apSvc?'active':'inactive')+'\nAW|'+(s.apWeb?1:0)+'\n'};
   if(sh.startsWith('vconftool get'))return {exit_code:0,stdout:'value = '+s.autoupdate+' (Int32)\n'};
   const set=/vconftool set -f -t int \S+ (-?\d+)/.exec(sh);if(set){if(s.failSet)return {exit_code:1,stderr:'denied',stdout:''};if(s.keep||Number(set[1])===1)s.autoupdate=Number(set[1]);return {exit_code:0,stdout:''};}
   if(sh.includes('touch '+qw.MULTISCREEN_FLAG)){s.ms=true;if(/app_launcher -t com.samsung.tv.multiscreen/.test(sh))s.msRun=false;}
   if(sh.includes('rm -f '+qw.MULTISCREEN_FLAG))s.ms=false;
   if(/^touch \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=3;s.telRun=s.telStays;s.telOffRuns=(s.telOffRuns||0)+1;}
   if(/^rm -f \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=0;s.telRun=8;}
+  if(/^set -e\ntouch \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=true;if(!s.apStays){s.apSvc=false;s.apWeb=false;}s.apOffRuns=(s.apOffRuns||0)+1;}
+  if(/^rm -f \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=false;s.apSvc=true;}
+  if(/AirPlayWebApp\[\[:space:\]\]" && echo up/.test(sh))return {exit_code:0,stdout:s.apWeb?'up\n':'down\n'};
   if(/up \|\| echo down/.test(sh))return {exit_code:0,stdout:s.ambRun?'up\n':'down\n'};
   if(/systemctl stop screend;.*kill -9.*systemctl start screend/s.test(sh)&&s.ambRun&&!s.ambStays){s.ambRun=false;s.screendCycles=(s.screendCycles||0)+1;}
   if(/app_launcher -f org.tizen.ambientapp/.test(sh))s.ambRun=true;
@@ -21,9 +24,9 @@ function store(){let data=null;return {readFileSync(){if(data===null)throw Error
 const noWait=()=>Promise.resolve();
 (async()=>{
  // Reading
- assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null});
- assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2});
- assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},'what cannot be read stays unknown');
+ assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null});
+ assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null});
+ assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null},'what cannot be read stays unknown');
  let t=tv(),io=store(),w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'boot-1'});
  let st=await w.read();assert.deepEqual([st.wins.firmware.status,st.wins.multiscreen.status,st.wins.ambient.status],['off','off','off']);assert.equal(st.wins.telemetry.status,'off');
 
@@ -123,6 +126,21 @@ const noWait=()=>Promise.resolve();
  t=tv();w=new qw.Wins(t.execute,{fs:store(),sleep:noWait,bootId:()=>'independent',skipAmbient:true});
  w.remember('telemetry',true);w.busy=true;w.changing='firmware';
  assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
+ // AirPlay (idea by zabique): the flag files keep the receiver down; partial while something still runs; boot stops the web app
+ assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({autoupdate:null,multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false}));
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'ap-1',skipAmbient:true});
+ assert.equal((await w.read()).wins.airplay.status,'off');
+ r=await w.apply('airplay',true);assert.equal(r.status,'on');assert.equal(JSON.parse(io.data).airplay,true);
+ assert.ok(t.s.calls.some(c=>/airplay-service-2\n/.test(c)&&/^set -e/.test(c)),'both flag files');
+ r=await w.apply('airplay',false);assert.equal(r.status,'off');assert.equal(t.s.apSvc,true);
+ t=tv({apStays:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});
+ await assert.rejects(w.apply('airplay',true),/started again right away/);
+ t=tv({apPresent:false});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});assert.equal((await w.read()).wins.airplay.status,'unknown','no receiver on this TV');
+ t=tv({apFlag:true,apSvc:false,apWeb:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});assert.equal((await w.read()).wins.airplay.status,'partial');
+ t=tv({apFlag:true,apWeb:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait,bootId:()=>'ap-b',skipAmbient:true});
+ assert.deepEqual(await w.boot(null),[]);w.remember('airplay',true);assert.deepEqual(await w.boot(null),['airplay']);
+ // Boot identity: boot_id alone is not enough after a snapshot restart, so btime is part of it
+ const id1=qw.currentBoot();assert.ok(id1===null||/^[0-9a-f-]*@\d*$/.test(id1),'boot_id@btime');
  // Misuse
  await assert.rejects(w.apply('nope',true),/Unknown/);await assert.rejects(w.apply('firmware','yes'),/Invalid/);
  assert.throws(()=>w.remember('firmware',true),/Unknown/);

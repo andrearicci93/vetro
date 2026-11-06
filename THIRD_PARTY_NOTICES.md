@@ -106,3 +106,16 @@ notice at `notices/LICENSE-phosphor.txt`. The integration WGT also includes the
 root research notice at `notices/LICENSE-samsung-tv-root.txt`; remote-helper notices
 remain alongside the payload. Contributor acknowledgements are in the repository
 README and release changelog, including adapted contributions from still-open PRs.
+
+## zabique's fork of Vetro
+
+Source: https://github.com/zabique/vetro (branch `fork/extras`)
+License: MIT, the same licence and copyright line as Vetro ("Vetro contributors"). The fork's commits carry
+no author identity, so it is credited by its GitHub name. Ideas, mechanisms and first implementations adapted
+from it, each marked in the file header:
+
+- `app/service/keep-removed.js`: keeping removed apps off by writing their store ids into webappservice's
+  list of removed apps (`RESERVED_19`), with a backstop that uninstalls a listed package that is back.
+- `app/service/quick-wins.js`: the AirPlay win (do-not-start files for Samsung's AirPlay units) and the
+  boot identity made of the boot id and the boot time.
+- `app/service/hbbtv.js`: disabling the HbbTV service app so that its auto-restart cannot bring it back.

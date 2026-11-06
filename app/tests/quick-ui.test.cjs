@@ -21,13 +21,15 @@ const restoreState=()=>({ok:true,pending:restoreDone?0:2,notes:['Packages remove
  {id:'launcher',label:'Launcher',detail:'Switches the Vetro launcher off.',state:restoreDone?'clean':'changed'},
  {id:'groups',label:'Quick settings groups',detail:'Switches on the components of the groups.',state:restoreDone?'clean':'changed',count:3},
  {id:'hbbtv',label:'HbbTV',detail:'x',state:'clean'}]});
-const calls=[];
+let keepPost=null;const calls=[];
 const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},console,setTimeout(fn){return 1},clearTimeout(){},setInterval(){},
  fetch:async(url,opts)=>{const body=opts&&opts.body?JSON.parse(opts.body):null;calls.push({url,body});let data={};
   if(url.startsWith('/apps'))data={apps,summary:{total:apps.length},source:'package registry + public probe'};
   else if(url==='/status')data={agent:{connected:true},mode:'root',app:{version:'9.9.9'}};
-  else if(url==='/hbbtv')data={value:19,off:true,valueOff:true,flag:true,running:false,serviceRunning:false,canRestore:true,restoreValue:20};
-  else if(url==='/wins'&&!body)data={ts:1,wins:{firmware:{status:'off',value:1},multiscreen:{status:'on',running:false},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:'on',running:0,brakes:3,chosen:true,dnsBlocked:false}}};
+  else if(url==='/hbbtv')data={value:19,off:true,valueOff:true,flag:true,running:false,serviceRunning:false,serviceDisabled:true,canRestore:true,restoreValue:20};
+  else if(url==='/keep-removed'&&!body)data={enabled:true,packages:['org.tizen.primevideo','MCmYXNxgcu'],last:{source:{ids:['1'],changed:false,error:null}},history:[]};
+  else if(url==='/keep-removed'){keepPost=body;data={ok:true,enabled:body.action==='enable'?true:body.action==='disable'?false:true,packages:body.action==='allow'?['MCmYXNxgcu']:['org.tizen.primevideo','MCmYXNxgcu'],last:{source:{ids:[],changed:true,error:null}},history:[]};}
+  else if(url==='/wins'&&!body)data={ts:1,wins:{firmware:{status:'off',value:1},multiscreen:{status:'on',running:false},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:'on',running:0,brakes:3,chosen:true,dnsBlocked:false},airplay:{status:'off',running:true}}};
   else if(url==='/wins')data={id:body.id,changed:true,status:body.on?'on':'off',previous:1,value:body.on?0:1};
   else if(url==='/dns')data={enabled:false,applied:false,domains:[],resolvers:[]};
   else if(url==='/leftovers'&&!body)data={files:[{name:'old.wgt',size:2048,isPackage:true},{name:'device-profile.xml',size:10,isPackage:false}],packageBytes:2048,storageBefore:{availableBytes:1048576*900},errors:[],
@@ -77,6 +79,17 @@ const tick=()=>new Promise(r=>setImmediate(r));
  const fw={dataset:{winSwitch:'firmware'},checked:true};await el('quick').onchange({target:fw});await tick();await tick();
  assert.deepEqual(calls.find(c=>c.url==='/wins'&&c.body).body,{id:'firmware',on:true});
  assert.match(sandbox.operationEntries[0].message,/Auto update off; value 1 → 0 read back/);assert.equal(sandbox.operationEntries[0].resultLabel,'State read back');
+ // The Disable tab: AirPlay is a win like the others, and Keep removed apps removed is one global switch with its list
+ assert.match(html,/id="qtab-memory"[^>]*>Disable</);assert.doesNotMatch(html,/>Free memory</);assert.match(html,/Disable what you don’t use/);
+ assert.match(el('quickMemory').innerHTML,/<h3>Disable AirPlay<\/h3>/);assert.match(el('quickMemory').innerHTML,/data-win-switch="airplay"(?! checked)/,'AirPlay running: its switch is off');
+ assert.match(el('quickMemory').innerHTML,/Casting from an Apple device to this TV does not work while this is on/);
+ assert.match(el('quickMemory').innerHTML,/<h3>Keep removed apps removed<\/h3>/);assert.match(el('quickMemory').innerHTML,/data-keep-switch[^>]*checked/);assert.match(el('quickMemory').innerHTML,/On · 2 apps on the list/);
+ assert.match(el('quickMemory').innerHTML,/data-keep-allow="MCmYXNxgcu"/);assert.match(el('quickMemory').innerHTML,/select Allow again first/);
+ const kp={dataset:{keepSwitch:''},checked:false};await el('quick').onchange({target:kp});await tick();await tick();
+ assert.deepEqual(keepPost,{action:'disable'},'the global switch posts enable or disable');
+ assert.match(sandbox.operationEntries[0].message,/Off: the ids Vetro added are taken out of Samsung’s list/);
+ const allow={dataset:{keepAllow:'MCmYXNxgcu'}};await el('quick').onclick({target:{closest:()=>allow}});await tick();await tick();
+ assert.deepEqual(keepPost,{action:'allow',packages:['MCmYXNxgcu']});assert.match(sandbox.operationEntries[0].message,/Samsung may install MCmYXNxgcu again/);
  const hb={dataset:{hbbtvDisable:''},checked:false};await el('quick').onchange({target:hb});await tick();await tick();
  assert.deepEqual(calls.filter(c=>c.url==='/hbbtv'&&c.body).at(-1).body,{off:false,expected:19},'switching the win off turns HbbTV back on');
  const clear={dataset:{leftoversClear:''}};el('quick').onclick({target:{closest:()=>clear}});assert.match(el('quickStorage').innerHTML,/Delete 3 items \(1 MiB\)\?/);assert.ok(!calls.some(c=>c.url==='/leftovers'&&c.body),'cleanup needs confirmation');

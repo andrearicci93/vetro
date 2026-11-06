@@ -22,7 +22,7 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/')).sort
     'service/plugin-host.js',
     'service/plugin-launcher.js', 'service/disabled-ledger.js', 'service/restore.js',
     'service/updater.js', 'service/update-key.js', 'service/plugin-key.js',
-    'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/leftovers.js', 'service/remap.js',
+    'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/keep-removed.js', 'service/leftovers.js', 'service/remap.js',
     'service/samsung-remote.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
 ].sort());
 const metadata = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js').data.toString();
