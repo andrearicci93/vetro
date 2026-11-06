@@ -112,8 +112,10 @@ version 2 bundle instead of installing the plugin without its helper).
 - `ctx.asset("tool.dll")` gives the path; run it with `ctx.execute`, which is root. The user sees
   "run a bundled native program as root" before installing.
 - Like `exec`, it is a **label, not a limit**. What it adds is visibility: the program is declared, its hash is in the manifest
-  that the list signs, and nothing can carry a binary without saying so. Source of the helper must be public, and the README
-  must say how the binary was built (the catalog asks for it).
+  that the list signs, and nothing can carry a binary without saying so. Publish the helper's source and say in the README how
+  the binary is built from it: a signature from the list vouches for the file, not for how it was made.
+- Install a native plugin from its packed `.vplugin`. A source folder copied by hand has no `assets` list in its manifest, so it
+  shows as Invalid; `pack` writes that list.
 
 ## What a plugin can do
 

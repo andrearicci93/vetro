@@ -109,7 +109,7 @@ const fresh = () => { const dir = tmp(), host = new PluginHost({ dir, stableMs: 
     assert.equal(host.install(p.text, p.sha256).plugin.version, '2.0.0');
     assert.ok(fs.readFileSync(path.join(dir, 'cap', 'assets', 'tool.bin')).equals(BIN));
     // the same folder without assets/ and without native packs as version 1
-    fs.rmSync(path.join(src, 'assets'), { recursive: true });
+    fs.unlinkSync(path.join(src, 'assets', 'tool.bin')); fs.rmdirSync(path.join(src, 'assets'));
     fs.writeFileSync(path.join(src, 'manifest.json'), JSON.stringify({ id: 'cap', name: 'Cap', version: '2.0.1', apiVersion: 1, permissions: ['exec'] }));
     assert.equal(JSON.parse(pack(src).text).version, 1);
 

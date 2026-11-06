@@ -24,3 +24,10 @@ copies `TvCapture.dll` and `TvCapture.runtimeconfig.json` into the Shard's `asse
 `node app/scripts/vetro-plugin.cjs pack app/examples/plugins/screen-share`; `pack` hashes the two files and declares
 them in the manifest. The SHA-256 of the bundle is what the plugin list signs, so whoever publishes the Shard must
 build the DLL from this source and say so.
+
+## Provenance of the shipped DLL
+
+`capture/build.sh` is deterministic: the DLL in the Shard was built with .NET SDK 10.0.402 (macOS, arm64) and has SHA-256
+`a7ddf2c418801dba3dfd5df39aaef921c0068dad129fb7ea9b5716225f64b005`. A different compiler version gives a different hash for
+the same source; if you rebuild with another SDK, the hash in the manifest will change, which is expected. The fork ships its
+own build of the same source (`app/native/capture/TvCapture.dll`), which this build does not reuse.
