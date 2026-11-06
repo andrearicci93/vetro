@@ -190,7 +190,7 @@ Restore.prototype.plan = function () {
             if (it.state === 'changed' && h.valueOff && !h.canRestore) { it.state = 'manual'; it.detail = 'The value HbbTV had before was not saved. Set HbbTV back in the TV’s own menu.'; }
         }
 
-        it = add('dns', 'Domain blocking', 'Takes the blocking out of the TV’s hosts file now. The saved domain list stays until you remove Vetro’s data.', dns);
+        it = add('dns', 'DNS blocking', 'Takes the blocking out of the TV’s hosts file now. The saved domain list stays until you remove Vetro’s data.', dns);
         if (!dns.error) flag(it, dns.value.enabled === true || dns.value.applied === true);
 
         it = add('home-order', 'Home app order', 'Puts the Home order back to the copy Vetro saved before the first change. Home may need a restart to show it.', home);
@@ -254,7 +254,7 @@ Restore.prototype.run = function () {
             ['dns', function () {
                 return d.dns.status().then(function (s) { return d.dns.apply(false, s.domains || []); }).then(function (s) {
                     if (s.enabled || s.applied) throw new Error('The TV still applies the filter');
-                    return 'Domain blocking off; the hosts file is back to the original.';
+                    return 'DNS blocking off; the hosts file is back to the original.';
                 });
             }],
             ['home-order', function () { return d.homeOrder.restore().then(function () { return 'Home order put back. Restart the TV to see it.'; }); }],

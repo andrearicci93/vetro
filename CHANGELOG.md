@@ -7,6 +7,24 @@ and safer restore and state changes. There was no 0.4.0 release: its preliminary
 
 - **Root runtime preflight:** selectively adapt runtime detection, Samsung apphost fallback, effective capability checks and tar support checks from Chris Ritsen and contributors' samsung-tv-root v0.0.12 (Unlicense). Root bootstrap selects matching .NET 3.1 or .NET 6 payloads; diagnostics identify preflight failures and the selected root runtime. Credits and the packaged license are updated. Probes run through SDB with bounded loopback capture, avoiding `child_process.execFile`, which terminates the Q80A web-service host. No new exploit or persistence mechanism; offline tests only, not deployed to a TV.
 
+### Dashboard layout
+
+- **Settings and controls** replaces *TV settings* and *TV controls*: one page with two levels. The tabs are
+  Picture and sound, Network and inputs, Privacy, Device and Remote keys; the tabs that hold several sections
+  (Picture and Audio, Network and Inputs, Information, Advanced and TV catalog) show them below.
+- **Diagnostic report** moved into Quick settings, Developer settings. **Resource monitor** now sits under TV, next to
+  Task manager. **Session history** is at the bottom of the side menu in a quieter style, with a new
+  **About Vetro** window below it (what Vetro does, who makes it, the Discord invitation and the repository).
+- **Sign out** opens a window that asks whether to sign out only this device or all devices.
+- **The sign-in page** shows the Vetro logo, three numbered steps and a plain note: if no code appears, open the
+  Vetro app on the TV, wait a few seconds and ask again.
+- **Domain blocking is now DNS blocking** in the menu, the page, the Quick settings switch and Restore the TV.
+- **Task manager:** choosing *Running* or *Not running* with live updates off found nothing, because the process
+  list is only read during live updates; it now reads the list once when you pick the filter. The footer note about
+  CPU, RAM and the Q80A firmware is gone.
+- **Plugin safe mode** says why it started: Vetro was stopped less than a minute after it started (a crash, a power
+  cut, or a restart or update right after boot). Nothing is removed.
+
 ### Sign-in, plugins and updates
 
 - **Dashboard and API pairing** ([#5](https://github.com/andrearicci93/vetro/issues/5),

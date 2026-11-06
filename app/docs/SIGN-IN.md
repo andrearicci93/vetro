@@ -6,7 +6,7 @@ Vetro's routes can run commands as root, so the service only answers devices tha
 
 Open `http://TV_IP:8099/` and choose **Show a code on the TV**. The service opens the Vetro app on the TV, which shows a 6-digit code for 2 minutes, with the name the sign-in page sent (the browser's platform string, for example `MacIntel`), in the dashboard card of the TV screen. If nothing appears (for example, the root agent is not connected yet), open the Vetro app yourself; it shows any pending code. Type the code in the browser.
 
-The browser receives a random key in an `HttpOnly`, `SameSite=Strict` cookie, valid for a year. The dashboard shows **Sign out** and **Sign out all devices** in the bottom-right corner.
+The browser receives a random key in an `HttpOnly`, `SameSite=Strict` cookie, valid for a year. The dashboard shows **Sign out** at the bottom of the side menu. It asks whether to sign out only this device or all devices.
 
 ## Pair a script
 

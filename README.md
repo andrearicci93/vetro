@@ -15,7 +15,7 @@
 Vetro runs on your Samsung TV with root access and gives you a dashboard, open from any computer or phone on your network, to manage it. Replace Samsung's Home with a light launcher, switch off what tracks you and wastes memory, and make the remote do what you want.
 
 <p align="center">
-  <img src="app/docs/images/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings: HbbTV, advertising and tracking, domain blocking and voice assistant switches" width="1000">
+  <img src="app/docs/images/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings: HbbTV, advertising and tracking, DNS blocking and voice assistant switches" width="1000">
   <br><em>The dashboard on a Samsung Q80A.</em>
 </p>
 
@@ -43,7 +43,7 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 **Quick settings** has one switch per win:
 
 - **Disable all advertising and tracking**, which includes the ACR viewing-data services.
-- **Enable domain blocking** with a filter on the TV itself, keeping your DNS servers.
+- **Enable DNS blocking** with a filter on the TV itself, keeping your DNS servers.
 - **Stop viewing-data collection**, which stops the services that recognise what is on screen, log remote key presses and send usage logs, now and after every restart.
 - **Disable HbbTV**, **Multi View autostart** and **Stop Ambient**, which free about 22 MB, 15 MB and 59 MB of RAM, and **Disable AirPlay**. They sit in the **Disable** tab. **Keep removed apps removed**, in General, is a global switch, on by default: apps you remove with the Task manager go on Samsung's own list of removed apps, so its app sync does not install them again.
 - **Disable all voice assistants**, or Alexa, Google Assistant, Bixby and the other voice services one by one.
@@ -72,7 +72,7 @@ Do what you want with the remote. Press a button, choose an app, and the button 
 
 ## Also included
 
-- **TV settings:** adjust supported picture controls and selected advanced settings, with read-back and restore.
+- **Settings and controls:** adjust supported picture controls and selected advanced settings, with read-back and restore, and send keys to the TV.
 - **MQTT and Home Assistant:** publish the TV's state and discovery and trigger actions from exact topics. [Setup guide](app/docs/mqtt/README.md).
 - **Dashboard:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.
 - **Vetro Shards (plugins):** Vetro’s plugin system, with add-ons written by other people, installed from a public list or a file, off until you switch them on. They are third-party code, not sandboxed (a plugin can do what Vetro can, including running commands as root) and only spot-checked: read the warning in [the plugin guide](app/docs/plugins.md), which also explains how to write and publish one.
@@ -122,7 +122,7 @@ Vetro is developed and tested on a **Samsung Q80A**, and community reports confi
 
 Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. Tizen 6 or newer is what has worked with the stock package (one Tizen 5 TV works with a local port); there is no confirmed range, and firmware updates can change the result even within one model family. Tizen 4 and 5.5 run the web service on Node.js 4.4: the dashboard, the app list and diagnostics can work there, but the root agent needs Node 10.12+, so anything that needs root is unavailable.
 
-**Add your TV.** Open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with your exact model and firmware, what worked or failed, and the report from **Diagnostics → Download**. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Failed attempts help too.
+**Add your TV.** Open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with your exact model and firmware, what worked or failed, and the report from **Quick settings → Developer settings → Diagnostic report**. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Failed attempts help too.
 
 ## Development
 

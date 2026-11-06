@@ -26,6 +26,17 @@ assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Ta
 const visible = html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<script>[\s\S]*?<\/script>/, '');
 assert.doesNotMatch(visible, /Debloater/, 'no panel is still called Debloater');
 assert.match(html, /remote:\['Remapper'/);
+// Settings and controls is one page with two levels; the old pages and the Monitor group are gone
+assert.deepEqual([...html.matchAll(/<nav aria-label="TV">([\s\S]*?)<\/nav>/g)].map(m => [...m[1].matchAll(/data-tab="(\w+)"/g)].map(x => x[1])), [['apps', 'dashboard', 'tvsettings']]);
+assert.match(html, /tvsettings:\['Settings and controls'/);
+assert.doesNotMatch(html, /data-tab="(control|diagnostics)"|id="control"|id="diagnostics"|TV controls|aria-label="Monitor"/);
+assert.match(html, /data-settings-group="keys"/);
+assert.match(html, /id="quickPanel-developer"[\s\S]*id="downloadDiagnostics"/, 'the diagnostic report sits in Developer settings');
+// Session history is at the bottom of the menu, quiet, with About Vetro under it
+assert.match(html, /<div class="side-low"><button type="button" data-tab="actions" class="quiet"[\s\S]*?<button type="button" id="aboutBtn"/);
+assert.match(html, /<dialog id="aboutDialog"[\s\S]*https:\/\/discord\.gg\/Pe9BmthUar[\s\S]*https:\/\/github\.com\/andrearicci93\/vetro"/);
+assert.match(html, /<img class="about-photo" src="data:image\/jpeg;base64,/);
+assert.match(html, /dns:\['DNS blocking'/);assert.doesNotMatch(html, /Domain blocking|domain blocking/);
 assert.match(html, /apps:\['Task manager'/);
 assert.doesNotMatch(html, /betaTag/);
 

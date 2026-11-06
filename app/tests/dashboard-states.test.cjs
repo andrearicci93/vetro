@@ -19,8 +19,10 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  assert.equal((el('appGrid').innerHTML.match(/<td/g)||[]).length,6,'essential states fit the same row');
  sandbox.drawMonitor({...sample,scope:'summary',processes:undefined});sandbox.render();
  assert.match(el('appGrid').innerHTML,/Running · 1/,'summary refresh preserves the latest process sample');
- sandbox.processData.ts=Date.now()-31000;sandbox.render();
+ sandbox.processAt=Date.now()-31000;sandbox.render();
  assert.ok(!/Running · 1/.test(el('appGrid').innerHTML),'stale process state is not displayed as current');
+ {const calls=[],orig=sandbox.fetch;sandbox.fetch=async u=>{calls.push(u);return orig(u)};el('appStatus').value='running';sandbox.render();await new Promise(r=>setImmediate(r));
+  assert.ok(calls.includes('/monitor'),'choosing Running with no fresh sample reads one instead of showing an empty list');sandbox.fetch=orig;el('appStatus').value='all';}
  el('appStatus').value='stopped';sandbox.render();assert.equal(el('empty').hidden,false,'unknown state does not match not running');
  el('appStatus').value='all';sandbox.drawMonitor({...sample,ts:Date.now(),processes:[]});sandbox.render();assert.match(el('appGrid').innerHTML,/Not running/);
  sandbox.inventory=[app,{...app,appId:'example.service',disabled:false,onboot:true,autorestart:null}];sandbox.render();

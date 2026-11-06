@@ -263,6 +263,8 @@ function gate(req, res, url, options) {
         return false;
     }
     if (!s) {
+        // The sign-in page shows the Vetro logo: the icon is public.
+        if (url === '/icon.png' && req.method === 'GET') return false;
         if ((url === '/' || url === '/index.html') && req.method === 'GET') {
             res.writeHead(200, {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store'});
             return res.end(LOGIN), true;
@@ -277,19 +279,33 @@ function gate(req, res, url, options) {
     return false;
 }
 
-// Sign out, added to the dashboard: two small buttons at the end of the sidebar footer (the dashboard's own tokens and
-// button style), so nothing floats over the toasts. On a narrow screen, where the footer is hidden, they join the bar; without a sidebar they stay at the bottom left.
-var BAR = '<div id="gaAuth"><button type="button" id="gaOut">Sign out</button><button type="button" id="gaAll">Sign out all devices</button></div>' +
+// Sign out, added to the dashboard: one small button at the end of the sidebar footer (the dashboard's own tokens and
+// button style), so nothing floats over the toasts. It opens a dialog that asks whether to sign out only this device
+// or every device. On a narrow screen, where the footer is hidden, the button joins the bar; without a sidebar it stays at the bottom left.
+var BAR = '<div id="gaAuth"><button type="button" id="gaOut" aria-haspopup="dialog">Sign out</button></div>' +
+    '<dialog id="gaDlg" aria-labelledby="gaTitle"><div class="gaBox"><h2 id="gaTitle">Sign out of Vetro</h2>' +
+    '<p>Do you want to sign out only this browser, or every paired browser and script? Signed-out devices pair again with a code shown on the TV.</p>' +
+    '<div class="gaRow"><button type="button" id="gaThis" class="gaMain">Only this device</button><button type="button" id="gaAll">All devices</button><button type="button" id="gaNo">Cancel</button></div>' +
+    '<p id="gaMsg" role="status" aria-live="polite"></p></div></dialog>' +
     '<style>#gaAuth{display:flex;flex-wrap:wrap;gap:var(--s1,4px);padding:var(--s3,12px) 0 0}' +
     '#gaAuth button{height:auto;min-height:44px;padding:0 var(--s3,12px);font-size:var(--fs-s,12px);color:var(--muted,#aab8d1);background:transparent}' +
     '#gaAuth button:hover{color:var(--text,#f5f8ff)}' +
     '#gaAuth.loose{position:fixed;left:12px;bottom:12px;z-index:3;padding:0}' +
+    '#gaDlg{width:min(440px,calc(100% - 32px));padding:0;border:1px solid var(--border,#344360);border-radius:16px;background:var(--surface,#101c35);color:var(--text,#f5f8ff)}' +
+    '#gaDlg::backdrop{background:var(--overlay,rgba(0,8,35,.62))}' +
+    '#gaDlg .gaBox{padding:24px;display:grid;gap:12px}#gaDlg h2{margin:0;font-size:20px;font-weight:500}#gaDlg p{margin:0;color:var(--muted,#aab8d1);line-height:1.5}' +
+    '#gaDlg .gaRow{display:grid;gap:8px;margin-top:8px}#gaDlg .gaRow button{min-height:44px;width:100%}' +
+    '#gaDlg .gaMain{background:var(--action,#123bb5);border-color:var(--action,#123bb5);color:var(--text,#f5f8ff);font-weight:600}' +
     '@media(max-width:620px){#gaAuth{flex-wrap:nowrap;white-space:nowrap;padding:0}}</style>' +
-    '<script>(function(){var box=document.getElementById("gaAuth"),side=document.querySelector(".sidebar"),foot=side&&side.querySelector("footer");' +
+    '<script>(function(){var box=document.getElementById("gaAuth"),side=document.querySelector(".sidebar"),foot=side&&side.querySelector("footer"),dlg=document.getElementById("gaDlg"),msg=document.getElementById("gaMsg");' +
     'if(foot&&getComputedStyle(foot).display!=="none")foot.appendChild(box);else if(side)side.appendChild(box);else box.className="loose";' +
-    'function post(u){fetch(u,{method:"POST"}).then(function(){location.reload()})}' +
-    'document.getElementById("gaOut").onclick=function(){post("/auth/signout")};' +
-    'document.getElementById("gaAll").onclick=function(){if(confirm("Sign out every paired browser and script?"))post("/auth/signout-all")};})();</script>';
+    'function shut(){if(dlg.close)dlg.close();else dlg.removeAttribute("open")}' +
+    'function post(u){msg.textContent="";fetch(u,{method:"POST"}).then(function(r){if(!r.ok)throw Error("The TV answered "+r.status);location.reload()}).catch(function(e){msg.textContent="Could not sign out: "+e.message})}' +
+    'document.getElementById("gaOut").onclick=function(){msg.textContent="";if(dlg.showModal)dlg.showModal();else dlg.setAttribute("open","");document.getElementById("gaThis").focus()};' +
+    'document.getElementById("gaThis").onclick=function(){post("/auth/signout")};' +
+    'document.getElementById("gaAll").onclick=function(){post("/auth/signout-all")};' +
+    'document.getElementById("gaNo").onclick=shut;' +
+    'dlg.onclick=function(e){if(e.target===dlg)shut()};})();</script>';
 function decorate(html) { return html.indexOf('</body>') >= 0 ? html.replace('</body>', BAR + '</body>') : html + BAR; }
 
 // The sign-in page uses the dashboard's tokens (design-system/tokens.css, dark) with the same control sizes.
@@ -297,17 +313,21 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 '<title>Vetro sign-in</title><style>:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--control-border:#7183a2;--action:#123bb5;--action-hover:#0e3095;--link:#8fbaff;--danger:rgb(239,138,128)}' +
 '*{box-sizing:border-box}body{margin:0;min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}' +
 'main{width:100%;max-width:420px;padding:32px;background:var(--surface);border:1px solid var(--border);border-radius:16px}' +
-'.brand{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 16px}h1{font-size:24px;line-height:1.15;font-weight:500;letter-spacing:-.02em;margin:0 0 8px}p{color:var(--muted);margin:0 0 24px;font-size:14px}' +
+'.brand{display:flex;align-items:center;gap:12px;font-size:22px;font-weight:500;letter-spacing:-.01em;margin:0 0 20px}.brand img{width:44px;height:44px;border-radius:22%;display:block}h1{font-size:24px;line-height:1.15;font-weight:500;letter-spacing:-.02em;margin:0 0 8px}p{color:var(--muted);margin:0 0 24px;font-size:14px}' +
 'label{display:block;font-size:14px;color:var(--muted);margin-bottom:8px}' +
+'.steps{margin:0 0 20px;padding:0 0 0 20px;color:var(--muted);font-size:14px;line-height:1.6}.steps b,.help b{color:var(--text);font-weight:500}' +
+'.help{margin-top:20px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--raised);color:var(--muted);font-size:14px;line-height:1.5}' +
 'input,button{font:inherit;height:44px;border-radius:8px;border:1px solid var(--control-border);width:100%}' +
 'input{background:var(--raised);color:var(--text);font-size:24px;letter-spacing:8px;text-align:center;padding:0 16px}' +
 'button{margin-top:16px;background:var(--action);border-color:var(--action);color:var(--text);font-weight:600;cursor:pointer}button:hover{background:var(--action-hover);border-color:var(--action-hover)}' +
 '#s1 button{margin-top:0}input:focus-visible,button:focus-visible{outline:2px solid var(--link);outline-offset:3px}' +
 '.msg{margin-top:16px;min-height:1.5em;font-size:14px;color:var(--muted)}.err{color:var(--danger)}[hidden]{display:none}</style></head><body><main>' +
-'<div class="brand">Vetro</div>' +
-'<h1>Pair with your TV</h1><p>Vetro controls your TV as root, so each browser pairs once with a code shown on the TV. If no code appears, open the Vetro app on the TV.</p>' +
+'<div class="brand"><img src="/icon.png" alt="" width="44" height="44"><span>vetro</span></div>' +
+'<h1>Pair with your TV</h1><p>Vetro controls your TV as root, so each browser pairs once with a code shown on the TV screen.</p>' +
+'<ol class="steps"><li>Press <b>Show a code on the TV</b>.</li><li>Look at the TV: a 6-digit code appears on the screen.</li><li>Type the code here.</li></ol>' +
 '<div id="s1"><button id="start">Show a code on the TV</button></div>' +
 '<form id="s2" hidden><label for="code">Code shown on the TV</label><input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000"><button>Pair</button></form>' +
+'<div class="help" role="note"><b>No code on the TV?</b> Open the <b>Vetro app</b> on the TV (Apps, then Vetro), wait a few seconds and press the button again. The TV has to be on and connected to the same network.</div>' +
 '<div class="msg" id="msg" role="status" aria-live="polite"></div></main><script>' +
 'var id,wait,$=function(i){return document.getElementById(i)},say=function(t,e){$("msg").textContent=t;$("msg").className=e?"msg err":"msg"};' +
 'function call(u,b){return fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(function(r){return r.json().then(function(d){if(!r.ok){var x=Error(d.error);x.data=d;throw x}return d})})}' +

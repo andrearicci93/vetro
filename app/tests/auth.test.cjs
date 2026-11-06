@@ -32,6 +32,10 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.equal((await call('POST', '/exec', {ip: '127.0.0.1', headers: {origin: 'http://evil.example', host: '127.0.0.1:8099'}})).code, 401);
   const page = await call('GET', '/');
   assert.equal(page.code, 200); assert.match(page.body, /Pair with your TV/);
+  assert.match(page.body, /<img src="\/icon\.png"/, 'the sign-in page shows the Vetro logo'); assert.match(page.body, /No code on the TV\?[\s\S]*Open the <b>Vetro app<\/b> on the TV/, 'and says what to do when no code appears');
+  assert.equal((await call('GET', '/icon.png')).handled, false, 'the logo is public so the sign-in page can show it');
+  const bar = auth.decorate('<html><body></body></html>');
+  assert.match(bar, /id="gaOut"[^>]*>Sign out<\/button>/); assert.match(bar, /Only this device[\s\S]*All devices[\s\S]*Cancel/); assert.doesNotMatch(bar, /confirm\(/, 'the choice is a dialog, not a browser prompt');
   // DNS rebinding: a hostname on loopback doesn't count as the TV itself, so it needs a key like the LAN.
   assert.equal((await call('GET', '/status', {ip: '127.0.0.1', headers: {host: 'evil.example:8099'}})).code, 401);
   assert.equal((await call('GET', '/auth/pending', {ip: '127.0.0.1', headers: {origin: 'null', host: 'evil.example:8099'}})).code, 403);

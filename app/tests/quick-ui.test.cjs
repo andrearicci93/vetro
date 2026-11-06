@@ -37,7 +37,7 @@ const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector
   extraKinds:{log:{label:'Old network logs',count:1,bytes:1052672},webcache:{label:'Web app caches (closed apps)',count:1,bytes:12288}},appsUnreadable:false};
   else if(url==='/quick'){apps=apps.map(a=>({...a,disabled:body.off}));data={ok:true,id:body.id,off:body.off,changed:alexa.slice(0,3),stopped:[alexa[0]],stopFailed:[],apps};}
   else if(url==='/restore'&&!body)data=restoreState();
-  else if(url==='/restore'&&body.action==='run'){restoreDone=true;data={ok:true,complete:true,steps:[{id:'launcher',label:'Launcher',status:'done',message:'Launcher off; Samsung’s Home is back.'},{id:'dns',label:'Domain blocking',status:'skipped',message:'Nothing to put back.'}],remaining:[],notes:[]};}
+  else if(url==='/restore'&&body.action==='run'){restoreDone=true;data={ok:true,complete:true,steps:[{id:'launcher',label:'Launcher',status:'done',message:'Launcher off; Samsung’s Home is back.'},{id:'dns',label:'DNS blocking',status:'skipped',message:'Nothing to put back.'}],remaining:[],notes:[]};}
   else if(url==='/restore'&&body.action==='erase')data={ok:true,left:0};
   else if(url==='/input')data={devices:[],status:{policy:{mode:'off'},events:[]}};else if(url==='/remap')data={rules:[]};
   return {ok:true,json:async()=>data};}};
@@ -56,7 +56,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(memory,/Partly done · Samsung started it again/,'chosen but running again is shown as partly done');assert.doesNotMatch(memory,/data-win-switch="ambient" checked/);
  const tracking=el('quickTracking').innerHTML;
  assert.match(tracking,/<h3>Stop viewing-data collection<\/h3>/);assert.match(tracking,/data-win-switch="telemetry" checked/,'collection services stopped: the switch is on');assert.match(tracking,/Done · recognition and logging stopped; data-service may still run/);
- assert.match(tracking,/Uploads can resume · turn on Enable domain blocking/,'the DNS entry is not applied: the state says so');assert.match(tracking,/lcprd1\.samsungcloudsolution\.net/);
+ assert.match(tracking,/Uploads can resume · turn on Enable DNS blocking/,'the DNS entry is not applied: the state says so');assert.match(tracking,/lcprd1\.samsungcloudsolution\.net/);
  assert.match(tracking,/Disable all advertising and tracking/);assert.match(tracking,/Partly done · 2 of 3 components still enabled/,'the Smart Hub ad agent (role keep) is not a member');
  assert.doesNotMatch(tracking,/coba\.adagent/);
  assert.match(voice,/Disable all voice assistants/);assert.match(voice,/Partly done · 4 of 5 components still enabled/,'the assistant hub is a member of the all-in switch');
@@ -118,7 +118,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  el('quick').onclick({target:{closest:()=>({dataset:{restoreAsk:''}})}});
  await el('quick').onclick({target:{closest:()=>({dataset:{restoreConfirm:''}})}});await tick();await tick();await tick();
  assert.deepEqual(calls.find(c=>c.url==='/restore'&&c.body).body,{action:'run'});
- assert.match(el('quickRestore').innerHTML,/Last restore/);assert.match(el('quickRestore').innerHTML,/Samsung’s Home is back/);assert.doesNotMatch(el('quickRestore').innerHTML,/Domain blocking/,'a skipped step is not listed');
+ assert.match(el('quickRestore').innerHTML,/Last restore/);assert.match(el('quickRestore').innerHTML,/Samsung’s Home is back/);assert.doesNotMatch(el('quickRestore').innerHTML,/DNS blocking/,'a skipped step is not listed');
  assert.match(el('quickRestore').innerHTML,/Nothing left to put back/);
  assert.match(sandbox.operationEntries[0].message,/1 step done/);
  assert.doesNotMatch(el('quickRemove').innerHTML,/data-erase-ask disabled/,'with nothing left to put back the data can be removed');
