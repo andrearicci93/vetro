@@ -315,7 +315,7 @@ function checks(d) {
       (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
   } else {
     var av = appVersion(), mismatch = av && d.version && av !== d.version;
-    out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. Reinstall Vetro so both match.', 'SVC ' + d.version + '/APP ' + av, 'warn']
+    out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. An older service is still running after the update. Restart the TV (unplug it for 30 seconds); if it still differs, reinstall Vetro.', 'SVC ' + d.version + '/APP ' + av, 'warn']
       : ['ok', 'Service', 'Running', 'Port ' + esc(d.port), 'svc ok']);
   }
   if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
