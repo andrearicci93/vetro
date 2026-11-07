@@ -223,10 +223,20 @@ module.exports = function (ctx) {
             alive = false;
             if (timer) { clearInterval(timer); timer = null; }
             // The proxy stays up until the row is back (a YouTube started in between still finds it), then stops listening.
-            var shut = function () { if (!alive) proxy.close(); };
-            reconcile().then(shut, shut);
-            var late = setTimeout(shut, 30000);
-            if (late.unref) late.unref();
+            // Resolves when that is done, so the fallback timer never outlives the stop.
+            return new Promise(function (resolve) {
+                var done = false, late = null;
+                var shut = function () {
+                    if (done) return;
+                    done = true;
+                    if (late) clearTimeout(late);
+                    if (!alive) proxy.close();
+                    resolve();
+                };
+                late = setTimeout(shut, 30000);
+                if (late.unref) late.unref();
+                reconcile().then(shut, shut);
+            });
         },
         status: function () { return { running: alive, proxy: proxy.listening(), setup: st.setup, script: script.load() ? scriptLib.VERSION : null, tile: st.tileState }; },
 
