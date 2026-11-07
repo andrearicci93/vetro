@@ -92,7 +92,7 @@ Whichever way you choose, finish with the same two steps: **open Vetro once** on
 
 The root comes from [Chris Ritsen's Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root) and works through TV-local SDB, so no computer needs to stay connected. Startup time varies by TV; wait for the status shown in the Vetro app. This is experimental software: privileged changes can disrupt TV features, so read what a switch does before turning it on.
 
-**By default the dashboard and API answer only paired devices:** a browser or script pairs once with a 6-digit code shown on the TV ([sign-in](app/docs/SIGN-IN.md)); Developer settings can turn this off. Traffic is plain HTTP, so keep the TV on a trusted LAN and never expose it to the Internet. [Integration details](rooting/README.md) · [Validation record](app/docs/RELEASE-AUDIT.md)
+**Pairing is off by default (since 0.5.1):** like 0.3.5, any device on your home network can use the dashboard and API, including root commands. Turn on **Require pairing** in Developer settings so that every browser or script pairs once with a 6-digit code shown on the TV ([sign-in](app/docs/SIGN-IN.md)). Traffic is plain HTTP, so keep the TV on a trusted LAN and never expose it to the Internet. [Integration details](rooting/README.md) · [Validation record](app/docs/RELEASE-AUDIT.md)
 
 ## Compatibility
 
