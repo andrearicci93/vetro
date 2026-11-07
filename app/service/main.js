@@ -469,9 +469,11 @@ function handleProbe(req, res) {
         }
         return serveJson(res, state);
     }
-    // The widget posts from the TV itself. This keeps LAN clients from rewriting the
-    // stored model, firmware and API probe that diagnostics report.
-    if (!auth.fromThisTv(req.socket && req.socket.remoteAddress)) {
+    // The widget posts from the TV itself. With pairing on, this keeps LAN clients from rewriting the
+    // stored model, firmware and API probe that diagnostics report. With pairing off (the default) the
+    // TV page (opaque Origin) is accepted from any address, as in 0.3.5: on some TVs it is not seen as the TV.
+    var fromPage = !auth.pairingMode().enabled && req.headers && req.headers.origin === 'null';
+    if (!fromPage && !auth.fromThisTv(req.socket && req.socket.remoteAddress)) {
         return serveJson(res, { error: 'Probe reports are accepted from the TV only' }, 403);
     }
     readJsonBody(req, res, function (parsed) {
@@ -550,12 +552,16 @@ function handleQuick(req,res) {readJsonBody(req,res,function(p){
     Promise.resolve().then(function(){return quickSettings.apply(p.id,p.off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}});})
         .then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 });}
+// {enabled:true|false}; the 0.5.0 form {disabled:true|false} is still accepted. Turning pairing on needs a paired browser
+// (or the TV itself): pairing first proves the TV can show the code, so nobody locks themselves out of the dashboard.
 function handlePairingMode(req,res) {
-    if(req.method==='GET')return serveJson(res,auth.pairingMode());
+    if(req.method==='GET')return serveJson(res,Object.assign(auth.pairingMode(),{paired:auth.trusted(req)}));
     readJsonBody(req,res,function(p){
-        if(typeof p.disabled!=='boolean')return serveJson(res,{error:'Invalid pairing mode'},400);
+        var enabled=typeof p.enabled==='boolean'?p.enabled:typeof p.disabled==='boolean'?!p.disabled:null;
+        if(enabled===null)return serveJson(res,{error:'Invalid pairing mode'},400);
         if(debloatBusy)return serveJson(res,{error:'App change already in progress'},409);
-        try { serveJson(res,auth.setPairingMode(p.disabled)); } catch(e) { serveJson(res,{error:e.message},503); }
+        if(enabled&&!auth.pairingMode().enabled&&!auth.trusted(req))return serveJson(res,{error:'Pair this browser first with the code shown on the TV, then turn pairing on',needPair:true},409);
+        try { serveJson(res,Object.assign(auth.setPairingEnabled(enabled),{paired:auth.trusted(req)})); } catch(e) { serveJson(res,{error:e.message},503); }
     });
 }
 function sdbAccess() {
@@ -597,7 +603,7 @@ var restoreTv = new (require('./restore.js').Restore)({
         off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
     mqtt: {enabled: function(){var c=require('./mqtt-bridge.js').readConfig();return !!c&&c.enabled!==false&&!!c.host;},
         off: function(){var m=require('./mqtt-bridge.js'),c=Object.assign({},m.readConfig(),{enabled:false});m.saveConfig(c);bridge.configure(c);}},
-    pairing: {status:function(){return auth.pairingMode();}, restore:function(){return auth.setPairingMode(false);}},
+    // Pairing is not a Restore item since 0.5.1: off is the default, and Restore must not switch off a protection the owner turned on.
     sdb: {status:sdbAccess, off:function(){return platform.setSdbAccess(false);}},
     afterHbbtv: function(){privacy.cached=null;},
     factoryTest: factoryTest,

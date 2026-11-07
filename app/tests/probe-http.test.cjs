@@ -2,6 +2,9 @@
 const assert = require('assert').strict;
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+process.env.VETRO_AUTH_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-probe-http-')), 'auth.json');
 const service = require('./service-harness.cjs')(path.resolve(__dirname, '..'));
 const server = http.createServer(service.router);
 function request(method, endpoint, origin, data) {
@@ -51,7 +54,12 @@ server.listen(0, '127.0.0.1', async () => {
         on(name, fn) { if (name === 'data') process.nextTick(() => fn(Buffer.from(JSON.stringify({probe: {fromLan: true}, apps: []})))); if (name === 'end') process.nextTick(fn); }};
       service.router(req, res);
     });
+    // Pairing off (the default): the TV page (opaque Origin) is accepted from any address, as in 0.3.5.
+    assert.equal((await post('192.0.2.11')).code, 200);
+    // Pairing on: only the TV itself (loopback, any 127.x, or its own address).
+    auth.setPairingEnabled(true);
     assert.equal((await post('192.0.2.11')).code, 403);
+    assert.equal((await post('127.0.0.2')).code, 200);
     assert.equal((await post('192.0.2.10')).code, 200);
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).probe.fromLan, true);
     auth._ownAddresses();
