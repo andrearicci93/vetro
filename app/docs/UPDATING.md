@@ -19,7 +19,7 @@ The launcher is a separate program that keeps running the old version when the s
 - **Limited.** Only `service/*.js`, `native/`, `payload/`, `index.html` and `icon.png` can be replaced. Paths with `..` are refused.
 - **Reversible.** The files being replaced are saved first. If the new version has not confirmed itself within 4 minutes (it does so once the root agent has connected), a watchdog started by the update puts the old files back and restarts. **Go back to the previous version** does the same by hand.
 - **Your settings stay.** The dashboard port chosen at install time is kept; rules, DNS and plugin settings live outside the package.
-- **Nothing runs by itself.** Nothing contacts GitHub unless you press the button.
+- **Nothing runs by itself, unless you ask for notices.** By default nothing contacts GitHub unless you press the button. **Quick settings → Developer settings → Update notices** is a switch (off by default, saved in that browser) that makes the dashboard look for a new Vetro update and for newer plugin versions as the page opens, and every six hours while it stays open. A dot then appears on Quick settings or Vetro Shards. Nothing is downloaded to the TV or installed: you still press **Update** yourself. The check is made by the browser, so it only happens while the dashboard is open.
 
 ## Publishing a release (maintainer)
 

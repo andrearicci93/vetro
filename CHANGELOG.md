@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Update notices
+
+- **Optional notice of new versions.** Developer settings has a new switch, **Update notices** (off by default, saved per browser). When on, the dashboard looks for a new Vetro update and for newer plugin versions as it opens and every six hours after, and puts a dot on Quick settings or Vetro Shards. Installing stays manual: you still press **Update**. With the switch off nothing is asked of GitHub until you select Check for update, as before.
+
 ### Fixes
 
 - **Port already in use.** If another app on the TV holds Vetro's port (8099 is also where tizen-youtube and TizenTube listen), the service used to end with the error and auto-restart brought it back into the same error, over and over. It now says which port is taken, keeps running and listens as soon as the port is free. The default stays 8099: the widget's access origin lives in the signed package, which an update cannot change. To use another port, build with `VETRO_PORT` (see the installation guide).
