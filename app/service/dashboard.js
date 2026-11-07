@@ -913,17 +913,30 @@ function resetFactoryTest(){
  return runUiOperation('factory-test','Turn off the factory test','TV',null,function(mark){return api('/factory-test',{action:'reset'}).then(function(d){factoryTestView.state=d.after||null;factoryTestView.message=d.message;return {resultLabel:d.changed?'Checked on the TV':'No change',message:d.message}})})
   .then(function(ok){if(!ok&&!factoryTestView.message)factoryTestView.message='The factory test could not be turned off. Check the operation log, then try again.'}).finally(function(){factoryTestView.busy=false;renderFactoryTest()});
 }
-var pairingData=null,pairingError=null,pairingBusy=false,pairingConfirm=false;
+var pairingData=null,pairingError=null,pairingBusy=false,pairingConfirm=false,pairingStep=null,pairingMsg='';
+// Pairing is off by default (0.5.1). Turning it on from a browser that is not paired yet first pairs that browser with a
+// code shown on the TV: if the TV cannot show the code, pairing stays off and nobody is locked out of the dashboard.
 function renderPairingMode(){
- var d=pairingData,on=d&&d.disabled;
- var warning=on?'<p class="quick-callout" role="status">Pairing is disabled. Every device on your local network can use the dashboard and API, including root commands.</p>':'';
- var confirm=pairingConfirm?'<div class="inline-confirm" role="group" aria-label="Confirm disabling pairing"><p><strong>Disable pairing mode?</strong> Anyone on your local network will be able to control the TV and run root commands without a code or token. This stays disabled after a restart until you turn this switch off. Existing paired devices are kept.</p><div class="row"><button data-pairing-cancel>Cancel</button><button class="primary" data-pairing-confirm>Disable pairing</button></div></div>':'';
- $('quickPairing').innerHTML='<div class="quick-item"><div><h3>Disable pairing mode</h3><p>Allow dashboard and API access without pairing. Off by default. Turn this switch off to require pairing again; an unpaired browser will then need to sign in.</p><div class="quick-state">'+(pairingError?chip(pairingError,'partial'):!d?chip('Reading…'):chip(on?'Pairing disabled':'Pairing required',on?'warn':'on'))+'</div></div>'+switchMarkup('data-pairing-disabled',!!on,pairingBusy||!d||!!pairingError,'Disable pairing mode')+'</div>'+warning+confirm+'<button data-pairing-refresh'+(pairingBusy?' disabled':'')+'>Refresh pairing state</button>';
+ var d=pairingData,on=!!(d&&d.enabled),confirm='';
+ var warning=d&&!on?'<p class="quick-callout" role="status">Pairing is off. Anyone on your home network can use the dashboard and API, including root commands, without a code (as in Vetro 0.3.5). Turn pairing on if people or devices you do not trust share your network.</p>':'';
+ if(pairingConfirm==='off')confirm='<div class="inline-confirm" role="group" aria-label="Confirm turning pairing off"><p><strong>Turn pairing off?</strong> Anyone on your home network will be able to control the TV and run root commands without a code or token. This stays off after a restart until you turn it on again. Paired devices are kept.</p><div class="row"><button data-pairing-cancel>Cancel</button><button class="primary" data-pairing-confirm>Turn pairing off</button></div></div>';
+ else if(pairingConfirm==='on'&&d&&d.paired)confirm='<div class="inline-confirm" role="group" aria-label="Confirm turning pairing on"><p><strong>Turn pairing on?</strong> Browsers and scripts that are not paired will need a 6-digit code shown on the TV. This browser is already paired.</p><div class="row"><button data-pairing-cancel>Cancel</button><button class="primary" data-pairing-confirm>Turn pairing on</button></div></div>';
+ else if(pairingConfirm==='on')confirm='<div class="inline-confirm" role="group" aria-label="Pair this browser, then turn pairing on"><p><strong>Turn pairing on?</strong> First pair this browser: Vetro shows a 6-digit code on the TV. This checks that your TV can show the code, so you cannot lock yourself out. If no code appears, open the Vetro app on the TV and try again.</p>'+
+  (pairingStep?'<div class="row"><input id="pairingCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" aria-label="Code shown on the TV"><button class="primary" data-pairing-code>Pair and turn on</button><button data-pairing-cancel>Cancel</button></div>':'<div class="row"><button class="primary" data-pairing-start>Show a code on the TV</button><button data-pairing-cancel>Cancel</button></div>')+
+  (pairingMsg?'<p role="status" aria-live="polite">'+esc(pairingMsg)+'</p>':'')+'</div>';
+ $('quickPairing').innerHTML='<div class="quick-item"><div><h3>Require pairing</h3><p>When on, every browser or script needs a 6-digit code shown on the TV before it can use the dashboard and API. Off by default. Paired devices stay paired when you switch it off and on.</p><div class="quick-state">'+(pairingError?chip(pairingError,'partial'):!d?chip('Reading…'):chip(on?'Pairing on':'Pairing off',on?'on':'warn'))+'</div></div>'+switchMarkup('data-pairing-enabled',on,pairingBusy||!d||!!pairingError,'Require pairing')+'</div>'+warning+confirm+'<button data-pairing-refresh'+(pairingBusy?' disabled':'')+'>Refresh pairing state</button>';
 }
-function loadPairingMode(){return api('/pairing-mode').then(function(d){if(typeof d.disabled!=='boolean')throw Error('Pairing state unavailable');pairingData=d;pairingError=null;}).catch(function(e){pairingError=e.message;}).finally(renderPairingMode);}
-function setPairingMode(disabled){
- if(pairingBusy)return;pairingBusy=true;pairingConfirm=false;renderPairingMode();
- return runUiOperation('pairing-mode',disabled?'Disable pairing':'Require pairing','Dashboard access',null,function(mark){return api('/pairing-mode',{disabled:disabled}).then(function(d){if(d.disabled!==disabled)throw Error('Pairing mode was not confirmed');pairingData=d;var message=disabled?'Pairing disabled. Local-network devices have access without a token.':'Pairing required again. Unpaired devices must sign in.';mark(message,'State read back');if(!disabled)setTimeout(function(){location.reload()},1200);return {resultLabel:'State read back',message:message};});}).finally(function(){pairingBusy=false;renderPairingMode();});
+function loadPairingMode(){return api('/pairing-mode').then(function(d){if(typeof d.enabled!=='boolean')throw Error('Pairing state unavailable');pairingData=d;pairingError=null;}).catch(function(e){pairingError=e.message;}).finally(renderPairingMode);}
+function setPairingMode(enabled){
+ if(pairingBusy)return;pairingBusy=true;pairingConfirm=false;pairingStep=null;pairingMsg='';renderPairingMode();
+ return runUiOperation('pairing-mode',enabled?'Turn pairing on':'Turn pairing off','Dashboard access',null,function(mark){return api('/pairing-mode',{enabled:enabled}).then(function(d){if(d.enabled!==enabled)throw Error('Pairing mode was not confirmed');pairingData=d;var message=enabled?'Pairing on. Unpaired devices must pair with a code shown on the TV.':'Pairing off. Devices on your home network can use Vetro without a code.';mark(message,'State read back');return {resultLabel:'State read back',message:message};});}).finally(function(){pairingBusy=false;renderPairingMode();});
+}
+function startPairingOn(){
+ pairingMsg='Asking the TV…';renderPairingMode();
+ return api('/auth/pair',{name:((typeof navigator!=='undefined'&&navigator.platform)||'Browser')+' dashboard'}).then(function(d){pairingStep={id:d.id};pairingMsg='Enter the 6-digit code shown on the TV. It expires in '+d.expiresIn+' seconds.';},function(e){if(/already on the TV/.test(e.message))pairingStep={id:null};pairingMsg=e.message;}).finally(function(){renderPairingMode();var c=$('pairingCode');if(c&&c.focus)c.focus();});
+}
+function confirmPairingOn(code){
+ return api('/auth/confirm',{id:pairingStep&&pairingStep.id,code:code}).then(function(){if(pairingData)pairingData.paired=true;pairingBusy=false;return setPairingMode(true);},function(e){pairingMsg=e.message;if(/start again/.test(e.message))pairingStep=null;renderPairingMode();});
 }
 var sdbData=null,sdbError=null,sdbBusy=false,sdbConfirm=false;
 function renderSdbAccess(){
@@ -1005,7 +1018,7 @@ function clearLeftovers(){
  })}).finally(function(){quickBusy=false;renderQuick();});
 }
 $('quick').onchange=function(e){var x=e.target,ds=x.dataset||{};
- if(ds.pairingDisabled!=null){if(pairingBusy)return;if(x.checked){x.checked=false;pairingConfirm=true;renderPairingMode();return}return setPairingMode(false);}
+ if(ds.pairingEnabled!=null){if(pairingBusy)return;pairingConfirm=x.checked?'on':'off';pairingStep=null;pairingMsg='';x.checked=!x.checked;renderPairingMode();return}
  if(ds.sdbAccess!=null){if(sdbBusy)return;if(x.checked){x.checked=false;sdbConfirm=true;renderSdbAccess();return}return setSdbAccess(false);}
  if(ds.quickToggle!=null){var g=quickGroups.filter(function(y){return y.id===ds.quickToggle})[0];if(x.checked&&g&&(g.microphone||g.confirm)){x.checked=false;quickConfirm=g.id;renderQuick();var c=document.querySelector('[data-quick-confirm]');if(c)c.focus();return}return applyQuick(ds.quickToggle,x.checked);}
  if(ds.hbbtvDisable!=null)return setHbbtv(!x.checked);
@@ -1015,8 +1028,10 @@ $('quick').onchange=function(e){var x=e.target,ds=x.dataset||{};
 };
 $('quick').onclick=function(e){
  if(e.target.dataset&&e.target.dataset.pairingRefresh!=null)return loadPairingMode();
- if(e.target.dataset&&e.target.dataset.pairingCancel!=null){pairingConfirm=false;renderPairingMode();return}
- if(e.target.dataset&&e.target.dataset.pairingConfirm!=null)return setPairingMode(true);
+ if(e.target.dataset&&e.target.dataset.pairingCancel!=null){pairingConfirm=false;pairingStep=null;pairingMsg='';renderPairingMode();return}
+ if(e.target.dataset&&e.target.dataset.pairingConfirm!=null)return setPairingMode(pairingConfirm==='on');
+ if(e.target.dataset&&e.target.dataset.pairingStart!=null)return startPairingOn();
+ if(e.target.dataset&&e.target.dataset.pairingCode!=null){var pc=$('pairingCode');return confirmPairingOn(pc?pc.value:'');}
  if(e.target.dataset&&e.target.dataset.sdbRefresh!=null)return loadSdbAccess();
  if(e.target.dataset&&e.target.dataset.sdbCancel!=null){sdbConfirm=false;renderSdbAccess();return}
  if(e.target.dataset&&e.target.dataset.sdbConfirm!=null)return setSdbAccess(true);var b=e.target.closest?e.target.closest('button'):null;if(!b)return;var ds=b.dataset;
