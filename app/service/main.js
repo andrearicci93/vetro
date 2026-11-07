@@ -831,7 +831,7 @@ function showPairingCode(attempt) {
         if (t.unref) t.unref();
     });
 }
-http.createServer(function (req, res) {
+var server = http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
     // A sandboxed plugin page carries no sign-in cookie; its URL holds a session token the plugin host checks.
     if (PLUGIN_SESSION_API_RE.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
@@ -918,9 +918,41 @@ http.createServer(function (req, res) {
     if (url === '/remap') return handleRemap(req, res);
     if (url === '/' || url === '/index.html') return serveHtml(res, auth.decorate(dashboardHtml()));
     serveJson(res, { error: 'not found' }, 404);
-}).listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0', function () {
+});
+// An older Vetro that outlived an upgrade (0.3.x) can still hold the port and keep answering with its old version, and
+// any other app can hold it too (8099 is where tizen-youtube and TizenTube listen). Without a handler the error ended the
+// process and auto-restart brought it back into the same error, forever. Now: if the holder says it is an OLDER Vetro it
+// is ended (stale-service.js; nothing else is ever touched); otherwise the service says what is wrong and tries again, so
+// it comes up by itself once the port is free.
+var LISTEN_RETRY_MS = Number(process.env.VETRO_LISTEN_RETRY_MS) || 15000;
+var staleAttempts = 0;
+function startListening() {
+    server.listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0');
+}
+server.on('listening', function () {
     console.log('VETRO listening on ' + PORT);
 });
+server.on('error', function (e) {
+    if (e && (e.code === 'EADDRINUSE' || e.code === 'EACCES')) {
+        var retry = function () {
+            console.error('VETRO cannot listen on port ' + PORT + ' (' + e.code + '): another app holds it. Trying again in ' + Math.round(LISTEN_RETRY_MS / 1000) + ' s. Build with VETRO_PORT=<port> to use another one.');
+            setTimeout(startListening, LISTEN_RETRY_MS);
+        };
+        if (e.code !== 'EADDRINUSE' || staleAttempts >= 3) return retry();
+        staleAttempts++;
+        require('./stale-service.js').endOlderService(PORT, buildInfo.version, {host: process.env.VETRO_STALE_PROBE_HOST || '127.0.0.1'}).then(function (r) {
+            if (r.ended) {
+                console.log('VETRO ended the older Vetro ' + r.version + ' (pid ' + r.pid + ') that still held port ' + PORT + (r.forced ? ' (forced)' : ''));
+                return setTimeout(startListening, 300);
+            }
+            if (r.reason !== 'not-vetro') console.error('VETRO found Vetro ' + (r.version || '?') + ' on port ' + PORT + ' and did not end it: ' + r.reason);
+            retry();
+        }).catch(retry);
+        return;
+    }
+    throw e;
+});
+startListening();
 
 platform.start();
 // The launcher is started again after a boot or a crash while its switch is on: that supervision is the launcher plugin's (plugin-launcher.js).
