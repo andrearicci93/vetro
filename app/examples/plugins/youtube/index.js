@@ -1,5 +1,5 @@
 'use strict';
-// YouTube: opens Samsung's own YouTube app with a script added to its page (ad blocking, Shorts, SponsorBlock, DeArrow).
+// Ad-free YouTube: opens Samsung's own YouTube app with a script added to its page (ad blocking, Shorts, SponsorBlock, DeArrow).
 // Nothing is installed on the TV: the app is started with a proxy and a trust store of its own, both owned by this plugin.
 // See README.md for what runs, what is written, and how to undo it. Plain ES5.
 //
@@ -24,7 +24,7 @@ var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" conte
     'button{font:inherit;padding:8px 14px}table{border-collapse:collapse;margin:8px 0;width:100%}td{padding:4px 8px 4px 0;vertical-align:top}' +
     'td:first-child{opacity:.7;white-space:nowrap}#msg{min-height:1.4em;margin:8px 0}.err{color:#c0392b}small{opacity:.75;display:block;margin-top:14px;line-height:1.45}' +
     'label.sw{display:flex;gap:10px;align-items:flex-start;margin:14px 0 4px}label.sw input{margin-top:3px;width:18px;height:18px}#tilenote{opacity:.75;margin:0 0 8px 28px;min-height:1.2em}</style>' +
-    '<body><h2>YouTube</h2><div>Samsung’s own YouTube app, with ads, Shorts and sponsor segments handled.</div>' +
+    '<body><h2>Ad-free YouTube</h2><div>Samsung’s own YouTube app, with ads, Shorts and sponsor segments handled.</div>' +
     '<div class="row"><button id="open">Open YouTube</button><button id="close">Close YouTube</button></div><div id="msg"></div>' +
     '<label class="sw"><input type="checkbox" id="tile"><span><b>Samsung’s YouTube button opens this</b><br>The Home tile, the remote’s YouTube key and voice start the patched app. ' +
     'If Vetro is not running, YouTube still opens, just without the patches.</span></label><div id="tilenote"></div>' +

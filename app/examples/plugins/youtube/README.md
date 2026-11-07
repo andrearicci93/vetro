@@ -1,12 +1,31 @@
-# YouTube
+# Ad-free YouTube
 
-Opens **Samsung's own YouTube app** with a script added to its page: ads blocked, Shorts hidden, sponsor segments skipped
-(SponsorBlock), optional DeArrow titles. You stay signed in, voice search and the TV's player keep working, and nothing is
-installed on the TV: no WGT, no Developer mode, no re-signing.
+Samsung's own YouTube app on your TV, **without ads**. The plugin opens the YouTube app that is already on the TV and adds
+a script to its page: ads blocked, Shorts hidden, sponsor segments skipped ([SponsorBlock](https://sponsor.ajay.app)),
+optional [DeArrow](https://dearrow.ajay.app) titles. You stay signed in, voice search and the TV's player keep working, and
+**nothing is installed on the TV**: no WGT, no Developer mode, no re-signing, no second YouTube app.
 
-Open **Plugins → YouTube**, press **Open YouTube**. The first start takes a few seconds longer (see below).
-Optionally switch on **Samsung's YouTube button opens this**: the Home tile, the remote's YouTube key and voice then start the
-patched app (see *The Home tile* below). With it off, Samsung's button still opens the plain app.
+## What you get
+
+- Ads blocked before and inside videos, as far as the script keeps up with YouTube (see *Limits*).
+- Shorts removed from the menu, SponsorBlock skipping, optional DeArrow titles and thumbnails.
+- Your own account, history and subscriptions: it is the real YouTube app, not a clone.
+- An optional switch so Samsung's own YouTube button (Home tile, remote key, voice) opens the patched app.
+- If anything fails (proxy down, script missing, certificate missing) YouTube still opens, just without the patches.
+
+## Install and use
+
+1. In the dashboard open **Vetro Shards → Load plugin catalog**, find **Ad-free YouTube** and install it. It lands switched off.
+2. Switch it on, open its tab, press **Open YouTube**. The first start takes up to a minute: it makes a certificate, copies the
+   YouTube app's content folder (about 3 MB) and downloads the script once.
+3. Optional: switch on **Samsung's YouTube button opens this** (see *The Home tile*).
+
+**Remove it cleanly:** switch the tile option off, press **Remove certificate and files**, switch the plugin off, then remove
+it. Removing the plugin alone leaves the certificate and the copy of the content folder on the TV.
+
+**Tested on:** a Samsung Q80A (firmware 2310.0, Tizen 6.0) rooted with Vetro. Other models should work if they have the Cobalt
+YouTube app (`com.samsung.tv.cobalt-yt`); the plugin says "Samsung YouTube not found" when they do not. Not yet confirmed:
+the real remote YouTube key after a cold boot, and long-term behaviour as YouTube changes.
 
 ## How it works
 
@@ -73,7 +92,28 @@ Removing the plugin does **not** remove `<DIR>`: press *Remove certificate and f
 - Unofficial, and YouTube's terms do not allow ad blocking. Use it on your own TV, at your own risk.
 - Port 8101 can be changed with `{"port": 8123}` in the plugin's `config.json`.
 
-## Credit
+## Privacy: what it connects to
 
-[TizenTube](https://github.com/reisxd/TizenTube) by reisxd (GPL-3.0) for the script and for showing that Cobalt takes
-`--proxy` and `--content`; [SponsorBlock](https://github.com/ajayyy/SponsorBlock) by Ajay Ramachandran for the segment database.
+- `cdn.jsdelivr.net` once, to download the TizenTube script (checked by SHA-256 before use). Nothing is sent but the request.
+- `www.youtube.com`: the proxy forwards the app's own requests; it reads the start page to add the script tag and keeps nothing.
+- The script, running inside YouTube's page, talks to YouTube and to the SponsorBlock / DeArrow servers (sponsor.ajay.app,
+  dearrow.ajay.app) the way TizenTube does. This plugin collects nothing and sends nothing anywhere else.
+
+## Credits
+
+This plugin is only the glue. The hard parts are other people's work:
+
+- **[TizenTube](https://github.com/reisxd/TizenTube)** by **reisxd** (GPL-3.0): the script that blocks the ads, and the discovery
+  that Cobalt accepts `--proxy` and `--content`, which this whole approach is built on. The script is downloaded from its npm
+  package (`@foxreis/tizentube`) and is not part of this plugin.
+- **[SponsorBlock](https://github.com/ajayyy/SponsorBlock)** and **[DeArrow](https://github.com/ajayyy/DeArrow)** by **Ajay
+  Ramachandran** and contributors: the community database of sponsor segments (CC BY-NC-SA 4.0) and of titles and thumbnails.
+- **Cobalt**, Google's open-source YouTube client that Samsung ships as the TV's YouTube app.
+- **[Vetro](https://github.com/andrearicci93/vetro)** for the plugin host, and Samsung's `sqlite3`, `openssl` and
+  `app_launcher` for the rest.
+
+## Legal
+
+Unofficial and not affiliated with Google, YouTube, Samsung, TizenTube or SponsorBlock. YouTube's terms of service do not
+allow ad blocking; use it on your own TV, at your own risk. This plugin is MIT-licensed like the rest of this catalog; the
+TizenTube script it downloads keeps its own GPL-3.0 licence.
