@@ -17,6 +17,12 @@ function modeFile(text){if(text===null){try{fs.unlinkSync(auth.MODE_PATH);}catch
  assert.equal(page.code,200);assert.equal(page.headers['Access-Control-Allow-Origin'],'null');
  assert.equal((await callAt('OPTIONS','/probe',undefined,{ip:'192.0.2.99',headers:{origin:'null',host:'127.0.0.1:8099'}})).code,204,'report preflight allowed');
  assert.equal((await callAt('GET','/screen',undefined,{ip:'192.0.2.99',headers:{origin:'null',host:'127.0.0.1:8099'}})).headers['Access-Control-Allow-Origin'],'null');
+ // A runtime that sends its own scheme as Origin is answered too (0.3.5 never looked at it); a web site never is.
+ const scheme=await callAt('GET','/status',undefined,{ip:'192.0.2.99',headers:{origin:'file://',host:'127.0.0.1:8099'}});
+ assert.equal(scheme.code,200);assert.equal(scheme.headers['Access-Control-Allow-Origin'],'file://');
+ assert.equal((await callAt('GET','/status',undefined,{ip:'192.0.2.99',headers:{origin:'https://evil.example',host:'127.0.0.1:8099'}})).code,403);
+ assert.equal((await callAt('GET','/status',undefined,{ip:'192.0.2.99',headers:{origin:'HTTP://evil.example',host:'127.0.0.1:8099'}})).code,403);
+ assert.equal((await call('POST','/exec',{},{headers:{origin:'file://'}})).code,403,'a TV page origin opens only the check routes');
  // ...but an opaque Origin (sandboxed web page) is still refused everywhere else, and so are rebinding and cross-site.
  assert.equal((await call('POST','/exec',{},{headers:{origin:'null'}})).code,403);
  assert.equal((await call('GET','/apps',undefined,{headers:{origin:'null'}})).code,403);

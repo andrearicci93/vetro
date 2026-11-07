@@ -73,6 +73,10 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
     const pin = await call('GET', '/auth/pending', page);
     assert.equal(pin.code, 403); assert.equal(pin.headers['Access-Control-Allow-Origin'], '*'); assert.equal(pin.body.pending, false);
     assert.equal(pin.body.code, undefined, 'the refusal never carries the code');
+    assert.equal(auth.pageOrigin('null'), true); assert.equal(auth.pageOrigin('file://'), true); assert.equal(auth.pageOrigin(undefined), false);
+    assert.equal(auth.pageOrigin(''), false); assert.equal(auth.pageOrigin('http://192.168.1.10:8099'), false); assert.equal(auth.pageOrigin('HTTPS://x'), false);
+    // With pairing on, a TV page origin from an address that is not the TV is still refused (readably).
+    assert.equal((await call('GET', '/status', {ip: '192.168.1.77', headers: {origin: 'file://', host: '127.0.0.1:8099'}})).code, 401);
     const exec = await call('POST', '/exec', page);
     assert.equal(exec.code, 401); assert.equal(exec.headers['Access-Control-Allow-Origin'], undefined, 'other routes stay unreadable cross-origin');
     assert.equal(exec.body.seen, undefined);

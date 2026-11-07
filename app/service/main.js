@@ -470,10 +470,10 @@ function handleProbe(req, res) {
         return serveJson(res, state);
     }
     // The widget posts from the TV itself. With pairing on, this keeps LAN clients from rewriting the
-    // stored model, firmware and API probe that diagnostics report. With pairing off (the default) the
-    // TV page (opaque Origin) is accepted from any address, as in 0.3.5: on some TVs it is not seen as the TV.
-    var fromPage = !auth.pairingMode().enabled && req.headers && req.headers.origin === 'null';
-    if (!fromPage && !auth.fromThisTv(req.socket && req.socket.remoteAddress)) {
+    // stored model, firmware and API probe that diagnostics report. With pairing off (the default) anyone
+    // the sign-in gate let through may post, as in 0.3.5: on some TVs the page is not seen as the TV, and
+    // every LAN client can already use every route.
+    if (auth.pairingMode().enabled && !auth.fromThisTv(req.socket && req.socket.remoteAddress)) {
         return serveJson(res, { error: 'Probe reports are accepted from the TV only' }, 403);
     }
     readJsonBody(req, res, function (parsed) {
@@ -841,10 +841,11 @@ http.createServer(function (req, res) {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res, COMPONENTS_QUERY_RE.test(req.url || ''));
     }
-    // Packaged widget documents use an opaque (null) origin. Allow only its
-    // probe/status exchange, including the JSON POST preflight.
-    if ((url === '/probe' || url === '/status' || url === '/screen') && req.headers && req.headers.origin === 'null') {
-        res.setHeader('Access-Control-Allow-Origin', 'null');
+    // Packaged widget documents use an opaque (null) origin, or on some runtimes a non-web scheme. Allow
+    // only its probe/status exchange, including the JSON POST preflight. The sign-in gate already decided
+    // who may get here.
+    if ((url === '/probe' || url === '/status' || url === '/screen') && req.headers && auth.pageOrigin(req.headers.origin)) {
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
         res.setHeader('Vary', 'Origin');
         if (req.method === 'OPTIONS') {
             res.writeHead(204, {'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',

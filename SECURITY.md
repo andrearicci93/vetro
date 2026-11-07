@@ -10,7 +10,7 @@ forward its ports, expose it publicly or enable unrestricted access from other
 networks. Root-agent authentication is a separate internal protocol from the dashboard sign-in.
 
 **Require pairing** in Quick settings → Developer settings → Pairing is a persistent
-opt-in. While it is off, a warning says so; Origin/host checks remain, opaque origins
+opt-in. While it is off, a warning says so; Origin/host checks remain, opaque or non-web origins
 are accepted only on the TV page's check routes (`/status`, `/probe`, `/screen`), and
 the pairing code remains TV-only. Turning it on from an unpaired browser first pairs
 that browser, so nobody is locked out; existing paired keys remain valid either way.

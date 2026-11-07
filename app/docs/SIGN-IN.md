@@ -60,8 +60,8 @@ pairing on from an unpaired client gets `409` with `needPair: true`. Turning it 
 for confirmation. The choice persists across restarts; existing paired keys stay valid
 in both directions.
 
-While pairing is off, the cross-site and host checks still apply. An opaque `Origin`
-(`null`) is accepted only on `/status`, `/probe` and `/screen`, the routes the TV page
+While pairing is off, the cross-site and host checks still apply. A TV page `Origin`
+(opaque `null`, or a non-web scheme such as `file://`; never `http(s)`) is accepted only on `/status`, `/probe` and `/screen`, the routes the TV page
 uses for its check, from any address (as in 0.3.5), so a TV whose page is not seen as
 the TV itself still works. Everything else with an opaque `Origin` is refused, and
 `/auth/pending` still gives codes only to the TV itself.

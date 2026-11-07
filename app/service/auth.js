@@ -182,6 +182,11 @@ function refuse(req, res, url, code, body) {
 }
 // The routes the TV page uses for its check; with pairing off they answer it from any address (as in 0.3.5).
 var PAGE_ROUTES = {'/status': true, '/probe': true, '/screen': true};
+// The Origin a packaged TV page sends: opaque ("null") on the TVs we know. A TV runtime may instead send its own scheme
+// (file:, app:...); 0.3.5 never looked at it, so it is accepted too. A web site's origin is always http(s), and a
+// sandboxed frame's is "null", so this lets no web page in that "null" did not already.
+var WEB_ORIGIN_RE = /^https?:/i;
+function pageOrigin(o) { return o === 'null' || (typeof o === 'string' && o !== '' && !WEB_ORIGIN_RE.test(o)); }
 
 function keyOf(req) {
     var h = req.headers || {};
@@ -299,11 +304,12 @@ function gate(req, res, url, options) {
     var s = sessionOf(req);
     if (s && !originOk(req)) return refuse(req, res, url, 403, {error: 'Cross-site request refused'});
     if (!s && !pairingEnabled) {
-        // Pairing off does not turn off the same-origin and rebinding checks. An opaque Origin is allowed only on the routes
-        // the TV page uses for its check, as in 0.3.5: there the page answers from any address, so a TV whose page is not
-        // recognised as the TV itself (Tizen 9 Q8F) still works. Everything else with an opaque Origin is refused.
+        // Pairing off does not turn off the same-origin and rebinding checks. A TV page Origin (opaque, or a non-web scheme)
+        // is allowed only on the routes the TV page uses for its check, as in 0.3.5: there the page answers from any
+        // address, so a TV whose page is not recognised as the TV itself (Tizen 9 Q8F) still works. Everything else with
+        // an opaque Origin is refused.
         var origin = (req.headers || {}).origin;
-        if (hostOk(req) && origin === 'null' && PAGE_ROUTES[url]) return false;
+        if (hostOk(req) && PAGE_ROUTES[url] && pageOrigin(origin)) return false;
         if (!hostOk(req) || !originOk(req) || origin === 'null') {
             return refuse(req, res, url, 403, {error: 'Use an IP address or localhost with a matching browser origin'});
         }
@@ -388,7 +394,7 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 // True for the TV itself and for a paired device: who may turn pairing on without locking themselves out.
 function trusted(req) { return (tvApp(req) && hostOk(req)) || !!sessionOf(req); }
 
-module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingEnabled: setPairingEnabled, trusted: trusted, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
+module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingEnabled: setPairingEnabled, trusted: trusted, pageOrigin: pageOrigin, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
     _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
     _ownAddresses: function (fn) { interfaces = fn || function () { return os.networkInterfaces(); }; ownCache = {at: 0, list: []}; },
     _unthrottle: function () { lastPairAt = 0; }};

@@ -38,7 +38,8 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).apps.length, 700);
     const tooLarge = await request('POST', '/probe', 'null', {padding: 'x'.repeat(262144)});
     assert.equal(tooLarge.status, 413);
-    // Only the TV's own widget may replace the stored probe; a LAN client is refused.
+    // With pairing on, only the TV's own widget may replace the stored probe; a LAN client is refused.
+    require('../service/auth.js').setPairingEnabled(true);
     const remote = await new Promise(resolve => {
       const res = {headers: {}, setHeader() {}, writeHead(code) {res.code = code;}, end(text) {resolve({code: res.code, text});}};
       service.router({method: 'POST', url: '/probe', headers: {}, socket: {remoteAddress: '192.0.2.5'}, on() {}}, res);
@@ -54,14 +55,13 @@ server.listen(0, '127.0.0.1', async () => {
         on(name, fn) { if (name === 'data') process.nextTick(() => fn(Buffer.from(JSON.stringify({probe: {fromLan: true}, apps: []})))); if (name === 'end') process.nextTick(fn); }};
       service.router(req, res);
     });
-    // Pairing off (the default): the TV page (opaque Origin) is accepted from any address, as in 0.3.5.
-    assert.equal((await post('192.0.2.11')).code, 200);
-    // Pairing on: only the TV itself (loopback, any 127.x, or its own address).
-    auth.setPairingEnabled(true);
     assert.equal((await post('192.0.2.11')).code, 403);
     assert.equal((await post('127.0.0.2')).code, 200);
     assert.equal((await post('192.0.2.10')).code, 200);
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).probe.fromLan, true);
+    // Pairing off (the default): the TV page is accepted from any address, as in 0.3.5.
+    auth.setPairingEnabled(false);
+    assert.equal((await post('192.0.2.11')).code, 200);
     auth._ownAddresses();
     console.log('PASS widget probe HTTP: preflight, report round trip, opaque origin only, writes from the TV only (loopback or its own address)');
   } catch (e) {console.error(e); process.exitCode = 1;}
