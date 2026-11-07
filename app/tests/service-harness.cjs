@@ -7,7 +7,7 @@ module.exports = function loadService(root, options) {
   let router;
   const dependencies = {
     fs: { readFileSync: function () { return ''; } },
-    http: { createServer: function (fn) { router = fn; return { listen: function () {} }; } },
+    http: { createServer: function (fn) { router = fn; return { listen: function () {}, on: function () {} }; } },
     './mqtt-bridge.js': Object.assign({},require('../service/mqtt-bridge.js'),{ MqttBridge: function (getTelemetry,onMessage) { this.onMessage=onMessage;this.event=function(){};this.connected=false; this.start = function () {};this.setTopics=function(){};this.status=function(){return {connected:false,state:'disabled',events:[]}};this.configure=function(){};this.publish=function(){throw Error('MQTT disconnected')}; } })
   };
   const context = vm.createContext({

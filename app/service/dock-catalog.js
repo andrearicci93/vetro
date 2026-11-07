@@ -25,6 +25,7 @@ var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
 // then completes the list, so the dock still shows every visible app (PR #43 by arnaudaprahamian).
 var ORDER_DIR_NEW_HOME = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data';
 var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
+var MIN_PACKAGES = 20;         // fewer package rows than this means the read failed, not that the TV has no apps
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
 var ICON_FILE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
@@ -70,6 +71,9 @@ function script() {
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
+        // Every app the package manager knows. Samsung's web app registry above keeps a row for an app removed with pkgcmd,
+        // so a tile built from it alone would stay in the dock and not open.
+        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'A|\'||hex(app_id) FROM package_app_info;" 2>/dev/null',
         '[ -d /usr/apps/' + COBA_HOME + ' ] || [ -d /opt/usr/apps/' + COBA_HOME + ' ] && echo "H|' + COBA_HOME + '"',
         'true'
     ].join('\n');
@@ -84,7 +88,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, sources: {}, homeApp: null, rowFrom: null};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}, installedCount: 0, sources: {}, homeApp: null, rowFrom: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
         var f = line.split('|');
@@ -104,6 +108,9 @@ function parse(text) {
             } else if (f[0] === 'P' && f.length === 3) {
                 var icon = unhex(f[2]), id = unhex(f[1]);
                 if (iconOk(icon) && !out.packageIcons[id]) out.packageIcons[id] = icon;
+            } else if (f[0] === 'A' && f.length === 2) {
+                out.installed[unhex(f[1])] = true;
+                out.installedCount++;
             } else if (f[0] === 'H' && f.length === 2) {
                 if (f[1].trim() === COBA_HOME) out.homeApp = COBA_HOME;
             }
@@ -159,6 +166,9 @@ function build(parsed, options) {
         entries.push({slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null});
         return entries[entries.length - 1];
     }
+    // A registry row without a package behind it is a leftover of an uninstall that did not go through Samsung's own path.
+    // The package list is only trusted when it came back whole: a short answer must not empty the dock.
+    function uninstalled(reg) { return parsed.installedCount >= MIN_PACKAGES && !parsed.installed[reg.appId]; }
     parsed.order.forEach(function (item) {
         if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: item, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
         var kind = item.slice(0, item.indexOf('@')), ident = item.slice(item.indexOf('@') + 1);
@@ -184,6 +194,7 @@ function build(parsed, options) {
         if (!reg) { skipped.push({item: item, reason: 'Not installed'}); return; }
         if (reg.hidden) { skipped.push({item: item, reason: 'Hidden in the registry'}); return; }
         if (!APP_ID.test(reg.appId)) { skipped.push({item: item, reason: 'Unusable app id'}); return; }
+        if (uninstalled(reg)) { skipped.push({item: item, reason: 'Not installed'}); return; }
         var entry = add(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[ident] || parsed.packageIcons[reg.appId]);
         if (options.fixTizenTube && TIZENTUBE.test(reg.appId)) {
             entry.killFirst = COBALT_YOUTUBE;
@@ -198,7 +209,7 @@ function build(parsed, options) {
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });
         Object.keys(parsed.registry).filter(function (id) { return !inOrder[id]; }).map(function (id) { return {id: id, reg: parsed.registry[id]}; })
-            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !present[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
+            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !uninstalled(x.reg) && !present[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
             .sort(function (a, b) { return a.reg.title.localeCompare(b.reg.title); })
             .forEach(function (x) {
                 if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: x.reg.appId, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }

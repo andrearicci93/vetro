@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Port already in use.** If another app on the TV holds Vetro's port (8099 is also where tizen-youtube and TizenTube listen), the service used to end with the error and auto-restart brought it back into the same error, over and over. It now says which port is taken, keeps running and listens as soon as the port is free. The default stays 8099: the widget's access origin lives in the signed package, which an update cannot change. To use another port, build with `VETRO_PORT` (see the installation guide).
+- **Leftovers of an uninstall.** `pkgcmd -u` removes the package but not what Samsung's own uninstaller removes: the app's row in the web app registry, its icon folder and its line in the Home row. Measured on a Q80A after removing Disney+ with Vetro: all three stayed, so the Home kept a tile that did not open (a sideloaded TizenTube left two Home lines too). Samsung's command for the proper uninstall, `wascmd`, is switched off on released firmware. Vetro now reads the app's registry ids before the uninstall and, once the package is verified gone, tells the Home as Samsung does (`memory/was/app_uninstall`), removes the Home line, the registry row and the icon folder, keeping a copy of each file or row it changes in `/opt/usr/home/owner/share/vetro-uninstall-backup`. The Home row file is not rewritten while the Home is running (it would write the line back); the answer then says `pending`. **Rebuild the launcher app list** (Launcher tab) now also takes out of the Home row the lines of apps that are known nowhere, left by earlier uninstalls (the same cleanup is available as `POST /home-order {"action":"clean"}`). The cleanup steps were done by hand and checked on one Q80A; the code itself is tested against copies of the files, not on a TV.
+- **Launcher after an uninstall.** The launcher's app list is rebuilt right after Vetro uninstalls a package, and an app that the web app registry still lists but the package manager no longer knows gets no tile (it would not open). Not tried on a TV.
+
 ## 0.5.0 — 2026-11-06
 
 Pairing for the dashboard and API, community plugins (Vetro Shards), a custom launcher, more privacy switches, signed in-place updates and a safer Restore the TV. There was no 0.4.0 release: its work is included here.

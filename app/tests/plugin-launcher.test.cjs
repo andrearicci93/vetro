@@ -57,6 +57,21 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     r = res(); host.dispatch('launcher', { method: 'GET', url: '/dock', headers: {} }, r, 'action', json);
     assert.equal(r.code, 404, 'a route answers only the method it is for');
 
+    // "Rebuild the list" first takes the Home lines of apps that are gone, then rebuilds; a failed sweep never stops the rebuild
+    const scripts = [];
+    dock.execute = async cmd => {
+        const script = Buffer.from(/^echo (\S+) \|/.exec(cmd)[1], 'base64').toString(); scripts.push(script);
+        return /ORPHAN \$id/.test(script) ? { exit_code: 0, stdout: 'ORPHAN newslO9NqF.stremio\nREGISTRY 40\n' } : { exit_code: 0, stdout: 'HOME 2\n' };
+    };
+    let before = log.length;
+    r = post('{"action":"refresh"}'); await nextTick(20);
+    assert.equal(log[before], 'refresh'); assert.equal(scripts.length, 2, 'one read of the Home row, one cleanup');
+    assert.deepEqual(r.body.cleaned.removed, ['newslO9NqF.stremio']);
+    scripts.length = 0; dock.execute = async () => { throw new Error('agent gone'); };
+    before = log.length; r = post('{"action":"refresh"}'); await nextTick(20);
+    assert.equal(log[before], 'refresh'); assert.equal(r.body.cleaned, undefined, 'the rebuild goes on when the sweep fails');
+    delete dock.execute;
+
     // supervision: at once when the agent connects, then on the fifth tick
     log.length = 0;
     connected = true;

@@ -166,3 +166,21 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
 // The script reports which Home the row came from.
 assert.match(catalog.script(), /echo "F\|\$F"/);
 console.log('dock-catalog 2022 Home: ok');
+
+// An app removed with pkgcmd leaves its row in Samsung's web app registry and its entry in the Home row. The package
+// list shows it is gone, so the dock does not build a tile that would not open. A short package list proves nothing.
+{
+    const pkgs = Array.from({length: 30}, (_, i) => 'A|' + hex('pkg.app' + i));
+    const base = ['F|csfs', 'O|d/webapp@live', 'O|d/webapp@dead',
+        'R|' + hex('live') + '|' + hex('Live App') + '|' + hex('pkg.app1') + '|0',
+        'R|' + hex('dead') + '|' + hex('Removed App') + '|' + hex('pkg.removed') + '|0'];
+    const full = catalog.build(catalog.parse(base.concat(pkgs).join('\n')));
+    assert.deepEqual(full.entries.map(e => e.appId), ['pkg.app1'], 'the registry row without a package gets no tile');
+    assert.ok(full.skipped.some(s => s.item === 'd/webapp@dead' && s.reason === 'Not installed'));
+    const short = catalog.build(catalog.parse(base.concat(pkgs.slice(0, 3)).join('\n')));
+    assert.deepEqual(short.entries.map(e => e.appId).sort(), ['pkg.app1', 'pkg.removed'], 'a short package list is not trusted');
+    const none = catalog.build(catalog.parse(base.join('\n')));
+    assert.equal(none.entries.length, 2, 'no package list at all (the query failed): nothing is filtered');
+    assert.ok(catalog.script().includes("hex(app_id) FROM package_app_info;"), 'the script asks for the package list');
+}
+console.log('PASS dock catalog skips registry rows whose package is gone');

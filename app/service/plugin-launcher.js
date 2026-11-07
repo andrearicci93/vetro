@@ -15,6 +15,8 @@
 // Plain ES5, like every module the TV loads.
 
 // ?slug=... read straight from the query string: the one parameter does not need a URL parser.
+var homeCleanup = require('./home-cleanup.js');
+
 var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
 var PLUS_RE = /\+/g;
 function slugOf(rawUrl) {
@@ -53,10 +55,22 @@ function definition(dock, options) {
                 }
             }
 
+            // "Rebuild the list" also takes the Home lines of apps that are gone out of Samsung's Home row (left by uninstalls made
+            // with pkgcmd): the launcher's list is built from that row, so this is the one place a user looks when a tile is dead.
+            // A failure here never stops the rebuild.
+            function rebuild() {
+                var sweep = typeof dock.execute === 'function' ? homeCleanup.sweep(dock.execute).catch(function () { return null; }) : Promise.resolve(null);
+                return sweep.then(function (cleaned) {
+                    return dock.refresh().then(function (status) {
+                        return cleaned && cleaned.found && cleaned.found.length ? Object.assign({}, status, {cleaned: cleaned}) : status;
+                    });
+                });
+            }
+
             function action(p) {
                 if (p.action === 'enable') return dock.enable();
                 if (p.action === 'disable') return dock.disable();
-                if (p.action === 'refresh') return dock.refresh();
+                if (p.action === 'refresh') return rebuild();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);

@@ -48,6 +48,7 @@ var SCOPE_QUERY_RE = /[?&]scope=([^&]*)/;
 var MONITOR_SCOPE_RE = /^(summary|full)$/;
 var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
+var homeCleanup = require('./home-cleanup.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
 // Custom launcher mode needs a look at the chosen app in the registry, and a way to put Samsung's Home back when an
@@ -509,10 +510,12 @@ function handleComponentAction(req,res) {
             var a;
             try { a=ComponentActions.validate(p,d.apps); }
             catch(e) { e.statusCode=400;throw e; }
-            var factoryResult;
+            var factoryResult, cleanup;
             // Keep removed: Samsung's row, and with it the store id, can be gone once the package is. Read it first.
             var learned=p.action==='uninstall'?keepRemoved.learn(a.packageId):Promise.resolve(false);
-            return learned.then(function(){return agentExecute(ComponentActions.command(p,a),30000);}).then(function(r) {
+            // The registry ids of the package, read before it is gone: they tell which Home line, registry row and icon folder to clean after.
+            var widgetIds=[], idsRead=p.action==='uninstall'?homeCleanup.learn(agentExecute,a.packageId):Promise.resolve([]);
+            return Promise.all([learned,idsRead]).then(function(x){widgetIds=x[1];return agentExecute(ComponentActions.command(p,a),30000);}).then(function(r) {
                 // #135: AgingApp stopped this way leaves db/FactoryApp/Aging at 1, and the TV starts the test again at every boot.
                 // Put it back to 0 (only if it reads exactly 1), right after the stop command and whatever it answered:
                 // the process check below can fail on its own, and a stuck AgingApp is when the key matters most.
@@ -528,8 +531,16 @@ function handleComponentAction(req,res) {
                         !results[1].processes.some(function(x){return x.appId===p.appId});
                     // Removed on purpose and gone: put it on the list so Samsung's sync does not bring it back (switch on only).
                     if(verified&&p.action==='uninstall'&&keepRemoved.enabled()){try{keepRemoved.change('add',[a.packageId]);keepRemoved.check().catch(function(){});}catch(e){/* Vetro's own packages are refused */}}
+                    // `pkgcmd -u` leaves the Home line, the registry row and the icon folder (Samsung's own uninstaller removes them and tells the Home).
+                    // Cleaned here, then the launcher rebuilds its list, or its tile stays until the next start and does not open.
+                    var afterUninstall=verified&&p.action==='uninstall'?homeCleanup.clean(agentExecute,a.packageId,widgetIds).then(function(c){
+                        cleanup=c;invalidateInventory();
+                        var launcher=dock.readState();if(launcher.enabled||launcher.customApp)dock.refresh().catch(function(){/* busy or off: the next start rebuilds it */});
+                    }):Promise.resolve();
+                    return afterUninstall.then(function(){
                     debloatBusy=false;serveJson(res,{ok:verified,verified:verified,action:p.action,appId:p.appId,packageId:a.packageId,changed:p.action==='flags'?a[p.flag]!==p.enabled:undefined,
-                        error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps,factoryTest:factoryResult});
+                        error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps,factoryTest:factoryResult,cleanup:cleanup});
+                    });
                 });
             }).catch(function(e){if(factoryResult)e.factoryTest=factoryResult;throw e;});
         }).catch(function(e){debloatBusy=false;serveJson(res,e.factoryTest?{ok:false,error:e.message,factoryTest:e.factoryTest}:{ok:false,error:e.message},e.statusCode||503)});
@@ -831,7 +842,7 @@ function showPairingCode(attempt) {
         if (t.unref) t.unref();
     });
 }
-http.createServer(function (req, res) {
+var server = http.createServer(function (req, res) {
     var url = (req.url || '/').split('?')[0];
     // A sandboxed plugin page carries no sign-in cookie; its URL holds a session token the plugin host checks.
     if (PLUGIN_SESSION_API_RE.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
@@ -867,7 +878,7 @@ http.createServer(function (req, res) {
         if (url === '/factory-test') return handleFactoryTest(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
-        if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
+        if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():p.action==='clean'?homeCleanup.sweep(agentExecute):homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/components/action') return handleComponentAction(req,res);
@@ -918,9 +929,26 @@ http.createServer(function (req, res) {
     if (url === '/remap') return handleRemap(req, res);
     if (url === '/' || url === '/index.html') return serveHtml(res, auth.decorate(dashboardHtml()));
     serveJson(res, { error: 'not found' }, 404);
-}).listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0', function () {
+});
+// Another app on the TV can hold the port (8099 is where tizen-youtube and TizenTube listen too). Without a handler the
+// error ended the process, and auto-restart started it again into the same error, forever. The service now says what
+// is wrong and tries again, so it comes up by itself once the port is free; everything else on the TV keeps working.
+var LISTEN_RETRY_MS = Number(process.env.VETRO_LISTEN_RETRY_MS) || 15000;
+function startListening() {
+    server.listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0');
+}
+server.on('listening', function () {
     console.log('VETRO listening on ' + PORT);
 });
+server.on('error', function (e) {
+    if (e && (e.code === 'EADDRINUSE' || e.code === 'EACCES')) {
+        console.error('VETRO cannot listen on port ' + PORT + ' (' + e.code + '): another app holds it. Trying again in ' + Math.round(LISTEN_RETRY_MS / 1000) + ' s. Build with VETRO_PORT=<port> to use another one.');
+        setTimeout(startListening, LISTEN_RETRY_MS);
+        return;
+    }
+    throw e;
+});
+startListening();
 
 platform.start();
 // The launcher is started again after a boot or a crash while its switch is on: that supervision is the launcher plugin's (plugin-launcher.js).
