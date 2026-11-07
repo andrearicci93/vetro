@@ -1,6 +1,8 @@
 # Dashboard and API sign-in
 
-Vetro's routes can run commands as root, so the service only answers devices that have paired with the TV. Apps on the TV itself (requests from loopback with an opaque or missing `Origin`, such as the Vetro widget) need no setup. App-only mode (`npm start` on a computer, no TV adapter) has no device operations and stays open.
+**Pairing is automatic by default.** It switches on by itself the first time the Vetro app on the TV is seen (a request from the TV with the page's opaque `Origin`), because that proves the TV can show the code. Until then, and on a TV whose page is never recognised (Q8F, Tizen 9, firmware 1300.9, where the first 0.5.0 release locked everyone out because the code could never appear), the service behaves like Vetro 0.3.5: any device on your home network can use the dashboard and API, including root commands, without a code. The dashboard says so while it waits. You can also choose yourself in Quick settings → Developer settings → Pairing (see [Require pairing](#require-pairing)). The first 0.5.0 release had pairing always on; 0.5.0 was republished with the automatic mode.
+
+With pairing on, Vetro's routes can run commands as root, so the service only answers devices that have paired with the TV. Apps on the TV itself (requests from loopback, any `127.x` address or the TV's own address, with an opaque or missing `Origin`, such as the Vetro widget) need no setup. App-only mode (`npm start` on a computer, no TV adapter) has no device operations and stays open.
 
 ## Pair a browser
 
@@ -45,23 +47,43 @@ A plugin page runs in a sandboxed frame without the dashboard's cookie, so it ca
 
 Traffic is still plain HTTP: a device that can watch your LAN traffic could copy a key. Keep the TV on a trusted network and do not forward its ports. Other apps installed on the TV are trusted like the Vetro widget. To revoke every key from the TV side, a TV app can `POST /auth/signout-all`; deleting the auth file and restarting the service has the same effect.
 
-## Disable pairing mode
+## Require pairing
 
-Quick settings → Developer settings → Pairing has a **Disable pairing mode** switch, off
-by default. Enabling it requires an in-page warning and confirmation: every device
-on the local network can then use the dashboard/API without a code or token,
-including root commands. A warning stays visible in Developer settings while it is on.
-The choice persists across restarts.
+Quick settings → Developer settings → Pairing has a **Require pairing** switch. By default the mode is **automatic**: off until the Vetro app
+on the TV has been seen, then on. While pairing is not on, a warning in Developer settings says that anyone on the home
+network can use the dashboard and API, including root commands, without a code. Choosing On or Off replaces
+the automatic mode.
 
-Turn the switch off to require pairing again immediately. The page reloads, so an
-unpaired browser sees sign-in. Existing paired keys remain valid. Cross-site and
-host protections remain enforced, and `/auth/pending` still exposes codes only to
-the TV's own widget. Restore the TV restores the requirement for pairing.
+To turn it on from a browser that is not paired yet, the dashboard first pairs that
+browser with a code shown on the TV, then switches pairing on. This proves the TV can
+show the code, so nobody locks themselves out. The service enforces it too: turning
+pairing on from an unpaired client gets `409` with `needPair: true`. Turning it off asks
+for confirmation. The choice persists across restarts; existing paired keys stay valid
+in both directions.
 
-Authenticated `GET /pairing-mode` reads `{disabled: boolean}`;
-`POST /pairing-mode` sets the same bounded boolean. In disabled mode the normal
-same-origin/IP-host LAN access can also restore pairing. The preference is stored
-atomically next to the key store, in `vetro-auth.json.mode`, without rewriting keys.
+While pairing is not on, the cross-site and host checks still apply. A TV page `Origin`
+(opaque `null`, or a non-web scheme such as `file://`; never `http(s)`) is accepted only on `/status`, `/probe` and `/screen`, the routes the TV page
+uses for its check, from any address (as in 0.3.5), so a TV whose page is not seen as
+the TV itself still works. Everything else with an opaque `Origin` is refused, and
+`/auth/pending` still gives codes only to the TV itself.
+
+When the service refuses the TV page on `/status`, `/probe`, `/screen` or `/auth/pending`,
+the refusal can be read by the page (`Access-Control-Allow-Origin: *`) and carries
+`seen: {address, origin, host}`, what the service saw. The TV screen shows it ("Refused
+this screen", or "The code cannot be shown on this screen") instead of a bare network
+error. Only the caller's own address and headers go back to it.
+
+`GET /pairing-mode` reads `{enabled, disabled, mode, tvSeen, paired}` (`enabled` is whether pairing is required now; `disabled` is the opposite,
+kept for clients from the first 0.5.0 release; `mode` is `auto`, `on` or `off`; `tvSeen` says whether the TV app has been seen; `paired` says whether this request comes from a paired
+device or the TV). `POST /pairing-mode` takes `{enabled: boolean}`; the first-release 0.5.0 form
+`{disabled: boolean}` still works. The preference is stored atomically next to the key
+store, in `vetro-auth.json.mode`, as `{"enabled": …, "disabled": …}`. No file means automatic. The TV app having been seen is kept in `vetro-auth.json.tv`
+(`{"seen": true}`), written only by a request from the TV with the page's opaque `Origin` on `/status`, `/probe`, `/screen` or `/auth/pending`.
+In a file from the first 0.5.0 release, `{"disabled": true}` means off; `{"disabled": false}` was only written when
+someone switched pairing back on, so it means on. A file that cannot be read or understood
+keeps pairing on; delete it and restart the service to go back to automatic. Pairing is not part
+of Restore the TV: automatic is the default, and Restore does not switch off a protection you
+turned on. Erasing Vetro's data removes both files.
 
 For a computer-only preview, run `VETRO_BIND_HOST=127.0.0.1 npm start` from `app/`.
 This uses the standalone app-only adapter, with no TV operations; app-only already

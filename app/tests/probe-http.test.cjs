@@ -2,6 +2,9 @@
 const assert = require('assert').strict;
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+process.env.VETRO_AUTH_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-probe-http-')), 'auth.json');
 const service = require('./service-harness.cjs')(path.resolve(__dirname, '..'));
 const server = http.createServer(service.router);
 function request(method, endpoint, origin, data) {
@@ -35,7 +38,8 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).apps.length, 700);
     const tooLarge = await request('POST', '/probe', 'null', {padding: 'x'.repeat(262144)});
     assert.equal(tooLarge.status, 413);
-    // Only the TV's own widget may replace the stored probe; a LAN client is refused.
+    // With pairing on, only the TV's own widget may replace the stored probe; a LAN client is refused.
+    require('../service/auth.js').setPairingEnabled(true);
     const remote = await new Promise(resolve => {
       const res = {headers: {}, setHeader() {}, writeHead(code) {res.code = code;}, end(text) {resolve({code: res.code, text});}};
       service.router({method: 'POST', url: '/probe', headers: {}, socket: {remoteAddress: '192.0.2.5'}, on() {}}, res);
@@ -52,8 +56,12 @@ server.listen(0, '127.0.0.1', async () => {
       service.router(req, res);
     });
     assert.equal((await post('192.0.2.11')).code, 403);
+    assert.equal((await post('127.0.0.2')).code, 200);
     assert.equal((await post('192.0.2.10')).code, 200);
     assert.equal(JSON.parse((await request('GET', '/probe', 'null')).text).probe.fromLan, true);
+    // Pairing off (the default): the TV page is accepted from any address, as in 0.3.5.
+    auth.setPairingEnabled(false);
+    assert.equal((await post('192.0.2.11')).code, 200);
     auth._ownAddresses();
     console.log('PASS widget probe HTTP: preflight, report round trip, opaque origin only, writes from the TV only (loopback or its own address)');
   } catch (e) {console.error(e); process.exitCode = 1;}

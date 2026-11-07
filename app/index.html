@@ -111,7 +111,15 @@ function answers(base) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', base + '/status', true);
     xhr.timeout = 3000;
-    xhr.onload = function () { ok(xhr.status === 200); };
+    // A refusal that can be read is kept (and shown on the screen) even while another address is still being tried.
+    xhr.onload = function () {
+      if (xhr.status !== 200) {
+        var d = null;
+        try { d = JSON.parse(xhr.responseText); } catch (e) {}
+        if (d && d.seen) refusal = refusedText(xhr.status, d);
+      }
+      ok(xhr.status === 200);
+    };
     xhr.onerror = xhr.ontimeout = function () { ok(false); };
     try { xhr.send(); } catch (e) { ok(false); }
   });
@@ -153,8 +161,20 @@ function settleBase(tries) {
     return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return settleBase(tries - 1); });
   });
 }
+// The service sends a reason and what it saw (address, Origin) when it refuses this page. A refusal is final: no retry.
+var refusal = null;
+function refusedText(status, d) {
+  var seen = (d && d.seen) || {};
+  return 'HTTP ' + status + (seen.address ? ' from ' + String(seen.address).slice(0, 45) : '') + (seen.origin ? ' origin ' + String(seen.origin).slice(0, 60) : '');
+}
 function reach(tries) {
-  return fetch(BASE + '/status').then(function (r) { return r.status; }, function (e) {
+  return fetch(BASE + '/status').then(function (r) {
+    if (r.status === 200) return r.status;
+    return r.json().then(null, function () { return null; }).then(function (d) {
+      refusal = refusedText(r.status, d);
+      throw new Error('refused: ' + refusal);
+    });
+  }, function (e) {
     if (tries <= 1) throw e;
     return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return reach(tries - 1); });
   });
@@ -186,7 +206,10 @@ function readScreen() {
     xhr.onload = function () {
       var d;
       try { d = JSON.parse(xhr.responseText); } catch (e) { return reject(new Error('Response is not JSON')); }
-      if (xhr.status !== 200 || !d || d.error) return reject(new Error('HTTP ' + xhr.status));
+      if (xhr.status !== 200 || !d || d.error) {
+        if (xhr.status !== 200 && d && d.seen) refusal = refusedText(xhr.status, d);
+        return reject(new Error('HTTP ' + xhr.status));
+      }
       resolve(d);
     };
     xhr.onerror = function () { reject(new Error('Service unreachable')); };
@@ -284,7 +307,10 @@ function rootCheck(r) {
 // short form for the support line; it is upper case (and coloured) when something is wrong.
 function checks(d) {
   var out = [], root, api, apiMissing = [], slow, slowHint, mem, l, i;
-  if (!d) {
+  if (!d && refusal) {
+    out.push(['bad', 'Service', 'Refused this screen', 'The service is running but did not accept this screen (' + esc(refusal) + '). Please report this on GitHub with a photo of this screen.',
+      'SVC REFUSED ' + refusal, 'bad']);
+  } else if (!d) {
     out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +
       (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
   } else {
@@ -337,6 +363,7 @@ function render(d, waiting) {
   var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '';
   list.forEach(function (c) { if (waiting) return; if (c[0] === 'bad') bad++; else if (c[0] === 'warn') warn++; });
   if (waiting) { state = 'wait'; label = 'Checking'; sum = 'Checking'; }
+  else if (!d && refusal) { state = 'bad'; label = 'Refused'; sum = 'The service refused this screen'; }
   else if (!d) { state = 'bad'; label = 'Not responding'; sum = 'The service is down'; }
   else if (bad) { state = 'bad'; label = 'Needs attention'; sum = bad + (bad === 1 ? ' problem' : ' problems'); }
   else if (warn) { state = 'warn'; label = 'Running, with limits'; sum = warn + (warn === 1 ? ' thing to check' : ' things to check'); }
@@ -372,10 +399,17 @@ function pinLine() {
   var left = Math.max(0, Math.ceil((pairing.until - Date.now()) / 1000));
   return pairing.name + ' · ' + Math.floor(left / 60) + ':' + (left % 60 < 10 ? '0' : '') + left % 60;
 }
+// Set when a browser waits for a code but the service would not give it to this screen: said on screen, not left blank.
+var pairingBlocked = null;
 function paintPairing() {
   var el = document.getElementById('pin');
   if (pairing && pairing.until <= Date.now()) pairing = null;   // a lost answer must not leave a dead code on screen
   if (!el) return;
+  if (!pairing && pairingBlocked) {
+    el.hidden = false;
+    el.innerHTML = 'PIN<b>&mdash;</b><i>' + esc(pairingBlocked) + '</i>';
+    return;
+  }
   el.hidden = !pairing;
   el.innerHTML = 'PIN<b>' + (pairing ? esc(pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3)) : '') + '</b><i>' + esc(pairing ? pinLine() : '') + '</i>';
 }
@@ -413,7 +447,18 @@ function checkPairing() {
   var xhr = new XMLHttpRequest();
   xhr.open('GET', BASE + '/auth/pending', true);
   xhr.timeout = 3000;
-  xhr.onload = function () { var d; try { d = JSON.parse(xhr.responseText); } catch (e) { return; } showPairing(d); };
+  xhr.onload = function () {
+    var d, was = pairingBlocked;
+    try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
+    if (xhr.status !== 200) {
+      pairingBlocked = d && d.pending ? 'The code cannot be shown on this screen (' + refusedText(xhr.status, d) + '). Please report this on GitHub with a photo of this screen.' : null;
+      if (pairingBlocked || was) paintPairing();
+      return;
+    }
+    pairingBlocked = null;
+    if (was) paintPairing();
+    showPairing(d);
+  };
   xhr.send();
 }
 function resetIdle() {
@@ -436,7 +481,7 @@ function post(ms) {
 }
 function run() {
   if (running) return Promise.resolve();
-  running = true; delivered = false;
+  running = true; delivered = false; refusal = null;
   var started = Date.now(), closed = false, cap;
   step = {since: started};
   report = {probe: {}, apps: [], packages: [], settings: {}, progress: {partial: true, done: 0, of: jobs.length, next: jobs[0][0], elapsedMs: 0}};

@@ -19,6 +19,9 @@ async function run(options) {
   XHR.prototype.setRequestHeader = function () {};
   XHR.prototype.send = function (body) {
     if (o.loopbackBlocked && /^http:\/\/127\.0\.0\.1/.test(this.url)) return this.onerror && this.onerror();   // The Frame 2025 (#122): the TV app cannot reach loopback
+    if (o.refused && this.method === 'POST') { sent.push({method: this.method, url: this.url, body: JSON.parse(body)}); return this.onerror(); }   // preflight refused
+    if (o.refused && /\/(status|screen)$/.test(this.url)) { sent.push({method: this.method, url: this.url}); this.status = o.refused.status; this.responseText = JSON.stringify(o.refused.body); return this.onload(); }
+    if (o.pendingRefused && /\/auth\/pending$/.test(this.url)) { sent.push({method: this.method, url: this.url}); this.status = 403; this.responseText = JSON.stringify(o.pendingRefused); return this.onload(); }
     if (this.method === 'POST') {
       sent.push({method: this.method, url: this.url, body: JSON.parse(body)});
       this.status = 200; this.responseText = JSON.stringify(o.probeResponse); this.onload();
@@ -35,7 +38,7 @@ async function run(options) {
     document: {readyState: o.readyState || 'complete', getElementById: id => id === 'stage' ? stage : screen, hidden: false, addEventListener: (n, f) => { listeners[n] = f; }},
     window: {a2sService: o.Service, innerWidth: 1920, innerHeight: 1080, addEventListener: (n, f) => { windowListeners[n] = f; }},
     XMLHttpRequest: XHR, WebSocket: WS,
-    fetch: async () => { if (o.failFetch && o.failFetch.n-- > 0) throw new Error('refused'); return {status: 200}; },
+    fetch: async () => { if (o.failFetch && o.failFetch.n-- > 0) throw new Error('refused'); if (o.refused) return {status: o.refused.status, json: async () => o.refused.body}; return {status: 200}; },
     tizen: {
       tvinputdevice: {getSupportedKeys: () => [{name: 'VolumeUp'}]},
       application: {launch: (id, ok) => { launched.push(id); if (!o.hangLaunch) ok(); }, getAppsInfo: ok => { if (!o.hangApps) ok([{id: 'vetrotvapp.app', packageId: 'vetrotvapp'}]); },
@@ -264,5 +267,26 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(normal.sent.every(s => /^http:\/\/127\.0\.0\.1/.test(s.url)), 'loopback first, and enough');
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
-  console.log('PASS TV screen: probe report kept, healthy/limited/failed/down states, PIN slot hidden, Back/OK/idle');
+  // The service runs but refuses this page (0.5.0 on a Q8F, Tizen 9): the screen says so, with what the service saw.
+  const seen = {address: '169.254.3.4', origin: 'file://', host: '127.0.0.1:8099'};
+  const refusedPage = await run({refused: {status: 401, body: {error: 'Pair this device first', seen}}});
+  assert.ok(refusedPage.screen.innerHTML.includes('Refused this screen'), 'not "Not answering"');
+  assert.ok(refusedPage.screen.innerHTML.includes('HTTP 401 from 169.254.3.4 origin file://'));
+  assert.ok(refusedPage.screen.innerHTML.includes('SVC REFUSED'));
+  assert.ok(!refusedPage.screen.innerHTML.includes('Not responding'));
+  assert.equal(refusedPage.sent.filter(s => /\/status$/.test(s.url)).length >= 1, true);
+  // Loopback is silent and the TV's own address refuses the page: that refusal is kept while the address is looked for.
+  const lanRefused = await run({loopbackBlocked: true, lan: '192.168.1.42', failFetch: {n: 99}, refused: {status: 401, body: {error: 'Pair this device first', seen}}});
+  assert.ok(lanRefused.screen.innerHTML.includes('Refused this screen'), 'the LAN refusal is not lost');
+  assert.ok(lanRefused.screen.innerHTML.includes('HTTP 401 from 169.254.3.4 origin file://'));
+  // A browser waits for a code but the service will not give it to this screen: said on screen, never blank.
+  const blocked = await run({pendingRefused: {error: 'TV apps only', pending: true, seen}});
+  const poll = blocked.intervals.find(i => i.ms === 2000);
+  poll.f(); await blocked.settle();
+  assert.ok(blocked.screen.innerHTML.includes('The code cannot be shown on this screen (HTTP 403 from 169.254.3.4 origin file://)'));
+  // No code waiting: nothing is shown.
+  const noCode = await run({pendingRefused: {error: 'TV apps only', pending: false, seen}});
+  noCode.intervals.find(i => i.ms === 2000).f(); await noCode.settle();
+  assert.ok(!noCode.screen.innerHTML.includes('The code cannot be shown'));
+  console.log('PASS TV screen: probe report kept, healthy/limited/failed/down/refused states, PIN slot hidden or blocked reason, Back/OK/idle');
 })().catch(e => {console.error(e); process.exitCode = 1;});

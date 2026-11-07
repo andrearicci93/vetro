@@ -44,15 +44,35 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  el('quick').onclick({target:{dataset:{sdbConfirm:''}}});assert.equal(toggles[0],true);
  el('quick').onclick({target:{dataset:{sdbCancel:''}}});assert.equal(sandbox.sdbConfirm,false);
  el('quick').onchange({target:{dataset:{sdbAccess:''},checked:false}});assert.equal(toggles[1],false,'off is immediate');
- sandbox.pairingData={disabled:false};sandbox.pairingError=null;sandbox.renderPairingMode();
+ // Pairing is off by default: the page says plainly that anyone on the home network can use the commands.
+ sandbox.pairingData={enabled:false,disabled:true,paired:false};sandbox.pairingError=null;sandbox.renderPairingMode();
+ assert.match(el('quickPairing').innerHTML,/Pairing is off\. Anyone on your home network can use the dashboard and API, including root commands/);
+ assert.match(el('quickPairing').innerHTML,/Require pairing/);assert.doesNotMatch(el('quickPairing').innerHTML,/data-pairing-enabled checked/);
+ // Automatic mode: waiting for the TV app, then on by itself.
+ sandbox.pairingData={enabled:false,disabled:true,mode:'auto',tvSeen:false,paired:false};sandbox.renderPairingMode();
+ assert.match(el('quickPairing').innerHTML,/Pairing is waiting for the Vetro app on the TV[\s\S]*anyone on your home network can use the dashboard and API, including root commands/);
+ assert.match(el('quickPairing').innerHTML,/Pairing waiting for the TV/);
+ sandbox.pairingData={enabled:true,disabled:false,mode:'auto',tvSeen:true,paired:true};sandbox.renderPairingMode();
+ assert.match(el('quickPairing').innerHTML,/Pairing on \(automatic\)/);assert.doesNotMatch(el('quickPairing').innerHTML,/Pairing is waiting/);
+ sandbox.pairingData={enabled:false,disabled:true,paired:false};sandbox.renderPairingMode();
  const modes=[];sandbox.setPairingMode=on=>modes.push(on);
- const pairingCheckbox={dataset:{pairingDisabled:''},checked:true};el('quick').onchange({target:pairingCheckbox});
+ // Turning it on from an unpaired browser: pair this browser first, with a code on the TV.
+ const pairingCheckbox={dataset:{pairingEnabled:''},checked:true};el('quick').onchange({target:pairingCheckbox});
  assert.equal(pairingCheckbox.checked,false);assert.equal(modes.length,0);
- assert.match(el('quickPairing').innerHTML,/Anyone on your local network/);assert.match(el('quickPairing').innerHTML,/root commands/);
+ assert.match(el('quickPairing').innerHTML,/First pair this browser/);assert.match(el('quickPairing').innerHTML,/data-pairing-start/);
+ assert.doesNotMatch(el('quickPairing').innerHTML,/data-pairing-confirm/,'an unpaired browser cannot switch it on directly');
+ sandbox.pairingStep={id:'x'};sandbox.renderPairingMode();assert.match(el('quickPairing').innerHTML,/id="pairingCode"[\s\S]*data-pairing-code/);
+ el('quick').onclick({target:{dataset:{pairingCancel:''}}});assert.equal(sandbox.pairingConfirm,false);assert.equal(sandbox.pairingStep,null);
+ // A paired browser confirms and switches it on.
+ sandbox.pairingData={enabled:false,disabled:true,paired:true};el('quick').onchange({target:{dataset:{pairingEnabled:''},checked:true}});
+ assert.match(el('quickPairing').innerHTML,/This browser is already paired/);
  el('quick').onclick({target:{dataset:{pairingConfirm:''}}});assert.equal(modes[0],true);
- el('quick').onclick({target:{dataset:{pairingCancel:''}}});assert.equal(sandbox.pairingConfirm,false);
- sandbox.pairingData={disabled:true};sandbox.renderPairingMode();assert.match(el('quickPairing').innerHTML,/Pairing is disabled/);
- el('quick').onchange({target:{dataset:{pairingDisabled:''},checked:false}});assert.equal(modes[1],false);
+ // Turning it off asks first, with the warning.
+ sandbox.pairingData={enabled:true,disabled:false,paired:true};sandbox.renderPairingMode();
+ assert.match(el('quickPairing').innerHTML,/data-pairing-enabled checked/);assert.doesNotMatch(el('quickPairing').innerHTML,/Pairing is off\./);
+ el('quick').onchange({target:{dataset:{pairingEnabled:''},checked:false}});assert.equal(modes.length,1);
+ assert.match(el('quickPairing').innerHTML,/Turn pairing off\?[\s\S]*root commands/);
+ el('quick').onclick({target:{dataset:{pairingConfirm:''}}});assert.equal(modes[1],false);
  sandbox.inventory=[{appId:'com.samsung.tv.csfs',packageId:'com.samsung.tv.csfs',disabled:false}];
  // Samsung Home lives in the Custom launcher tab of the Launcher page, locked while any launcher is on
  sandbox.dockData={installed:true,mode:'off',enabled:false,entries:[],inputs:[]};

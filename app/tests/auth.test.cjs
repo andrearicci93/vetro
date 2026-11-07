@@ -5,6 +5,8 @@ const os = require('os');
 const path = require('path');
 const {EventEmitter} = require('events');
 process.env.VETRO_AUTH_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-auth-')), 'auth.json');
+// Pairing is off by default (republished 0.5.0); this file checks the pairing-on behaviour (pairing-mode.test.cjs covers off).
+fs.writeFileSync(process.env.VETRO_AUTH_PATH + '.mode', JSON.stringify({enabled: true}));
 const auth = require('../service/auth.js');
 
 // Calls the gate like Vetro's router does; resolves {handled, code, headers, body}.
@@ -51,10 +53,37 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.equal((await call('GET', '/status', {ip: '192.168.1.10', headers: {host: 'evil.example:8099'}})).code, 401);
   assert.equal(auth.fromThisTv('192.168.1.10'), true); assert.equal(auth.fromThisTv('::ffff:192.168.1.10'), true);
   assert.equal(auth.fromThisTv('192.168.1.99'), false); assert.equal(auth.fromThisTv(undefined), false); assert.equal(auth.fromThisTv('0.0.0.0'), false);
+  // Node 18.0-18.3 reports the address family as the number 4.
+  auth._ownAddresses(() => ({eth0: [{family: 4, internal: false, address: '192.168.1.20'}, {family: 6, internal: false, address: 'fe80::2'}]}));
+  assert.equal(auth.fromThisTv('192.168.1.20'), true); assert.equal(auth.fromThisTv('fe80::2'), false);
   // An unreadable interface list means nothing extra is trusted.
   auth._ownAddresses(() => { throw new Error('no interfaces'); });
   assert.equal((await call('POST', '/exec', own)).code, 401);
   auth._ownAddresses();
+  // Every 127.x address is loopback, so a TV that does not use 127.0.0.1 itself still counts as the TV.
+  assert.equal((await call('POST', '/exec', {ip: '127.0.0.2', headers: tv.headers})).handled, false);
+  assert.equal((await call('POST', '/exec', {ip: '::ffff:127.10.0.1', headers: tv.headers})).handled, false);
+  assert.equal((await call('GET', '/auth/pending', {ip: '127.0.0.2', headers: tv.headers})).code, 200);
+  assert.equal(auth.fromThisTv('127.255.255.254'), true); assert.equal(auth.fromThisTv('128.0.0.1'), false);
+  assert.equal(auth.fromThisTv('::ffff:128.0.0.1'), false); assert.equal(auth.fromThisTv('10.127.0.0.1'), false);
+  // Refusals on the TV page's routes are readable by the page and say what the service saw, instead of "Failed to fetch".
+  {
+    const page = {ip: '192.168.1.77', headers: {origin: 'null', host: '127.0.0.1:8099'}};
+    const status = await call('GET', '/status', page);
+    assert.equal(status.code, 401); assert.equal(status.headers['Access-Control-Allow-Origin'], '*');
+    assert.deepEqual(status.body.seen, {address: '192.168.1.77', origin: 'null', host: '127.0.0.1:8099'});
+    for (const route of ['/probe', '/screen']) assert.equal((await call('GET', route, page)).headers['Access-Control-Allow-Origin'], '*');
+    const pin = await call('GET', '/auth/pending', page);
+    assert.equal(pin.code, 403); assert.equal(pin.headers['Access-Control-Allow-Origin'], '*'); assert.equal(pin.body.pending, false);
+    assert.equal(pin.body.code, undefined, 'the refusal never carries the code');
+    assert.equal(auth.pageOrigin('null'), true); assert.equal(auth.pageOrigin('file://'), true); assert.equal(auth.pageOrigin(undefined), false);
+    assert.equal(auth.pageOrigin(''), false); assert.equal(auth.pageOrigin('http://192.168.1.10:8099'), false); assert.equal(auth.pageOrigin('HTTPS://x'), false);
+    // With pairing on, a TV page origin from an address that is not the TV is still refused (readably).
+    assert.equal((await call('GET', '/status', {ip: '192.168.1.77', headers: {origin: 'file://', host: '127.0.0.1:8099'}})).code, 401);
+    const exec = await call('POST', '/exec', page);
+    assert.equal(exec.code, 401); assert.equal(exec.headers['Access-Control-Allow-Origin'], undefined, 'other routes stay unreadable cross-origin');
+    assert.equal(exec.body.seen, undefined);
+  }
   // Web pages can't start or finish a pairing: the Origin must match the Host.
   assert.equal((await call('POST', '/auth/pair', {headers: {origin: 'http://evil.example'}, body: {}})).code, 403);
   assert.equal((await call('POST', '/auth/confirm', {headers: {origin: 'http://evil.example'}, body: {}})).code, 403);
@@ -67,6 +96,11 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   const start = await call('POST', '/auth/pair', {body: {name: 'Mac'}, onPair: () => launched++});
   assert.equal(start.code, 200); assert.equal(launched, 1);
   assert.equal((await call('GET', '/auth/pending')).code, 403);
+  {
+    const refused = await call('GET', '/auth/pending', {ip: '192.168.1.77', headers: {origin: 'null', host: '127.0.0.1:8099'}});
+    assert.equal(refused.body.pending, true, 'a page that is not the TV learns a code is waiting, so it can say it cannot show it');
+    assert.equal(refused.body.code, undefined);
+  }
   const shown = await call('GET', '/auth/pending', tv);
   assert.match(shown.body.code, /^\d{6}$/); assert.equal(shown.body.name, 'Mac');
   // A live pairing can't be replaced (no cancelling someone's pairing, no repeated pop-ups on the TV).

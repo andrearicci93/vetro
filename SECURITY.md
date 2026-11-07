@@ -1,18 +1,22 @@
 # Security and responsible reports
 
-Vetro is experimental privileged software. The browser management interface and API
-require pairing by default with a code shown on the TV (see `app/docs/SIGN-IN.md`), but traffic
-is plain HTTP and keys could be copied by anyone watching the LAN. Deploy only on a
+Vetro is experimental privileged software. **Pairing is automatic by default:** it
+switches on by itself once the Vetro app on the TV has been seen, because that proves the TV
+can show the code. Until then, and on a TV whose app is never recognised, the service is open like
+0.3.5: any device on the local network can use the browser management interface and API,
+including root commands, and the dashboard warns about it. With pairing on, every
+browser or script needs a code shown on the TV (see `app/docs/SIGN-IN.md`). Traffic is plain HTTP and keys could be copied
+by anyone watching the LAN. Deploy only on a
 trusted isolated LAN. Do not
 forward its ports, expose it publicly or enable unrestricted access from other
 networks. Root-agent authentication is a separate internal protocol from the dashboard sign-in.
 
-**Disable pairing mode** in Quick settings → Developer settings → Pairing is an explicit
-persistent opt-out. After its warning and confirmation, any local-network client
-can access dashboard/API operations, including root commands, without a token.
-Origin/host checks remain, and the pairing code remains TV-only. Turning the switch
-off requires pairing immediately; existing paired keys remain valid. Restore the TV
-also puts pairing back on. This switch does not control SDB access.
+**Require pairing** in Quick settings → Developer settings → Pairing lets the owner replace the
+automatic mode (always on, or never). While pairing is not on, a warning says so; Origin/host checks remain, opaque or non-web origins
+are accepted only on the TV page's check routes (`/status`, `/probe`, `/screen`), and
+the pairing code remains TV-only. Turning it on from an unpaired browser first pairs
+that browser, so nobody is locked out; existing paired keys remain valid either way.
+Restore the TV does not change it. This switch does not control SDB access.
 
 The experimental SDB tunnel accepts only loopback clients by default. A paired
 user can enable **Quick settings → Developer settings → Developer access → Allow SDB
