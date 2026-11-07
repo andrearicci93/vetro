@@ -22,21 +22,34 @@ independently established UID-0 command channel and boot worker.
    route. The main installation guide's `127.0.0.1` step is for the stock
    TV-local archive route, which this port does not use.
 
-The preparation script modifies a **local source checkout only**. It validates
-the pinned commit, checks all patches before applying them, and refuses an
-already-present external-agent marker:
+The preparation script modifies a **local source checkout only**. It requires
+the target checkout to be at the pinned 0.5.0 commit. A checkout containing this
+contribution has a newer HEAD, so use **two checkouts**: this contribution for
+the preparation tool and a separate clean 0.5.0 tree for the package build.
+
+From the root of the checkout containing this contribution:
 
 ```sh
-python3 rooting/ports/tu7092/prepare.py --source . --check
-python3 rooting/ports/tu7092/prepare.py --source .
+PORT_DIR="$(pwd)/rooting/ports/tu7092"
+git clone --depth 1 --branch v0.5.0 https://github.com/andrearicci93/vetro.git ../vetro-tu7092-build
+python3 "$PORT_DIR/prepare.py" --source ../vetro-tu7092-build --check
 ```
 
-For the full launcher appearance used on the tested TV, use this second
-command instead of the preceding apply command:
+Then choose **one** apply command. For required compatibility changes only:
 
 ```sh
-python3 rooting/ports/tu7092/prepare.py --source . --with-launcher-preferences
+python3 "$PORT_DIR/prepare.py" --source ../vetro-tu7092-build
 ```
+
+For the full launcher appearance used on the tested TV, use this instead:
+
+```sh
+python3 "$PORT_DIR/prepare.py" --source ../vetro-tu7092-build --with-launcher-preferences
+```
+
+All patches are checked before applying them, and an existing external-agent
+marker is refused. The preparation tool remains in the contribution checkout;
+subsequent package build steps use the separate `vetro-tu7092-build` directory.
 
 `compatibility.patch` and `launcher-preferences.patch` contain **source only**.
 No patched assembly, Samsung firmware, signed WGT or signing profile is shipped.
@@ -72,6 +85,7 @@ Use a .NET SDK capable of building `netcoreapp3.0`; SDK 8.0.427 was used in the
 reported build. Downloading the old reference pack may be required. Then:
 
 ```sh
+cd ../vetro-tu7092-build
 sh dock/build.sh
 ```
 
@@ -147,7 +161,7 @@ marker: those fixtures exercise the default archive adapter. Restore `true`
 before building this port. Check the opt-in path separately:
 
 ```sh
-node rooting/ports/tu7092/test-external-agent.cjs .
+node "$PORT_DIR/test-external-agent.cjs" .
 ```
 
 Host fixture success is not another hardware test.
