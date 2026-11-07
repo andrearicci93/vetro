@@ -1,0 +1,10 @@
+{
+  "id": "youtube",
+  "name": "YouTube",
+  "version": "0.2.2",
+  "apiVersion": 1,
+  "description": "Opens Samsung's own YouTube app with ad blocking, SponsorBlock and DeArrow, without installing anything on the TV.",
+  "author": "andrearicci93",
+  "permissions": ["exec"],
+  "ui": { "label": "YouTube" }
+}
