@@ -5,7 +5,9 @@ switches on by itself once the Vetro app on the TV has been seen, because that p
 can show the code. Until then, and on a TV whose app is never recognised, the service is open like
 0.3.5: any device on the local network can use the browser management interface and API,
 including root commands, and the dashboard warns about it. With pairing on, every
-browser or script needs a code shown on the TV (see `app/docs/SIGN-IN.md`). Traffic is plain HTTP and keys could be copied
+browser or script needs a code shown on the TV (see `app/docs/SIGN-IN.md`). The TV itself needs no code:
+programs on the TV that send no Origin, and the TV browser on the dashboard address. An opaque Origin
+counts as the TV only on the Vetro app's routes, so a web page open in the TV browser cannot use root routes. Traffic is plain HTTP and keys could be copied
 by anyone watching the LAN. Deploy only on a
 trusted isolated LAN. Do not
 forward its ports, expose it publicly or enable unrestricted access from other

@@ -2,7 +2,7 @@
 
 **Pairing is automatic by default.** It switches on by itself the first time the Vetro app on the TV is seen (a request from the TV with the page's opaque `Origin`), because that proves the TV can show the code. Until then, and on a TV whose page is never recognised (Q8F, Tizen 9, firmware 1300.9, where the first 0.5.0 release locked everyone out because the code could never appear), the service behaves like Vetro 0.3.5: any device on your home network can use the dashboard and API, including root commands, without a code. The dashboard says so while it waits. You can also choose yourself in Quick settings → Developer settings → Pairing (see [Require pairing](#require-pairing)). The first 0.5.0 release had pairing always on; 0.5.0 was republished with the automatic mode.
 
-With pairing on, Vetro's routes can run commands as root, so the service only answers devices that have paired with the TV. Apps on the TV itself (requests from loopback, any `127.x` address or the TV's own address, with an opaque or missing `Origin`, such as the Vetro widget) need no setup. App-only mode (`npm start` on a computer, no TV adapter) has no device operations and stays open.
+With pairing on, Vetro's routes can run commands as root, so the service only answers devices that have paired with the TV. The TV itself needs no setup: requests from loopback (any `127.x` address, `::1`) or the TV's own address, with an IP address or `localhost` as `Host`, and either no `Origin` (programs on the TV) or an `Origin` equal to the address they opened (the TV's own browser on `http://127.0.0.1:8099`, [#161](https://github.com/andrearicci93/vetro/issues/161)). The opaque `Origin` (`null`) that the Vetro app on the TV sends counts as the TV only on `/status`, `/probe`, `/screen` and `/auth/pending`, because any sandboxed web page can send it too. App-only mode (`npm start` on a computer, no TV adapter) has no device operations and stays open.
 
 ## Pair a browser
 
@@ -36,7 +36,9 @@ A plugin page runs in a sandboxed frame without the dashboard's cookie, so it ca
 | One pairing at a time: while a code is live, new pairing requests get `429` and the TV app is not reopened | Nobody can cancel someone else's pairing or keep popping the code up |
 | The browser that asked for a code gets a `vetro_pair` cookie (2 minutes, `HttpOnly`, `SameSite=Strict`, path `/auth`) holding the pairing id; `GET /auth/state` tells the sign-in page whether a code is waiting and whether it is theirs, so a reload resumes the code instead of losing it | A reload used to leave a code on the TV that nobody could confirm until it expired |
 | Five wrong codes end a pairing; a new pairing at most every 10 seconds | Slows down guessing |
-| The no-key bypass for TV apps requires `Host` to be an IP address or `localhost` | A rebound hostname on loopback still has to pair |
+| The no-key bypass for the TV itself requires `Host` to be an IP address or `localhost` | A rebound hostname on loopback still has to pair |
+| It also requires no `Origin`, or an `Origin` equal to `http://` + `Host` (the TV browser on the dashboard) | Another page open on the TV (another site, port or name) is not the dashboard |
+| An opaque `Origin` from the TV counts as the TV only on `/status`, `/probe`, `/screen` and `/auth/pending` | A sandboxed web page in the TV browser can't use root routes |
 | A browser `Origin` must match `Host` on `/auth/pair`, `/auth/confirm` and every paired request | Other web pages can't start a pairing or use a paired browser's cookie |
 | Paired devices may use any host name (`tv.local`, a router name, Home Assistant) | The key, not the address, is what grants access |
 | Keys are 32 random bytes; only SHA-256 hashes are stored (`/opt/usr/home/owner/share/vetro-auth.json`) | A copied file does not reveal keys |
@@ -45,7 +47,7 @@ A plugin page runs in a sandboxed frame without the dashboard's cookie, so it ca
 
 ## Limits
 
-Traffic is still plain HTTP: a device that can watch your LAN traffic could copy a key. Keep the TV on a trusted network and do not forward its ports. Other apps installed on the TV are trusted like the Vetro widget. To revoke every key from the TV side, a TV app can `POST /auth/signout-all`; deleting the auth file and restarting the service has the same effect.
+Traffic is still plain HTTP: a device that can watch your LAN traffic could copy a key. Keep the TV on a trusted network and do not forward its ports. Programs installed on the TV that send no `Origin` are trusted like the Vetro widget; web pages open in the TV browser are not, except Vetro's own dashboard. To revoke every key from the TV side, a program on the TV or the TV browser can `POST /auth/signout-all`; deleting the auth file and restarting the service has the same effect.
 
 ## Require pairing
 
