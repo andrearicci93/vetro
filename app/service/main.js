@@ -470,7 +470,7 @@ function handleProbe(req, res) {
         return serveJson(res, state);
     }
     // The widget posts from the TV itself. With pairing on, this keeps LAN clients from rewriting the
-    // stored model, firmware and API probe that diagnostics report. With pairing off (the default) anyone
+    // stored model, firmware and API probe that diagnostics report. With pairing off (or automatic and the TV app not seen yet) anyone
     // the sign-in gate let through may post, as in 0.3.5: on some TVs the page is not seen as the TV, and
     // every LAN client can already use every route.
     if (auth.pairingMode().enabled && !auth.fromThisTv(req.socket && req.socket.remoteAddress)) {

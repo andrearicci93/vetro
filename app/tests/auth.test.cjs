@@ -53,6 +53,9 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.equal((await call('GET', '/status', {ip: '192.168.1.10', headers: {host: 'evil.example:8099'}})).code, 401);
   assert.equal(auth.fromThisTv('192.168.1.10'), true); assert.equal(auth.fromThisTv('::ffff:192.168.1.10'), true);
   assert.equal(auth.fromThisTv('192.168.1.99'), false); assert.equal(auth.fromThisTv(undefined), false); assert.equal(auth.fromThisTv('0.0.0.0'), false);
+  // Node 18.0-18.3 reports the address family as the number 4.
+  auth._ownAddresses(() => ({eth0: [{family: 4, internal: false, address: '192.168.1.20'}, {family: 6, internal: false, address: 'fe80::2'}]}));
+  assert.equal(auth.fromThisTv('192.168.1.20'), true); assert.equal(auth.fromThisTv('fe80::2'), false);
   // An unreadable interface list means nothing extra is trusted.
   auth._ownAddresses(() => { throw new Error('no interfaces'); });
   assert.equal((await call('POST', '/exec', own)).code, 401);

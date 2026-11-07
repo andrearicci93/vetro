@@ -1,16 +1,18 @@
 # Security and responsible reports
 
-Vetro is experimental privileged software. **Pairing is off by default:** like
-0.3.5, any device on the local network can use the browser management interface and API,
-including root commands. Turning pairing on requires a code shown on the TV for every
-browser or script (see `app/docs/SIGN-IN.md`). Traffic is plain HTTP and keys could be copied
+Vetro is experimental privileged software. **Pairing is automatic by default:** it
+switches on by itself once the Vetro app on the TV has been seen, because that proves the TV
+can show the code. Until then, and on a TV whose app is never recognised, the service is open like
+0.3.5: any device on the local network can use the browser management interface and API,
+including root commands, and the dashboard warns about it. With pairing on, every
+browser or script needs a code shown on the TV (see `app/docs/SIGN-IN.md`). Traffic is plain HTTP and keys could be copied
 by anyone watching the LAN. Deploy only on a
 trusted isolated LAN. Do not
 forward its ports, expose it publicly or enable unrestricted access from other
 networks. Root-agent authentication is a separate internal protocol from the dashboard sign-in.
 
-**Require pairing** in Quick settings → Developer settings → Pairing is a persistent
-opt-in. While it is off, a warning says so; Origin/host checks remain, opaque or non-web origins
+**Require pairing** in Quick settings → Developer settings → Pairing lets the owner replace the
+automatic mode (always on, or never). While pairing is not on, a warning says so; Origin/host checks remain, opaque or non-web origins
 are accepted only on the TV page's check routes (`/status`, `/probe`, `/screen`), and
 the pairing code remains TV-only. Turning it on from an unpaired browser first pairs
 that browser, so nobody is locked out; existing paired keys remain valid either way.

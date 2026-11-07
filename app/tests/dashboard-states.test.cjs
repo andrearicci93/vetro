@@ -48,6 +48,13 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  sandbox.pairingData={enabled:false,disabled:true,paired:false};sandbox.pairingError=null;sandbox.renderPairingMode();
  assert.match(el('quickPairing').innerHTML,/Pairing is off\. Anyone on your home network can use the dashboard and API, including root commands/);
  assert.match(el('quickPairing').innerHTML,/Require pairing/);assert.doesNotMatch(el('quickPairing').innerHTML,/data-pairing-enabled checked/);
+ // Automatic mode: waiting for the TV app, then on by itself.
+ sandbox.pairingData={enabled:false,disabled:true,mode:'auto',tvSeen:false,paired:false};sandbox.renderPairingMode();
+ assert.match(el('quickPairing').innerHTML,/Pairing is waiting for the Vetro app on the TV[\s\S]*anyone on your home network can use the dashboard and API, including root commands/);
+ assert.match(el('quickPairing').innerHTML,/Pairing waiting for the TV/);
+ sandbox.pairingData={enabled:true,disabled:false,mode:'auto',tvSeen:true,paired:true};sandbox.renderPairingMode();
+ assert.match(el('quickPairing').innerHTML,/Pairing on \(automatic\)/);assert.doesNotMatch(el('quickPairing').innerHTML,/Pairing is waiting/);
+ sandbox.pairingData={enabled:false,disabled:true,paired:false};sandbox.renderPairingMode();
  const modes=[];sandbox.setPairingMode=on=>modes.push(on);
  // Turning it on from an unpaired browser: pair this browser first, with a code on the TV.
  const pairingCheckbox={dataset:{pairingEnabled:''},checked:true};el('quick').onchange({target:pairingCheckbox});

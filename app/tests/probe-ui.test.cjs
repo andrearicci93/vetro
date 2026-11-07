@@ -275,6 +275,10 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(refusedPage.screen.innerHTML.includes('SVC REFUSED'));
   assert.ok(!refusedPage.screen.innerHTML.includes('Not responding'));
   assert.equal(refusedPage.sent.filter(s => /\/status$/.test(s.url)).length >= 1, true);
+  // Loopback is silent and the TV's own address refuses the page: that refusal is kept while the address is looked for.
+  const lanRefused = await run({loopbackBlocked: true, lan: '192.168.1.42', failFetch: {n: 99}, refused: {status: 401, body: {error: 'Pair this device first', seen}}});
+  assert.ok(lanRefused.screen.innerHTML.includes('Refused this screen'), 'the LAN refusal is not lost');
+  assert.ok(lanRefused.screen.innerHTML.includes('HTTP 401 from 169.254.3.4 origin file://'));
   // A browser waits for a code but the service will not give it to this screen: said on screen, never blank.
   const blocked = await run({pendingRefused: {error: 'TV apps only', pending: true, seen}});
   const poll = blocked.intervals.find(i => i.ms === 2000);

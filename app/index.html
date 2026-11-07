@@ -111,7 +111,15 @@ function answers(base) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', base + '/status', true);
     xhr.timeout = 3000;
-    xhr.onload = function () { ok(xhr.status === 200); };
+    // A refusal that can be read is kept (and shown on the screen) even while another address is still being tried.
+    xhr.onload = function () {
+      if (xhr.status !== 200) {
+        var d = null;
+        try { d = JSON.parse(xhr.responseText); } catch (e) {}
+        if (d && d.seen) refusal = refusedText(xhr.status, d);
+      }
+      ok(xhr.status === 200);
+    };
     xhr.onerror = xhr.ontimeout = function () { ok(false); };
     try { xhr.send(); } catch (e) { ok(false); }
   });
@@ -300,7 +308,7 @@ function rootCheck(r) {
 function checks(d) {
   var out = [], root, api, apiMissing = [], slow, slowHint, mem, l, i;
   if (!d && refusal) {
-    out.push(['bad', 'Service', 'Refused this screen', 'The service is running but did not accept this screen (' + esc(refusal) + '). If pairing is on, turn it off in the dashboard (Settings, Developer). Otherwise please report this on GitHub with a photo of this screen.',
+    out.push(['bad', 'Service', 'Refused this screen', 'The service is running but did not accept this screen (' + esc(refusal) + '). Please report this on GitHub with a photo of this screen.',
       'SVC REFUSED ' + refusal, 'bad']);
   } else if (!d) {
     out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +

@@ -2,11 +2,12 @@
 
 // Sign-in for the dashboard and API.
 //
-// Pairing is OFF by default (since the republished 0.5.0): like Vetro 0.3.5, any device on the home network may use the dashboard and
-// API, including root commands, and the TV's own page reaches the service whatever address it comes from. The owner
-// turns pairing on in the dashboard (Settings, Developer). The same-origin and rebinding checks below apply either way.
-// Why off by default: on some TVs (Q8F, Tizen 9, firmware 1300.9) the Vetro app on the TV was not recognised as the TV,
-// so it could neither reach the service nor show the code, and nobody could get in (first 0.5.0 release).
+// Pairing is AUTOMATIC by default (republished 0.5.0): it turns on by itself the first time the Vetro app on the TV is seen
+// (a request from the TV with the page's opaque Origin), because that proves the TV can show the code. Until then, and on a
+// TV whose page is never recognised (Q8F, Tizen 9, firmware 1300.9), the service behaves like 0.3.5: any device on the home
+// network may use the dashboard and API, so nobody is locked out by a code that can never appear. The owner can also choose:
+// "Require pairing" on (always) or off (never), in the dashboard (Settings, Developer). The same-origin and rebinding
+// checks below apply in every mode.
 //
 // With pairing on, any LAN client would otherwise be able to use the root-backed routes, and any web page opened by a
 // browser on the LAN could post to them. So:
@@ -47,44 +48,61 @@ var MAX_TRIES = 5;
 var MAX_SESSIONS = 20;
 
 var MODE_PATH = STORE_PATH + '.mode';
-var pairingEnabled = loadMode();
+var TV_PATH = STORE_PATH + '.tv';
+var pairingChoice = loadMode();   // 'auto' (never chosen), 'on' or 'off'
+var tvSeen = loadTvSeen();        // the Vetro app on the TV has been recognised at least once
 var sessions = load();
 var pending = null;          // {id, code, name, expires, tries}
 var lastPairAt = 0;
 
-// Pairing is on only when the owner turned it on. The file is written only by an explicit choice, so:
-//  - no file: never chosen, pairing is off (also every first-release 0.5.0 install that never touched the switch);
+// What the owner chose; the file is written only by an explicit choice, so:
+//  - no file: never chosen, 'auto' (also every first-release 0.5.0 install that never touched the switch);
 //  - {"enabled": true|false}: the choice (this build also writes "disabled", the opposite, so going back to the first 0.5.0 release reads the same);
 //  - first-release 0.5.0 files: {"disabled": true} is off; {"disabled": false} was only written when someone switched pairing back on
 //    (or Restore did), so it stays on;
-//  - a file that is there but unreadable or not understood: pairing stays on. It exists because someone chose, and the
-//    safe reading wins (the TV page still works on TVs that recognise it, and the file can be removed to go back to off).
+//  - a file that is there but unreadable or not understood: 'on'. It exists because someone chose, and the safe reading
+//    wins (the file can be removed to go back to 'auto').
 function loadMode() {
     var raw;
     try { raw = fs.readFileSync(MODE_PATH, 'utf8'); }
     catch (e) {
-        if (e.code === 'ENOENT') return false;
+        if (e.code === 'ENOENT') return 'auto';
         console.error('Pairing: could not read ' + MODE_PATH + ' (' + e.message + '); pairing stays on');
-        return true;
+        return 'on';
     }
     try {
         var d = JSON.parse(raw);
-        if (d && typeof d.enabled === 'boolean') return d.enabled;
-        if (d && typeof d.disabled === 'boolean') return !d.disabled;
+        if (d && typeof d.enabled === 'boolean') return d.enabled ? 'on' : 'off';
+        if (d && typeof d.disabled === 'boolean') return d.disabled ? 'off' : 'on';
     } catch (e) {}
     console.error('Pairing: could not understand ' + MODE_PATH + '; pairing stays on');
-    return true;
+    return 'on';
 }
-function pairingMode() { return {enabled: pairingEnabled, disabled: !pairingEnabled}; }
+function loadTvSeen() {
+    try { return JSON.parse(fs.readFileSync(TV_PATH, 'utf8')).seen === true; }
+    catch (e) { return false; }
+}
+// Pairing is required when the owner said so, or (automatic) once the TV app has been seen.
+function pairingOn() { return pairingChoice === 'on' || (pairingChoice === 'auto' && tvSeen); }
+function pairingMode() { return {enabled: pairingOn(), disabled: !pairingOn(), mode: pairingChoice, tvSeen: tvSeen}; }
 function setPairingEnabled(enabled) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid pairing mode');
     var tmp = MODE_PATH + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify({enabled: enabled, disabled: !enabled}) + '\n', {mode: 384});
     fs.renameSync(tmp, MODE_PATH);
-    if (loadMode() !== enabled) throw new Error('Pairing mode was not confirmed');
-    pairingEnabled = enabled;
+    var read = loadMode();
+    if (read !== (enabled ? 'on' : 'off')) throw new Error('Pairing mode was not confirmed');
+    pairingChoice = read;
     pending = null;
     return pairingMode();
+}
+// The Vetro app on the TV reached the service as the TV itself (opaque Origin, TV address): from now on, in automatic mode,
+// pairing is required. Kept in a file, so it survives restarts. Not written again once known.
+function markTvSeen() {
+    if (tvSeen) return;
+    tvSeen = true;
+    try { atomicFile.write(fs, TV_PATH, JSON.stringify({seen: true}), {mode: 384}); }
+    catch (e) { console.error('Pairing: could not save ' + TV_PATH + ' (' + e.message + '); automatic pairing starts again as open after a restart'); }
 }
 
 // A missing file just means nothing is paired yet; any other failure is logged, since it signs everyone out.
@@ -137,7 +155,7 @@ function ownAddresses() {
     try {
         var nets = interfaces() || {};
         Object.keys(nets).forEach(function (name) {
-            (nets[name] || []).forEach(function (n) { if (n && n.family === 'IPv4' && !n.internal && n.address && n.address !== '0.0.0.0') list.push(n.address); });
+            (nets[name] || []).forEach(function (n) { if (n && (n.family === 'IPv4' || n.family === 4) && !n.internal && n.address && n.address !== '0.0.0.0') list.push(n.address); });
         });
     } catch (e) { list = []; }
     ownCache = {at: now, list: list};
@@ -278,6 +296,8 @@ function gate(req, res, url, options) {
     if (options.open) return hostOk(req) ? false : (json(res, 403, {error: 'Use an IP address or localhost'}), true);
     // The TV-app bypass needs an IP or localhost Host: a rebound hostname on loopback must still pair.
     var local = tvApp(req) && hostOk(req);
+    // Only the TV app sends the opaque Origin from the TV's own address; a program on the TV with no Origin does not count.
+    if (local && WIDGET_ROUTES[url] && (req.headers || {}).origin === 'null') markTvSeen();
 
     if ((url === '/auth/pair' || url === '/auth/confirm') && req.method === 'POST') {
         if (!originOk(req)) return json(res, 403, {error: 'Cross-site request refused'}), true;
@@ -303,8 +323,8 @@ function gate(req, res, url, options) {
 
     var s = sessionOf(req);
     if (s && !originOk(req)) return refuse(req, res, url, 403, {error: 'Cross-site request refused'});
-    if (!s && !pairingEnabled) {
-        // Pairing off does not turn off the same-origin and rebinding checks. A TV page Origin (opaque, or a non-web scheme)
+    if (!s && !pairingOn()) {
+        // Pairing off (or not yet automatic) does not turn off the same-origin and rebinding checks. A TV page Origin (opaque, or a non-web scheme)
         // is allowed only on the routes the TV page uses for its check, as in 0.3.5: there the page answers from any
         // address, so a TV whose page is not recognised as the TV itself (Tizen 9 Q8F) still works. Everything else with
         // an opaque Origin is refused.
@@ -394,7 +414,8 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 // True for the TV itself and for a paired device: who may turn pairing on without locking themselves out.
 function trusted(req) { return (tvApp(req) && hostOk(req)) || !!sessionOf(req); }
 
-module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingEnabled: setPairingEnabled, trusted: trusted, pageOrigin: pageOrigin, MODE_PATH: MODE_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
+module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingEnabled: setPairingEnabled, trusted: trusted, pageOrigin: pageOrigin, MODE_PATH: MODE_PATH, TV_PATH: TV_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
     _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
+    _forgetTv: function () { tvSeen = false; },
     _ownAddresses: function (fn) { interfaces = fn || function () { return os.networkInterfaces(); }; ownCache = {at: 0, list: []}; },
     _unthrottle: function () { lastPairAt = 0; }};
