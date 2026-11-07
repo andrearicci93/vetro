@@ -58,7 +58,7 @@ function modeFile(text){if(text===null){try{fs.unlinkSync(auth.MODE_PATH);}catch
  // The 0.5.0 form of the request still works.
  assert.equal((await call('POST','/pairing-mode',{disabled:true},paired)).data.enabled,false);
  // Migration: what each file means.
- assert.equal(modeFile(null),false,'no file (fresh 0.5.1, or 0.5.0 never touched): off');
+ assert.equal(modeFile(null),false,'no file (fresh install, or first 0.5.0 release never touched): off');
  assert.equal(modeFile('{"disabled":true}\n'),false,'0.5.0 opt-out: off');
  assert.equal(modeFile('{"disabled":false}\n'),true,'0.5.0 explicit re-enable: on');
  assert.equal(modeFile('{"enabled":true,"disabled":false}\n'),true);

@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('assert').strict,path=require('path'),EventEmitter=require('events');
-// This file checks that SDB access needs a paired device when pairing is on (off is the default since 0.5.1).
+// This file checks that SDB access needs a paired device when pairing is on (off is the default since the republished 0.5.0).
 const fs=require('fs'),os=require('os');process.env.VETRO_AUTH_PATH=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'vetro-sdb-')),'auth.json');fs.writeFileSync(process.env.VETRO_AUTH_PATH+'.mode',JSON.stringify({enabled:true}));
 let enabled=false,changes=0;
 const platform={start(){},status:()=>({mode:'tv-integration',agent:{connected:false}}),sdbAccess:()=>({enabled,active:enabled,available:true,port:26201}),setSdbAccess:async on=>{enabled=on;changes++;return platform.sdbAccess();}};

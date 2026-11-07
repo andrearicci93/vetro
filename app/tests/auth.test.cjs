@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const {EventEmitter} = require('events');
 process.env.VETRO_AUTH_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-auth-')), 'auth.json');
-// Pairing is off by default since 0.5.1; this file checks the pairing-on behaviour (pairing-mode.test.cjs covers off).
+// Pairing is off by default (republished 0.5.0); this file checks the pairing-on behaviour (pairing-mode.test.cjs covers off).
 fs.writeFileSync(process.env.VETRO_AUTH_PATH + '.mode', JSON.stringify({enabled: true}));
 const auth = require('../service/auth.js');
 

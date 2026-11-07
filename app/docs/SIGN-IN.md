@@ -1,6 +1,6 @@
 # Dashboard and API sign-in
 
-**Pairing is off by default (since 0.5.1).** Like Vetro 0.3.5, any device on your home network can then use the dashboard and API, including root commands, without a code. Turn pairing on in Quick settings → Developer settings → Pairing (see [Require pairing](#require-pairing)). It is off by default because on some TVs (Q8F, Tizen 9) the Vetro app on the TV was not recognised as the TV in 0.5.0, so it could not show the code and nobody could get in.
+**Pairing is off by default.** Like Vetro 0.3.5, any device on your home network can then use the dashboard and API, including root commands, without a code. Turn pairing on in Quick settings → Developer settings → Pairing (see [Require pairing](#require-pairing)). It is off by default because on some TVs (Q8F, Tizen 9) the Vetro app on the TV was not recognised as the TV in the first 0.5.0 release, so it could not show the code and nobody could get in. That release had pairing on by default; 0.5.0 was republished with it off.
 
 With pairing on, Vetro's routes can run commands as root, so the service only answers devices that have paired with the TV. Apps on the TV itself (requests from loopback, any `127.x` address or the TV's own address, with an opaque or missing `Origin`, such as the Vetro widget) need no setup. App-only mode (`npm start` on a computer, no TV adapter) has no device operations and stays open.
 
@@ -73,11 +73,11 @@ this screen", or "The code cannot be shown on this screen") instead of a bare ne
 error. Only the caller's own address and headers go back to it.
 
 `GET /pairing-mode` reads `{enabled, disabled, paired}` (`disabled` is the opposite of
-`enabled`, kept for 0.5.0 clients; `paired` says whether this request comes from a paired
-device or the TV). `POST /pairing-mode` takes `{enabled: boolean}`; the 0.5.0 form
+`enabled`, kept for clients from the first 0.5.0 release; `paired` says whether this request comes from a paired
+device or the TV). `POST /pairing-mode` takes `{enabled: boolean}`; the first-release 0.5.0 form
 `{disabled: boolean}` still works. The preference is stored atomically next to the key
 store, in `vetro-auth.json.mode`, as `{"enabled": …, "disabled": …}`. No file means off.
-A 0.5.0 file `{"disabled": true}` means off; `{"disabled": false}` was only written when
+In a file from the first 0.5.0 release, `{"disabled": true}` means off; `{"disabled": false}` was only written when
 someone switched pairing back on, so it means on. A file that cannot be read or understood
 keeps pairing on; delete it and restart the service to go back to off. Pairing is not part
 of Restore the TV: off is the default, and Restore does not switch off a protection you

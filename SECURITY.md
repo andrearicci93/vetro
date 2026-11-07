@@ -1,6 +1,6 @@
 # Security and responsible reports
 
-Vetro is experimental privileged software. **Since 0.5.1 pairing is off by default:** like
+Vetro is experimental privileged software. **Pairing is off by default:** like
 0.3.5, any device on the local network can use the browser management interface and API,
 including root commands. Turning pairing on requires a code shown on the TV for every
 browser or script (see `app/docs/SIGN-IN.md`). Traffic is plain HTTP and keys could be copied

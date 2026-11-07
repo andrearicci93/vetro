@@ -2,11 +2,11 @@
 
 // Sign-in for the dashboard and API.
 //
-// Pairing is OFF by default (since 0.5.1): like Vetro 0.3.5, any device on the home network may use the dashboard and
+// Pairing is OFF by default (since the republished 0.5.0): like Vetro 0.3.5, any device on the home network may use the dashboard and
 // API, including root commands, and the TV's own page reaches the service whatever address it comes from. The owner
 // turns pairing on in the dashboard (Settings, Developer). The same-origin and rebinding checks below apply either way.
 // Why off by default: on some TVs (Q8F, Tizen 9, firmware 1300.9) the Vetro app on the TV was not recognised as the TV,
-// so it could neither reach the service nor show the code, and nobody could get in (0.5.0).
+// so it could neither reach the service nor show the code, and nobody could get in (first 0.5.0 release).
 //
 // With pairing on, any LAN client would otherwise be able to use the root-backed routes, and any web page opened by a
 // browser on the LAN could post to them. So:
@@ -53,9 +53,9 @@ var pending = null;          // {id, code, name, expires, tries}
 var lastPairAt = 0;
 
 // Pairing is on only when the owner turned it on. The file is written only by an explicit choice, so:
-//  - no file: never chosen, pairing is off (also every 0.5.0 install that never touched the switch);
-//  - {"enabled": true|false}: the choice (0.5.1 also writes "disabled", the opposite, so a 0.5.0 downgrade reads the same);
-//  - 0.5.0 files: {"disabled": true} is off; {"disabled": false} was only written when someone switched pairing back on
+//  - no file: never chosen, pairing is off (also every first-release 0.5.0 install that never touched the switch);
+//  - {"enabled": true|false}: the choice (this build also writes "disabled", the opposite, so going back to the first 0.5.0 release reads the same);
+//  - first-release 0.5.0 files: {"disabled": true} is off; {"disabled": false} was only written when someone switched pairing back on
 //    (or Restore did), so it stays on;
 //  - a file that is there but unreadable or not understood: pairing stays on. It exists because someone chose, and the
 //    safe reading wins (the TV page still works on TVs that recognise it, and the file can be removed to go back to off).

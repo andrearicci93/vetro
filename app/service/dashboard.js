@@ -914,7 +914,7 @@ function resetFactoryTest(){
   .then(function(ok){if(!ok&&!factoryTestView.message)factoryTestView.message='The factory test could not be turned off. Check the operation log, then try again.'}).finally(function(){factoryTestView.busy=false;renderFactoryTest()});
 }
 var pairingData=null,pairingError=null,pairingBusy=false,pairingConfirm=false,pairingStep=null,pairingMsg='';
-// Pairing is off by default (0.5.1). Turning it on from a browser that is not paired yet first pairs that browser with a
+// Pairing is off by default (since the republished 0.5.0). Turning it on from a browser that is not paired yet first pairs that browser with a
 // code shown on the TV: if the TV cannot show the code, pairing stays off and nobody is locked out of the dashboard.
 function renderPairingMode(){
  var d=pairingData,on=!!(d&&d.enabled),confirm='';
