@@ -64,31 +64,34 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:8px;color:var(--text)}
 
 /* Quick controls (the main view): five tiles that do what one switch of the dashboard does, and a strip with the checks.
-   The tiles are solid, flat and have a uniform border; focus is a brighter border plus an outline, never a coloured edge. */
-#screen.compact .hero img,#screen.compact .hero .logo{width:132px;height:132px;border-radius:24px;margin-right:36px}
+   Same system as the rest of the page: system sans at 400 and 500 only, 16 px surfaces, 8 px controls, solid fills, a uniform border
+   everywhere (focus is a brighter border plus an outline, never a coloured edge). Scale for a TV at 1920 px: section title 40, card
+   title 32, text 25, labels 22 in capitals, values 26. One inset (28) for every card, so every text edge lines up. */
+#screen.compact .hero img,#screen.compact .hero .logo{width:176px;height:176px;border-radius:28px;margin-right:40px}
 #screen.compact .hero h1{font-size:72px}
 #screen.compact .meta{margin-top:8px;font-size:26px}
 #screen.compact .state{margin-top:14px;font-size:26px;padding:6px 20px 6px 12px}
-#screen.compact .dash{width:700px;padding:20px 32px}
+#screen.compact .dash{width:700px;padding:20px 28px}
 #screen.compact .url{margin:6px 0 4px;font-size:40px}
 #screen.compact .dash p{font-size:22px}
-.sec{display:flex;align-items:baseline;margin:40px 0 20px}
-.sec h2{margin:0;font-size:36px;font-weight:500;letter-spacing:-.02em}
+.sec{display:flex;align-items:baseline;margin:44px 0 22px}
+.sec h2{margin:0;font-size:40px;line-height:1.1;font-weight:500;letter-spacing:-.02em}
 .sec span{margin-left:auto;font-size:24px;color:var(--muted)}
 .tiles{display:flex}
-.tile{position:relative;flex:1;height:430px;margin-right:20px;padding:26px;border-radius:16px;background:var(--surface);border:2px solid var(--border);display:flex;flex-direction:column}
+.tile{position:relative;flex:1;height:480px;margin-right:20px;padding:28px;border-radius:16px;background:var(--surface);border:2px solid var(--border);display:flex;flex-direction:column}
 .tile:last-child{margin-right:0}
 .tile.focus{background:var(--raised);border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px}
 .tile.na{opacity:.55}
-.tile .top{display:flex;align-items:center;margin-bottom:18px}
+.tile .top{display:flex;align-items:center;margin-bottom:22px}
 .tile .glyph{width:64px;height:64px;border-radius:16px;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none}
 .tile.focus .glyph{background:var(--surface)}
 .tile .glyph svg{width:36px;height:36px}
-.tile .tag{margin-left:auto;font-size:20px;letter-spacing:.08em;color:var(--muted)}
-.tile h3{margin:0;font-size:32px;line-height:1.15;font-weight:500;letter-spacing:-.01em}
-.tile p{margin:10px 0 0;font-size:23px;line-height:1.35;color:var(--muted)}
-.tile .foot{margin-top:auto;display:flex;align-items:center}
-.tile .val{font-size:26px;font-weight:500;margin-left:16px}
+.tile .tag{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
+/* Two lines are always reserved for the title, so the text under it starts at the same height in every tile. */
+.tile h3{margin:0;min-height:2.3em;font-size:32px;line-height:1.15;font-weight:500;letter-spacing:-.01em}
+.tile p{margin:12px 0 0;font-size:25px;line-height:1.4;font-weight:400;color:var(--muted)}
+.tile .foot{margin-top:auto;display:flex;align-items:center;min-height:56px}
+.tile .val{font-size:26px;font-weight:500;margin-left:18px}
 .val.ok{color:var(--ok)}.val.warn{color:var(--warn)}.val.bad{color:var(--bad)}.val.mute{color:var(--muted)}
 .sw{flex:none;width:88px;height:48px;border-radius:999px;border:2px solid var(--border);background:transparent;position:relative}
 .sw i{position:absolute;top:5px;left:5px;width:34px;height:34px;border-radius:50%;background:var(--muted)}
@@ -97,22 +100,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .sw.part{background:var(--warn-soft);border-color:var(--warn-line)}
 .sw.part i{left:25px;background:var(--warn)}
 .sw.busy i{left:25px;background:transparent;border:3px dashed var(--muted);animation:spin 2.4s linear infinite}
-.btn{flex:none;font-size:26px;font-weight:500;padding:8px 26px;border-radius:999px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
+.btn{flex:none;display:flex;align-items:center;height:56px;padding:0 28px;font-size:26px;font-weight:500;border-radius:8px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
 .btn.go{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
 .tile.focus .btn{background:var(--surface)}
 .tile.focus .btn.go{background:var(--ok-soft)}
-.diag{position:absolute;left:0;right:0;bottom:0;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:18px 28px;display:flex;align-items:center}
+/* The strip: the label, the chips and the hint sit on the first row; when the chips wrap, the next row hangs under them. */
+.diag{position:absolute;left:0;right:0;bottom:0;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:20px 28px;display:flex;align-items:flex-start}
 .diag.warn{border-color:var(--warn-line)}.diag.bad{border-color:var(--bad-line);background:var(--bad-soft)}
 .diag.focus{border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px;background:var(--raised)}
-.diag h4{margin:0 22px 0 0;font-size:26px;font-weight:500;flex:none}
+.diag h4{margin:0 28px 0 0;font-size:26px;line-height:34px;font-weight:500;flex:none}
 .chips{display:flex;flex:1;flex-wrap:wrap}
-.chip{display:flex;align-items:center;margin-right:24px;font-size:22px;color:var(--muted);white-space:nowrap}
+.chip{display:flex;align-items:center;margin-right:26px;font-size:22px;line-height:34px;font-weight:400;color:var(--muted);white-space:nowrap}
 .chip b{font-weight:500;color:var(--text);margin-left:8px}
 .chip.warn b{color:var(--warn)}.chip.bad b{color:var(--bad)}
 .dot{width:16px;height:16px;border-radius:50%;margin-right:10px;flex:none;background:var(--ok)}
 .dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.na,.dot.off{background:transparent;border:2px dashed var(--muted)}
-.more{margin-left:16px;flex:none;font-size:22px;color:var(--muted);white-space:nowrap}
-.toast{position:absolute;left:50%;top:0;max-width:1500px;transform:translateX(-50%);padding:10px 28px;border-radius:999px;background:var(--raised);border:2px solid var(--border);font-size:24px;text-align:center}
+.more{margin-left:16px;flex:none;font-size:22px;line-height:34px;color:var(--muted);white-space:nowrap}
+/* The message sits in the free space above the strip, near what was pressed, and does not cover the title. */
+.toast{position:absolute;left:50%;bottom:150px;max-width:1500px;transform:translateX(-50%);padding:10px 28px;border-radius:999px;background:var(--raised);border:2px solid var(--border);font-size:24px;line-height:1.3;text-align:center}
 </style></head>
 <body>
 <div id="stage"><div class="safe" id="screen"></div></div>
@@ -428,7 +433,7 @@ var TILES = [
   {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and the TV’s viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
   {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google and voice search. The remote’s mic button stops working.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
   {id: 'update', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.'},
-  {id: 'tuner', title: 'Vetro TV Tuner', tag: 'LIVE TV', on: 'On', off: 'Off', desc: 'Live TV drawn by Vetro over Samsung’s tuner, which stays installed and is never changed.', words: ['Vetro TV Tuner on', 'Vetro TV Tuner off']}
+  {id: 'tuner', title: 'Vetro TV Tuner', tag: 'LIVE TV', on: 'On', off: 'Off', desc: 'Live TV drawn by Vetro over Samsung’s tuner, which is never changed.', words: ['Vetro TV Tuner on', 'Vetro TV Tuner off']}
 ];
 // A call to the service with its own time limit, so a tile can never stay on "Working" for good. Resolves {status, data}.
 function call(method, path, body, ms) {
