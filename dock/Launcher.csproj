@@ -15,7 +15,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="tests/**;bin/**;obj/**" />
+    <Compile Remove="tests/**;native-tests/**;bin/**;obj/**" />
   </ItemGroup>
   <ItemGroup>
     <!-- Glass images and the generic Source/Settings/HDMI icons. The app list and the apps' own icons come from the TV at run time. -->

@@ -28,6 +28,7 @@ namespace Launcher.Native
         // --- delegates (kept alive by their owners; the GC must not collect a callback in use) ---
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte TaskCb(IntPtr data);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte FdCb(IntPtr data, IntPtr handler);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte EventCb(IntPtr data, int type, IntPtr ev);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void EvasCb(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo);
 
         // --- elementary ---
@@ -97,6 +98,28 @@ namespace Launcher.Native
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_del(IntPtr timer);
         [DllImport(Ecore)] public static extern IntPtr ecore_main_fd_handler_add(int fd, int flags, FdCb func, IntPtr data, IntPtr bufFunc, IntPtr bufData);
         [DllImport(Ecore)] public static extern IntPtr ecore_main_fd_handler_del(IntPtr handler);
+
+        // Ecore owns SIGCHLD and reaps child processes. Commands started from this
+        // main loop must use its process API rather than System.Diagnostics.Process.
+        [DllImport(Ecore)] public static extern IntPtr ecore_exe_run(string command, IntPtr data);
+        [DllImport(Ecore)] public static extern int ecore_exe_pid_get(IntPtr exe);
+        [DllImport(Ecore)] public static extern void ecore_exe_kill(IntPtr exe);
+        [DllImport(Ecore)] public static extern IntPtr ecore_event_handler_add(int type, EventCb callback, IntPtr data);
+        [DllImport(Ecore)] public static extern IntPtr ecore_event_handler_del(IntPtr handler);
+
+        public static int ExeExitEventType()
+        {
+            // This is an exported variable initialized by ecore_init, not a
+            // fixed event number. Read it only after the main loop is initialized.
+            IntPtr library = NativeLibrary.Load(Ecore);
+            try
+            {
+                int type = Marshal.ReadInt32(NativeLibrary.GetExport(library, "ECORE_EXE_EVENT_DEL"));
+                if (type <= 0) throw new InvalidOperationException("Ecore process events are not initialized");
+                return type;
+            }
+            finally { NativeLibrary.Free(library); }
+        }
 
         // --- diagnostics ---
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_ecore_evas_get(IntPtr evas);
