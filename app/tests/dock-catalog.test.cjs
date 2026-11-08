@@ -166,3 +166,9 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
 // The script reports which Home the row came from.
 assert.match(catalog.script(), /echo "F\|\$F"/);
 console.log('dock-catalog 2022 Home: ok');
+
+// A custom tile retains the firmware-specific Samsung Home fallback.
+{
+ const built = catalog.build(catalog.parse('H|com.samsung.tv.coba.newhome'), {homeShortcut:{appId:'GlassHome1.Home',label:'Glass'}});
+ assert.match(catalog.tsv(built), /customhome\tGlass\tsys:GlassHome1.Home\tcom.samsung.tv.coba.newhome/);
+}

@@ -57,6 +57,12 @@ var dock = new dockModule.Dock({execute: agentExecute,
     home: {
         restore: function () { return applySamsungHome(false); }
     },
+    shortcutCheck: function (appId, fresh) {
+        return inventory(!!fresh).then(function (d) {
+            if (d.registryError) throw new Error('App registry unavailable');
+            return {ok: d.apps.some(function (a) { return a.appId === appId && a.show && a.disabled === false && !a.launchRisk && !/^vetrotvapp(\.|$)/.test(a.appId); })};
+        });
+    },
     appCheck: function (appId, fresh) {
         return inventory(!!fresh).then(function (d) {
             if (d.registryError) throw new Error('App registry unavailable');

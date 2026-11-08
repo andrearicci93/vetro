@@ -322,6 +322,34 @@ function fixture(options) {
     await assert.rejects(f.dock.writeCatalog(),/Cannot read launcher preferences/);
     assert.equal(fs.readFileSync(f.dock.stateFile,'utf8'),'broken existing state','migration never overwrites malformed state');
 
+    // The tile uses fresh app eligibility and retains the preference when unavailable.
+    f = fixture();
+    let eligible = true;
+    f.dock.shortcutCheck = async () => ({ok: eligible});
+    const shortcut = {appId: 'GlassHome1.Home', label: 'My Home'};
+    s = await f.dock.setHomeShortcut(shortcut);
+    assert.deepEqual(s.homeShortcut, shortcut);
+    assert.equal(s.enabled, false);
+    assert.ok(s.entries.some(e => e.slug === 'customhome' && e.label === shortcut.label));
+    await f.dock.enable();
+    await f.dock.setNoMotion(true);
+    assert.deepEqual(f.dock.readState().homeShortcut, shortcut);
+    eligible = false;
+    await f.dock.refresh();
+    assert.ok(f.dock.entries().some(e => e.slug === 'samsunghome'));
+    assert.deepEqual(f.dock.readState().homeShortcut, shortcut, 'unavailable app keeps saved preference');
+    await assert.rejects(f.dock.setHomeShortcut(shortcut), /installed, enabled/);
+    await assert.rejects(f.dock.setHomeShortcut({appId:'bad;id',label:'Home'}), /Choose/);
+    await assert.rejects(f.dock.setHomeShortcut({appId:shortcut.appId,label:'1234567890123'}), /1–12/);
+    await assert.rejects(f.dock.setHomeShortcut({appId:shortcut.appId,label:'bad\tlabel'}), /1–12/);
+    s = await f.dock.setHomeShortcut(null);
+    assert.equal(s.homeShortcut, null);
+    assert.equal(s.enabled, true);
+    eligible = true;
+    f.tv.homeData = 'unreadable';
+    await assert.rejects(f.dock.setHomeShortcut(shortcut), /empty or unreadable/);
+    assert.equal(f.dock.readState().homeShortcut, null, 'failed catalog write restores the choice');
+
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 

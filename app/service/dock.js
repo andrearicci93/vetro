@@ -87,6 +87,7 @@ function Dock(options) {
     // of the mode had disabled it (state flag customHomeDisabled, never set by this version).
     this.home = options.home || null;
     this.appCheck = options.appCheck || null;
+    this.shortcutCheck = options.shortcutCheck || null;
     this.checkRound = 0;
     this.goneRounds = 0;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
@@ -111,14 +112,15 @@ Dock.prototype.installed = function () {
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
+        var shortcut = null; try { shortcut = catalog.homeShortcut(s && s.homeShortcut); } catch (ignored) {}
+        return {homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {homeShortcut: null, enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -217,7 +219,7 @@ Dock.prototype.status = function (options) {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
+    var base = {homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
@@ -266,7 +268,11 @@ Dock.prototype.writeCatalog = function () {
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
+    var checked = state.homeShortcut && this.shortcutCheck ? this.shortcutCheck(state.homeShortcut.appId, true).catch(function () { return {ok: false}; }) : Promise.resolve({ok: false});
+    return checked.then(function (result) {
+        return catalog.load(self.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
+            homeShortcut: result.ok ? state.homeShortcut : null});
+    }).then(function (c) {
         try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -529,6 +535,28 @@ Dock.prototype.setSourceOption = function (key, on) {
     }).finally(function () { self.busy = false; });
 };
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
+// Save the overlay tile independently of the physical Home destination.
+Dock.prototype.setHomeShortcut = function (value) {
+    var self = this, shortcut;
+    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
+    var previous = this.readState(); this.busy = true;
+    var check = shortcut && this.shortcutCheck ? this.shortcutCheck(shortcut.appId, true) : Promise.resolve({ok: !shortcut});
+    var changed = false;
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled app with a visible launch entry');
+        self.patchState({homeShortcut: shortcut}); changed = true;
+        return previous.enabled ? self.launch() : self.writeCatalog();
+    }).then(function () { return self.status(); }).catch(function (error) {
+        if (!changed) throw error;
+        self.patchState({homeShortcut: previous.homeShortcut});
+        return (previous.enabled ? self.launch() : self.writeCatalog()).then(function () { throw error; }, function (recovery) {
+            throw Error(error.message + '; launcher recovery needs attention: ' + recovery.message);
+        });
+    }).finally(function () { self.busy = false; });
+};
+
 Dock.prototype.setFixTizenTube = function (on) {
     var self = this;
     if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));

@@ -250,6 +250,21 @@ namespace Launcher.Ui
         {
             AppEntry e = _items[idx];
             IntPtr img = Efl.evas_object_image_add(_evas);
+            if (e.Slug == "customhome" && e.SystemApp)
+            {
+                DrawShortcutPill(img);
+                IntPtr text = Efl.evas_object_text_add(_evas);
+                // Fit the short configurable label to the same fixed-size system pill.
+                string label = e.Label.Length > 12 ? e.Label.Substring(0, 12) : e.Label;
+                if (label.Length > 0 && char.IsHighSurrogate(label[label.Length - 1])) label = label.Substring(0, label.Length - 1);
+                Efl.evas_object_text_text_set(text, label);
+                int size = Design.PillTextSize;
+                do { Efl.evas_object_text_font_set(text, Font, size--); }
+                while (size >= 12 && Efl.evas_object_text_horiz_advance_get(text) > DockLayout.PillItemW - 32);
+                Efl.evas_object_show(text); _initials[idx] = text;
+                Efl.evas_object_image_filled_set(img, true); Efl.evas_object_show(img);
+                return img;
+            }
             bool fromRegistry = e.IconPath != null && LoadRegistryIcon(img, e, idx);
             if (!fromRegistry) Efl.evas_object_image_file_set(img, Path.Combine(_assets, "icons", e.Slug + ".png"), null);
             if (!fromRegistry && Efl.evas_object_image_load_error_get(img) == Efl.EvasLoadErrorNone) SampleGlowColor(img, idx);
@@ -270,6 +285,33 @@ namespace Launcher.Ui
             Efl.evas_object_image_scale_hint_set(img, Efl.EvasImageScaleHintDynamic);
             Efl.evas_object_show(img);
             return img;
+        }
+
+        // A transparent capsule outline, generated once; the label remains native text.
+        private static void DrawShortcutPill(IntPtr image)
+        {
+            int width = DockLayout.PillItemW, height = DockLayout.PillItemH;
+            Efl.evas_object_image_alpha_set(image, true);
+            Efl.evas_object_image_size_set(image, width, height);
+            IntPtr data = Efl.evas_object_image_data_get(image, true);
+            if (data == IntPtr.Zero) return;
+            int stride = Efl.evas_object_image_stride_get(image);
+            var row = new int[width]; double radius = height / 2.0;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    double dx = x + 0.5 - Math.Max(radius, Math.Min(width - radius, x + 0.5));
+                    double dy = y + 0.5 - radius, distance = Math.Sqrt(dx * dx + dy * dy);
+                    double coverage = Math.Min(1, Math.Max(0, radius + 0.5 - distance)) *
+                        Math.Min(1, Math.Max(0, distance - radius + 2.5));
+                    int alpha = (int)Math.Round(255 * Design.PillBorderAlpha * coverage);
+                    row[x] = (alpha << 24) | (alpha << 16) | (alpha << 8) | alpha;
+                }
+                System.Runtime.InteropServices.Marshal.Copy(row, 0, IntPtr.Add(data, y * stride), width);
+            }
+            Efl.evas_object_image_data_set(image, data);
+            Efl.evas_object_image_data_update_add(image, 0, 0, width, height);
         }
 
         /// <summary>

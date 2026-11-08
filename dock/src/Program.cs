@@ -736,7 +736,7 @@ namespace Launcher
                 if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
                 return;
             }
-            if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
+            if ((HomeGuard.ShouldCancel(_guardApps, e.AppId) || HomeGuard.ShouldCancel(_guardApps, e.FallbackAppId))) CancelGuard();
             HideDock();
             _pendingLaunch = e;
         }
@@ -823,7 +823,7 @@ namespace Launcher
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
-                if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
+                if ((HomeGuard.ShouldCancel(_guardApps, e.AppId) || HomeGuard.ShouldCancel(_guardApps, e.FallbackAppId))) CancelGuard();
                 if (e.SystemApp || e.AppId == "com.samsung.tv.csfs")
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
