@@ -13,6 +13,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         let data = {};
         if (url === '/dock' && !body) data = dock;
         else if (url === '/dock') {
+            if(body.action === 'homeAssignment') dock=Object.assign({},dock,{enabled:body.mode==='vetro',customApp:body.mode==='custom'?body.appId:null,mode:body.mode==='samsung'?'off':body.mode});
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
             if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
@@ -207,5 +208,13 @@ const tick = () => new Promise(r => setImmediate(r));
     custom = el('dockCustom').innerHTML;
     assert.match(custom, /Turn it off in the Vetro launcher tab/); assert.match(custom, /data-custom-switch[^>]* disabled/); assert.match(custom, /<select[^>]* disabled/);
     sandbox.inventory = [];
+    await sandbox.setDock('homeAssignment','Save Home destination',{mode:'custom',appId:'GlassHome1.Home'});
+    assert.equal(sandbox.dockData.customApp,'GlassHome1.Home');
+    assert.equal(sandbox.homeAssignmentDraft,null);
+    assert.match(el('remapHomeDestination').innerHTML,/Home destination/);
+    await sandbox.setDock('homeAssignment','Save Home destination',{mode:'samsung'});
+    assert.equal(sandbox.dockData.customApp,null);
+    assert.equal(sandbox.dockData.enabled,false);
+
     console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors');
 })().catch(e => { console.error(e); process.exitCode = 1; });
