@@ -322,6 +322,19 @@ function fixture(options) {
     await assert.rejects(f.dock.writeCatalog(),/Cannot read launcher preferences/);
     assert.equal(fs.readFileSync(f.dock.stateFile,'utf8'),'broken existing state','migration never overwrites malformed state');
 
+    // Samsung's Home started by the TV at boot: closed once when the dock is up, never in the boot window, never twice.
+    f = fixture({running: true});
+    f.dock.patchState({enabled: true});
+    f.dock.uptime = () => 100;
+    assert.equal(await f.dock.supervise(true), 'running');
+    assert.equal(f.tv.csfs, true, 'boot window: Samsung Home left alone');
+    f.dock.uptime = () => 1000;
+    assert.equal(await f.dock.supervise(true), 'running');
+    assert.equal(f.tv.csfs, false, 'settled: Samsung Home closed');
+    f.tv.csfs = true;                                   // opened again on purpose from the dock
+    assert.equal(await f.dock.supervise(true), 'running');
+    assert.equal(f.tv.csfs, true, 'closed only once per service run');
+
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 

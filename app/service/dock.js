@@ -580,6 +580,16 @@ Dock.prototype.iconFile = function (slug) {
     return null;
 };
 
+// After a boot Samsung's own Home is started by the TV and sits idle (~140 MB); the dock closes it only after a Home press,
+// and enable() only when the switch is turned on. So once per service run, when the dock is up and the boot has settled, close
+// it. Never during the boot window (the Q80A stalls without it), and only once: opening it again from the dock is deliberate.
+Dock.prototype.closeHomeOnce = function (samsungHome) {
+    if (this.homeClosed || this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
+    this.homeClosed = true;
+    if (!samsungHome) return Promise.resolve();
+    return this.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+};
+
 // Called every few seconds by the service, and at once when the root agent connects. Starts the
 // dock after a boot or a crash while it is switched on. It never switches the setting off: a slow
 // boot must not cost the user the launcher for good, so after repeated failures it keeps trying
@@ -590,7 +600,7 @@ Dock.prototype.supervise = function (agentConnected) {
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
     return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {
-        if (p.running) { self.failures = 0; self.refreshCatalogLater(); return 'running'; }
+        if (p.running) { self.failures = 0; self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
         return self.launch(true).then(function () { self.failures = 0; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;
