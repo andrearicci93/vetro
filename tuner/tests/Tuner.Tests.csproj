@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Tuner.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The pure logic only: no EFL, no TV service. Runs on any machine (dotnet run in the tests folder) -->
+    <Compile Include="../src/Core/ChannelList.cs" />
+    <Compile Include="../src/Input/Evdev.cs" />
+    <Compile Include="../src/Core/NumberEntry.cs" />
+    <Compile Include="../src/Core/ProgramClock.cs" />
+    <Compile Include="../src/Core/GuideText.cs" />
+    <Compile Include="../src/Core/Languages.cs" />
+    <Compile Include="../src/Core/GuideReply.cs" />
+    <Compile Include="../src/Core/GuideStore.cs" />
+    <Compile Include="../src/Core/GuideGrid.cs" />
+    <Compile Include="../src/Core/GuideScene.cs" />
+    <Compile Include="../src/Core/Takeover.cs" />
+    <Compile Include="../src/Core/ClientFolders.cs" />
+    <None Include="fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" LinkBase="fixtures" />
+    <None Include="present-reply.hex" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

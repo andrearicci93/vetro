@@ -189,6 +189,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     const done = await upDock(() => Promise.resolve('restarted'));
     assert.equal(done.state, 'updated'); assert.equal(done.dock, 'restarted');
     assert.equal(f.u.status().last.dock, 'restarted');
+    // the tuner is a native part like the launcher: a change to its files is flagged the same way, so both are restarted afterwards
+    f = fixture('0.4.0');
+    fs.mkdirSync(path.join(f.install, 'native', 'tuner'), { recursive: true });
+    fs.writeFileSync(path.join(f.install, 'native', 'tuner', 'vetro-tuner.dll'), 'old tuner');
+    await f.u.apply(bundle('0.4.1', { 'service/a.js': 'new a', 'native/tuner/vetro-tuner.dll': 'new tuner' }));
+    assert.equal(f.u.status().pending.dock, true, 'a changed tuner file counts as a native change');
+    assert.equal(fs.readFileSync(path.join(f.install, 'native', 'tuner', 'vetro-tuner.dll'), 'utf8'), 'new tuner');
     // an update that leaves the launcher alone never restarts it or stops it
     f = fixture('0.4.0');
     await f.u.apply(bundle('0.4.1', { 'service/a.js': 'new a' }));

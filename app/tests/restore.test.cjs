@@ -197,5 +197,14 @@ function tv(start) {
   t.deps.pairing={status:()=>({disabled:pairingDisabled}),restore:()=>{pairingDisabled=false;return {disabled:false};}};
   r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='pairing').state,'changed');
   await assert.rejects(r.eraseData(),/Dashboard pairing/);res=await r.run();assert.equal(pairingDisabled,false);assert.equal(res.complete,true);
+  t = tv();let tunerOn=true;
+  t.deps.tuner={readState:()=>({enabled:tunerOn}),disable:async()=>{t.s.order.push('tuner');tunerOn=false;return {enabled:false};}};
+  r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='tuner').state,'changed');
+  assert.match(plan.items.find(i=>i.id==='tuner').detail,/never changed/);
+  res=await r.run();assert.equal(tunerOn,false);assert.equal(res.complete,true);
+  assert.equal(res.steps.find(i=>i.id==='tuner').status,'done');
+  assert.ok(t.s.order.indexOf('tuner')>t.s.order.indexOf('launcher')&&t.s.order.indexOf('tuner')<t.s.order.indexOf('plugin:hello'),'the tuner goes off right after the launcher');
+  t = tv();t.deps.tuner={readState:()=>({enabled:false}),disable:async()=>{throw new Error('must not run');}};
+  r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='tuner').state,'clean');
   console.log('restore: ok');
 })().catch(e => { console.error(e); process.exit(1); });

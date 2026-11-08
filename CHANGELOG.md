@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Vetro TV Tuner
+
+- **Vetro TV Tuner, a live TV screen of Vetro's own.** New page between the Remapper and Vetro Shards: channel banner with the programme on air, channel list, number pad, TV guide and audio switch, drawn over the picture. Turning it on makes it take the place of Samsung's tuner: it waits hidden and draws itself in front of Samsung's live TV app when that comes on screen. Samsung's app is never disabled, removed or changed; turn the switch off and the TV is as it was. The page lists the remote buttons and shows a preview of every screen. It is a bundled plugin like the launcher, starts again after a restart or a crash, is restarted by Vetro updates and switched off by Restore the TV. An optional **Close Samsung's tuner** setting (off by default) closes Samsung's app behind it to free memory. The tuner was run on one Q80A with an antenna (DVB-T); **this integration has not been tried on a TV yet** (takeover, Home and Source keys, and the close option need hardware runs). No subtitles, teletext or other sources. [Guide](app/docs/TUNER.md).
+
 ### Update notices
 
 - **Optional notice of new versions.** Developer settings has a new switch, **Update notices** (off by default, saved per browser). When on, the dashboard looks for a new Vetro update and for newer plugin versions as it opens and every six hours after, and puts a dot on Quick settings or Vetro Shards. Installing stays manual: you still press **Update**. With the switch off nothing is asked of GitHub until you select Check for update, as before.

@@ -73,6 +73,7 @@ Do what you want with the remote. Press a button, choose an app, and the button 
 
 ## Also included
 
+- **Vetro TV Tuner (new, not yet tried on a TV):** live TV with Vetro's own banner, channel list, number pad and guide in front of the picture, in place of Samsung's tuner. Samsung's app is never disabled; switch it off and the TV is as before. [Guide](app/docs/TUNER.md).
 - **Settings and controls:** change supported picture and advanced settings, check the value the TV saved, restore saved values and send remote keys to the TV.
 - **MQTT and Home Assistant:** connect through an MQTT broker to show the TV's sensors and controls in Home Assistant and trigger actions from matching message topics. [Setup guide](app/docs/mqtt/README.md).
 - **Dashboard:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.

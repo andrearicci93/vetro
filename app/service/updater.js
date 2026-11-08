@@ -19,7 +19,8 @@ var SAFE_PATH_RE = /^[A-Za-z0-9_.\/-]+$/;
 var SHA256_RE = /^[0-9a-f]{64}$/;
 var BUILD_INFO_RE = /module\.exports = (\{[\s\S]*\});\s*$/;
 var DEFAULT_PORT_RE = /\b8099\b/g;
-var DOCK_PATH_RE = /^native\/dock\//;
+// The launcher and the tuner are separate processes that keep running the old binary until stopped; a change to either one restarts the native parts.
+var DOCK_PATH_RE = /^native\/(?:dock|tuner)\//;
 
 var FORMAT = 'vetro-update';
 var MAX_FILES = 300;

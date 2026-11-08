@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <AssemblyName>vetro-tuner</AssemblyName>
+    <RootNamespace>Tuner</RootNamespace>
+    <Version>0.3.0</Version>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Small, quiet process, same knobs as the dock. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <TieredCompilation>true</TieredCompilation>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The glass pictures (the dock's own sheet and shadow, plus two plain rounded rectangles) -->
+    <None Include="res/*.png" CopyToOutputDirectory="PreserveNewest" LinkBase="res" />
+    <Compile Remove="tests/**;tools/**;bin/**;obj/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Samsung's TV service client. Compile-time only: the TV already has it, TvsClient loads it from there.
+         Pass the path of the firmware copy: dotnet build -p:TvsDll=/path/Tizen.TV.Broadcast.TVService.dll -->
+    <Reference Include="Tizen.TV.Broadcast.TVService">
+      <HintPath>$(TvsDll)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

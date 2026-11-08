@@ -64,6 +64,9 @@ var dock = new dockModule.Dock({execute: agentExecute,
             return dockModule.customAppCheck(d.apps, appId, !!fresh);
         });
     }});
+// Vetro TV Tuner: a native part like the launcher (tuner.js), run by the bundled plugin registered below.
+var tunerModule = require('./tuner.js');
+var tuner = new tunerModule.Tuner({execute: agentExecute});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 // #135: factory, hotel and shop apps, and the Aging key AgingApp can leave at 1 (factory-apps.js).
 var factoryApps = require('./factory-apps.js');
@@ -207,6 +210,7 @@ function downloadDiagnostics(res, withComponents) {
         hbbtv: later(function () { return hbbtv.read(); }),
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
+        tuner: later(function () { return tuner.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         quickWins: later(function () { return wins.read(); }),
         factoryTest: later(function () { return factoryTest.read(); }),
         // Opt-in: the manifests of the components the catalog does not know. Without the box ticked the section says so.
@@ -427,6 +431,7 @@ function handleDebloatAction(req, res) {
         if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
         var id=appIds[0],desired=action==='disable',original;
         if(id==='com.samsung.tv.csfs'&&(dock.readState().customApp||desired&&dock.readState().enabled)){debloatBusy=false;return serveJson(res,{ok:false,error:homeLockMessage()},409);}
+        if(id===tunerModule.TARGET_APP&&desired&&tuner.readState().enabled){debloatBusy=false;return serveJson(res,{ok:false,error:tunerLockMessage()},409);}
         inventory(true).then(function(d){var row=d.apps.find(function(a){return a.appId===id;});if(d.registryError)throw Error('App registry unavailable');if(!row){var missing=Error('App not installed');missing.statusCode=409;throw missing;}var capability=ComponentActions.availability(row,d.apps,TOGGLE_IDS).toggle;if(!capability.allowed){var unavailable=Error(capability.reason);unavailable.statusCode=409;throw unavailable;}original=row.disabled;if(original===desired)return {ok:true,verified:true,changed:false,appId:id,disabled:desired};
             return agentExecute('pkgcmd '+(desired?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'App state unchanged');invalidateInventory();return inventory(true);}).then(function(after){var r=after.apps.find(function(a){return a.appId===id;});if(after.registryError||!r||r.disabled!==desired)throw Error('Global flag not confirmed');return {ok:true,verified:true,changed:true,appId:id,disabled:r.disabled,scope:'Global flag confirmed; running processes may remain until the next launch'};}).catch(function(e){return agentExecute('pkgcmd '+(original?'-D':'-A')+' -t app -n '+id+' --global',15000).then(function(r){if(r.exit_code||r.timed_out)throw Error('Restore not confirmed');invalidateInventory();return inventory(true);}).then(function(d){var restored=d.apps.find(function(a){return a.appId===id;});throw Error(e.message+' · '+(restored&&restored.disabled===original&&!d.registryError?'previous flag restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});
         }).then(function(d){
@@ -557,6 +562,9 @@ function homeLockMessage() {
     var s=dock.readState();
     return s.customApp?'Turn off the custom launcher before changing Samsung Home':s.enabled?'Turn off the Vetro launcher before changing Samsung Home':null;
 }
+// Samsung's live TV app stays installed and enabled while Vetro TV Tuner is on: the tuner covers it and, optionally, closes it, but a disabled
+// app would leave the takeover with nothing to watch and nobody to hand the screen back to.
+function tunerLockMessage() { return 'Turn off Vetro TV Tuner before disabling Samsung\u2019s TV app'; }
 function handleQuick(req,res) {readJsonBody(req,res,function(p){
     if(p.id==='samsung-home'&&homeLockMessage())return serveJson(res,{ok:false,error:homeLockMessage()},409);
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
@@ -608,7 +616,7 @@ function handleKeepRemoved(req,res) {readJsonBody(req,res,function(p){
 // Restore the TV: puts back what Vetro changed, then (separately) removes Vetro's data. See restore.js.
 var restoreTv = new (require('./restore.js').Restore)({
     execute: agentExecute, inventory: inventory, invalidate: function(){invalidateInventory();},
-    wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock,
+    wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock, tuner: tuner,
     plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
     input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
         off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
@@ -878,6 +886,7 @@ var server = http.createServer(function (req, res) {
         if (url === '/factory-test') return handleFactoryTest(req,res);
         if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
+        if (url === '/tuner') return plugins.dispatch('tuner', req, res, 'action', serveJson);
         if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():p.action==='clean'?homeCleanup.sweep(agentExecute):homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
@@ -897,6 +906,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/dock/icon') return plugins.dispatch('launcher', req, res, 'icon', serveJson);
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
+    if (url === '/tuner') return plugins.dispatch('tuner', req, res, 'status', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/restore') return handleRestore(req,res);
     if (url === '/pairing-mode') return handlePairingMode(req,res);
@@ -969,29 +979,33 @@ bridge.start();
 // Self-update (docs/UPDATING.md): a bundle signed with the Vetro release key replaces the package files in place.
 // Nothing is checked or downloaded here; the dashboard fetches the bundle in the browser and sends it to /update/apply.
 var updater = new Updater({publicKey: require('./update-key.js'), installDir: path.resolve(__dirname, '..'),
-    workDir: process.env.VETRO_UPDATE_DIR || '/opt/usr/home/owner/share/vetro-update', buildInfo: buildInfo, execute: agentExecute, dockStopCommand: dock.stopLines(),
+    workDir: process.env.VETRO_UPDATE_DIR || '/opt/usr/home/owner/share/vetro-update', buildInfo: buildInfo, execute: agentExecute, dockStopCommand: dock.stopLines() + '\n' + tuner.stopLines(),
     source: process.env.VETRO_UPDATE_SOURCE || 'https://raw.githubusercontent.com/andrearicci93/vetro/updates/'});
 // Once the root agent has connected, a freshly updated version restarts the launcher if the update changed its files,
 // then tells the watchdog it is up (otherwise the old version comes back). The dock is a separate process: a service
 // restart alone leaves it running the old binary.
-function restartDockAfterUpdate() {
-    var launcher = dock.readState();
-    if (!launcher.enabled && !launcher.customApp) return Promise.resolve('off');
-    var tries = 0;
-    function attempt() {
-        return dock.refresh().then(function () { return 'restarted'; }, function (e) {
-            if (++tries >= 4) throw e;
-            return new Promise(function (r) { setTimeout(r, 4000); }).then(attempt);
-        });
+function restartNativeAfterUpdate() {
+    function retry(run) {
+        var tries = 0;
+        function attempt() {
+            return run().then(function () { return 'restarted'; }, function (e) {
+                if (++tries >= 4) throw e;
+                return new Promise(function (r) { setTimeout(r, 4000); }).then(attempt);
+            });
+        }
+        return attempt();
     }
-    return attempt();
+    var launcher = dock.readState(), parts = [];
+    if (launcher.enabled || launcher.customApp) parts.push(retry(function () { return dock.refresh(); }));
+    if (tuner.readState().enabled) parts.push(retry(function () { return tuner.restart(); }));
+    return Promise.all(parts).then(function (how) { return how.length ? 'restarted' : 'off'; });
 }
 var updateConfirmAttempts = 0;
 var updateConfirmTimer = setInterval(function () {
     if (++updateConfirmAttempts > 60) { clearInterval(updateConfirmTimer); return; }
     if (!platform.status().agent.connected) return;
     clearInterval(updateConfirmTimer);
-    updater.finish(restartDockAfterUpdate).catch(function () { /* the watchdog decides */ });
+    updater.finish(restartNativeAfterUpdate).catch(function () { /* the watchdog decides */ });
 }, 5000);
 if (updateConfirmTimer.unref) updateConfirmTimer.unref();
 // Third-party plugins (see docs/plugins.md): loaded from the plugin folder, off until switched on, guarded, safe mode after a failed boot.
@@ -1001,6 +1015,7 @@ var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developer
     registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/catalog/index.json',
     services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
 plugins.register(require('./plugin-launcher.js').definition(dock));
+plugins.register(require('./plugin-tuner.js').definition(tuner));
 plugins.start();
 // A plugin's timer or socket callback throws outside every guard the host has. Without this the whole service ended with it
 // (and, past the first minute after a boot, came back with the plugin enabled and ended again). Plugin code is stopped and the
