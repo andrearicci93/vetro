@@ -111,7 +111,7 @@ namespace Launcher.Tests
                 T.Eq(HomeLaunch.Parse(null), null, "missing id refused");
             });
 
-            T.Run("CoBA system launch: fallback follows failed launcher, never a successful one", () =>
+            T.Run("Samsung Home: CoBA success still opens First Screen, in that order", () =>
             {
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
@@ -123,7 +123,33 @@ namespace Launcher.Tests
                     Shell("chmod +x " + Q(tool)); Shell(command + " wait");
                     T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome,com.samsung.tv.csfs", "failed newhome tries csfs");
                     File.Delete(log); File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\nexit 0\n");
-                    Shell(command + " wait"); T.Eq(File.ReadAllLines(log).Length, 1, "success does not start two Homes");
+                    Shell(command + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome,com.samsung.tv.csfs", "successful CoBA component launch still requests visible First Screen");
+                }
+                finally { Directory.Delete(dir, true); }
+            });
+
+            T.Run("ordinary system apps retain error-only fallback and single-target launches", () =>
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                try
+                {
+                    string tool = Path.Combine(dir, "launcher"), log = Path.Combine(dir, "calls");
+                    string command = SystemLaunch.Command("org.example.primary", "org.example.fallback").Replace("/usr/bin/app_launcher", Q(tool));
+                    File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\nexit 0\n");
+                    Shell("chmod +x " + Q(tool)); Shell(command + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "org.example.primary", "successful ordinary app does not launch its fallback");
+                    File.Delete(log);
+                    File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\n[ \"$2\" != org.example.primary ]\n");
+                    Shell(command + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "org.example.primary,org.example.fallback", "failed ordinary app still tries its fallback");
+                    File.Delete(log);
+                    Shell(SystemLaunch.Command("com.samsung.tv.csfs", null).Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.csfs", "legacy Home launches First Screen once without CoBA");
+                    File.Delete(log);
+                    Shell(SystemLaunch.Command("com.samsung.tv.coba.newhome", "org.example.fallback").Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome", "CoBA with an unrelated fallback does not trigger the Home handoff");
                 }
                 finally { Directory.Delete(dir, true); }
             });
