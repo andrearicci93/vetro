@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Vetro TV screen mock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* MOCK of the interactive TV screen. Tokens are the ones in app/index.html. Same rules as the real page:
+   solid surfaces, no blur, flex without gap, nothing moving except the "working" ring. */
+:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--link:#8fbaff;
+--ok:rgb(127,203,160);--warn:rgb(226,184,103);--bad:rgb(239,138,128);
+--ok-soft:rgba(127,203,160,.12);--warn-soft:rgba(226,184,103,.12);--bad-soft:rgba(239,138,128,.12);
+--ok-line:rgba(127,203,160,.4);--warn-line:rgba(226,184,103,.4);--bad-line:rgba(239,138,128,.4)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:var(--bg)}
+.safe{position:absolute;top:54px;left:96px;right:96px;bottom:54px}
+
+/* hero + dashboard card (as today, a little shorter) */
+.hero{display:flex;align-items:center}
+.hero img,.hero .logo{width:132px;height:132px;border-radius:24px;display:block;flex:none;margin-right:36px}
+.logo{background:linear-gradient(135deg,#1b3a73,#0c1a3a);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:500;letter-spacing:-.04em;color:var(--link)}
+.hero h1{margin:0;font-size:72px;line-height:1.05;font-weight:500;letter-spacing:-.04em}
+.meta{margin-top:8px;font-size:26px;color:var(--muted)}
+.state{margin-top:14px;display:inline-flex;align-items:center;font-size:26px;font-weight:500;padding:6px 20px 6px 12px;border-radius:999px;border:2px solid var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.state svg{width:30px;height:30px;margin-right:12px;flex:none}
+.state.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.state.bad{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad)}
+.dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:700px;padding:20px 32px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
+.dash small{font-size:20px;letter-spacing:.12em;color:var(--muted)}
+.url{margin:6px 0 4px;font-family:monospace;font-size:40px;font-weight:500;color:var(--link);white-space:nowrap}
+.dash p{margin:0;font-size:22px;line-height:1.35;color:var(--muted)}
+
+/* section title */
+.sec{display:flex;align-items:baseline;margin:40px 0 20px}
+.sec h2{margin:0;font-size:36px;font-weight:500;letter-spacing:-.02em}
+.sec span{margin-left:auto;font-size:24px;color:var(--muted)}
+
+/* control tiles */
+.tiles{display:flex}
+.tile{position:relative;flex:1;height:430px;margin-right:20px;padding:26px 26px 26px;border-radius:16px;background:var(--surface);border:2px solid var(--border);display:flex;flex-direction:column}
+.tile:last-child{margin-right:0}
+.tile.focus{background:var(--raised);border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px}
+.tile.na{opacity:.55}
+.tile .top{display:flex;align-items:center;margin-bottom:18px}
+.tile .glyph{width:64px;height:64px;border-radius:16px;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none}
+.tile.focus .glyph{background:var(--surface)}
+.tile .glyph svg{width:36px;height:36px}
+.tile .tag{margin-left:auto;font-size:20px;letter-spacing:.08em;color:var(--muted)}
+.tile h3{margin:0;font-size:32px;line-height:1.15;font-weight:500;letter-spacing:-.01em}
+.tile p{margin:10px 0 0;font-size:23px;line-height:1.35;color:var(--muted)}
+.tile .foot{margin-top:auto;display:flex;align-items:center}
+.tile .val{font-size:26px;font-weight:500;margin-left:16px}
+.val.ok{color:var(--ok)}.val.warn{color:var(--warn)}.val.bad{color:var(--bad)}.val.mute{color:var(--muted)}
+
+/* switch */
+.sw{flex:none;width:88px;height:48px;border-radius:999px;border:2px solid var(--border);background:transparent;position:relative}
+.sw i{position:absolute;top:5px;left:5px;width:34px;height:34px;border-radius:50%;background:var(--muted)}
+.sw.on{background:var(--ok-soft);border-color:var(--ok-line)}
+.sw.on i{left:45px;background:var(--ok)}
+.sw.part{background:var(--warn-soft);border-color:var(--warn-line)}
+.sw.part i{left:25px;background:var(--warn)}
+.sw.busy i{left:25px;background:transparent;border:3px dashed var(--muted);animation:spin 2.4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sw.dis{opacity:.5}
+
+/* the button used by the Update tile */
+.btn{flex:none;font-size:26px;font-weight:500;padding:8px 26px;border-radius:999px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
+.btn.go{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.tile.focus .btn{background:var(--surface)}
+.tile.focus .btn.go{background:var(--ok-soft)}
+
+/* diagnostics strip */
+.diag{position:absolute;left:0;right:0;bottom:0;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:18px 28px;display:flex;align-items:center}
+.diag.warn{border-color:var(--warn-line)}.diag.bad{border-color:var(--bad-line);background:linear-gradient(0deg,var(--bad-soft),var(--bad-soft)),var(--surface)}
+.diag.focus{border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px;background:var(--raised)}
+.diag h4{margin:0;font-size:26px;font-weight:500;margin-right:22px;flex:none}
+.chips{display:flex;flex:1;flex-wrap:wrap}
+.chip{display:flex;align-items:center;margin-right:24px;font-size:22px;color:var(--muted);white-space:nowrap}
+.chip b{font-weight:500;color:var(--text);margin-left:8px}
+.dot{width:16px;height:16px;border-radius:50%;margin-right:10px;flex:none;background:var(--ok)}
+.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.na{background:transparent;border:2px dashed var(--muted)}
+.chip.warn b{color:var(--warn)}.chip.bad b{color:var(--bad)}
+.more{margin-left:16px;flex:none;font-size:22px;color:var(--muted);white-space:nowrap}
+.keys{display:flex;justify-content:flex-end;margin-top:0;font-size:22px;color:var(--muted)}
+.keys span{margin-left:28px}
+.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:8px;color:var(--text)}
+.hint{position:absolute;left:0;right:0;bottom:104px}
+.toast{position:absolute;left:50%;top:0;transform:translateX(-50%);padding:10px 28px;border-radius:999px;background:var(--raised);border:2px solid var(--border);font-size:24px;display:none}
+
+/* mock-only bar, not part of the page */
+#bar{position:fixed;left:0;right:0;top:0;height:0}
+#mock{position:fixed;right:12px;top:10px;z-index:9;display:flex;font:13px -apple-system,sans-serif}
+#mock button{margin-left:6px;padding:6px 10px;border-radius:8px;border:1px solid #475a80;background:#0e1830;color:#cfd9ee;cursor:pointer}
+#mock button.sel{background:#2a4a8a;color:#fff}
+</style></head>
+<body>
+<div id="mock"><span style="color:#8a98b8;align-self:center">MOCK scenario:</span>
+<button data-s="good" class="sel">All good</button><button data-s="problem">A problem</button><button data-s="locked">Control not allowed (Q8F)</button></div>
+<div id="stage"><div class="safe" id="screen"></div></div>
+<script>
+var SVG = {
+  ok:'<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#7fcba0" stroke-width="3"/><path d="M11.5 20.5l6 6 11-12.5" fill="none" stroke="#7fcba0" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  warn:'<svg viewBox="0 0 40 40"><path d="M20 4.5l17 29.5H3z" fill="none" stroke="#e2b867" stroke-width="3" stroke-linejoin="round"/><path d="M20 15v9" stroke="#e2b867" stroke-width="3.6" stroke-linecap="round"/><circle cx="20" cy="29" r="2.1" fill="#e2b867"/></svg>',
+  bad:'<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#ef8a80" stroke-width="3"/><path d="M13.5 13.5l13 13M26.5 13.5l-13 13" stroke="#ef8a80" stroke-width="3.6" stroke-linecap="round"/></svg>',
+  launcher:'<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linejoin="round"><rect x="4" y="4" width="11" height="11" rx="3"/><rect x="21" y="4" width="11" height="11" rx="3"/><rect x="4" y="21" width="11" height="11" rx="3"/><rect x="21" y="21" width="11" height="11" rx="3"/></svg>',
+  eye:'<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18s5-9 15-9 15 9 15 9-5 9-15 9S3 18 3 18z"/><circle cx="18" cy="18" r="4.5"/><path d="M6 31L30 5"/></svg>',
+  mic:'<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="3" width="10" height="17" rx="5"/><path d="M7 16a11 11 0 0 0 22 0M18 27v6"/><path d="M5 31L31 5"/></svg>',
+  update:'<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="14"/><path d="M18 9v13M12 17l6 6 6-6"/></svg>',
+  tuner:'<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="30" height="20" rx="3"/><path d="M12 4l6 7 6-7"/></svg>'
+};
+var scenario = 'good', focus = 0, timers = {};
+// tile state: sw = off | on | part | busy ; the real page gets these from GET /screen/controls
+var T = {
+  launcher:{sw:'off'}, ads:{sw:'on'}, voice:{sw:'part', left:3}, update:{phase:'idle'}, tuner:{sw:'off'}
+};
+function reset(){
+  T = {launcher:{sw:'on'}, ads:{sw:'on'}, voice:{sw:'part', left:3}, update:{phase:'idle'}, tuner:{sw:'off'}};
+  if (scenario === 'problem') T.launcher = {sw:'on', fail:true};
+}
+function el(id){return document.getElementById(id);}
+
+function tileHtml(i, o){
+  var cls = 'tile' + (focus === i ? ' focus' : '') + (o.na ? ' na' : '');
+  return '<div class="'+cls+'"><div class="top"><div class="glyph">'+SVG[o.icon]+'</div><div class="tag">'+(o.tag||'')+'</div></div>'+
+    '<h3>'+o.title+'</h3><p>'+o.desc+'</p><div class="foot">'+o.foot+'</div></div>';
+}
+function sw(state, locked){ return '<div class="sw '+state+(locked?' dis':'')+'"><i></i></div>'; }
+
+function render(){
+  var locked = scenario === 'locked', prob = scenario === 'problem';
+  var l = T.launcher, a = T.ads, v = T.voice, u = T.update, n = T.tuner;
+  var tiles = '';
+  // 0 launcher
+  tiles += tileHtml(0, {icon:'launcher', title:'Vetro Launcher', tag: l.fail ? 'PROBLEM' : '', na:locked,
+    desc: l.fail ? 'Failed to start (tried 3 times). Press OK to try again.' : 'Home key opens Vetro’s fast launcher instead of Samsung’s Home.',
+    foot: sw(l.sw === 'on' && l.fail ? 'part' : l.sw, locked) + '<div class="val '+(l.fail?'bad':l.sw==='on'?'ok':l.sw==='busy'?'mute':'mute')+'">'+(l.fail?'Not running':l.sw==='on'?'On':l.sw==='busy'?'Working…':'Off')+'</div>'});
+  // 1 ads
+  tiles += tileHtml(1, {icon:'eye', title:'Disable ads and viewing data', na:locked,
+    desc:'Stops the ad players, analytics and the TV’s viewing-data collection.',
+    foot: sw(a.sw, locked) + '<div class="val '+(a.sw==='on'?'ok':'mute')+'">'+(a.sw==='on'?'Disabled':a.sw==='busy'?'Working…':'Enabled')+'</div>'});
+  // 2 voice
+  tiles += tileHtml(2, {icon:'mic', title:'Disable all voice assistants', tag:'MIC', na:locked,
+    desc:'Alexa, Bixby, Google and voice search. The remote’s mic button stops working.',
+    foot: sw(v.sw, locked) + '<div class="val '+(v.sw==='on'?'ok':v.sw==='part'?'warn':'mute')+'">'+(v.sw==='on'?'Disabled':v.sw==='part'?v.left+' still on':v.sw==='busy'?'Working…':'Enabled')+'</div>'});
+  // 3 update
+  var ub = u.phase==='idle' ? '<div class="btn">Check for update</div>' :
+           u.phase==='checking' ? '<div class="btn">Checking…</div>' :
+           u.phase==='none' ? '<div class="val ok" style="margin-left:0">Up to date</div>' :
+           u.phase==='found' ? '<div class="btn go">Update to 0.5.2</div>' :
+           u.phase==='confirm' ? '<div class="btn go">OK again to confirm</div>' :
+           '<div class="val mute" style="margin-left:0">Updating… Vetro restarts</div>';
+  tiles += tileHtml(3, {icon:'update', title:'Update Vetro', tag:'0.5.1', na:locked,
+    desc: u.phase==='found'||u.phase==='confirm' ? 'Version 0.5.2 is ready. The signed update is checked on the TV before it is installed.' :
+          u.phase==='none' ? 'You have the newest version.' : 'Looks on GitHub only when you press OK.',
+    foot: locked ? '<div class="btn">Check for update</div>' : ub});
+  // 4 tuner
+  tiles += tileHtml(4, {icon:'tuner', title:'Vetro TV Tuner', tag:'LIVE TV', na:locked,
+    desc:'Live TV in Vetro\u2019s own light app, instead of Samsung\u2019s. Starts faster and uses less memory.',
+    foot: sw(n.sw, locked) + '<div class="val '+(n.sw==='on'?'ok':'mute')+'">'+(n.sw==='on'?'On':n.sw==='busy'?'Working\u2026':'Off')+'</div>'});
+
+  var chip = function(c, name, val){ return '<div class="chip '+(c==='ok'?'':c)+'"><span class="dot '+c+'"></span>'+name+'<b>'+val+'</b></div>'; };
+  var chips = chip('ok','Service','Running') + chip('ok','Root','Connected') + chip('ok','Input','Filtering') +
+    (prob ? chip('bad','Launcher','Failed to start') : chip('ok','Launcher','Running')) + chip('ok','TV APIs','Available') + chip('ok','Memory','412 MB');
+  if (locked) chips = chip('ok','Service','Running') + chip('warn','Control','This TV can’t be controlled from here') + chip('ok','Memory','412 MB');
+  var dstate = prob ? 'bad' : locked ? 'warn' : '';
+  var sumTxt = prob ? '1 problem' : locked ? '1 thing to check' : 'All good';
+
+  var state = prob ? 'bad' : locked ? 'warn' : 'ok';
+  var label = prob ? 'Needs attention' : locked ? 'Running, with limits' : 'Running in the background';
+
+  var secRight = locked ? 'Switches are off here: the TV page is not recognised as the TV (open the dashboard on a phone).' : (focus < 5 ? 'Left / Right to choose · OK to switch' : '');
+
+  el('screen').innerHTML =
+    '<div class="hero"><img src="../icon.png" alt="Vetro"><div><h1>Vetro</h1><div class="meta">Version 0.5.1 · QE65Q80AATXZT · firmware 2310.0</div>'+
+    '<div class="state '+(state==='ok'?'':state)+'"><span style="display:inline-block;width:30px;height:30px;margin-right:12px">'+SVG[state]+'</span>'+label+'</div></div>'+
+    '<div class="dash"><small>DASHBOARD</small><div class="url">http://192.168.1.50:8099</div><p>Open it on a phone or computer on the same network.</p></div></div>'+
+    '<div class="sec"><h2>Quick controls</h2><span>'+secRight+'</span></div>'+
+    '<div class="tiles">'+tiles+'</div>'+
+    '<div class="diag '+dstate+(focus===5?' focus':'')+'"><h4>Diagnostics</h4><div class="chips">'+chips+'</div><div class="more">'+(focus===5?'<b style="color:var(--text)">OK</b> Details':'Down for details')+'</div></div>'+
+    '<div class="toast" id="toast"></div>';
+}
+
+function toast(t){ var e=el('toast'); if(!e) return; e.textContent=t; e.style.display='block'; clearTimeout(timers.t); timers.t=setTimeout(function(){e.style.display='none';},2200); }
+
+function activate(){
+  if (scenario==='locked' && focus<5) { toast('This TV page cannot change settings. Use the dashboard.'); return; }
+  var o;
+  if (focus===0){ o=T.launcher; if(o.sw==='busy')return; var was=o.sw; o.sw='busy'; o.fail=false; render();
+    timers.l=setTimeout(function(){ o.sw = (was==='on')?'off':'on'; render(); toast('Launcher '+(o.sw==='on'?'on':'off')); },1600); }
+  else if (focus===1){ o=T.ads; if(o.sw==='busy')return; var w1=o.sw; o.sw='busy'; render();
+    timers.a=setTimeout(function(){ o.sw=(w1==='on')?'off':'on'; render(); toast(o.sw==='on'?'Ads and viewing data disabled':'Ads and viewing data enabled'); },2400); }
+  else if (focus===2){ o=T.voice; if(o.sw==='busy')return; var w2=o.sw; o.sw='busy'; render();
+    timers.v=setTimeout(function(){ o.sw=(w2==='on')?'off':'on'; o.left=0; render(); toast(o.sw==='on'?'Voice assistants disabled':'Voice assistants enabled'); },2400); }
+  else if (focus===3){ o=T.update;
+    if(o.phase==='idle'||o.phase==='none'){ o.phase='checking'; render(); timers.u=setTimeout(function(){ o.phase='found'; render(); },1400); }
+    else if(o.phase==='found'){ o.phase='confirm'; render(); }
+    else if(o.phase==='confirm'){ o.phase='run'; render(); } }
+  else if (focus===4){ o=T.tuner; if(o.sw==='busy')return; var w4=o.sw; o.sw='busy'; render();
+    timers.n=setTimeout(function(){ o.sw=(w4==='on')?'off':'on'; render(); toast('Vetro TV Tuner '+(o.sw==='on'?'on':'off')); },1600); }
+  else if (focus===5){ toast('Opens the full checks list and the support line'); }
+}
+document.addEventListener('keydown', function(e){
+  var k=e.keyCode, moved=false;
+  if(k===37 && focus>0 && focus<5){ focus--; moved=true; }
+  else if(k===39 && focus<4){ focus++; moved=true; }
+  else if(k===40 && focus<5){ focus=5; moved=true; }
+  else if(k===38 && focus===5){ focus=1; moved=true; }
+  else if(k===13){ activate(); return; }
+  if(moved){ if(T.update.phase==='confirm') T.update.phase='found'; render(); }
+});
+Array.prototype.forEach.call(document.querySelectorAll('#mock button'), function(b){
+  b.onclick=function(){ scenario=b.getAttribute('data-s'); Array.prototype.forEach.call(document.querySelectorAll('#mock button'),function(x){x.className=x===b?'sel':'';}); reset(); focus=0; render(); };
+});
+function fit(){ var k=Math.min(window.innerWidth/1920, window.innerHeight/1080), s=el('stage'); s.style.transform='scale('+k+')'; }
+// #good | #problem | #locked, optionally with ,N to start on tile N (0-5) and ,found to show the update ready
+(function(){ var h=(location.hash||'').slice(1).split(','); if(/^(good|problem|locked)$/.test(h[0])) scenario=h[0];
+  Array.prototype.forEach.call(document.querySelectorAll('#mock button'),function(x){x.className=x.getAttribute('data-s')===scenario?'sel':'';});
+  reset(); if(h[1]!==undefined && !isNaN(+h[1])) focus=+h[1]; if(h[2]==='found') T.update.phase='found'; })();
+window.addEventListener('resize', fit); fit(); render();
+</script>
+</body>
+</html>
