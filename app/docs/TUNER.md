@@ -9,6 +9,7 @@ Vetro TV Tuner is Vetro's own live TV screen: a channel banner, a channel list, 
 Samsung's live TV app (`org.tizen.tv-viewer`) is **never disabled, removed or changed.** Turning the tuner on starts a small resident process that stays hidden. Every half second it asks the TV whether Samsung's live TV app is in front; when it is, Vetro's tuner draws itself over it and takes the remote keys. Turn the switch off, or let the tuner stop for any reason, and Samsung's tuner is exactly what it was.
 
 - Press **Home** (or **Back**): the tuner steps aside and the TV's own screen handles the key. It does not come back until Samsung's live TV app has been left and opened again. **Source** has not been tried with the tuner on screen.
+- **`tv-viewer` must stay on.** Measured on a Q80A (2026-11-08): with it disabled for a minute the tuner still tuned (its log and `tvs-daemon` were fine) but the screen showed no picture. `tv-viewer` is what puts the video on screen, so the tuner covers it and never replaces it.
 - Samsung's app is **not closed** behind the tuner. Measured on a Q80A (2026-11-08): `app_launcher -k org.tizen.tv-viewer` kills it and the platform starts it again at once (a recovery launch), so no memory is freed. Vetro therefore claims no RAM saving for the tuner. An earlier test build had a *Close Samsung's tuner* option; it was removed.
 - Quick settings → Debloat will not offer to disable `org.tizen.tv-viewer` while the tuner is on.
 
@@ -38,8 +39,15 @@ It starts again by itself after a restart or a crash (back-off from 30 s up to 5
 | Home | The tuner steps aside for the TV's own screen |
 | Digits (remotes that have them) | Open the number pad with the digit; 2 s later it tunes, OK tunes at once |
 | Guide / EPG | Opens and closes the TV guide (remotes that have the key) |
+| Info | Opens the info panel at the top: programme with times and progress, its description, the clock and date, the tuner and the audio track. Any key closes it (Back and Info only close it); it closes by itself after ten seconds. Remotes that have an Info key; the Smart Control 2016 has none |
 
 The same list, with a picture of every screen, is on the dashboard page.
+
+## The info panel and the launcher's 123 pad
+
+The tuner opens the info panel on the Info key (evdev code 358) or on `info` written to the control pipe (`echo info > /tmp/vetro-tuner.ctl`). An Info key injected with `input_keyevent XF86Info` (what the launcher's 123 pad sends) does **not** reach the tuner: it goes to `tv-viewer`, which draws its own panel. For the pad's Info key to open Vetro's panel, the launcher has to write `info` to the pipe when the tuner is on (see `tuner/README.md`). Samsung's panel is not covered: when a remote's real Info key is pressed, both panels may appear.
+
+The panel does not show resolution, audio format, subtitle or teletext badges, or the programme's genre: the tuner has not read them from the TV service yet, and it shows nothing rather than guess.
 
 ## How it fits together
 

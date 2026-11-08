@@ -66,6 +66,8 @@ would vanish on it.
 * **Number pad** (Left): 4x3 grid 1-9, Delete, 0, Go; arrows move, OK presses; shows the typed number and the channel it would go to
   ("No such channel" otherwise). Once a number is typed, 2 s without a key take it and tune (any key starts the 2 s again; Go still works at once). A real digit key opens it too. Closes after 20 s.
 * **Audio** (Right): cycles the audio track and shows "Audio: Italian" for 2 s.
+* **Info panel** (Info key 358, or `info` on the control pipe): a card at the top, 1728 x 348 px, same slate look. Channel number in a badge, the programme on air (title, channel name, start-end, a bar and the time left), up to three lines of its description, and on the right the clock, the date, the tuner (`GetTvMode`: Antenna/Cable/Satellite) and the audio track. Built from the store (programme) at once, then the worker reads the description (`ReadPresentTexts`), the audio and the tuner (`Core/InfoPanel.cs` has the date, the audio text and the word wrapping, with tests; `Ui/InfoView.cs` draws it with pooled objects). Any key closes it, then does its usual job (Back and Info only close it); 10 s timeout. Not shown, because nothing reads it yet: resolution, audio format, subtitle and teletext badges, genre.
+  The launcher's 123 pad sends its Info key as `input_keyevent XF86Info`, which the tuner never sees (it goes to `tv-viewer`). To open this panel from the pad, the pad has to do `echo info > /tmp/vetro-tuner.ctl` when `/tmp/vetro-tuner.ctl` exists (and fall back to `XF86Info` otherwise).
 
 ## Keys (Smart Control 2016 on the Q80A, read from evdev, verified 2026-11-07)
 
@@ -97,7 +99,7 @@ The process stays alive with its window hidden and is driven through a pipe (`--
 opened read-write so it never reports end-of-file). One command per line:
 
 ```
-show | hide | toggle | guide | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests)
+show | hide | toggle | guide | info | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests)
 ```
 
 A launcher (the dock, Vetro's root agent) only has to run `echo show > /tmp/vetro-tuner.ctl`. Showing is instant (in-process ~1 ms; a cold start is

@@ -38,7 +38,7 @@ function figure(title, keys, description, picture) {
     return '<figure class="tuner-shot">' + picture + '<figcaption><strong>' + esc(title) + '</strong><span class="tuner-opens">' + keys + '</span><span>' + esc(description) + '</span></figcaption></figure>';
 }
 
-// ---- the five views ----
+// ---- the six views ----
 // Sample channels, by number. The same ones appear in every picture, with Cinema HD (9) as the channel being watched.
 var NAMES = {4: 'Weather', 5: 'Shopping', 6: 'Retro', 7: 'Talk', 8: 'News 24', 9: 'Cinema HD', 10: 'Sport 1', 11: 'Docs', 12: 'Kids', 13: 'Music', 14: 'Nature'};
 
@@ -124,6 +124,19 @@ function guide() {
     return screen('The TV guide: the programme in focus with its times and description, a time axis, and seven channels with their programmes as boxes.', parts);
 }
 
+function info() {
+    var X = 96, Y = 56, W = 1728, H = 348, Pad = 44, Badge = 96, TextX = X + Pad + Badge + 32, SideX = X + W - Pad - 380, BarX = TextX + 170 + 24;
+    return screen('The info panel at the top of the screen: channel 9, the film on air with its times, progress and description, and on the right the clock, date, tuner and audio.', [
+        sheet(X, Y, W, H),
+        fill(X + Pad, Y + 36, Badge, Badge, 40, 16), text(X + Pad + Badge / 2, Y + 36 + 18, 44, 255, '9', 'middle'),
+        text(TextX, Y + 28, 44, 255, 'Evening Film'), text(TextX, Y + 88, 30, 178, 'Cinema HD'),
+        text(TextX, Y + 130, 26, 178, '21:20 \u2013 23:05'), fill(BarX, Y + 144, 260, 6, 56, 3), fill(BarX, Y + 144, 81, 6, 235, 3), text(BarX + 260 + 24, Y + 130, 26, 178, '1 h 12 min left'),
+        text(SideX, Y + 28, 44, 255, '21:48'), text(SideX, Y + 90, 26, 178, 'Saturday 7 November'), text(SideX, Y + 128, 26, 178, 'Antenna'), text(SideX, Y + 164, 26, 178, 'Audio: Italian'),
+        text(X + Pad, Y + 212, 30, 178, 'A retired pilot takes a last flight over the coast and meets an old friend,'),
+        text(X + Pad, Y + 252, 30, 178, 'who has a secret about the plane that brought them together years ago.')
+    ]);
+}
+
 function audioToast() {
     var Right = 1920 - 96, Y = 80, W = 360, H = 72;
     return screen('A small message at the top right of the screen: Audio, Italian.', [sheet(Right - W, Y, W, H), text(Right - W + 32, Y + 14, 32, 255, 'Audio: Italian')]);
@@ -148,9 +161,10 @@ var KEYS = [
     [caps('▼'), 'Moves down in the list, the pad and the guide.'],
     [caps('0–9'), 'On remotes that have number keys: type a channel. It tunes after two seconds, or at once with OK.'],
     [caps('Guide'), 'On remotes that have a Guide or EPG key: opens and closes the TV guide.'],
-    [caps('Back'), 'Closes the list, the pad or the guide. Pressed again, it puts the tuner away.'],
+    [caps('Info'), 'On remotes that have an Info key: opens the info panel with the programme, its description, the clock and the audio track. Any key closes it; Back and Info only close it.'],
+    [caps('Back'), 'Closes the list, the pad, the guide or the info panel. Pressed again, it puts the tuner away.'],
     [caps('Home', 'Menu', 'Power'), 'The tuner steps aside and the TV handles the key as usual.'],
-    [caps('123'), 'On the Smart Control this always opens Samsung’s own number pad, which cannot be stopped, so Vetro’s pad is on ◀.']
+    [caps('123'), 'On the Smart Control this key belongs to the TV’s own 123 pad (or to the launcher’s, when that replaces it), so the tuner’s number pad is on ◀.']
 ];
 
 function keysMarkup() {
@@ -163,6 +177,7 @@ function previewsMarkup() {
         figure('Channel list', caps('OK'), 'All channels in order, eleven at a time. Hold up or down to run through them; OK tunes.', channelList()),
         figure('Number pad', caps('◀'), 'Type a channel number and see where it goes before you tune.', numberPad()),
         figure('TV guide', caps('▲'), 'Seven channels over three hours. Any channel, also on other frequencies, with its description when you stop on a programme.', guide()),
+        figure('Info panel', caps('Info'), 'Everything about what is on: programme, times, description, clock and date, the tuner and the audio track. It closes by itself after ten seconds.', info()),
         figure('Audio', caps('▶'), 'Switches to the next audio track and names it for two seconds.', audioToast())
     ].join('') + '</div>';
 }

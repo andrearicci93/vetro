@@ -20,6 +20,7 @@
     <Compile Include="../src/Core/GuideScene.cs" />
     <Compile Include="../src/Core/Takeover.cs" />
     <Compile Include="../src/Core/ClientFolders.cs" />
+    <Compile Include="../src/Core/InfoPanel.cs" />
     <None Include="fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" LinkBase="fixtures" />
     <None Include="present-reply.hex" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

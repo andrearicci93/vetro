@@ -29,10 +29,12 @@ namespace Tuner
         private const int KeyUp = 103, KeyDown = 108, KeyLeft = 105, KeyRight = 106, KeyEnter = 28;
         // The guide opens on Up (nothing else uses it) and on the Guide / EPG keys of remotes that have one (KEY_EPG 365, KEY_GUIDE 362: not seen on the Smart Control).
         private const int KeyEpg = 365, KeyGuide = 362;
+        // The info panel opens on the Info key of remotes that have one (KEY_INFO 358) and on `info` from the control pipe: the dock's 123 pad sends that.
+        private const int KeyInfo = 358;
         // Keys that belong to the system: the tuner steps aside (hides, or exits) and the system handles the key as usual.
         private static readonly HashSet<int> SystemKeys = new HashSet<int> { 63, 172, 139, 116 };
         private const int ScreenW = 1920, ScreenH = 1080;
-        private const double DigitSeconds = 2.0, ToastSeconds = 2.2, PadSeconds = 20.0, ListSeconds = 8.0, ProgramDelaySeconds = 1.8;
+        private const double DigitSeconds = 2.0, ToastSeconds = 2.2, PadSeconds = 20.0, ListSeconds = 8.0, ProgramDelaySeconds = 1.8, InfoSeconds = 10.0;
         private static double BannerSeconds = 4.0;
 
         private static readonly TvsClient Tvs = new TvsClient();
@@ -68,6 +70,9 @@ namespace Tuner
 
         private static IntPtr _win;
         private static BannerView _banner;
+        private static InfoView _infoView;
+        private static InfoData _info;
+        private static int _infoGen;                  // a reading for an info panel that was closed or replaced is dropped
         private static ListView _listView;
         private static PadView _padView;
         private static ToastView _toast;
@@ -76,7 +81,7 @@ namespace Tuner
         private static TimeSpan _utcOffset = TimeSpan.Zero;
         private static int _programAttempt, _repeats;   // programme lookups so far for this channel; auto-repeat events of the key held down
 
-        private static IntPtr _bannerTimer, _listTimer, _padTimer, _toastTimer, _digitTimer, _programTimer, _quitTimer, _rescanTimer;
+        private static IntPtr _bannerTimer, _listTimer, _padTimer, _toastTimer, _digitTimer, _programTimer, _quitTimer, _rescanTimer, _infoTimer;
         private static StreamWriter _log;
         // Log times are milliseconds since launch (see ProcessAgeMs), so the log also shows what the runtime spent before Main.
         private static readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
@@ -101,6 +106,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnPadTimeout = d => { _padTimer = IntPtr.Zero; ClosePad(); return 0; };
         private static readonly Efl.TaskCb OnToastTimeout = d => { _toastTimer = IntPtr.Zero; _toast.Hide(); return 0; };
         private static readonly Efl.TaskCb OnDigitTimeout = d => { _digitTimer = IntPtr.Zero; CommitPad(); return 0; };
+        private static readonly Efl.TaskCb OnInfoTimeout = d => { _infoTimer = IntPtr.Zero; CloseInfo(); return 0; };
         private static readonly Efl.TaskCb OnGuideTimeout = d => { _guideTimer = IntPtr.Zero; CloseGuide(); return 0; };
         private static readonly Efl.TaskCb OnDetailTimer = d => { _detailTimer = IntPtr.Zero; LoadDetail(); return 0; };
         private static readonly Efl.TaskCb OnProgramTimer = d => { _programTimer = IntPtr.Zero; RequestProgram(); return 0; };
@@ -204,7 +210,7 @@ namespace Tuner
         /// <summary>Closes everything and takes the window off the screen. A resident tuner stays alive; otherwise the process ends.</summary>
         private static void Deactivate()
         {
-            CloseList(); ClosePad(); CloseGuide();
+            CloseList(); ClosePad(); CloseGuide(); CloseInfo();
             _banner.Hide(); _toast.Hide();
             TakeoverState.Dismissed();
             if (!_resident) { Efl.elm_exit(); return; }
@@ -588,6 +594,62 @@ namespace Tuner
             }
         }
 
+        // ---- the info panel (Info key) ----
+
+        private static bool InfoOpen { get { return _infoView != null && _infoView.Visible; } }
+
+        /// <summary>Opens the panel with what is known now (channel, programme from the store, clock), then reads the rest on the worker: description, audio track, tuner.</summary>
+        private static void OpenInfo()
+        {
+            Channel c = _shown;
+            if (c == null) { ShowToast("Channel not known yet"); return; }
+            CloseList(); ClosePad(); CloseGuide(); _banner.Hide(); _toast.Hide();
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            _info = new InfoData { Number = c.Major.ToString(), Name = c.Name, Clock = ProgramClock.Clock(now, _utcOffset), Date = InfoText.Date(now, _utcOffset) };
+            ApplyInfoProgram(c, Store.Current(c.Id, now), now);
+            _infoView.Draw(_info);
+            Restart(ref _infoTimer, InfoSeconds, OnInfoTimeout);
+            int gen = Interlocked.Increment(ref _infoGen);
+            Work.Add(() => InfoLookup(c, gen));
+        }
+
+        private static void CloseInfo()
+        {
+            if (_infoView == null) return;
+            if (_infoTimer != IntPtr.Zero) { Efl.ecore_timer_del(_infoTimer); _infoTimer = IntPtr.Zero; }
+            Interlocked.Increment(ref _infoGen);
+            _infoView.Hide();
+        }
+
+        private static void ApplyInfoProgram(Channel c, GuideEvent e, long now)
+        {
+            double? f = e == null ? null : ProgramClock.Fraction(e.Start, e.Duration, now);
+            if (e == null || f == null) { _info.NoProgram = true; _info.Fraction = null; _info.Title = ""; _info.Range = ""; _info.Left = ""; return; }
+            _info.NoProgram = false; _info.Title = e.Title; _info.Fraction = f;
+            _info.Range = ProgramClock.Range(e.Start, e.Duration, _utcOffset);
+            _info.Left = ProgramClock.Remaining(e.Start, e.Duration, now);
+        }
+
+        /// <summary>Worker: the programme (when it was not in the store), its text, the audio track and the tuner, each read on its own so one failing leaves the others.</summary>
+        private static void InfoLookup(Channel c, int gen)
+        {
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            GuideEvent e = Store.Current(c.Id, now);
+            if (e == null && ReadIntoStore(c.Id, now)) e = Store.Current(c.Id, now);
+            string desc = "", audio = "", source = "";
+            try { desc = GuideText.Description(Tvs.ReadPresentTexts(c.Id)); } catch (Exception ex) { Log("info text: " + ex.Message); }
+            try { int idx; string code = Tvs.ReadAudio(out idx); audio = InfoText.Audio(code, idx); } catch (Exception ex) { Log("info audio: " + ex.Message); }
+            try { source = Tvs.ReadSource(); } catch (Exception ex) { Log("info source: " + ex.Message); }
+            Log("info: " + (e != null ? "\"" + e.Title + "\"" : "no programme") + ", text " + desc.Length + " chars, audio " + audio + ", source " + source);
+            Ui(() =>
+            {
+                if (gen != Volatile.Read(ref _infoGen) || !InfoOpen || _shown == null || _shown.Id != c.Id) return;
+                ApplyInfoProgram(c, e, now);
+                _info.Description = desc; _info.Audio = audio; _info.Source = source;
+                _infoView.Draw(_info);
+            });
+        }
+
         // ---- keys ----
 
         private static void OnKey(int code)
@@ -597,6 +659,11 @@ namespace Tuner
             if (SystemKeys.Contains(code)) { Deactivate(); return; }    // Home, Menu, Power...: step aside, the system does the rest
             bool back = code == KeyBack || code == KeyEsc || code == KeyExit;
             _repeats = 0;
+            if (InfoOpen)
+            {
+                CloseInfo();                                            // any key closes the panel; Back and Info are all it does,
+                if (back || code == KeyInfo) return;                    // the others (CH+/-, arrows...) then do their usual job
+            }
             if (GuideOpen) { OnGuideKey(code, back); return; }
             if (_listView.Visible)
             {
@@ -627,6 +694,7 @@ namespace Tuner
                 return;
             }
             if (back) { Deactivate(); return; }
+            if (code == KeyInfo) { OpenInfo(); return; }
             if (code == KeyUp || code == KeyEpg || code == KeyGuide) { OpenGuide(); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { if (_list != null) GoTo(_list.Step(+1)); return; }
             if (code == KeyChannelDown || code == KeyChannelDown2) { if (_list != null) GoTo(_list.Step(-1)); return; }
@@ -759,7 +827,7 @@ namespace Tuner
 
         private static void ShowBanner(Channel c, bool readProgram = true)
         {
-            if (c == null || _listView.Visible || _padView.Visible || GuideOpen) return;
+            if (c == null || _listView.Visible || _padView.Visible || GuideOpen || InfoOpen) return;
             _banner.ShowChannel(c.Major.ToString(), c.Name);
             Restart(ref _bannerTimer, BannerSeconds, OnBannerTimeout);
             if (readProgram) ShowKnown(c);
@@ -778,6 +846,7 @@ namespace Tuner
             _listView = new ListView(s2);
             _padView = new PadView(s3);
             _toast = new ToastView(s4);
+            _infoView = new InfoView(new Surface(evas, assets, ScreenW, ScreenH));
         }
 
         // ---- control pipe (resident mode) ----
@@ -827,6 +896,7 @@ namespace Tuner
                 case "toggle": if (_active) Deactivate(); else Activate(); break;
                 case "quit": Efl.elm_exit(); break;
                 case "audio": if (_active) CycleAudio(); break;
+                case "info": Activate(); if (InfoOpen) CloseInfo(); else OpenInfo(); break;
                 case "guide": Activate(); if (GuideOpen) CloseGuide(); else OpenGuide(); break;
                 case "repeat": int rk; if (p.Length > 1 && int.TryParse(p[1], out rk)) OnRepeat(rk); break;
                 case "key": int k; if (p.Length > 1 && int.TryParse(p[1], out k)) OnKey(k); break;   // as if the remote had sent it (testing)

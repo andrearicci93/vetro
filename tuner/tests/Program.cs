@@ -109,6 +109,7 @@ internal static partial class Tests
         var cut = new byte[200]; Array.Copy(reply, cut, 200);
         Check(GuideText.Texts(cut).Length == 0, "a truncated reply gives no texts");
         TakeoverTests();
+        InfoTests();
         Check(Languages.Name("ITA") == "Italian" && Languages.Name("xyz") == "XYZ" && Languages.Name("") == "Original", "language names");
 
         GuideChecks();

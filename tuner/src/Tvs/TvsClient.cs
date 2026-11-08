@@ -291,6 +291,24 @@ namespace Tuner.Tvs
             finally { ((IDisposable)inBuf).Dispose(); ((IDisposable)outBuf).Dispose(); ((IDisposable)fmt).Dispose(); }
         }
 
+        /// <summary>Where the TV takes its channels from: "Antenna", "Cable" or "Satellite" ("" when it cannot be read). Same call as the probe's `tvmode`.</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public string ReadSource()
+        {
+            using (IServiceNavigation nav = TVServiceAPI.Instance().CreateServiceNavigation(Profile.Main, 0))
+            {
+                var mode = new TvMode();
+                if (nav.GetTvMode(mode) != 1) return "";
+                switch (mode.antennaMode)
+                {
+                    case AntennaMode.Air: return "Antenna";
+                    case AntennaMode.Cable: return "Cable";
+                    case AntennaMode.Satellite: return "Satellite";
+                    default: return "";
+                }
+            }
+        }
+
         /// <summary>The audio track now playing: its language as three letters and its index (-1, "" when it cannot be read).</summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public string ReadAudio(out int index)
