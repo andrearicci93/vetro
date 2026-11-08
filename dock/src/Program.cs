@@ -51,14 +51,14 @@ namespace Launcher
         // 2025 (RSM/CoBA) firmware splits Home into csfs plus separate sidebar and media windows that stay on top of
         // the dock when only csfs is closed, so several ids may be given. Off by default; every id is checked as
         // plain id characters because it goes on a command line.
-        // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
-        // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
+        // Track each close independently so explicit Home waits for its actual completion.
         private static string[] _guardApps;
-        // The kills are tied to a generation written to a file: each Home press arms a new one, and launching the guarded
-        // app on purpose (the Samsung Home pill) retires it. Without that, Samsung Home started 1-2 s after a Home press
-        // was closed again by the kills still pending, and the pill seemed to do nothing.
-        private static int _guardGen;
-        private static string _guardFile;
+        private static HomeCloseGuard CloseGuard;
+        private static readonly Efl.TaskCb GuardCb = OnGuard;
+        private static IntPtr _guardTimer;
+        private static readonly EcoreChildProcess GuardProcess = new EcoreChildProcess();
+        private static double _guardStarted;
+        private static bool _guardKillRequested;
         private static int _homeCode = -1;
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
@@ -680,28 +680,79 @@ namespace Launcher
 
         private static void ArmGuard()
         {
-            if (_guardApps == null) return;
-            try
-            {
-                NewGuardGeneration();
-                Libc.system(HomeGuard.Command(_guardApps, _guardFile, _guardGen));   // returns at once: the shell puts the whole chain in the background
-            }
-            catch (Exception ex) { Log("guard: " + ex.Message); }
+            if (CloseGuard == null) return;
+            CloseGuard.Arm(Efl.ecore_time_get());
+            ScheduleGuard();
         }
 
-        /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
         private static void CancelGuard()
         {
-            if (_guardApps == null) return;
-            try { NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
-            catch (Exception ex) { Log("guard cancel: " + ex.Message); }
+            if (CloseGuard == null) return;
+            CloseGuard.Release(null);
+            ScheduleGuard();
         }
 
-        private static void NewGuardGeneration()
+        private static void ScheduleGuard()
         {
-            _guardGen++;
-            File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (_guardTimer != IntPtr.Zero) { Efl.ecore_timer_del(_guardTimer); _guardTimer = IntPtr.Zero; }
+            double? delay = CloseGuard.NextDelay(Efl.ecore_time_get());
+            if (delay.HasValue) _guardTimer = Efl.ecore_timer_add(delay.Value, GuardCb, IntPtr.Zero);
         }
+
+        private static byte OnGuard(IntPtr data)
+        {
+            _guardTimer = IntPtr.Zero;
+            try
+            {
+                if (GuardProcess.IsRunning)
+                {
+                    if (!_guardKillRequested && Efl.ecore_time_get() - _guardStarted >= 5)
+                    {
+                        Log("guard: close timed out; stopping pid=" + GuardProcess.Pid);
+                        _guardKillRequested = true;
+                        GuardProcess.Kill();
+                    }
+                    ScheduleGuard();
+                    return 0;
+                }
+                ChildExit result;
+                if (GuardProcess.TryTakeExit(out result))
+                {
+                    Log("guard: close finished pid=" + result.Pid + " rc=" + result.Code + " signal=" + result.Signal);
+                    CloseGuard.CloseFinished();
+                }
+                if (CloseGuard.TryBeginClose(Efl.ecore_time_get()))
+                {
+                    try
+                    {
+                        // Ecore already owns child-exit delivery. A managed Process
+                        // can miss that delivery and remain HasExited=false forever.
+                        // exec keeps the tracked child identical to the close command.
+                        GuardProcess.Start("exec /usr/bin/app_launcher -k " + _guardApps[CloseGuard.TargetIndex] + " >/dev/null 2>&1");
+                        _guardStarted = Efl.ecore_time_get();
+                        _guardKillRequested = false;
+                        Log("guard: close started pid=" + GuardProcess.Pid);
+                    }
+                    catch
+                    {
+                        if (!GuardProcess.IsRunning) CloseGuard.CloseFinished();
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // If command supervision fails, stop the burst and drop any queued launch.
+                // Never dispatch it while a close command's completion is unknown.
+                CloseGuard.Release(null);
+                if (!GuardProcess.IsRunning) CloseGuard.CloseFinished();
+                Log("guard: " + ex.Message);
+            }
+            ScheduleGuard();
+            return 0;
+        }
+
+
 
         // ------------------------------------------------------------------ launching
 
@@ -725,7 +776,7 @@ namespace Launcher
                 if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
                 return;
             }
-            if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
+            CancelGuard();
             HideDock();
             _pendingLaunch = e;
         }
@@ -802,6 +853,17 @@ namespace Launcher
 
         private static void LaunchApp(AppEntry e)
         {
+            if (CloseGuard != null && HomeGuard.ShouldCancel(_guardApps, e.AppId))
+            {
+                CloseGuard.Release(() => LaunchAppNow(e));
+                ScheduleGuard();
+                return;
+            }
+            LaunchAppNow(e);
+        }
+
+        private static void LaunchAppNow(AppEntry e)
+        {
             try
             {
                 if (e.KillFirst != null && e.AppId != null)
@@ -812,7 +874,6 @@ namespace Launcher
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
-                if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
                 if (e.SystemApp || e.AppId == "com.samsung.tv.csfs")
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
@@ -968,7 +1029,7 @@ namespace Launcher
                 if (guard != null)
                 {
                     _guardApps = HomeGuard.Parse(guard);
-                    if (_guardApps != null) { _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
+                    if (_guardApps != null) { CloseGuard = new HomeCloseGuard(_guardApps.Length); Log("guard: tracking close completion for " + guard); }
                     else Log("guard: bad app id ignored");
                 }
                 string homeLaunch = Arg(args, "--home-launch");

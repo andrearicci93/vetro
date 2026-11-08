@@ -21,6 +21,12 @@ jobs:
           dotnet-version: 10.0.x
       - name: Native launcher checks
         run: dotnet run -c Release --project dock/tests
+      - name: Install Ecore test runtime
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libecore1
+      - name: Ecore child completion tests
+        env:
+          ECORE_NO_SYSTEM_MODULES: "1"
+        run: dotnet run -c Release --project dock/native-tests
       - name: Compile TV launcher from source
         run: dotnet build dock/Launcher.csproj -c Release -p:UseAppHost=false
       - name: Diagnostic parser tests
