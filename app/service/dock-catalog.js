@@ -28,6 +28,17 @@ var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
 var ICON_FILE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
+var HOME_APP = 'com.samsung.tv.csfs';
+var HOME_LABEL_MAX = 12;
+function homeShortcut(value) {
+    if (value == null) return null;
+    if (!value || typeof value.appId !== 'string' || !APP_ID.test(value.appId) || typeof value.label !== 'string') throw Error('Choose an installed app and a button label');
+    var label = value.label.trim();
+    if (!label || label.length > HOME_LABEL_MAX || /[\u0000-\u001f\u007f]/.test(label)) throw Error('Button label must contain 1–12 characters');
+    if (value.appId === HOME_APP) return null;
+    return {appId: value.appId, label: label};
+}
+
 var VIEWER = 'org.tizen.tv-viewer';
 // Fix TizenTube: TizenTube is a sideloaded app that stands in for YouTube. Samsung's own YouTube
 // (a Cobalt process) has to be closed before TizenTube starts, and the tile borrows the icon
@@ -154,7 +165,7 @@ function build(parsed, options) {
     var entries = [], skipped = [], slugs = {}, inputs = sourceEntries(parsed, options), seenPorts = {};
     function add(slug, label, appId, icon) {
         var base = slug, n = 2;
-        while (slugs[slug] || slug === 'source' || slug === 'settings') slug = base.slice(0, 36) + '-' + n++;
+        while (slugs[slug] || slug === 'source' || slug === 'settings' || slug === 'samsunghome' || slug === 'customhome') slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
         entries.push({slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null});
         return entries[entries.length - 1];
@@ -206,7 +217,7 @@ function build(parsed, options) {
                 add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]);
             });
     }
-    return {entries: entries, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
+    return {entries: entries, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null, homeShortcut: homeShortcut(options.homeShortcut)};
 }
 
 function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(TRAILING_TABS_RE, ''); }
@@ -223,6 +234,7 @@ function tsv(built) {
         // The CoBA home launcher first, Samsung's older home app as the fallback the dock already knows.
         return built.homeApp ? row.replace('sys:com.samsung.tv.csfs', 'sys:' + built.homeApp + '\tcom.samsung.tv.csfs') : row;
     });
+    if (built.homeShortcut) system[1] = ['customhome', built.homeShortcut.label, 'sys:' + built.homeShortcut.appId, built.homeApp || HOME_APP].join('\t');
     return lines.concat(system).join('\n') + '\n';
 }
 
@@ -267,4 +279,4 @@ function load(execute, options) {
     });
 }
 
-module.exports = {sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {homeShortcut: homeShortcut, HOME_LABEL_MAX: HOME_LABEL_MAX, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};

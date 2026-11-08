@@ -853,7 +853,7 @@ namespace Launcher
 
         private static void LaunchApp(AppEntry e)
         {
-            if (CloseGuard != null && HomeGuard.ShouldCancel(_guardApps, e.AppId))
+            if (CloseGuard != null && (HomeGuard.ShouldCancel(_guardApps, e.AppId) || HomeGuard.ShouldCancel(_guardApps, e.FallbackAppId)))
             {
                 CloseGuard.Release(() => LaunchAppNow(e));
                 ScheduleGuard();
