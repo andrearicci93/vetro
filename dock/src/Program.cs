@@ -631,6 +631,58 @@ namespace Launcher
             catch (Exception ex) { Log("key: " + ex); }
         }
 
+        private static VolumePill _pill;
+        private static int _pillScreenW = DefaultScreenW, _pillScreenH = DefaultScreenH;
+
+        private const string MuteKey = "memory/org.tizen.tv-viewer/mute_status";
+
+        /// <summary>Samsung's own mute state (tv-viewer keeps it in a vconf bool; the sound manager does not know it).</summary>
+        private static bool SamsungMuted()
+        {
+            int m;
+            try { return Efl.vconf_get_bool(MuteKey, out m) == 0 && m != 0; } catch (Exception) { return false; }
+        }
+
+        // A volume key the Vetro service swallowed (the remote never reaches Samsung's own bar): change the level here and show the pill.
+        // Mute is soft: the level goes to 0 and comes back to what it was, so Samsung's own mute banner never draws.
+        // (Samsung's real mute is only used when the TV was already muted that way: a volume key first undoes it.)
+        private static NumberPad _pad;
+        private static void TogglePad()
+        {
+            if (_pad == null)
+                _pad = new NumberPad(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH,
+                    delegate (PadResult kind, string what)
+                    {
+                        string cmd = kind == PadResult.Send ? NumberPadModel.SendCommand(what, KeyTool) : NumberPadModel.SendKeyCommand(what, KeyTool);
+                        Log("pad: sending " + what + " rc=" + Libc.system(cmd));
+                    });
+            _pad.Toggle();
+        }
+
+        private static int _levelBeforeMute;
+        private static void VolumeKey(Command key)
+        {
+            int volume;
+            if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }
+            bool muted = SamsungMuted();
+            if (muted) { Log("unmute key rc=" + Libc.system(KeyTool + "XF86AudioMute")); muted = false; }
+            int target = volume;
+            if (key == Command.VolMute)
+            {
+                if (volume > 0) { _levelBeforeMute = volume; target = 0; }
+                else target = _levelBeforeMute > 0 ? _levelBeforeMute : 10;
+            }
+            else
+            {
+                int from = volume == 0 && _levelBeforeMute > 0 ? _levelBeforeMute : volume;   // a step from silence continues from where mute began
+                target = VolumeModel.Next(from, key == Command.VolUp ? 1 : -1, 1);
+                _levelBeforeMute = 0;
+            }
+            if (target != volume) { if (Sound.TrySetVolume(target)) volume = target; else Log("volume: level change refused"); }
+            if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH);
+            _pill.Show(volume, volume == 0 && _levelBeforeMute > 0);
+        }
+
         private static byte OnFifo(IntPtr data, IntPtr handler)
         {
             try
@@ -647,6 +699,8 @@ namespace Launcher
                             case Command.Show: _perfWhy = "fifo-show"; ShowDock(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
                             case Command.Toggle: _perfWhy = "fifo-toggle"; if (_ctl.IsActive) HideDock(); else ShowDock(); break;
+                            case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
+                            case Command.Pad: TogglePad(); break;
                         }
                     }
                 }
@@ -673,6 +727,7 @@ namespace Launcher
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
                         if (code != _homeCode) { NavFromInput(code); continue; }
+                        if (_pad != null && _pad.IsShown) _pad.Close();
                         double now = Efl.ecore_time_get();
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
                         if (now - _lastHome < HomeDebounceSeconds) continue;
@@ -934,6 +989,7 @@ namespace Launcher
                 // The compositor works in 1920x1080 on the Q80A even though the panel is 4K; the
                 // size it reports is logged so a different model can be spotted and overridden.
                 Log("screen reported " + sw + "x" + sh + ", layout " + screenW + "x" + screenH);
+                _pillScreenW = screenW; _pillScreenH = screenH;
 
                 _apps = LoadApps(Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv"));
                 _inputs = LoadList(Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv"), Catalog.BuiltInInputs);

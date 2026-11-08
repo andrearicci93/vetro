@@ -55,6 +55,7 @@ var homeOrder = new (require('./home-order.js').Order)(agentExecute);
 // earlier build of the mode had disabled it (the mode itself never disables it any more: the boot of the TV waits for it).
 var dockModule = require('./dock.js');
 var dock = new dockModule.Dock({execute: agentExecute,
+    onVolumeChange: function () { stopInput(); },
     home: {
         restore: function () { return applySamsungHome(false); }
     },
@@ -741,7 +742,15 @@ function runActions(actions, direct, dispatchGuard) {
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
 }
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
+var volumeKeys=require('./volume-keys.js');
+// The glass volume pill is on when the dock (or the custom launcher) runs and the user switched it on.
+function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true};}
+var volumeRepeat=volumeKeys.repeater({reinject:function(key){return agentExecute(control.injectCommand(key),5000);}});
 var physical=new PhysicalInput(agentExecute,function(event){
+    if(inputLifecycleActive&&volumeKeys.wants(event,keyFlags())){
+        volumeRepeat.event(event);
+        return;
+    }
     if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
@@ -771,7 +780,7 @@ function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
-function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
+function inputTokens(){return volumeKeys.withTokens(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;}),keyFlags());}
 function restoreInput(){
     if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput();inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;
@@ -787,7 +796,7 @@ function restoreInput(){
         return physical.start(device.node,'filter',inputTokens());
     }).then(function(){if(generation===inputGeneration)inputError=null;}).catch(function(e){if(generation===inputGeneration)inputError=e.message;}).finally(function(){if(generation===inputGeneration)inputRestoring=false;});
 }
-function stopInput(){++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+function stopInput(){volumeRepeat.stop();++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
 function inputSnapshot(){
     if(!inputObservers.length)return Object.assign({},physical.status(),{preference:inputPreference()});
     var events=[],connected=false,errors=[];
