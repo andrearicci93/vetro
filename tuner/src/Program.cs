@@ -124,6 +124,7 @@ namespace Tuner
             _controlPath = StrArg(args, "--control", "/tmp/vetro-tuner.ctl");
             _logPath = StrArg(args, "--log", "/tmp/vetro-tuner.log");
             _pidFile = StrArg(args, "--pid-file", null);
+            _features = new Features(StrArg(args, "--features", null));
             string takeover = StrArg(args, "--takeover", null);
             if (takeover != null && AppIdPattern.IsMatch(takeover)) _takeoverApp = takeover;
             _ageAtMain = ProcessAgeMs();
@@ -418,6 +419,7 @@ namespace Tuner
 
         private static void OpenGuide()
         {
+            if (!_features.On("guide")) return;
             if (_list == null || _list.Count == 0) { ShowToast("Channels not loaded yet"); return; }
             if (_guideView == null)
             {
@@ -508,6 +510,7 @@ namespace Tuner
         }
 
         private static int _streakCode, _streak, _repeatLog;
+        private static Features _features = new Features(null);   // the test switches (--features FILE); all on without one
 
         // ---- a key held down ----
         // This remote sends ONE press when an arrow is held and nothing more (no auto-repeat events; owner test 2026-11-07, "key 103" once per hold), then a release.
@@ -529,8 +532,11 @@ namespace Tuner
         private static void BeginHold(int code)
         {
             StopHold();
-            if (!_active || (code != KeyUp && code != KeyDown && !(GuideOpen && (code == KeyLeft || code == KeyRight)))) return;
-            if (!GuideOpen && !_listView.Visible) return;
+            if (!_features.On("hold")) return;
+            bool channel = IsChannelKey(code);
+            if (!_active || (code != KeyUp && code != KeyDown && !channel && !(GuideOpen && (code == KeyLeft || code == KeyRight)))) return;
+            if (channel) { if (!GuideOpen && (_listView.Visible || _padView.Visible || InfoOpen)) return; }     // CH+/- repeat while watching and in the guide
+            else if (!GuideOpen && !_listView.Visible) return;
             _holdCode = code; _holdStarted = Environment.TickCount64;
             if (_releasesSeen) _holdTimer = Efl.ecore_timer_add(HoldFirst, OnHoldFirst, IntPtr.Zero);
         }
@@ -542,9 +548,18 @@ namespace Tuner
             HoldStep();
         }
 
+        private static bool IsChannelKey(int code) { return code == KeyChannelUp || code == KeyChannelUp2 || code == KeyChannelDown || code == KeyChannelDown2; }
+
         private static void HoldStep()
         {
-            if (GuideOpen) GuideMove(_holdCode);
+            if (IsChannelKey(_holdCode))
+            {
+                bool up = _holdCode == KeyChannelUp || _holdCode == KeyChannelUp2;
+                if (GuideOpen) { _grid.MovePage(up ? +1 : -1); GuideChanged(true); }
+                else if (!_listView.Visible && !_padView.Visible && !InfoOpen && _list != null) GoTo(_list.Step(up ? +1 : -1));
+                else StopHold();
+            }
+            else if (GuideOpen) GuideMove(_holdCode);
             else if (_listView.Visible) OnRepeat(_holdCode);
             else StopHold();
         }
@@ -604,6 +619,7 @@ namespace Tuner
         /// <summary>Opens the panel with what is known now (channel, programme from the store, clock), then reads the rest on the worker: description, audio track, tuner.</summary>
         private static void OpenInfo()
         {
+            if (!_features.On("info")) return;
             Channel c = _shown;
             if (c == null) { ShowToast("Channel not known yet"); return; }
             CloseList(); ClosePad(); CloseGuide(); _banner.Hide(); _toast.Hide();
@@ -715,6 +731,7 @@ namespace Tuner
 
         private static void OpenList()
         {
+            if (!_features.On("list")) return;
             if (_list == null || _list.Count == 0) return;
             _sel = Math.Max(0, _list.CurrentIndex);
             _banner.Hide();
@@ -762,6 +779,7 @@ namespace Tuner
 
         private static void OpenPad(int firstDigit)
         {
+            if (!_features.On("pad")) return;
             if (_list == null) return;
             Entry.Reset();
             if (firstDigit >= 0) { Entry.TypeDigit(firstDigit); ArmDigitCommit(); }
@@ -811,6 +829,7 @@ namespace Tuner
 
         private static void CycleAudio()
         {
+            if (!_features.On("audio")) return;
             Work.Add(() =>
             {
                 int index = -1; string lang = "";
@@ -830,7 +849,7 @@ namespace Tuner
 
         private static void ShowBanner(Channel c, bool readProgram = true)
         {
-            if (c == null || _listView.Visible || _padView.Visible || GuideOpen || InfoOpen) return;
+            if (c == null || !_features.On("banner") || _listView.Visible || _padView.Visible || GuideOpen || InfoOpen) return;
             _banner.ShowChannel(c.Major.ToString(), c.Name);
             Restart(ref _bannerTimer, BannerSeconds, OnBannerTimeout);
             if (readProgram) ShowKnown(c);

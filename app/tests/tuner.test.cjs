@@ -35,7 +35,7 @@ function fixture(options) {
         }
         throw new Error('unexpected command: ' + script);
     };
-    const tuner = new Tuner({execute, dir, stateFile: path.join(tmp, 'state.json'), sleep: async ms => { tv.clock += ms; }, now: () => tv.clock});
+    const tuner = new Tuner({execute, dir, stateFile: path.join(tmp, 'state.json'), featuresFile: path.join(tmp, 'features'), sleep: async ms => { tv.clock += ms; }, now: () => tv.clock});
     return {tuner, tv, tmp};
 }
 const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
@@ -104,7 +104,7 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // Samsung's app is never closed: an old saved closeSamsung option is ignored and adds nothing to the launch line.
     f = fixture();
     fs.writeFileSync(path.join(f.tmp, 'state.json'), JSON.stringify({enabled: true, since: 1, closeSamsung: true}));
-    assert.deepEqual(f.tuner.readState(), {enabled: true, since: 1});
+    assert.deepEqual(f.tuner.readState(), {enabled: true, since: 1, off: []});
     assert.ok(!f.tuner.startScript().includes('--close-target'));
     assert.equal(typeof f.tuner.setCloseSamsung, 'undefined');
 
@@ -162,6 +162,19 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // A state file that is garbage reads as off.
     f = fixture();
     fs.writeFileSync(path.join(f.tmp, 'state.json'), '{nope');
-    assert.deepEqual(f.tuner.readState(), {enabled: false, since: null});
+    assert.deepEqual(f.tuner.readState(), {enabled: false, since: null, off: []});
+    // Test switches: saved in the state, written as name=0 lines for the tuner, handed to it at start, unknown names refused.
+    f = fixture();
+    await assert.rejects(f.tuner.setFeature('nope', false), /Unknown tuner part/);
+    let st = await f.tuner.setFeature('banner', false);
+    st = await f.tuner.setFeature('hold', false);
+    assert.deepEqual(f.tuner.readState().off, ['banner', 'hold']);
+    assert.equal(fs.readFileSync(path.join(f.tmp, 'features'), 'utf8'), 'banner=0\nhold=0\n');
+    assert.equal(st.features.filter(x => !x.on).map(x => x.id).join(), 'banner,hold');
+    assert.ok(f.tuner.startScript().includes(' --features ' + "'" + path.join(f.tmp, 'features') + "'"));
+    await f.tuner.setFeature('banner', true);
+    assert.equal(fs.readFileSync(path.join(f.tmp, 'features'), 'utf8'), 'hold=0\n');
+    await f.tuner.setFeature('hold', true);
+    assert.equal(fs.readFileSync(path.join(f.tmp, 'features'), 'utf8'), '');
     console.log('tuner: ok');
 })().catch(e => { console.error(e); process.exit(1); });

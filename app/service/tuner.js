@@ -33,6 +33,18 @@ var RUN_DIR = '/home/owner';                          // the tuner's own pid and
 var PID_FILE = RUN_DIR + '/vetro-tuner.pid';
 var LOG_FILE = RUN_DIR + '/vetro-tuner.log';
 var CONTROL = '/tmp/vetro-tuner.ctl';                 // the pipe a resident tuner listens on (created by the tuner, mode 0666)
+var FEATURES_FILE = SHARE + '/vetro-tuner-features';  // "name=0" lines for the parts switched off; the tuner re-reads it, no restart
+// The parts of the tuner that can be switched off one by one, to test them separately. The ids are the ones tuner/src/Core/Features.cs knows.
+var FEATURES = [
+    {id: 'banner', label: 'Channel banner', hint: 'The bar with the channel and programme when you change channel.'},
+    {id: 'list', label: 'Channel list', hint: 'OK opens the list.'},
+    {id: 'guide', label: 'TV guide', hint: 'Up, Guide or EPG opens the guide.'},
+    {id: 'pad', label: 'Number pad', hint: 'Left or a number key opens the pad.'},
+    {id: 'info', label: 'Info panel', hint: 'The Info key.'},
+    {id: 'audio', label: 'Audio language key', hint: 'Right cycles the audio track.'},
+    {id: 'hold', label: 'Hold to repeat', hint: 'CH+, CH- and the arrows keep going while held.'}
+];
+var FEATURE_IDS = FEATURES.map(function (f) { return f.id; });
 var DLL = 'vetro-tuner.dll';
 var UNIT = 'vetro-tuner';                             // the tuner's own systemd unit
 var TARGET_APP = 'org.tizen.tv-viewer';               // Samsung's live TV app
@@ -58,6 +70,7 @@ function Tuner(options) {
     this.execute = options.execute;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'tuner');
     this.stateFile = options.stateFile || STATE_FILE;
+    this.featuresFile = options.featuresFile || FEATURES_FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -76,8 +89,9 @@ Tuner.prototype.installed = function () {
 Tuner.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null};
-    } catch (e) { return {enabled: false, since: null}; }
+        var off = s && Array.isArray(s.off) ? s.off.filter(function (n) { return FEATURE_IDS.indexOf(n) >= 0; }) : [];
+        return {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null, off: off};
+    } catch (e) { return {enabled: false, since: null, off: []}; }
 };
 
 Tuner.prototype.writeState = function (state) {
@@ -88,6 +102,22 @@ Tuner.prototype.writeState = function (state) {
 // Change some fields of the saved state and keep the rest.
 Tuner.prototype.patchState = function (patch) {
     this.writeState(Object.assign({}, this.readState(), patch));
+};
+
+// The file the tuner reads: one "name=0" line per part that is off. Written whenever a switch changes and before every start.
+Tuner.prototype.writeFeatures = function (off) {
+    var lines = (off || this.readState().off).map(function (n) { return n + '=0'; });
+    try { atomicFile.write(fs, this.featuresFile, lines.join('\n') + (lines.length ? '\n' : '')); }
+    catch (e) { throw new Error('The tuner switches could not be saved: ' + e.message); }
+};
+
+// Switch one part of the tuner on or off. It takes effect on the running tuner within a second.
+Tuner.prototype.setFeature = function (name, on) {
+    if (FEATURE_IDS.indexOf(name) < 0) return Promise.reject(new Error('Unknown tuner part'));
+    var off = this.readState().off.filter(function (n) { return n !== name; });
+    if (on === false) off.push(name);
+    try { this.patchState({off: off}); this.writeFeatures(off); } catch (e) { return Promise.reject(e); }
+    return this.status();
 };
 
 // What is running, and whether this TV can run the tuner at all, in one read. Only the tuner's own pid counts, and only if
@@ -127,7 +157,8 @@ function unsupportedReason(p) {
 Tuner.prototype.status = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, target: TARGET_APP};
+        error: this.lastError, failures: this.failures, target: TARGET_APP,
+        features: FEATURES.map(function (f) { return {id: f.id, label: f.label, hint: f.hint, on: state.off.indexOf(f.id) < 0}; })};
     return this.probe().then(function (p) {
         var reason = unsupportedReason(p);
         return Object.assign(base, {running: p.running, pid: p.pid, supported: reason === null, unsupportedReason: reason,
@@ -147,7 +178,7 @@ Tuner.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0';
     var state = this.readState();
     var args = DLL + ' --resident --notif --control ' + CONTROL + ' --log ' + LOG_FILE + ' --pid-file ' + PID_FILE +
-        ' --takeover ' + TARGET_APP;
+        ' --takeover ' + TARGET_APP + ' --features ' + q(this.featuresFile);
     return [
         this.stopLines(),
         'cd ' + q(this.dir),
@@ -182,6 +213,7 @@ Tuner.prototype.waitRunning = function () {
 
 Tuner.prototype.launch = function () {
     var self = this;
+    try { this.writeFeatures(); } catch (e) { return Promise.reject(e); }
     return this.execute(wrap(this.startScript()), 10000).then(function (r) { check(r, 'Start'); return self.waitRunning(); });
 };
 
@@ -263,4 +295,4 @@ Tuner.prototype.restart = function () {
         .finally(function () { self.busy = false; });
 };
 
-module.exports = {Tuner: Tuner, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS};
+module.exports = {Tuner: Tuner, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS, FEATURES: FEATURES};

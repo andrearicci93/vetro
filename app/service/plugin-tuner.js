@@ -7,7 +7,7 @@
 // switch (POST api/action), which also decides whether Samsung's live TV app is covered, so stopping the plugin never kills it.
 //
 //   GET  api/status   the tuner's state                                         (/tuner/status)
-//   POST api/action   {action: enable|disable|show|hide|toggle|guide, on}
+//   POST api/action   {action: enable|disable|show|hide|toggle|guide|feature, name, on}
 //
 // Plain ES5, like every module the TV loads.
 
@@ -42,6 +42,7 @@ function definition(tuner, options) {
             function action(p) {
                 if (p.action === 'enable') return tuner.enable();
                 if (p.action === 'disable') return tuner.disable();
+                if (p.action === 'feature') return tuner.setFeature(p.name, p.on !== false);
                 if (p.action === 'show' || p.action === 'hide' || p.action === 'toggle' || p.action === 'guide') return tuner.command(p.action);
                 return Promise.reject(new Error('Invalid tuner action'));
             }

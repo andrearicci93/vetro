@@ -1222,7 +1222,7 @@ function setDock(action,label,extra){
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
 var tunerData=null,tunerError=null,tunerBusy=false,tunerSeq=0,tunerConfirm=false;
-function loadTuner(){var mine=++tunerSeq;return api('/tuner').then(function(d){if(mine===tunerSeq){tunerData=d;tunerError=null}}).catch(function(e){if(mine===tunerSeq)tunerError=e.message}).finally(function(){renderTuner()})}
+function loadTuner(){if(!dockData)loadDock();var mine=++tunerSeq;return api('/tuner').then(function(d){if(mine===tunerSeq){tunerData=d;tunerError=null}}).catch(function(e){if(mine===tunerSeq)tunerError=e.message}).finally(function(){renderTuner()})}
 function renderTuner(){
  var box=$('tunerBody');if(!box)return;var d=tunerData;
  if(!d){box.innerHTML='<div class="panel"><p class="notice">'+esc(tunerError||'Reading…')+'</p></div>';return}
@@ -1235,7 +1235,11 @@ function renderTuner(){
  var actions='<div class="quick-actions">'+(d.enabled?'<button data-tuner-show '+(tunerBusy||d.running!==true?'disabled':'')+'>Show tuner now</button>':'')+'<button data-tuner-reload>Refresh</button></div>';
  var log=d.log?'<details><summary>Tuner log</summary><pre class="small-mono">'+esc(d.log)+'</pre></details>':'';
  var main='<div class="quick-item" data-quick-item="tuner"><div><h3>Vetro TV Tuner</h3><p>Live TV with Vetro’s own tuner on screen: channel banner, channel list, number pad and TV guide. It takes the place of Samsung’s tuner while it is on.</p><div class="quick-state">'+state+'</div>'+problem+note+actions+log+'</div>'+control+confirm+'</div>';
- box.innerHTML='<section class="quick-group">'+main+'</section>';
+ var feats=(d.features||[]).map(function(f){return '<div class="quick-item" data-quick-item="tuner-'+esc(f.id)+'"><div><h3>'+esc(f.label)+'</h3><p>'+esc(f.hint)+'</p></div>'+switchMarkup('data-tuner-feature="'+esc(f.id)+'"',f.on,tunerBusy||!d.installed,f.label)+'</div>'}).join('');
+ var dk=dockData;
+ var glass=dk?'<div class="quick-item" data-quick-item="tuner-volume"><div><h3>Glass volume bar</h3><p>Vol+, Vol- and Mute draw the glass bar. This is the launcher’s switch, shown here to test it together with the tuner. Needs the launcher and the remote interception on.</p></div>'+switchMarkup('data-tuner-dock="volumePill"',!!dk.volumePill,dockBusy||!dk.installed,'Glass volume bar')+'</div><div class="quick-item" data-quick-item="tuner-pad123"><div><h3>Glass number pad (123 key)</h3><p>The 123 key opens the launcher’s glass pad. Also a launcher switch.</p></div>'+switchMarkup('data-tuner-dock="numberPad"',!!dk.numberPad,dockBusy||!dk.installed,'Glass number pad')+'</div>':'';
+ var tests='<section class="quick-group" aria-labelledby="tunerTestTitle"><h2 class="section-title" id="tunerTestTitle">Test switches</h2><p class="section-note">Turn single parts off to see how each one behaves. They apply at once, with no restart, and stay as set until you change them.</p>'+feats+glass+'</section>';
+ box.innerHTML='<section class="quick-group">'+main+'</section>'+tests;
 }
 function setTuner(action,label,extra){
  if(tunerBusy)return;tunerBusy=true;tunerConfirm=false;renderTuner();
@@ -1393,6 +1397,8 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockReload!=null)return loadDock();
 };
 $('tuner').onchange=function(e){var x=e.target;if(!x.dataset)return;
+ if(x.dataset.tunerFeature!=null)return setTuner('feature','Tuner: '+x.dataset.tunerFeature+(x.checked?' on':' off'),{name:x.dataset.tunerFeature,on:!!x.checked});
+ if(x.dataset.tunerDock!=null){var dn=x.dataset.tunerDock;return Promise.resolve(setDock(dn,(dn==='volumePill'?'Glass volume bar ':'Glass number pad ')+(x.checked?'on':'off'),{on:!!x.checked})).then(renderTuner);}
  if(x.dataset.tunerSwitch==null)return;
  if(x.checked){x.checked=false;tunerConfirm=true;renderTuner();var c=document.querySelector('[data-tuner-confirm]');if(c)c.focus();return}
  return setTuner('disable','Turn off Vetro TV Tuner');
