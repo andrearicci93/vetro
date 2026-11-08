@@ -166,6 +166,23 @@ function screenSummary() {
     });
 }
 
+// The quick controls of the TV screen (service/screen-controls.js). A change goes through the same locks as the dashboard's:
+// the app-change lock for the quick-settings groups, the launcher's and the tuner's own busy flags.
+function applyQuick(id, off) {
+    if (debloatBusy) return Promise.reject(Object.assign(new Error('App change already in progress'), {statusCode: 409}));
+    debloatBusy = true;
+    return Promise.resolve().then(function () {
+        return quickSettings.apply(id, off, {execute: agentExecute, inventory: inventory, invalidate: function () { invalidateInventory(); }});
+    }).then(function (d) { debloatBusy = false; return d; }, function (e) { debloatBusy = false; throw e; });
+}
+// Built on first use: the updater is created further down this file.
+var screenControlsObject = null;
+function screenControls() {
+    return screenControlsObject || (screenControlsObject = new (require('./screen-controls.js').Controls)({dock: dock, tuner: tuner, updater: updater,
+        inventory: function (refresh) { return inventory(refresh); }, applyQuick: applyQuick,
+        agentConnected: function () { return !!platform.status().agent.connected; }}));
+}
+
 // --- HTTP routing ---------------------------------------------------------
 function serveJson(res, obj, code) {
     if (res.destroyed || res.writableEnded) return;
@@ -847,6 +864,15 @@ function handleRemapRun(req,res){readJsonBody(req,res,function(p){
     runActions(remap.resolve(remapStore.rules,p.type,p.value,p.payload)).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
 });}
 
+// POST /screen/control: one tile of the TV screen. The sign-in gate has already decided who may get here (the TV app itself,
+// or a paired browser); this route is not one of the few the TV page may use from an address that is not the TV.
+function handleScreenControl(req, res) {
+    readJsonBody(req, res, function (p) {
+        screenControls().act(p).then(function (d) { serveJson(res, d); }, function (e) {
+            serveJson(res, {ok: false, error: e.message}, e.statusCode || 503);
+        });
+    });
+}
 var auth = require('./auth.js');
 // The Vetro app polls /auth/pending and shows the code; open it so the code is on screen.
 // A request that comes while the root agent is still connecting (a minute or so after boot) used to lose its launch
@@ -872,7 +898,7 @@ var server = http.createServer(function (req, res) {
     // Packaged widget documents use an opaque (null) origin, or on some runtimes a non-web scheme. Allow
     // only its probe/status exchange, including the JSON POST preflight. The sign-in gate already decided
     // who may get here.
-    if ((url === '/probe' || url === '/status' || url === '/screen') && req.headers && auth.pageOrigin(req.headers.origin)) {
+    if ((url === '/probe' || url === '/status' || url === '/screen' || url === '/screen/controls' || url === '/screen/control') && req.headers && auth.pageOrigin(req.headers.origin)) {
         res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
         res.setHeader('Vary', 'Origin');
         if (req.method === 'OPTIONS') {
@@ -908,6 +934,7 @@ var server = http.createServer(function (req, res) {
         if (url === '/update/apply' || url === '/update/check') return handleUpdate(req, res, url === '/update/apply');
         if (url === '/update/rollback') return updater.rollback().then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, 409); });
         if (url === '/probe') return handleProbe(req, res);
+        if (url === '/screen/control') return handleScreenControl(req, res);
         if (url === '/remap') return handleRemap(req, res);
         if (url === '/remap/run') return handleRemapRun(req, res);
         return serveJson(res, { error: 'POST not supported here' }, 405);
@@ -933,6 +960,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/leftovers') return handleLeftovers(req,res);
     if (url === '/status') return serveJson(res, Object.assign({}, platform.status(), {app: buildInfo}));
     if (url === '/update') return serveJson(res, updater.status());
+    if (url === '/screen/controls') return screenControls().read(auth.tvApp(req) && auth.hostOk(req)).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/screen') return screenSummary().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/exec') return handleExecStatus(res);
     if (url === '/debloat') return handleDebloatList(req, res);

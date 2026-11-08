@@ -22,12 +22,22 @@ async function run(options) {
     if (o.refused && this.method === 'POST') { sent.push({method: this.method, url: this.url, body: JSON.parse(body)}); return this.onerror(); }   // preflight refused
     if (o.refused && /\/(status|screen)$/.test(this.url)) { sent.push({method: this.method, url: this.url}); this.status = o.refused.status; this.responseText = JSON.stringify(o.refused.body); return this.onload(); }
     if (o.pendingRefused && /\/auth\/pending$/.test(this.url)) { sent.push({method: this.method, url: this.url}); this.status = 403; this.responseText = JSON.stringify(o.pendingRefused); return this.onload(); }
+    if (this.method === 'POST' && /\/screen\/control$/.test(this.url)) {
+      const b = JSON.parse(body); sent.push({method: this.method, url: this.url, body: b});
+      const r = o.controlReply ? o.controlReply(b) : {status: 200, data: {ok: true}};
+      if (r === 'timeout') return this.ontimeout();
+      this.status = r.status; this.responseText = JSON.stringify(r.data); return this.onload();
+    }
     if (this.method === 'POST') {
       sent.push({method: this.method, url: this.url, body: JSON.parse(body)});
       this.status = 200; this.responseText = JSON.stringify(o.probeResponse); this.onload();
     } else {
       sent.push({method: this.method, url: this.url});
       if (/\/auth\/pending$/.test(this.url)) { this.status = 200; this.responseText = JSON.stringify(o.pending); return this.onload(); }
+      if (/\/screen\/controls$/.test(this.url)) {
+        if (!o.controls) return this.onerror();
+        this.status = o.controlsStatus || 200; this.responseText = JSON.stringify(o.controls); return this.onload();
+      }
       if (o.screen === null) return this.onerror();
       this.status = 200; this.responseText = JSON.stringify(o.screen); this.onload();
     }
@@ -53,9 +63,17 @@ async function run(options) {
   // run() is not awaited by the page: let its promise chain settle.
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r)); };
-  return {settle, intervals, sent, timers, exits, launched, listeners, windowListeners, screen, stage, context};
+  const r = {settle, intervals, sent, timers, exits, launched, listeners, windowListeners, screen, stage, context};
+  // The tiles are the main view; the checks list and the support line are behind Details. Most checks below read those.
+  if (o.details !== false) await openDetails(r);
+  return r;
 }
 const key = (r, keyCode) => r.listeners.keydown({keyCode});
+async function openDetails(r) {
+  if (!/class="tiles"/.test(r.screen.innerHTML)) return;
+  key(r, 40); key(r, 13);
+  for (let i = 0; i < 5; i++) await new Promise(x => setImmediate(x));
+}
 
 (async function () {
   assert.ok(html.includes("<script type=\"module\">import { Service } from 'wrt:service'; window.a2sService = Service;</script>"));
@@ -143,7 +161,10 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   for (let i = 0; i < 40; i++) await new Promise(r => setImmediate(r));
   assert.equal(good.sent.filter(s => s.method === 'POST').length, 6, 'OK runs the checks again (three reports each time)');
   key(good, 10009);
-  assert.equal(good.exits.length, 1, 'Back closes the screen');
+  assert.equal(good.exits.length, 0, 'Back from the details goes to the tiles');
+  assert.ok(/class="tiles"/.test(good.screen.innerHTML));
+  key(good, 10009);
+  assert.equal(good.exits.length, 1, 'Back on the tiles closes the screen');
   const idle = good.timers.filter(t => t.ms === 300000).pop();
   idle.f();
   assert.equal(good.exits.length, 2);
@@ -208,12 +229,14 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(/no answer/.test(report.probe.serviceLaunch.error));
   assert.equal(report.probe.serviceReach.ok, true, 'the probes after the stuck one still run');
   assert.ok(!hung.screen.innerHTML.includes('Checking'), 'the screen leaves the waiting state');
+  await openDetails(hung);
   assert.ok(hung.screen.innerHTML.includes('Running in the background'), 'a start call that never reports back does not matter once the service answers');
   assert.ok(!/slow serviceLaunch|SLOW serviceLaunch/.test(hung.screen.innerHTML));
   // A slow step Vetro does not need is named, but the TV stays green.
   const build = await run({hangBuild: true});
   build.timers.filter(t => t.ms === 8000).forEach(t => t.f());
   await build.settle();
+  await openDetails(build);
   assert.ok(build.screen.innerHTML.includes('Running in the background'));
   assert.ok(build.screen.innerHTML.includes('slow: System info'));
   assert.ok(build.screen.innerHTML.includes('api ok, slow systeminfoBattery'));
@@ -226,11 +249,12 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.equal(waiting.screen.textContent, 'Checking 7 of 9 done \u00b7 Starting the service \u00b7 0 s', 'how many are done, which is open and the seconds');
   assert.ok(waiting.intervals.some(t => t.ms === 1000), 'the seconds tick');
   assert.ok(!waiting.screen.innerHTML.includes('<i>OK</i>'), 'no OK key while OK does nothing (#104)');
-  assert.ok(good.screen.innerHTML.includes('<i>OK</i>Check again'), 'and back once the checks are done');
+  assert.ok((await run()).screen.innerHTML.includes('<i>OK</i>Check again'), 'and back once the checks are done');
   // A step stuck past the total limit: the screen gives its verdict anyway, and says which steps did not answer.
   const capped = await run({hangLaunch: true});
   capped.timers.find(t => t.ms === 100000).f();
   await capped.settle();
+  await openDetails(capped);
   const cappedReport = capped.sent.find(s => s.method === 'POST' && s.body.progress.partial === false).body;
   assert.ok(/^skipped/.test(cappedReport.probe.serviceLaunch.error));
   assert.equal(cappedReport.progress.done, 7, 'the steps that did not depend on the stuck one are in');
@@ -247,6 +271,7 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   assert.ok(pk.screen.innerHTML.includes('package list: reading'));
   pk.timers.find(t => t.ms === 30000).f();
   await pk.settle();
+  await openDetails(pk);
   assert.ok(pk.screen.innerHTML.includes('Not available: packages. No answer in time: Package list.'));
   assert.ok(pk.screen.innerHTML.includes('API packages SLOW packages'));
   const pkLast = pk.sent.filter(s => s.method === 'POST').pop().body;
@@ -288,5 +313,99 @@ const key = (r, keyCode) => r.listeners.keydown({keyCode});
   const noCode = await run({pendingRefused: {error: 'TV apps only', pending: false, seen}});
   noCode.intervals.find(i => i.ms === 2000).f(); await noCode.settle();
   assert.ok(!noCode.screen.innerHTML.includes('The code cannot be shown'));
+  // ---- the quick controls (tiles) ---------------------------------------------------------------------------------
+  const CONTROLS = {canControl: true, tiles: {launcher: {state: 'on', custom: false}, ads: {state: 'on'}, voice: {state: 'part', left: 3}, tuner: {state: 'off'}},
+    update: {configured: true, version: '0.5.1', busy: false, pending: false}};
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const tilesOf = async options => run(Object.assign({details: false, controls: clone(CONTROLS)}, options || {}));
+  const posted = r => r.sent.filter(s => s.method === 'POST' && /\/screen\/control$/.test(s.url)).map(s => s.body);
+  let t = await tilesOf();
+  assert.ok(/class="tiles"/.test(t.screen.innerHTML), 'the tiles are the first thing shown once the checks are done');
+  assert.ok(t.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/screen/controls'), 'one read of the tile states');
+  for (const title of ['Vetro Launcher', 'Disable ads and viewing data', 'Disable all voice assistants', 'Update Vetro', 'Vetro TV Tuner']) assert.ok(t.screen.innerHTML.includes(title), title);
+  assert.ok(t.screen.innerHTML.includes('class="sw on"') && t.screen.innerHTML.includes('class="sw part"') && t.screen.innerHTML.includes('class="sw off"'), 'on, partly and off');
+  assert.ok(t.screen.innerHTML.includes('3 still on'), 'the voice tile says how many members still run');
+  assert.ok(t.screen.innerHTML.includes('Check for update'));
+  assert.ok(t.screen.innerHTML.includes('id="pin" hidden'), 'the sign-in code slot is still reserved');
+  assert.ok(/<div class="diag "/.test(t.screen.innerHTML) && t.screen.innerHTML.includes('Down for details'));
+  assert.ok(!t.screen.innerHTML.includes('Asking for help'), 'the support line is behind Details');
+  assert.ok(!t.timers.some(x => x.ms === 5000 && false) && posted(t).length === 0, 'nothing is changed just by opening the screen');
+  assert.ok(!/border-top|borderTop/.test(html.slice(html.indexOf('.tile{'), html.indexOf('.diag{'))), 'no coloured top edge on the rounded tiles');
+  // Switching: the first tile asks for the opposite of what it shows, shows "Working" meanwhile, then what the service says.
+  let pending;
+  t = await tilesOf({controlReply: b => { pending = b; return {status: 200, data: {ok: true, tile: {state: 'off', custom: false}}}; }});
+  key(t, 13);
+  assert.deepEqual(posted(t), [{id: 'launcher', on: false}]);
+  await t.settle();
+  assert.ok(t.screen.innerHTML.includes('class="sw off"') && !t.screen.innerHTML.includes('Working'), 'the answer is drawn');
+  assert.equal(t.context.toastText, 'Launcher off');
+  // Moving: right to ads and voice, Down to Diagnostics, Up goes back to the tile it came from.
+  key(t, 39); key(t, 39); key(t, 40); key(t, 38);
+  key(t, 13);
+  await t.settle();
+  assert.deepEqual(posted(t).slice(1), [{id: 'voice', on: true}], 'a partly done switch is finished, not turned back');
+  // The update tile: one press looks, the next arms it, the third installs. Moving away disarms.
+  t = await tilesOf({controlReply: b => b.step === 'check' ? {status: 200, data: {ok: true, phase: 'found', version: '0.5.2'}} : {status: 200, data: {ok: true, phase: 'run', version: '0.5.2'}}});
+  key(t, 39); key(t, 39); key(t, 39);
+  key(t, 13); assert.ok(t.screen.innerHTML.includes('Checking'), 'looking is shown while it asks');
+  await t.settle();
+  assert.deepEqual(posted(t), [{id: 'update', step: 'check'}]);
+  assert.ok(t.screen.innerHTML.includes('Update to 0.5.2') && t.screen.innerHTML.includes('Version 0.5.2 is ready'));
+  key(t, 13); assert.ok(t.screen.innerHTML.includes('OK again to confirm'));
+  key(t, 39); key(t, 37); assert.ok(t.screen.innerHTML.includes('Update to 0.5.2') && !t.screen.innerHTML.includes('OK again to confirm'), 'moving away takes the confirmation back');
+  assert.equal(posted(t).length, 1, 'nothing installed');
+  key(t, 13); key(t, 13); await t.settle();
+  assert.deepEqual(posted(t).map(b => b.step), ['check', 'apply']);
+  assert.ok(t.screen.innerHTML.includes('Updating'), 'the screen says Vetro restarts');
+  assert.ok(t.timers.some(x => x.ms === 3000), 'and waits for the new version before reloading');
+  // Nothing newer, a refusal and a timeout.
+  t = await tilesOf({controlReply: () => ({status: 200, data: {ok: true, phase: 'none', version: '0.5.1'}})});
+  key(t, 39); key(t, 39); key(t, 39); key(t, 13); await t.settle();
+  assert.ok(t.screen.innerHTML.includes('You have the newest version') && t.screen.innerHTML.includes('Up to date'));
+  t = await tilesOf({controlReply: () => ({status: 502, data: {ok: false, error: 'Could not reach GitHub: ENOTFOUND'}})});
+  key(t, 39); key(t, 39); key(t, 39); key(t, 13); await t.settle();
+  assert.equal(t.context.toastText, 'Could not reach GitHub: ENOTFOUND');
+  assert.ok(t.screen.innerHTML.includes('Check for update'), 'the button is back so it can be tried again');
+  t = await tilesOf({controlReply: () => 'timeout'});
+  key(t, 13); await t.settle();
+  assert.equal(t.context.toastText, 'The TV took too long to answer');
+  assert.ok(!t.screen.innerHTML.includes('Working'), 'a tile never stays on Working once its call has ended');
+  // A refused change says why and re-reads the real state.
+  t = await tilesOf({controlReply: () => ({status: 409, data: {ok: false, error: 'App change already in progress'}})});
+  key(t, 39); key(t, 13); await t.settle();
+  assert.equal(t.context.toastText, 'App change already in progress');
+  assert.ok(t.sent.filter(s => /\/screen\/controls$/.test(s.url)).length >= 2, 'the state is read again after a refusal');
+  // This page is not recognised as the TV (Q8F): the tiles show, nothing is sent, and the screen says what to do.
+  t = await tilesOf({controls: Object.assign(clone(CONTROLS), {canControl: false})});
+  assert.ok(t.screen.innerHTML.includes('this page is not recognised as the TV') && t.screen.innerHTML.includes('class="tile na"'));
+  key(t, 13); key(t, 39); key(t, 39); key(t, 39); key(t, 13);
+  assert.equal(posted(t).length, 0, 'no request leaves from a page that may not change anything');
+  assert.match(t.context.toastText, /cannot change settings/);
+  // The controls do not load: tiles are marked unavailable, the checks still show, nothing is sent.
+  t = await tilesOf({controls: null});
+  assert.ok(t.screen.innerHTML.includes('Unavailable') && t.screen.innerHTML.includes('Running in the background'));
+  key(t, 13); assert.equal(posted(t).length, 0); assert.match(t.context.toastText, /did not load/);
+  // A tile the TV cannot use says why.
+  const na = clone(CONTROLS); na.tiles.tuner = {state: 'na', why: 'Needs root access'};
+  t = await tilesOf({controls: na});
+  key(t, 39); key(t, 39); key(t, 39); key(t, 39); key(t, 13);
+  assert.equal(posted(t).length, 0); assert.equal(t.context.toastText, 'Not available: Needs root access');
+  // A launcher that is on but not running is a problem tile, and OK tries again instead of turning it off.
+  t = await tilesOf({screen: Object.assign({}, GOOD, {launcher: {installed: true, enabled: true, running: false, failures: 3, hasError: true}})});
+  assert.ok(t.screen.innerHTML.includes('PROBLEM') && t.screen.innerHTML.includes('Failed to start (tried 3 times). Press OK to try again.') && t.screen.innerHTML.includes('Not running'));
+  key(t, 13); assert.deepEqual(posted(t), [{id: 'launcher', on: true}]);
+  // The strip opens the details (checks list and support line); Back returns to the tiles; Back again closes.
+  t = await tilesOf();
+  key(t, 40); assert.ok(t.screen.innerHTML.includes('<b style="color:var(--text)">OK</b> Details'));
+  key(t, 13); assert.ok(t.screen.innerHTML.includes('Asking for help') && t.screen.innerHTML.includes('<div class="c">'));
+  key(t, 10009); assert.ok(/class="tiles"/.test(t.screen.innerHTML) && t.exits.length === 0);
+  key(t, 10009); assert.equal(t.exits.length, 1);
+  // Service down: no tiles, the old screen with its reasons.
+  t = await tilesOf({screen: null});
+  assert.ok(!/class="tiles"/.test(t.screen.innerHTML) && t.screen.innerHTML.includes('Not responding'));
+  // No literal port outside BASE, and ES5 only (no arrow functions, let/const, template strings or gap) in the page script.
+  const code = /<script>\s*([\s\S]*?)<\/script>/.exec(html)[1];
+  assert.ok(!/=>|\blet\b|\bconst\b|`/.test(code.replace(/'[^'\n]*'/g, "''").replace(/^\s*\/\/.*$/gm, '')), 'the TV page stays ES5');
+  assert.ok(!/\bgap\s*:/.test(html), 'flex without gap');
   console.log('PASS TV screen: probe report kept, healthy/limited/failed/down/refused states, PIN slot hidden or blocked reason, Back/OK/idle');
 })().catch(e => {console.error(e); process.exitCode = 1;});

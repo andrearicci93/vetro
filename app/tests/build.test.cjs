@@ -29,7 +29,7 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/') && !n
     'service/plugin-launcher.js', 'service/disabled-ledger.js', 'service/restore.js',
     'service/updater.js', 'service/update-key.js', 'service/plugin-key.js',
     'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/keep-removed.js', 'service/leftovers.js', 'service/remap.js',
-    'service/samsung-remote.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
+    'service/samsung-remote.js', 'service/screen-controls.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
 ].sort());
 // A service file that requires a sibling the package does not carry crashes the whole service on the TV at start.
 files.filter(file => /^service\/[^/]+\.js$/.test(decodeURIComponent(file.uri))).forEach(file => {

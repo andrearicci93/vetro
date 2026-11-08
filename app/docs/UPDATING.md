@@ -2,7 +2,9 @@
 
 [Back to Vetro](../../README.md)
 
-Vetro can update itself from **Quick settings → General → Software update**. You press **Check for update**; the dashboard (in your browser) asks GitHub for the newest signed update, and **Update** sends it to the TV. No computer has to be connected to the TV, and **Host PC IP** stays at `127.0.0.1`.
+Vetro can update itself from **Quick settings → General → Software update**. You press **Check for update**; the dashboard (in your browser) asks GitHub for the newest signed update, and **Update** sends it to the TV.
+
+The **Update Vetro** tile on the TV screen does the same without a browser. The TV page cannot reach GitHub (its package only allows the service's own address), so there the service itself downloads `update-index.json` and the bundle over HTTPS and passes them to the same updater: the signature and file hashes are checked exactly as for an update sent from the dashboard, and the bundle is limited to 8 MiB. This path has not been tried on a TV yet; if the TV's certificates do not let the service reach GitHub, the tile says so and the dashboard keeps working. No computer has to be connected to the TV, and **Host PC IP** stays at `127.0.0.1`.
 
 This is a file swap done with the root agent, not a new install. It cannot change what the package declares in `config.xml` (privileges, service flags). When a version does, Vetro says so and you install it once more with Apps2Samsung.
 

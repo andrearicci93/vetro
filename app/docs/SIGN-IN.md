@@ -32,6 +32,7 @@ A plugin page runs in a sandboxed frame without the dashboard's cookie, so it ca
 | Check | Purpose |
 | --- | --- |
 | Unpaired LAN clients get `401` on every route except `/auth/pair`, `/auth/confirm` and the sign-in page | Root routes need a paired device |
+| `GET /screen/controls` (what the TV screen's tiles show) may be read by the TV page from any address while pairing is off, like `/screen`; `POST /screen/control` (the tiles' actions) never is: it needs the TV itself or a paired device | A page that is not recognised as the TV can draw the tiles but cannot change anything |
 | Only TV apps can read `/auth/pending` (the current code) | The code proves physical access to the TV |
 | One pairing at a time: while a code is live, new pairing requests get `429` and the TV app is not reopened | Nobody can cancel someone else's pairing or keep popping the code up |
 | The browser that asked for a code gets a `vetro_pair` cookie (2 minutes, `HttpOnly`, `SameSite=Strict`, path `/auth`) holding the pairing id; `GET /auth/state` tells the sign-in page whether a code is waiting and whether it is theirs, so a reload resumes the code instead of losing it | A reload used to leave a code on the TV that nobody could confirm until it expired |

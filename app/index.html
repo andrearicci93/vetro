@@ -23,7 +23,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .state.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
 .state.bad{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad)}
 .state.wait{border-color:var(--border);background:transparent;color:var(--muted)}
-/* The one moving thing: a slowly turning dashed ring while the checks run, so a quiet screen does not look stuck. */
+/* The one moving thing: a slowly turning dashed ring while the checks run or a switch is working, so a quiet screen does not look stuck. */
 @keyframes spin{to{transform:rotate(360deg)}}
 .state.wait svg,.c.wait .ic{animation:spin 2.4s linear infinite}
 .dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
@@ -62,6 +62,57 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .keys{display:flex;justify-content:flex-end;margin-top:18px;font-size:22px;color:var(--muted)}
 .keys span{margin-left:28px}
 .keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:8px;color:var(--text)}
+
+/* Quick controls (the main view): five tiles that do what one switch of the dashboard does, and a strip with the checks.
+   The tiles are solid, flat and have a uniform border; focus is a brighter border plus an outline, never a coloured edge. */
+#screen.compact .hero img,#screen.compact .hero .logo{width:132px;height:132px;border-radius:24px;margin-right:36px}
+#screen.compact .hero h1{font-size:72px}
+#screen.compact .meta{margin-top:8px;font-size:26px}
+#screen.compact .state{margin-top:14px;font-size:26px;padding:6px 20px 6px 12px}
+#screen.compact .dash{width:700px;padding:20px 32px}
+#screen.compact .url{margin:6px 0 4px;font-size:40px}
+#screen.compact .dash p{font-size:22px}
+.sec{display:flex;align-items:baseline;margin:40px 0 20px}
+.sec h2{margin:0;font-size:36px;font-weight:500;letter-spacing:-.02em}
+.sec span{margin-left:auto;font-size:24px;color:var(--muted)}
+.tiles{display:flex}
+.tile{position:relative;flex:1;height:430px;margin-right:20px;padding:26px;border-radius:16px;background:var(--surface);border:2px solid var(--border);display:flex;flex-direction:column}
+.tile:last-child{margin-right:0}
+.tile.focus{background:var(--raised);border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px}
+.tile.na{opacity:.55}
+.tile .top{display:flex;align-items:center;margin-bottom:18px}
+.tile .glyph{width:64px;height:64px;border-radius:16px;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none}
+.tile.focus .glyph{background:var(--surface)}
+.tile .glyph svg{width:36px;height:36px}
+.tile .tag{margin-left:auto;font-size:20px;letter-spacing:.08em;color:var(--muted)}
+.tile h3{margin:0;font-size:32px;line-height:1.15;font-weight:500;letter-spacing:-.01em}
+.tile p{margin:10px 0 0;font-size:23px;line-height:1.35;color:var(--muted)}
+.tile .foot{margin-top:auto;display:flex;align-items:center}
+.tile .val{font-size:26px;font-weight:500;margin-left:16px}
+.val.ok{color:var(--ok)}.val.warn{color:var(--warn)}.val.bad{color:var(--bad)}.val.mute{color:var(--muted)}
+.sw{flex:none;width:88px;height:48px;border-radius:999px;border:2px solid var(--border);background:transparent;position:relative}
+.sw i{position:absolute;top:5px;left:5px;width:34px;height:34px;border-radius:50%;background:var(--muted)}
+.sw.on{background:var(--ok-soft);border-color:var(--ok-line)}
+.sw.on i{left:45px;background:var(--ok)}
+.sw.part{background:var(--warn-soft);border-color:var(--warn-line)}
+.sw.part i{left:25px;background:var(--warn)}
+.sw.busy i{left:25px;background:transparent;border:3px dashed var(--muted);animation:spin 2.4s linear infinite}
+.btn{flex:none;font-size:26px;font-weight:500;padding:8px 26px;border-radius:999px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
+.btn.go{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.tile.focus .btn{background:var(--surface)}
+.tile.focus .btn.go{background:var(--ok-soft)}
+.diag{position:absolute;left:0;right:0;bottom:0;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:18px 28px;display:flex;align-items:center}
+.diag.warn{border-color:var(--warn-line)}.diag.bad{border-color:var(--bad-line);background:var(--bad-soft)}
+.diag.focus{border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px;background:var(--raised)}
+.diag h4{margin:0 22px 0 0;font-size:26px;font-weight:500;flex:none}
+.chips{display:flex;flex:1;flex-wrap:wrap}
+.chip{display:flex;align-items:center;margin-right:24px;font-size:22px;color:var(--muted);white-space:nowrap}
+.chip b{font-weight:500;color:var(--text);margin-left:8px}
+.chip.warn b{color:var(--warn)}.chip.bad b{color:var(--bad)}
+.dot{width:16px;height:16px;border-radius:50%;margin-right:10px;flex:none;background:var(--ok)}
+.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.na,.dot.off{background:transparent;border:2px dashed var(--muted)}
+.more{margin-left:16px;flex:none;font-size:22px;color:var(--muted);white-space:nowrap}
+.toast{position:absolute;left:50%;top:0;max-width:1500px;transform:translateX(-50%);padding:10px 28px;border-radius:999px;background:var(--raised);border:2px solid var(--border);font-size:24px;text-align:center}
 </style></head>
 <body>
 <div id="stage"><div class="safe" id="screen"></div></div>
@@ -359,7 +410,213 @@ function cell(c) {
 }
 
 var WAITING = [['Service', 'Starting'], ['Root access', 'Checking'], ['Remote input', 'Checking'], ['Launcher', 'Checking'], ['TV APIs', 'Checking'], ['Memory', 'Checking']];
+// ---- quick controls (the main view) -----------------------------------------------------------------------
+// Five tiles; each does what one switch of the dashboard does, through POST /screen/control. The state comes from one
+// GET /screen/controls when the screen opens and again after each action: nothing polls. Every call has a time limit.
+var view = 'main', focus = 0, lastTile = 0, controls = null, controlsSeq = 0, busy = {}, upd = {phase: 'idle', version: null}, toastText = '', toastTimer = null;
+var TILE_ICONS = {
+  launcher: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linejoin="round"><rect x="4" y="4" width="11" height="11" rx="3"/><rect x="21" y="4" width="11" height="11" rx="3"/><rect x="4" y="21" width="11" height="11" rx="3"/><rect x="21" y="21" width="11" height="11" rx="3"/></svg>',
+  ads: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18s5-9 15-9 15 9 15 9-5 9-15 9S3 18 3 18z"/><circle cx="18" cy="18" r="4.5"/><path d="M6 31L30 5"/></svg>',
+  voice: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="3" width="10" height="17" rx="5"/><path d="M7 16a11 11 0 0 0 22 0M18 27v6"/><path d="M5 31L31 5"/></svg>',
+  update: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="14"/><path d="M18 9v13M12 17l6 6 6-6"/></svg>',
+  tuner: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="30" height="20" rx="3"/><path d="M12 4l6 7 6-7"/></svg>'
+};
+// Tile order is the order on screen. "on"/"off" are the words for the switch; a switch is "on" when the feature is switched on
+// (the launcher, the tuner) or switched off for good (ads, voice: the dashboard's "Disable" switches).
+var TILES = [
+  {id: 'launcher', title: 'Vetro Launcher', tag: '', on: 'On', off: 'Off', desc: 'The Home key opens Vetro’s fast launcher instead of Samsung’s Home.', words: ['Launcher on', 'Launcher off']},
+  {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and the TV’s viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
+  {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google and voice search. The remote’s mic button stops working.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
+  {id: 'update', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.'},
+  {id: 'tuner', title: 'Vetro TV Tuner', tag: 'LIVE TV', on: 'On', off: 'Off', desc: 'Live TV drawn by Vetro over Samsung’s tuner, which stays installed and is never changed.', words: ['Vetro TV Tuner on', 'Vetro TV Tuner off']}
+];
+// A call to the service with its own time limit, so a tile can never stay on "Working" for good. Resolves {status, data}.
+function call(method, path, body, ms) {
+  return new Promise(function (resolve, reject) {
+    var xhr = new XMLHttpRequest(), data = null;
+    xhr.open(method, BASE + path, true);
+    xhr.timeout = ms;
+    if (body !== null) xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () {
+      try { data = JSON.parse(xhr.responseText); } catch (e) {}
+      resolve({status: xhr.status, data: data});
+    };
+    xhr.onerror = function () { reject(new Error('The service did not answer')); };
+    xhr.ontimeout = function () { reject(new Error('The TV took too long to answer')); };
+    xhr.send(body === null ? undefined : JSON.stringify(body));
+  });
+}
+function paintToast() {
+  var el = document.getElementById('toast');
+  if (!el || !el.style) return;
+  el.textContent = toastText;
+  el.style.display = toastText ? 'block' : 'none';
+}
+function toast(text) {
+  toastText = String(text).slice(0, 200);
+  paintToast();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { toastText = ''; paintToast(); }, 5000);
+}
+function failText(r) { return (r && r.data && r.data.error) ? String(r.data.error) : 'The TV refused the change (HTTP ' + (r && r.status) + ')'; }
+function loadControls() {
+  var mine = ++controlsSeq;
+  return call('GET', '/screen/controls', null, 15000).then(function (r) {
+    if (mine !== controlsSeq) return;
+    controls = r.status === 200 && r.data && r.data.tiles ? r.data : null;
+  }, function () { if (mine === controlsSeq) controls = null; }).then(function () {
+    if (mine !== controlsSeq) return;
+    loaded = true;
+    if (view === 'main' && lastScreen) render(lastScreen, false);
+  });
+}
+function rereadScreen() {
+  return readScreen().then(function (d) { lastScreen = d; if (view === 'main') render(d, false); }, function () {});
+}
+// What a tile shows: {sw: off|on|part|busy|none, val, cls, foot (a button instead of a switch), tag, desc, na}
+function tileView(t) {
+  var c = controls, s = c && c.tiles && c.tiles[t.id], l = lastScreen && lastScreen.launcher, o = {tag: t.tag, desc: t.desc, na: false};
+  if (t.id === 'update') return updateView(t, o);
+  if (busy[t.id]) { o.sw = 'busy'; o.val = 'Working…'; o.cls = 'mute'; return o; }
+  if (!c) { o.sw = 'off'; o.val = controls === null && !loaded ? 'Reading…' : 'Unavailable'; o.cls = 'mute'; o.na = true; return o; }
+  if (!c.canControl) o.na = true;
+  if (!s || s.state === 'na') { o.sw = 'off'; o.val = 'Unavailable'; o.cls = 'mute'; o.na = true; o.why = s && s.why; return o; }
+  if (t.id === 'launcher' && s.state === 'on' && l && l.running === false) {
+    o.sw = 'part'; o.val = 'Not running'; o.cls = 'bad'; o.tag = 'PROBLEM';
+    o.desc = (l.failures ? 'Failed to start (tried ' + l.failures + (l.failures === 1 ? ' time' : ' times') + '). ' : 'It is not running. ') + 'Press OK to try again.';
+    return o;
+  }
+  if (t.id === 'launcher' && s.custom) o.desc = 'A custom launcher app is set for the Home key. Press OK to put Samsung’s Home back.';
+  if (s.state === 'part') { o.sw = 'part'; o.val = (s.left || 'Some') + ' still on'; o.cls = 'warn'; return o; }
+  o.sw = s.state === 'on' ? 'on' : 'off';
+  o.val = s.state === 'on' ? t.on : t.off;
+  o.cls = s.state === 'on' ? 'ok' : 'mute';
+  return o;
+}
+function updateView(t, o) {
+  var c = controls, ok = c && c.canControl && c.update && c.update.configured;
+  o.tag = (c && c.update && c.update.version) || (lastScreen && lastScreen.version) || '';
+  o.na = !ok;
+  if (!c) { o.btn = 'Check for update'; return o; }
+  if (!c.update || !c.update.configured) { o.desc = 'This build has no update key, so it cannot be updated from here.'; o.btn = 'Check for update'; return o; }
+  var p = upd.phase;
+  if (p === 'checking') o.btn = 'Checking…';
+  else if (p === 'none') { o.desc = 'You have the newest version.'; o.note = 'Up to date'; o.cls = 'ok'; }
+  else if (p === 'found') { o.desc = 'Version ' + upd.version + ' is ready. The signed update is checked on the TV before it is installed.'; o.btn = 'Update to ' + upd.version; o.go = true; }
+  else if (p === 'confirm') { o.desc = 'Version ' + upd.version + ' is ready. The signed update is checked on the TV before it is installed.'; o.btn = 'OK again to confirm'; o.go = true; }
+  else if (p === 'reinstall') { o.desc = 'Version ' + upd.version + ' changes the package itself. Install it again with Apps2Samsung.'; o.btn = 'Check for update'; }
+  else if (p === 'run') { o.note = 'Updating… Vetro restarts'; o.cls = 'mute'; }
+  else if (p === 'error') { o.btn = 'Check for update'; o.desc = upd.error || 'The update did not work.'; }
+  else o.btn = 'Check for update';
+  return o;
+}
+var loaded = false;
+function tileHtml(i) {
+  var t = TILES[i], o = tileView(t), cls = 'tile' + (focus === i ? ' focus' : '') + (o.na ? ' na' : ''), foot;
+  if (t.id === 'update') foot = o.btn ? '<div class="btn' + (o.go ? ' go' : '') + '">' + esc(o.btn) + '</div>' : '<div class="val ' + (o.cls || 'mute') + '" style="margin-left:0">' + esc(o.note || '') + '</div>';
+  else foot = '<div class="sw ' + o.sw + '"><i></i></div><div class="val ' + o.cls + '">' + esc(o.val) + '</div>';
+  return '<div class="' + cls + '"><div class="top"><div class="glyph">' + TILE_ICONS[t.id] + '</div><div class="tag">' + esc(o.tag || '') + '</div></div>' +
+    '<h3>' + esc(t.title) + '</h3><p>' + esc(o.desc) + '</p><div class="foot">' + foot + '</div></div>';
+}
+var SHORT = {'Root access': 'Root', 'Remote input': 'Input'};
+function renderMain(d) {
+  var list = checks(d), bad = 0, warn = 0, state, label, chips = '', tiles = '', i, c, locked = controls && !controls.canControl;
+  list.forEach(function (x) { if (x[0] === 'bad') bad++; else if (x[0] === 'warn') warn++; });
+  if (bad) { state = 'bad'; label = 'Needs attention'; } else if (warn) { state = 'warn'; label = 'Running, with limits'; } else { state = 'ok'; label = 'Running in the background'; }
+  var device = report.settings, model = device.realModel || device.model, firmware = device.firmware ? String(device.firmware).split('-').pop() : null, version = d.version || appVersion();
+  var pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '', addr = d.address ? 'http://' + d.address + ':' + d.port : null;
+  for (i = 0; i < list.length; i++) {
+    c = list[i];
+    chips += '<div class="chip' + (c[0] === 'warn' || c[0] === 'bad' ? ' ' + c[0] : '') + '"><span class="dot ' + (c[0] === 'ok' ? '' : c[0]) + '"></span>' + esc(SHORT[c[1]] || c[1]) + '<b>' + esc(c[2]) + '</b></div>';
+  }
+  for (i = 0; i < TILES.length; i++) tiles += tileHtml(i);
+  var right = locked ? 'Switches are off here: this page is not recognised as the TV. Use the dashboard on a phone.' : focus < 5 ? 'Left / Right to choose · OK to switch' : '';
+  var el = document.getElementById('screen');
+  el.className = 'safe compact';
+  el.innerHTML =
+    '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
+    '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
+    '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
+    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : 'The address appears once the TV is on the network.') + '</p></div></div>' +
+    '<div class="sec"><h2>Quick controls</h2><span>' + esc(right) + '</span></div><div class="tiles">' + tiles + '</div>' +
+    '<div class="diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === 5 ? ' focus' : '') + '"><h4>Diagnostics</h4><div class="chips">' + chips + '</div><div class="more">' +
+    (focus === 5 ? '<b style="color:var(--text)">OK</b> Details' : 'Down for details') + '</div></div><div class="toast" id="toast" style="display:none"></div>';
+  paintToast();
+}
 function render(d, waiting) {
+  if (waiting || !d || view === 'details') return renderDetails(d, waiting);
+  renderMain(d);
+}
+function chosen() { return TILES[focus] && TILES[focus].id; }
+// One tile pressed. A switch asks the service for the opposite of what it shows; "part" (some members still on) finishes the job.
+function activate() {
+  var id = chosen(), s, want;
+  if (focus === 5) { view = 'details'; render(lastScreen, false); return; }
+  if (!controls) { toast('The controls did not load. Press Back and open Vetro again; the service may be starting.'); return; }
+  if (!controls.canControl) { toast('This TV page cannot change settings. Use the dashboard.'); return; }
+  if (id === 'update') return activateUpdate();
+  if (busy[id]) return;
+  s = controls.tiles[id];
+  if (!s || s.state === 'na') { toast(s && s.why ? 'Not available: ' + s.why : 'Not available on this TV'); return; }
+  want = s.state !== 'on' || (id === 'launcher' && lastScreen && lastScreen.launcher && lastScreen.launcher.running === false);
+  busy[id] = true; render(lastScreen, false);
+  call('POST', '/screen/control', {id: id, on: want}, 130000).then(function (r) {
+    busy[id] = false;
+    if (r.status === 200 && r.data && r.data.ok && r.data.tile) {
+      controls.tiles[id] = r.data.tile;
+      toast(TILES.filter(function (x) { return x.id === id; })[0].words[r.data.tile.state === 'on' || r.data.tile.state === 'part' ? 0 : 1]);
+    } else { toast(failText(r)); loadControls(); }
+    if (id === 'launcher') rereadScreen(); else render(lastScreen, false);
+  }, function (e) { busy[id] = false; toast(e.message); loadControls(); });
+}
+function updateStep(step, ms) { return call('POST', '/screen/control', {id: 'update', step: step}, ms); }
+function activateUpdate() {
+  var p = upd.phase;
+  if (p === 'checking' || p === 'run') return;
+  if (p === 'found') { upd.phase = 'confirm'; render(lastScreen, false); return; }
+  if (p === 'confirm') {
+    upd.phase = 'run'; render(lastScreen, false);
+    updateStep('apply', 130000).then(function (r) {
+      if (r.status === 200 && r.data && r.data.ok) { waitForVersion(upd.version, 0); return; }
+      upd.phase = 'error'; upd.error = failText(r); render(lastScreen, false); toast(upd.error);
+    }, function (e) { upd.phase = 'error'; upd.error = e.message; render(lastScreen, false); toast(e.message); });
+    return;
+  }
+  upd.phase = 'checking'; render(lastScreen, false);
+  updateStep('check', 70000).then(function (r) {
+    if (r.status === 200 && r.data && r.data.ok) { upd.phase = r.data.phase; upd.version = r.data.version; upd.error = null; }
+    else { upd.phase = 'error'; upd.error = failText(r); toast(upd.error); }
+    render(lastScreen, false);
+  }, function (e) { upd.phase = 'error'; upd.error = e.message; render(lastScreen, false); toast(e.message); });
+}
+// After an update the service restarts. Once it reports the new version this screen is reloaded to get the new page too.
+function waitForVersion(v, tries) {
+  call('GET', '/status', null, 4000).then(function (r) {
+    if (r.status === 200 && r.data && r.data.app && r.data.app.version === v) { try { location.reload(); } catch (e) {} return; }
+    throw new Error('old');
+  }).then(null, function () {
+    if (tries > 100) { upd.phase = 'error'; upd.error = 'Vetro did not come back with the new version yet. If it does not, it puts the old one back by itself.'; render(lastScreen, false); return; }
+    setTimeout(function () { waitForVersion(v, tries + 1); }, 3000);
+  });
+}
+// Moving off the update tile cancels a pending confirmation.
+function moveTo(n) {
+  if (n === focus) return;
+  if (upd.phase === 'confirm') upd.phase = 'found';
+  focus = n; if (n < 5) lastTile = n;
+  render(lastScreen, false);
+}
+function mainKey(k) {
+  if (k === 37 && focus > 0 && focus < 5) moveTo(focus - 1);
+  else if (k === 39 && focus < 4) moveTo(focus + 1);
+  else if (k === 40 && focus < 5) moveTo(5);
+  else if (k === 38 && focus === 5) moveTo(lastTile);
+  else if (k === 13) activate();
+  else if (k === 10009 || k === 27) leave();
+}
+function renderDetails(d, waiting) {
+  document.getElementById('screen').className = 'safe';
   var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '';
   list.forEach(function (c) { if (waiting) return; if (c[0] === 'bad') bad++; else if (c[0] === 'warn') warn++; });
   if (waiting) { state = 'wait'; label = 'Checking'; sum = 'Checking'; }
@@ -481,7 +738,7 @@ function post(ms) {
 }
 function run() {
   if (running) return Promise.resolve();
-  running = true; delivered = false; refusal = null;
+  running = true; delivered = false; refusal = null; controls = null; loaded = false; busy = {};
   var started = Date.now(), closed = false, cap;
   step = {since: started};
   report = {probe: {}, apps: [], packages: [], settings: {}, progress: {partial: true, done: 0, of: jobs.length, next: jobs[0][0], elapsedMs: 0}};
@@ -525,7 +782,7 @@ function run() {
       return post(10000).then(function () { delivered = true; }, function () {});
     })
     .then(function () { return readScreen().catch(function () { return null; }); })
-    .then(function (d) { lastScreen = d; render(d, false); }, function () { lastScreen = null; render(null, false); })
+    .then(function (d) { lastScreen = d; render(d, false); if (d) loadControls(); }, function () { lastScreen = null; render(null, false); })
     .then(function () { running = false; readPackages(); });
 }
 // The package list, after the verdict. When it arrives the report goes out again and the screen is drawn again.
@@ -546,7 +803,9 @@ document.addEventListener('visibilitychange', function () { if (document.hidden 
 document.addEventListener('keydown', function (e) {
   var k = e && e.keyCode;
   resetIdle();
-  if (k === 10009 || k === 27) leave();
+  // The main view (tiles) takes the keys once the checks are done; the details view and the waiting screen keep the old ones.
+  if (!running && lastScreen && view === 'main') mainKey(k);
+  else if (k === 10009 || k === 27) { if (!running && lastScreen && view === 'details') { view = 'main'; render(lastScreen, false); } else leave(); }
   else if (k === 13) run();
 });
 window.addEventListener('resize', fit);
