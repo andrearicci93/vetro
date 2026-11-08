@@ -53,6 +53,8 @@ namespace Launcher.Core
             if (ready != null) ready();
         }
 
+        public void CancelLaunch() { _afterClose = null; }
+
         public void Release(Action ready)
         {
             _next = CloseTimes.Length * _targets;

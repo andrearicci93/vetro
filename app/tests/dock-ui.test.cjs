@@ -14,6 +14,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         let data = {};
         if (url === '/dock' && !body) data = dock;
         else if (url === '/dock') {
+            if(body.action === 'doubleHome')dock=Object.assign({},dock,{doubleHome:body.value});
             if(body.action === 'homeAssignment') dock=Object.assign({},dock,{enabled:body.mode==='vetro',customApp:body.mode==='custom'?body.appId:null,mode:body.mode==='samsung'?'off':body.mode});
             if(body.action === 'homeShortcut') dock=Object.assign({},dock,{homeShortcut:wrongHomeReply?null:body.appId?{appId:body.appId,label:body.label}:null});
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
@@ -233,6 +234,15 @@ const tick = () => new Promise(r => setImmediate(r));
     await sandbox.setDock('homeAssignment','Save Home destination',{mode:'samsung'});
     assert.equal(sandbox.dockData.customApp,null);
     assert.equal(sandbox.dockData.enabled,false);
+
+    const doubleHome={enabled:true,mode:'app',appId:'GlassHome1.Home'};
+    sandbox.doubleHomeDraft=doubleHome;
+    await sandbox.loadDock();assert.equal(sandbox.doubleHomeDraft.appId,'GlassHome1.Home');
+    await sandbox.setDock('doubleHome','Save double-press action',{value:doubleHome});
+    assert.equal(sandbox.doubleHomeDraft,null);assert.equal(sandbox.dockData.doubleHome.appId,'GlassHome1.Home');
+    assert.match(el('dockBody').innerHTML,/Choose a different app/);
+    await sandbox.setDock('doubleHome','Save double-press action',{value:{enabled:true,mode:'shortcut',appId:null}});
+    assert.equal(sandbox.dockData.doubleHome.mode,'shortcut');
 
     console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors');
 })().catch(e => { console.error(e); process.exitCode = 1; });

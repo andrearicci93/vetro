@@ -350,6 +350,25 @@ function fixture(options) {
     await assert.rejects(f.dock.setHomeShortcut(shortcut), /empty or unreadable/);
     assert.equal(f.dock.readState().homeShortcut, null, 'failed catalog write restores the choice');
 
+    f=fixture();f.dock.shortcutCheck=async()=>({ok:true});
+    assert.equal(f.dock.readState().doubleHome.enabled,false);
+    const doubleHome={enabled:true,mode:'app',appId:'GlassHome1.Home'};
+    await f.dock.setDoubleHome(doubleHome);
+    assert.deepEqual(f.dock.readState().doubleHome,doubleHome);
+    await f.dock.setHomeShortcut({appId:'another.Home',label:'Other'});
+    assert.deepEqual(f.dock.readState().doubleHome,doubleHome,'tile change preserves independent destination');
+    assert.match(f.dock.startScript(),/--double-home-app GlassHome1.Home/);
+    f.dock.patchState({customApp:'another.Home'});
+    assert.doesNotMatch(f.dock.startScript(),/--double-home/,'inactive in custom mode');
+    f.dock.patchState({customApp:null});
+    await f.dock.setDoubleHome({enabled:true,mode:'shortcut',appId:null});
+    assert.match(f.dock.startScript(),/--double-home-shortcut/);
+    f.dock.shortcutCheck=async()=>({ok:false});
+    await assert.rejects(f.dock.setDoubleHome(doubleHome),/installed, enabled/);
+    assert.equal(f.dock.readState().doubleHome.mode,'shortcut');
+    await f.dock.setDoubleHome({enabled:false,mode:'shortcut',appId:null});
+    assert.doesNotMatch(f.dock.startScript(),/--double-home/);
+
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 

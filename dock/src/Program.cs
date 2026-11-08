@@ -63,7 +63,8 @@ namespace Launcher
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
-        private static AppEntry _homeLaunch;
+        private static AppEntry _homeLaunch, _doubleHome;
+        private static readonly HomeGesture DoubleHome = new HomeGesture();
 
         private static readonly NavigationInput Navigation = new NavigationInput();
         private static AppEntry _pendingLaunch;
@@ -78,7 +79,7 @@ namespace Launcher
         private const double RescanSeconds = 3.0;
         private const int EAgain = 11;
         private static readonly byte[] InputBuf = new byte[16 * 32];
-        private static readonly List<int> InputPresses = new List<int>();
+        private static readonly List<InputKeyEvent> InputPresses = new List<InputKeyEvent>();
 
         // ------------------------------------------------------------------ logging
 
@@ -303,6 +304,7 @@ namespace Launcher
         /// <summary>A node that was unplugged (the remote went to sleep) stops being watched; it is opened again when it returns.</summary>
         private static void DropNode(int index)
         {
+            DoubleHome.Reset();
             if (_inputFds[index] < 0) return;
             Log("input: lost " + _inputPaths[index]);
             if (_inputHandlers[index] != IntPtr.Zero) Efl.ecore_main_fd_handler_del(_inputHandlers[index]);
@@ -585,6 +587,7 @@ namespace Launcher
 
         private static void HandleKey(string key)
         {
+            if (key != "XF86Home") { DoubleHome.Reset(); if (_pendingLaunch == _doubleHome) _pendingLaunch = null; if (CloseGuard != null) CloseGuard.CancelLaunch(); }
             try
             {
                 int index;
@@ -632,6 +635,7 @@ namespace Launcher
                     if (n <= 0) break;
                     foreach (Command c in Commands.Feed(ReadBuf, (int)n))
                     {
+                        DoubleHome.Reset();
                         Log("command " + c);
                         switch (c)
                         {
@@ -658,13 +662,28 @@ namespace Launcher
                     if (n < 0 && Marshal.GetLastWin32Error() != EAgain) { DropNode(index); break; }
                     if (n <= 0) break;
                     InputPresses.Clear();
-                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses);
+                    _inputReaders[index].FeedEvents(InputBuf, (int)n, e => InputPresses.Add(e));
                     for (int k = 0; k < InputPresses.Count; k++)
                     {
-                        int code = InputPresses[k];
-                        if (_learn) Log("key code " + code);
-                        if (code != _homeCode) { NavFromInput(code); continue; }
+                        InputKeyEvent ev = InputPresses[k];
+                        int code = ev.Code;
+                        if (_learn && ev.Value == 1) Log("key code " + code);
+                        if (code != _homeCode) { if (ev.Value != 0) { DoubleHome.Reset(); if (_pendingLaunch == _doubleHome) _pendingLaunch = null; if (CloseGuard != null) CloseGuard.CancelLaunch(); } if (ev.Value == 1) NavFromInput(code); continue; }
                         double now = Efl.ecore_time_get();
+                        if (_doubleHome != null && _homeLaunch == null)
+                        {
+                            HomeGestureAction gesture = DoubleHome.Feed(index, ev.Value, ev.Time);
+                            if (gesture == HomeGestureAction.Double)
+                            {
+                                HomeKeys.ObserveRaw(now);
+                                CancelGuard(); HideDock();
+                                if (_ctl.Phase == Phase.Hidden) LaunchApp(_doubleHome);
+                                else _pendingLaunch = _doubleHome;
+                                continue;
+                            }
+                            if (gesture != HomeGestureAction.Press) continue;
+                        }
+                        else if (ev.Value != 1) continue;
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
                         if (HomeKeys.FromEvdev(now, _ctl.IsActive) == HomeKeyAction.None) continue;
                         _perfWhy = "home";
@@ -771,6 +790,7 @@ namespace Launcher
         /// <summary>OK on an entry: open a page, switch input, or launch; everything but a page closes the dock.</summary>
         private static void Activate(AppEntry e)
         {
+            DoubleHome.Reset();
             if (e.Panel != null)
             {
                 if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
@@ -1037,6 +1057,19 @@ namespace Launcher
                 {
                     _homeLaunch = HomeLaunch.Parse(homeLaunch);
                     Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
+                }
+                if (_homeLaunch == null)
+                {
+                    if (Flag(args, "--double-home-shortcut"))
+                        foreach (AppEntry entry in _apps) if (entry.Slug == "customhome" || entry.Slug == "samsunghome") _doubleHome = entry;
+                    string target = Arg(args, "--double-home-app"), fallback = "com.samsung.tv.csfs";
+                    foreach (AppEntry entry in _apps)
+                    {
+                        if (entry.Slug == "samsunghome") fallback = entry.AppId;
+                        else if (entry.Slug == "customhome" && Catalog.ValidAppId(entry.FallbackAppId)) fallback = entry.FallbackAppId;
+                    }
+                    if (Catalog.ValidAppId(target))
+                        _doubleHome = new AppEntry("doublehome", "Home", target == "com.samsung.tv.csfs" ? fallback : target, fallback, null, -1, null, true);
                 }
                 SetupInput(args);
 

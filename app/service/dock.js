@@ -1,4 +1,5 @@
 'use strict';
+var doubleHome = require('./home-double-press.js');
 // Runs the Vetro dock (dock/) on the TV and keeps it running while it is switched on.
 //
 // The dock is a .NET process that the TV's own `dotnet` runs from this package. It is not a
@@ -112,15 +113,16 @@ Dock.prototype.installed = function () {
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+        var doublePress; try { doublePress = doubleHome.normalize(s && s.doubleHome); } catch (ignored) { doublePress = doubleHome.normalize(null); }
         var shortcut = null; try { shortcut = catalog.homeShortcut(s && s.homeShortcut); } catch (ignored) {}
-        return {homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
+        return {doubleHome: doublePress, homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {homeShortcut: null, enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {doubleHome: doubleHome.normalize(null), homeShortcut: null, enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -219,7 +221,7 @@ Dock.prototype.status = function (options) {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
-    var base = {homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
+    var base = {doubleHome: state.doubleHome, homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
@@ -245,6 +247,7 @@ Dock.prototype.startScript = function () {
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
+    if (!state.customApp && state.doubleHome.enabled) args += state.doubleHome.mode === 'shortcut' ? ' --double-home-shortcut' : ' --double-home-app ' + state.doubleHome.appId;
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -537,6 +540,25 @@ Dock.prototype.setSourceOption = function (key, on) {
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
 // Save the overlay tile independently of the physical Home destination.
 // Launcher modes are the single saved assignment for the physical Home key.
+Dock.prototype.setDoubleHome = function (value) {
+    var self = this, setting;
+    try { setting = doubleHome.normalize(value); } catch (e) { return Promise.reject(e); }
+    if (this.busy || this.homeChanging) return Promise.reject(Error('Another launcher change is in progress'));
+    var previous = this.readState(), changed = false;
+    this.busy = true;
+    var needsCheck = setting.mode === 'app' && setting.appId !== HOME_APP;
+    var check = needsCheck && this.shortcutCheck ? this.shortcutCheck(setting.appId, true) : Promise.resolve({ok: !needsCheck});
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled app for double press');
+        self.patchState({doubleHome: setting}); changed = true;
+        return previous.enabled ? self.launch() : Promise.resolve();
+    }).then(function () { return self.status(); }).catch(function (error) {
+        if (!changed) throw error;
+        self.patchState({doubleHome: previous.doubleHome});
+        return (previous.enabled ? self.launch() : Promise.resolve()).then(function () { throw error; }, function (restore) { throw Error(error.message + '; launcher recovery needs attention: ' + restore.message); });
+    }).finally(function () { self.busy = false; });
+};
+
 Dock.prototype.setHomeAssignment = function (value) {
     var self = this;
     if (!value || ['samsung', 'vetro', 'custom'].indexOf(value.mode) < 0) return Promise.reject(Error('Choose a Home destination'));

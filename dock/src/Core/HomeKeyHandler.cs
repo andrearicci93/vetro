@@ -9,6 +9,8 @@ namespace Launcher.Core
         private double _lastHome = double.NegativeInfinity;
         private double _lastRaw = double.NegativeInfinity;
 
+        public void ObserveRaw(double now) { _lastRaw = now; }
+
         public HomeKeyAction FromEvdev(double now, bool active)
         {
             // Even a raw copy delivered after the window event can have a later echo.
