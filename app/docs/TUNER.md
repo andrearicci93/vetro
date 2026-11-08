@@ -45,7 +45,7 @@ The same list, with a picture of every screen, is on the dashboard page.
 
 ## The info panel and the launcher's 123 pad
 
-The tuner opens the info panel on the Info key (evdev code 358) or on `info` written to the control pipe (`echo info > /tmp/vetro-tuner.ctl`). An Info key injected with `input_keyevent XF86Info` (what the launcher's 123 pad sends) does **not** reach the tuner: it goes to `tv-viewer`, which draws its own panel. For the pad's Info key to open Vetro's panel, the launcher has to write `info` to the pipe when the tuner is on (see `tuner/README.md`). Samsung's panel is not covered: when a remote's real Info key is pressed, both panels may appear.
+The tuner opens the info panel on the Info key (evdev code 358) or on `info` written to the control pipe (`echo info > /tmp/vetro-tuner.ctl`). An Info key injected with `input_keyevent XF86Info` (what the launcher's 123 pad sends) does **not** reach the tuner: it goes to `tv-viewer`, which draws its own panel. For the pad's Info key to open Vetro's panel, the launcher has to write `info` to the pipe while the tuner is on screen (the file `/tmp/vetro-tuner.ctl.shown` says so; see `tuner/README.md` for the exact command). Samsung's panel is not covered: when a remote's real Info key is pressed, both panels may appear.
 
 The panel does not show resolution, audio format, subtitle or teletext badges, or the programme's genre: the tuner has not read them from the TV service yet, and it shows nothing rather than guess.
 

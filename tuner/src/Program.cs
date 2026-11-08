@@ -174,7 +174,7 @@ namespace Tuner
 
             // From here on results of the worker may be applied.
             _wakeHandler = Efl.ecore_main_fd_handler_add(Wake[0], Efl.EcoreFdRead, OnWake, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (_resident) OpenControl();
+            if (_resident) { MarkShown(false); OpenControl(); }          // a flag left by a tuner that was killed is stale
             if (_resident && _takeoverApp != null)
             {
                 _takeoverTimer = Efl.ecore_timer_add(0.5, OnTakeoverPoll, IntPtr.Zero);
@@ -189,6 +189,7 @@ namespace Tuner
             Log("elm_run returned");
             if (_controlFd >= 0) { Libc.close(_controlFd); Libc.unlink(_controlPath); }
             RemovePid();
+            MarkShown(false);
             Efl.elm_shutdown();
             return 0;
         }
@@ -200,6 +201,7 @@ namespace Tuner
         {
             if (_active) return;
             _active = true;
+            MarkShown(true);
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
             Efl.elm_win_raise(_win);
@@ -215,6 +217,7 @@ namespace Tuner
             TakeoverState.Dismissed();
             if (!_resident) { Efl.elm_exit(); return; }
             _active = false;
+            MarkShown(false);
             Efl.evas_object_hide(_win);
             Log("hidden");
         }
@@ -1024,6 +1027,20 @@ namespace Tuner
             if (!TakeoverState.Observe(status, _active)) return;
             Log("takeover: " + _takeoverApp + " status " + status + ", showing the tuner");
             Activate();
+        }
+
+        // ---- a flag for the launcher: is the tuner on screen? ----
+
+        /// <summary>
+        /// While the tuner is on screen the file "&lt;control pipe&gt;.shown" exists. The launcher's 123 pad looks for it to decide whether its Info
+        /// key goes to the tuner (`echo info > pipe`) or, as before, to the app underneath. The pipe alone says only that a tuner is resident.
+        /// </summary>
+        private static void MarkShown(bool on)
+        {
+            if (!_resident || _controlPath == null) return;
+            string flag = _controlPath + ".shown";
+            try { if (on) File.WriteAllText(flag, "1"); else File.Delete(flag); }
+            catch (Exception ex) { Log("shown flag: " + ex.Message); }
         }
 
         // ---- own pid (the service finds a running tuner by it) ----
