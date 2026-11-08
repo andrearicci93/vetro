@@ -95,6 +95,7 @@ function fakes(over) {
       apply: (text, sha) => { calls.push('updater.apply ' + sha + ' ' + text.length); return over.applyFails ? Promise.reject(Object.assign(new Error(over.applyFails), {code: 'busy'})) : Promise.resolve({ok: true}); }},
     agent: over.agent !== false,
     agentConnected() { return d.agent; },
+    pluginRunning: id => !(over.stopped || []).includes(id),
     inventory: () => Promise.resolve(over.registryError ? {registryError: 'x', apps: []} : {apps: over.apps || []}),
     applyQuick: (id, off) => { calls.push('quick ' + id + ' ' + off); return Promise.resolve({ok: true}); }
   };
@@ -123,6 +124,15 @@ async function tiles() {
   assert.equal(r.tiles.ads.state, 'na');
   r = await new Controls(fakes({dockInstalled: false})).read(true);
   assert.equal(r.tiles.launcher.state, 'na');
+  // The launcher and the tuner are plugins: while one is switched off or stopped the dashboard refuses to change it, so a tile does too.
+  d = fakes({stopped: ['launcher', 'tuner'], apps: tracking}); r = await new Controls(d).read(true);
+  assert.deepEqual([r.tiles.launcher, r.tiles.tuner], [{state: 'na', why: 'Switched off in Vetro Shards'}, {state: 'na', why: 'Switched off in Vetro Shards'}]);
+  assert.equal(r.tiles.ads.state, 'on', 'the quick-settings tiles do not depend on a plugin');
+  for (const id of ['launcher', 'tuner']) {
+    d = fakes({stopped: [id]});
+    await assert.rejects(new Controls(d).act({id, on: true}), e => e.statusCode === 409 && /Vetro Shards/.test(e.message));
+    assert.deepEqual(d.calls, [], 'nothing was started behind the plugin\'s back');
+  }
   // A group the TV does not have.
   assert.equal(groupTile(quick.find('tracking-all'), []).state, 'na');
   assert.equal(groupTile(quick.find('tracking-all'), app([['x', 'optional-area', false]])).state, 'na', 'members of another area are not part of the group');

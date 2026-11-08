@@ -180,7 +180,8 @@ var screenControlsObject = null;
 function screenControls() {
     return screenControlsObject || (screenControlsObject = new (require('./screen-controls.js').Controls)({dock: dock, tuner: tuner, updater: updater,
         inventory: function (refresh) { return inventory(refresh); }, applyQuick: applyQuick,
-        agentConnected: function () { return !!platform.status().agent.connected; }}));
+        agentConnected: function () { return !!platform.status().agent.connected; },
+        pluginRunning: function (id) { var inst = plugins.get(id); return !!(inst && inst.route); }}));
 }
 
 // --- HTTP routing ---------------------------------------------------------

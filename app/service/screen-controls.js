@@ -23,6 +23,7 @@ var BUNDLE_MAX = 8 * 1024 * 1024;
 var FETCH_MS = 60000;
 var VERSION_RE = /^\d+(\.\d+)*$/;
 var SHA256_RE = /^[0-9a-f]{64}$/;
+var STOPPED = 'Switched off in Vetro Shards';
 var UPDATE_FILE_RE = /^vetro-update-[0-9.]+[.]json$/;
 
 function problem(message, status) {
@@ -88,7 +89,9 @@ function fetchText(source, name, max) {
     });
 }
 
-// deps: dock, tuner, updater, inventory(refresh) -> Promise of {apps}, applyQuick(id, off) -> Promise, agentConnected() -> boolean.
+// deps: dock, tuner, updater, inventory(refresh) -> Promise of {apps}, applyQuick(id, off) -> Promise, agentConnected() -> boolean,
+// pluginRunning(id) -> boolean. The launcher and the tuner are bundled plugins: the dashboard's routes answer 503 while the plugin is
+// switched off or was stopped, so a tile must not change them either (nothing would supervise them, and the dashboard could not undo it).
 function Controls(deps) {
     this.deps = deps;
 }
@@ -115,12 +118,12 @@ Controls.prototype.read = function (canControl) {
     var inventory = agent ? d.inventory(false).then(function (r) { return r && !r.registryError && Array.isArray(r.apps) ? r.apps : null; }, function () { return null; }) : Promise.resolve(null);
     return inventory.then(function (apps) {
         var tiles = {
-            launcher: !d.dock.installed() ? {state: 'na', why: 'Not in this Vetro package'} : !agent ? {state: 'na', why: 'Needs root access'}
-                : {state: launcher.enabled || launcher.customApp ? 'on' : 'off', custom: !!launcher.customApp},
+            launcher: !d.dock.installed() ? {state: 'na', why: 'Not in this Vetro package'} : !d.pluginRunning('launcher') ? {state: 'na', why: STOPPED}
+                : !agent ? {state: 'na', why: 'Needs root access'} : {state: launcher.enabled || launcher.customApp ? 'on' : 'off', custom: !!launcher.customApp},
             ads: groupTile(groups.ads, apps),
             voice: groupTile(groups.voice, apps),
-            tuner: !d.tuner.installed() ? {state: 'na', why: 'Not in this Vetro package'} : !agent ? {state: 'na', why: 'Needs root access'}
-                : {state: tunerState.enabled ? 'on' : 'off'}
+            tuner: !d.tuner.installed() ? {state: 'na', why: 'Not in this Vetro package'} : !d.pluginRunning('tuner') ? {state: 'na', why: STOPPED}
+                : !agent ? {state: 'na', why: 'Needs root access'} : {state: tunerState.enabled ? 'on' : 'off'}
         };
         return {canControl: !!canControl, tiles: tiles, update: {configured: status.configured, version: status.version, busy: !!status.busy,
             pending: !!status.pending}};
@@ -147,6 +150,7 @@ Controls.prototype.act = function (p) {
     if (typeof p.on !== 'boolean') return Promise.reject(problem('Invalid state', 400));
     on = p.on;
     if (!d.agentConnected()) return Promise.reject(problem('Needs root access, which is not connected'));
+    if ((id === 'launcher' || id === 'tuner') && !d.pluginRunning(id)) return Promise.reject(problem(STOPPED + ': turn it on there first'));
     var task;
     if (id === 'launcher') {
         var state = d.dock.readState();
