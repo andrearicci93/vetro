@@ -112,3 +112,13 @@ function harness(opts){
  assert.ok(quick.ALLOWED_IDS.includes('com.samsung.tv.csfs'));
  assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:true,onboot:false,autorestart:false}]).status,'off');
  assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:false}]).status,'on');}
+
+{const g=quick.find('tvplus');
+ assert.equal(g.section,'memory');assert.ok(!g.microphone&&!g.confirm);
+ assert.deepEqual(g.ids,['com.samsung.tv.tvplus','com.samsung.tv.tvPlusDeeplinker','w2VwCK465D.OTApp','com.samsung.tv.slive-daemon','org.tizen.bms-service']);
+ assert.deepEqual(g.services,['slive-provider-daemon','bms']);
+ g.ids.forEach(id=>assert.ok(quick.ALLOWED_IDS.includes(id),id));
+ const off=decode(quick.servicesCommand(g.services,true)),on=decode(quick.servicesCommand(g.services,false));
+ assert.ok(off.startsWith('touch /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl stop --no-block/.test(off));
+ assert.ok(on.startsWith('rm -f /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl start --no-block/.test(on));
+ assert.throws(()=>quick.servicesCommand(['x; reboot'],true),/Invalid service/);}

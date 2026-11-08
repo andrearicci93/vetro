@@ -47,6 +47,12 @@ var HOME_APP = 'com.samsung.tv.csfs';
 // 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
 // when only csfs is closed, so the guard and the enable-time kill target all three.
 var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
+// Samsung's Home tiles read their previews from this updater (a .NET service started at boot, 32 MB). With the dock
+// or a custom launcher on Home the tiles are never shown, so it is stopped with them and started again when they go
+// off. Measured on a Q80A (2026-11-08): stopped, it stayed off and nothing else noticed.
+var PREVIEW_UNIT = 'com.samsung.tv.preview-updater';
+var PREVIEW_OFF = 'systemctl stop --no-block ' + PREVIEW_UNIT + '.service >/dev/null 2>&1; app_launcher -k ' + PREVIEW_UNIT + ' >/dev/null 2>&1 || true';
+var PREVIEW_ON = 'systemctl start --no-block ' + PREVIEW_UNIT + '.service >/dev/null 2>&1 || true';
 var AUTORUN_KEY = 'db/menu/smart_hub/ontvsetting/auto_start';   // Samsung's "Autorun Smart Hub"
 var HOME_CODE = 63;                                   // Home on the forwarded remote Vetro creates
 var START_WAIT_MS = 15000;
@@ -250,6 +256,7 @@ Dock.prototype.startScript = function () {
         'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
         env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 &',
+        PREVIEW_OFF,
         'echo started'
     ].join('\n');
 };
@@ -337,7 +344,11 @@ Dock.prototype.enable = function () {
 };
 
 Dock.prototype.stopDock = function () {
-    return this.execute(wrap(this.stopLines()), 8000).then(function (r) { check(r, 'Stop'); });
+    var self = this;
+    return this.execute(wrap(this.stopLines()), 8000).then(function (r) { check(r, 'Stop'); }).then(function () {
+        // Best effort: Samsung's Home needs its preview updater back once the dock no longer covers it.
+        return self.execute(wrap(PREVIEW_ON), 8000).catch(function () {});
+    });
 };
 
 // Turn the dock off. The setting goes first, so a failed stop cannot bring it back by itself.

@@ -109,6 +109,18 @@ function fixture(options) {
     assert.ok(!f.tv.scripts.some(c => c.startsWith('echo') && Buffer.from(c.split(' ')[1], 'base64').toString().includes('vconftool set')), 'nothing to put back');
     assert.equal(f.dock.readState().autorunWas, null);
 
+    // Samsung's preview updater only feeds Home's tiles: stopped with the launcher, started again when it goes off.
+    {
+        const dec = c => c.startsWith('echo ') ? Buffer.from(c.split(' ')[1], 'base64').toString() : c;
+        f = fixture();
+        f.tv.scripts.length = 0;
+        await f.dock.enable();
+        assert.ok(f.tv.scripts.map(dec).some(c => c.includes('systemctl stop --no-block com.samsung.tv.preview-updater.service') && c.includes('app_launcher -k com.samsung.tv.preview-updater')), 'stopped at start');
+        f.tv.scripts.length = 0;
+        await f.dock.disable();
+        assert.ok(f.tv.scripts.map(dec).some(c => c.includes('systemctl start --no-block com.samsung.tv.preview-updater.service')), 'started again when off');
+    }
+
     // Switching on fails when the dock never appears: back to how it was, with the reason.
     f = fixture({neverStarts: true, log: 'fatal: no display'});
     await assert.rejects(f.dock.enable(), /did not start.*fatal: no display/);

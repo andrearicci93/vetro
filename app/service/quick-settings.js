@@ -34,6 +34,14 @@ var GROUPS = [
         ids: ['com.samsung.tv.vif', 'com.samsung.tv.farfieldvoice', 'com.samsung.tv.ondevice-voice',
             'com.samsung.tv.voiceassistant-music', 'com.samsung.tv.cnvoice', 'com.samsung.tv.cnvoice-assistant',
             'org.tizen.voice-app', 'org.tizen.voice-app-service', 'org.tizen.voice-client', 'org.tizen.stt-client']},
+    // Samsung TV Plus (free ad-supported channels): the app, its deep-link and OTA helpers, and the two services behind it.
+    // slive-provider-daemon and bms-service are started by systemd with Restart=always, so a disabled flag is not enough:
+    // Samsung's own units skip the start when a file exists in /opt/usr/share/systemd/system, which `services` lists.
+    // These packages are not system packages, so Components can also uninstall them (pkgcmd -u).
+    {id: 'tvplus', label: 'Samsung TV Plus', section: 'memory',
+        description: 'Turns off Samsung TV Plus: the app, its deep-link and update helpers, the channel service (slive) and the streaming player with its ad beacons (bms). Frees about 50 MB of memory. These packages can also be uninstalled in Components; this switch is the reversible way.',
+        ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
+        services: ['slive-provider-daemon', 'bms']},
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
     // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
     {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,
@@ -93,6 +101,15 @@ function restoreFlagsCommand(ids) {
         ' case "$on" in true|false) ;; *) on=false;; esac\n case "$re" in true|false) ;; *) re=false;; esac\n' +
         ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; r=$?\n' +
         ' [ $r -eq 0 ] && rm -f "$f"; echo "$id $r"\ndone');
+}
+var SERVICE_DIR = '/opt/usr/share/systemd/system/', SERVICE_RE = /^[a-z0-9-]{1,40}$/;
+// Off: put Samsung's own "do not start" file down and stop the unit. On: take the file away and start it again.
+function servicesCommand(units, off) {
+    units.forEach(function (u) { if (!SERVICE_RE.test(u)) throw new Error('Invalid service'); });
+    var files = units.map(function (u) { return SERVICE_DIR + u; }).join(' ');
+    return wrap(off
+        ? 'touch ' + files + '\nfor u in ' + units.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\ntrue'
+        : 'rm -f ' + files + '\nsystemctl reset-failed 2>/dev/null\nfor u in ' + units.join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue');
 }
 function stopCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
@@ -196,9 +213,15 @@ function apply(groupId, off, deps) {
     }).then(function (apps) {
         var result = {ok: true, verified: true, id: group.id, off: off, changed: targets, flagsCleared: off ? flagTargets : [], flagsRestored: [], flagsNotRestored: [],
             stopped: [], stopFailed: [], state: state(group, apps), apps: apps};
-        if (!off) return restoreFlagsFor(result, deps);
+        function services() {
+            if (!group.services) return Promise.resolve();
+            return deps.execute(servicesCommand(group.services, off), 30000).then(function (r) {
+                result.services = {off: off, ok: !r.exit_code && !r.timed_out};
+            }, function () { result.services = {off: off, ok: false}; });
+        }
+        if (!off) return services().then(function () { return restoreFlagsFor(result, deps); });
         // A disabled flag does not end processes that are already running.
-        return deps.execute('app_launcher -S', 10000).then(function (r) {
+        return services().then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
             if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
             var ids = running(r.stdout).filter(function (id) { return result.state.installed.indexOf(id) >= 0; });
             if (!ids.length) return result;
@@ -212,4 +235,4 @@ function apply(groupId, off, deps) {
 }
 
 module.exports = {GROUPS: GROUPS, ALLOWED_IDS: ALLOWED_IDS, find: find, state: state, command: command,
-    stopCommand: stopCommand, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};
+    stopCommand: stopCommand, servicesCommand: servicesCommand, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};

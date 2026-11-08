@@ -886,7 +886,7 @@ function renderQuick(){
   d?switchMarkup('data-dns-switch',dnsOn,quickBusy||uiOperationBusy.dns||dnsNoDomains&&!dnsOn,'Enable DNS blocking'):'',
   dnsNoDomains?'<div class="quick-actions"><button data-quick-open="dns">Add domains</button></div>':'');
  // Ambient: screend, Samsung’s screen daemon, is stopped around the kill so that it does not start the app again.
- $('quickMemory').innerHTML=hbbtvItem()+winItem('multiscreen')+winItem('ambient')+winItem('airplay');
+ $('quickMemory').innerHTML=hbbtvItem()+winItem('multiscreen')+winItem('ambient')+winItem('airplay')+quickGroups.filter(function(g){return g.section==='memory'}).map(groupItem).join('');
  $('quickKeep').innerHTML=keepItem();
  $('quickControl').innerHTML=winItem('firmware');
  $('quickTracking').innerHTML=winItem('telemetry')+quickGroups.filter(function(g){return g.section==='tracking'}).map(groupItem).join('')+dns;
