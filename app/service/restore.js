@@ -116,7 +116,8 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.sdb ? d.sdb.status() : null; }),
         attempt(function () { return d.pairing ? d.pairing.status() : null; }),
         attempt(function () { return d.factoryTest ? d.factoryTest.read() : {present: false, active: false}; }),
-        attempt(function () { return d.keepRemoved ? d.keepRemoved.state() : null; })
+        attempt(function () { return d.keepRemoved ? d.keepRemoved.state() : null; }),
+        attempt(function () { return d.tuner ? d.tuner.readState() : null; })
     ]).then(function (x) {
         var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13], keep = x[14];
         var items = [];
@@ -131,6 +132,11 @@ Restore.prototype.plan = function () {
 
         var it = add('launcher', 'Launcher', 'Switches the Vetro launcher or the custom launcher off, so Samsung’s Home is back, and puts Autorun Smart Hub back as it was.', dock);
         if (!dock.error) flag(it, dock.value.enabled === true || dock.value.autorunWas != null || !!dock.value.customApp);
+
+        if (d.tuner) {
+            it = add('tuner', 'Vetro TV Tuner', 'Switches Vetro TV Tuner off, so Samsung\u2019s own tuner is on screen again. Samsung\u2019s tuner app was never changed.', x[15]);
+            if (!x[15].error) flag(it, x[15].value.enabled === true);
+        }
 
         var third = plug.error ? [] : plug.value.filter(function (p) { return !p.bundled && p.enabled; });
         it = add('plugins', 'Third-party plugins', 'Switches every plugin that is on off. The plugin files stay until you remove Vetro’s data. What a plugin changed on its own is not undone.', plug);
@@ -234,6 +240,7 @@ Restore.prototype.run = function () {
                 if (d.dock.readState().customApp) return d.dock.disableCustom({keepHome: true}).then(function () { return 'Custom launcher off; Samsung’s Home comes back with the groups below.'; });
                 return d.dock.disable().then(function () { return 'Launcher off; Samsung’s Home is back.'; });
             }],
+            ['tuner', function () { return d.tuner.disable().then(function () { return 'Tuner off; Samsung\u2019s tuner is on screen again.'; }); }],
             ['plugins', function () {
                 plan._data.third.forEach(function (p) { d.plugins.setEnabled(p.id, false); });
                 return 'Switched off: ' + plan._data.third.map(function (p) { return p.name || p.id; }).join(', ') + '.';

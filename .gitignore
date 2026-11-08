@@ -45,3 +45,5 @@ __pycache__/
 # Dock launcher build output
 /dock/**/bin/
 /dock/**/obj/
+/tuner/**/bin/
+/tuner/**/obj/

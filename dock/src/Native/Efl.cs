@@ -55,6 +55,7 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_clip_set(IntPtr obj, IntPtr clip);
         [DllImport(Evas)] public static extern void evas_object_event_callback_add(IntPtr obj, int type, EvasCb cb, IntPtr data);
         [DllImport(Evas)] public static extern IntPtr evas_object_rectangle_add(IntPtr evas);
+        [DllImport(Evas)] public static extern void evas_object_pass_events_set(IntPtr obj, [MarshalAs(UnmanagedType.U1)] bool pass);
 
         // --- evas: images ---
         [DllImport(Evas)] public static extern IntPtr evas_object_image_add(IntPtr evas);
@@ -110,6 +111,7 @@ namespace Launcher.Native
         [DllImport(AppControl)] public static extern int app_control_destroy(IntPtr ac);
         [DllImport(AppControl)] public static extern int app_control_add_extra_data(IntPtr ac, string key, string value);
         [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
+        [DllImport("libvconf.so.0")] public static extern int vconf_get_bool(string key, out int value);
         /// <summary>Read-only: the app the TV treats as Home for the "main" operation (what the Home key launches).</summary>
         [DllImport("libcapi-appfw-app-operation-tv.so.0")] public static extern int app_operation_get_current_app(string operation, out IntPtr appId);
 

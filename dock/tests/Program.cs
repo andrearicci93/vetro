@@ -592,6 +592,76 @@ namespace Launcher.Tests
                 T.Eq(r[0], Command.Show, "show"); T.Eq(r[1], Command.Hide, "hide"); T.Eq(r[2], Command.Toggle, "toggle");
             });
 
+            T.Run("commands: the volume keys", () =>
+            {
+                var b = new CommandBuffer();
+                var bytes = Encoding.ASCII.GetBytes("volup\nVOLDOWN\n volmute \nvolume\n");
+                var r = b.Feed(bytes, bytes.Length);
+                T.Eq(r.Count, 3, "three volume commands, the unknown word is dropped");
+                T.Eq(r[0], Command.VolUp, "up"); T.Eq(r[1], Command.VolDown, "down"); T.Eq(r[2], Command.VolMute, "mute");
+            });
+
+            T.Run("number pad: digits page, colour page, Done, keys, commands", () =>
+            {
+                var m = new NumberPadModel();
+                m.Reset();
+                T.Eq(m.Page, NumberPadModel.DigitsPage, "opens on the digits"); T.Eq(m.Focus, 0, "on 1");
+                T.Eq(m.Key("Left"), PadResult.None, "nothing before the first");
+                T.Eq(m.Key("Return"), PadResult.Typed, "OK types 1");
+                for (int i = 0; i < 5; i++) m.Key("Right");
+                m.Key("Return"); T.Eq(m.Typed, "16", "sixteen");
+                T.Eq(m.Key("Return"), PadResult.Typed, "the same cell twice"); T.Eq(m.Typed, "166", "166");
+                for (int i = 0; i < 5; i++) m.Key("Right");
+                T.Eq(m.Current.Label, "-", "the eleventh cell is the dash"); T.Eq(m.Key("Return"), PadResult.Typed, "a dash"); T.Eq(m.Typed, "166-", "dash after digits");
+                T.Eq(m.Key("Return"), PadResult.None, "no double dash");
+                m.Key("Right"); T.Eq(m.Current.Kind, CellKind.Erase, "backspace"); T.Eq(m.Key("Return"), PadResult.Erased, "erase"); T.Eq(m.Typed, "166", "back");
+                m.Key("Right"); T.Eq(m.Current.Kind, CellKind.ToColors, "colour page cell"); T.Eq(m.Key("Right"), PadResult.None, "nothing after it");
+                T.Eq(m.Key("Up"), PadResult.Moved, "Up reaches Done"); T.True(m.OnDone, "on Done"); T.Eq(m.Key("Left"), PadResult.None, "Left does nothing on Done");
+                T.Eq(m.Key("Return"), PadResult.Send, "Done sends what is typed");
+                T.Eq(m.Key("Down"), PadResult.Moved, "Down returns to the row"); T.True(!m.OnDone, "off Done");
+                T.Eq(m.Key("Return"), PadResult.Page, "to the colour page"); T.Eq(m.Page, NumberPadModel.ColorsPage, "colours");
+                T.Eq(m.Current.Tip, "Red A", "opens on the red key"); T.Eq(m.Key("Up"), PadResult.None, "no Done on this page");
+                T.Eq(m.Key("Return"), PadResult.SendKey, "a colour key is sent at once"); T.Eq(m.PendingKey, "XF86Red", "red");
+                for (int i = 0; i < 6; i++) m.Key("Right");
+                T.Eq(m.Current.Tip, "Info", "info is the last cell"); T.Eq(m.Key("Right"), PadResult.None, "nothing after it");
+                m.Key("Return"); T.Eq(m.PendingKey, "XF86Info", "info key");
+                for (int i = 0; i < 12; i++) m.Key("Left");
+                T.Eq(m.Current.Kind, CellKind.ToDigits, "back to the digits cell"); T.Eq(m.Key("Return"), PadResult.Page, "back"); T.Eq(m.Page, NumberPadModel.DigitsPage, "digits again");
+                T.Eq(m.Key("XF86Back"), PadResult.Close, "Back closes");
+                m.Reset(); T.Eq(m.Typed, "", "reset clears"); m.Key("Up"); T.Eq(m.Key("Return"), PadResult.Close, "Done with nothing typed just closes");
+                m.Reset(); for (int i = 0; i < 8; i++) m.Key("5");
+                T.Eq(m.Typed, "55555", "at most five characters"); T.Eq(m.Key("BackSpace"), PadResult.Erased, "BackSpace erases");
+                T.Eq(NumberPadModel.BodyWidth(NumberPadModel.Digits), 1008, "digits capsule width"); T.True(NumberPadModel.BodyWidth(NumberPadModel.Colors) <= 800, "colour capsule fits");
+                string c16 = NumberPadModel.SendCommand("16", "/usr/bin/input_keyevent ");
+                T.True(c16.StartsWith("(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid"), "the tuner is looked for first");
+                T.True(c16.Contains("then echo 'tune 16' > /tmp/vetro-tuner.ctl; else"), "tuner running: one tune command with the whole number");
+                T.True(c16.Contains("else /usr/bin/input_keyevent 1; /usr/bin/input_keyevent 6; fi)"), "no tuner: keys by name");
+                int thenAt = c16.IndexOf("then"), elseAt = c16.IndexOf("else");
+                T.True(!c16.Substring(thenAt, elseAt - thenAt).Contains("input_keyevent"), "with the tuner running Samsung's TV app is never asked for");
+                T.True(NumberPadModel.SendCommand("0", "k ").Contains("echo 'tune 0'"), "a zero is passed on");
+                string cd = NumberPadModel.SendCommand("1-2", "k ");
+                T.True(cd.Contains("else k 1; k minus; k 2; fi)") && cd.Contains("echo 'tune 12'"), "the dash is minus by name and not given to the tuner");
+                string cx = NumberPadModel.SendCommand("1;rm", "k ");
+                T.True(cx.Contains("else k 1; fi)") && !cx.Contains("rm"), "only digits reach the shell");
+                T.Eq(NumberPadModel.SendCommand("-", "k "), "(sleep 0.25; k minus) >/dev/null 2>&1 &", "a lone dash has no tuner part");
+                T.Eq(NumberPadModel.SendCommand("", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "nothing typed, nothing sent");
+                T.Eq(NumberPadModel.SendKeyCommand("XF86Red", "k "), "(sleep 0.25; k XF86Red) >/dev/null 2>&1 &", "a function key");
+                T.Eq(NumberPadModel.SendKeyCommand("x; rm -rf /", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "a bad key name sends nothing");
+                var b = new CommandBuffer(); var bytes = Encoding.ASCII.GetBytes("pad\n"); T.Eq(b.Feed(bytes, bytes.Length)[0], Command.Pad, "pad command");
+            });
+
+            T.Run("volume model: step, clamp, mute, picture, bar", () =>
+            {
+                T.Eq(VolumeModel.Next(50, 1, 1), 51, "up"); T.Eq(VolumeModel.Next(50, -1, 1), 49, "down");
+                T.Eq(VolumeModel.Next(100, 1, 1), 100, "no more than 100"); T.Eq(VolumeModel.Next(0, -1, 1), 0, "no less than 0");
+                T.Eq(VolumeModel.IconLevel(0, false), 0, "silent"); T.Eq(VolumeModel.IconLevel(30, true), 0, "muted");
+                T.Eq(VolumeModel.IconLevel(20, false), 1, "low"); T.Eq(VolumeModel.IconLevel(80, false), 2, "loud");
+                T.Eq(VolumeModel.FillHeight(0, false, 280), 0, "no bar at 0"); T.Eq(VolumeModel.FillHeight(60, true, 280), 0, "no bar when muted");
+                T.Eq(VolumeModel.FillHeight(1, false, 280), 3, "a low level is a low fill"); T.Eq(VolumeModel.FillHeight(10, false, 280), 28, "ten percent");
+                T.Eq(VolumeModel.FillHeight(50, false, 280), 140, "half");
+                for (int v = 2; v <= 100; v++) T.True(VolumeModel.FillHeight(v, false, 280) > VolumeModel.FillHeight(v - 1, false, 280), "every step moves the top edge at " + v); T.Eq(VolumeModel.FillHeight(100, false, 280), 280, "full");
+            });
+
             T.Run("commands: partial lines wait, case and spaces tolerated", () =>
             {
                 var b = new CommandBuffer();

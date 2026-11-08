@@ -12,10 +12,16 @@ const dockRes = names.filter(name => name.startsWith('native/dock/res/'));
     base => assert.ok(dockRes.includes('native/dock/res/' + base + '.png'), 'dock image packaged: ' + base));
 assert.ok(dockRes.includes('native/dock/res/inputs.tsv'));
 assert.ok(dockRes.every(name => /\.(png|tsv)$/.test(name)), 'only images and the inputs list are packaged from dock/res');
-assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/')).sort(), [
+// The tuner ships its own glass pictures and the two files of the build, never Samsung's TV client DLL.
+const tunerRes = names.filter(name => name.startsWith('native/tuner/res/'));
+['dock_bg', 'ring', 'shadow', 'solid'].forEach(base => assert.ok(tunerRes.includes('native/tuner/res/' + base + '.png'), 'tuner image packaged: ' + base));
+assert.ok(tunerRes.every(name => /\.png$/.test(name)), 'only images are packaged from tuner/res');
+assert.ok(!names.some(name => /Tizen\.TV\.Broadcast\.TVService/i.test(name)), "Samsung's TV client is never packaged");
+assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/') && !name.startsWith('native/tuner/res/')).sort(), [
     'LICENSE', 'THIRD_PARTY_NOTICES.md', 'notices/LICENSE-phosphor.txt',
-    'config.xml', 'icon.png', 'index.html', 'native/TvState.dll', 'native/TvState.runtimeconfig.json', 'service/tv-state.js',
+    'config.xml', 'icon.png', 'index.html', 'native/TvState.dll', 'native/TvState.runtimeconfig.json', 'service/tv-state.js', 'service/volume-keys.js',
     'native/dock/tvlauncher-dotnet.dll', 'native/dock/tvlauncher-dotnet.runtimeconfig.json', 'service/dock.js', 'service/dock-catalog.js',
+    'native/tuner/vetro-tuner.dll', 'native/tuner/vetro-tuner.runtimeconfig.json', 'service/tuner.js', 'service/plugin-tuner.js', 'service/tuner-page.js',
     'service/auth.js', 'service/build-info.js', 'service/blocklist.js', 'service/exec-error.js', 'service/factory-apps.js', 'service/device-info.js', 'service/component-facts.js', 'service/about-photo.js','service/app-catalog.js', 'service/app-facts.js', 'service/app-groups.js','service/app-registry.js', 'service/atomic-file.js', 'service/dashboard.js', 'service/physical-input.js', 'service/presence.js', 'service/apps.js', 'service/component-actions.js','service/control.js',     'service/debloat.js', 'service/diagnostic-report.js', 'service/hbbtv.js','service/home-order.js','service/home-cleanup.js','service/local-dns.js','service/menu-settings.js','service/main.js',
     'service/mqtt-bridge.js', 'service/mqtt.js', 'service/compat.js', 'service/package-info.js',
     'service/platform.js',

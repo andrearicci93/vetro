@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert').strict;
 const html = require('../service/dashboard.js')({});
-assert.match(html, /Remapper<\/button><button data-tab="plugins"/, 'Plugins sits right under Remapper in the main group');
+assert.match(html, /Vetro TV Tuner<\/button><button data-tab="plugins"/, 'Vetro Shards sits right under Vetro TV Tuner, which follows the Remapper');
 assert.doesNotMatch(html, /aria-label="Vetro"|id="pluginNav"|data-plugin-page/, 'no Vetro group and no plugin entries in the sidebar');
 assert.match(html, /id="pluginTabs"[^>]*role="tablist"/, 'running plugins become horizontal tabs inside the Plugins page');
 assert.match(html, /function showPluginTab/);

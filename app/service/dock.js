@@ -47,6 +47,12 @@ var HOME_APP = 'com.samsung.tv.csfs';
 // 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
 // when only csfs is closed, so the guard and the enable-time kill target all three.
 var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
+// Samsung's Home tiles read their previews from this updater (a .NET service started at boot, about 13 MB of real memory). With the dock
+// or a custom launcher on Home the tiles are never shown, so it is stopped with them and started again when they go
+// off. Measured on a Q80A (2026-11-08): stopped, it stayed off and nothing else noticed.
+var PREVIEW_UNIT = 'com.samsung.tv.preview-updater';
+var PREVIEW_OFF = 'systemctl stop --no-block ' + PREVIEW_UNIT + '.service >/dev/null 2>&1; app_launcher -k ' + PREVIEW_UNIT + ' >/dev/null 2>&1 || true';
+var PREVIEW_ON = 'systemctl start --no-block ' + PREVIEW_UNIT + '.service >/dev/null 2>&1 || true';
 var AUTORUN_KEY = 'db/menu/smart_hub/ontvsetting/auto_start';   // Samsung's "Autorun Smart Hub"
 var HOME_CODE = 63;                                   // Home on the forwarded remote Vetro creates
 var START_WAIT_MS = 15000;
@@ -87,6 +93,7 @@ function Dock(options) {
     // of the mode had disabled it (state flag customHomeDisabled, never set by this version).
     this.home = options.home || null;
     this.appCheck = options.appCheck || null;
+    this.onVolumeChange = options.onVolumeChange || null;
     this.checkRound = 0;
     this.goneRounds = 0;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
@@ -112,13 +119,13 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, numberPad: s && s.numberPad === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, numberPad: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -218,7 +225,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, numberPad: state.numberPad, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
@@ -250,6 +257,7 @@ Dock.prototype.startScript = function () {
         'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
         env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 &',
+        PREVIEW_OFF,
         'echo started'
     ].join('\n');
 };
@@ -337,7 +345,11 @@ Dock.prototype.enable = function () {
 };
 
 Dock.prototype.stopDock = function () {
-    return this.execute(wrap(this.stopLines()), 8000).then(function (r) { check(r, 'Stop'); });
+    var self = this;
+    return this.execute(wrap(this.stopLines()), 8000).then(function (r) { check(r, 'Stop'); }).then(function () {
+        // Best effort: Samsung's Home needs its preview updater back once the dock no longer covers it.
+        return self.execute(wrap(PREVIEW_ON), 8000).catch(function () {});
+    });
 };
 
 // Turn the dock off. The setting goes first, so a failed stop cannot bring it back by itself.
@@ -557,6 +569,20 @@ Dock.prototype.setNoMotion = function (on) {
         try { self.patchState({noMotion: state.noMotion}); } catch (e2) {}
         throw e;
     });
+};
+
+// Glass volume pill: the dock draws it for Vol+ and Vol- (the bridge holds those keys back). The dock needs no restart;
+// onVolumeChange lets the service restart the remote bridge so the new key list takes effect.
+Dock.prototype.setVolumePill = function (on) { return this.setKeyOption('volumePill', on); };
+// The same for the glass number pad that replaces Samsung's 123 pad.
+Dock.prototype.setNumberPad = function (on) { return this.setKeyOption('numberPad', on); };
+Dock.prototype.setKeyOption = function (name, on) {
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    var patch = {}; patch[name] = on;
+    try { this.patchState(patch); }
+    catch (e) { return Promise.reject(e); }
+    if (this.onVolumeChange) { try { this.onVolumeChange(on); } catch (e) {} }
+    return this.status();
 };
 
 // The file behind one tile of the preview: the app's own icon when the list names one that is a

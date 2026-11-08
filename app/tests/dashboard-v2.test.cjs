@@ -18,7 +18,7 @@ assert.ok(squash(html).includes(squash('--vetro-duration-fast:0ms')), 'reduced m
 
 // Navigation: the three entries at the top, then the rest
 const nav = /<nav aria-label="Main">([\s\S]*?)<\/nav>/.exec(html)[1];
-assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'dock', 'remote', 'plugins']);
+assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'dock', 'remote', 'tuner', 'plugins']);
 assert.match(nav, /Launcher<\/button>/);
 assert.doesNotMatch(nav, /chip beta/);
 assert.match(nav, /Remapper<\/button>/);
