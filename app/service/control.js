@@ -18,6 +18,8 @@ var KEYS = [
     'XF86Back', 'XF86Home', 'XF86Menu', 'XF86Info', 'XF86Exit',
     // channels / guide
     'XF86ChannelList', 'XF86ChannelGuide', 'XF86DiscretSourceTV',
+    // direct input selection (XF86DiscretHDMI3 verified on the Q80A)
+    'XF86DiscretHDMI1', 'XF86DiscretHDMI2', 'XF86DiscretHDMI3', 'XF86DiscretHDMI4',
     // digits (standard X keysyms)
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
     // playback
