@@ -47,7 +47,7 @@ var HOME_APP = 'com.samsung.tv.csfs';
 // 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
 // when only csfs is closed, so the guard and the enable-time kill target all three.
 var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
-// Samsung's Home tiles read their previews from this updater (a .NET service started at boot, 32 MB). With the dock
+// Samsung's Home tiles read their previews from this updater (a .NET service started at boot, about 13 MB of real memory). With the dock
 // or a custom launcher on Home the tiles are never shown, so it is stopped with them and started again when they go
 // off. Measured on a Q80A (2026-11-08): stopped, it stayed off and nothing else noticed.
 var PREVIEW_UNIT = 'com.samsung.tv.preview-updater';

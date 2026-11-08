@@ -39,7 +39,7 @@ var GROUPS = [
     // Samsung's own units skip the start when a file exists in /opt/usr/share/systemd/system, which `services` lists.
     // These packages are not system packages, so Components can also uninstall them (pkgcmd -u).
     {id: 'tvplus', label: 'Samsung TV Plus', section: 'memory',
-        description: 'Turns off Samsung TV Plus: the app, its deep-link and update helpers, the channel service (slive) and the streaming player with its ad beacons (bms). Frees about 50 MB of memory. These packages can also be uninstalled in Components; this switch is the reversible way.',
+        description: 'Turns off Samsung TV Plus: the app, its deep-link and update helpers, the channel service (slive) and the streaming player with its ad beacons (bms). Frees about 25 MB of memory (measured on a Q80A). These packages can also be uninstalled in Components; this switch is the reversible way.',
         ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
         services: ['slive-provider-daemon', 'bms']},
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
