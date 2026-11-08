@@ -15,7 +15,6 @@ const tuner = {
     status: () => Promise.resolve({ enabled }),
     enable: () => { log.push('enable'); enabled = true; return Promise.resolve({ enabled }); },
     disable: () => { log.push('disable'); enabled = false; return Promise.resolve({ enabled }); },
-    setCloseSamsung: on => { log.push('close:' + on); return typeof on === 'boolean' ? Promise.resolve({ closeSamsung: on }) : Promise.reject(new Error('Invalid setting')); },
     command: name => { log.push('command:' + name); return Promise.resolve({ ok: true, command: name }); },
     supervise: up => { log.push('supervise:' + up); return Promise.resolve(); }
 };
@@ -40,7 +39,7 @@ const post = body => { const r = res(); host.dispatch('tuner', { method: 'POST',
 
     const st = get('status'); await nextTick(1);
     assert.deepEqual(st.body, { enabled: false });
-    for (const [body, entry] of [['{"action":"enable"}', 'enable'], ['{"action":"disable"}', 'disable'], ['{"action":"closeSamsung","on":true}', 'close:true'],
+    for (const [body, entry] of [['{"action":"enable"}', 'enable'], ['{"action":"disable"}', 'disable'],
         ['{"action":"show"}', 'command:show'], ['{"action":"hide"}', 'command:hide'], ['{"action":"toggle"}', 'command:toggle'], ['{"action":"guide"}', 'command:guide']]) {
         const before = log.length;
         post(body); await nextTick(1);
@@ -48,8 +47,8 @@ const post = body => { const r = res(); host.dispatch('tuner', { method: 'POST',
     }
     let r = post('{"action":"format"}'); await nextTick(1);
     assert.equal(r.code, 409); assert.deepEqual(r.body, { ok: false, error: 'Invalid tuner action' });
-    r = post('{"action":"closeSamsung","on":"yes"}'); await nextTick(1);
-    assert.equal(r.code, 409); assert.match(r.body.error, /Invalid setting/);
+    r = post('{"action":"closeSamsung","on":true}'); await nextTick(1);
+    assert.equal(r.code, 409); assert.deepEqual(r.body, { ok: false, error: 'Invalid tuner action' }, 'there is no option to close Samsung\u2019s app');
     assert.equal(post('null').code, 400);
     assert.equal(get('nope').code, 404);
     r = res(); host.dispatch('tuner', { method: 'GET', url: '/tuner', headers: {} }, r, 'action', json);

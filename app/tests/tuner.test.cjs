@@ -51,8 +51,8 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // The status of a TV that never had the tuner on.
     f = fixture();
     s = await f.tuner.status();
-    assert.deepEqual([s.installed, s.enabled, s.running, s.supported, s.unsupportedReason, s.samsungTunerFound, s.closeSamsung, s.target],
-        [true, false, false, true, null, true, false, TARGET_APP]);
+    assert.deepEqual([s.installed, s.enabled, s.running, s.supported, s.unsupportedReason, s.samsungTunerFound, s.target],
+        [true, false, false, true, null, true, TARGET_APP]);
 
     // This TV cannot run it: refused with the reason, nothing started, nothing saved, and Samsung's tuner is left alone.
     for (const [opt, re] of [[{client: false}, /TV service client/], [{tvs: false}, /tvs-daemon/], [{dotnet: false}, /\.NET runtime/]]) {
@@ -101,20 +101,12 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     await assert.rejects(f.tuner.disable(), /in progress/);
     await first;
 
-    // "Close Samsung's app": off by default, on adds the flag and restarts, a failed restart puts the setting back.
+    // Samsung's app is never closed: an old saved closeSamsung option is ignored and adds nothing to the launch line.
     f = fixture();
-    await f.tuner.enable();
-    s = await f.tuner.setCloseSamsung(true);
-    assert.equal(s.closeSamsung, true); assert.ok(f.tv.started.includes(' --takeover org.tizen.tv-viewer --close-target'));
-    s = await f.tuner.setCloseSamsung(false);
-    assert.equal(s.closeSamsung, false); assert.ok(!f.tv.started.includes('--close-target'));
-    await assert.rejects(f.tuner.setCloseSamsung('yes'), /Invalid setting/);
-    f.tv.neverStarts = true;
-    await assert.rejects(f.tuner.setCloseSamsung(true), /did not start/);
-    assert.equal(f.tuner.readState().closeSamsung, false, 'a restart that failed does not leave the option on');
-    f = fixture();
-    s = await f.tuner.setCloseSamsung(true);       // while off: only saved, nothing started
-    assert.equal(s.closeSamsung, true); assert.equal(f.tv.starts, 0);
+    fs.writeFileSync(path.join(f.tmp, 'state.json'), JSON.stringify({enabled: true, since: 1, closeSamsung: true}));
+    assert.deepEqual(f.tuner.readState(), {enabled: true, since: 1});
+    assert.ok(!f.tuner.startScript().includes('--close-target'));
+    assert.equal(typeof f.tuner.setCloseSamsung, 'undefined');
 
     // Commands to a running tuner: only the known words, only while on, only through an existing pipe.
     f = fixture();
@@ -170,6 +162,6 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // A state file that is garbage reads as off.
     f = fixture();
     fs.writeFileSync(path.join(f.tmp, 'state.json'), '{nope');
-    assert.deepEqual(f.tuner.readState(), {enabled: false, since: null, closeSamsung: false});
+    assert.deepEqual(f.tuner.readState(), {enabled: false, since: null});
     console.log('tuner: ok');
 })().catch(e => { console.error(e); process.exit(1); });

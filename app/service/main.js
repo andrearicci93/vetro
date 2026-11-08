@@ -562,7 +562,7 @@ function homeLockMessage() {
     var s=dock.readState();
     return s.customApp?'Turn off the custom launcher before changing Samsung Home':s.enabled?'Turn off the Vetro launcher before changing Samsung Home':null;
 }
-// Samsung's live TV app stays installed and enabled while Vetro TV Tuner is on: the tuner covers it and, optionally, closes it, but a disabled
+// Samsung's live TV app stays installed and enabled while Vetro TV Tuner is on: the tuner covers it, but a disabled
 // app would leave the takeover with nothing to watch and nobody to hand the screen back to.
 function tunerLockMessage() { return 'Turn off Vetro TV Tuner before disabling Samsung\u2019s TV app'; }
 function handleQuick(req,res) {readJsonBody(req,res,function(p){

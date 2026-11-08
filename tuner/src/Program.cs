@@ -43,7 +43,7 @@ namespace Tuner
         private static string _controlPath;
         // Takeover (--takeover APPID): the resident tuner shows itself when that app (Samsung's live TV, org.tizen.tv-viewer) is on screen.
         private static string _takeoverApp, _pidFile;
-        private static bool _closeTarget, _takeoverBroken;
+        private static bool _takeoverBroken;
         private static readonly Takeover TakeoverState = new Takeover();
         private static IntPtr _takeoverTimer;
         private static int _controlFd = -1;
@@ -120,7 +120,6 @@ namespace Tuner
             _pidFile = StrArg(args, "--pid-file", null);
             string takeover = StrArg(args, "--takeover", null);
             if (takeover != null && AppIdPattern.IsMatch(takeover)) _takeoverApp = takeover;
-            _closeTarget = _takeoverApp != null && Flag(args, "--close-target");
             _ageAtMain = ProcessAgeMs();
             if (Flag(args, "--hold")) BannerSeconds = 3600;   // for screenshots
             OpenLog();
@@ -173,7 +172,7 @@ namespace Tuner
             if (_resident && _takeoverApp != null)
             {
                 _takeoverTimer = Efl.ecore_timer_add(0.5, OnTakeoverPoll, IntPtr.Zero);
-                Log("takeover: shows itself when " + _takeoverApp + " is on screen" + (_closeTarget ? " and closes it" : ""));
+                Log("takeover: shows itself when " + _takeoverApp + " is on screen");
             }
 
             WatchNodes();
@@ -955,19 +954,6 @@ namespace Tuner
             if (!TakeoverState.Observe(status, _active)) return;
             Log("takeover: " + _takeoverApp + " status " + status + ", showing the tuner");
             Activate();
-            if (_closeTarget) CloseTarget();
-        }
-
-        /// <summary>Optional (--close-target): closes Samsung's live TV app once the tuner is in front, like the dock closes Samsung's Home.</summary>
-        private static void CloseTarget()
-        {
-            try
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo("/bin/sh", "-c \"sleep 1.2; /usr/bin/app_launcher -k " + _takeoverApp + "\"") { UseShellExecute = false };
-                System.Diagnostics.Process.Start(psi);
-                Log("takeover: closing " + _takeoverApp);
-            }
-            catch (Exception ex) { Log("takeover: could not close it: " + ex.Message); }
         }
 
         // ---- own pid (the service finds a running tuner by it) ----

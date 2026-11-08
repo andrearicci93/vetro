@@ -12,8 +12,8 @@
 //   * The tuner runs resident and hidden, and watches the application manager. When Samsung's live TV app comes on
 //     screen it puts its own window over it (--takeover). A dead tuner therefore hands the screen straight back to
 //     Samsung's: the worst case of a crash is the TV as it was before.
-//   * Closing Samsung's app once the tuner is in front (--close-target, the `closeSamsung` option) frees its memory but
-//     is NOT proven: nobody knows yet whether the picture survives. It is off by default.
+//   * Samsung's app is not closed behind the tuner: measured on a Q80A (2026-11-08), `app_launcher -k org.tizen.tv-viewer`
+//     kills it and the platform starts it again at once (a recovery launch), so nothing is freed.
 //
 // State lives in one small file next to the other Vetro settings.
 
@@ -76,9 +76,8 @@ Tuner.prototype.installed = function () {
 Tuner.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null,
-            closeSamsung: !!s && s.closeSamsung === true};
-    } catch (e) { return {enabled: false, since: null, closeSamsung: false}; }
+        return {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null};
+    } catch (e) { return {enabled: false, since: null}; }
 };
 
 Tuner.prototype.writeState = function (state) {
@@ -127,7 +126,7 @@ function unsupportedReason(p) {
 
 Tuner.prototype.status = function () {
     var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, closeSamsung: state.closeSamsung, busy: this.busy,
+    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, target: TARGET_APP};
     return this.probe().then(function (p) {
         var reason = unsupportedReason(p);
@@ -148,7 +147,7 @@ Tuner.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0';
     var state = this.readState();
     var args = DLL + ' --resident --notif --control ' + CONTROL + ' --log ' + LOG_FILE + ' --pid-file ' + PID_FILE +
-        ' --takeover ' + TARGET_APP + (state.closeSamsung ? ' --close-target' : '');
+        ' --takeover ' + TARGET_APP;
     return [
         this.stopLines(),
         'cd ' + q(this.dir),
@@ -220,24 +219,6 @@ Tuner.prototype.disable = function () {
     try { this.patchState({enabled: false}); }
     catch (e) { this.busy = false; return Promise.reject(e); }
     return this.stopTuner().then(function () { return self.status(); }).finally(function () { self.busy = false; });
-};
-
-// "Close Samsung's tuner when mine is in front". Takes effect by restarting the tuner, which is cheap (~0.3 s window).
-Tuner.prototype.setCloseSamsung = function (on) {
-    var self = this;
-    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid setting'));
-    if (this.busy) return Promise.reject(new Error('Another tuner change is in progress'));
-    var before = this.readState();
-    if (before.closeSamsung === on) return this.status();
-    this.busy = true; this.lastError = null;
-    try { this.patchState({closeSamsung: on}); }
-    catch (e) { this.busy = false; return Promise.reject(e); }
-    var restart = before.enabled ? this.launch().then(function () { self.failures = 0; self.nextTry = 0; }) : Promise.resolve();
-    return restart.catch(function (e) {
-        self.lastError = e.message;
-        try { self.patchState({closeSamsung: before.closeSamsung}); } catch (err) { /* the next supervision round starts it with whatever is saved */ }
-        throw e;
-    }).then(function () { return self.status(); }).finally(function () { self.busy = false; });
 };
 
 // Ask a running tuner to show, hide or open its guide (the dashboard's "Open now"). Only the words above get through, and only

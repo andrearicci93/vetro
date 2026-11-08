@@ -1219,7 +1219,7 @@ function setDock(action,label,extra){
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
-var tunerData=null,tunerError=null,tunerBusy=false,tunerSeq=0,tunerConfirm=false,tunerCloseConfirm=false;
+var tunerData=null,tunerError=null,tunerBusy=false,tunerSeq=0,tunerConfirm=false;
 function loadTuner(){var mine=++tunerSeq;return api('/tuner').then(function(d){if(mine===tunerSeq){tunerData=d;tunerError=null}}).catch(function(e){if(mine===tunerSeq)tunerError=e.message}).finally(function(){renderTuner()})}
 function renderTuner(){
  var box=$('tunerBody');if(!box)return;var d=tunerData;
@@ -1233,15 +1233,13 @@ function renderTuner(){
  var actions='<div class="quick-actions">'+(d.enabled?'<button data-tuner-show '+(tunerBusy||d.running!==true?'disabled':'')+'>Show tuner now</button>':'')+'<button data-tuner-reload>Refresh</button></div>';
  var log=d.log?'<details><summary>Tuner log</summary><pre class="small-mono">'+esc(d.log)+'</pre></details>':'';
  var main='<div class="quick-item" data-quick-item="tuner"><div><h3>Vetro TV Tuner</h3><p>Live TV with Vetro’s own tuner on screen: channel banner, channel list, number pad and TV guide. It takes the place of Samsung’s tuner while it is on.</p><div class="quick-state">'+state+'</div>'+problem+note+actions+log+'</div>'+control+confirm+'</div>';
- var closeConfirm=tunerCloseConfirm?'<div class="inline-confirm" role="group" aria-label="Confirm closing Samsung’s tuner"><p><strong>Close Samsung’s tuner too?</strong> Once Vetro’s tuner is in front, Samsung’s live TV app is closed to free its memory. It has not been tried on a TV yet, and nobody knows whether the picture stays. If the screen goes blank, turn this off here. Samsung’s app is still installed and starts again when it is opened.</p><div class="row"><button data-tuner-close-cancel>Cancel</button><button class="primary" data-tuner-close-confirm>Close Samsung’s tuner</button></div></div>':'';
- var close='<div class="quick-item" data-quick-item="tuner-close"><div><h3>Close Samsung’s tuner</h3><p>Closes Samsung’s live TV app behind Vetro’s tuner to free its memory. Off by default.</p><div class="quick-state">'+(d.closeSamsung?chip('On','on'):chip('Off'))+chip('Not tried on a TV','partial')+'</div></div>'+switchMarkup('data-tuner-close',!!d.closeSamsung,tunerBusy||!d.installed||unsupported,'Close Samsung’s tuner')+closeConfirm+'</div>';
- box.innerHTML='<section class="quick-group">'+main+close+'</section>';
+ box.innerHTML='<section class="quick-group">'+main+'</section>';
 }
 function setTuner(action,label,extra){
- if(tunerBusy)return;tunerBusy=true;tunerConfirm=false;tunerCloseConfirm=false;renderTuner();
+ if(tunerBusy)return;tunerBusy=true;tunerConfirm=false;renderTuner();
  return runUiOperation('tuner',label,'Vetro TV Tuner',null,function(mark){return api('/tuner',Object.assign({action:action},extra||{})).then(function(d){
   if(d&&d.installed!==undefined){tunerSeq++;tunerData=d;tunerError=null}
-  var message=action==='enable'?'Vetro TV Tuner on'+(d.running?' and running':'')+'. Open live TV on the TV to see it.':action==='disable'?'Vetro TV Tuner off. Samsung’s tuner is on screen again.':action==='closeSamsung'?'Setting saved'+(d.enabled?'; the tuner was restarted.':'.'):'Sent to the TV.';
+  var message=action==='enable'?'Vetro TV Tuner on'+(d.running?' and running':'')+'. Open live TV on the TV to see it.':action==='disable'?'Vetro TV Tuner off. Samsung’s tuner is on screen again.':'Sent to the TV.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadTuner()}).finally(function(){tunerBusy=false;renderTuner()});
 }
@@ -1391,16 +1389,13 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockReload!=null)return loadDock();
 };
 $('tuner').onchange=function(e){var x=e.target;if(!x.dataset)return;
- if(x.dataset.tunerClose!=null){if(x.checked){x.checked=false;tunerCloseConfirm=true;tunerConfirm=false;renderTuner();var cc=document.querySelector('[data-tuner-close-confirm]');if(cc)cc.focus();return}return setTuner('closeSamsung','Stop closing Samsung’s tuner',{on:false})}
  if(x.dataset.tunerSwitch==null)return;
- if(x.checked){x.checked=false;tunerConfirm=true;tunerCloseConfirm=false;renderTuner();var c=document.querySelector('[data-tuner-confirm]');if(c)c.focus();return}
+ if(x.checked){x.checked=false;tunerConfirm=true;renderTuner();var c=document.querySelector('[data-tuner-confirm]');if(c)c.focus();return}
  return setTuner('disable','Turn off Vetro TV Tuner');
 };
 $('tuner').onclick=function(e){var b=e.target.closest?e.target.closest('button'):null;if(!b)return;var ds=b.dataset;
  if(ds.tunerCancel!=null){tunerConfirm=false;renderTuner();var s=document.querySelector('[data-tuner-switch]');if(s)s.focus();return}
  if(ds.tunerConfirm!=null)return setTuner('enable','Turn on Vetro TV Tuner');
- if(ds.tunerCloseCancel!=null){tunerCloseConfirm=false;renderTuner();var t=document.querySelector('[data-tuner-close]');if(t)t.focus();return}
- if(ds.tunerCloseConfirm!=null)return setTuner('closeSamsung','Close Samsung’s tuner behind Vetro’s',{on:true});
  if(ds.tunerShow!=null)return setTuner('show','Show the tuner');
  if(ds.tunerReload!=null)return loadTuner();
 };

@@ -9,7 +9,7 @@ Vetro TV Tuner is Vetro's own live TV screen: a channel banner, a channel list, 
 Samsung's live TV app (`org.tizen.tv-viewer`) is **never disabled, removed or changed.** Turning the tuner on starts a small resident process that stays hidden. Every half second it asks the TV whether Samsung's live TV app is in front; when it is, Vetro's tuner draws itself over it and takes the remote keys. Turn the switch off, or let the tuner stop for any reason, and Samsung's tuner is exactly what it was.
 
 - Press **Home** (or **Back**): the tuner steps aside and the TV's own screen handles the key. It does not come back until Samsung's live TV app has been left and opened again. **Source** has not been tried with the tuner on screen.
-- **Close Samsung's tuner** (off by default, not tried on a TV): closes Samsung's live TV app once Vetro's is in front, to free its memory. Nobody knows yet whether the picture stays. If the screen goes blank, turn it off. The app stays installed and starts again when it is opened. No memory saving is claimed unless that option is on.
+- Samsung's app is **not closed** behind the tuner. Measured on a Q80A (2026-11-08): `app_launcher -k org.tizen.tv-viewer` kills it and the platform starts it again at once (a recovery launch), so no memory is freed. Vetro therefore claims no RAM saving for the tuner. An earlier test build had a *Close Samsung's tuner* option; it was removed.
 - Quick settings → Debloat will not offer to disable `org.tizen.tv-viewer` while the tuner is on.
 
 ## Turning it on
@@ -48,7 +48,7 @@ The same list, with a picture of every screen, is on the dashboard page.
 | `tuner/` | .NET 3.1 app, built from source | The screens and the conversation with Samsung's TV service |
 | `app/native/tuner/vetro-tuner.dll` | built with `tuner/build.sh` | The compiled app. Samsung's own DLL is only a compile-time reference and is **never** shipped |
 | `app/service/tuner.js` | Vetro service | State, start/stop, probe of the TV, takeover options, control pipe |
-| `app/service/plugin-tuner.js` | bundled plugin `tuner` | The dashboard routes `GET /tuner` (state) and `POST /tuner` (`{action: enable, disable, closeSamsung, show, hide, toggle, guide}`), behind the same pairing as the rest of the API, and the supervision timer |
+| `app/service/plugin-tuner.js` | bundled plugin `tuner` | The dashboard routes `GET /tuner` (state) and `POST /tuner` (`{action: enable, disable, show, hide, toggle, guide}`), behind the same pairing as the rest of the API, and the supervision timer |
 | `app/service/tuner-page.js` | dashboard | The key table and the five previews |
 
 Runtime files: state `/opt/usr/home/owner/share/vetro-tuner.json`, process id `/home/owner/vetro-tuner.pid`, log `/home/owner/vetro-tuner.log`, control pipe `/tmp/vetro-tuner.ctl` (`show`, `hide`, `toggle`, `guide`). The process runs as root in its own systemd unit, `vetro-tuner`. Vetro updates replace `native/tuner/` like `native/dock/` and restart both. Restore the TV switches the tuner off.
@@ -67,4 +67,4 @@ The DLL is Samsung's and is read from a TV or a firmware dump. The script writes
 
 - One TV tried (Q80A, DVB-T). Cable, satellite and other regions are untested.
 - No subtitles or teletext. Audio: switching works; listing tracks does not.
-- The takeover polling, Home and Source while the tuner is shown, and the close option still need runs on a TV.
+- The takeover polling, Home and Source while the tuner is shown, still need runs on a TV.

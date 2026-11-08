@@ -21,7 +21,7 @@ assert.doesNotMatch(page.css, /border-top(-color)?\s*:\s*[^;]*(var\(--(accent|ok
 const nodes = {};
 const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textContent: '', innerHTML: '', disabled: false, focus() {}});
 const calls = [];
-let tuner = {installed: true, supported: true, enabled: false, running: false, closeSamsung: false, samsungTunerFound: true, failures: 0, log: ''};
+let tuner = {installed: true, supported: true, enabled: false, running: false, samsungTunerFound: true, failures: 0, log: ''};
 const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
     fetch: async (url, opts) => {
         const body = opts && opts.body ? JSON.parse(opts.body) : null;
@@ -31,7 +31,6 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         else if (url === '/tuner') {
             if (body.action === 'enable') tuner = Object.assign({}, tuner, {enabled: true, running: true});
             if (body.action === 'disable') tuner = Object.assign({}, tuner, {enabled: false, running: false});
-            if (body.action === 'closeSamsung') tuner = Object.assign({}, tuner, {closeSamsung: body.on});
             data = tuner;
         } else if (url.startsWith('/apps')) data = {apps: [], summary: {total: 0}};
         else if (url === '/remap') data = {rules: []};
@@ -68,14 +67,8 @@ const change = (dataset, checked) => { const x = {dataset, checked}; sandbox.$('
     body = el('tunerBody').innerHTML;
     assert.match(body, /On · running/); assert.match(body, /Show tuner now/);
 
-    // Closing Samsung's tuner has its own confirm, and turning it off does not.
-    change({tunerClose: ''}, true);
-    assert.match(el('tunerBody').innerHTML, /Close Samsung’s tuner too\?/);
-    assert.equal(calls.filter(c => c.body && c.body.action === 'closeSamsung').length, 0);
-    await click({tunerCloseConfirm: ''}); await tick(); await tick();
-    assert.deepEqual(calls.filter(c => c.body && c.body.action === 'closeSamsung').map(c => c.body), [{action: 'closeSamsung', on: true}]);
-    await change({tunerClose: ''}, false); await tick(); await tick();
-    assert.deepEqual(calls.filter(c => c.body && c.body.action === 'closeSamsung').pop(), {url: '/tuner', body: {action: 'closeSamsung', on: false}});
+    // Samsung's app is not closed behind the tuner (the TV starts it again at once): no such option on the page.
+    assert.doesNotMatch(el('tunerBody').innerHTML, /Close Samsung/);
 
     // Turning the tuner off needs no question.
     await change({tunerSwitch: ''}, false); await tick(); await tick();
