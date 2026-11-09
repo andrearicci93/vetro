@@ -715,6 +715,7 @@ function runActions(actions, direct, dispatchGuard) {
         if(a.type==='launch'&&!remap.launchable(a.appId)){skipped.push('launch:not-an-app');return;}
         // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
         if(a.type==='launch'&&!direct&&remap.ruleRisk(a.appId,packageOf)){skipped.push('launch:factory-app');return;}
+        if(a.type==='inputs')return dock.openInputs().then(function(){sent++;});
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
@@ -729,7 +730,7 @@ var physical=new PhysicalInput(agentExecute,function(event){
     pendingActions++;
     var generation=inputGeneration;
     function current(){return inputLifecycleActive&&generation===inputGeneration;}
-    actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current())pauseInputFault(e.message);}).finally(function(){pendingActions--;});
+    actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(!current())return;if(e&&e.nonFatal){inputError=e.message;return;}pauseInputFault(e.message);}).finally(function(){pendingActions--;});
 });
 var inputObservers=[], inputPaused=false, inputRestoring=false;
 // inputPaused is the user's own pause (listening mode) and lasts until they act. A fault is different: a rule's action failed
@@ -885,6 +886,7 @@ var server = http.createServer(function (req, res) {
     }
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/dock/icon') return plugins.dispatch('launcher', req, res, 'icon', serveJson);
+    if (url === '/dock/source-icon') return plugins.dispatch('launcher', req, res, 'source-icon', serveJson);
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/restore') return handleRestore(req,res);

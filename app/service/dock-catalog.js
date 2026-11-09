@@ -56,6 +56,13 @@ var SYSTEM_ROWS = [
 // which then spawns csfs, home.sidebar and home.media. When it is installed the pill starts it instead.
 var COBA_HOME = 'com.samsung.tv.coba.newhome';
 
+// Samsung's own source list (names and artwork), as one `S|<base64 JSON>` line. The Home row read and the Launcher's
+// source detection (dock-sources.js) both run it, so both see the same list.
+var SOURCE_CACHE_SCRIPT = [
+    'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
+    '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done'
+].join('\n');
+
 function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
     return [
@@ -64,8 +71,7 @@ function script() {
         'if [ -s "$B/.appLayerCache.1" ] || [ -s "$B/.appLayerCache.2" ]; then F=csfs; elif [ -s "$M/.appLayerCache.1" ] || [ -s "$M/.appLayerCache.2" ]; then B=$M; F=media; fi',
         'echo "F|$F"',
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
-        'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
-        '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
+        SOURCE_CACHE_SCRIPT,
         'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
@@ -210,9 +216,6 @@ function build(parsed, options) {
 }
 
 function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(TRAILING_TABS_RE, ''); }
-function inputsTsv(built) {
-    return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
-}
 
 function tsv(built) {
     var lines = ['# written by Vetro from the TV\'s own Home row; do not edit, it is rebuilt every time the dock starts'];
@@ -262,9 +265,9 @@ function load(execute, options) {
         var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return /^s\/source\.layer\.hdmi@HDMI[1-4]$/.test(entry); });
         if (!built.entries.length && !filteredSources) throw new Error('None of the Home row apps could be matched in the registry');
         return existing(execute, built).then(function (b) {
-            return {tsv: tsv(b), inputsTsv: inputsTsv(b), count: b.entries.length, skipped: b.skipped};
+            return {tsv: tsv(b), count: b.entries.length, skipped: b.skipped};
         });
     });
 }
 
-module.exports = {sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {sourceEntries: sourceEntries, existing: existing, SOURCE_CACHE_SCRIPT: SOURCE_CACHE_SCRIPT, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
