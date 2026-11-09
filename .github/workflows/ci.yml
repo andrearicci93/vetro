@@ -20,7 +20,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Root launcher settings IPC tests
-        run: sudo "$(command -v dotnet)" run -c Release --project dock/settings-tests
+        run: |
+          dotnet build -c Release dock/settings-tests/Launcher.SettingsTests.csproj
+          sudo "$(command -v dotnet)" dock/settings-tests/bin/Release/net10.0/tvlauncher-dotnet.dll
       - name: Native launcher checks
         run: dotnet run -c Release --project dock/tests
       - name: Install Ecore test runtime
