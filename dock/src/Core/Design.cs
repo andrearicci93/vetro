@@ -46,6 +46,7 @@ namespace Launcher.Core
         public static readonly bool ShowLabels = false;
         public static readonly bool ShowClock = false;
         public const string HintText = "Source";
+        public const string TasksHintText = "Task manager";
 
         // ---- The two pills ----
         public const float PillBorderAlpha = 0.75f;

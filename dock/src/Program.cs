@@ -41,6 +41,19 @@ namespace Launcher
         private static Dock _dock, _appsDock, _inputsDock;
         private static IntPtr _clockTimer;
         private static readonly Efl.TaskCb ClockCb = OnClock;
+
+        // The task manager (Down from the apps row): its own page, drawn in a taller window while it is open.
+        private static DockLayout _appsLayout;
+        private static TaskLayout _taskLayout;
+        private static TaskController _tasksCtl;
+        private static TaskPanel _taskPanel;
+        private static TaskSource _taskSource;
+        private static bool _tasksOn;
+        private static List<RunningApp> _taskApps = new List<RunningApp>();
+        private static IntPtr _taskPoll, _taskRefresh;
+        private static readonly Efl.TaskCb TaskPollCb = OnTaskPoll;
+        private static readonly Efl.TaskCb TaskRefreshCb = OnTaskRefresh;
+        private const double TaskRefreshSeconds = 1.5;
         private static readonly CommandBuffer Commands = new CommandBuffer();
         private static readonly byte[] ReadBuf = new byte[128];
 
@@ -341,12 +354,20 @@ namespace Launcher
 
         // ------------------------------------------------------------------ show / hide
 
+        /// <summary>Whichever page is on screen is showing (or coming in).</summary>
+        private static bool DockActive { get { return _tasksOn ? _tasksCtl.IsActive : _ctl.IsActive; } }
+
         private static void ShowDock()
         {
             if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
             _pendingLaunch = null;
             // A key chosen just before the dock closed must not be sent into the dock that opens again.
             CancelPendingKey();
+            if (_tasksOn)
+            {
+                if (_tasksCtl.IsActive) { ResetIdle(); return; }
+                LeaveTasks(false);   // it was fading out: the dock comes back on the apps row
+            }
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
@@ -365,8 +386,218 @@ namespace Launcher
             _pendingLaunch = null;
             CancelIdle();
             StopClock();
+            if (_tasksOn)
+            {
+                StopTaskTimers();
+                if (_tasksCtl.Hide()) StartAnimator();
+                return;
+            }
             if (_ctl.Hide()) StartAnimator();
         }
+
+        // ------------------------------------------------------------------ task manager page
+
+        private static void MoveWindow(int x, int y, int w, int h)
+        {
+            Efl.evas_object_move(_win, x, y);
+            Efl.evas_object_resize(_win, w, h);
+        }
+
+        /// <summary>Down on the apps row: the panel rises where the bar was, in a window grown upwards for it.</summary>
+        private static void OpenTasks()
+        {
+            float pop = Math.Min(_ctl.Presence, 0.55f);
+            _ctl.Vanish();
+            _dock.SetVisible(false);
+            MoveWindow(_taskLayout.WinX, _taskLayout.WinY, _taskLayout.WinW, _taskLayout.WinH);
+            _tasksOn = true;
+            _tasksCtl.Open(pop);
+            _taskUserMoved = false;
+            _tasksCtl.SetCount(_taskPanel.Count);
+            _taskPanel.SetSort(_tasksCtl.Sort);
+            _taskPanel.SetVisible(true);
+            _taskPanel.Apply(_tasksCtl);
+            RefreshTasks(true);
+            if (_taskRefresh == IntPtr.Zero) _taskRefresh = Efl.ecore_timer_add(TaskRefreshSeconds, TaskRefreshCb, IntPtr.Zero);
+            StartAnimator();
+            ResetIdle();
+            Log("tasks panel");
+        }
+
+        /// <summary>Back to the apps row (<paramref name="rise"/>: it comes in at once), or put away while hidden.</summary>
+        private static void LeaveTasks(bool rise)
+        {
+            float pop = Math.Min(_tasksCtl.Presence, 0.55f);
+            StopTaskTimers();
+            _tasksOn = false;
+            _tasksCtl.Drop();
+            _taskPanel.SetVisible(false);
+            MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+            _dock.SetVisible(true);
+            if (rise)
+            {
+                _ctl.Rise(pop);
+                _dock.Apply(_ctl);
+                StartAnimator();
+                ResetIdle();
+            }
+        }
+
+        private static void StopTaskTimers()
+        {
+            if (_taskRefresh != IntPtr.Zero) { Efl.ecore_timer_del(_taskRefresh); _taskRefresh = IntPtr.Zero; }
+            if (_taskPoll != IntPtr.Zero) { Efl.ecore_timer_del(_taskPoll); _taskPoll = IntPtr.Zero; }
+        }
+
+        private static bool _taskResort, _taskUserMoved;
+
+        /// <summary>Asks the worker for a new look; <paramref name="resort"/>: put the list in sort order when it arrives.</summary>
+        private static void RefreshTasks(bool resort)
+        {
+            _taskResort |= resort;
+            _taskSource.Request();
+            if (_taskPoll == IntPtr.Zero) _taskPoll = Efl.ecore_timer_add(0.05, TaskPollCb, IntPtr.Zero);
+        }
+
+        private static byte OnTaskPoll(IntPtr data)
+        {
+            try
+            {
+                // A look arrives in two halves (the apps, then their memory): keep polling until the worker is done.
+                bool busy = _taskSource.Busy;
+                TaskSnapshot s = _taskSource.TryTake();
+                if (s != null) ApplySnapshot(s);
+                if (busy) return 1;
+                s = _taskSource.TryTake();
+                if (s != null) ApplySnapshot(s);
+            }
+            catch (Exception ex) { Log("tasks poll: " + ex); }
+            _taskPoll = IntPtr.Zero;
+            return 0;
+        }
+
+        private static byte OnTaskRefresh(IntPtr data)
+        {
+            try { if (_tasksOn && _tasksCtl.IsActive) RefreshTasks(false); }
+            catch (Exception ex) { Log("tasks refresh: " + ex); }
+            return 1;
+        }
+
+        /// <summary>
+        /// A new look from the worker. The order only changes when asked (opening, a new sort, after a close):
+        /// rows that jump on their own every refresh would be hard to point at. New apps go to the end.
+        /// </summary>
+        private static void ApplySnapshot(TaskSnapshot s)
+        {
+            if (!_tasksOn) return;
+            RunningApp selected = _taskPanel.AppAt(_tasksCtl.Selected);
+            if (s.Partial)
+            {
+                // Memory and CPU are still being read: show the last known figures for the same process meanwhile.
+                var known = new Dictionary<string, RunningApp>(StringComparer.Ordinal);
+                foreach (RunningApp old in _taskApps) known[old.AppId] = old;
+                foreach (RunningApp a in s.Apps)
+                {
+                    RunningApp old;
+                    if (known.TryGetValue(a.AppId, out old) && old.Pid == a.Pid) { a.MemoryKb = old.MemoryKb; a.CpuPercent = old.CpuPercent; }
+                }
+            }
+            List<RunningApp> list;
+            // The sort waits for real figures; a first look without any is shown by name meanwhile. While the user
+            // has not moved, every full look is sorted again (the figures change); once they move, rows stay put.
+            if (!s.Partial && !_taskUserMoved) _taskResort = true;
+            if (_taskResort && (!s.Partial || _taskApps.Count == 0))
+            {
+                list = s.Apps;
+                Tasks.Sort(list, s.Partial ? TaskSort.Name : _tasksCtl.Sort);
+                // CPU needs two looks: the first full one has no figures yet, so the sort waits for the next.
+                if (!s.Partial) _taskResort = !HasFigures(list, _tasksCtl.Sort);
+            }
+            else
+            {
+                var fresh = new Dictionary<string, RunningApp>(StringComparer.Ordinal);
+                foreach (RunningApp a in s.Apps) fresh[a.AppId] = a;
+                list = new List<RunningApp>();
+                foreach (RunningApp old in _taskApps) { RunningApp a; if (fresh.TryGetValue(old.AppId, out a)) { list.Add(a); fresh.Remove(old.AppId); } }
+                foreach (RunningApp a in s.Apps) if (fresh.ContainsKey(a.AppId)) list.Add(a);
+            }
+            _taskApps = list;
+            _taskPanel.SetApps(list, s.AvailableKb);
+            _tasksCtl.SetCount(list.Count);
+            // Until the user moves, the selection sits on the top row (the biggest app once the figures are in);
+            // after that it stays on the same app when it is still there, otherwise on the same row number.
+            if (!_taskUserMoved) _tasksCtl.SelectFirst();
+            else if (selected != null) for (int i = 0; i < list.Count; i++) if (list[i].AppId == selected.AppId) { _tasksCtl.Select(i); break; }
+            _taskPanel.Apply(_tasksCtl);
+        }
+
+        private static void OnTaskKey(string key)
+        {
+            switch (_tasksCtl.Key(key))
+            {
+                case TaskAction.Moved:
+                    _taskUserMoved = true;
+                    StartAnimator();
+                    ResetIdle();
+                    break;
+                case TaskAction.SortChanged:
+                    Tasks.Sort(_taskApps, _tasksCtl.Sort);
+                    _taskResort = !HasFigures(_taskApps, _tasksCtl.Sort);   // sort again once there is something to sort by
+                    _taskPanel.Reorder(_taskApps);
+                    _taskPanel.SetSort(_tasksCtl.Sort);
+                    _tasksCtl.SelectFirst();
+                    _taskPanel.Apply(_tasksCtl);
+                    StartAnimator();
+                    ResetIdle();
+                    break;
+                case TaskAction.Close:
+                    RunningApp app = _taskPanel.AppAt(_tasksCtl.Selected);
+                    if (app != null && !app.Closing)
+                    {
+                        _taskPanel.MarkClosing(app);
+                        _taskSource.Close(app.AppId);
+                        _taskPanel.Apply(_tasksCtl);
+                        // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
+                        Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
+                        Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
+                    }
+                    ResetIdle();
+                    break;
+                case TaskAction.Back:
+                    LeaveTasks(true);
+                    break;
+                case TaskAction.Hide:
+                    if (key == "XF86Home")
+                    {
+                        double now = Efl.ecore_time_get();
+                        if (now - _lastRawHome < HomeEchoSeconds) break;   // the evas copy of a press the input reader already handled
+                        _lastHome = now;
+                        HideDock();
+                        ArmGuard();
+                        break;
+                    }
+                    HideDock();
+                    break;
+            }
+        }
+
+        /// <summary>True when the list holds the figures the sort needs (names always; memory and CPU once measured).</summary>
+        private static bool HasFigures(List<RunningApp> list, TaskSort by)
+        {
+            if (by == TaskSort.Name) return true;
+            foreach (RunningApp a in list) if (by == TaskSort.Cpu ? a.CpuPercent < 0 : a.MemoryKb < 0) return false;
+            return true;
+        }
+
+        private static readonly Efl.TaskCb TaskAfterCloseCb = OnTaskAfterClose;
+
+        private static byte OnTaskAfterClose(IntPtr data)
+        {
+            try { if (_tasksOn) RefreshTasks(true); }
+            catch (Exception ex) { Log("tasks after close: " + ex); }
+            return 0;
+        }
+
 
         // ------------------------------------------------------------------ pages
 
@@ -434,6 +665,7 @@ namespace Launcher
             try
             {
                 if (_ctl.IsActive) { StartClock(); _dock.Apply(_ctl); }
+                else if (_tasksOn && _tasksCtl.IsActive) StartClock();
             }
             catch (Exception ex) { Log("clock: " + ex.Message); }
             return 0;
@@ -468,8 +700,24 @@ namespace Launcher
                 long t0 = _perf ? Stopwatch.GetTimestamp() : 0;
                 double now = Efl.ecore_time_get();
                 double dt = now - _lastFrame;
-                bool more = _ctl.Tick(dt);
+                bool more;
                 _lastFrame = now;
+                if (_tasksOn)
+                {
+                    more = _tasksCtl.Tick(dt);
+                    _taskPanel.Apply(_tasksCtl);
+                    if (_tasksCtl.Phase == Phase.Hidden)
+                    {
+                        Efl.evas_object_hide(_win);
+                        LeaveTasks(false);   // the next Home opens on the apps row, in the dock's own window size
+                        more = false;
+                    }
+                    if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
+                    if (more) return 1;
+                    _anim = IntPtr.Zero;
+                    return 0;
+                }
+                more = _ctl.Tick(dt);
                 _dock.Apply(_ctl);
                 if (_ctl.Phase == Phase.Hidden)
                 {
@@ -553,7 +801,7 @@ namespace Launcher
             _premapTimer = IntPtr.Zero;
             try
             {
-                if (_ctl.Phase == Phase.Hidden)
+                if (_ctl.Phase == Phase.Hidden && !_tasksOn)
                 {
                     _ctl.Reset();
                     _dock.Apply(_ctl);
@@ -587,7 +835,7 @@ namespace Launcher
         /// <summary>A navigation key read straight from the input device, acted on only while the dock is up.</summary>
         private static void NavFromInput(int code)
         {
-            string key = Navigation.Press(code, _ctl.IsActive, Efl.ecore_time_get());
+            string key = Navigation.Press(code, DockActive, Efl.ecore_time_get());
             if (key != null) HandleKey(key);
         }
 
@@ -595,6 +843,7 @@ namespace Launcher
         {
             try
             {
+                if (_tasksOn) { OnTaskKey(key); return; }
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -608,6 +857,9 @@ namespace Launcher
                         break;
                     case KeyAction.OpenPanel:
                         OpenInputs();
+                        break;
+                    case KeyAction.OpenTasks:
+                        OpenTasks();
                         break;
                     case KeyAction.Back:
                         SelectPage(_appsCtl, _appsDock);
@@ -646,7 +898,7 @@ namespace Launcher
                         {
                             case Command.Show: _perfWhy = "fifo-show"; ShowDock(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
-                            case Command.Toggle: _perfWhy = "fifo-toggle"; if (_ctl.IsActive) HideDock(); else ShowDock(); break;
+                            case Command.Toggle: _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else ShowDock(); break;
                         }
                     }
                 }
@@ -680,7 +932,7 @@ namespace Launcher
                         _lastRawHome = now;
                         _perfWhy = "home";
                         if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); continue; }
-                        if (_ctl.IsActive) HideDock(); else ShowDock();
+                        if (DockActive) HideDock(); else ShowDock();
                         ArmGuard();
                     }
                 }
@@ -870,6 +1122,11 @@ namespace Launcher
                 WarmFrames(c, d, 14);
                 c.Reset();
             }
+            // The task page too, with an empty list (it is drawn hidden: the clipper is off).
+            _tasksCtl.Open(0f);
+            _taskPanel.SetSort(_tasksCtl.Sort);
+            for (int i = 0; i < 20; i++) { _tasksCtl.Tick(1.0 / 60.0); _taskPanel.Apply(_tasksCtl); }
+            _tasksCtl.Drop();
             Log("warm-up " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0") + " ms");
         }
 
@@ -939,9 +1196,16 @@ namespace Launcher
                 _inputs = LoadList(Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv"), Catalog.BuiltInInputs);
                 // One window for both pages: as wide as the wider of the two, the other is centred in it.
                 int windowW = Math.Max(new DockLayout(_apps.Length, screenW, screenH).WinW, new DockLayout(_inputs.Length, screenW, screenH).WinW);
-                var layout = new DockLayout(_apps.Length, screenW, screenH, windowW, false, Catalog.GroupStart(_apps));
-                var inputsLayout = new DockLayout(_inputs.Length, screenW, screenH, windowW, true, -1);
-                _appsCtl = new Controller(layout) { PanelEnabled = true };
+                // With the task manager on, the apps page also shows a "Task manager" hint under the bar: both pages
+                // get the extra band so the shared window keeps one height, and the task panel ends where the bar does.
+                bool tasks = !Flag(args, "--no-tasks");
+                var layout = new DockLayout(_apps.Length, screenW, screenH, windowW, false, Catalog.GroupStart(_apps), tasks);
+                var inputsLayout = new DockLayout(_inputs.Length, screenW, screenH, windowW, true, -1, tasks);
+                _appsCtl = new Controller(layout) { PanelEnabled = true, TasksEnabled = tasks };
+                _appsLayout = layout;
+                _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, tasks ? DockLayout.HintH : 0);
+                _tasksCtl = new TaskController();
+                _taskSource = new TaskSource(_apps, Log);
                 _inputsCtl = new Controller(inputsLayout, PageKind.Panel);
                 _ctl = _appsCtl;
 
@@ -961,11 +1225,13 @@ namespace Launcher
                 string res = Path.Combine(AppContext.BaseDirectory, "res");
                 string dumpIcons = Arg(args, "--dump-icons");
                 if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
-                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true);
+                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true, tasks ? Design.TasksHintText : null);
                 _appsDock.Build();
                 _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false);
                 _inputsDock.Build();
                 _inputsDock.SetVisible(false);
+                _taskPanel = new TaskPanel(_win, _taskLayout, res, Log);
+                _taskPanel.Build();
                 _dock = _appsDock;
                 if (!Flag(args, "--no-warmup")) WarmUp();
                 _appsDock.Apply(_appsCtl);

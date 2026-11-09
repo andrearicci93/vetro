@@ -4,7 +4,7 @@ namespace Launcher.Core
 {
     internal enum Phase { Hidden, Showing, Shown, Hiding }
 
-    internal enum KeyAction { None, Moved, Launch, Hide, OpenPanel, Back }
+    internal enum KeyAction { None, Moved, Launch, Hide, OpenPanel, Back, OpenTasks }
 
     /// <summary>The apps row is the home page; a Panel page (the inputs) sits one step beside it.</summary>
     internal enum PageKind { Apps, Panel }
@@ -45,6 +45,8 @@ namespace Launcher.Core
         public PageKind Kind { get; private set; }
         /// <summary>When true, Up on the apps page asks the host to open the panel page.</summary>
         public bool PanelEnabled { get; set; }
+        /// <summary>When true, Down on the apps page (below the last pill, or on any app) asks the host to open the task manager.</summary>
+        public bool TasksEnabled { get; set; }
         public Phase Phase { get; private set; }
 
         /// <summary>
@@ -158,6 +160,22 @@ namespace Launcher.Core
             from.Presence = 0f;
         }
 
+        /// <summary>Gone at once, focus kept: another page (the task manager) has taken the screen.</summary>
+        public void Vanish()
+        {
+            Phase = Phase.Hidden;
+            Presence = 0f;
+        }
+
+        /// <summary>Comes back from another page without the cascade, starting a little tucked in (<paramref name="pop"/>, 0..1).</summary>
+        public void Rise(float pop)
+        {
+            _cascade = false; _enter = CascadeSeconds;
+            if (Instant) { Phase = Phase.Shown; Presence = 1f; return; }
+            Phase = Phase.Showing;
+            Presence = pop < 0f ? 0f : (pop > 1f ? 1f : pop);
+        }
+
         /// <summary>Moves the focus without animating (used when a page opens on a known item).</summary>
         public void SetFocus(int index)
         {
@@ -195,8 +213,9 @@ namespace Launcher.Core
                     if (_layout.IsPinned(FocusTarget) && FocusTarget > _layout.GroupStart) return MoveTo(FocusTarget - 1);
                     return Kind == PageKind.Apps && PanelEnabled ? KeyAction.OpenPanel : KeyAction.None;
                 case "Down":
-                    if (_layout.IsPinned(FocusTarget)) return MoveTo(FocusTarget + 1);
-                    return Kind == PageKind.Panel ? KeyAction.Back : KeyAction.None;
+                    if (_layout.IsPinned(FocusTarget) && FocusTarget < _layout.Count - 1) return MoveTo(FocusTarget + 1);
+                    if (Kind == PageKind.Panel) return KeyAction.Back;
+                    return TasksEnabled ? KeyAction.OpenTasks : KeyAction.None;
                 case "Escape":
                 case "XF86Back":
                     return Kind == PageKind.Panel ? KeyAction.Back : KeyAction.Hide;

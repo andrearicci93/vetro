@@ -14,6 +14,17 @@ When it is on, the Home key opens this launcher instead of Samsung's Home. The d
 the same apps, in the same order and with the same icons as Samsung's Home row, read
 from the TV at start-up, and ends with two outline pills, Settings and Samsung Home.
 
+## Task manager
+
+**Down** on the apps row (or below the last pill) opens a list of the apps that are running, in the dock's own
+glass: name, CPU and memory (private RAM plus swap of the app and its web renderers). **Left/Right** sorts by
+memory, CPU or name, **OK** closes the selected app (`app_launcher -t`, then `-k` if it is still there two seconds
+later), **Up** on the first row or **Back** returns to the apps. Only visible UI apps are listed: Live TV, the
+on-screen menus, HbbTV, the keyboard and Vetro itself are left out (`Core/Tasks.cs`). Samsung's Home is listed, as
+it is often the largest. The list refreshes every 1.5 s while open; `--no-tasks` switches the page off.
+A "Task manager" hint with a down chevron sits under the apps bar, mirroring the "Source" hint above it; to
+make room the dock window has a second hint band at the bottom, so the bar sits 46 px higher (`--no-tasks` drops both).
+
 ## Layout
 
 - `src/` the dock. `Core/` is pure logic (layout, catalog, input decoding) and has tests;

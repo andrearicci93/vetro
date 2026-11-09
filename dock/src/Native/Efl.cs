@@ -55,6 +55,7 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_clip_set(IntPtr obj, IntPtr clip);
         [DllImport(Evas)] public static extern void evas_object_event_callback_add(IntPtr obj, int type, EvasCb cb, IntPtr data);
         [DllImport(Evas)] public static extern IntPtr evas_object_rectangle_add(IntPtr evas);
+        [DllImport(Evas)] public static extern void evas_object_del(IntPtr obj);
 
         // --- evas: images ---
         [DllImport(Evas)] public static extern IntPtr evas_object_image_add(IntPtr evas);
@@ -64,6 +65,8 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_image_filled_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool filled);
         [DllImport(Evas)] public static extern void evas_object_image_border_set(IntPtr img, int l, int r, int t, int b);
         [DllImport(Evas)] public static extern void evas_object_image_border_center_fill_set(IntPtr img, int mode);
+        /// <summary>Draws the nine-slice borders at this scale, so a corner made for a large tile fits a short row.</summary>
+        [DllImport(Evas)] public static extern void evas_object_image_border_scale_set(IntPtr img, double scale);
         [DllImport(Evas)] public static extern void evas_object_image_smooth_scale_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool smooth);
         [DllImport(Evas)] public static extern void evas_object_image_scale_hint_set(IntPtr img, int hint);
         // --- evas: raw pixels (EFL keeps them as premultiplied ARGB, one 32-bit word per pixel) ---
@@ -84,6 +87,8 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern int evas_object_text_vert_advance_get(IntPtr txt);
         [DllImport(Evas)] public static extern void evas_object_text_style_set(IntPtr txt, int style);
         [DllImport(Evas)] public static extern void evas_object_text_shadow_color_set(IntPtr txt, int r, int g, int b, int a);
+        /// <summary>0..1: where a text cut by its width gets the "..." (1 = at the end); -1 turns it off.</summary>
+        [DllImport(Evas)] public static extern void evas_object_text_ellipsis_set(IntPtr txt, double ellipsis);
         /// <summary>EVAS_TEXT_STYLE_SOFT_SHADOW: the ninth value of the enum (PLAIN, SHADOW, OUTLINE, SOFT_OUTLINE, GLOW, OUTLINE_SHADOW, FAR_SHADOW, OUTLINE_SOFT_SHADOW, SOFT_SHADOW).</summary>
         public const int EvasTextStyleSoftShadow = 8;
 
