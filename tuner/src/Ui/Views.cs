@@ -7,11 +7,11 @@ namespace Tuner.Ui
     /// <summary>
     /// The channel banner, bottom left: number, name, and under them what is on air: title, start-end times, time left and a progress
     /// bar. The card always has the same size, so nothing jumps when the programme arrives; until it does the rows are empty
-    /// (the bar shows its track), and if the daemon has none the title row says so quietly.
+    /// and so is the bar's place (no track: an empty bar would say "0%"), and if the daemon has none the title row says so quietly.
     /// </summary>
     internal sealed class BannerView
     {
-        private const int X = 96, W = 780, Pad = 36, H = 204, Bottom = 1000, Y = Bottom - H;
+        private const int X = 96, W = 780, Pad = 36, H = 204, Bottom = 984, Y = Bottom - H, BarH = 6;
         private readonly Surface _s;
         private readonly IntPtr _num, _name, _title, _times, _left;
         private readonly Chip _track, _fill;
@@ -26,12 +26,12 @@ namespace Tuner.Ui
             _title = s.Text(30, Theme.TextMain);
             _times = s.Text(26, Theme.TextMuted);
             _left = s.Text(26, Theme.TextMuted);
-            _track = s.Chip();
-            _fill = s.Chip();
+            _track = s.Bar();
+            _fill = s.Bar();
             Efl.evas_object_move(_num, X + Pad, Y + 22);
             Efl.evas_object_move(_title, X + Pad, Y + 84);
             Efl.evas_object_move(_times, X + Pad, Y + 126);
-            _track.SetRect(X + Pad, Y + H - 30, W - 2 * Pad, 6);
+            _track.SetRect(X + Pad, Y + H - 30, W - 2 * Pad, BarH);
         }
 
         public bool Visible { get { return _s.Visible; } }
@@ -48,7 +48,7 @@ namespace Tuner.Ui
             Efl.evas_object_text_text_set(_times, "");
             Efl.evas_object_text_text_set(_left, "");
             Tint(_title, Theme.TextMain);
-            _track.SetWhite(40);
+            _track.SetWhite(0);
             _fill.SetWhite(0);
             _s.Show();
         }
@@ -65,8 +65,8 @@ namespace Tuner.Ui
             Efl.evas_object_move(_left, X + W - Pad - Efl.evas_object_text_horiz_advance_get(_left), Y + 126);
             int barW = W - 2 * Pad;
             _track.SetWhite(56);
-            _fill.SetRect(X + Pad, Y + H - 30, Math.Max(12, (int)(barW * Math.Max(0, Math.Min(1, fraction)))), 6);
-            _fill.SetWhite(235);
+            _fill.SetRect(X + Pad, Y + H - 30, Math.Max(12, (int)(barW * Math.Max(0, Math.Min(1, fraction)))), BarH);
+            _fill.SetTint(Theme.Light, 255);
         }
 
         public void SetNoProgram()
@@ -75,7 +75,7 @@ namespace Tuner.Ui
             Efl.evas_object_text_text_set(_title, "No programme information");
             Efl.evas_object_text_text_set(_times, "");
             Efl.evas_object_text_text_set(_left, "");
-            _track.SetWhite(40);
+            _track.SetWhite(0);
             _fill.SetWhite(0);
         }
     }
@@ -83,7 +83,7 @@ namespace Tuner.Ui
     /// <summary>The channel list (OK), right side: twelve rows around the selection.</summary>
     internal sealed class ListView
     {
-        public const int Rows = 11, RowH = 64, X = 1296, Y = 110, W = 540, Pad = 24;
+        public const int Rows = 11, RowH = 64, X = 1284, Y = 110, W = 540, Pad = 24;
         private readonly Surface _s;
         private readonly Chip _fill, _ring;
         private readonly IntPtr[] _num = new IntPtr[Rows], _name = new IntPtr[Rows];
@@ -110,7 +110,7 @@ namespace Tuner.Ui
                 Channel c = list[idx];
                 int y = Y + Pad + r * RowH;
                 bool sel = idx == selected;
-                if (sel) { _fill.SetRect(X + 16, y + 2, W - 32, RowH - 4); _fill.SetWhite(44); _ring.SetRect(X + 16, y + 2, W - 32, RowH - 4); _ring.SetWhite(255); }
+                if (sel) { _fill.SetRect(X + 16, y + 2, W - 32, RowH - 4); _fill.SetWhite(77); _ring.SetRect(X + 16, y + 2, W - 32, RowH - 4); _ring.SetWhite(255); }
                 Efl.evas_object_text_text_set(_num[r], c.Major.ToString());
                 Efl.evas_object_color_set(_num[r], sel ? 255 : Theme.TextMuted, sel ? 255 : Theme.TextMuted, sel ? 255 : Theme.TextMuted, sel ? 255 : Theme.TextMuted);
                 Surface.SetFitted(_name[r], c.Name, W - 150 - 40);
@@ -124,7 +124,7 @@ namespace Tuner.Ui
     /// <summary>The on-screen number pad (the remote has no digit keys): what is typed, the name of that channel, and a 4x3 grid.</summary>
     internal sealed class PadView
     {
-        private const int X = 1296, Y = 110, W = 540, Pad = 38, KeyW = 148, KeyH = 76, Gap = 14, GridY = 232, H = 232 + 4 * 76 + 3 * 14 + 38;
+        private const int X = 1284, Y = 110, W = 540, Pad = 34, KeyW = 148, KeyH = 76, Gap = 14, GridY = 232, H = 232 + 4 * 76 + 3 * 14 + 38;
         private readonly Surface _s;
         private readonly IntPtr _title, _typed, _preview;
         private readonly Chip[] _key = new Chip[NumberEntry.Rows * NumberEntry.Cols];
@@ -171,7 +171,7 @@ namespace Tuner.Ui
             Efl.evas_object_text_text_set(_typed, e.Text.Length > 0 ? e.Text : "–");
             Efl.evas_object_text_text_set(_preview, preview);
             for (int i = 0; i < _key.Length; i++)
-                _key[i].SetWhite(i == e.Row * NumberEntry.Cols + e.Col ? 56 : 24);
+                _key[i].SetWhite(i == e.Row * NumberEntry.Cols + e.Col ? 66 : 51);
             _ring.SetRect(Left(e.Col), Top(e.Row), KeyW, KeyH);
             _ring.SetWhite(255);
             _s.Show();
@@ -181,7 +181,7 @@ namespace Tuner.Ui
     /// <summary>A one-line message, top right ("Audio: English").</summary>
     internal sealed class ToastView
     {
-        private const int Pad = 32, H = 72, Right = 1920 - 96, Y = 80;
+        private const int Pad = 32, H = 72, Right = 1920 - 96, Y = 96;
         private readonly Surface _s;
         private readonly Card _card;
         private readonly IntPtr _text;

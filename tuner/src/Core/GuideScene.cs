@@ -11,6 +11,7 @@ namespace Tuner.Core
         public PrimKind Kind;
         public int X, Y, W, H;
         public int Alpha;
+        public int Tint;               // fill: colour 0xRRGGBB, 0 for white
         public int Size;               // text: pixel size
         public string Text;
         public int MaxW;               // text: width it must fit (ellipsis); with Lines > 1 the width of the paragraph
@@ -25,7 +26,7 @@ namespace Tuner.Core
     internal static class GuideScene
     {
         public const int MaxFills = 140, MaxTexts = 260;
-        private const int TextMain = 255, TextMuted = 178, TextFaint = 120;
+        private const int TextMain = 255, TextMuted = 178, TextFaint = 140, Light = 0xA5D8FF;
 
         /// <param name="description">The long text of the focused programme, when it has been read (empty otherwise).</param>
         public static List<Prim> Build(GuideGrid g, long now, TimeSpan offset, string description)
@@ -78,7 +79,7 @@ namespace Tuner.Core
                 {
                     int cy = y + (GuideLayout.RowH - GuideLayout.CellH) / 2;
                     bool onAir = cell.Event != null && cell.Start <= now && now < cell.End;
-                    fills.Add(new Prim { Kind = PrimKind.Fill, X = cell.X, Y = cy, W = cell.W, H = GuideLayout.CellH, Alpha = cell.Focus ? 60 : cell.Event == null ? 12 : onAir ? 38 : 24 });
+                    fills.Add(new Prim { Kind = PrimKind.Fill, X = cell.X, Y = cy, W = cell.W, H = GuideLayout.CellH, Alpha = cell.Focus ? 66 : cell.Event == null ? 12 : onAir ? 66 : 51 });
                     if (cell.Focus) focus = cell;
                     if (cell.W < GuideLayout.MinTextW) continue;
                     int tw = cell.W - 28;
@@ -88,7 +89,7 @@ namespace Tuner.Core
                         if (cell.W >= 128)
                         {
                             string when = cell.W >= 230 ? ProgramClock.Clock(cell.Start, offset) + " – " + ProgramClock.Clock(cell.End, offset) : ProgramClock.Clock(cell.Start, offset);
-                            texts.Add(T(cell.X + 16, cy + 45, 22, TextMuted, when, tw));
+                            texts.Add(T(cell.X + 16, cy + 41, 24, cell.Focus ? TextMain : TextMuted, when, tw));
                         }
                     }
                     else if (cell.W >= 150) texts.Add(T(cell.X + 16, cy + 22, 24, TextFaint, cell.Loading ? "Loading…" : "No information", tw));
@@ -105,12 +106,12 @@ namespace Tuner.Core
             if (nx >= 0)
             {
                 int rowsEnd = GuideLayout.RowsY + GuideLayout.Rows * GuideLayout.RowH;
-                fills.Add(new Prim { Kind = PrimKind.Fill, X = nx - 1, Y = GuideLayout.AxisY + 30, W = 3, H = GuideLayout.RowsY - GuideLayout.AxisY - 32, Alpha = 235 });   // a clear mark on the time axis
+                fills.Add(new Prim { Kind = PrimKind.Fill, X = nx - 1, Y = GuideLayout.AxisY + 30, W = 3, H = GuideLayout.RowsY - GuideLayout.AxisY - 32, Alpha = 255, Tint = Light });   // a clear mark on the time axis
                 fills.Add(new Prim { Kind = PrimKind.Fill, X = nx, Y = GuideLayout.RowsY, W = 1, H = rowsEnd - GuideLayout.RowsY - 6, Alpha = 45 });                       // only a trace through the rows, so it does not cut the text
             }
 
             // ---- footer ----
-            texts.Add(T(GuideLayout.LabelX, GuideLayout.SheetY + GuideLayout.SheetH - 50, 22, TextFaint, "OK  Watch        Left / Right  Time        Up / Down  Channel        CH + / -  Page        Back  Close", textW));
+            texts.Add(T(GuideLayout.LabelX, GuideLayout.SheetY + GuideLayout.SheetH - 52, 24, TextMuted, "OK  Watch        Left / Right  Time        Up / Down  Channel        CH + / -  Page        Back  Close", textW));
 
             all.AddRange(fills); all.AddRange(ring); all.AddRange(texts);
             return all;

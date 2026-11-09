@@ -36,6 +36,21 @@ internal static partial class Tests
         Check(gone.Observe(2, false), "takeover: after enough failed readings the app counts as gone, so its return shows the tuner");
         Check(!Takeover.IsUp(0) && !Takeover.IsUp(1) && !Takeover.IsUp(4) && !Takeover.IsUp(5) && !Takeover.IsUp(8) && Takeover.IsUp(2) && Takeover.IsUp(3), "takeover: only focus and visible count as up");
 
+        // A key of the tuner's own while it is hidden: comes back at once if the TV app is up, even after Back; any other state leaves the key alone.
+        var k = new Takeover();
+        k.Observe(2, true); k.Dismissed();
+        Check(!k.Observe(2, false), "takeover: after Back the poll leaves the tuner away");
+        Check(!k.KeyWake(4) && !k.KeyWake(7) && !k.KeyWake(-1) && !k.KeyWake(0), "takeover: a key with the TV app in the background, closed or unreadable is not the tuner's");
+        Check(!k.Observe(2, false), "takeover: a refused key wake does not lift the hold");
+        Check(k.KeyWake(2), "takeover: a key with the TV app in focus brings the tuner back even after Back");
+        Check(k.Observe(3, false) && !k.Observe(3, true), "takeover: after a key wake the tuner is not held (the poll would show it, and does nothing once it is shown)");
+        var k2 = new Takeover();
+        Check(k2.KeyWake(3), "takeover: visible counts as up for a key wake too");
+        var k3 = new Takeover();
+        k3.Observe(2, true); k3.Dismissed();
+        k3.Observe(-1, false); k3.Observe(-1, false); k3.Observe(-1, false);
+        Check(k3.KeyWake(2) && !k3.Observe(-1, false), "takeover: a key wake forgets the failed readings before it");
+
         // Version folders of Samsung's client.
         var names = ClientFolders.NewestFirst(new[] { "1.1.12", "1.0.3", "1.10.0", "latest", "", "a/b", "2.0" });
         Check(string.Join(",", names) == "2.0,1.10.0,1.1.12,1.0.3", "client folders: newest first, numeric not alphabetic, junk ignored: " + string.Join(",", names));

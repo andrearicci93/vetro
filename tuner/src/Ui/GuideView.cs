@@ -25,6 +25,7 @@ namespace Tuner.Ui
         {
             _s = s;
             _card = s.Card();
+            _card.SetOpacity(242);          // the guide's sheet is at 95%: a little of the picture shows through
             for (int i = 0; i < _fills.Length; i++) _fills[i] = s.Chip();
             _ring = s.Ring();
             for (int i = 0; i < _texts.Length; i++) { _texts[i] = s.Text(24, Theme.TextMain); Efl.evas_object_hide(_texts[i]); }
@@ -43,7 +44,7 @@ namespace Tuner.Ui
                 {
                     case PrimKind.Sheet: _card.SetRect(p.X, p.Y, p.W, p.H); break;
                     case PrimKind.Fill:
-                        if (fills < _fills.Length) { _fills[fills].SetRect(p.X, p.Y, p.W, p.H); _fills[fills].SetWhite(p.Alpha); fills++; }
+                        if (fills < _fills.Length) { _fills[fills].SetRect(p.X, p.Y, p.W, p.H); if (p.Tint != 0) _fills[fills].SetTint(p.Tint, p.Alpha); else _fills[fills].SetWhite(p.Alpha); fills++; }
                         break;
                     case PrimKind.Ring: _ring.SetRect(p.X, p.Y, p.W, p.H); _ring.SetWhite(p.Alpha); ring = true; break;
                     case PrimKind.Text: texts = Text(p, texts); break;

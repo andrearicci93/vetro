@@ -24,7 +24,7 @@ namespace Tuner.Ui
         {
             _s = s;
             s.Card().SetRect(X, Y, W, H);
-            _badge = s.Chip(); _track = s.Chip(); _fill = s.Chip();
+            _badge = s.Chip(); _track = s.Bar(); _fill = s.Bar();
             _num = s.Text(44, Theme.TextMain);
             _title = s.Text(44, Theme.TextMain);
             _name = s.Text(30, Theme.TextMuted);
@@ -40,7 +40,7 @@ namespace Tuner.Ui
             _sideX = X + W - Pad - SideW;
             _textW = _sideX - 40 - _textX;
             _descW = W - 2 * Pad;
-            _badge.SetRect(X + Pad, Y + 36, BadgeSize, BadgeSize); _badge.SetWhite(40);
+            _badge.SetRect(X + Pad, Y + 36, BadgeSize, BadgeSize); _badge.SetWhite(51);
             Efl.evas_object_move(_title, _textX, Y + 28);
             Efl.evas_object_move(_name, _textX, Y + 88);
             Efl.evas_object_move(_times, _textX, Y + 130);
@@ -72,7 +72,7 @@ namespace Tuner.Ui
             {
                 int barX = _textX + timesW + 24, barW = 260;
                 _track.SetRect(barX, Y + 144, barW, 6); _track.SetWhite(56);
-                _fill.SetRect(barX, Y + 144, Math.Max(12, (int)(barW * Math.Max(0, Math.Min(1, d.Fraction.Value)))), 6); _fill.SetWhite(235);
+                _fill.SetRect(barX, Y + 144, Math.Max(12, (int)(barW * Math.Max(0, Math.Min(1, d.Fraction.Value)))), 6); _fill.SetTint(Theme.Light, 255);
                 Efl.evas_object_text_text_set(_left, d.Left);
                 Efl.evas_object_move(_left, barX + barW + 24, Y + 130);
             }

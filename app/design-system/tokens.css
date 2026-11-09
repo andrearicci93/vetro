@@ -81,6 +81,133 @@
   --vetro-shadow: 0 12px 32px rgba(0, 17, 91, .10);
 }
 
+
+/* ======================================================================================================================
+ * TV (native screens: dock, tuner, guide)
+ * Not CSS on the TV: these are the values the native code draws with (dock/src/Core/Design.cs, dock/designer/chosen.json,
+ * tuner/src/Ui/Surface.cs, tuner/src/Core/GuideScene.cs). index.html builds its mock-ups from them, so edit here and reload to iterate;
+ * when a value is settled, carry it to the C# constant named in its comment.
+ * Dark only. The 1080p canvas is 1920x1080 px; every length is in canvas pixels. Alpha tokens are the Evas 0..255 value / 255.
+ * PERFORMANCE FIRST (graphic-testing/report/FINDINGS.md): a sheet, a glow, a ring, a fill is a picture baked once and then only moved,
+ * resized or faded. Nothing here may be recomputed per frame, and the object count is the budget, not the effect.
+ * ==================================================================================================================== */
+:root {
+  --vetro-tv-w: 1920px;
+  --vetro-tv-h: 1080px;
+  --vetro-tv-margin: 96px;               /* banner left, toast right */
+
+  /* The sheet: the dock's solid slate. Design.ShellColor / ShellAlpha / ShellRadius / ShellBorder*, ShadowBlur / ShadowDy / ShadowAlpha */
+  --vetro-tv-sheet: #243448;                /* Fumé: smoked blue-grey, fully opaque */
+  --vetro-tv-sheet-alpha: 1;
+  --vetro-tv-sheet-radius: 16px;
+  --vetro-tv-sheet-border-w: 2px;
+  --vetro-tv-sheet-border-alpha: .22;
+  --vetro-tv-sheet-highlight-alpha: 0;   /* the designer's top highlight (.35) is not drawn by the native dock; raise to try it */
+  --vetro-tv-shadow-dy: 18px;
+  --vetro-tv-shadow-blur: 50px;          /* CSS blur radius = a Gaussian of sigma blur/2, as the baked shadow.png */
+  --vetro-tv-shadow-alpha: .45;
+
+  /* Ink: everything on a sheet is white; hierarchy is alpha, never a second colour. Theme.TextMain / TextMuted / TextFaint */
+  --vetro-tv-ink: #ffffff;
+  --vetro-tv-text-main: 1;
+  --vetro-tv-text-muted: .70;            /* 178 */
+  --vetro-tv-text-faint: .55;            /* 120 */
+
+  /* White rectangles over the sheet (solid.png tinted): the only fills. */
+  --vetro-tv-fill-empty: .047;           /* 12  a stretch with no information */
+  --vetro-tv-fill-rest: .20;              /* 24  a programme, a pad key */
+  --vetro-tv-fill-onair: .26;            /* 38  a programme on air */
+  --vetro-tv-fill-select: .30;          /* 44  the selected row of the channel list */
+  --vetro-tv-fill-key-focus: .26;       /* 56  the focused pad key */
+  --vetro-tv-fill-focus: .26;            /* 60  the focused programme */
+  --vetro-tv-track: .22;                 /* 56  progress track with a programme; 40 (.157) without */
+  --vetro-tv-track-empty: .157;
+  --vetro-tv-progress: .92;              /* 235 */
+  --vetro-tv-hairline: .157;             /* 40  rule under the time axis */
+  --vetro-tv-ring-w: 2px;                /* Design.RingW: the 2 px white ring is the only focus mark */
+  --vetro-tv-ring-color: #e4f2ff;          /* ice: the focus mark, clearly apart from the sheet */
+  --vetro-tv-light: #a5d8ff;               /* light blue: only progress and indicators */
+  --vetro-tv-volume-alpha: .90;            /* the volume pill's body: a little of the picture shows through */
+  --vetro-tv-guide-alpha: .95;
+  --vetro-tv-chip-radius: 12px;          /* solid.png / ring.png: 64 px, radius 16, 9-slice */
+
+  /* Type: SamsungOneUI 500 on the TV. Sizes are the ones the code uses (27 is drawn as 28 here). */
+  --vetro-tv-font: "SamsungOneUI", "Samsung One UI Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vetro-tv-weight: 500;
+  --vetro-tv-type-caption: 22px;         /* hints, programme times */
+  --vetro-tv-type-label: 24px;
+  --vetro-tv-type-meta: 26px;
+  --vetro-tv-type-body: 28px;
+  --vetro-tv-type-subtitle: 30px;
+  --vetro-tv-type-row: 32px;
+  --vetro-tv-type-title: 40px;
+  --vetro-tv-type-display: 56px;
+  --vetro-tv-type-entry: 76px;
+
+  /* Dock. Design.cs / Layout.cs */
+  --vetro-tv-dock-icon: 92px;
+  --vetro-tv-dock-icon-focus: 112px;
+  --vetro-tv-dock-gap: 18px;
+  --vetro-tv-dock-pad-x: 26px;
+  --vetro-tv-dock-pad-y: 16px;
+  --vetro-tv-dock-group-gap: 56px;
+  --vetro-tv-dock-bottom: 40px;          /* bar to screen bottom (the shadow margin) */
+  --vetro-tv-dock-icon-radius: 16%;      /* of the icon's side: ring and glow follow it */
+  --vetro-tv-dock-icon-rim: .20;
+  --vetro-tv-dock-icon-dim: .94;         /* unselected icons */
+  --vetro-tv-dock-lift: 4px;
+  --vetro-tv-dock-glow: .44;
+  --vetro-tv-dock-glow-spread: 16px;
+  --vetro-tv-dock-divider: .3;           /* 2 x 72 */
+  --vetro-tv-dock-pill-w: 232px;
+  --vetro-tv-dock-pill-h: 48px;
+  --vetro-tv-dock-pill-gap: 8px;
+  --vetro-tv-dock-pill-border: .75;
+  --vetro-tv-dock-pill-dim: .88;
+
+  /* Tuner: banner (bottom left), channel list and pad (right), toast (top right) */
+  --vetro-tv-banner-w: 780px;
+  --vetro-tv-banner-h: 204px;
+  --vetro-tv-banner-bottom: 1000px;      /* y of the banner's bottom edge */
+  --vetro-tv-banner-pad: 36px;
+  --vetro-tv-list-x: 1296px;
+  --vetro-tv-list-y: 110px;
+  --vetro-tv-list-w: 540px;
+  --vetro-tv-list-pad: 24px;
+  --vetro-tv-list-row-h: 64px;
+  --vetro-tv-pad-key-w: 148px;
+  --vetro-tv-pad-key-h: 76px;
+  --vetro-tv-pad-gap: 14px;
+  --vetro-tv-pad-pad: 38px;
+  --vetro-tv-toast-h: 72px;
+  --vetro-tv-toast-pad: 32px;
+  --vetro-tv-toast-y: 80px;
+
+  /* Guide (EPG): GuideLayout */
+  --vetro-tv-guide-x: 64px;
+  --vetro-tv-guide-y: 56px;
+  --vetro-tv-guide-w: 1792px;
+  --vetro-tv-guide-h: 968px;
+  --vetro-tv-guide-pad: 40px;
+  --vetro-tv-guide-axis-y: 268px;
+  --vetro-tv-guide-rows-y: 316px;
+  --vetro-tv-guide-row-h: 88px;
+  --vetro-tv-guide-cell-h: 76px;
+  --vetro-tv-guide-cell-gap: 4px;
+  --vetro-tv-guide-label-w: 246px;
+  --vetro-tv-guide-px-per-min: 8px;      /* 180-minute window = 1440 px */
+
+  /* Motion on the TV: constant speed, nothing eases per frame on the CPU (Design.EnterSeconds, StaggerSeconds, FocusSeconds) */
+  --vetro-tv-enter: 300ms;
+  --vetro-tv-stagger: 24ms;
+  --vetro-tv-focus: 300ms;
+
+  /* Performance budget, measured on the Q80A (graphic-testing/report). Documentation, not CSS. */
+  --vetro-tv-frame-ms: 20ms;             /* the panel loop is capped here: 50 fps */
+  --vetro-tv-object-budget: 200;         /* live objects before the CPU nears a full 20 ms frame (300 rects / 200 labels measured ~19 ms) */
+}
+
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --vetro-duration-fast: 0ms;

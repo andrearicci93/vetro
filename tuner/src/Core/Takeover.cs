@@ -11,6 +11,8 @@ namespace Tuner.Core
     ///  * the tuner shows itself once, when the TV app is up (focus or visible) and the tuner is hidden;
     ///  * when the viewer sends the tuner away (Back, Home, ...) it stays away while the TV app is still up, so Back is not undone
     ///    by the next poll; it may come back after the TV app has been away (another app in front, closed) and returned;
+    ///  * a TV key (CH+/-, Info, Guide) while the tuner is hidden and the TV app is up brings it back at once, ahead of the poll and of the rule above
+    ///    (<see cref="KeyWake"/>): Samsung's app must not be the one that answers CH+, Info or Guide;
     ///  * a reading that failed changes nothing, unless it keeps failing: four in a row (two seconds) count as "the app is not
     ///    running", because the service may answer an error rather than a status for an app that is not there.
     /// </summary>
@@ -47,5 +49,20 @@ namespace Tuner.Core
 
         /// <summary>The tuner was hidden (by a key, the control pipe or an app change). It stays hidden while the TV app stays up.</summary>
         public void Dismissed() { _held = true; }
+
+        /// <summary>
+        /// The viewer pressed a key that belongs to watching TV (CH+/-, Info, Guide) while the tuner is hidden. The caller decides which keys count: not the arrows or OK, which the launcher and Samsung's overlays use while the TV app is still "in front". Waiting for
+        /// the next poll would leave Samsung's own app to react to that key and draw its own banner or list, so the tuner answers at once: when
+        /// the TV app is on screen it comes back and the key is its own, whether or not Back had sent it away. A reading that failed or any other
+        /// app in front changes nothing (the key is not ours).
+        /// </summary>
+        /// <param name="status">AUL status of the TV app, read now; negative when the reading failed.</param>
+        public bool KeyWake(int status)
+        {
+            if (!IsUp(status)) return false;
+            _held = false;
+            _unreadable = 0;
+            return true;
+        }
     }
 }

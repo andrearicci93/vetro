@@ -11,9 +11,9 @@ namespace Launcher.Core
     internal static class Design
     {
         // ---- The bar (designer style "solid": opaque tint, thin light border, soft drop shadow) ----
-        public const int ShellRadius = 24;
-        public const int ShellColor = 0x2A3346;
-        public const float ShellAlpha = 0.98f;
+        public const int ShellRadius = 16;
+        public const int ShellColor = 0x243448;
+        public const float ShellAlpha = 1.0f;
         public const int ShellBorderW = 2;
         public const int ShellBorderColor = 0xFFFFFF;
         public const float ShellBorderAlpha = 0.22f;
@@ -38,9 +38,19 @@ namespace Launcher.Core
         public const float GlowStrength = 0.44f;
         public const int GlowSpread = 16;
         public const int RingW = 2;
-        public const int RingColor = 0xFFFFFF;
+        /// <summary>The focus mark: an ice-white ring, clearly apart from the sheet and from the icons' own rim.</summary>
+        public const int RingColor = 0xE4F2FF;
         /// <summary>The selected icon rises by this many pixels.</summary>
         public const int Lift = 4;
+
+        // ---- Chips and light (the Fumé material: dark smoked sheet, ice focus, blue light only for progress and indicators) ----
+        public const int ChipRadius = 12;
+        /// <summary>Light blue used only for progress and indicators (the level of the volume pill, a switch that is on).</summary>
+        public const int LightColor = 0xA5D8FF;
+        /// <summary>Opacity of the volume pill's body: a little of the picture shows through.</summary>
+        public const float VolumeAlpha = 0.90f;
+        /// <summary>A resting chip, key or programme: white at this opacity over the sheet.</summary>
+        public const float FillRest = 0.20f;
 
         // ---- Text ----
         public static readonly bool ShowLabels = false;

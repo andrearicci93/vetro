@@ -6,19 +6,19 @@
 <style>
 /* Values from design-system/tokens.css (dark), status colours from the dashboard. Static page: solid surfaces,
    no blur, no animation. Flex without gap and ES5 only, so older TV runtimes draw it the same. */
-:root{--bg:#080f23;--surface:#101c35;--raised:#192943;--text:#f5f8ff;--muted:#aab8d1;--border:#344360;--link:#8fbaff;
+:root{--bg:#0d141f;--surface:#243448;--raised:#505d6d;--text:#f5f8ff;--muted:#bdc2c8;--border:#546170;--link:#f5f8ff;--ring:#e4f2ff;--light:#a5d8ff;
 --ok:rgb(127,203,160);--warn:rgb(226,184,103);--bad:rgb(239,138,128);
 --ok-soft:rgba(127,203,160,.12);--warn-soft:rgba(226,184,103,.12);--bad-soft:rgba(239,138,128,.12);
 --ok-line:rgba(127,203,160,.4);--warn-line:rgba(226,184,103,.4);--bad-line:rgba(239,138,128,.4)}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:"SamsungOneUI","Samsung One UI Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
-.safe{position:absolute;top:54px;left:96px;right:96px;bottom:54px}
+.safe{position:absolute;top:96px;left:96px;right:96px;bottom:96px}   /* the TV safe margin: 96 px on every side */
 .hero{display:flex;align-items:center}
-.hero img{width:176px;height:176px;border-radius:28px;display:block;flex:none;margin-right:48px}
+.hero img{width:176px;height:176px;border-radius:16px;display:block;flex:none;margin-right:48px}
 .hero h1{margin:0;font-size:84px;line-height:1.05;font-weight:500;letter-spacing:-.04em}
 .meta{margin-top:12px;font-size:28px;color:var(--muted)}
-.state{margin-top:20px;display:inline-flex;align-items:center;font-size:28px;font-weight:500;padding:8px 20px 8px 12px;border-radius:999px;border:2px solid var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.state{margin-top:20px;display:inline-flex;align-items:center;font-size:28px;font-weight:500;padding:8px 20px 8px 12px;border-radius:12px;border:2px solid var(--ok-line);background:var(--ok-soft);color:var(--ok)}
 .state svg{width:32px;height:32px;margin-right:12px;flex:none}
 .state.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
 .state.bad{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad)}
@@ -61,30 +61,34 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .share em{font-style:normal;color:var(--bad);font-weight:700}.share em.w{color:var(--warn)}
 .keys{display:flex;justify-content:flex-end;margin-top:18px;font-size:22px;color:var(--muted)}
 .keys span{margin-left:28px}
-.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:8px;color:var(--text)}
+.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:12px;color:var(--text)}
 
 /* Quick controls (the main view): five tiles that do what one switch of the dashboard does, and a strip with the checks.
    Same system as the rest of the page: system sans at 400 and 500 only, 16 px surfaces, 8 px controls, solid fills, a uniform border
    everywhere (focus is a brighter border plus an outline, never a coloured edge). Scale for a TV at 1920 px: section title 40, card
    title 32, text 25, labels 22 in capitals, values 26. One inset (28) for every card, so every text edge lines up. */
-#screen.compact .hero img,#screen.compact .hero .logo{width:176px;height:176px;border-radius:28px;margin-right:40px}
-#screen.compact .hero h1{font-size:72px}
-#screen.compact .meta{margin-top:8px;font-size:26px}
-#screen.compact .state{margin-top:14px;font-size:26px;padding:6px 20px 6px 12px}
-#screen.compact .dash{width:700px;padding:20px 28px}
-#screen.compact .url{margin:6px 0 4px;font-size:40px}
-#screen.compact .dash p{font-size:22px}
+/* The main view follows the Fumé mock-up (design-system/tv-system.html): the header is one sheet, the title strip is a sheet, the tiles are 452 high, the checks strip is 104 high: 872 px in the 888 px between the margins. */
+#screen.compact .hero{height:192px;padding:0 28px;background:var(--surface);border:2px solid var(--border);border-radius:16px}
+#screen.compact .hero img,#screen.compact .hero .logo{width:128px;height:128px;border-radius:16px;margin-right:32px}
+#screen.compact .hero h1{font-size:56px}
+#screen.compact .meta{margin-top:6px;font-size:26px}
+#screen.compact .state{margin-top:12px;font-size:26px;padding:4px 20px 4px 10px}
+#screen.compact .dash{width:640px;height:144px;align-self:center;padding:14px 24px;border-radius:12px;background:var(--raised);border:0}
+#screen.compact .url{margin:4px 0 4px;font-size:36px}
+#screen.compact .dash p{font-size:24px;line-height:1.3}
 .sec{display:flex;align-items:baseline;margin:44px 0 22px}
-.sec h2{margin:0;font-size:40px;line-height:1.1;font-weight:500;letter-spacing:-.02em}
+#screen.compact .sec{align-items:center;height:64px;margin:16px 0 20px;padding:0 32px;background:var(--surface);border:2px solid var(--border);border-radius:16px}
+.sec h2{margin:0;font-size:32px;line-height:1.1;font-weight:500;letter-spacing:-.02em}
 .sec span{margin-left:auto;font-size:24px;color:var(--muted)}
 .tiles{display:flex}
 .tile{position:relative;flex:1;height:480px;margin-right:20px;padding:28px;border-radius:16px;background:var(--surface);border:2px solid var(--border);display:flex;flex-direction:column}
 .tile:last-child{margin-right:0}
-.tile.focus{background:var(--raised);border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px}
+.tile.focus{background:var(--raised);border-color:var(--ring);outline:2px solid var(--ring);outline-offset:2px}
 .tile.na{opacity:.55}
 .tile .top{display:flex;align-items:center;margin-bottom:22px}
-.tile .glyph{width:64px;height:64px;border-radius:16px;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none}
-.tile.focus .glyph{background:var(--surface)}
+.tile .glyph{width:64px;height:64px;border-radius:12px;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none}
+.tile.focus .glyph{background:#6a7583}
+#screen.compact .tile{height:452px}
 .tile .glyph svg{width:36px;height:36px}
 .tile .tag{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
 /* Two lines are always reserved for the title, so the text under it starts at the same height in every tile. */
@@ -95,19 +99,19 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .val.ok{color:var(--ok)}.val.warn{color:var(--warn)}.val.bad{color:var(--bad)}.val.mute{color:var(--muted)}
 .sw{flex:none;width:88px;height:48px;border-radius:999px;border:2px solid var(--border);background:transparent;position:relative}
 .sw i{position:absolute;top:5px;left:5px;width:34px;height:34px;border-radius:50%;background:var(--muted)}
-.sw.on{background:var(--ok-soft);border-color:var(--ok-line)}
-.sw.on i{left:45px;background:var(--ok)}
+.sw.on{background:var(--light);border-color:var(--light)}
+.sw.on i{left:45px;background:var(--surface)}
 .sw.part{background:var(--warn-soft);border-color:var(--warn-line)}
 .sw.part i{left:25px;background:var(--warn)}
 .sw.busy i{left:25px;background:transparent;border:3px dashed var(--muted);animation:spin 2.4s linear infinite}
-.btn{flex:none;display:flex;align-items:center;height:56px;padding:0 28px;font-size:26px;font-weight:500;border-radius:8px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
+.btn{flex:none;display:flex;align-items:center;height:56px;padding:0 28px;font-size:26px;font-weight:500;border-radius:12px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
 .btn.go{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
 .tile.focus .btn{background:var(--surface)}
 .tile.focus .btn.go{background:var(--ok-soft)}
 /* The strip: the label, the chips and the hint sit on the first row; when the chips wrap, the next row hangs under them. */
-.diag{position:absolute;left:0;right:0;bottom:0;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:20px 28px;display:flex;align-items:flex-start}
+.diag{position:relative;margin-top:24px;min-height:104px;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:20px 28px;display:flex;align-items:flex-start}
 .diag.warn{border-color:var(--warn-line)}.diag.bad{border-color:var(--bad-line);background:var(--bad-soft)}
-.diag.focus{border-color:var(--link);outline:4px solid rgba(143,186,255,.35);outline-offset:2px;background:var(--raised)}
+.diag.focus{border-color:var(--ring);outline:2px solid var(--ring);outline-offset:2px;background:var(--raised)}
 .diag h4{margin:0 28px 0 0;font-size:26px;line-height:34px;font-weight:500;flex:none}
 .chips{display:flex;flex:1;flex-wrap:wrap}
 .chip{display:flex;align-items:center;margin-right:26px;font-size:22px;line-height:34px;font-weight:400;color:var(--muted);white-space:nowrap}
@@ -117,7 +121,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.na,.dot.off{background:transparent;border:2px dashed var(--muted)}
 .more{margin-left:16px;flex:none;font-size:22px;line-height:34px;color:var(--muted);white-space:nowrap}
 /* The message sits in the free space above the strip, near what was pressed, and does not cover the title. */
-.toast{position:absolute;left:50%;bottom:150px;max-width:1500px;transform:translateX(-50%);padding:10px 28px;border-radius:999px;background:var(--raised);border:2px solid var(--border);font-size:24px;line-height:1.3;text-align:center}
+.toast{position:absolute;left:50%;bottom:150px;max-width:1500px;transform:translateX(-50%);padding:10px 28px;border-radius:16px;background:var(--raised);border:2px solid var(--border);font-size:24px;line-height:1.3;text-align:center}
 </style></head>
 <body>
 <div id="stage"><div class="safe" id="screen"></div></div>

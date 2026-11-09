@@ -48,7 +48,9 @@ var FEATURE_IDS = FEATURES.map(function (f) { return f.id; });
 var DLL = 'vetro-tuner.dll';
 var UNIT = 'vetro-tuner';                             // the tuner's own systemd unit
 var TARGET_APP = 'org.tizen.tv-viewer';               // Samsung's live TV app
-var CLIENT_GLOB = '/opt/usr/dotnet/Tizen.TV.Broadcast.TVService/*/Tizen.TV.Broadcast.TVService.dll';
+var CLIENT_ROOT = '/opt/usr/dotnet/Tizen.TV.Broadcast.TVService';
+var CLIENT_GLOB = CLIENT_ROOT + '/*/Tizen.TV.Broadcast.TVService.dll';
+var CLIENT_VERSION_RE = /^\d+(?:\.\d+){0,3}$/;
 var START_WAIT_MS = 15000;
 var BOOT_WAIT_MS = 75000;                             // a start in the first minutes after a TV boot is slow
 var BOOT_WINDOW_S = 300;
@@ -132,6 +134,8 @@ Tuner.prototype.probe = function () {
         'if pidof tvs-daemon >/dev/null 2>&1; then echo tvs=1; else echo tvs=0; fi',
         'if [ -x /usr/bin/dotnet ]; then echo dotnet=1; else echo dotnet=0; fi',
         'if [ -e /usr/apps/' + TARGET_APP + ' ]; then echo viewer=1; else echo viewer=0; fi',
+        // The version folders of Samsung's client, for the diagnostic report (which versions exist on which firmware is not known yet).
+        'echo "clientver=$(ls ' + CLIENT_ROOT + ' 2>/dev/null | tr "\\n" ",")"',
         // No log file yet is normal: without || true the missing file would fail the whole read.
         'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
     ].join('\n');
@@ -141,8 +145,11 @@ Tuner.prototype.probe = function () {
         PROBE_FLAG_RE.lastIndex = 0;
         while ((m = PROBE_FLAG_RE.exec(out))) flags[m[1]] = m[2] === '1';
         var tail = out.split(LOG_SPLIT)[1];
+        var versions = /^clientver=(.*)$/m.exec(out);
         return {running: !!pid, pid: pid ? +pid[1] : null, client: flags.client === true, tvs: flags.tvs === true,
-            dotnet: flags.dotnet === true, viewer: flags.viewer === true, log: tail ? tail.trim() : ''};
+            dotnet: flags.dotnet === true, viewer: flags.viewer === true,
+            clientVersions: versions ? versions[1].split(',').filter(function (v) { return CLIENT_VERSION_RE.test(v); }).slice(0, 5) : [],
+            log: tail ? tail.trim() : ''};
     });
 };
 
@@ -162,9 +169,10 @@ Tuner.prototype.status = function () {
     return this.probe().then(function (p) {
         var reason = unsupportedReason(p);
         return Object.assign(base, {running: p.running, pid: p.pid, supported: reason === null, unsupportedReason: reason,
-            samsungTunerFound: p.viewer, log: p.log});
+            samsungTunerFound: p.viewer, prerequisites: {dotnet: p.dotnet, client: p.client, tvs: p.tvs, viewer: p.viewer},
+            clientVersions: p.clientVersions, log: p.log});
     }).catch(function (e) {
-        return Object.assign(base, {running: null, pid: null, supported: null, unsupportedReason: null, samsungTunerFound: null, log: '', probeError: e.message});
+        return Object.assign(base, {running: null, pid: null, supported: null, unsupportedReason: null, samsungTunerFound: null, prerequisites: null, clientVersions: [], log: '', probeError: e.message});
     });
 };
 

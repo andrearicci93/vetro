@@ -115,17 +115,19 @@ Dock.prototype.installed = function () {
     catch (e) { return false; }
 };
 
+var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the glass volume bar sits (the dock's --volume-edge)
+
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, numberPad: s && s.numberPad === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, numberPad: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -225,7 +227,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, numberPad: state.numberPad, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
@@ -249,7 +251,7 @@ Dock.prototype.startScript = function () {
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
-        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
+        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge;
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -574,6 +576,20 @@ Dock.prototype.setNoMotion = function (on) {
 // Glass volume pill: the dock draws it for Vol+ and Vol- (the bridge holds those keys back). The dock needs no restart;
 // onVolumeChange lets the service restart the remote bridge so the new key list takes effect.
 Dock.prototype.setVolumePill = function (on) { return this.setKeyOption('volumePill', on); };
+// Which edge of the screen the pill sits on. It is a start argument, so a running dock is restarted.
+Dock.prototype.setVolumeEdge = function (edge) {
+    var self = this;
+    if (VOLUME_EDGES.indexOf(edge) < 0) return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    try { this.patchState({volumeEdge: edge}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.status();
+    return this.refresh().catch(function (e) {
+        try { self.patchState({volumeEdge: state.volumeEdge}); } catch (e2) {}
+        throw e;
+    });
+};
 // The same for the glass number pad that replaces Samsung's 123 pad.
 Dock.prototype.setNumberPad = function (on) { return this.setKeyOption('numberPad', on); };
 Dock.prototype.setKeyOption = function (name, on) {

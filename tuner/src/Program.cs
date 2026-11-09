@@ -26,7 +26,7 @@ namespace Tuner
         // Home = 63 (the dock's --home-code). The remote has no digit keys: "123" (140) opens the system's own pad (and that cannot be stopped), so our pad is on Left.
         // 158/174/402/403 stay for other remotes.
         private const int KeyBack = 158, KeyEsc = 1, KeyExit = 174, KeyChannelUp = 88, KeyChannelDown = 87, KeyChannelUp2 = 402, KeyChannelDown2 = 403;
-        private const int KeyUp = 103, KeyDown = 108, KeyLeft = 105, KeyRight = 106, KeyEnter = 28;
+        private const int KeyUp = 103, KeyDown = 108, KeyLeft = 105, KeyRight = 106, KeyEnter = 28, KeyPower = 116;
         // The guide opens on Up (nothing else uses it) and on the Guide / EPG keys of remotes that have one (KEY_EPG 365, KEY_GUIDE 362: not seen on the Smart Control).
         private const int KeyEpg = 365, KeyGuide = 362;
         // The info panel opens on the Info key of remotes that have one (KEY_INFO 358) and on `info` from the control pipe: the dock's 123 pad sends that.
@@ -207,15 +207,18 @@ namespace Tuner
             Efl.elm_win_activate(_win);
             Efl.elm_win_raise(_win);
             if (_shown != null) ShowBanner(_shown);
+            StartPrefetch();                                            // schedules may have gone stale while hidden (the store ages them), and a zap may have happened from the pipe
+            if (_list != null) { _resyncLeft = 1; ResyncNow(); }        // Samsung's app may have changed the channel while we were hidden
             Log("shown");
         }
 
         /// <summary>Closes everything and takes the window off the screen. A resident tuner stays alive; otherwise the process ends.</summary>
-        private static void Deactivate()
+        /// <param name="hold">Keep the tuner away while Samsung's app stays up (Back, Home). False for Power: the TV goes to standby and wakes on the same app, which must find the tuner on.</param>
+        private static void Deactivate(bool hold = true)
         {
             CloseList(); ClosePad(); CloseGuide(); CloseInfo();
             _banner.Hide(); _toast.Hide();
-            TakeoverState.Dismissed();
+            if (hold) TakeoverState.Dismissed();
             if (!_resident) { Efl.elm_exit(); return; }
             _active = false;
             MarkShown(false);
@@ -245,6 +248,7 @@ namespace Tuner
                         Channel want = _list.ByNumber(_startMajor);
                         if (want != null && (cur == null || want.Id != cur.Id)) GoTo(want);   // never re-tune the channel that is already on
                     }
+                    StartPrefetch();                                       // the neighbours of where we are, before the first key
                 });
                 foreach (Action a in Work.GetConsumingEnumerable()) a();
             }
@@ -273,9 +277,11 @@ namespace Tuner
         /// Asks for a channel. The banner and the list position change at once (so repeated CH+ presses chain), the daemon is told
         /// on the worker thread, and a burst of requests collapses into the last one.
         /// </summary>
+        private static int _goGen;                    // bumped on every request of ours: a resync that was read before it is out of date
         private static void GoTo(Channel c)
         {
             if (c == null) return;
+            Interlocked.Increment(ref _goGen);
             if (_list != null) _list.Select(c);
             _shown = c;
             Interlocked.Increment(ref _prefetchGen);                    // a pass reading other channels gives way to the tune
@@ -299,7 +305,8 @@ namespace Tuner
                 Log("tune " + id + " r=" + r + " ms=" + sw.ElapsedMilliseconds);
             });
             _programAttempt = 0;
-            StartPrefetch();                                            // after the tune in the queue: the channels around, so the next zap already has them
+            RequestProgram();                                           // after the tune: if the read before it found nothing yet, this one keeps asking (a few times) until the daemon has the tables
+            StartPrefetch();                                            // after that: the channels around, so the next zap already has them
         }
 
         /// <summary>
@@ -318,6 +325,8 @@ namespace Tuner
         /// <summary>Worker: what is on air on this channel, from its schedule; when the schedule has nothing for now, from the present-programme call.</summary>
         private static void ProgramLookup(Channel c, int attempt)
         {
+            Channel on = _shown;
+            if (on == null || on.Id != c.Id) return;                   // the owner zapped on while this waited in the queue (CH+ held: one lookup per step): nobody needs it
             long start = 0, duration = 0, now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             bool ok = false;
             string title = "";
@@ -386,15 +395,19 @@ namespace Tuner
         private const int PrefetchChannels = 24;
 
         /// <summary>
-        /// After a zap, the schedules of the channels next to this one are read in the background, so the next CH+/- (or the guide) already has
-        /// them. The daemon answers for any channel in 30-50 ms. Runs on the worker in short slices and gives way as soon as the owner zaps.
+        /// The schedules of the channels next to the one on screen are read in the background, so the next CH+/- (or the guide) already has
+        /// them: the five above and the five below first (+1, -1, +2, -2, ...; where a zap goes next), then outward up to
+        /// <see cref="PrefetchChannels"/>. It starts when the channel list is known and whenever the tuner is shown, not only after a zap, so the first
+        /// CH+ already finds its neighbours; the channel on screen is read first. The daemon answers for any channel in 30-50 ms. Runs on the worker in
+        /// short slices, behind the tune, and gives way as soon as the owner zaps (the next pass starts from the new channel; what was read stays).
         /// </summary>
         private static void StartPrefetch()
         {
             if (_list == null || _shown == null) return;
             var ids = new List<ulong>();
+            ids.Add(_shown.Id);
             foreach (int i in GuideStore.Nearest(_list.Count, _list.CurrentIndex)) { ids.Add(_list[i].Id); if (ids.Count >= PrefetchChannels) break; }
-            int gen = Volatile.Read(ref _prefetchGen);
+            int gen = Interlocked.Increment(ref _prefetchGen);          // one pass at a time: an older one stops at its next slice
             Work.Add(() => PrefetchSlice(gen, ids, 0));
         }
 
@@ -674,8 +687,12 @@ namespace Tuner
         private static void OnKey(int code)
         {
             Log("key " + code);
-            if (!_active) return;                                       // resident and hidden: keys are not ours
-            if (SystemKeys.Contains(code)) { Deactivate(); return; }    // Home, Menu, Power...: step aside, the system does the rest
+            if (!_active)
+            {
+                if (!WakeOnKey(code)) return;                           // resident and hidden: keys are not ours, unless Samsung's app is up and this is a TV key
+                if (IsChannelKey(code)) { ResyncSoon(); return; }       // Samsung's app has the same key and changes the channel itself: ours would be a second step from a stale channel
+            }
+            if (SystemKeys.Contains(code)) { Deactivate(code != KeyPower); return; }    // Home, Menu, Power...: step aside, the system does the rest
             bool back = code == KeyBack || code == KeyEsc || code == KeyExit;
             _repeats = 0;
             if (InfoOpen)
@@ -722,6 +739,63 @@ namespace Tuner
             if (code == KeyEnter) { OpenList(); return; }
             int digit = Digit(code);
             if (digit >= 0) OpenPad(digit);
+        }
+
+        /// <summary>
+        /// The keys that bring a hidden tuner back: CH+/-, Info and Guide/EPG. Samsung's app answers them with its own banner, list or panel, and
+        /// nothing else on the TV uses them. The arrows and OK are NOT here: the launcher (a window, not an app the application manager knows)
+        /// and Samsung's own overlays (Source, quick settings) leave the live TV app "in front" while they use those keys, and the tuner would
+        /// pop up over them. Digits are left out too (the remotes that have them are rare, and Samsung's number entry would tune as well).
+        /// </summary>
+        private static bool IsTvKey(int code) { return IsChannelKey(code) || code == KeyEpg || code == KeyGuide || code == KeyInfo; }
+
+        /// <summary>
+        /// Enforcement of the takeover. The poll runs twice a second and, after Back, leaves the screen to Samsung's app on purpose; but
+        /// the remote's keys reach Samsung's app as well, and it answers CH+, OK or Info with its own banner and lists. So a TV key that
+        /// arrives while the tuner is hidden asks the application manager at once: if Samsung's live TV app is up, the tuner comes back
+        /// and the key is its own. Only when takeover is on (--takeover) and the application manager can be asked.
+        /// </summary>
+        private static IntPtr _resyncTimer;
+        private static int _resyncLeft;
+        private static readonly Efl.TaskCb OnResync = d => { _resyncTimer = IntPtr.Zero; ResyncNow(); return 0; };
+
+        /// <summary>The channel may have changed behind our back (Samsung's app answered a key, or Samsung's own list was used): ask the daemon what is on now, at 0.8 s and again at 2.5 s because a channel change takes a moment to show.</summary>
+        private static void ResyncSoon()
+        {
+            _resyncLeft = 2;
+            Restart(ref _resyncTimer, 0.8, OnResync);
+        }
+
+        private static void ResyncNow()
+        {
+            if (_resyncLeft-- > 1) Restart(ref _resyncTimer, 1.7, OnResync);
+            int goGen = Volatile.Read(ref _goGen);
+            Work.Add(() =>
+            {
+                string status;
+                Channel cur = null;
+                try { cur = Tvs.ReadCurrent(out status); } catch (Exception ex) { Log("resync: " + ex.Message); }
+                if (cur == null) return;
+                Ui(() =>
+                {
+                    if (goGen != Volatile.Read(ref _goGen)) return;      // we asked for a channel ourselves since this was read: that decides
+                    if (_shown != null && _shown.Id == cur.Id) return;
+                    Log("resync: the TV is on " + cur.Major + " " + cur.Name);
+                    _shown = cur;
+                    if (_list != null) _list.SetCurrent(cur.Id);
+                    if (_active) { ShowBanner(cur); StartPrefetch(); }
+                });
+            });
+        }
+
+        private static bool WakeOnKey(int code)
+        {
+            if (!_resident || _takeoverApp == null || _takeoverBroken || !IsTvKey(code)) return false;
+            int status = ReadTargetStatus();
+            if (!TakeoverState.KeyWake(status)) return false;
+            Log("takeover: key " + code + " with " + _takeoverApp + " status " + status + ", showing the tuner");
+            Activate();
+            return true;
         }
 
         /// <summary>KEY_1..KEY_9 are 2..10, KEY_0 is 11.</summary>
@@ -1033,16 +1107,27 @@ namespace Tuner
         private static readonly System.Text.RegularExpressions.Regex AppIdPattern = new System.Text.RegularExpressions.Regex("^[A-Za-z0-9_.-]{1,120}$");
 
         /// <summary>Asks the application manager about the TV app and shows the tuner when <see cref="Takeover"/> says so.</summary>
-        private static void PollTakeover()
+        private static int _lastStatus = int.MinValue;
+
+        /// <summary>The application manager's status of the TV app; negative when it could not be read. Logs every change, so a TV run shows what the numbers really are (2 or 3 with the tuner in front, what Home and Source do).</summary>
+        private static int ReadTargetStatus()
         {
             int status;
             try { status = Efl.aul_app_get_status(_takeoverApp); }
             catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
             {
-                _takeoverBroken = true;      // the timer stops itself: this TV has no such call
+                _takeoverBroken = true;      // the timer stops itself: this TV has no such call, and Samsung's app then always shows
                 Log("takeover: the application manager cannot be asked (" + ex.GetType().Name + "), switched off");
-                return;
+                return -1;
             }
+            if (status != _lastStatus) { Log("takeover: " + _takeoverApp + " status " + (_lastStatus == int.MinValue ? "first" : _lastStatus.ToString()) + " -> " + status + (_active ? " (tuner shown)" : " (tuner hidden)")); _lastStatus = status; }
+            return status;
+        }
+
+        private static void PollTakeover()
+        {
+            int status = ReadTargetStatus();
+            if (_takeoverBroken) return;
             if (!TakeoverState.Observe(status, _active)) return;
             Log("takeover: " + _takeoverApp + " status " + status + ", showing the tuner");
             Activate();

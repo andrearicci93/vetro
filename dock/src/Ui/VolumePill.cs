@@ -6,36 +6,34 @@ using Launcher.Native;
 namespace Launcher.Ui
 {
     /// <summary>
-    /// The volume pill: a vertical glass capsule at the left edge of the screen with the level filling it from the bottom and a speaker
-    /// at its foot, shown for a moment whenever the volume changes. It is its own window in the notification layer that
-    /// never takes focus and lets every input event through, so the app underneath (Netflix, the tuner) keeps both.
-    /// Colours and shapes follow the dock: dark slate sheet, thin light edge, white level. It exists only after the
-    /// first volume key, and its frame animator runs only while it is on screen.
+    /// The volume pill: one soft glass capsule on a screen edge of the user's choice (left, right, top or bottom, 96 px from
+    /// the edge) with the level filling a capsule track in light blue, a speaker icon and the level as a number. Vertical on the
+    /// side edges (the level rises from the foot), horizontal on top and bottom (it grows from the left). It is shown for a
+    /// moment whenever the volume changes. It is its own window in the notification layer that never takes focus and lets
+    /// every input event through, so the app underneath (Netflix, the tuner) keeps both. The geometry is
+    /// <see cref="VolumePlacement"/>; colours follow <see cref="Design"/>. It exists only after the first volume key, and its
+    /// frame animator runs only while it is on screen.
     /// </summary>
     internal sealed class VolumePill
     {
-        private const int WinW = 120, WinH = 400, EdgeGap = 28;
-        private const int BodyX = 12, BodyY = 20, BodyW = 96, BodyH = 360;
-        private const int CapX = 24, CapW = 72, TrackY = 32, TrackH = 264;
-        // The icon sits in the 84 px between the foot of the track and the foot of the body, with the same air above and below.
-        private const int IconSize = 40, IconX = BodyX + (BodyW - IconSize) / 2, IconY = TrackY + TrackH + (BodyY + BodyH - TrackY - TrackH - IconSize) / 2;
+        private const string Font = "SamsungOneUI 500,Sans";
         private const int NotificationLevelTop = 40, WindowLayer = 900;
         private const double HoldSeconds = 1.6, FadeInSeconds = 0.12, FadeOutSeconds = 0.22;
 
         private readonly string _assets;
         private readonly Action<string> _log;
-        private readonly int _screenW, _screenH;
-        private IntPtr _win, _rim, _body, _track, _fill, _clip;
+        private readonly VolumePlacement _p;
+        private IntPtr _win, _rim, _body, _track, _fill, _clip, _num;
         private readonly IntPtr[] _icons = new IntPtr[3];
         private IntPtr _animator;
         private readonly Efl.TaskCb _tick;
-        private bool _built, _failed, _shown;
+        private bool _built, _failed, _shown, _muted;
         private double _shownAt, _until;
-        private int _fillHeight, _iconLevel = -1;
+        private int _fillLength, _iconLevel = -1;
 
-        public VolumePill(string assets, Action<string> log, int screenW, int screenH)
+        public VolumePill(string assets, Action<string> log, int screenW, int screenH, VolumeEdge edge)
         {
-            _assets = assets; _log = log; _screenW = screenW; _screenH = screenH;
+            _assets = assets; _log = log; _p = VolumePlacement.For(edge, screenW, screenH);
             _tick = Tick;
         }
 
@@ -74,22 +72,29 @@ namespace Launcher.Ui
                 Efl.elm_win_layer_set(_win, WindowLayer);
                 Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
                 Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
-                Efl.evas_object_move(_win, EdgeGap, (_screenH - WinH) / 2);
-                Efl.evas_object_resize(_win, WinW, WinH);
+                Efl.evas_object_move(_win, _p.WinX, _p.WinY);
+                Efl.evas_object_resize(_win, _p.WinW, _p.WinH);
                 Efl.evas_object_pass_events_set(_win, true);
                 IntPtr evas = Efl.evas_object_evas_get(_win);
-                _rim = Capsule(evas, "pill_rim", 50, BodyX - 2, BodyY - 2, BodyW + 4, BodyH + 4);
-                _body = Capsule(evas, "pill_bg", 48, BodyX, BodyY, BodyW, BodyH);
-                _track = Capsule(evas, "pill_cap", 36, CapX, TrackY, CapW, TrackH);
-                // The level is the whole track capsule seen through a window that rises from the foot: a low level is a thin
-                // slice with the track's rounded bottom, a full one is the whole capsule.
-                _fill = Capsule(evas, "pill_cap", 36, CapX, TrackY, CapW, TrackH);
+                int ox = _p.WinX, oy = _p.WinY;
+                int half = _p.BodyH < _p.BodyW ? _p.BodyH / 2 : _p.BodyW / 2;        // body radius: a full capsule
+                int trackHalf = (_p.Vertical ? _p.TrackW : _p.TrackH) / 2;
+                _rim = Capsule(evas, "vol_rim", half + 2, _p.BodyX - 2 - ox, _p.BodyY - 2 - oy, _p.BodyW + 4, _p.BodyH + 4);
+                _body = Capsule(evas, "vol_bg", half, _p.BodyX - ox, _p.BodyY - oy, _p.BodyW, _p.BodyH);
+                _track = Capsule(evas, "vol_cap", trackHalf, _p.TrackX - ox, _p.TrackY - oy, _p.TrackW, _p.TrackH);
+                // The level is the whole track capsule seen through a window that grows from the foot (or the left edge): a low
+                // level is a thin slice with the track's rounded end, a full one is the whole capsule.
+                _fill = Capsule(evas, "vol_cap", trackHalf, _p.TrackX - ox, _p.TrackY - oy, _p.TrackW, _p.TrackH);
                 _clip = Efl.evas_object_rectangle_add(evas);
                 Efl.evas_object_color_set(_clip, 255, 255, 255, 255);
-                Efl.evas_object_move(_clip, CapX, TrackY + TrackH);
-                Efl.evas_object_resize(_clip, CapW, 1);
+                Efl.evas_object_move(_clip, _p.TrackX - ox, _p.TrackY - oy);
+                Efl.evas_object_resize(_clip, 1, 1);
                 Efl.evas_object_clip_set(_fill, _clip);
                 Efl.evas_object_show(_clip);
+                _num = Efl.evas_object_text_add(evas);
+                Efl.evas_object_text_font_set(_num, Font, VolumePlacement.NumberSize);
+                Efl.evas_object_pass_events_set(_num, true);
+                Efl.evas_object_show(_num);
                 for (int i = 0; i < _icons.Length; i++)
                 {
                     IntPtr img = Efl.evas_object_image_add(evas);
@@ -97,8 +102,8 @@ namespace Launcher.Ui
                     if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) _log("volume: asset missing vol_icon_" + i);
                     Efl.evas_object_image_filled_set(img, true);
                     Efl.evas_object_image_smooth_scale_set(img, true);
-                    Efl.evas_object_move(img, IconX, IconY);
-                    Efl.evas_object_resize(img, IconSize, IconSize);
+                    Efl.evas_object_move(img, _p.IconX - ox, _p.IconY - oy);
+                    Efl.evas_object_resize(img, VolumePlacement.IconSize, VolumePlacement.IconSize);
                     Efl.evas_object_pass_events_set(img, true);
                     _icons[i] = img;
                 }
@@ -127,22 +132,37 @@ namespace Launcher.Ui
 
         private void Update(int volume, bool muted)
         {
-            _fillHeight = VolumeModel.FillHeight(volume, muted, TrackH);
-            if (_fillHeight > 0)
+            _muted = muted;
+            _fillLength = VolumeModel.FillHeight(volume, muted, _p.Vertical ? _p.TrackH : _p.TrackW);
+            int ox = _p.WinX, oy = _p.WinY;
+            if (_fillLength > 0)
             {
-                Efl.evas_object_move(_clip, CapX, TrackY + TrackH - _fillHeight);
-                Efl.evas_object_resize(_clip, CapW, _fillHeight);
+                if (_p.Vertical)
+                {
+                    Efl.evas_object_move(_clip, _p.TrackX - ox, _p.TrackY + _p.TrackH - _fillLength - oy);
+                    Efl.evas_object_resize(_clip, _p.TrackW, _fillLength);
+                }
+                else
+                {
+                    Efl.evas_object_move(_clip, _p.TrackX - ox, _p.TrackY - oy);
+                    Efl.evas_object_resize(_clip, _fillLength, _p.TrackH);
+                }
             }
             _iconLevel = VolumeModel.IconLevel(volume, muted);
+            Efl.evas_object_text_text_set(_num, muted ? "\u2014" : volume.ToString());
+            int w = Efl.evas_object_text_horiz_advance_get(_num), h = Efl.evas_object_text_vert_advance_get(_num);
+            int nx = _p.Vertical ? _p.NumberCenterX - w / 2 : _p.NumberRight - w;
+            Efl.evas_object_move(_num, nx - ox, _p.NumberCenterY - h / 2 - oy);
         }
 
         private void Apply(double a)
         {
-            Tint(_rim, 0xFFFFFF, 0.22 * a);
-            Tint(_body, Design.ShellColor, 0.84 * a);
+            Tint(_rim, 0xFFFFFF, Design.ShellBorderAlpha * a);
+            Tint(_body, Design.ShellColor, Design.VolumeAlpha * a);
             Tint(_track, 0xFFFFFF, 0.16 * a);
-            if (_fillHeight > 0) { Tint(_fill, 0xFFFFFF, 0.96 * a); Efl.evas_object_show(_fill); }
+            if (_fillLength > 0) { Tint(_fill, Design.LightColor, a); Efl.evas_object_show(_fill); }
             else Efl.evas_object_hide(_fill);
+            Tint(_num, 0xFFFFFF, (_muted ? 0.55 : 0.95) * a);
             for (int i = 0; i < _icons.Length; i++)
             {
                 if (i == _iconLevel) { Tint(_icons[i], 0xFFFFFF, 0.95 * a); Efl.evas_object_show(_icons[i]); }

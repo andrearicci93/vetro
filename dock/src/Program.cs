@@ -632,6 +632,7 @@ namespace Launcher
         }
 
         private static VolumePill _pill;
+        private static VolumeEdge _volumeEdge = VolumeEdge.Left;
         private static int _pillScreenW = DefaultScreenW, _pillScreenH = DefaultScreenH;
 
         private const string MuteKey = "memory/org.tizen.tv-viewer/mute_status";
@@ -679,7 +680,7 @@ namespace Launcher
                 _levelBeforeMute = 0;
             }
             if (target != volume) { if (Sound.TrySetVolume(target)) volume = target; else Log("volume: level change refused"); }
-            if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH);
+            if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge);
             _pill.Show(volume, volume == 0 && _levelBeforeMute > 0);
         }
 
@@ -956,6 +957,7 @@ namespace Launcher
         {
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
+            _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
             _dir = ResolveDir(args);

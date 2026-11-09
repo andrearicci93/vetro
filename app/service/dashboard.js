@@ -241,6 +241,7 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .quick-group>.quick-callout{margin:var(--s2) 0}
 .quick-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s4);padding:var(--s4) 0}
 .quick-item+.quick-item{border-top:1px solid var(--border)}
+.quick-edge{grid-column:1/-1;display:flex;align-items:center;gap:var(--s3);color:var(--text-muted)}
 .quick-item .notice{margin-top:var(--s2)}
 .quick-item p{font-size:var(--fs-s);line-height:1.6;color:var(--muted);margin-top:2px;max-width:60ch;text-wrap:pretty}
 .quick-item .switch{margin:0;align-self:start}
@@ -1177,7 +1178,7 @@ function renderDock(){
  var noTube=inventory.length>0&&!tizenTubeInstalled(d),fixState=d.fixTizenTube?chip('On','on'):chip('Off');
  var fix='<div class="quick-item" data-quick-item="fix-tizentube"><div><h3>Fix TizenTube</h3><p>Shows the YouTube icon on the TizenTube tile and closes Samsung’s YouTube (com.samsung.tv.cobalt-yt) before starting it. Launcher tile only.</p><div class="quick-state">'+fixState+(noTube?chip('TizenTube is not installed on this TV','partial'):d.enabled&&!dockHasTizenTube(d)?chip('TizenTube is not in Samsung’s Home row','partial'):'')+'</div></div>'+switchMarkup('data-dock-fix',!!d.fixTizenTube,dockBusy||!d.installed||noTube&&!d.fixTizenTube,'Fix TizenTube')+'</div>';
  var still='<div class="quick-item" data-quick-item="reduce-motion"><div><h3>Reduce motion</h3><p>Turns off all launcher animations immediately.</p><div class="quick-state">'+(d.noMotion?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-still',!!d.noMotion,dockBusy||!d.installed,'Reduce motion')+'</div>';
- var pill='<div class="quick-item" data-quick-item="volume-pill"><div><h3>Glass volume bar</h3><p>Vol+ and Vol- show a slim glass pill on the right edge instead of Samsung’s bar. Needs the remote interception on. If the dock is unreachable the keys fall back to Samsung’s own.</p><div class="quick-state">'+(d.volumePill?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-volume',!!d.volumePill,dockBusy||!d.installed,'Glass volume bar')+'</div>';
+ var pill='<div class="quick-item" data-quick-item="volume-pill"><div><h3>Glass volume bar</h3><p>Vol+ and Vol- show a soft glass pill with the level in light blue and as a number, instead of Samsung’s bar. Needs the remote interception on. If the dock is unreachable the keys fall back to Samsung’s own.</p><div class="quick-state">'+(d.volumePill?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-volume',!!d.volumePill,dockBusy||!d.installed,'Glass volume bar')+'<label class="quick-edge">Position <select data-dock-edge aria-label="Volume bar position"'+(dockBusy||!d.installed?' disabled':'')+'>'+['left','right','top','bottom'].map(function(e){return '<option value="'+e+'"'+((d.volumeEdge||'left')===e?' selected':'')+'>'+e.charAt(0).toUpperCase()+e.slice(1)+'</option>'}).join('')+'</select></label></div>';
  var padItem='<div class="quick-item" data-quick-item="number-pad"><div><h3>Glass number pad</h3><p>The 123 key opens a slim glass pad with the digits instead of Samsung’s. Pick a digit with Left and Right, OK to type, Done to send. Needs the remote interception on.</p><div class="quick-state">'+(d.numberPad?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-pad',!!d.numberPad,dockBusy||!d.installed,'Glass number pad')+'</div>';
  function sourceOption(key,label,description){
   return '<div class="quick-item" data-quick-item="'+key+'"><div><h3>'+label+'</h3><p>'+description+'</p><div class="quick-state">'+chip(d[key]?'On':'Off',d[key]?'on':'')+'</div></div>'+switchMarkup('data-dock-source-option="'+key+'"',!!d[key],dockBusy||!d.installed,label)+'</div>';
@@ -1380,6 +1381,7 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
  if(x.dataset.dockPad!=null)return setDock('numberPad',x.checked?'Turn on the glass number pad':'Turn off the glass number pad',{on:!!x.checked});
+ if(x.dataset.dockEdge!=null)return setDock('volumeEdge','Move the glass volume bar to the '+x.value,{edge:x.value});
  if(x.dataset.dockVolume!=null)return setDock('volumePill',x.checked?'Turn on the glass volume bar':'Turn off the glass volume bar',{on:!!x.checked});
  if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+(x.dataset.dockSourceOption==='showHomeSources'?'HDMI sources on Home':'HDMI source images'),{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;

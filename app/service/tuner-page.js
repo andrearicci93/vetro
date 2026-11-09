@@ -9,17 +9,17 @@
 // Plain ES5, like every module the TV loads.
 
 var FONT = 'SamsungOneUI, system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-var SHEET = '#2a3346';
+var SHEET = '#243448', ICE = '#e4f2ff', LIGHT = '#a5d8ff';   // Fumé: opaque sheet, ice focus ring, light blue only for progress
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 function n(v) { return String(Math.round(v * 100) / 100); }
 
 // ---- drawing helpers (white at an alpha, as the tuner draws) ----
-function fill(x, y, w, h, alpha, radius) {
-    return '<rect x="' + n(x) + '" y="' + n(y) + '" width="' + n(w) + '" height="' + n(h) + '" rx="' + n(radius === undefined ? 8 : radius) + '" fill="#fff" fill-opacity="' + n(alpha / 255) + '"/>';
+function fill(x, y, w, h, alpha, radius, color) {
+    return '<rect x="' + n(x) + '" y="' + n(y) + '" width="' + n(w) + '" height="' + n(h) + '" rx="' + n(radius === undefined ? 8 : radius) + '" fill="' + (color || '#fff') + '" fill-opacity="' + n(alpha / 255) + '"/>';
 }
 function ring(x, y, w, h, radius) {
-    return '<rect x="' + n(x + 1) + '" y="' + n(y + 1) + '" width="' + n(w - 2) + '" height="' + n(h - 2) + '" rx="' + n(radius === undefined ? 12 : radius) + '" fill="none" stroke="#fff" stroke-width="3"/>';
+    return '<rect x="' + n(x + 1) + '" y="' + n(y + 1) + '" width="' + n(w - 2) + '" height="' + n(h - 2) + '" rx="' + n(radius === undefined ? 10 : radius) + '" fill="none" stroke="' + ICE + '" stroke-width="3"/>';
 }
 // The tuner places text by the top of its box; SVG by its baseline.
 function text(x, y, size, alpha, str, anchor) {
@@ -27,7 +27,7 @@ function text(x, y, size, alpha, str, anchor) {
         (anchor ? ' text-anchor="' + anchor + '"' : '') + '>' + esc(str) + '</text>';
 }
 function sheet(x, y, w, h) {
-    return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="24" fill="' + SHEET + '" fill-opacity="0.96" stroke="#fff" stroke-opacity="0.16" stroke-width="2" filter="url(#tpShadow)"/>';
+    return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="16" fill="' + SHEET + '" stroke="#fff" stroke-opacity="0.16" stroke-width="2" filter="url(#tpShadow)"/>';
 }
 // One picture: the dark stand-in for the video, the parts, a text for screen readers.
 function screen(label, parts) {
@@ -43,35 +43,35 @@ function figure(title, keys, description, picture) {
 var NAMES = {4: 'Weather', 5: 'Shopping', 6: 'Retro', 7: 'Talk', 8: 'News 24', 9: 'Cinema HD', 10: 'Sport 1', 11: 'Docs', 12: 'Kids', 13: 'Music', 14: 'Nature'};
 
 function banner() {
-    var X = 96, W = 780, H = 204, Y = 1000 - H, Pad = 36, bar = W - 2 * Pad;
+    var X = 96, W = 780, H = 204, Y = 984 - H, Pad = 36, bar = W - 2 * Pad;
     return screen('The channel banner: channel 9, Cinema HD, the film on air with its times, the time left and a progress bar.', [
         sheet(X, Y, W, H),
         text(X + Pad, Y + 22, 56, 255, '9'), text(X + Pad + 110, Y + 32, 40, 255, 'Cinema HD'),
         text(X + Pad, Y + 84, 30, 255, 'Evening Film'),
         text(X + Pad, Y + 126, 26, 178, '21:20 – 23:05'), text(X + W - Pad, Y + 126, 26, 178, '1 h 12 min left', 'end'),
-        fill(X + Pad, Y + H - 30, bar, 6, 56, 3), fill(X + Pad, Y + H - 30, Math.round(bar * 0.31), 6, 235, 3)
+        fill(X + Pad, Y + H - 30, bar, 6, 56, 3), fill(X + Pad, Y + H - 30, Math.round(bar * 0.31), 6, 255, 3, LIGHT)
     ]);
 }
 
 function channelList() {
-    var X = 1296, Y = 110, W = 540, Pad = 24, RowH = 64, rows = 11, selected = 5, parts = [sheet(X, Y, W, rows * RowH + 2 * Pad)];
+    var X = 1284, Y = 110, W = 540, Pad = 24, RowH = 64, rows = 11, selected = 5, parts = [sheet(X, Y, W, rows * RowH + 2 * Pad)];
     for (var r = 0; r < rows; r++) {
         var y = Y + Pad + r * RowH, sel = r === selected, num = String(4 + r);
-        if (sel) { parts.push(fill(X + 16, y + 2, W - 32, RowH - 4, 44, 12), ring(X + 16, y + 2, W - 32, RowH - 4)); }
+        if (sel) { parts.push(fill(X + 16, y + 2, W - 32, RowH - 4, 77, 12), ring(X + 16, y + 2, W - 32, RowH - 4)); }
         parts.push(text(X + 44, y + 10, 32, sel ? 255 : 178, num), text(X + 150, y + 10, 32, 255, NAMES[4 + r]));
     }
     return screen('The channel list on the right of the screen with eleven channels and one selected.', parts);
 }
 
 function numberPad() {
-    var X = 1296, Y = 110, W = 540, Pad = 38, KeyW = 148, KeyH = 76, Gap = 14, GridY = 232, H = GridY + 4 * KeyH + 3 * Gap + Pad;
+    var X = 1284, Y = 110, W = 540, Pad = 34, KeyW = 148, KeyH = 76, Gap = 14, GridY = 232, H = GridY + 4 * KeyH + 3 * Gap + Pad;
     var labels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Delete', '0', 'Go'], parts = [sheet(X, Y, W, H),
         text(X + Pad, Y + 30, 26, 178, 'Channel number'), text(X + Pad, Y + 62, 76, 255, '9'), text(X + Pad, Y + 166, 28, 178, 'Cinema HD')];
     for (var i = 0; i < 12; i++) {
         var r = Math.floor(i / 3), c = i % 3, x = X + Pad + c * (KeyW + Gap), y = Y + GridY + r * (KeyH + Gap), sel = i === 10, long = labels[i].length > 1;
-        parts.push(fill(x, y, KeyW, KeyH, sel ? 56 : 24, 14));
+        parts.push(fill(x, y, KeyW, KeyH, sel ? 66 : 51, 12));
         parts.push(text(x + KeyW / 2, y + (long ? 20 : 12), long ? 28 : 40, 255, labels[i], 'middle'));
-        if (sel) parts.push(ring(x, y, KeyW, KeyH, 14));
+        if (sel) parts.push(ring(x, y, KeyW, KeyH, 12));
     }
     return screen('The number pad: a typed channel number, the channel it goes to, and a grid of keys 1 to 9, Delete, 0 and Go.', parts);
 }
@@ -110,17 +110,17 @@ function guide() {
             var start = Math.max(0, p[0]), end = Math.min(180, p[0] + p[1]);
             if (end <= start) return;
             var x = CellsX + start * PX, w = (end - start) * PX - 4, onAir = p[0] <= 40 && 40 < p[0] + p[1], isFocus = r === 1 && c === 0;
-            parts.push(fill(x, cy, w, CellH, isFocus ? 60 : onAir ? 38 : 24, 10));
+            parts.push(fill(x, cy, w, CellH, isFocus ? 66 : onAir ? 66 : 51, 12));
             if (isFocus) focus = [x, cy, w];
             if (w >= 64) {
                 parts.push(text(x + 16, cy + 10, 28, 255, p[2]));
-                if (w >= 128) parts.push(text(x + 16, cy + 45, 22, 178, w >= 230 ? clock(p[0]) + ' \u2013 ' + clock(p[0] + p[1]) : clock(p[0])));
+                if (w >= 128) parts.push(text(x + 16, cy + 41, 24, isFocus ? 255 : 178, w >= 230 ? clock(p[0]) + ' \u2013 ' + clock(p[0] + p[1]) : clock(p[0])));
             }
         });
     });
-    parts.push(ring(focus[0], focus[1], focus[2], CellH, 10));
-    parts.push(fill(nowX - 1, AxisY + 30, 3, RowsY - AxisY - 32, 235, 1), fill(nowX, RowsY, 1, 7 * RowH - 6, 45, 0));
-    parts.push(text(LabelX, SY + SH - 50, 22, 120, 'OK  Watch        Left / Right  Time        Up / Down  Channel        CH + / -  Page        Back  Close'));
+    parts.push(ring(focus[0], focus[1], focus[2], CellH, 12));
+    parts.push(fill(nowX - 1, AxisY + 30, 3, RowsY - AxisY - 32, 255, 1, LIGHT), fill(nowX, RowsY, 1, 7 * RowH - 6, 45, 0));
+    parts.push(text(LabelX, SY + SH - 52, 24, 178, 'OK  Watch        Left / Right  Time        Up / Down  Channel        CH + / -  Page        Back  Close'));
     return screen('The TV guide: the programme in focus with its times and description, a time axis, and seven channels with their programmes as boxes.', parts);
 }
 
@@ -128,9 +128,9 @@ function info() {
     var X = 96, Y = 56, W = 1728, H = 348, Pad = 44, Badge = 96, TextX = X + Pad + Badge + 32, SideX = X + W - Pad - 380, BarX = TextX + 170 + 24;
     return screen('The info panel at the top of the screen: channel 9, the film on air with its times, progress and description, and on the right the clock, date, tuner and audio.', [
         sheet(X, Y, W, H),
-        fill(X + Pad, Y + 36, Badge, Badge, 40, 16), text(X + Pad + Badge / 2, Y + 36 + 18, 44, 255, '9', 'middle'),
+        fill(X + Pad, Y + 36, Badge, Badge, 51, 12), text(X + Pad + Badge / 2, Y + 36 + 18, 44, 255, '9', 'middle'),
         text(TextX, Y + 28, 44, 255, 'Evening Film'), text(TextX, Y + 88, 30, 178, 'Cinema HD'),
-        text(TextX, Y + 130, 26, 178, '21:20 \u2013 23:05'), fill(BarX, Y + 144, 260, 6, 56, 3), fill(BarX, Y + 144, 81, 6, 235, 3), text(BarX + 260 + 24, Y + 130, 26, 178, '1 h 12 min left'),
+        text(TextX, Y + 130, 26, 178, '21:20 \u2013 23:05'), fill(BarX, Y + 144, 260, 6, 56, 3), fill(BarX, Y + 144, 81, 6, 255, 3, LIGHT), text(BarX + 260 + 24, Y + 130, 26, 178, '1 h 12 min left'),
         text(SideX, Y + 28, 44, 255, '21:48'), text(SideX, Y + 90, 26, 178, 'Saturday 7 November'), text(SideX, Y + 128, 26, 178, 'Antenna'), text(SideX, Y + 164, 26, 178, 'Audio: Italian'),
         text(X + Pad, Y + 212, 30, 178, 'A retired pilot takes a last flight over the coast and meets an old friend,'),
         text(X + Pad, Y + 252, 30, 178, 'who has a secret about the plane that brought them together years ago.')
@@ -162,7 +162,7 @@ var KEYS = [
     [caps('0–9'), 'On remotes that have number keys: type a channel. It tunes after two seconds, or at once with OK.'],
     [caps('Guide'), 'On remotes that have a Guide or EPG key: opens and closes the TV guide.'],
     [caps('Info'), 'On remotes that have an Info key: opens the info panel with the programme, its description, the clock and the audio track. Any key closes it; Back and Info only close it.'],
-    [caps('Back'), 'Closes the list, the pad, the guide or the info panel. Pressed again, it puts the tuner away.'],
+    [caps('Back'), 'Closes the list, the pad, the guide or the info panel. Pressed again, it puts the tuner away; CH +, CH − or Info then bring it back.'],
     [caps('Home', 'Menu', 'Power'), 'The tuner steps aside and the TV handles the key as usual.'],
     [caps('123'), 'On the Smart Control this key belongs to the TV’s own 123 pad (or to the launcher’s, when that replaces it), so the tuner’s number pad is on ◀.']
 ];

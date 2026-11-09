@@ -25,7 +25,7 @@ function fixture(options) {
         if (script.includes('echo "tuner=')) {
             if (tv.failProbe) throw new Error('agent gone');
             return {exit_code: 0, stdout: (tv.running ? 'tuner=4242' : 'tuner=') + '\nclient=' + (tv.client ? 1 : 0) + '\ntvs=' + (tv.tvs ? 1 : 0) + '\ndotnet=' + (tv.dotnet ? 1 : 0) +
-                '\nviewer=' + (tv.viewer ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
+                '\nviewer=' + (tv.viewer ? 1 : 0) + '\nclientver=' + (tv.clientVersions === undefined ? '1.1.12,' : tv.clientVersions) + '\nlog:\n' + tv.log + '\n'};
         }
         if (script.includes('kill -9')) { tv.running = false; tv.stops++; return {exit_code: 0, stdout: ''}; }
         if (script.includes('[ -p ' + CONTROL + ' ]')) {
@@ -53,6 +53,13 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     s = await f.tuner.status();
     assert.deepEqual([s.installed, s.enabled, s.running, s.supported, s.unsupportedReason, s.samsungTunerFound, s.target],
         [true, false, false, true, null, true, TARGET_APP]);
+    // What the diagnostic report learns about this TV: the four prerequisites and the version folders of Samsung's client (numbers only, five at most).
+    assert.deepEqual(s.prerequisites, {dotnet: true, client: true, tvs: true, viewer: true});
+    assert.deepEqual(s.clientVersions, ['1.1.12']);
+    f.tv.clientVersions = '1.0.3,2.0,../etc,latest,1.1.12,1.2,1.3,1.4,';
+    assert.deepEqual((await f.tuner.status()).clientVersions, ['1.0.3', '2.0', '1.1.12', '1.2', '1.3']);
+    f.tv.clientVersions = '';
+    assert.deepEqual((await f.tuner.status()).clientVersions, []);
 
     // This TV cannot run it: refused with the reason, nothing started, nothing saved, and Samsung's tuner is left alone.
     for (const [opt, re] of [[{client: false}, /TV service client/], [{tvs: false}, /tvs-daemon/], [{dotnet: false}, /\.NET runtime/]]) {

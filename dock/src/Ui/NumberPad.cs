@@ -12,7 +12,7 @@ namespace Launcher.Ui
     /// (back, A B C D, teletext, timer, info, with the name of the focused key above it).
     /// It takes the keyboard focus while it is open (Left/Right/Up/Down/OK/Back), so the app underneath does not see
     /// those keys; "Done" or a function key closes it, gives the focus back and then sends the keys to that app.
-    /// Same glass as the dock and the volume pill: dark slate body, thin light edge, a white focus capsule that slides.
+    /// Same material as the dock and the volume pill (Fumé): dark smoked body, thin light edge, an ice-white focus capsule that slides.
     /// </summary>
     internal sealed class NumberPad
     {
@@ -235,12 +235,12 @@ namespace Launcher.Ui
         {
             double a = _fade;
             bool onDone = _model.OnDone;
-            Tint(_rim, 0xFFFFFF, 0.22 * a);
-            Tint(_body, Design.ShellColor, 0.84 * a);
-            Tint(_focus, 0xFFFFFF, (onDone ? 0 : 0.96) * a);
+            Tint(_rim, 0xFFFFFF, Design.ShellBorderAlpha * a);
+            Tint(_body, Design.ShellColor, Design.VolumeAlpha * a);
+            Tint(_focus, Design.RingColor, (onDone ? 0 : 0.96) * a);
             Efl.evas_object_move(_focus, (int)Math.Round(_focusX), CellY);
             Tint(_typed, 0xFFFFFF, a);
-            Tint(_doneBg, onDone ? 0xFFFFFF : Design.ShellColor, (onDone ? 0.96 : 0.84) * a);
+            Tint(_doneBg, onDone ? Design.RingColor : Design.ShellColor, (onDone ? 0.96 : Design.VolumeAlpha) * a);
             Tint(_doneText, onDone ? Design.ShellColor : 0xFFFFFF, a);
             Tint(_tipBg, Design.ShellColor, 0.92 * a);
             Tint(_tipText, 0xFFFFFF, a);

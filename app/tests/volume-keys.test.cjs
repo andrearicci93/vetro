@@ -56,6 +56,12 @@ const {Dock} = require('../service/dock.js');
     await dock.setVolumePill(false);
     assert.equal(dock.readState().volumePill, false);
     await assert.rejects(() => dock.setVolumePill('yes'));
+    // Where the pill sits: left by default, one of four edges, anything else refused, saved in the state.
+    assert.equal(dock.readState().volumeEdge, 'left');
+    await dock.setVolumeEdge('bottom');
+    assert.equal(dock.readState().volumeEdge, 'bottom');
+    await assert.rejects(() => dock.setVolumeEdge('middle'));
+    assert.equal(dock.readState().volumeEdge, 'bottom');
     // Hold: one step at once, then a step every ~90 ms after ~380 ms; release stops it; device repeats are not doubled.
     const sent = [];
     const rep = vk.repeater({write: (p, t) => sent.push(t), reinject: () => {}});
