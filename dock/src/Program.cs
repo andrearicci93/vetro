@@ -64,6 +64,7 @@ namespace Launcher
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
         private static AppEntry _homeLaunch, _doubleHome;
+        private static string _doubleHomeSettingsPath;
         private static readonly HomeGesture DoubleHome = new HomeGesture();
 
         private static readonly NavigationInput Navigation = new NavigationInput();
@@ -232,7 +233,7 @@ namespace Launcher
         {
             Libc.unlink(_fifoPath);
             if (Libc.mkfifo(_fifoPath, 438u) != 0) { Log("mkfifo failed: " + Marshal.GetLastWin32Error()); return; }
-            Libc.chmod(_fifoPath, 438u);   // 0666: it only accepts show/hide/toggle
+            Libc.chmod(_fifoPath, 438u);   // 0666: fixed commands; settings are read from the service-owned request file
             // O_RDWR keeps a writer open ourselves, so the descriptor never reports EOF when a client disconnects.
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
@@ -642,12 +643,32 @@ namespace Launcher
                             case Command.Show: _perfWhy = "fifo-show"; ShowDock(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
                             case Command.Toggle: _perfWhy = "fifo-toggle"; if (_ctl.IsActive) HideDock(); else ShowDock(); break;
+                            case Command.ReloadDoubleHome: ReloadDoubleHome(); break;
                         }
                     }
                 }
             }
             catch (Exception ex) { Log("fifo: " + ex); }
             return 1;
+        }
+
+        private static void ReloadDoubleHome()
+        {
+            if (_homeLaunch != null) return;
+            DoubleHomeSettings.ApplyFile(_doubleHomeSettingsPath, Libc.getpid(), _apps, target => {
+                DoubleHome.Reset();
+                if (_doubleHome != null && _pendingLaunch == _doubleHome)
+                {
+                    _pendingLaunch = null;
+                    if (CloseGuard != null) CloseGuard.CancelLaunch();
+                }
+                _doubleHome = target;
+            }, path => {
+                // The root launcher publishes a response readable by the app service,
+                // regardless of the root agent's inherited umask.
+                if (Libc.chmod(path, 420u) != 0) throw new IOException("Cannot publish double-press acknowledgement");
+            });
+            Log("double Home setting applied");
         }
 
         private static byte OnInput(IntPtr data, IntPtr handler)
@@ -1060,17 +1081,10 @@ namespace Launcher
                 }
                 if (_homeLaunch == null)
                 {
-                    if (Flag(args, "--double-home-shortcut"))
-                        foreach (AppEntry entry in _apps) if (entry.Slug == "customhome" || entry.Slug == "samsunghome") _doubleHome = entry;
-                    string target = Arg(args, "--double-home-app"), fallback = "com.samsung.tv.csfs";
-                    foreach (AppEntry entry in _apps)
-                    {
-                        if (entry.Slug == "samsunghome") fallback = entry.AppId;
-                        else if (entry.Slug == "customhome" && Catalog.ValidAppId(entry.FallbackAppId)) fallback = entry.FallbackAppId;
-                    }
-                    if (Catalog.ValidAppId(target))
-                        _doubleHome = new AppEntry("doublehome", "Home", target == "com.samsung.tv.csfs" ? fallback : target, fallback, null, -1, null, true);
+                    string target = Arg(args, "--double-home-app");
+                    _doubleHome = DoubleHomeSettings.Resolve(Catalog.ValidAppId(target) ? "app" : Flag(args, "--double-home-shortcut") ? "shortcut" : "off", target, _apps);
                 }
+                _doubleHomeSettingsPath = Arg(args, "--double-home-settings");
                 SetupInput(args);
 
                 string fpsArg = Arg(args, "--vblank-fps");

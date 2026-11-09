@@ -1085,9 +1085,11 @@ namespace Launcher.Tests
             LauncherRegressionTests.Run();
             HomeKeyTests.Run();
             HomeGestureTests.Run();
+            DoubleHomeSettingsTests.Run();
             HomeCloseGuardTests.Run();
             Console.WriteLine(T.Checks + " checks, " + T.Failures + " failures");
             return T.Failures == 0 ? 0 : 1;
         }
     }
 }
+

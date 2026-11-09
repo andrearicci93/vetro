@@ -359,7 +359,7 @@ function fixture(options) {
     assert.deepEqual(f.dock.readState().doubleHome,doubleHome,'tile change preserves independent destination');
     assert.match(f.dock.startScript(),/--double-home-app GlassHome1.Home/);
     f.dock.patchState({customApp:'another.Home'});
-    assert.doesNotMatch(f.dock.startScript(),/--double-home/,'inactive in custom mode');
+    assert.doesNotMatch(f.dock.startScript(),/--double-home-(app|shortcut)/,'inactive in custom mode');
     f.dock.patchState({customApp:null});
     await f.dock.setDoubleHome({enabled:true,mode:'shortcut',appId:null});
     assert.match(f.dock.startScript(),/--double-home-shortcut/);
@@ -367,9 +367,10 @@ function fixture(options) {
     await assert.rejects(f.dock.setDoubleHome(doubleHome),/installed, enabled/);
     assert.equal(f.dock.readState().doubleHome.mode,'shortcut');
     await f.dock.setDoubleHome({enabled:false,mode:'shortcut',appId:null});
-    assert.doesNotMatch(f.dock.startScript(),/--double-home/);
+    assert.doesNotMatch(f.dock.startScript(),/--double-home-(app|shortcut)/);
 
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
 { const local=new (require('../service/dock.js').Dock)({execute:()=>Promise.reject(Error('no TV'))}); for(const slug of ['settings','samsunghome']) { const icon=local.iconFile(slug); assert.ok(icon && icon.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'local preview system icon: '+slug); } }
+

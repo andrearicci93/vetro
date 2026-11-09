@@ -81,6 +81,8 @@ function Dock(options) {
     this.execute = options.execute;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
+    this.doubleHomeFile = path.join(path.dirname(this.stateFile), 'vetro-double-home.tsv');
+    this.controlFifo = options.controlFifo || FIFO;
     this.appsFile = options.appsFile || APPS_FILE;
     this.customAppsFile = options.customAppsFile || CUSTOM_APPS_FILE;
     // Custom mode needs two things from the shell: appCheck(appId) -> {ok, label|reason} for the chosen app (rejects
@@ -248,6 +250,7 @@ Dock.prototype.startScript = function () {
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
     if (!state.customApp && state.doubleHome.enabled) args += state.doubleHome.mode === 'shortcut' ? ' --double-home-shortcut' : ' --double-home-app ' + state.doubleHome.appId;
+    args += ' --double-home-settings ' + q(this.doubleHomeFile);
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -544,19 +547,32 @@ Dock.prototype.setDoubleHome = function (value) {
     var self = this, setting;
     try { setting = doubleHome.normalize(value); } catch (e) { return Promise.reject(e); }
     if (this.busy || this.homeChanging) return Promise.reject(Error('Another launcher change is in progress'));
-    var previous = this.readState(), changed = false;
+    var previous = this.readState(), livePid = null, attempted = false, saved = false;
     this.busy = true;
     var needsCheck = setting.mode === 'app' && setting.appId !== HOME_APP;
     var check = needsCheck && this.shortcutCheck ? this.shortcutCheck(setting.appId, true) : Promise.resolve({ok: !needsCheck});
     return check.then(function (result) {
         if (!result.ok) throw Error('Choose an installed, enabled app for double press');
-        self.patchState({doubleHome: setting}); changed = true;
-        return previous.enabled ? self.launch() : Promise.resolve();
-    }).then(function () { return self.status(); }).catch(function (error) {
-        if (!changed) throw error;
-        self.patchState({doubleHome: previous.doubleHome});
-        return (previous.enabled ? self.launch() : Promise.resolve()).then(function () { throw error; }, function (restore) { throw Error(error.message + '; launcher recovery needs attention: ' + restore.message); });
+        if (!previous.enabled) return;
+        return self.probe().then(function (p) {
+            if (!p.running) throw Error('The launcher is not running. Wait for it to reconnect, then save again');
+            livePid = p.pid; attempted = true;
+            return self.applyDoubleHome(setting, livePid);
+        });
+    }).then(function () {
+        self.patchState({doubleHome: setting}); saved = true;
+        return self.status();
+    }).catch(function (error) {
+        if (saved) self.patchState({doubleHome: previous.doubleHome});
+        if (!attempted) throw error;
+        return self.applyDoubleHome(previous.doubleHome, livePid).then(function () { throw error; }, function (restore) {
+            throw Error(error.message + '; previous setting is saved, but the running launcher could not confirm recovery: ' + restore.message);
+        });
     }).finally(function () { self.busy = false; });
+};
+
+Dock.prototype.applyDoubleHome = function (setting, pid) {
+    return doubleHome.apply(setting, {pid: pid, file: this.doubleHomeFile, fifo: this.controlFifo, now: this.now, sleep: this.sleep});
 };
 
 Dock.prototype.setHomeAssignment = function (value) {
@@ -706,3 +722,4 @@ Dock.prototype.checkCustomApp = function (appId) {
 
 module.exports = {Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck};
+
