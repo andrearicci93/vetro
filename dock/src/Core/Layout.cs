@@ -72,6 +72,12 @@ namespace Launcher.Core
         /// freed band underneath holds the back hint. The window is the same height for both pages.
         /// </summary>
         public readonly bool Raised;
+        /// <summary>
+        /// True when the window has a second hint band under the apps pill (for the "Task manager" hint). The pill keeps
+        /// its place from the window top; the window is <see cref="HintH"/> taller, so on screen the bar sits higher.
+        /// Both pages of the shared window must agree on it, or they would get different window heights.
+        /// </summary>
+        public readonly bool BelowBand;
         /// <summary>Index of the first pinned system entry when the strip ends with a run of them, else -1.</summary>
         public readonly int GroupStart;
 
@@ -86,6 +92,10 @@ namespace Launcher.Core
         /// before them); anything outside 1..count-1 means no group.
         /// </summary>
         public DockLayout(int count, int screenW, int screenH, int windowW, bool raised, int groupStart)
+            : this(count, screenW, screenH, windowW, raised, groupStart, false) { }
+
+        /// <param name="belowBand">Room for a hint under the apps pill as well (see <see cref="BelowBand"/>).</param>
+        public DockLayout(int count, int screenW, int screenH, int windowW, bool raised, int groupStart, bool belowBand)
         {
             if (count < 1) throw new ArgumentOutOfRangeException("count");
             if (screenW < 640 || screenH < 360) throw new ArgumentOutOfRangeException("screen");
@@ -103,7 +113,8 @@ namespace Launcher.Core
             PillH = PadTop + FocusIcon + LabelRow + PadBottom;
             WinW = PillW + 2 * Margin;
             if (windowW > WinW) { OffsetX = (windowW - WinW) / 2; WinW = windowW; }
-            WinH = PillH + 2 * Margin + HintH;
+            BelowBand = belowBand;
+            WinH = PillH + 2 * Margin + HintH + (belowBand ? HintH : 0);
             Raised = raised;
             WinX = (screenW - WinW) / 2;
             WinY = screenH - WinH - BottomGap;
@@ -268,6 +279,12 @@ namespace Launcher.Core
             int gap = HintH - CapsuleH;
             return (Raised ? Top + PillH + gap : Top - gap - CapsuleH) + slide;
         }
+
+        /// <summary>
+        /// Window-relative y of a hint capsule under the pill, as far below it as <see cref="HintTop"/> keeps the
+        /// up hint above it. On the apps page this needs <see cref="BelowBand"/>, or it falls outside the window.
+        /// </summary>
+        public int HintBelowTop(int slide) { return Top + PillH + (HintH - CapsuleH) + slide; }
 
         /// <summary>Window-relative x of a hint capsule of the given width: centred on the pill.</summary>
         public int HintLeft(int capsuleW) { return Left + (PillW - capsuleW) / 2; }

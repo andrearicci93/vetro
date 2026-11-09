@@ -1151,6 +1151,217 @@ namespace Launcher.Tests
                 T.Eq(after - before, 0L, "bytes allocated over 20000 iterations of 30 frames (sink " + sink + ")");
             });
 
+            T.Run("tasks: app_launcher -S and pkginfo output (as printed by the Q80A)", () =>
+            {
+                var r = Tasks.ParseStatus("\t appId (PID)\n\t  org.tizen.tv-viewer (482)\n\t  com.samsung.tv.cobalt-yt (3299)\r\n\t  bad id;rm (12)\n\t  x.y (0)\n");
+                T.Eq(r.Count, 2, "two valid lines; header, unsafe id and pid 0 skipped");
+                T.Eq(r[1].Key, "com.samsung.tv.cobalt-yt", "app id");
+                T.Eq(r[1].Value, 3299, "pid");
+                T.Eq(Tasks.ParseStatus(null).Count, 0, "null");
+
+                var info = Tasks.ParseAppInfo("Appid: org.tizen.browser\nApptype: capp\ncomponent: uiapp\nLabel: Internet\nIcon: /usr/apps/org.tizen.browser/shared/res/browser.png\nNodisplay: 0\nPackage: org.tizen.browser\n");
+                T.Eq(info.Component, "uiapp", "component");
+                T.Eq(info.Label, "Internet", "label");
+                T.Eq(info.Icon, "/usr/apps/org.tizen.browser/shared/res/browser.png", "icon path with colons after the key");
+                T.True(!info.NoDisplay, "displayed");
+                T.True(Tasks.ParseAppInfo("garbage") == null, "no component -> null");
+            });
+
+            T.Run("tasks: only visible user apps are listed; the TV's own parts and Vetro are not", () =>
+            {
+                var ui = new AppInfo { Component = "uiapp" };
+                T.True(Tasks.IsUserApp("org.tizen.browser", ui), "browser");
+                T.True(Tasks.IsUserApp("com.samsung.tv.csfs", ui), "Samsung Home is listed (large, comes back on Home)");
+                T.True(!Tasks.IsUserApp("org.tizen.tv-viewer", ui), "live TV protected");
+                T.True(!Tasks.IsUserApp("vetrotvapp.svc", ui), "Vetro protected");
+                T.True(!Tasks.IsUserApp("capi-bnr-tv", ui), "backup service (bnr-service) hidden");
+                T.True(!Tasks.IsUserApp("com.samsung.tv.preview-updater", ui), "Home preview updater (IotPreviewd) hidden");
+                T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "svcapp" }), "services hidden");
+                T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "uiapp", NoDisplay = true }), "nodisplay hidden");
+                T.True(!Tasks.IsUserApp("x.y", null), "unknown hidden");
+                T.Eq(Tasks.DisplayName("com.samsung.tv.csfs", ui, null), "Samsung Home", "friendly name");
+                T.Eq(Tasks.DisplayName("a.b", new AppInfo { Label = "Pkg" }, "Catalog"), "Catalog", "catalog label wins");
+            });
+
+            T.Run("tasks: /proc parsing and process-tree sums", () =>
+            {
+                int pid, ppid; long ticks;
+                T.True(Tasks.ParseStat("3547 (browser (x) y) S 452 3547 3547 0 -1 4194560 1 2 3 4 1200 34 0 0 20 0 9", out pid, out ppid, out ticks), "stat with ')' in the name");
+                T.Eq(pid, 3547, "pid"); T.Eq(ppid, 452, "ppid"); T.Eq(ticks, 1234L, "utime + stime");
+                T.True(!Tasks.ParseStat("", out pid, out ppid, out ticks), "empty");
+                T.Eq(Tasks.PrivateKbFromStatm("9000 3000 1000 10 0 2000 0", 4), 8000L, "resident - shared pages, in KiB");
+                T.Eq(Tasks.SwapKbFromStatus("Name:\tx\nVmRSS:\t 100 kB\nVmSwap:\t   2048 kB\nThreads: 3\n"), 2048L, "VmSwap");
+                T.Eq(Tasks.SwapKbFromStatus("Name: x\n"), 0L, "no VmSwap");
+
+                var procs = new[] {
+                    new ProcSample { Pid = 10, PPid = 1 }, new ProcSample { Pid = 11, PPid = 10 },
+                    new ProcSample { Pid = 12, PPid = 11 }, new ProcSample { Pid = 20, PPid = 1 },
+                    new ProcSample { Pid = 30, PPid = 30 },
+                };
+                var tree = Tasks.Tree(10, Tasks.ChildMap(procs));
+                T.Eq(tree.Count, 3, "app, zygote and renderer");
+                T.True(!tree.Contains(20), "a sibling is not counted");
+                T.Eq(Tasks.Tree(30, Tasks.ChildMap(procs)).Count, 1, "self-parent does not loop");
+                T.Eq(Tasks.CpuPercent(100, 150, 1.0, 100), 50.0, "50 ticks in 1 s at 100 Hz");
+                T.Eq(Tasks.CpuPercent(100, 90, 1.0, 100), -1.0, "counter went back: unknown");
+            });
+
+            T.Run("tasks: sorting and formatting", () =>
+            {
+                var l = new List<RunningApp> {
+                    new RunningApp { AppId = "a", Label = "beta", MemoryKb = 100, CpuPercent = 5 },
+                    new RunningApp { AppId = "b", Label = "Alpha", MemoryKb = 300, CpuPercent = 1 },
+                    new RunningApp { AppId = "c", Label = "gamma", MemoryKb = 200, CpuPercent = 9 },
+                };
+                Tasks.Sort(l, TaskSort.Memory); T.Eq(l[0].AppId, "b", "biggest first");
+                Tasks.Sort(l, TaskSort.Cpu); T.Eq(l[0].AppId, "c", "busiest first");
+                Tasks.Sort(l, TaskSort.Name); T.Eq(l[0].Label, "Alpha", "names ignore case");
+                T.Eq(Tasks.Next(TaskSort.Memory, -1), TaskSort.Name, "sort wraps left");
+                T.Eq(Tasks.Next(TaskSort.Name, 1), TaskSort.Memory, "sort wraps right");
+                T.Eq(Tasks.FormatMemory(118924), "116 MB", "MB");
+                T.Eq(Tasks.FormatMemory(5000), "4.9 MB", "small MB keeps a decimal");
+                T.Eq(Tasks.FormatCpu(-1), "–", "not measured yet");
+                T.Eq(Tasks.FormatCpu(3.25), "3.3%", "cpu");
+            });
+
+            T.Run("tasks: Down opens the task manager from the apps row; the page's keys", () =>
+            {
+                var layout = new DockLayout(13, 1920, 1080, 0, false, 11);
+                var c = new Controller(layout) { TasksEnabled = true };
+                c.Show(); Run(c, 2.0);
+                int idx;
+                T.Eq(c.Key("Down", out idx), KeyAction.OpenTasks, "Down on an app");
+                c.SetFocus(11);
+                T.Eq(c.Key("Down", out idx), KeyAction.Moved, "Down inside the pill column still climbs down");
+                c.SetFocus(12);
+                T.Eq(c.Key("Down", out idx), KeyAction.OpenTasks, "Down below the last pill");
+                var off = new Controller(layout); off.Show(); Run(off, 2.0);
+                T.Eq(off.Key("Down", out idx), KeyAction.None, "switched off: nothing");
+
+                var t = new TaskController();
+                t.Open(0.5f);
+                t.SetCount(10);
+                T.Eq(t.Key("Up"), TaskAction.Back, "Up on the first row returns");
+                T.Eq(t.Key("Down"), TaskAction.Moved, "Down moves");
+                for (int i = 0; i < 20; i++) t.Key("Down");
+                T.Eq(t.Selected, 9, "clamped at the last row");
+                for (int i = 0; i < 60; i++) t.Tick(1 / 60.0);
+                T.Eq(t.Phase, Phase.Shown, "shown");
+                T.True(t.Scroll >= 9 - TaskLayout.MaxRows + 1 - 0.001f, "scrolled so the last row is visible");
+                T.Eq(t.Key("Right"), TaskAction.SortChanged, "Right changes the sort");
+                T.Eq(t.Sort, TaskSort.Cpu, "Memory -> CPU");
+                T.Eq(t.Key("Return"), TaskAction.Open, "OK opens (holding it closes: HoldKey)");
+                t.SetCount(3);
+                T.Eq(t.Selected, 2, "selection kept inside a shorter list");
+                t.SetCount(0);
+                T.Eq(t.Key("Return"), TaskAction.None, "nothing to open");
+                T.Eq(t.Key("XF86Back"), TaskAction.Back, "Back returns");
+                T.Eq(t.Key("XF86Home"), TaskAction.Hide, "Home hides");
+            });
+
+            T.Run("tasks: OK tapped opens, OK held closes", () =>
+            {
+                var h = new HoldKey();
+                T.True(h.Press(), "first down arms the timer");
+                T.Eq(h.Release(), HoldResult.Tap, "let go before the timer: tap");
+                T.Eq(h.Release(), HoldResult.None, "second release (raw node and window): nothing");
+                T.Eq(h.Fire(), HoldResult.None, "a late timer after a tap: nothing");
+
+                T.True(h.Press(), "down again");
+                T.True(!h.Press(), "auto-repeat while held is not a new press");
+                T.Eq(h.Fire(), HoldResult.Hold, "timer while held: hold");
+                T.Eq(h.Fire(), HoldResult.None, "fires once");
+                T.Eq(h.Release(), HoldResult.None, "release after the hold does not open");
+
+                T.True(h.Press(), "down");
+                h.Cancel();
+                T.Eq(h.Release(), HoldResult.None, "page gone: the release does nothing");
+                T.Eq(h.Fire(), HoldResult.None, "nor the timer");
+                T.True(HoldKey.HoldSeconds >= 0.5 && HoldKey.HoldSeconds <= 1.5, "hold long enough not to fire on a click");
+            });
+
+            T.Run("evdev: releases are reported when asked for, repeats never", () =>
+            {
+                var r = new EvdevReader(16);
+                byte[] data = new byte[48];
+                int[][] recs = { new[] { 28, 1 }, new[] { 28, 2 }, new[] { 28, 0 } };
+                for (int i = 0; i < 3; i++)
+                {
+                    int o = i * 16 + 8;
+                    data[o] = 1;                                   // EV_KEY
+                    data[o + 2] = (byte)recs[i][0];                // code
+                    data[o + 4] = (byte)recs[i][1];                // value
+                }
+                var presses = new List<int>(); var releases = new List<int>();
+                r.Feed(data, data.Length, presses, releases);
+                T.Eq(presses.Count, 1, "one press");
+                T.Eq(releases.Count, 1, "one release, the repeat ignored");
+                T.Eq(releases[0], 28, "release code");
+                T.Eq(new EvdevReader(16).Feed(data, data.Length).Count, 1, "presses-only feed unchanged");
+            });
+
+            T.Run("tasks: Reduce motion opens, moves and closes the task page at once", () =>
+            {
+                bool was = Controller.Instant;
+                Controller.Instant = true;
+                try
+                {
+                    var t = new TaskController();
+                    t.Open(0f);
+                    T.Eq(t.Phase, Phase.Shown, "shown at once");
+                    T.Eq(t.Slide, 0, "no slide");
+                    t.SetCount(10);
+                    T.Eq(t.Key("Down"), TaskAction.Moved, "Down moves");
+                    T.Eq(t.SelPos, 1f, "selection jumps, no glide");
+                    T.True(!t.Tick(1 / 60.0), "no frame needed after a jump");
+                    T.True(t.Hide(), "hide accepted");
+                    T.Eq(t.Phase, Phase.Hidden, "hidden at once");
+                    var c = new Controller(new DockLayout(13, 1920, 1080));
+                    c.Rise(0.3f);
+                    T.Eq(c.Phase, Phase.Shown, "the apps row comes back at once too");
+                }
+                finally { Controller.Instant = was; }
+            });
+
+            T.Run("tasks: layout stands on the dock's bottom line and fits the screen", () =>
+            {
+                var dock = new DockLayout(13, 1920, 1080);
+                var tl = new TaskLayout(1920, 1080, dock.WinW);
+                T.Eq(tl.WinY + tl.WinH, dock.WinY + dock.WinH, "same window bottom as the dock");
+                Box p = tl.Panel(TaskLayout.MaxRows, 0), bar = dock.PillBox(0);
+                T.Eq(tl.WinY + p.Y + p.H, dock.WinY + bar.Y + bar.H, "panel bottom = bar bottom on screen");
+                T.True(tl.WinY >= 0, "tallest panel fits on a 1080p screen");
+                T.True(tl.Panel(1, 0).H < p.H, "a short list makes a shorter panel");
+                T.Eq(tl.Panel(0, 0).H, TaskLayout.PanelH(TaskLayout.MinRows), "empty list keeps two rows of room");
+                T.Eq(TaskLayout.ScrollFor(8, 0, 10), 2f, "scroll follows the selection down");
+                T.Eq(TaskLayout.ScrollFor(1, 2, 10), 1f, "and back up");
+            });
+
+            T.Run("layout: task manager hint below the apps pill mirrors the Source hint above it", () =>
+            {
+                var plain = new DockLayout(13, 1920, 1080);
+                var apps = new DockLayout(13, 1920, 1080, 0, false, -1, true);
+                var panel = new DockLayout(5, 1920, 1080, apps.WinW, true, -1, true);
+                T.True(apps.BelowBand && !plain.BelowBand, "band only when asked for");
+                T.Eq(apps.WinH, plain.WinH + DockLayout.HintH, "window one hint band taller");
+                T.Eq(panel.WinH, apps.WinH, "both pages keep one window height");
+                T.Eq(apps.Top, plain.Top, "pill keeps its place from the window top");
+                T.Eq(apps.WinY, plain.WinY - DockLayout.HintH, "so the bar sits one band higher on screen");
+                int above = apps.Top - (apps.HintTop(0) + DockLayout.CapsuleH);
+                int below = apps.HintBelowTop(0) - (apps.Top + apps.PillH);
+                T.Eq(below, above, "same gap below the pill as above it");
+                T.True(apps.HintBelowTop(0) + DockLayout.CapsuleH <= apps.WinH - DockLayout.Margin, "below hint inside the window, clear of the bottom margin");
+                T.Eq(apps.HintBelowTop(30) - apps.HintBelowTop(0), 30, "below hint follows the slide");
+                T.Eq(panel.HintTop(0), new DockLayout(5, 1920, 1080, apps.WinW, true, -1).HintTop(0), "panel page and its back hint unchanged inside the window");
+
+                var tl = new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH);
+                Box p = tl.Panel(TaskLayout.MaxRows, 0), bar = apps.PillBox(0);
+                T.Eq(tl.WinY + tl.WinH, apps.WinY + apps.WinH, "task window keeps the dock's bottom");
+                T.Eq(tl.WinY + p.Y + p.H, apps.WinY + bar.Y + bar.H, "panel bottom = raised bar bottom on screen");
+                T.True(tl.WinY >= 0, "tallest panel still fits on a 1080p screen");
+            });
+
+
             Console.WriteLine();
             LauncherRegressionTests.Run();
             Console.WriteLine(T.Checks + " checks, " + T.Failures + " failures");

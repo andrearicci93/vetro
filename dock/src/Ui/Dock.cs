@@ -8,7 +8,7 @@ namespace Launcher.Ui
     /// <summary>
     /// The evas objects of the dock and the code that maps controller state onto them.
     /// Object count is items + 8 (shadow, pill, clippers, two glows, two focus rings; two labels and the clock only when the design shows names), plus the divider
-    /// when the strip has a system group and two for the navigation hint (word, chevron);
+    /// when the strip has a system group and two per navigation hint (word, chevron);
     /// icons are pre-sized PNGs, and <see cref="Apply"/> only calls into EFL for values that changed
     /// since the previous frame, so an animation frame costs a handful of native calls.
     /// </summary>
@@ -28,10 +28,9 @@ namespace Launcher.Ui
         private readonly LabelFader _fader = new LabelFader();
         private readonly int[] _labelX = { int.MinValue, int.MinValue }, _labelW = new int[2], _labelAlpha = { -1, -1 };
         private int _labelY = int.MinValue;
-        private IntPtr _hintChev, _hintText;
-        private readonly string _hint;
-        private readonly bool _hintUp;
-        private int _hintW, _hintX, _hintAlpha = -1, _hintY = int.MinValue;
+        // The navigation hints: the main one (up above the apps pill, or down below the raised panel pill), and
+        // an optional second one below the apps pill.
+        private readonly NavHint _hint, _hintBelow;
         private Box _dividerBox;
         private int _dividerAlpha = -1;
         private readonly IntPtr[] _icon;
@@ -57,9 +56,15 @@ namespace Launcher.Ui
         /// <param name="hint">Word of the navigation hint ("Input", "Back"), or null for none.</param>
         /// <param name="hintUp">True: chevron up, capsule above the pill; false: chevron down, below it.</param>
         public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp)
+            : this(win, layout, items, assetsDir, log, hint, hintUp, null) { }
+
+        /// <param name="hintBelow">Word of a second hint under the pill, with a down chevron ("Task manager"), or null.
+        /// Only used with an up hint, and the layout needs <see cref="DockLayout.BelowBand"/> to have room for it.</param>
+        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp, string hintBelow)
         {
             _win = win; _layout = layout; _items = items; _assets = assetsDir; _log = log;
-            _hint = hint; _hintUp = hintUp;
+            if (hint != null) _hint = new NavHint(hint, hintUp);
+            if (hintBelow != null && hintUp && layout.BelowBand) _hintBelow = new NavHint(hintBelow, false);
             _evas = Efl.evas_object_evas_get(win);
             _icon = new IntPtr[items.Length];
             _initials = new IntPtr[items.Length];
@@ -134,10 +139,21 @@ namespace Launcher.Ui
                 Efl.evas_object_show(_clock);
             }
 
-            if (_hint != null) BuildHint();
+            if (_hint != null) BuildHint(_hint);
+            if (_hintBelow != null) BuildHint(_hintBelow);
         }
 
         private const int HintChev = 24, HintGap = 4;
+
+        /// <summary>One navigation hint: a word and its chevron, with what was last sent to EFL.</summary>
+        private sealed class NavHint
+        {
+            public readonly string Word;
+            public readonly bool Up;
+            public IntPtr Chev, Text;
+            public int W, X, TextW, TextDy, Alpha = -1, Y = int.MinValue;
+            public NavHint(string word, bool up) { Word = word; Up = up; }
+        }
 
         private const int ShadowAlpha = 150;
 
@@ -156,30 +172,27 @@ namespace Launcher.Ui
         }
 
         /// <summary>The word, then its chevron: created last so they sit above the pill, never inside the clipper.</summary>
-        private void BuildHint()
+        private void BuildHint(NavHint h)
         {
-            _hintChev = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(_hintChev, Path.Combine(_assets, _hintUp ? "chev_up.png" : "chev_down.png"), null);
-            if (Efl.evas_object_image_load_error_get(_hintChev) != Efl.EvasLoadErrorNone) _log("asset missing: chevron");
-            Efl.evas_object_image_filled_set(_hintChev, true);
-            Efl.evas_object_image_smooth_scale_set(_hintChev, true);
-            Efl.evas_object_resize(_hintChev, HintChev, HintChev);
-            Efl.evas_object_show(_hintChev);
-            _hintText = Efl.evas_object_text_add(_evas);
-            Efl.evas_object_text_font_set(_hintText, Font, 22);
-            Efl.evas_object_text_text_set(_hintText, _hint);
+            h.Chev = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_image_file_set(h.Chev, Path.Combine(_assets, h.Up ? "chev_up.png" : "chev_down.png"), null);
+            if (Efl.evas_object_image_load_error_get(h.Chev) != Efl.EvasLoadErrorNone) _log("asset missing: chevron");
+            Efl.evas_object_image_filled_set(h.Chev, true);
+            Efl.evas_object_image_smooth_scale_set(h.Chev, true);
+            Efl.evas_object_resize(h.Chev, HintChev, HintChev);
+            Efl.evas_object_show(h.Chev);
+            h.Text = Efl.evas_object_text_add(_evas);
+            Efl.evas_object_text_font_set(h.Text, Font, 22);
+            Efl.evas_object_text_text_set(h.Text, h.Word);
             // No backing shape: a soft dark shadow keeps the word readable over bright video.
-            SoftShadow(_hintText);
-            Efl.evas_object_show(_hintText);
-            _hintTextW = Efl.evas_object_text_horiz_advance_get(_hintText);
-            int textH = Efl.evas_object_text_vert_advance_get(_hintText);
-            _hintW = _hintTextW + HintGap + HintChev;
-            _hintX = _layout.HintLeft(_hintW);
-            _hintTextDy = (DockLayout.CapsuleH - textH) / 2 - 1;
+            SoftShadow(h.Text);
+            Efl.evas_object_show(h.Text);
+            h.TextW = Efl.evas_object_text_horiz_advance_get(h.Text);
+            int textH = Efl.evas_object_text_vert_advance_get(h.Text);
+            h.W = h.TextW + HintGap + HintChev;
+            h.X = _layout.HintLeft(h.W);
+            h.TextDy = (DockLayout.CapsuleH - textH) / 2 - 1;
         }
-
-        private int _hintTextW;
-        private int _hintTextDy;
 
         /// <summary>
         /// Shows or hides the whole page. Hiding the clipper hides every icon and the highlight
@@ -187,7 +200,9 @@ namespace Launcher.Ui
         /// </summary>
         public void SetVisible(bool visible)
         {
-            IntPtr[] top = { _shadow, _pill, _clip, _label[0], _label[1], _clock, _hintChev, _hintText };
+            IntPtr[] top = { _shadow, _pill, _clip, _label[0], _label[1], _clock,
+                _hint != null ? _hint.Chev : IntPtr.Zero, _hint != null ? _hint.Text : IntPtr.Zero,
+                _hintBelow != null ? _hintBelow.Chev : IntPtr.Zero, _hintBelow != null ? _hintBelow.Text : IntPtr.Zero };
             foreach (IntPtr o in top)
             {
                 if (o == IntPtr.Zero) continue;
@@ -327,7 +342,7 @@ namespace Launcher.Ui
             return i < 0 || _layout.IsPinned(i) || !DockLayout.GlowFromIcon ? Design.GlowColor : _glowRgb[i];
         }
 
-        private static uint[] ReadPixels(IntPtr data, int stride, int w, int h)
+        internal static uint[] ReadPixels(IntPtr data, int stride, int w, int h)
         {
             var px = new uint[w * h];
             var row = new int[w];
@@ -340,7 +355,7 @@ namespace Launcher.Ui
             return px;
         }
 
-        private static void WritePixels(IntPtr data, int stride, uint[] px, int side)
+        internal static void WritePixels(IntPtr data, int stride, uint[] px, int side)
         {
             var row = new int[side];
             if (stride < side * 4) stride = side * 4;
@@ -456,25 +471,25 @@ namespace Launcher.Ui
 
             if (Design.ShowLabels) ApplyLabels(c, slide, presence, scroll);
             if (Design.ShowClock) ApplyClock(slide, presence);
-            if (_hintText != IntPtr.Zero) ApplyHint(slide, presence);
+            if (_hint != null && _hint.Text != IntPtr.Zero) ApplyHint(_hint, _layout.HintTop(slide), presence);
+            if (_hintBelow != null && _hintBelow.Text != IntPtr.Zero) ApplyHint(_hintBelow, _layout.HintBelowTop(slide), presence);
         }
 
-        private void ApplyHint(int slide, int presence)
+        private static void ApplyHint(NavHint h, int y, int presence)
         {
-            int y = _layout.HintTop(slide);
-            if (y != _hintY)
+            if (y != h.Y)
             {
-                _hintY = y;
-                Efl.evas_object_move(_hintText, _hintX, y + _hintTextDy);
-                Efl.evas_object_move(_hintChev, _hintX + _hintTextW + HintGap, y + (DockLayout.CapsuleH - HintChev) / 2);
+                h.Y = y;
+                Efl.evas_object_move(h.Text, h.X, y + h.TextDy);
+                Efl.evas_object_move(h.Chev, h.X + h.TextW + HintGap, y + (DockLayout.CapsuleH - HintChev) / 2);
             }
             // Quieter than the label, like the clock: a signpost, not a headline.
-            if (presence != _hintAlpha)
+            if (presence != h.Alpha)
             {
-                _hintAlpha = presence;
+                h.Alpha = presence;
                 int a = presence * 9 / 10;
-                Tint(_hintChev, a);
-                TintText(_hintText, a);
+                Tint(h.Chev, a);
+                TintText(h.Text, a);
             }
         }
 
