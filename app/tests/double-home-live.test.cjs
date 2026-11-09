@@ -104,5 +104,30 @@ function fixture(enabled = true) {
     await assert.rejects(live.apply(glass,{...options,execute:async()=>({exit_code:2,stderr:'EACCES from helper'})}),/EACCES from helper/);
     await assert.rejects(live.apply(glass,{...options,execute:async()=>({timed_out:true})}),/timed out/);
     await assert.rejects(live.apply(glass,{...options,execute:async()=>{throw Error('root disconnected');}}),/root disconnected/);
+    // Tizen's dotnet host can append GC diagnostics after the helper's reply.
+    // Keep the acknowledgement exact while allowing unrelated runtime lines.
+    const gc = '[GC_INFO] GC_Start #1: Gen(0), Time(11281885 ms), Reason(0)\n' +
+        '[GC_INFO] GC_End #1: Gen(0), Time(11281886 ms)\n';
+    const withOutput = change => ({...options,execute:async(command,timeout)=>{
+        const result = await options.execute(command,timeout);
+        result.stdout = change(result.stdout);
+        return result;
+    }});
+    for (const change of [reply=>reply+gc,reply=>gc+reply,reply=>(gc+reply+gc).replace(/\n/g,'\r\n')]) {
+        await live.apply(glass,withOutput(change));
+    }
+    for (const change of [
+        ()=>gc,
+        reply=>'echo: '+reply+gc,
+        reply=>reply.trim()+' trailing text\n'+gc,
+        reply=>reply.slice(0,-2)+'\n'+gc,
+        reply=>reply.replace(/[a-f0-9]{32}/,'0'.repeat(32))+gc,
+        reply=>reply+reply+gc,
+        reply=>reply+'double-home-applied '+'0'.repeat(32)+'\n'+gc,
+    ]) await assert.rejects(live.apply(glass,withOutput(change)),/did not confirm/);
+    const failedWithReply = withOutput(reply=>reply+gc);
+    const failedExecute = failedWithReply.execute;
+    failedWithReply.execute = async(command,timeout)=>({...await failedExecute(command,timeout),exit_code:2,stderr:'helper failed'});
+    await assert.rejects(live.apply(glass,failedWithReply),/helper failed/);
     console.log('PASS live double-press save, rollback, unchanged Home ownership, root delivery under app EACCES and exact acknowledgement');
 })().catch(error=>{console.error(error);process.exitCode=1;});

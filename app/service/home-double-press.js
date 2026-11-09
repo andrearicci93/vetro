@@ -23,7 +23,13 @@ function apply(value, options) {
     return Promise.resolve().then(function () { return options.execute(command, 15000); }).then(function (result) {
         if (!result || result.timed_out) throw Error('The root launcher settings request timed out');
         if (result.exit_code !== 0) throw Error(String(result.stderr || result.stdout || 'The root launcher settings request failed').trim().slice(0,500));
-        if (String(result.stdout || '').trim() !== 'double-home-applied ' + nonce) throw Error('The running launcher did not confirm the double-press setting');
+        // Tizen's runtime may write GC diagnostics to the same output stream.
+        // Require one complete acknowledgement for this request, independently
+        // of those lines; stale, partial and ambiguous acknowledgements fail.
+        var replies = String(result.stdout || '').split(/\r?\n/).filter(function (line) {
+            return line.indexOf('double-home-applied ') === 0;
+        });
+        if (replies.length !== 1 || replies[0] !== 'double-home-applied ' + nonce) throw Error('The running launcher did not confirm the double-press setting');
     });
 }
 module.exports = {normalize: normalize, apply: apply};
