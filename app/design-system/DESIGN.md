@@ -6,7 +6,6 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 | --- | --- |
 | `tokens.css` | Every colour, size, radius and duration, as `--vetro-*` custom properties. Dark by default; `data-vetro-theme="light"` on a container switches to light. Reduced motion sets both durations to 0. |
 | `index.html` | A reference page that renders the palette, gradients, both themes and the rhythm from `tokens.css`. |
-| `icon-reference.png` | The app icon the palette was sampled from (the same picture as `app/icon.png`). |
 
 ## Where it is used
 
