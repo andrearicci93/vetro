@@ -104,7 +104,7 @@ Vetro is developed on a **Samsung Q80A**; everything else below comes from commu
 | **7 and 8** (2023–2024) | Reported working | Reported working | S90C, S95C, Q65D |
 | **6.5** (2022) | Reported working | Reported working (the launcher needs Vetro 0.3.1 or newer) | Q67B, QN85B, S95B, BU8002, The Frame |
 | **6** (2021) | Reported working | Reported working; one TV needs the Host PC IP step to be confirmed ([#134](https://github.com/andrearicci93/vetro/issues/134)) | Q80A, Q70A, Q60A, QN85A, AU7000 |
-| **5.5** (2020) | Reported working | Not available | TU7090, T4300 |
+| **5.5** (2020) | Reported working | Not available in stock package; one exact-build TU7092 [local port](rooting/ports/tu7092/README.md) | TU7090, T4300, TU7092 local port |
 | **5.0** (2019) | Not with the stock package | One Q80R works with a personal port ([#35](https://github.com/andrearicci93/vetro/issues/35)) | Q80R |
 | **4** (2018) | Reported working | Not available | NU7090 |
 
@@ -132,6 +132,7 @@ Not tried with Vetro: the QN90B and QN90F, where the upstream root route has bee
 | Smart Monitor M8 LS32BM801UNXGO · [#15](https://github.com/andrearicci93/vetro/issues/15) | T-PTMWWC-1720.7 | Installed, service and root agent running; what works not reported yet |
 | Q80R QN65Q80RAFXZA (2019, Tizen 5.0) · [#35](https://github.com/andrearicci93/vetro/issues/35) | T-MSMAKUC-1500.5 | Works with **local changes**, not with the stock package: a personal port with its own launcher host, app registry paths and Node.js 16.20.2, not reviewed or merged |
 | UA50AU7000 UA50AU7000UXTW (2021, Tizen 6) · [#134](https://github.com/andrearicci93/vetro/issues/134) | T-KSU2EUABC-2310.0 | Service and dashboard reported working; the root agent did not connect (the Host PC IP step was not confirmed), so the features that need it stay off |
+| UE55TU7092UXXH (2020, Tizen 5.5) | T-KTSU2DEUC-2743.0, build 202607022000 | [Opt-in local port](rooting/ports/tu7092/README.md): authenticated root agent, launcher and cold-boot return owner-confirmed; requires separate Remote PC/CIFS bootstrap and boot worker, not the stock package |
 | UE43TU7090 UE43TU7090UXZT (2020) · [#132](https://github.com/andrearicci93/vetro/issues/132) | T-KTSU2DEUC-2501.1 | Dashboard, app list and diagnostics reported working; features that need root access are unavailable |
 | UN32T4300 UN32T4300AGXZD (2020) · [#128](https://github.com/andrearicci93/vetro/issues/128) | T-KTS2UABC-2743.0 | Dashboard, app list and diagnostics reported working; features that need root access are unavailable |
 | UE43NU7090 (2018, Tizen 4) · [#2](https://github.com/andrearicci93/vetro/issues/2) | 1400.2 | Dashboard, app list and diagnostics reported working; features that need root access are unavailable |

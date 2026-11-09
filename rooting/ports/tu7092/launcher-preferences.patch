@@ -1,0 +1,278 @@
+diff --git a/app/service/dock-catalog.js b/app/service/dock-catalog.js
+index 1545eff..01d8dc4 100644
+--- a/app/service/dock-catalog.js
++++ b/app/service/dock-catalog.js
+@@ -34,6 +34,7 @@ var VIEWER = 'org.tizen.tv-viewer';
+ // Samsung's registry holds for YouTube.
+ var TIZENTUBE = /TizenTube/i;
+ var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
++var YOUTUBE_FALLBACK = '/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons/youtube.png';
+ // The dock repeats this check, but the file is written here, so refuse a bad path here as well.
+ function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0; }
+ 
+@@ -45,11 +46,11 @@ var LIVE = {
+     RF: {slug: 'livetv', label: 'Live TV', iconPackage: null}
+ };
+ 
+-// Two pills close the row. Settings sends the System Menu key, which the TV routes to Samsung's own menu app
+-// (org.tizen.menu, menu.json); starting csfs would only show Home. The second one goes back to Samsung's Home.
++// TU7092: launch Settings directly; the simulated key adds a timer and a routing step.
++// The second pill goes back to Samsung's Home.
+ // The input list is not here: it is one page up in the launcher.
+ var SYSTEM_ROWS = [
+-    'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu',
++    'settings\tSettings\tsys:org.tizen.menu',
+     'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'
+ ];
+ // 2025 (CoBA) firmware: csfs is only the service; the Home that comes up on screen is started through this app,
+@@ -182,13 +183,14 @@ function build(parsed, options) {
+         if (kind !== 'd/webapp') { skipped.push({item: item, reason: 'Unsupported entry'}); return; }
+         var reg = parsed.registry[ident];
+         if (!reg) { skipped.push({item: item, reason: 'Not installed'}); return; }
++        if (/^vetrotvapp(\.|$)/.test(reg.appId)) return;
+         if (reg.hidden) { skipped.push({item: item, reason: 'Hidden in the registry'}); return; }
+         if (!APP_ID.test(reg.appId)) { skipped.push({item: item, reason: 'Unusable app id'}); return; }
+         var entry = add(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[ident] || parsed.packageIcons[reg.appId]);
+         if (options.fixTizenTube && TIZENTUBE.test(reg.appId)) {
+             entry.killFirst = COBALT_YOUTUBE;
+-            var yt = youtubeIcon(parsed);
+-            if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
++            entry.icon = youtubeIcon(parsed) || YOUTUBE_FALLBACK;
++            entry.altIcon = YOUTUBE_FALLBACK;
+         }
+     });
+     // Without a csfs row (the 2022 Home), the row above is at best the "recent" strip: every other visible
+diff --git a/app/tests/dock-catalog.test.cjs b/app/tests/dock-catalog.test.cjs
+index 5406f36..1a38c40 100644
+--- a/app/tests/dock-catalog.test.cjs
++++ b/app/tests/dock-catalog.test.cjs
+@@ -43,7 +43,7 @@ const lines = text.trim().split('\n');
+ assert.ok(lines[0].startsWith('#'));
+ assert.equal(lines[1], 'tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png');
+ assert.equal(lines[2], 'livetv\tLive TV\torg.tizen.tv-viewer', 'no icon: no trailing tabs');
+-assert.deepEqual(lines.slice(-2), ['settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu', 'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'], 'two pills close the row: Settings (the System Menu key) and Samsung Home');
++assert.deepEqual(lines.slice(-2), ['settings\tSettings\tsys:org.tizen.menu', 'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'], 'two pills close the row: Settings (direct system app launch) and Samsung Home');
+ lines.slice(1).forEach(l => assert.ok(l.split('\t').length >= 3, 'every line has slug, label and app id: ' + l));
+ 
+ // Names that would break the file or the dock
+@@ -56,6 +56,8 @@ const reserved = catalog.build({order: ['d/webapp@s'], registry: {s: {title: 'Se
+ assert.equal(reserved.entries[0].slug, 'settings-2', 'an app called Settings does not take the system entry\'s slug');
+ const badId = catalog.build({order: ['d/webapp@s'], registry: {s: {title: 'X', appId: 'bad id;rm', hidden: false}}, icons: {}, packageIcons: {}});
+ assert.equal(badId.entries.length, 0, 'an app id that is not plain is never written to the file');
++const withSelf = Object.assign({}, parsed, {order: parsed.order.concat(['d/webapp@vt']), registry: Object.assign({}, parsed.registry, {vt: {title: 'Vetro', appId: 'vetrotvapp.app', hidden: false}})});
++assert.deepEqual(catalog.build(withSelf).entries, built.entries, 'Vetro stays out of its own launcher even when pinned in Samsung Home');
+ 
+ // The dock holds 40 entries including the three system ones
+ const many = {order: [], registry: {}, icons: {}, packageIcons: {}};
+@@ -80,8 +82,12 @@ assert.equal(catalog.tsv(fixed).split('\n')[1], 'tizentube\tTizenTube\txvvl3S1TT
+ assert.equal(catalog.tsv(plain).split('\n')[1].split('\t').length, 5, 'no sixth column when off');
+ const noYt = catalog.build(Object.assign({}, tt, {icons: {tt: tt.icons.tt}}), {fixTizenTube: true});
+ assert.equal(noYt.entries[0].killFirst, 'com.samsung.tv.cobalt-yt', 'still closes YouTube first');
+-assert.equal(noYt.entries[0].icon, tt.icons.tt, 'without a YouTube icon the app keeps its own');
+-assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
++const youtubeFallback = '/opt/usr/apps/vetrotvapp/res/wgt/native/dock/res/icons/youtube.png';
++assert.equal(noYt.entries[0].icon, youtubeFallback, 'without Samsung YouTube installed, use the bundled YouTube icon');
++assert.equal(fixed.entries[0].altIcon, youtubeFallback, 'a stale Samsung icon can fall back to the bundled icon');
++assert.ok(catalog.iconPathOk(youtubeFallback));
++assert.deepEqual(noYt.skipped, []);
++assert.ok(require('../build.cjs').collectFiles().some(f => decodeURIComponent(f.uri) === 'native/dock/res/icons/youtube.png'), 'the fallback icon is included in the package');
+ 
+ // load(): one read of the Home data, one check that the icon files exist; errors are explicit
+ (async function () {
+diff --git a/dock/designer/chosen.json b/dock/designer/chosen.json
+index 9501000..a226339 100644
+--- a/dock/designer/chosen.json
++++ b/dock/designer/chosen.json
+@@ -44,7 +44,7 @@
+   "focus.ring": 2,
+   "focus.ringColor": "#ffffff",
+   "focus.lift": 4,
+-  "label.mode": "none",
++  "label.mode": "focused",
+   "label.size": 18,
+   "label.weight": "400",
+   "label.color": "#ffffff",
+diff --git a/dock/src/Core/Design.cs b/dock/src/Core/Design.cs
+index ef6203a..6e5c709 100644
+--- a/dock/src/Core/Design.cs
++++ b/dock/src/Core/Design.cs
+@@ -43,7 +43,7 @@ namespace Launcher.Core
+         public const int Lift = 4;
+ 
+         // ---- Text ----
+-        public static readonly bool ShowLabels = false;
++        public static readonly bool ShowLabels = true;
+         public static readonly bool ShowClock = false;
+         public const string HintText = "Source";
+ 
+diff --git a/dock/src/Core/Layout.cs b/dock/src/Core/Layout.cs
+index c0d619a..4d74f34 100644
+--- a/dock/src/Core/Layout.cs
++++ b/dock/src/Core/Layout.cs
+@@ -26,7 +26,7 @@ namespace Launcher.Core
+         public const int LabelGap = 10;
+         public const int LabelH = 34;
+         public const int PadBottom = 16;
+-        /// <summary>Height of the name/clock row under the icons; none when the design shows neither.</summary>
++        /// <summary>Height of the name/clock row above the icons; none when the design shows neither.</summary>
+         public static readonly int LabelRow = Design.ShowLabels || Design.ShowClock ? LabelGap + LabelH : 0;
+         public const int Margin = 40;          // room for the bar's shadow on every side (also: pill bottom to screen bottom)
+         public const int BottomGap = 0;        // window bottom to screen bottom
+@@ -151,7 +151,7 @@ namespace Launcher.Core
+         /// <summary>Window-relative y of the pill's top edge (without the slide).</summary>
+         public int Top { get { return Margin + (Raised ? 0 : HintH); } }
+ 
+-        public int RowCenterY { get { return Top + PadTop + FocusIcon / 2; } }
++        public int RowCenterY { get { return Top + PadTop + LabelRow + FocusIcon / 2; } }
+ 
+         /// <summary>False (--no-motion): the selected icon neither grows nor rises; the glow and the ring alone mark it.</summary>
+         public static bool Grow = true;
+@@ -242,13 +242,13 @@ namespace Launcher.Core
+             Box b; b.X = Left - extra; b.Y = Top - extra + Design.ShadowDy + slide; b.W = PillW + 2 * extra; b.H = PillH + 2 * extra; return b;
+         }
+ 
+-        /// <summary>Window-relative x of the centre of item <paramref name="item"/>'s label (under its icon).</summary>
++        /// <summary>Window-relative x of the centre of item <paramref name="item"/>'s label (above its icon).</summary>
+         public int LabelCenterX(int item, float scroll)
+         {
+             return (int)Math.Round(Left + PadX + ItemCenter(item, scroll));
+         }
+ 
+-        /// <summary>Window-relative left edge of an item's label: centred under its icon, kept inside the icon area of the pill.</summary>
++        /// <summary>Window-relative left edge of an item's label: centred above its icon, kept inside the icon area of the pill.</summary>
+         public int LabelLeft(int item, float scroll, int labelW)
+         {
+             int x = LabelCenterX(item, scroll) - labelW / 2;
+@@ -257,7 +257,7 @@ namespace Launcher.Core
+             return x < min ? min : (x > max ? max : x);
+         }
+ 
+-        public int LabelTop(int slide) { return Top + PadTop + FocusIcon + LabelGap + slide; }
++        public int LabelTop(int slide) { return Top + PadTop + slide; }
+ 
+         /// <summary>
+         /// Window-relative y of the hint capsule: above the pill on the apps page (which points up to the
+@@ -286,7 +286,7 @@ namespace Launcher.Core
+         public int ClockRight { get { return Left + PillW - PadX; } }
+ 
+         /// <summary>
+-        /// The label always belongs under its icon, so the clock is the one that gives way: it is drawn
++        /// The label always belongs above its icon, so the clock is the one that gives way: it is drawn
+         /// only while it keeps <see cref="ClockGap"/> pixels away from the label box.
+         /// </summary>
+         public bool ClockClear(int labelX, int labelW, int clockW)
+diff --git a/dock/src/Ui/Dock.cs b/dock/src/Ui/Dock.cs
+index 61845a5..fc30518 100644
+--- a/dock/src/Ui/Dock.cs
++++ b/dock/src/Ui/Dock.cs
+@@ -23,7 +23,7 @@ namespace Launcher.Ui
+         private readonly Action<string> _log;
+ 
+         private IntPtr _shadow, _pill, _clip, _appsClip, _highlight, _highlight2, _ring, _ring2, _clock, _divider;
+-        // Two name labels cross-fade (see LabelFader): the name under the icon being left and the one being reached.
++        // Two name labels cross-fade (see LabelFader): the name above the icon being left and the one being reached.
+         private readonly IntPtr[] _label = new IntPtr[2];
+         private readonly LabelFader _fader = new LabelFader();
+         private readonly int[] _labelX = { int.MinValue, int.MinValue }, _labelW = new int[2], _labelAlpha = { -1, -1 };
+@@ -504,7 +504,7 @@ namespace Launcher.Ui
+                 int idx = _fader.Index[k];
+                 if ((_fader.Dirty & (1 << k)) != 0 && idx >= 0)
+                 {
+-                    // A pill carries its own name; nothing is written under it.
++                    // A pill carries its own name; nothing is written above it.
+                     string text = _layout.IsPinned(idx) ? "" : idx == _current ? _items[idx].Label + "  \u00b7  current" : _items[idx].Label;
+                     Efl.evas_object_text_text_set(_label[k], text);
+                     _labelW[k] = Efl.evas_object_text_horiz_advance_get(_label[k]);
+diff --git a/dock/tests/Program.cs b/dock/tests/Program.cs
+index 5671dd2..7410982 100644
+--- a/dock/tests/Program.cs
++++ b/dock/tests/Program.cs
+@@ -146,6 +146,24 @@ namespace Launcher.Tests
+                 }
+             });
+ 
++            T.Run("labels: selected app names have space above the icons", () =>
++            {
++                T.True(Design.ShowLabels, "app names are enabled");
++                foreach (int count in new[] { 1, 4, 12, 40 })
++                    foreach (int screen in new[] { 640, 1920 })
++                    {
++                        var layout = new DockLayout(count, screen, 1080);
++                        foreach (int selected in new[] { 0, count - 1 })
++                        {
++                            int top = layout.LabelTop(0);
++                            var icon = layout.IconBox(selected, selected, layout.ScrollFor(selected), 0);
++                            T.True(top >= layout.Top + DockLayout.PadTop, "name inside bar top");
++                            T.True(top + DockLayout.LabelH + Design.RingW <= icon.Y, "name clears selected icon and ring");
++                            T.True(icon.Y + icon.H <= layout.Top + layout.PillH - DockLayout.PadBottom, "icon inside bar bottom");
++                        }
++                    }
++            });
++
+             T.Run("labels: the old name fades out in place, the new one fades in at its own icon", () =>
+             {
+                 var f = new LabelFader();
+@@ -211,7 +229,7 @@ namespace Launcher.Tests
+                 T.Eq(l.IconBox(5, 0f, 0f, 0).W, DockLayout.Icon, "rest size reached");
+             });
+ 
+-            T.Run("layout: the label stays under the focused icon; the clock yields", () =>
++            T.Run("layout: the label stays above the focused icon; the clock yields", () =>
+             {
+                 foreach (int n in new[] { 5, 13, 30 })
+                 {
+@@ -226,9 +244,9 @@ namespace Launcher.Tests
+                         {
+                             if (w > l.PillW - 2 * DockLayout.PadX) continue;
+                             int x = l.LabelLeft(p, sc, w);
+-                            // whatever the neighbourhood of the clock, a label that fits is still under its icon
++                            // whatever the neighbourhood of the clock, a label that fits is still above its icon
+                             T.True(Math.Abs((x + w / 2) - iconCx) <= DockLayout.FocusIcon / 2 || x == l.Left + DockLayout.PadX || x + w == l.Left + l.PillW - DockLayout.PadX,
+-                                "label centre under the icon (or pinned to the pill edge) n=" + n + " p=" + p + " w=" + w);
++                                "label centre above the icon (or pinned to the pill edge) n=" + n + " p=" + p + " w=" + w);
+                             T.True(x >= l.Left + DockLayout.PadX && x + w <= l.Left + l.PillW - DockLayout.PadX, "label inside the pill n=" + n + " w=" + w);
+                             // the clock is the one that gives way: shown only when the two boxes do not touch
+                             bool clear = l.ClockClear(x, w, 62);
+@@ -238,7 +256,7 @@ namespace Launcher.Tests
+                     }
+                     T.True(l.ClockRight <= l.Left + l.PillW - DockLayout.PadX, "clock inside the pill");
+                 }
+-                // a label under an early item leaves the clock alone; the last item's long label hides it
++                // a label above an early item leaves the clock alone; the last item's long label hides it
+                 var apps = new DockLayout(13, 1920, 1080);
+                 T.True(apps.ClockClear(apps.LabelLeft(0, 0f, 100), 100, 62), "first item: clock shown");
+                 T.True(!apps.ClockClear(apps.LabelLeft(12, apps.ScrollFor(12f), 150), 150, 62), "last item with a long label: clock hidden");
+@@ -739,7 +757,7 @@ namespace Launcher.Tests
+                 T.Eq(p1.X, p2.X, "the pills are one column");
+                 T.Eq(p2.Y - (p1.Y + p1.H), DockLayout.PillItemGap, "stacked with the small gap");
+                 T.Eq((p1.Y + p2.Y + p2.H) / 2, l.RowCenterY, "the stack is centred on the icon row");
+-                T.True(p1.Y >= l.Top + DockLayout.PadTop - 20 && p2.Y + p2.H <= l.Top + DockLayout.PadTop + DockLayout.FocusIcon + 20, "inside the icon row band");
++                T.True(p1.Y >= l.RowCenterY - DockLayout.FocusIcon / 2 - 20 && p2.Y + p2.H <= l.RowCenterY + DockLayout.FocusIcon / 2 + 20, "inside the icon row band");
+                 T.Eq(l.PinnedW, DockLayout.PillItemW, "the pinned group is as wide as one pill");
+                 var nav = new Controller(l) { PanelEnabled = true };
+                 nav.Show(); int ni;
+@@ -783,7 +801,7 @@ namespace Launcher.Tests
+                 for (int i = 18; i <= 21; i++)
+                 {
+                     var fb = l.IconBox(i, i, l.ScrollFor(i), 0);
+-                    T.True(Math.Abs(l.LabelCenterX(i, l.ScrollFor(i)) - (fb.X + fb.W / 2)) <= 1, "label centred under its icon, item " + i);
++                    T.True(Math.Abs(l.LabelCenterX(i, l.ScrollFor(i)) - (fb.X + fb.W / 2)) <= 1, "label centred above its icon, item " + i);
+                 }
+                 var d = l.DividerBox(0f, 0);
+                 T.True(d.X >= l.ViewRight + DockLayout.ClipPad && d.X + d.W <= rest[0].X, "divider between the clipper and the pinned entries");
+diff --git a/THIRD_PARTY_NOTICES.md b/THIRD_PARTY_NOTICES.md
+index 818acf3..0e98185 100644
+--- a/THIRD_PARTY_NOTICES.md
++++ b/THIRD_PARTY_NOTICES.md
+@@ -143,3 +143,11 @@ original author and message; only a conflict in `runActions` (the `direct` param
+ 
+ - `app/service/main.js`, `app/service/physical-input.js` and the tests `input-service-lifecycle`,
+   `physical-input-lifecycle`: cancelling remote-input callbacks and queued actions after the service stops.
++
++## Optional TU7092 YouTube icon
++
++The TU7092 local port optionally bundles the unmodified red YouTube icon
++from https://brand.youtube/youtube-icon, member
++`YouTube_Icon/Digital/01 Red/yt_icon_red_digital.png` of the official icon pack.
++YouTube's name and icon remain their owner's trademarks and are subject to
++the linked brand guidelines; this artwork is not relicensed under MIT.
