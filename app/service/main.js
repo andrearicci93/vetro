@@ -40,11 +40,11 @@ var PLUS_RE = /\+/g;
 var APP_ID_120_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var WHITESPACE_CHAR_RE = /\s/g;
 var FORMAT_QUERY_RE = /(?:^|&)format=(hosts|domains)(?:&|$)/;
-var KEY_CAPABILITY_RE = /[1-9a-f]/i;
 var PLUGIN_SESSION_API_RE = /^\/plugins\/[^\/]+\/s\/[0-9a-f]{32}\/api(?:\/|$)/;
 var COMPONENTS_QUERY_RE = /(?:\?|&)components=1(?:&|$)/;
 var MENU_ID_QUERY_RE = /[?&]id=([^&]+)/;
 var SCOPE_QUERY_RE = /[?&]scope=([^&]*)/;
+var RC_EMPTY_RE = /^NAME=rc-empty$/m;
 var MONITOR_SCOPE_RE = /^(summary|full)$/;
 var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
@@ -721,16 +721,24 @@ function runActions(actions, direct, dispatchGuard) {
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
 }
-var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
-var physical=new PhysicalInput(agentExecute,function(event){
+var actionQueue=Promise.resolve(), pendingActions=0, inputError=null, lastPhysical={code:null,node:null,at:0};
+function handlePhysicalEvent(event){
     if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
+    // One remote can reach the TV on two interfaces, so the same press can arrive from a
+    // second node. A repeat from the same node is a real double press and still counts.
+    var now=Date.now();
+    if(lastPhysical.code===event.code&&lastPhysical.node!==event.node&&now-lastPhysical.at<300)return;
+    lastPhysical={code:event.code,node:event.node,at:now};
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
     var generation=inputGeneration;
     function current(){return inputLifecycleActive&&generation===inputGeneration;}
     actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current())pauseInputFault(e.message);}).finally(function(){pendingActions--;});
-});
+}
+// One helper per physical remote. `physical` is the first device and keeps the old
+// single-device API for the status snapshot; extras cover every other remote.
+var physical=new PhysicalInput(agentExecute,handlePhysicalEvent), extraInputs=[];
 var inputObservers=[], inputPaused=false, inputRestoring=false;
 // inputPaused is the user's own pause (listening mode) and lasts until they act. A fault is different: a rule's action failed
 // (broker down, TV busy, agent reconnecting), so the keys are given back to the TV at once, but only for a while. Without
@@ -739,7 +747,8 @@ var INPUT_FAULT_PAUSE_MS=60000, inputFaultUntil=0;
 // Listening pauses interception until the user stops it. A page that was closed or navigated away while listening never says so:
 // when nothing has asked about the input for this long, the pause is dropped and the saved shortcuts work again.
 var INPUT_LISTEN_IDLE_MS=300000, inputSeenAt=Date.now();
-function pauseInputFault(message){inputError=message;inputFaultUntil=Date.now()+INPUT_FAULT_PAUSE_MS;physical.stop();}
+function stopHelpers(){extraInputs.forEach(function(b){b.stop();});extraInputs=[];physical.stop();}
+function pauseInputFault(message){inputError=message;inputFaultUntil=Date.now()+INPUT_FAULT_PAUSE_MS;stopHelpers();}
 var inputLifecycleActive=true, inputGeneration=0;
 function startInputLifecycle(){inputLifecycleActive=true;}
 function stopInputLifecycle(){inputLifecycleActive=false;stopInput();}
@@ -753,28 +762,62 @@ function saveInputPreference(preference){
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
 function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
+// Every selectable remote node. Several interfaces can share a name; the event
+// dedupe above keeps one press from running an action twice. An IR receiver whose
+// key map is empty (sdp-mcirb as rc-empty) never reports a key, so it gets no helper.
+function emptyKeymap(d){
+    try{return RC_EMPTY_RE.test(fs.readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/device/uevent','utf8'));}
+    catch(e){return false;}
+}
+function selectableRemotes(list){
+    return (list||[]).filter(function(d){return d.selectable&&!emptyKeymap(d);});
+}
+// Start a filter helper for each listed remote, reusing helpers that are not connected.
+// Every start begins synchronously, so a later stopInput() cancels it through the bridge
+// generation; a start issued after a stop would launch a helper nobody tracks.
+// Connected helpers keep running, and a failed remote does not stop the others.
+function fillFilter(devices, tokens){
+    var idle=[physical].concat(extraInputs).filter(function(b){return !b.status().policy.connected;});
+    var started=devices.map(function(d){
+        var b=idle.shift();
+        if(!b){b=new PhysicalInput(agentExecute,handlePhysicalEvent);extraInputs.push(b);}
+        return b.start(d.node,'filter',tokens).catch(function(e){return {error:e.message};});
+    });
+    // Helpers left idle belong to remotes that are gone, so their last error is dropped too.
+    idle.forEach(function(b){b.retire();});
+    extraInputs=extraInputs.filter(function(b){return idle.indexOf(b)<0;});
+    return Promise.all(started).then(function(){return inputSnapshot();});
+}
 function restoreInput(){
     if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput();inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;
-    if(!inputLifecycleActive||!preference.enabled||inputPaused||Date.now()<inputFaultUntil||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
+    if(!inputLifecycleActive||!preference.enabled||inputPaused||Date.now()<inputFaultUntil||inputRestoring||!platform.status().agent.connected||!inputTokens().length)return;
     inputRestoring=true;
     physical.inventory().then(function(list){
         if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||Date.now()<inputFaultUntil||inputPreference()!==preference)return;
-        var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
-        var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
-        // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
-        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
-        if(!device)throw new Error('Saved physical remote is unavailable');
-        return physical.start(device.node,'filter',inputTokens());
-    }).then(function(){if(generation===inputGeneration)inputError=null;}).catch(function(e){if(generation===inputGeneration)inputError=e.message;}).finally(function(){if(generation===inputGeneration)inputRestoring=false;});
+        var devices=selectableRemotes(list);
+        if(!devices.length)throw new Error('No physical remote devices found');
+        // Start only remotes without a connected helper: a crashed helper or a remote added after boot.
+        // With none missing, the fill still retires helpers whose remote has gone.
+        var live=[physical].concat(extraInputs).map(function(b){var p=b.status().policy;return p.connected&&p.node;});
+        return fillFilter(devices.filter(function(d){return live.indexOf(d.node)<0;}),inputTokens());
+    }).then(function(s){if(!s||generation!==inputGeneration)return;if(!s.policy.connected)throw new Error(s.error||'Input helpers unavailable');inputError=s.error;}).catch(function(e){if(generation===inputGeneration)inputError=e.message;}).finally(function(){if(generation===inputGeneration)inputRestoring=false;});
 }
-function stopInput(){++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+function stopInput(){++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];stopHelpers();}
 function inputSnapshot(){
-    if(!inputObservers.length)return Object.assign({},physical.status(),{preference:inputPreference()});
-    var events=[],connected=false,errors=[];
-    inputObservers.forEach(function(b){var s=b.status();events=events.concat(s.events);connected=connected||s.policy.connected;if(s.error)errors.push(s.error);});
+    var events=[],connected=false,errors=[],mode='off',blocked=[];
+    var sources=inputObservers.length?inputObservers:[physical].concat(extraInputs);
+    sources.forEach(function(b){
+        var s=b.status();
+        events=events.concat(s.events);
+        connected=connected||s.policy.connected;
+        if(s.policy.connected&&s.policy.mode)mode=s.policy.mode;
+        if(s.policy.blocked&&s.policy.blocked.length)blocked=s.policy.blocked;
+        if(s.error)errors.push(s.error);
+    });
     events.sort(function(a,b){return a.time_seconds-b.time_seconds||a.time_microseconds-b.time_microseconds;});
-    return {policy:{mode:'observe',device:'auto',connected:connected},preference:inputPreference(),events:events.slice(-30),error:errors.join('; ')||null};
+    return {policy:{mode:connected?mode:'off',device:inputObservers.length?'auto':'all',connected:connected,blocked:blocked},
+        preference:inputPreference(),events:events.slice(-30),error:errors.join('; ')||null};
 }
 // A newer request (or a remap save, or switching interception off) has taken over since this one began.
 function superseded(){var e=new Error('Replaced by a newer input request');e.superseded=true;return e;}
@@ -787,26 +830,44 @@ function handleInput(req,res){
         inputError=null;inputFaultUntil=0;
         if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput();return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
         if(p.mode!=='observe'&&p.mode!=='filter')return serveJson(res,{error:'invalid input mode'},400);
-        if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         inputPaused=true;
+        if(p.mode==='filter'){
+            stopInput();var filterGeneration=inputGeneration;
+            return physical.inventory().then(function(list){
+                if(!inputLifecycleActive)throw new Error('Input request cancelled');
+                if(filterGeneration!==inputGeneration)throw superseded();
+                var devices=selectableRemotes(list);
+                if(!devices.length)throw new Error('no physical remote devices found');
+                return fillFilter(devices,tokens);
+            }).then(function(s){
+                if(!inputLifecycleActive)throw new Error('Input request cancelled');
+                if(filterGeneration!==inputGeneration)throw superseded();
+                if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');
+                saveInputPreference({enabled:true,device:'all'});
+                inputPaused=false;
+                serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});
+            }).catch(function(e){
+                if(inputLifecycleActive&&filterGeneration!==inputGeneration)e=superseded();else{stopInput();inputPaused=false;}
+                serveJson(res,{ok:false,error:e.message},e.superseded?409:503);
+            });
+        }
         if(p.mode==='observe'&&p.device==='auto'){
             stopInput();var observerGeneration=inputGeneration;return physical.inventory().then(function(list){
                 if(!inputLifecycleActive)throw new Error('Input request cancelled');
                 if(observerGeneration!==inputGeneration)throw superseded();
-                var candidates=list.filter(function(d){return d.selectable;});
+                var candidates=selectableRemotes(list);
                 if(!candidates.length)throw new Error('no physical remote devices found');
                 inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
             }).then(function(){if(observerGeneration!==inputGeneration)throw superseded();var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
             .catch(function(e){if(inputLifecycleActive&&observerGeneration!==inputGeneration)e=superseded();else stopInput();serveJson(res,{ok:false,error:e.message},e.superseded?409:503);});
         }
-        if(p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
+        if(p.device==='auto')return serveJson(res,{error:'select the detected node before listening'},400);
         stopInput();var requestGeneration=inputGeneration;
-        physical.start(p.device,p.mode,tokens).then(function(status){
+        physical.start(p.device,p.mode,tokens).then(function(){
             if(!inputLifecycleActive)throw new Error('Input request cancelled');
             if(requestGeneration!==inputGeneration)throw superseded();
-            if(p.mode==='filter'){saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node});inputPaused=false;}
-            serveJson(res,{ok:true,persisted:p.mode==='filter',status:inputSnapshot()});
+            serveJson(res,{ok:true,persisted:false,status:inputSnapshot()});
         }).catch(function(e){
             // physical.start fails with its own "cancelled" error when a newer request stopped it: that is the same case.
             if(inputLifecycleActive&&requestGeneration!==inputGeneration)e=superseded();else physical.stop();
