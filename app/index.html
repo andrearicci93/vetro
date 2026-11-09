@@ -393,7 +393,7 @@ function checks(d) {
   else if (!l.enabled) out.push(['off', 'Launcher', 'Off', null, 'launcher off']);
   else if (l.running === true) out.push(['ok', 'Launcher', 'Running', null, 'launcher ok']);
   else if (l.running === false) out.push(['bad', 'Launcher', l.failures ? 'Failed to start' : 'Not running',
-    (l.failures ? 'Tried ' + esc(l.failures) + ' times. ' : '') + 'Open the Launcher tab in the dashboard and read the error.', 'LAUNCHER FAIL' + (l.failures ? ' x' + l.failures : ''), 'bad']);
+    (l.failures ? 'Tried ' + esc(l.failures) + ' times. ' : '') + 'Open Vetro UI, Launcher tab, in the dashboard and read the error.', 'LAUNCHER FAIL' + (l.failures ? ' x' + l.failures : ''), 'bad']);
   else out.push(['warn', 'Launcher', 'Cannot check', 'It needs root access to be checked.', 'LAUNCHER ?', 'warn']);
   // The package list is read after the verdict: not read yet is not missing.
   ['tizenObject', 'webapisObject', 'apps', 'packages'].forEach(function (k) { if (!probeOk(k) && (k !== 'packages' || report.probe.packages)) apiMissing.push(k.replace('Object', '')); });

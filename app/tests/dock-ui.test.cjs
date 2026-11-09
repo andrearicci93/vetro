@@ -16,7 +16,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
             if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
-            if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
+            if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false, mode: 'off'});   // the service derives mode from the state
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
             if (body.action === 'disableCustom') dock = Object.assign({}, dock, {mode: 'off', customApp: null, running: false});
             data = dock;
@@ -33,10 +33,12 @@ const tick = () => new Promise(r => setImmediate(r));
 
 (async () => {
     await tick(); await tick();
-    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="dock"[^>]*>[\s\S]*?Launcher<\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><button data-tab="tuner"[^>]*>[\s\S]*?Vetro TV Tuner<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards<\/button><\/nav>/, 'Quick settings, Launcher (beta) and Remapper open the main group, with Vetro TV Tuner after the Remapper and Vetro Shards right after it');
+    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards<\/button><\/nav>/, 'Quick settings, Vetro UI (launcher, live TV, on-screen displays), Remapper and Vetro Shards');
+    assert.doesNotMatch(html, /data-tab="dock"|data-tab="tuner"/, 'the launcher and the tuner are tabs of Vetro UI, not sidebar entries');
     assert.ok(!calls.some(c => c.url === '/dock'), 'the dock is not read until its tab is opened');
     sandbox.switchPanel('dock'); await tick(); await tick();
-    assert.equal(sandbox.currentPanel, 'dock');
+    assert.equal(sandbox.currentPanel, 'vetroui', 'the old Launcher entry opens Vetro UI');
+    assert.equal(sandbox.uiTab, 'launcher', 'on its Launcher tab');
     let page = el('dockBody').innerHTML;
     assert.match(page, /Vetro launcher/); assert.match(page, /state-chip[^>]*>Off</);
     assert.match(page, /data-dock-switch[^>]*aria-label="Vetro launcher"/);
@@ -162,7 +164,7 @@ const tick = () => new Promise(r => setImmediate(r));
         {appId: 'org.example.hidden', name: 'Hidden Tool', system: false, removable: true, show: false, disabled: false},
         {appId: 'org.example.off', name: 'Switched Off', system: false, removable: true, show: true, disabled: true}];
     sandbox.renderDock();
-    assert.match(html, /role="tab" id="dtab-vetro" data-dock-tab="vetro"[^>]*>Vetro launcher<\/button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom"[^>]*>Custom launcher<\/button>/, 'two tabs on the Launcher page');
+    assert.match(html, /role="tab" id="dtab-vetro" data-dock-tab="vetro"[^>]*>Vetro launcher<\/button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom"[^>]*>Another app \(custom launcher\)<\/button>/, 'two choices on the Launcher tab: the Vetro launcher or another app');
     assert.equal(el('dockCustom').hidden, true, 'the Vetro launcher tab is the one open first');
     el('dock').onclick({target: {closest: () => ({dataset: {dockTab: 'custom'}})}});
     assert.equal(el('dockCustom').hidden, false); assert.equal(el('dockBody').hidden, true);
@@ -187,7 +189,8 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.match(custom, /On · running/); assert.match(custom, /data-custom-switch[^>]* checked/);
     assert.match(sandbox.operationEntries[0].message, /Custom launcher on and running/);
     assert.equal(sandbox.launcherEnabled, true, 'any launcher on locks the Samsung Home switch');
-    assert.match(el('dockBody').innerHTML, /The custom launcher is on\. Turn it off in the Custom launcher tab/);
+    assert.match(el('dockBody').innerHTML, /My Launcher is the launcher now\. The Vetro launcher and another app are never on together\./);
+    assert.match(el('dockBody').innerHTML, /data-launcher-switch="vetro"[^>]*>Use the Vetro launcher instead</, 'one button switches straight over');
     assert.match(el('dockBody').innerHTML, /data-dock-switch[^>]* disabled/, 'the Vetro launcher cannot be turned on at the same time');
     // Changing the app needs no second confirmation.
     sandbox.inventory.push({appId: 'org.example.second', name: 'Second Launcher', system: false, removable: true, show: true, disabled: false});
@@ -205,7 +208,18 @@ const tick = () => new Promise(r => setImmediate(r));
     await reload();
     sandbox.inventory = [{appId: 'org.example.launcher', name: 'My Launcher', system: false, removable: true, show: true, disabled: false}]; sandbox.renderDock();
     custom = el('dockCustom').innerHTML;
-    assert.match(custom, /Turn it off in the Vetro launcher tab/); assert.match(custom, /data-custom-switch[^>]* disabled/); assert.match(custom, /<select[^>]* disabled/);
+    assert.match(custom, /data-launcher-switch="custom"[^>]*>Use My Launcher instead</); assert.match(custom, /data-custom-switch[^>]* disabled/); assert.match(custom, /<select[^>]* disabled/);
+    // Switching straight from the Vetro launcher to the app: one question, then off and on in that order.
+    el('dock').onclick({target: {closest: () => ({dataset: {launcherSwitch: 'custom'}})}});
+    custom = el('dockCustom').innerHTML;
+    assert.match(custom, /Switch the Home key from the Vetro launcher to My Launcher\?/); assert.match(custom, /If the second step fails, Samsung’s Home answers the Home key/);
+    const sent = calls.filter(c => c.url === '/dock' && c.body).length;
+    el('dock').onclick({target: {closest: () => ({dataset: {launcherSwitchCancel: ''}})}});
+    assert.doesNotMatch(el('dockCustom').innerHTML, /Switch the Home key/); assert.equal(calls.filter(c => c.url === '/dock' && c.body).length, sent, 'Cancel sends nothing');
+    el('dock').onclick({target: {closest: () => ({dataset: {launcherSwitch: 'custom'}})}});
+    await el('dock').onclick({target: {closest: () => ({dataset: {launcherSwitchConfirm: ''}})}}); for (let i = 0; i < 8; i++) await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).slice(sent).map(c => c.body), [{action: 'disable'}, {action: 'enableCustom', appId: 'org.example.launcher'}]);
+    assert.equal(sandbox.dockData.mode, 'custom');
     sandbox.inventory = [];
     console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors');
 })().catch(e => { console.error(e); process.exitCode = 1; });

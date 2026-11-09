@@ -9,7 +9,7 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|enableCustom|disableCustom, on, appId}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|taskManager|enableCustom|disableCustom, on, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //
 // Plain ES5, like every module the TV loads.
@@ -76,6 +76,7 @@ function definition(dock, options) {
                 if (p.action === 'volumePill') return dock.setVolumePill(p.on);
                 if (p.action === 'volumeEdge') return dock.setVolumeEdge(p.edge);
                 if (p.action === 'numberPad') return dock.setNumberPad(p.on);
+                if (p.action === 'taskManager') return dock.setTaskManager(p.on);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();

@@ -1,6 +1,6 @@
 # Vetro TV Tuner
 
-Vetro TV Tuner is Vetro's own live TV screen: a channel banner, a channel list, a number pad, a TV guide and an audio switch, drawn in front of the picture. While it is on, it is shown in place of Samsung's tuner. It has its own page in the dashboard, between the Remapper and Vetro Shards, with the remote buttons and a preview of each screen.
+Vetro TV Tuner is Vetro's own live TV screen: a channel banner, a channel list, a number pad, a TV guide and an audio switch, drawn in front of the picture. While it is on, it is shown in place of Samsung's tuner. In the dashboard it is the **Live TV** tab of [Vetro UI](VETRO-UI.md), with the remote buttons and a preview of each screen.
 
 **Status: new and not tried on a TV by this release.** The tuner itself was developed and run on one Q80A with an antenna (DVB-T). The way it is wired into Vetro (start at boot, takeover, restart after an update) is covered by tests on the computer, not yet by a run on a TV. Subtitles, teletext and the TV's other sources (HDMI, cable, satellite, apps) are not covered.
 
@@ -16,7 +16,7 @@ Samsung's live TV app (`org.tizen.tv-viewer`) is **never disabled, removed or ch
 
 ## Turning it on
 
-Open **Vetro TV Tuner** and turn the switch on; Vetro asks once. The page says "Not available on this TV" and leaves the switch off when the TV cannot run the tuner. It needs:
+Open **Vetro UI → Live TV** (or the Overview tab) and turn the switch on; Vetro asks once. The page says "Not available on this TV" and leaves the switch off when the TV cannot run the tuner. It needs:
 
 - The firmware's .NET runtime.
 - Samsung's TV service client (`/opt/usr/dotnet/Tizen.TV.Broadcast.TVService`).
@@ -42,7 +42,7 @@ It starts again by itself after a restart or a crash (back-off from 30 s up to 5
 | Guide / EPG | Opens and closes the TV guide (remotes that have the key) |
 | Info | Opens the info panel at the top: programme with times and progress, its description, the clock and date, the tuner and the audio track. Any key closes it (Back and Info only close it); it closes by itself after ten seconds. Remotes that have an Info key; the Smart Control 2016 has none |
 
-The same list, with a picture of every screen, is on the dashboard page.
+The same list, with a picture of every screen, is on the Live TV tab of Vetro UI.
 
 ## The info panel and the launcher's 123 pad
 

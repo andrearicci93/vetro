@@ -55,7 +55,9 @@ var homeOrder = new (require('./home-order.js').Order)(agentExecute);
 // earlier build of the mode had disabled it (the mode itself never disables it any more: the boot of the TV waits for it).
 var dockModule = require('./dock.js');
 var dock = new dockModule.Dock({execute: agentExecute,
-    onVolumeChange: function () { stopInput(); },
+    // Vol/123 switched, or the launcher mode changed: the bridge restarts with the new key list, and Vetro UI turns the
+    // remote interception on (or back off, if it had turned it on itself) when its keys need it.
+    onVolumeChange: function () { stopInput(); vetroUiInput(); },
     home: {
         restore: function () { return applySamsungHome(false); }
     },
@@ -729,7 +731,11 @@ function handleSettings(req, res) {
 }
 
 function handleRemap(req, res) {
-    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token });
+    // reserved: the keys Vetro UI holds (glass volume bar, glass number pad). Computed, never stored with the rules, and they come first.
+    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token, reserved: vetroUi.reservedKeys(dock.readState()),
+        interception: {auto: !!(remapStore.input && remapStore.input.auto && remapStore.input.enabled), problem: vetroUiInputProblem},
+        // Whether Vetro TV Tuner is on: a shortcut on one of its keys takes that key away from it (the page warns).
+        tuner: {enabled: (function () { try { return tuner.readState().enabled === true; } catch (e) { return false; } })()} });
     readJsonBody(req, res, function (parsed) {
         var rules;
         try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
@@ -799,6 +805,33 @@ function saveInputPreference(preference){
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
 function inputTokens(){return volumeKeys.withTokens(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;}),keyFlags());}
+var vetroUi=require('./vetro-ui.js'),vetroUiInputProblem=null;
+// Vetro UI's keys need the remote interception. It is switched on here only when one of its parts is switched on (or the launcher
+// that draws them comes on), never by the 5 s restore loop: a user who turns the interception off keeps it off. The remote is
+// chosen as restoreInput does (the one remote that reports keys); with more than one candidate nothing is guessed. When the
+// parts go off again, an interception Vetro UI started itself is turned off, unless shortcuts of the user's own still need it.
+function vetroUiInput(){
+    var flags=keyFlags(),wants=flags.volume||flags.pad,pref=remapStore.input||{};
+    if(!wants){
+        vetroUiInputProblem=null;
+        var own=remapStore.rules.some(function(r){return r.enabled&&r.trigger.type==='physical';});
+        if(pref.enabled&&pref.auto&&!own){try{saveInputPreference({enabled:false});}catch(e){}stopInput();}
+        return Promise.resolve(false);
+    }
+    if(inputPreference().enabled)return Promise.resolve(true);
+    if(!inputLifecycleActive||inputPaused||!platform.status().agent.connected){vetroUiInputProblem='The remote interception could not be turned on now (the TV is not connected, or the Remapper is listening). Turn it on in the Remapper.';return Promise.resolve(false);}
+    return physical.inventory().then(function(list){
+        var candidates=list.filter(function(d){return d.selectable;});
+        var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
+        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:null;
+        if(!device)throw new Error(candidates.length?'More than one remote was found: choose yours in the Remapper and turn the interception on there.':'No remote was found to listen to.');
+        stopInput();
+        return physical.start(device.node,'filter',inputTokens());
+    }).then(function(status){
+        saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node,auto:true});
+        inputPaused=false;vetroUiInputProblem=null;return true;
+    }).catch(function(e){vetroUiInputProblem=e.message;return false;});
+}
 function restoreInput(){
     if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput();inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;

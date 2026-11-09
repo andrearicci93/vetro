@@ -18,8 +18,8 @@ assert.ok(squash(html).includes(squash('--vetro-duration-fast:0ms')), 'reduced m
 
 // Navigation: the three entries at the top, then the rest
 const nav = /<nav aria-label="Main">([\s\S]*?)<\/nav>/.exec(html)[1];
-assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'dock', 'remote', 'tuner', 'plugins']);
-assert.match(nav, /Launcher<\/button>/);
+assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'vetroui', 'remote', 'plugins']);
+assert.match(nav, /Vetro UI<\/button>/);
 assert.doesNotMatch(nav, /chip beta/);
 assert.match(nav, /Remapper<\/button>/);
 assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Task manager<\/button>/);

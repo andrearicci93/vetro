@@ -121,13 +121,13 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: s && s.taskManager === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -227,7 +227,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
@@ -251,7 +251,9 @@ Dock.prototype.startScript = function () {
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
-        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge;
+        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
+        // The task manager (Down from the apps row) is opt-in: without the switch the dock looks and acts as before.
+        (state.taskManager && !state.customApp ? '' : ' --no-tasks');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -573,6 +575,41 @@ Dock.prototype.setNoMotion = function (on) {
     });
 };
 
+// The task manager: Down from the apps row lists the running apps (open one, or hold OK to close it). A start argument
+// (--no-tasks when off), so a running Vetro launcher is restarted.
+Dock.prototype.setTaskManager = function (on) {
+    var self = this;
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    try { this.patchState({taskManager: on}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.status();
+    return this.refresh().catch(function (e) {
+        try { self.patchState({taskManager: state.taskManager}); } catch (e2) {}
+        throw e;
+    });
+};
+
+// The launcher's process draws Vetro UI's volume bar and number pad, so when it comes or goes (from the dashboard, the TV screen's tile,
+// Restore the TV or the supervision) the keys the remote bridge holds back change too: the service is told, and the answer waits for it.
+Dock.prototype.keysChanged = function () {
+    var follow = null;
+    if (this.onVolumeChange) { try { follow = this.onVolumeChange(); } catch (e) {} }
+    return Promise.resolve(follow).catch(function () {});
+};
+['enable', 'disable', 'enableCustom', 'disableCustom'].forEach(function (name) {
+    var inner = Dock.prototype[name];
+    Dock.prototype[name] = function () {
+        var self = this;
+        return inner.apply(this, arguments).then(function (status) {
+            return self.keysChanged().then(function () { return status; });
+        }, function (error) {
+            return self.keysChanged().then(function () { throw error; });
+        });
+    };
+});
+
 // Glass volume pill: the dock draws it for Vol+ and Vol- (the bridge holds those keys back). The dock needs no restart;
 // onVolumeChange lets the service restart the remote bridge so the new key list takes effect.
 Dock.prototype.setVolumePill = function (on) { return this.setKeyOption('volumePill', on); };
@@ -597,8 +634,10 @@ Dock.prototype.setKeyOption = function (name, on) {
     var patch = {}; patch[name] = on;
     try { this.patchState(patch); }
     catch (e) { return Promise.reject(e); }
-    if (this.onVolumeChange) { try { this.onVolumeChange(on); } catch (e) {} }
-    return this.status();
+    var self = this, follow = null;
+    if (this.onVolumeChange) { try { follow = this.onVolumeChange(on); } catch (e) {} }
+    // The service may turn the remote interception on for these keys: the answer waits for that, so the page reads the result.
+    return Promise.resolve(follow).catch(function () {}).then(function () { return self.status(); });
 };
 
 // The file behind one tile of the preview: the app's own icon when the list names one that is a

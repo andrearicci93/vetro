@@ -5,8 +5,8 @@ const html = require('../service/dashboard.js')();
 const page = require('../service/tuner-page.js');
 
 // 1. Navigation and static content.
-assert.match(html, /Remapper<\/button><button data-tab="tuner"[^>]*>[\s\S]*?Vetro TV Tuner<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards/, 'the tuner is its own entry, between the Remapper and Vetro Shards');
-assert.match(html, /<section id="tuner" hidden>/);
+assert.match(html, /<button type="button" role="tab" id="utab-tuner" data-ui-tab="tuner"[^>]*>Live TV<\/button>/, 'the tuner is the Live TV tab of Vetro UI');
+assert.match(html, /<section id="vetroui" hidden>[\s\S]*<div id="uiPanel-tuner"[^>]*hidden><div id="tuner">/);
 assert.ok(page.KEYS.length >= 8, 'the remote buttons are documented');
 page.KEYS.forEach(function (k) { assert.ok(html.indexOf(k[1]) >= 0, 'key help on the page: ' + k[1].slice(0, 30)); });
 const previews = page.previewsMarkup();
@@ -45,7 +45,7 @@ const change = (dataset, checked) => { const x = {dataset, checked}; sandbox.$('
     await tick(); await tick();
     assert.ok(!calls.some(c => c.url === '/tuner'), 'the tuner is not read until its tab is opened');
     sandbox.switchPanel('tuner'); await tick(); await tick();
-    assert.equal(sandbox.currentPanel, 'tuner');
+    assert.equal(sandbox.currentPanel, 'vetroui'); assert.equal(sandbox.uiTab, 'tuner');
     let body = el('tunerBody').innerHTML;
     assert.match(body, /Vetro TV Tuner/); assert.match(body, /state-chip[^>]*>Off</);
     assert.match(body, /data-tuner-switch[^>]*aria-label="Vetro TV Tuner"/);
