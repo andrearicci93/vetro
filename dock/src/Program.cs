@@ -828,7 +828,9 @@ namespace Launcher
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
                     // the platform's own launcher starts it. The same goes for the other system controls (sys: rows).
-                    Log("launch " + e.AppId + " rc=" + Libc.system(SystemLaunch.Command(e.AppId, e.FallbackAppId)));
+                    // With a fallback, the app or one of the guarded Home windows must still be up a moment later.
+                    Log("launch " + e.AppId + (e.FallbackAppId != null ? " (else " + e.FallbackAppId + ")" : "") +
+                        " rc=" + Libc.system(SystemLaunch.Command(e.AppId, e.FallbackAppId, _guardApps)));
                     return;
                 }
                 long t0 = Stopwatch.GetTimestamp();
