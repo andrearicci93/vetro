@@ -54,6 +54,14 @@ namespace Launcher
         private static readonly Efl.TaskCb TaskPollCb = OnTaskPoll;
         private static readonly Efl.TaskCb TaskRefreshCb = OnTaskRefresh;
         private const double TaskRefreshSeconds = 1.5;
+        // OK on the task page: a tap opens the selected app, holding it closes the app.
+        private static readonly HoldKey TaskOk = new HoldKey();
+        private static RunningApp _taskOkApp;
+        private static IntPtr _taskOkTimer;
+        private static readonly Efl.TaskCb TaskOkHoldCb = OnTaskOkHold;
+        private static readonly Efl.EvasCb KeyUpCb = OnKeyUp;
+        private static readonly List<int> InputReleases = new List<int>();
+        private const int RawOkCode = 28;   // KEY_ENTER, the code NavigationInput maps to Return
         private static readonly CommandBuffer Commands = new CommandBuffer();
         private static readonly byte[] ReadBuf = new byte[128];
 
@@ -429,6 +437,7 @@ namespace Launcher
         {
             float pop = Math.Min(_tasksCtl.Presence, 0.55f);
             StopTaskTimers();
+            CancelTaskOk();
             _tasksOn = false;
             _tasksCtl.Drop();
             _taskPanel.SetVisible(false);
@@ -550,18 +559,11 @@ namespace Launcher
                     StartAnimator();
                     ResetIdle();
                     break;
+                case TaskAction.Open:
+                    OpenTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
+                    break;
                 case TaskAction.Close:
-                    RunningApp app = _taskPanel.AppAt(_tasksCtl.Selected);
-                    if (app != null && !app.Closing)
-                    {
-                        _taskPanel.MarkClosing(app);
-                        _taskSource.Close(app.AppId);
-                        _taskPanel.Apply(_tasksCtl);
-                        // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
-                        Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
-                        Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
-                    }
-                    ResetIdle();
+                    CloseTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
                     break;
                 case TaskAction.Back:
                     LeaveTasks(true);
@@ -579,6 +581,74 @@ namespace Launcher
                     HideDock();
                     break;
             }
+        }
+
+        private static bool IsOkKey(string key) { return key == "Return" || key == "KP_Enter" || key == "Select"; }
+
+        /// <summary>OK went down on the task page: remember the row and wait to see whether it is a tap or a hold.</summary>
+        private static void TaskOkDown()
+        {
+            ResetIdle();
+            if (!TaskOk.Press()) return;   // auto-repeat, or the window's copy of a press already handled
+            _taskOkApp = _taskPanel.AppAt(_tasksCtl.Selected);
+            if (_taskOkApp == null) { TaskOk.Cancel(); return; }
+            if (_taskOkTimer != IntPtr.Zero) Efl.ecore_timer_del(_taskOkTimer);
+            _taskOkTimer = Efl.ecore_timer_add(HoldKey.HoldSeconds, TaskOkHoldCb, IntPtr.Zero);
+        }
+
+        /// <summary>OK came up: a tap opens the app it went down on.</summary>
+        private static void TaskOkUp()
+        {
+            if (TaskOk.Release() != HoldResult.Tap) return;
+            if (_taskOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_taskOkTimer); _taskOkTimer = IntPtr.Zero; }
+            RunningApp app = _taskOkApp;
+            _taskOkApp = null;
+            if (_tasksOn && _tasksCtl.IsActive) OpenTaskApp(app);
+        }
+
+        private static byte OnTaskOkHold(IntPtr data)
+        {
+            _taskOkTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            try
+            {
+                if (TaskOk.Fire() == HoldResult.Hold && _tasksOn && _tasksCtl.IsActive) CloseTaskApp(_taskOkApp);
+            }
+            catch (Exception ex) { Log("tasks hold: " + ex); }
+            return 0;
+        }
+
+        private static void CancelTaskOk()
+        {
+            TaskOk.Cancel();
+            _taskOkApp = null;
+            if (_taskOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_taskOkTimer); _taskOkTimer = IntPtr.Zero; }
+        }
+
+        /// <summary>Brings a running app to the front: the panel fades out first, then the app is launched (it resumes).</summary>
+        private static void OpenTaskApp(RunningApp app)
+        {
+            if (app == null || app.Closing) return;
+            AppEntry e = null;
+            foreach (AppEntry a in _apps) if (a.AppId == app.AppId) { e = a; break; }
+            if (e == null) e = new AppEntry(app.AppId, app.Label ?? app.AppId, app.AppId, null);
+            if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
+            Log("tasks: open " + app.AppId);
+            HideDock();
+            _pendingLaunch = e;
+        }
+
+        private static void CloseTaskApp(RunningApp app)
+        {
+            if (app != null && !app.Closing)
+            {
+                _taskPanel.MarkClosing(app);
+                _taskSource.Close(app.AppId);
+                _taskPanel.Apply(_tasksCtl);
+                // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
+                Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
+                Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
+            }
+            ResetIdle();
         }
 
         /// <summary>True when the list holds the figures the sort needs (names always; memory and CPU once measured).</summary>
@@ -711,6 +781,9 @@ namespace Launcher
                         Efl.evas_object_hide(_win);
                         LeaveTasks(false);   // the next Home opens on the apps row, in the dock's own window size
                         more = false;
+                        AppEntry chosen = _pendingLaunch;
+                        _pendingLaunch = null;
+                        if (chosen != null) Launch(chosen);
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     if (more) return 1;
@@ -832,6 +905,17 @@ namespace Launcher
             catch (Exception ex) { Log("key: " + ex); }
         }
 
+        private static void OnKeyUp(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo)
+        {
+            try
+            {
+                // Evas_Event_Key_Up starts with `const char *keyname` too.
+                string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                if (IsOkKey(key)) TaskOkUp();
+            }
+            catch (Exception ex) { Log("key up: " + ex); }
+        }
+
         /// <summary>A navigation key read straight from the input device, acted on only while the dock is up.</summary>
         private static void NavFromInput(int code)
         {
@@ -843,7 +927,11 @@ namespace Launcher
         {
             try
             {
-                if (_tasksOn) { OnTaskKey(key); return; }
+                if (_tasksOn)
+                {
+                    if (IsOkKey(key)) TaskOkDown(); else OnTaskKey(key);
+                    return;
+                }
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -919,7 +1007,8 @@ namespace Launcher
                     if (n < 0 && Marshal.GetLastWin32Error() != EAgain) { DropNode(index); break; }
                     if (n <= 0) break;
                     InputPresses.Clear();
-                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses);
+                    InputReleases.Clear();
+                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses, InputReleases);
                     for (int k = 0; k < InputPresses.Count; k++)
                     {
                         int code = InputPresses[k];
@@ -935,6 +1024,8 @@ namespace Launcher
                         if (DockActive) HideDock(); else ShowDock();
                         ArmGuard();
                     }
+                    // The kernel always reports the release: it ends a held OK even when the window's key up is late.
+                    for (int k = 0; k < InputReleases.Count; k++) if (InputReleases[k] == RawOkCode) TaskOkUp();
                 }
             }
             catch (Exception ex) { Log("input: " + ex); }
@@ -1240,6 +1331,7 @@ namespace Launcher
                     + (_appsDock.MissingIcons + _inputsDock.MissingIcons) + " icons missing");
 
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
+                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyUp, KeyUpCb, IntPtr.Zero);
                 SetupFifo();
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)

@@ -2,7 +2,7 @@ using System;
 
 namespace Launcher.Core
 {
-    internal enum TaskAction { None, Moved, Close, SortChanged, Back, Hide }
+    internal enum TaskAction { None, Moved, Open, Close, SortChanged, Back, Hide }
 
     /// <summary>
     /// Geometry of the task manager page: a glass panel with a header, a list of rows and a key hint,
@@ -177,7 +177,8 @@ namespace Launcher.Core
                 case "Return":
                 case "KP_Enter":
                 case "Select":
-                    return Count > 0 ? TaskAction.Close : TaskAction.None;
+                    // A tap opens the app; the host turns a held OK into Close (HoldKey).
+                    return Count > 0 ? TaskAction.Open : TaskAction.None;
                 case "Escape":
                 case "XF86Back":
                     return TaskAction.Back;

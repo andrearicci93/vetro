@@ -20,6 +20,7 @@ namespace Launcher.Native
 
         public const int ElmWinNotification = 12;
         public const int EvasCallbackKeyDown = 10;
+        public const int EvasCallbackKeyUp = 11;
         public const int EcoreFdRead = 1;
         public const int EvasLoadErrorNone = 0;
         public const int EvasImageScaleHintStatic = 2;

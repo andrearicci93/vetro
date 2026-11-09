@@ -7,8 +7,8 @@ namespace Launcher.Core
     /// Decodes Linux <c>struct input_event</c> records read from /dev/input/eventN and reports
     /// key presses. The record is a timeval (two longs), then type (u16), code (u16) and value
     /// (s32): 16 bytes on the 32-bit ARM TV, 24 on a 64-bit desktop. A read may end in the
-    /// middle of a record, so leftovers are kept for the next call. Presses only: releases
-    /// (value 0) and auto-repeat (value 2) are ignored.
+    /// middle of a record, so leftovers are kept for the next call. Presses (value 1), and releases
+    /// (value 0) when the caller asks for them; auto-repeat (value 2) is ignored.
     /// </summary>
     internal sealed class EvdevReader
     {
@@ -38,7 +38,10 @@ namespace Launcher.Core
         }
 
         /// <summary>Allocation-free variant: appends the presses to a list the caller reuses.</summary>
-        public void Feed(byte[] data, int count, List<int> presses)
+        public void Feed(byte[] data, int count, List<int> presses) { Feed(data, count, presses, null); }
+
+        /// <summary>Also appends the releases, in order, to <paramref name="releases"/> (null: not wanted).</summary>
+        public void Feed(byte[] data, int count, List<int> presses, List<int> releases)
         {
             int i = 0;
             while (i < count)
@@ -51,16 +54,18 @@ namespace Launcher.Core
                 i += take;
                 if (_carried < _record) break;
                 _carried = 0;
-                Decode(_carry, presses);
+                Decode(_carry, presses, releases);
             }
         }
 
-        private void Decode(byte[] rec, List<int> into)
+        private void Decode(byte[] rec, List<int> into, List<int> releases)
         {
             int type = rec[_typeOffset] | (rec[_typeOffset + 1] << 8);
             int code = rec[_typeOffset + 2] | (rec[_typeOffset + 3] << 8);
             int value = rec[_typeOffset + 4] | (rec[_typeOffset + 5] << 8) | (rec[_typeOffset + 6] << 16) | (rec[_typeOffset + 7] << 24);
-            if (type == EvKey && value == 1) into.Add(code);
+            if (type != EvKey) return;
+            if (value == 1) into.Add(code);
+            else if (value == 0 && releases != null) releases.Add(code);
         }
     }
 

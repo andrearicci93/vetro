@@ -53,6 +53,16 @@ namespace Launcher.Core
             "org.tizen.volume", "org.tizen.screen-saver", "com.samsung.tv.notification",
         };
 
+        /// <summary>
+        /// Background helpers that Samsung registers as visible UI apps (component uiapp, Nodisplay 0) although they
+        /// never draw anything the user opened: backup and restore (Label "bnr-service") and the Home preview
+        /// updater (Label "IotPreviewd"). Seen running on a QN85A, Tizen 6.
+        /// </summary>
+        private static readonly HashSet<string> Background = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "capi-bnr-tv", "com.samsung.tv.preview-updater",
+        };
+
         private static readonly Dictionary<string, string> FriendlyNames = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             { "com.samsung.tv.csfs", "Samsung Home" },
@@ -107,7 +117,7 @@ namespace Launcher.Core
         {
             if (info == null || appId == null) return false;
             if (info.Component != "uiapp" || info.NoDisplay) return false;
-            if (Protected.Contains(appId)) return false;
+            if (Protected.Contains(appId) || Background.Contains(appId)) return false;
             if (appId.StartsWith("vetrotvapp", StringComparison.Ordinal)) return false;
             return true;
         }

@@ -73,7 +73,7 @@ namespace Launcher.Ui
             _sub = Text(Font, 22);
             _sort = Text(Font, 24);
             _footer = Text(Font, 21);
-            Efl.evas_object_text_text_set(_footer, "OK  close app        ‹ ›  sort        Up / Back  return");
+            Efl.evas_object_text_text_set(_footer, "OK  open        Hold OK  close        ‹ ›  sort        Up / Back  return");
             _empty = Text(Font, 26);
             Efl.evas_object_text_text_set(_empty, "Looking for running apps…");
             Efl.evas_object_clip_set(_empty, _listClip);

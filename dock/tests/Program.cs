@@ -1104,6 +1104,8 @@ namespace Launcher.Tests
                 T.True(Tasks.IsUserApp("com.samsung.tv.csfs", ui), "Samsung Home is listed (large, comes back on Home)");
                 T.True(!Tasks.IsUserApp("org.tizen.tv-viewer", ui), "live TV protected");
                 T.True(!Tasks.IsUserApp("vetrotvapp.svc", ui), "Vetro protected");
+                T.True(!Tasks.IsUserApp("capi-bnr-tv", ui), "backup service (bnr-service) hidden");
+                T.True(!Tasks.IsUserApp("com.samsung.tv.preview-updater", ui), "Home preview updater (IotPreviewd) hidden");
                 T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "svcapp" }), "services hidden");
                 T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "uiapp", NoDisplay = true }), "nodisplay hidden");
                 T.True(!Tasks.IsUserApp("x.y", null), "unknown hidden");
@@ -1178,13 +1180,54 @@ namespace Launcher.Tests
                 T.True(t.Scroll >= 9 - TaskLayout.MaxRows + 1 - 0.001f, "scrolled so the last row is visible");
                 T.Eq(t.Key("Right"), TaskAction.SortChanged, "Right changes the sort");
                 T.Eq(t.Sort, TaskSort.Cpu, "Memory -> CPU");
-                T.Eq(t.Key("Return"), TaskAction.Close, "OK closes");
+                T.Eq(t.Key("Return"), TaskAction.Open, "OK opens (holding it closes: HoldKey)");
                 t.SetCount(3);
                 T.Eq(t.Selected, 2, "selection kept inside a shorter list");
                 t.SetCount(0);
-                T.Eq(t.Key("Return"), TaskAction.None, "nothing to close");
+                T.Eq(t.Key("Return"), TaskAction.None, "nothing to open");
                 T.Eq(t.Key("XF86Back"), TaskAction.Back, "Back returns");
                 T.Eq(t.Key("XF86Home"), TaskAction.Hide, "Home hides");
+            });
+
+            T.Run("tasks: OK tapped opens, OK held closes", () =>
+            {
+                var h = new HoldKey();
+                T.True(h.Press(), "first down arms the timer");
+                T.Eq(h.Release(), HoldResult.Tap, "let go before the timer: tap");
+                T.Eq(h.Release(), HoldResult.None, "second release (raw node and window): nothing");
+                T.Eq(h.Fire(), HoldResult.None, "a late timer after a tap: nothing");
+
+                T.True(h.Press(), "down again");
+                T.True(!h.Press(), "auto-repeat while held is not a new press");
+                T.Eq(h.Fire(), HoldResult.Hold, "timer while held: hold");
+                T.Eq(h.Fire(), HoldResult.None, "fires once");
+                T.Eq(h.Release(), HoldResult.None, "release after the hold does not open");
+
+                T.True(h.Press(), "down");
+                h.Cancel();
+                T.Eq(h.Release(), HoldResult.None, "page gone: the release does nothing");
+                T.Eq(h.Fire(), HoldResult.None, "nor the timer");
+                T.True(HoldKey.HoldSeconds >= 0.5 && HoldKey.HoldSeconds <= 1.5, "hold long enough not to fire on a click");
+            });
+
+            T.Run("evdev: releases are reported when asked for, repeats never", () =>
+            {
+                var r = new EvdevReader(16);
+                byte[] data = new byte[48];
+                int[][] recs = { new[] { 28, 1 }, new[] { 28, 2 }, new[] { 28, 0 } };
+                for (int i = 0; i < 3; i++)
+                {
+                    int o = i * 16 + 8;
+                    data[o] = 1;                                   // EV_KEY
+                    data[o + 2] = (byte)recs[i][0];                // code
+                    data[o + 4] = (byte)recs[i][1];                // value
+                }
+                var presses = new List<int>(); var releases = new List<int>();
+                r.Feed(data, data.Length, presses, releases);
+                T.Eq(presses.Count, 1, "one press");
+                T.Eq(releases.Count, 1, "one release, the repeat ignored");
+                T.Eq(releases[0], 28, "release code");
+                T.Eq(new EvdevReader(16).Feed(data, data.Length).Count, 1, "presses-only feed unchanged");
             });
 
             T.Run("tasks: Reduce motion opens, moves and closes the task page at once", () =>
