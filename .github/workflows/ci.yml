@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
         with:
           dotnet-version: 10.0.x
+      - name: Root launcher settings IPC tests
+        run: sudo "$(command -v dotnet)" run -c Release --project dock/settings-tests
       - name: Native launcher checks
         run: dotnet run -c Release --project dock/tests
       - name: Install Ecore test runtime

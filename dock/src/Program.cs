@@ -664,9 +664,8 @@ namespace Launcher
                 }
                 _doubleHome = target;
             }, path => {
-                // The root launcher publishes a response readable by the app service,
-                // regardless of the root agent's inherited umask.
-                if (Libc.chmod(path, 420u) != 0) throw new IOException("Cannot publish double-press acknowledgement");
+                // The root-agent client reads this private acknowledgement.
+                if (Libc.chmod(path, 384u) != 0) throw new IOException("Cannot publish double-press acknowledgement");
             });
             Log("double Home setting applied");
         }
@@ -990,6 +989,8 @@ namespace Launcher
 
         private static int Main(string[] args)
         {
+            if (Flag(args, "--apply-double-home"))
+                return DoubleHomeClient.Run(Arg(args, "--apply-double-home"), Arg(args, "--dir"), Arg(args, "--double-home-settings"));
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.

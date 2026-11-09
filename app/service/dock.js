@@ -81,8 +81,7 @@ function Dock(options) {
     this.execute = options.execute;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
-    this.doubleHomeFile = path.join(path.dirname(this.stateFile), 'vetro-double-home.tsv');
-    this.controlFifo = options.controlFifo || FIFO;
+    this.doubleHomeFile = path.join(RUN_DIR, 'tvlauncher-double-home.tsv');
     this.appsFile = options.appsFile || APPS_FILE;
     this.customAppsFile = options.customAppsFile || CUSTOM_APPS_FILE;
     // Custom mode needs two things from the shell: appCheck(appId) -> {ok, label|reason} for the chosen app (rejects
@@ -572,7 +571,8 @@ Dock.prototype.setDoubleHome = function (value) {
 };
 
 Dock.prototype.applyDoubleHome = function (setting, pid) {
-    return doubleHome.apply(setting, {pid: pid, file: this.doubleHomeFile, fifo: this.controlFifo, now: this.now, sleep: this.sleep});
+    return doubleHome.apply(setting, {pid: pid, file: this.doubleHomeFile, runDir: RUN_DIR,
+        dll: path.join(this.dir, DLL), execute: this.execute});
 };
 
 Dock.prototype.setHomeAssignment = function (value) {

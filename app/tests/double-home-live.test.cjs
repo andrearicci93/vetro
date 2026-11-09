@@ -1,8 +1,6 @@
 'use strict';
 const assert = require('assert').strict;
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const {spawnSync} = require('child_process');
 const {Dock} = require('../service/dock.js');
 const live = require('../service/home-double-press.js');
@@ -74,44 +72,37 @@ function fixture(enabled = true) {
     await assert.rejects(pending.dock.setDoubleHome(other), /in progress/);
     await new Promise(resolve => setImmediate(resolve)); release(); await first;
 
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-double-live-'));
-    let reader;
-    try {
-        const fifo = path.join(tmp, 'control'), file = path.join(tmp, 'setting.tsv');
-        assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
-        const start = Date.now();
-        await assert.rejects(live.apply(glass, {pid:4242,file,fifo}), /ENXIO/);
-        assert.ok(Date.now() - start < 1000, 'absent reader never blocks');
-        assert.equal(fs.existsSync(file), false);
-        reader = fs.openSync(fifo, fs.constants.O_RDWR | fs.constants.O_NONBLOCK);
-        let clock = 0, polls = 0, request;
-        const options = {pid:4242,file,fifo,now:()=>clock,timeoutMs:200,sleep:async ms=>{
-            clock += ms; polls++;
-            if (polls === 1) {
-                const bytes = Buffer.alloc(128), n = fs.readSync(reader, bytes);
-                assert.equal(bytes.subarray(0,n).toString(), 'reload-double-home\n');
-                request = fs.readFileSync(file,'utf8');
-                assert.match(request,/^v1\t[a-f0-9]{32}\t4242\tapp\tGlassHome1\.Home\n$/);
-                fs.writeFileSync(file+'.applied',request.replace('\t4242\t','\t4241\t'));
-            } else if (polls === 2) {
-                fs.writeFileSync(file+'.applied',request.replace(/\t[a-f0-9]{32}\t/,'\t'+'0'.repeat(32)+'\t'));
-            } else fs.writeFileSync(file+'.applied',request);
+    let calls = 0;
+    const options = {pid:4242,dll:"/package path/quote'/tvlauncher-dotnet.dll",runDir:'/home/owner',
+        file:'/home/owner/tvlauncher-double-home.tsv',execute:async (command, timeout)=>{
+            calls++;
+            assert.equal(timeout,15000);
+            // Parse the real shell arguments without executing dotnet.
+            const parsed = spawnSync('/bin/sh',['-c',command.replace('/usr/bin/dotnet',
+                "python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))'")],{encoding:'utf8'});
+            assert.equal(parsed.status,0,parsed.stderr);
+            const args=JSON.parse(parsed.stdout);
+            assert.equal(args[0],options.dll);
+            assert.equal(args[1],'--apply-double-home');
+            assert.deepEqual(args.slice(3),['--dir',options.runDir,'--double-home-settings',options.file]);
+            const request=Buffer.from(args[2],'base64').toString();
+            assert.match(request,/^v1\t[a-f0-9]{32}\t4242\tapp\tGlassHome1\.Home\n$/);
+            return {exit_code:0,stdout:'double-home-applied '+request.split('\t')[1]+'\n'};
         }};
+    const originalOpen=fs.openSync, originalWrite=fs.writeFileSync;
+    try {
+        // App-context filesystem access is denied, as it is on affected TVs.
+        // Delivery must still succeed entirely through the root executor.
+        fs.openSync=fs.writeFileSync=()=>{throw Object.assign(Error('EACCES'),{code:'EACCES'});};
         await live.apply(glass,options);
-        assert.equal(polls,3,'wrong process and stale nonce do not confirm a save');
-        assert.equal(fs.existsSync(file),false,'successful requests are removed');
-        clock=0; options.sleep=async ms=>{clock+=ms;};
-        await assert.rejects(live.apply(other,options), /did not confirm/);
-        assert.equal(fs.existsSync(file),false,'timed-out requests cannot apply later');
-        fs.closeSync(reader);reader=undefined;
-        const ordinary = path.join(tmp,'ordinary');fs.writeFileSync(ordinary,'unchanged');
-        await assert.rejects(live.apply(glass,{pid:4242,file,fifo:ordinary}), /control pipe/);
-        assert.equal(fs.readFileSync(ordinary,'utf8'),'unchanged');
-        const link=path.join(tmp,'link');fs.symlinkSync(ordinary,link);
-        await assert.rejects(live.apply(glass,{pid:4242,file,fifo:link}), /ELOOP/);
-    } finally {
-        if(reader!==undefined)fs.closeSync(reader);
-        fs.rmSync(tmp,{recursive:true,force:true});
-    }
-    console.log('PASS live double-press save, rollback, unchanged Home ownership, bounded FIFO delivery and exact acknowledgement');
+    } finally {fs.openSync=originalOpen;fs.writeFileSync=originalWrite;}
+    assert.equal(calls,1);
+    await assert.rejects(live.apply(glass,{...options,pid:0}),/could not be identified/);
+    assert.equal(calls,1,'invalid process does not execute');
+    await assert.rejects(live.apply(glass,{...options,execute:undefined}),/root launcher connection/);
+    await assert.rejects(live.apply(glass,{...options,execute:async()=>({exit_code:0,stdout:'double-home-applied stale'})}),/did not confirm/);
+    await assert.rejects(live.apply(glass,{...options,execute:async()=>({exit_code:2,stderr:'EACCES from helper'})}),/EACCES from helper/);
+    await assert.rejects(live.apply(glass,{...options,execute:async()=>({timed_out:true})}),/timed out/);
+    await assert.rejects(live.apply(glass,{...options,execute:async()=>{throw Error('root disconnected');}}),/root disconnected/);
+    console.log('PASS live double-press save, rollback, unchanged Home ownership, root delivery under app EACCES and exact acknowledgement');
 })().catch(error=>{console.error(error);process.exitCode=1;});
