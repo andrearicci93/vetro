@@ -194,7 +194,7 @@ Dock.prototype.probe = function () {
     var script = [
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
-        'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || ps | grep -q "[c]sfs"; then echo "home=1"; else echo "home=0"; fi',
+        'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || grep -qx csfs /proc/[0-9]*/comm 2>/dev/null; then echo "home=1"; else echo "home=0"; fi',
         // No log file yet is normal. Without || true the missing file failed the whole read, and the user saw its raw
         // output, "dock= home=0 log:", as the error (#82).
         'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
@@ -626,12 +626,13 @@ Dock.prototype.supervise = function (agentConnected) {
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
     return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {
-        if (p.running) { self.failures = 0; self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
-        return self.launch(true).then(function () { self.failures = 0; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
+        // A warning left by an earlier failed supervision round is stale once the dock is seen running.
+        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
+        return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;
     }).catch(function (e) {
-        self.failures++;
+        self.failures++; self.superviseFailed = true;
         self.nextTry = self.now() + Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * Math.pow(2, Math.min(self.failures, 8) - 1));
         if (custom && self.failures >= CUSTOM_MAX_FAILURES) return self.giveUpCustom('the launcher process did not start after ' + self.failures + ' tries. ' + e.message);
         self.lastError = (self.failures >= 4 ? 'The dock has not started after ' + self.failures + ' tries; Vetro keeps trying. ' : '') + e.message;
