@@ -345,6 +345,7 @@ for (const pg of pages) {
 }
 fs.cpSync(path.join(ROOT, 'assets'), path.join(OUT, 'assets'), { recursive: true });
 fs.cpSync(path.join(ROOT, 'src/site.css'), path.join(OUT, 'assets/site.css'));
+if (fs.existsSync(path.join(ROOT, 'static'))) fs.cpSync(path.join(ROOT, 'static'), OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 
 const sm = pages.filter((p) => !p.skipSitemap).map((p) => `  <url><loc>${abs(p.path)}</loc><lastmod>${p.lastmod}</lastmod><priority>${p.priority}</priority></url>`).join('\n');
