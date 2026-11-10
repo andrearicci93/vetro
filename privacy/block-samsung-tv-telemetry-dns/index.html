@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block Samsung TV telemetry with Pi-hole or AdGuard | Vetro</title>
+<meta name="description" content="Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Block Samsung TV telemetry with Pi-hole or AdGuard">
+<meta property="og:description" content="Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Block Samsung TV telemetry with Pi-hole or AdGuard">
+<meta name="twitter:description" content="Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwaz9bke">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Block Samsung TV telemetry with Pi-hole or AdGuard","description":"Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv pihole blocklist, block samsung tv telemetry, adguard home samsung tv, samsung tv hardcoded dns","articleSection":"Privacy and tracking","mainEntityOfPage":"https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Privacy and tracking","item":"https://andrearicci93.github.io/vetro/privacy/"},{"@type":"ListItem","position":3,"name":"Block Samsung TV telemetry with Pi-hole or AdGuard","item":"https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/" aria-current="page">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><span aria-current="page">Block Samsung TV telemetry with Pi-hole or AdGuard</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Privacy and tracking</p>
+<h1>Block Samsung TV telemetry with Pi-hole or AdGuard</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Re-read on 2026-11-10: the hkamran80 Smart TV gist and its comments, the LazyAdmin smart TV guide, a Pi-hole forum thread on hard-coded DNS, and the Vetro 0.5.0 DOMAIN-FILTER.md, README and CHANGELOG.</span></p>
+</header>
+<div class="prose">
+<p>You can block a Samsung TV&#39;s advertising and telemetry names with Pi-hole, AdGuard Home or your router, and it can cut some traffic. It will not cut all of it. A TV may use its own DNS servers and ignore yours, some Samsung hostnames are needed for the TV to work, and the public lists carry warnings from people whose devices broke. Block in small steps, keep the TV&#39;s menu opt-outs on, and expect to undo some entries.</p>
+<h2 id="which-samsung-domains-do-community-lists-block">Which Samsung domains do community lists block?<a class="anchor" href="#which-samsung-domains-do-community-lists-block" aria-label="Link to this section">#</a></h2>
+<p>Two public sources are easy to compare. The <a href="https://gist.github.com/hkamran80/779019103fcd306979411d44c8d38459" rel="noopener" target="_blank">hkamran80 Smart TV gist</a> is a long Pi-hole list, and <a href="https://lazyadmin.nl/home-network/how-to-block-ads-on-your-smart-tv/" rel="noopener" target="_blank">LazyAdmin&#39;s smart TV guide</a> gives a short list and an extended one. The names below appear in both, or are the ones each source highlights. They are community-reported, not verified by Samsung or by us.</p>
+<div class="table-wrap"><table><thead><tr>
+<th>Domain</th>
+<th>In the gist</th>
+<th>In LazyAdmin</th>
+<th>Commonly attributed to</th>
+</tr>
+</thead><tbody><tr>
+<td><code>samsungads.com</code></td>
+<td><code>ads.</code>, <code>config.</code> and <code>events.samsungads.com</code></td>
+<td><code>samsungads.com</code>, <code>events.</code> and <code>config.</code></td>
+<td>Advertising</td>
+</tr>
+<tr>
+<td><code>samsungacr.com</code></td>
+<td>yes, with <code>log-config.</code> and <code>log-ingestion.</code></td>
+<td>extended list, with <code>log-config.</code></td>
+<td>ACR viewing data</td>
+</tr>
+<tr>
+<td><code>acr0.samsungcloudsolution.com</code></td>
+<td>yes</td>
+<td>no</td>
+<td>ACR, per the Vetro project&#39;s notes</td>
+</tr>
+<tr>
+<td><code>samsungotn.net</code>, <code>samsungrm.net</code></td>
+<td>yes</td>
+<td>yes</td>
+<td>Over-the-air and remote management services</td>
+</tr>
+<tr>
+<td><code>samsungcloudsolution.com</code>, <code>.net</code></td>
+<td>yes</td>
+<td>extended list</td>
+<td>Cloud services, many of them needed by the TV</td>
+</tr>
+</tbody></table></div><p>The &quot;commonly attributed&quot; column is our reading, not a claim from either source. The gist header says &quot;THIS FILE IS NO LONGER BEING MAINTAINED&quot; and points to a newer file in the author&#39;s <a href="https://github.com/hkamran80/blocklists" rel="noopener" target="_blank">blocklists repository</a>. The Vetro project&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md" rel="noopener" target="_blank">DOMAIN-FILTER.md</a> lists <code>samsungads.com</code>, <code>config.samsungads.com</code>, <code>ads.samsung.com</code>, <code>samsungacr.com</code>, <code>log-config.samsungacr.com</code>, <code>log-ingestion.samsungacr.com</code> and <code>acr0.samsungcloudsolution.com</code> as a reported group and says none of these names is in the Q80A firmware. The viewing-data service asks a control server which servers to use, so its real names show up only in traffic.</p>
+<h2 id="what-breaks-when-i-block-them">What breaks when I block them?<a class="anchor" href="#what-breaks-when-i-block-them" aria-label="Link to this section">#</a></h2>
+<p>The gist&#39;s own header warns: &quot;It could be that the TV does not receive any more updates or other services no longer work.&quot; Its comments are about several device brands, and the Samsung-specific ones are thin. One commenter said <code>samsungqbe.com</code> and its subdomains seemed to be required for smart TV functions, and those entries are now commented out in the list. A Pi-hole forum thread, <a href="https://discourse.pi-hole.net/t/samsung-tv-apps-wont-open-with-pihole-on/29621/3" rel="noopener" target="_blank">&quot;Samsung TV Apps won&#39;t open with PiHole on&quot;</a>, shows the same pattern from the user side, though it names no domain. Its advice is to tail the Pi-hole log to find what is blocked.</p>
+<p>The parent-domain entries <code>samsungcloudsolution.com</code> and <code>.net</code> are the riskiest: they catch hostnames the TV uses for basic functions.</p>
+<h3 id="which-names-does-vetro-refuse-to-block">Which names does Vetro refuse to block?<a class="anchor" href="#which-names-does-vetro-refuse-to-block" aria-label="Link to this section">#</a></h3>
+<p>From reading the firmware image of one TV, the Vetro project keeps a never-block list: <code>cdn.samsungcloudsolution.com</code> and <code>cdn.samsungqbe.cn</code> (the online check), <code>time.samsungcloudsolution.com</code>, <code>time.samsungcloudsolution.net</code> and <code>time.samsungqbe.cn</code> (clock sync), and <code>svdca.samsungqbe.com</code> (the developer certificate). The same document says <code>sas.samsungcloudsolution.com</code> and <code>sas.samsungcloudsolution.net</code> are the software-update servers, which Vetro does not refuse: blocking them stops firmware updates, which is a decision for the owner. See <a href="/vetro/updates/stop-samsung-tv-auto-update/">stopping Samsung TV automatic updates</a> for the less drastic route.</p>
+<p>That is why this page does not publish a copy-and-paste mega-list.</p>
+<h2 id="why-does-my-tv-ignore-pi-hole">Why does my TV ignore Pi-hole?<a class="anchor" href="#why-does-my-tv-ignore-pi-hole" aria-label="Link to this section">#</a></h2>
+<p>Pi-hole sees only the queries that reach it. In a <a href="https://discourse.pi-hole.net/t/recommended-strategy-for-clients-with-hard-coded-dns/22103" rel="noopener" target="_blank">Pi-hole forum thread on hard-coded DNS</a>, a Pi-hole community member explains that if a device does not use the Pi-hole&#39;s address, the Pi-hole &quot;will never be aware of the devices DNS queries&quot;. The thread lists several consumer devices that do this; Samsung TVs are not among the devices named in the post we read, so treat it as the general mechanism, not a Samsung finding. We did not find a Samsung-specific capture we could verify.</p>
+<p>The router-level fixes discussed there are:</p>
+<ol>
+<li>Intercept outbound port 53 traffic from the TV and give it to the Pi-hole, catching both TCP and UDP.</li>
+<li>Check IPv6 separately, because a rule written for IPv4 does not cover it.</li>
+<li>Read the query log afterwards to see whether the TV is asking.</li>
+</ol>
+<p>Router support varies; one commenter calls it &quot;100% router device dependent&quot;. A device that moves to DNS over HTTPS defeats port 53 interception, and the thread offers no remedy beyond blocking known resolver addresses at the firewall, which can break legitimate traffic.</p>
+<h2 id="how-does-the-on-tv-dns-blocking-in-vetro-differ">How does the on-TV DNS blocking in Vetro differ?<a class="anchor" href="#how-does-the-on-tv-dns-blocking-in-vetro-differ" aria-label="Link to this section">#</a></h2>
+<p>Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; see Vetro&#39;s root requirements, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">the Apps2Samsung install route</a>.</p>
+<p>Its DNS blocking switch (called domain blocking before 0.5.0 in the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>) writes full hostnames to the TV&#39;s hosts file and keeps your DNS servers. DOMAIN-FILTER.md says it matches exact names only: blocking <code>samsungads.com</code> does not block <code>rtb-config.samsungads.com</code>. The candidate list therefore holds hostnames found in the Q80A firmware, grouped as advertising, analytics and KPI, and diagnostic logs, plus a reported group and one group the project labels probable and unverified. Our own reasoning, not something the project tested, is that a hosts-file entry does not depend on which DNS server the TV asks.</p>
+<p>DOMAIN-FILTER.md also says whether a firmware-derived name is reached at run time, and what happens when it is blocked, has not been tested on a TV. The <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a> says plainly that domain filtering does not guarantee that every app&#39;s ads or telemetry are blocked. The project&#39;s own test TV is the <a href="/vetro/tested-tvs/q80a/">Q80A</a>.</p>
+<p><figure><img src="/vetro/assets/img/dashboard-quick-settings.jpg" alt="Vetro Quick settings with the DNS blocking switch" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>Vetro Quick settings with the DNS blocking switch</figcaption></figure></p>
+<p>The same document says the filter refuses the never-block names above, and that <code>GET /blocklist</code> exports full hostnames for external blockers, without the parent domain of any name the TV needs.</p>
+<h2 id="should-i-rely-on-blocking">Should I rely on blocking?<a class="anchor" href="#should-i-rely-on-blocking" aria-label="Link to this section">#</a></h2>
+<p>Not alone. Use the TV&#39;s own opt-outs first (<a href="/vetro/privacy/turn-off-acr-samsung-tv/">ACR</a> and <a href="/vetro/privacy/samsung-ads-opt-out/">interest-based ads</a>), then add DNS or on-TV blocking if you accept some breakage. A 2026 study reported ACR-like traffic from a Samsung TV after opt-out (<a href="https://watchingthewatchers.github.io/watchingthewatchers/" rel="noopener" target="_blank">Watching the Watchers</a>), which is one reason to treat a blocklist as a second layer and not a replacement. What the TV sends in the first place is listed in <a href="/vetro/privacy/what-data-samsung-tv-collects/">what data a Samsung TV collects</a>.</p>
+<p>Home screen promotions have their own limits: see <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">removing ads from the Samsung TV home screen</a>.</p>
+<h2 id="what-this-article-does-not-cover">What this article does not cover<a class="anchor" href="#what-this-article-does-not-cover" aria-label="Link to this section">#</a></h2>
+<p>We have not captured this traffic ourselves, and we do not guarantee any domain&#39;s purpose. YouTube and app-level ads come from other hosts. Check every list against your own query log before trusting it.</p>
+
+
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/privacy/what-data-samsung-tv-collects/"><span class="eyebrow">Privacy and tracking</span><strong>What data does a Samsung TV collect? A plain inventory</strong><span>What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.</span></a><a class="card" href="/vetro/privacy/samsung-ads-opt-out/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung TV ads opt-out: turn off interest-based ads</strong><span>Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><a href="/vetro/privacy/what-data-samsung-tv-collects/"><span>Previous</span>What data does a Samsung TV collect? A plain inventory</a><a class="next" href="/vetro/privacy/turn-off-bixby-alexa-samsung-tv/"><span>Next</span>Turn off Bixby, Alexa and the mic on a Samsung TV</a></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#which-samsung-domains-do-community-lists-block">Which Samsung domains do community lists block?</a></li><li class="l2"><a href="#what-breaks-when-i-block-them">What breaks when I block them?</a></li><li class="l3"><a href="#which-names-does-vetro-refuse-to-block">Which names does Vetro refuse to block?</a></li><li class="l2"><a href="#why-does-my-tv-ignore-pi-hole">Why does my TV ignore Pi-hole?</a></li><li class="l2"><a href="#how-does-the-on-tv-dns-blocking-in-vetro-differ">How does the on-TV DNS blocking in Vetro differ?</a></li><li class="l2"><a href="#should-i-rely-on-blocking">Should I rely on blocking?</a></li><li class="l2"><a href="#what-this-article-does-not-cover">What this article does not cover</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>

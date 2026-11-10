@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stop Samsung TV automatic firmware updates: options | Vetro</title>
+<meta name="description" content="How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/updates/stop-samsung-tv-auto-update/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Stop Samsung TV automatic firmware updates: options">
+<meta property="og:description" content="How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/updates/stop-samsung-tv-auto-update/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Stop Samsung TV automatic firmware updates: options">
+<meta name="twitter:description" content="How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwaz9bke">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Stop Samsung TV automatic firmware updates: options","description":"How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"disable samsung tv auto update, stop samsung tv automatic updates, samsung tv software update off, samsung tv auto update keeps turning on","articleSection":"Firmware updates","mainEntityOfPage":"https://andrearicci93.github.io/vetro/updates/stop-samsung-tv-auto-update/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Firmware updates","item":"https://andrearicci93.github.io/vetro/updates/"},{"@type":"ListItem","position":3,"name":"Stop Samsung TV automatic firmware updates: options","item":"https://andrearicci93.github.io/vetro/updates/stop-samsung-tv-auto-update/"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How do I turn off automatic updates on a Samsung TV?","acceptedAnswer":{"@type":"Answer","text":"On Samsung's US support page the path is Settings, All Settings, Support, Software Update, then Auto Update. If it is on, select it once to turn it off. Menu names vary by model and year."}},{"@type":"Question","name":"Does turning off Auto Update stop all Samsung TV updates?","acceptedAnswer":{"@type":"Answer","text":"No. Samsung's page says other app updates or Smart Hub updates will still download and install automatically, and you can still check by hand with Update Now."}},{"@type":"Question","name":"Can I block Samsung TV updates on my router?","acceptedAnswer":{"@type":"Answer","text":"Vetro's domain notes identify sas.samsungcloudsolution.com and sas.samsungcloudsolution.net as the software-update servers, taken from Q80A firmware, and say blocking them stops firmware updates. Those notes do not claim a tested blocklist for other models, and blocking can have side effects."}},{"@type":"Question","name":"Does turning off auto update keep root on a Samsung TV?","acceptedAnswer":{"@type":"Answer","text":"It removes one way for the firmware to change, so it may help, but it is no guarantee. Vetro offers a switch for exactly this reason, and its README says a firmware update can change the result even within one model family."}}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/" aria-current="page">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><span aria-current="page">Stop Samsung TV automatic firmware updates: options</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Firmware updates</p>
+<h1>Stop Samsung TV automatic firmware updates: options</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Samsung US's Auto Update support page, the samsung-tv-root README, and the Vetro README, CHANGELOG, DOMAIN-FILTER.md and UPDATING.md for release 0.5.0.</span></p>
+</header>
+<div class="prose">
+<p>To stop Samsung TV automatic firmware updates, open Settings, go to Support, then Software Update, and if Auto Update is on, select it once to turn it off. That covers firmware installs only: Samsung says app and Smart Hub updates continue. On a rooted TV a firmware change can alter the rooting result, which is why Vetro adds its own switch. This page gives Samsung&#39;s menu path, the router option and what Vetro&#39;s switch does.</p>
+<h2 id="how-do-i-turn-off-auto-update-in-the-menu">How do I turn off Auto Update in the menu?<a class="anchor" href="#how-do-i-turn-off-auto-update-in-the-menu" aria-label="Link to this section">#</a></h2>
+<p><a href="https://www.samsung.com/us/support/answer/ANS10002051/" rel="noopener" target="_blank">Samsung&#39;s US support page</a> gives these steps. Menu names and layout differ between models and years.</p>
+<ol>
+<li>Open Settings, choose All Settings, then Support.</li>
+<li>Select Software Update.</li>
+<li>Look at Auto Update. If it is on, select it once to turn it off. If it is already off, leave it.</li>
+</ol>
+<p>Samsung says that agreeing to the Smart Hub terms during first setup turns Auto Updates on automatically, and that after an update your video and audio settings might be reset to defaults. You can still check by hand with Update Now.</p>
+<p>If Software Update is greyed out, Samsung says a streaming app is running in the background; switch to the TV input or press the Samsung TV Plus button on the remote.</p>
+<h2 id="why-does-the-tv-still-update-some-things">Why does the TV still update some things?<a class="anchor" href="#why-does-the-tv-still-update-some-things" aria-label="Link to this section">#</a></h2>
+<p>Samsung&#39;s page states that &quot;other app updates or Smart Hub updates will download and install automatically.&quot; The Auto Update toggle is about the TV software; app and Smart Hub updates are separate.</p>
+<h2 id="can-i-block-updates-on-my-router">Can I block updates on my router?<a class="anchor" href="#can-i-block-updates-on-my-router" aria-label="Link to this section">#</a></h2>
+<p>You can block hostnames, but treat it as a decision with side effects. Vetro&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md" rel="noopener" target="_blank">domain filter notes</a> identify <code>sas.samsungcloudsolution.com</code> and <code>sas.samsungcloudsolution.net</code> as the software-update servers, from strings in the Q80A firmware, and say that blocking them stops firmware updates. They also say Vetro does not refuse these names, because it is a decision for the owner, and that the Quick settings switch is easier to undo.</p>
+<p>Those two names come from Q80A firmware (<a href="/vetro/tested-tvs/q80a/">model page</a>). They are not a tested blocklist for other Samsung TVs, and a router or DNS rule only affects the devices it covers. Filters can also break features, so read <a href="/vetro/privacy/block-samsung-tv-telemetry-dns/">blocking Samsung TV telemetry with DNS</a> before you edit lists.</p>
+<p>The root research behind Vetro mentions that its author&#39;s TVs are blocked from the internet after Developer Mode is enabled (<a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">samsung-tv-root README</a>). That is the author&#39;s setup, not advice.</p>
+<h2 id="what-does-vetro-39-s-switch-do">What does Vetro&#39;s switch do?<a class="anchor" href="#what-does-vetro-39-s-switch-do" aria-label="Link to this section">#</a></h2>
+<p>Vetro&#39;s Quick settings has a Disable automatic firmware update switch, in the General group. According to the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>, it sets the TV&#39;s <code>db/menu/support/softwareupdate/autoupdate</code> value from 1 to 0, reads it back and rolls back if the read-back fails. The value that was there is kept and restored when you switch it off. The <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a> gives the reason: a new firmware does not remove root behind your back.</p>
+<p><figure><img src="/vetro/assets/img/dashboard-quick-settings.jpg" alt="Vetro Quick settings, with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>Vetro Quick settings, with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant</figcaption></figure></p>
+<p>It is the same menu setting written from the dashboard, with a read-back and a record of the old value. Vetro&#39;s notes don&#39;t say how it behaves on a TV where the menu toggle is missing or ignored, or whether a TV with the switch on still checks for updates.</p>
+<p>Vetro is experimental, needs root and ships no signed installer. Read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">how to install Vetro with Apps2Samsung</a> before relying on it, and see Vetro&#39;s root requirements for the route.</p>
+<h2 id="which-option-is-for-whom">Which option is for whom?<a class="anchor" href="#which-option-is-for-whom" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table><thead><tr>
+<th>Option</th>
+<th>Needs root</th>
+<th>What it covers</th>
+<th>Caveat</th>
+</tr>
+</thead><tbody><tr>
+<td>Menu toggle (Support, Software Update, Auto Update)</td>
+<td>No</td>
+<td>Automatic firmware installs</td>
+<td>App and Smart Hub updates continue</td>
+</tr>
+<tr>
+<td>Router or DNS block</td>
+<td>No</td>
+<td>Traffic to the hosts you block, for devices covered by the rule</td>
+<td>Side effects; hosts taken from Q80A firmware, not a tested list</td>
+</tr>
+<tr>
+<td>Vetro switch</td>
+<td>Yes</td>
+<td>The same menu value, with read-back and restore</td>
+<td>Behavior against silent checks not documented</td>
+</tr>
+</tbody></table></div><p>Most people should stop at the first row. A rooted TV with a result you want to keep is the case for the others. A manual Update Now is still there, and so is any prompt the TV shows.</p>
+<h2 id="is-turning-it-off-a-good-idea">Is turning it off a good idea?<a class="anchor" href="#is-turning-it-off-a-good-idea" aria-label="Link to this section">#</a></h2>
+<p>Turning Auto Update off lets you review updates before installing them, but delaying them also delays security fixes. If you rely on root, read <a href="/vetro/updates/firmware-update-remove-root/">will a firmware update remove root</a> to see what Vetro&#39;s records show, and <a href="/vetro/updates/downgrade-samsung-tv-firmware/">can you downgrade firmware</a>, because going back is usually not possible.</p>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<p>Samsung&#39;s US page is the source for the menu path, and your TV&#39;s wording may differ, especially outside the US or on older models. We haven&#39;t tested whether a firmware prompt can still appear with the toggle off. Nothing here is warranty or legal advice.</p>
+<h2 id="next-steps">Next steps<a class="anchor" href="#next-steps" aria-label="Link to this section">#</a></h2>
+<p>See <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a> and <a href="/vetro/root/keep-root-after-restart/">how root behaves after a restart</a>.</p>
+
+<section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">Frequently asked questions</h2><h3>How do I turn off automatic updates on a Samsung TV?</h3><p>On Samsung's US support page the path is Settings, All Settings, Support, Software Update, then Auto Update. If it is on, select it once to turn it off. Menu names vary by model and year.</p><h3>Does turning off Auto Update stop all Samsung TV updates?</h3><p>No. Samsung's page says other app updates or Smart Hub updates will still download and install automatically, and you can still check by hand with Update Now.</p><h3>Can I block Samsung TV updates on my router?</h3><p>Vetro's domain notes identify sas.samsungcloudsolution.com and sas.samsungcloudsolution.net as the software-update servers, taken from Q80A firmware, and say blocking them stops firmware updates. Those notes do not claim a tested blocklist for other models, and blocking can have side effects.</p><h3>Does turning off auto update keep root on a Samsung TV?</h3><p>It removes one way for the firmware to change, so it may help, but it is no guarantee. Vetro offers a switch for exactly this reason, and its README says a firmware update can change the result even within one model family.</p></section>
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/updates/firmware-update-remove-root/"><span class="eyebrow">Firmware updates</span><strong>Will a Samsung TV firmware update remove root? What we know</strong><span>Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.</span></a><a class="card" href="/vetro/updates/downgrade-samsung-tv-firmware/"><span class="eyebrow">Firmware updates</span><strong>Can you downgrade Samsung TV firmware? What reports say</strong><span>Samsung says downgrading TV firmware is not supported. See what its community and SamyGO threads report, and why Vetro offers prevention, not a rollback.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/privacy/block-samsung-tv-telemetry-dns/"><span class="eyebrow">Privacy and tracking</span><strong>Block Samsung TV telemetry with Pi-hole or AdGuard</strong><span>Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><span></span><a class="next" href="/vetro/updates/downgrade-samsung-tv-firmware/"><span>Next</span>Can you downgrade Samsung TV firmware? What reports say</a></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#how-do-i-turn-off-auto-update-in-the-menu">How do I turn off Auto Update in the menu?</a></li><li class="l2"><a href="#why-does-the-tv-still-update-some-things">Why does the TV still update some things?</a></li><li class="l2"><a href="#can-i-block-updates-on-my-router">Can I block updates on my router?</a></li><li class="l2"><a href="#what-does-vetro-39-s-switch-do">What does Vetro&amp;#39;s switch do?</a></li><li class="l2"><a href="#which-option-is-for-whom">Which option is for whom?</a></li><li class="l2"><a href="#is-turning-it-off-a-good-idea">Is turning it off a good idea?</a></li><li class="l2"><a href="#limits">Limits</a></li><li class="l2"><a href="#next-steps">Next steps</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>

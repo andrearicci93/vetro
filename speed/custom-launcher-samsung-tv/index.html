@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom launcher for Samsung TV: how it replaces Home | Vetro</title>
+<meta name="description" content="How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/speed/custom-launcher-samsung-tv/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Custom launcher for Samsung TV: how it replaces Home">
+<meta property="og:description" content="How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/speed/custom-launcher-samsung-tv/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Custom launcher for Samsung TV: how it replaces Home">
+<meta name="twitter:description" content="How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwaz9bke">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Custom launcher for Samsung TV: how it replaces Home","description":"How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv custom launcher, replace samsung tv home screen, tizen launcher, vetro launcher","articleSection":"Home screen and speed","mainEntityOfPage":"https://andrearicci93.github.io/vetro/speed/custom-launcher-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Home screen and speed","item":"https://andrearicci93.github.io/vetro/speed/"},{"@type":"ListItem","position":3,"name":"Custom launcher for Samsung TV: how it replaces Home","item":"https://andrearicci93.github.io/vetro/speed/custom-launcher-samsung-tv/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/" aria-current="page">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><span aria-current="page">Custom launcher for Samsung TV: how it replaces Home</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Home screen and speed</p>
+<h1>Custom launcher for Samsung TV: how it replaces Home</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the Vetro README, CHANGELOG, PERFORMANCE.md and HARDENING-0.5.0.md for release 0.5.0, and the AeroTizen README.</span></p>
+</header>
+<div class="prose">
+<p>A custom launcher on a Samsung TV is an app that opens when you press the Home key, instead of Samsung&#39;s own Home screen. Replacing Home needs either a rooted TV or a tool that watches for Samsung&#39;s Home and reopens your app. Vetro&#39;s launcher is a native bar that runs on a rooted TV. It is in beta, and this page covers what it does, the one memory figure we can cite and where its documentation stops.</p>
+<h2 id="what-is-a-launcher-on-tizen">What is a launcher on Tizen?<a class="anchor" href="#what-is-a-launcher-on-tizen" aria-label="Link to this section">#</a></h2>
+<p>It is an app that shows a list of other apps. The hard part is not drawing it. It is being what opens on the Home key, and staying out of the way of the TV&#39;s own start-up. On the Q80A (<a href="/vetro/tested-tvs/q80a/">model page</a>), the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a> names Samsung&#39;s Home as the system app <code>com.samsung.tv.csfs</code>. TVs from 2022 onward ship a newer Home (<code>com.samsung.tv.home.media</code>, <code>home.sidebar</code>, <code>coba.newhome</code>) that keeps its data in a different folder, and a launcher has to handle both.</p>
+<h2 id="how-does-vetro-39-s-launcher-replace-samsung-39-s-home">How does Vetro&#39;s launcher replace Samsung&#39;s Home?<a class="anchor" href="#how-does-vetro-39-s-launcher-replace-samsung-39-s-home" aria-label="Link to this section">#</a></h2>
+<p>According to the <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a>, it is a minimal bar on the Home key that shows the same apps and icons as Samsung&#39;s Home, in the same order, and comes back by itself after a restart or a standby. A Samsung Home button opens the original, and nothing is removed.</p>
+<p><figure><img src="/vetro/assets/img/launcher-on-tv.jpg" alt="The Vetro launcher at the bottom of the TV screen: the apps from Samsung&amp;#39;s Home, a Source hint, and Settings and Samsung Home buttons" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>The Vetro launcher at the bottom of the TV screen: the apps from Samsung&amp;#39;s Home, a Source hint, and Settings and Samsung Home buttons</figcaption></figure></p>
+<p>As far as the changelog documents:</p>
+<ul>
+<li>It is a native program, not a web page: a .NET process run by the TV&#39;s own <code>dotnet</code>.</li>
+<li>It reads its app list from Samsung&#39;s Home row (row order, registry titles and registry icons) each time it starts. On TVs with the newer Home it uses the cache folder where that Home keeps its order, and where the Home row holds only recent apps it adds the other visible installed apps.</li>
+<li>It listens for the Home key. When you press it, the launcher opens and Samsung&#39;s Home is closed, with a guard that repeats after each press (<a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md" rel="noopener" target="_blank">PERFORMANCE.md</a>).</li>
+<li>If the launcher stops, the Home key goes back to Samsung&#39;s Home, and Vetro starts the launcher again after a restart or a crash, backing off between tries.</li>
+<li>Turning the launcher on also switches off Samsung&#39;s Autorun Smart Hub setting so the TV no longer powers on to Samsung&#39;s Home. Vetro remembers the old value and puts it back only if it changed it.</li>
+</ul>
+<p>You turn it on in the Launcher page of the Vetro dashboard, which also previews the bar. The changelog says it was tested on a Q80A only and is experimental on other models.</p>
+<p><figure><img src="/vetro/assets/img/launcher-dashboard.jpg" alt="The Launcher tab of the Vetro dashboard: a preview of the bar, the launcher switch and the Fix TizenTube switch" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>The Launcher tab of the Vetro dashboard: a preview of the bar, the launcher switch and the Fix TizenTube switch</figcaption></figure></p>
+<h2 id="how-much-memory-does-the-launcher-save">How much memory does the launcher save?<a class="anchor" href="#how-much-memory-does-the-launcher-save" aria-label="Link to this section">#</a></h2>
+<p>In a single hand-taken run on a Q80A (firmware 2301.1), available RAM went from 533 MB with Samsung&#39;s Home running to 662 MB with the launcher on, about 129 MB or 24%. Samsung&#39;s Home used about 152 MB resident and the launcher about 22 MB (about 30 MB in a later read). The performance notes say the run was not an A/B test and was not repeated, and that it measures memory only: nothing in it shows a change in frame rate, input latency or time to open an app. See <a href="/vetro/speed/samsung-tv-memory-usage/">what uses memory on a Samsung TV</a>. Vetro has no comparison with other launchers.</p>
+<h2 id="what-is-the-custom-launcher-tab">What is the Custom launcher tab?<a class="anchor" href="#what-is-the-custom-launcher-tab" aria-label="Link to this section">#</a></h2>
+<p>The 0.5.0 changelog adds a Custom launcher tab: pick an installed app, turn the switch on, and the Home key opens that app. Samsung&#39;s Home stays enabled, Vetro closes it after each Home press, and Autorun Smart Hub is switched off. Turning the switch off undoes this, and if the app keeps failing to start, the mode turns itself off and the Home key goes back to Samsung. The changelog states this mode has not been tried by hand on a TV, so treat it as untested.</p>
+<h2 id="why-doesn-39-t-vetro-disable-samsung-39-s-home">Why doesn&#39;t Vetro disable Samsung&#39;s Home?<a class="anchor" href="#why-doesn-39-t-vetro-disable-samsung-39-s-home" aria-label="Link to this section">#</a></h2>
+<p>The changelog says to keep Samsung&#39;s Home enabled: on the Q80A, disabling it can keep the TV from finishing its boot. Samsung&#39;s Home is closed after the Home key is pressed instead. The changelog describes this for one TV and one firmware, and the Home-state changes in Quick settings and the Task manager are blocked while the Vetro launcher is on (<a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/HARDENING-0.5.0.md" rel="noopener" target="_blank">HARDENING-0.5.0.md</a>).</p>
+<h2 id="how-does-it-compare-with-aerotizen">How does it compare with AeroTizen?<a class="anchor" href="#how-does-it-compare-with-aerotizen" aria-label="Link to this section">#</a></h2>
+<p>AeroTizen is another launcher for Samsung TVs. Its <a href="https://github.com/helalaou/AeroTizen/blob/main/README.md" rel="noopener" target="_blank">README</a> says Developer Mode is sufficient for setup, a computer-based CLI installs it, and both of its Home modes work without root. Native Home sends Home presses directly to AeroTizen and is marked experimental, and the watcher reopens AeroTizen when it detects a return to Samsung&#39;s Home. The README states that Native Home is reported not to work on Tizen 10. That is a different trade-off: no root, but Samsung&#39;s Home still starts and a watcher reacts to it, while Vetro closes Samsung&#39;s Home but needs root. <a href="/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/">Vetro versus AeroTizen, free-my-tv and TizenBrew</a> compares them and <a href="/vetro/reference/why-vetro-is-native/">why Vetro is native</a> covers the design choice.</p>
+<h2 id="what-should-i-know-before-trying-it">What should I know before trying it?<a class="anchor" href="#what-should-i-know-before-trying-it" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Vetro is experimental, needs root and ships no signed installer: you sign the package with your own Samsung certificate or use a tool such as Apps2Samsung. Read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">how to install Vetro with Apps2Samsung</a>. The root comes from Chris Ritsen&#39;s <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">samsung-tv-root research</a>; Vetro&#39;s root requirements explain the route.</li>
+<li>The Q80A is the TV Vetro is developed on. The README table lists other models as reported working, some with fixes, and one 2022 TV&#39;s launcher failed until the 0.3.1 fix. See <a href="/vetro/tested-tvs/">tested TVs</a>.</li>
+<li>The launcher is in beta.</li>
+</ul>
+<h2 id="next-steps">Next steps<a class="anchor" href="#next-steps" aria-label="Link to this section">#</a></h2>
+<p>Go on to <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">removing ads from the Samsung home screen</a>, or <a href="/vetro/control/remap-samsung-remote-buttons/">remapping remote buttons</a>.</p>
+
+
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/speed/samsung-tv-memory-usage/"><span class="eyebrow">Home screen and speed</span><strong>Samsung TV memory usage: what uses RAM and how to read it</strong><span>What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A.</span></a><a class="card" href="/vetro/speed/samsung-tv-slow-fix/"><span class="eyebrow">Home screen and speed</span><strong>Samsung TV slow? Restart, cache and network fixes</strong><span>Samsung TV slow or lagging? Cold boot, clear app cache, check the network and update before a Smart Hub reset, plus one memory figure for rooted TVs.</span></a><a class="card" href="/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/"><span class="eyebrow">Comparisons</span><strong>Samsung TV launcher tools compared: Vetro, AeroTizen, more</strong><span>Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which. With limits.</span></a><a class="card" href="/vetro/reference/why-vetro-is-native/"><span class="eyebrow">Reference</span><strong>Why Vetro's launcher is native, not a web app</strong><span>Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><a href="/vetro/speed/samsung-tv-memory-usage/"><span>Previous</span>Samsung TV memory usage: what uses RAM and how to read it</a><span></span></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-a-launcher-on-tizen">What is a launcher on Tizen?</a></li><li class="l2"><a href="#how-does-vetro-39-s-launcher-replace-samsung-39-s-home">How does Vetro&amp;#39;s launcher replace Samsung&amp;#39;s Home?</a></li><li class="l2"><a href="#how-much-memory-does-the-launcher-save">How much memory does the launcher save?</a></li><li class="l2"><a href="#what-is-the-custom-launcher-tab">What is the Custom launcher tab?</a></li><li class="l2"><a href="#why-doesn-39-t-vetro-disable-samsung-39-s-home">Why doesn&amp;#39;t Vetro disable Samsung&amp;#39;s Home?</a></li><li class="l2"><a href="#how-does-it-compare-with-aerotizen">How does it compare with AeroTizen?</a></li><li class="l2"><a href="#what-should-i-know-before-trying-it">What should I know before trying it?</a></li><li class="l2"><a href="#next-steps">Next steps</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>

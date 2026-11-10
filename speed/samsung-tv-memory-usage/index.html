@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Samsung TV memory usage: what uses RAM and how to read it | Vetro</title>
+<meta name="description" content="What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/speed/samsung-tv-memory-usage/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Samsung TV memory usage: what uses RAM and how to read it">
+<meta property="og:description" content="What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/speed/samsung-tv-memory-usage/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Samsung TV memory usage: what uses RAM and how to read it">
+<meta name="twitter:description" content="What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwaz9bke">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Samsung TV memory usage: what uses RAM and how to read it","description":"What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv memory usage, samsung tv ram, samsung tv available memory, samsung tv zram swap","articleSection":"Home screen and speed","mainEntityOfPage":"https://andrearicci93.github.io/vetro/speed/samsung-tv-memory-usage/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Home screen and speed","item":"https://andrearicci93.github.io/vetro/speed/"},{"@type":"ListItem","position":3,"name":"Samsung TV memory usage: what uses RAM and how to read it","item":"https://andrearicci93.github.io/vetro/speed/samsung-tv-memory-usage/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/" aria-current="page">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><span aria-current="page">Samsung TV memory usage: what uses RAM and how to read it</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Home screen and speed</p>
+<h1>Samsung TV memory usage: what uses RAM and how to read it</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the Linux kernel proc documentation and the Vetro README, CHANGELOG and PERFORMANCE.md for release 0.5.0; every size comes from one Samsung Q80A.</span></p>
+</header>
+<div class="prose">
+<p>On a Samsung Q80A (<a href="/vetro/tested-tvs/q80a/">model page</a>), Samsung&#39;s Home (the process <code>com.samsung.tv.csfs</code>) held about 152 MB of resident memory, HbbTV about 22 MB, MultiScreen about 15 MB and Ambient about 59 MB, according to Vetro&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md" rel="noopener" target="_blank">performance notes</a> and <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a>. All of it comes from one TV, and all of it is resident-memory readings, not the &quot;memory used&quot; figure the TV shows. This page explains the difference and how to read the counters.</p>
+<h2 id="should-i-look-at-available-ram-or-used-ram">Should I look at available RAM or used RAM?<a class="anchor" href="#should-i-look-at-available-ram-or-used-ram" aria-label="Link to this section">#</a></h2>
+<p>Use available RAM. Tizen runs on Linux, which keeps spare memory as cache and gives it back when an app needs it, so a high &quot;used&quot; figure doesn&#39;t mean trouble. The kernel&#39;s <a href="https://www.kernel.org/doc/html/latest/filesystems/proc.html" rel="noopener" target="_blank">proc documentation</a> defines <code>MemAvailable</code> as an estimate of how much memory is available for starting new applications without swapping, and <code>MemFree</code> as only the totally unused part. The performance notes make the same point: available RAM is more useful than a simple used-RAM total.</p>
+<p>Two more cautions from the notes:</p>
+<ul>
+<li>Zram (compressed memory used as swap) has a logical size and a physical size. The swap a TV reports as occupied is not the same as the memory the compressed copy takes.</li>
+<li>Major page faults include loading files from storage as well as swapping, so they don&#39;t directly measure how long something stalled.</li>
+</ul>
+<p>Vetro&#39;s dashboard leaves a counter as unavailable when the TV doesn&#39;t report it, rather than showing it as zero.</p>
+<h2 id="which-components-use-memory">Which components use memory?<a class="anchor" href="#which-components-use-memory" aria-label="Link to this section">#</a></h2>
+<p>The table gives what Vetro&#39;s notes record for the Q80A. Resident set size (RSS) counts shared pages, so it overstates the memory you would get back. Proportional set size (PSS) splits shared pages between the processes that use them, which is why it is smaller.</p>
+<div class="table-wrap"><table><thead><tr>
+<th>Component</th>
+<th align="right">Size</th>
+<th>Source</th>
+</tr>
+</thead><tbody><tr>
+<td>Samsung Home, <code>com.samsung.tv.csfs</code></td>
+<td align="right">about 152 MB RSS (PSS about 100 MB)</td>
+<td>performance notes, 2026-10-23 run</td>
+</tr>
+<tr>
+<td>Vetro launcher</td>
+<td align="right">about 22 MB RSS (about 30 MB in a later read, PSS 5.7 MB)</td>
+<td>same run</td>
+</tr>
+<tr>
+<td>HbbTV</td>
+<td align="right">about 22 MB</td>
+<td>README, process survey</td>
+</tr>
+<tr>
+<td>MultiScreen (Multi View) autostart</td>
+<td align="right">about 15 MB</td>
+<td>README, process survey</td>
+</tr>
+<tr>
+<td>Ambient</td>
+<td align="right">about 59 MB</td>
+<td>README, process survey</td>
+</tr>
+</tbody></table></div><p>In the one run measured with the launcher, available RAM went from 533 MB to 662 MB, about 129 MB or 24%, on firmware 2301.1. The notes describe it as a single run taken by hand during development, not an A/B test and not repeated.</p>
+<h3 id="does-stopping-them-free-that-much">Does stopping them free that much?<a class="anchor" href="#does-stopping-them-free-that-much" aria-label="Link to this section">#</a></h3>
+<p>Not necessarily. The README sizes for HbbTV, MultiScreen and Ambient come from a survey of a running Q80A, and the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a> says the effect of each change on a running TV is not yet verified.</p>
+<p>HbbTV and Ambient also restart themselves on this TV. According to the changelog, turning HbbTV off in the menu does not stop the app, and a firmware service starts it again at boot, on a source change and on wake. Ambient is started again by Samsung&#39;s screen daemon, so Vetro&#39;s Stop Ambient is described as a partial block. Vetro&#39;s switches work around both, but how long the result lasts depends on your firmware.</p>
+<h2 id="how-do-i-see-memory-use-on-the-tv">How do I see memory use on the TV?<a class="anchor" href="#how-do-i-see-memory-use-on-the-tv" aria-label="Link to this section">#</a></h2>
+<p>On a rooted TV, Vetro&#39;s dashboard shows CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes (README). The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, 0.72 to 0.79% on the summary view and 2.07% in the Task manager. These are percentages of one core, not of the four.</p>
+<p><figure><img src="/vetro/assets/img/task-manager.jpg" alt="Vetro Task manager filtered to Tracking, with component descriptions, app state and startup flags" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>Vetro Task manager filtered to Tracking, with component descriptions, app state and startup flags</figcaption></figure></p>
+<p>Vetro is experimental, needs root and ships no signed installer. See <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">how to install Vetro with Apps2Samsung</a>. Vetro&#39;s root requirements cover the rest.</p>
+<h2 id="why-is-the-load-average-high-on-an-idle-tv">Why is the load average high on an idle TV?<a class="anchor" href="#why-is-the-load-average-high-on-an-idle-tv" aria-label="Link to this section">#</a></h2>
+<p>Linux load counts runnable tasks and tasks waiting in uninterruptible sleep. The performance notes say a high load average with modest CPU doesn&#39;t by itself point to flash I/O, a broken service or something you can remove. A read-only sample on the Q80A found stable uninterruptible threads and little measured storage activity, and it did not establish an I/O or logging bottleneck. Don&#39;t read the load figure as &quot;the TV is overloaded&quot;.</p>
+<h2 id="how-do-i-measure-my-own-tv">How do I measure my own TV?<a class="anchor" href="#how-do-i-measure-my-own-tv" aria-label="Link to this section">#</a></h2>
+<p>Use the same conditions each time: same apps open, same time since boot, same network. The benchmark in the notes waits 30 seconds, opens five apps with 25 seconds after each launch and samples memory, swap and processes about every three seconds. You don&#39;t need that much. Take available RAM after a cold boot, after the apps you use most, and after a change, and compare.</p>
+<p>The dashboard requests a summary every five seconds and the full monitor every ten, pauses when the view is hidden and keeps a shared 30-second cache for storage. Other open browser tabs can still collect data.</p>
+<p>For stock-menu steps, see <a href="/vetro/speed/samsung-tv-slow-fix/">Samsung TV slow fixes</a>. For what replacing Samsung&#39;s Home does and doesn&#39;t change, see <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">removing ads from the home screen</a>.</p>
+<h2 id="can-i-tune-the-samsung-tv-kernel">Can I tune the Samsung TV kernel?<a class="anchor" href="#can-i-tune-the-samsung-tv-kernel" aria-label="Link to this section">#</a></h2>
+<p>The notes say no tuning is offered. The TV reports Linux 4.1.10, a vendor kernel with differences from upstream, so modern advice on swappiness, storage schedulers or CPU governors can&#39;t be assumed to apply. They also record that experiments with compositor effects were abandoned after lag and connection-loss reports.</p>
+<h2 id="what-do-the-numbers-not-show">What do the numbers not show?<a class="anchor" href="#what-do-the-numbers-not-show" aria-label="Link to this section">#</a></h2>
+<p>They don&#39;t show frame rate, input latency or time to open an app. The notes call for repeated ABBA trials with the same network, workload and boot age before any such claim, and point out that a 60 Hz display doesn&#39;t mean every app produces 60 frames. Your numbers will differ with model, firmware and what is running. On Tizen 9 TVs the launcher still closes only the one Home process, so it may free less (changelog).</p>
+<h2 id="next-steps">Next steps<a class="anchor" href="#next-steps" aria-label="Link to this section">#</a></h2>
+<p>Read <a href="/vetro/speed/custom-launcher-samsung-tv/">a custom launcher for a Samsung TV</a> for how the swap works, <a href="/vetro/speed/samsung-tv-slow-fix/">Samsung TV slow fixes</a> for stock-menu steps, and <a href="/vetro/root/keep-root-after-restart/">whether root stays after a restart</a>.</p>
+
+
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/samsung-tv-slow-fix/"><span class="eyebrow">Home screen and speed</span><strong>Samsung TV slow? Restart, cache and network fixes</strong><span>Samsung TV slow or lagging? Cold boot, clear app cache, check the network and update before a Smart Hub reset, plus one memory figure for rooted TVs.</span></a><a class="card" href="/vetro/speed/custom-launcher-samsung-tv/"><span class="eyebrow">Home screen and speed</span><strong>Custom launcher for Samsung TV: how it replaces Home</strong><span>How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.</span></a><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/speed/disable-samsung-tv-plus/"><span class="eyebrow">Home screen and speed</span><strong>Remove Samsung TV Plus from a Samsung TV: what works</strong><span>Samsung says TV Plus can't be fully removed. See the channel and tile steps on its support pages, and what Vetro's Task manager documents on a rooted TV.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><a href="/vetro/speed/samsung-tv-slow-fix/"><span>Previous</span>Samsung TV slow? Restart, cache and network fixes</a><a class="next" href="/vetro/speed/custom-launcher-samsung-tv/"><span>Next</span>Custom launcher for Samsung TV: how it replaces Home</a></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#should-i-look-at-available-ram-or-used-ram">Should I look at available RAM or used RAM?</a></li><li class="l2"><a href="#which-components-use-memory">Which components use memory?</a></li><li class="l3"><a href="#does-stopping-them-free-that-much">Does stopping them free that much?</a></li><li class="l2"><a href="#how-do-i-see-memory-use-on-the-tv">How do I see memory use on the TV?</a></li><li class="l2"><a href="#why-is-the-load-average-high-on-an-idle-tv">Why is the load average high on an idle TV?</a></li><li class="l2"><a href="#how-do-i-measure-my-own-tv">How do I measure my own TV?</a></li><li class="l2"><a href="#can-i-tune-the-samsung-tv-kernel">Can I tune the Samsung TV kernel?</a></li><li class="l2"><a href="#what-do-the-numbers-not-show">What do the numbers not show?</a></li><li class="l2"><a href="#next-steps">Next steps</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>

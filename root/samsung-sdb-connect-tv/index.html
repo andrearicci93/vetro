@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect to a Samsung TV with sdb (port 26101) | Vetro</title>
+<meta name="description" content="How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/root/samsung-sdb-connect-tv/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Connect to a Samsung TV with sdb (port 26101)">
+<meta property="og:description" content="How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/root/samsung-sdb-connect-tv/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Connect to a Samsung TV with sdb (port 26101)">
+<meta name="twitter:description" content="How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwaz9bke">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Connect to a Samsung TV with sdb (port 26101)","description":"How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung sdb connect tv, sdb connect samsung tv 26101, sdb shell closed samsung tv, samsung sdb tizen tv","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/samsung-sdb-connect-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Connect to a Samsung TV with sdb (port 26101)","item":"https://andrearicci93.github.io/vetro/root/samsung-sdb-connect-tv/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Connect to a Samsung TV with sdb (port 26101)</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Rooting guides</p>
+<h1>Connect to a Samsung TV with sdb (port 26101)</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Samsung's command line and tv-device pages, the Jellyfin Tizen README, the samsung-tv-root page, and Vetro 0.5.0's INSTALLATION.md, SECURITY.md, rooting README and CHANGELOG.</span></p>
+</header>
+<div class="prose">
+<p>To connect to a Samsung TV with sdb, turn on Developer Mode with your computer&#39;s IP, restart the TV, then run <code>sdb connect TV_IP:26101</code> and check it with <code>sdb devices</code>. sdb is the command line bridge that ships with Tizen Studio. Connecting is easy. Getting a shell is not: on retail TVs <code>sdb shell</code> is usually closed. This page explains the connection, what stops the shell and how Vetro uses the TV&#39;s own SDB without a computer attached.</p>
+<h2 id="what-is-sdb-and-what-does-port-26101-do">What is sdb and what does port 26101 do?<a class="anchor" href="#what-is-sdb-and-what-does-port-26101-do" aria-label="Link to this section">#</a></h2>
+<p><code>sdb</code> is the bridge between a computer and a Tizen device, much like <code>adb</code> on Android. It comes with Tizen Studio, normally in a <code>tools</code> folder in the install directory that may not be on your <code>PATH</code>. Vetro&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">installation guide</a> gives <code>~/tizen-studio/tools/sdb</code> as a typical place and says the folder may differ.</p>
+<p>The TV listens for SDB on port 26101 once Developer Mode is on. Samsung&#39;s <a href="https://developer.samsung.com/SmartTV/develop/getting-started/using-sdk/tv-device.html" rel="noopener" target="_blank">tv-device page</a> calls 26101 an internal device port that cannot be opened separately, so you switch it on through Developer Mode and no other setting.</p>
+<h2 id="how-do-i-connect-to-the-tv">How do I connect to the TV?<a class="anchor" href="#how-do-i-connect-to-the-tv" aria-label="Link to this section">#</a></h2>
+<ol>
+<li>Enable Developer Mode with your computer&#39;s address and restart the TV. See <a href="/vetro/root/samsung-tv-developer-mode/">how to enable Developer Mode</a>.</li>
+<li>Put the TV and the computer on the same network.</li>
+<li>Run:</li>
+</ol>
+<pre><code class="language-sh">export TV_IP=192.168.1.100  # replace with your TV address
+sdb connect &quot;$TV_IP:26101&quot;
+sdb devices
+</code></pre>
+<p>That is the form in Vetro&#39;s installation guide. The <a href="https://github.com/jellyfin/jellyfin-tizen" rel="noopener" target="_blank">Jellyfin Tizen README</a> shows <code>sdb connect YOUR_TV_IP</code> without a port. Samsung&#39;s <a href="https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/command-line-interface.html" rel="noopener" target="_blank">command line page</a> says <code>sdb devices</code> gives the serial number and target name, and that <code>tizen install -t &lt;target&gt;</code> installs a .wgt, the only file type a TV accepts. Installs go through <code>tizen install</code>, not <code>sdb install</code>: Vetro&#39;s guide cites a community report in which <code>sdb install</code> did nothing and showed no error. To check an install reached the TV, <code>sdb shell 0 vd_applist</code> lists the installed apps.</p>
+<h2 id="why-is-sdb-shell-closed-on-my-samsung-tv">Why is sdb shell closed on my Samsung TV?<a class="anchor" href="#why-is-sdb-shell-closed-on-my-samsung-tv" aria-label="Link to this section">#</a></h2>
+<p>On retail firmware the connection can work while the interactive shell does not. The <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">samsung-tv-root project</a> says that on the retail firmware it tested, a plain interactive <code>sdb shell</code> prints <code>closed</code> and exits, and that this is expected and does not show whether the root route works. So being connected is not evidence of root. Vetro&#39;s own commands go through its root helper, not through <code>sdb shell</code>.</p>
+<h2 id="what-if-sdb-connect-does-not-work">What if sdb connect does not work?<a class="anchor" href="#what-if-sdb-connect-does-not-work" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Port closed after enabling Developer Mode. The Jellyfin2Samsung FAQ says a full power cycle, unplugging for 10 to 15 seconds, helps the SDB port open.</li>
+<li>Host PC IP does not match. The TV needs the IP of the machine you connect from. The <a href="https://github.com/Jellyfin2Samsung/Samsung-Jellyfin-Installer/wiki/FAQ" rel="noopener" target="_blank">Jellyfin2Samsung FAQ</a> describes the TV showing it reversed, so 192.168.1.2 appears as 2.1.168.192, and says to enter it reversed.</li>
+<li>No restart. Developer Mode takes effect after a restart.</li>
+<li>Host PC IP set to 127.0.0.1. With Vetro installed this is on purpose: it lets the TV talk to itself, and by default a computer can no longer use SDB. The guide says to put the computer&#39;s IP back, restart the TV, install, and repeat the 127.0.0.1 step afterwards. Vetro&#39;s SDB switch, described below, is the other option.</li>
+</ul>
+<h2 id="commands-at-a-glance">Commands at a glance<a class="anchor" href="#commands-at-a-glance" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table><thead><tr>
+<th>Command</th>
+<th>What it does</th>
+<th>Source</th>
+</tr>
+</thead><tbody><tr>
+<td><code>sdb connect TV_IP:26101</code></td>
+<td>Connects to the TV</td>
+<td>Vetro&#39;s installation guide</td>
+</tr>
+<tr>
+<td><code>sdb devices</code></td>
+<td>Lists connected targets</td>
+<td>Samsung&#39;s command line page</td>
+</tr>
+<tr>
+<td><code>tizen install -n app.wgt -t TARGET</code></td>
+<td>Installs a .wgt on the target</td>
+<td>Vetro&#39;s guide, Samsung&#39;s command line page</td>
+</tr>
+<tr>
+<td><code>sdb shell 0 vd_applist</code></td>
+<td>Lists installed apps, to confirm an install</td>
+<td>Vetro&#39;s guide</td>
+</tr>
+</tbody></table></div><h2 id="how-does-vetro-use-sdb">How does Vetro use SDB?<a class="anchor" href="#how-does-vetro-use-sdb" aria-label="Link to this section">#</a></h2>
+<p>After you set Host PC IP to <code>127.0.0.1</code> and restart, the Vetro service on the TV starts a small root helper through the TV&#39;s own SDB service, and the helper connects back to Vetro. No computer needs to stay connected. The dashboard shows when the root agent is connected, and startup can take up to 90 seconds. The root comes from Chris Ritsen&#39;s research; Vetro is experimental, needs root and ships no signed installer. See <a href="/vetro/root/keep-root-after-restart/">does root survive a restart</a>.</p>
+<h3 id="can-a-computer-share-the-connection-with-vetro">Can a computer share the connection with Vetro?<a class="anchor" href="#can-a-computer-share-the-connection-with-vetro" aria-label="Link to this section">#</a></h3>
+<p>In 0.5.0, yes, through an experimental SDB tunnel. The <a href="https://github.com/andrearicci93/vetro/blob/main/rooting/README.md" rel="noopener" target="_blank">rooting README</a> says the integration multiplexes its SDB connection through port 26201, and only loopback clients are admitted by default. The switch Quick settings, Developer settings, Developer access, Allow SDB from the local network opens it to Apps2Samsung or Samsung&#39;s SDK. It asks for confirmation, stays on across restarts and is turned off by Restore the TV (<a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>).</p>
+<p>The limits are in <a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a>:</p>
+<ul>
+<li>SDB has no Vetro pairing, so with the switch on any reachable client gets developer access to the TV.</li>
+<li>Turning the switch off disconnects network clients but keeps Vetro&#39;s own local streams. Signing out of the dashboard does not revoke SDB access.</li>
+<li>The listener stays bound while the switch is off and rejects remote clients before it processes any SDB frame.</li>
+<li>The environment variable <code>VETRO_SDB_TUNNEL_PORT</code> changes the port, not the authentication.</li>
+</ul>
+<p>The tunnel also holds the TV&#39;s debug connection (<code>sdbd</code>), which takes one host connection at a time. The changelog says that after a third republish of 0.5.0 it lets go three seconds after the last client disconnects so other apps can install, and that this was checked with a simulated <code>sdbd</code> and not yet tried on a TV (<a href="https://github.com/andrearicci93/vetro/issues/168" rel="noopener" target="_blank">#168</a>). Do not enable it on a network you do not control. The <a href="/vetro/reference/vetro-security-model/">Vetro security model</a> explains the wider exposure.</p>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<p>Menu names, ports and shell access differ by model and firmware. Rooting has risks: read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">is it safe to root a Samsung TV</a> and the main rooting guide. Vetro is not affiliated with Samsung.</p>
+<p>Next: <a href="/vetro/root/install-vetro-apps2samsung/">install Vetro with Apps2Samsung</a>.</p>
+
+
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/samsung-tv-tizen-version-by-year/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV Tizen version by year, 2017 to 2026</strong><span>Which Tizen version a Samsung TV shipped with, year by year from 2017 to 2026, why your TV may run a newer one now, and how the version relates to rooting.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><a href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span>Previous</span>Is it safe to root a Samsung TV? Risks and what to undo</a><a class="next" href="/vetro/root/install-vetro-apps2samsung/"><span>Next</span>Install Vetro on a Samsung TV with Apps2Samsung</a></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-sdb-and-what-does-port-26101-do">What is sdb and what does port 26101 do?</a></li><li class="l2"><a href="#how-do-i-connect-to-the-tv">How do I connect to the TV?</a></li><li class="l2"><a href="#why-is-sdb-shell-closed-on-my-samsung-tv">Why is sdb shell closed on my Samsung TV?</a></li><li class="l2"><a href="#what-if-sdb-connect-does-not-work">What if sdb connect does not work?</a></li><li class="l2"><a href="#commands-at-a-glance">Commands at a glance</a></li><li class="l2"><a href="#how-does-vetro-use-sdb">How does Vetro use SDB?</a></li><li class="l3"><a href="#can-a-computer-share-the-connection-with-vetro">Can a computer share the connection with Vetro?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>

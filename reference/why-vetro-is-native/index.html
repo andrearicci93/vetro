@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why Vetro's launcher is native, not a web app | Vetro</title>
+<meta name="description" content="Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/reference/why-vetro-is-native/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Why Vetro's launcher is native, not a web app">
+<meta property="og:description" content="Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/reference/why-vetro-is-native/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Why Vetro's launcher is native, not a web app">
+<meta name="twitter:description" content="Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwaz9bke">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Why Vetro's launcher is native, not a web app","description":"Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"vetro launcher native, samsung tv native launcher, samsung tv launcher memory, vetro dock","articleSection":"Reference","mainEntityOfPage":"https://andrearicci93.github.io/vetro/reference/why-vetro-is-native/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Reference","item":"https://andrearicci93.github.io/vetro/reference/"},{"@type":"ListItem","position":3,"name":"Why Vetro's launcher is native, not a web app","item":"https://andrearicci93.github.io/vetro/reference/why-vetro-is-native/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/" aria-current="page">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/reference/">Reference</a></li><li><span aria-current="page">Why Vetro's launcher is native, not a web app</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Reference</p>
+<h1>Why Vetro's launcher is native, not a web app</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the Vetro 0.5.0 README, CHANGELOG, PERFORMANCE.md, STATE-MACHINES.md and dock README on GitHub, and the EFL project page.</span></p>
+</header>
+<div class="prose">
+<p>Vetro&#39;s launcher is a native program, not a web page in a browser engine. It is written in C#, draws with the TV&#39;s own EFL graphics libraries and runs under the TV&#39;s own <code>dotnet</code>, as the <a href="https://github.com/andrearicci93/vetro/blob/main/dock/README.md" rel="noopener" target="_blank">dock README</a> describes. The reason is memory. On a Samsung <a href="/vetro/tested-tvs/q80a/">Q80A</a>, Samsung&#39;s Home process held about 152 MB resident, the launcher about 22 MB, and available RAM went from 533 MB to 662 MB when the launcher replaced it. That is one run, and it measures memory only.</p>
+<p>Vetro is experimental, needs root and ships no signed installer: see Vetro&#39;s root requirements and <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">the risks of rooting</a>. The launcher is a beta feature, and the dashboard you use to turn it on is web, not native.</p>
+<h2 id="what-is-native-and-what-is-web-in-vetro">What is native and what is web in Vetro?<a class="anchor" href="#what-is-native-and-what-is-web-in-vetro" aria-label="Link to this section">#</a></h2>
+<p>Three parts, built differently on purpose.</p>
+<div class="table-wrap"><table><thead><tr>
+<th>Part</th>
+<th>Built as</th>
+<th>What it does</th>
+</tr>
+</thead><tbody><tr>
+<td>Launcher (the bar on the Home key)</td>
+<td>Native: C# in <code>dock/</code>, run by the TV&#39;s <code>dotnet</code></td>
+<td>Draws the apps, reads the remote, opens apps</td>
+</tr>
+<tr>
+<td>Dashboard (Quick settings, Task manager, Remapper)</td>
+<td>Web page served by Vetro&#39;s service</td>
+<td>Lets you configure everything from a computer or phone</td>
+</tr>
+<tr>
+<td>Small page on the TV</td>
+<td>Web, closes itself</td>
+<td>Reports the TV&#39;s model and firmware, and shows pairing codes and refusals</td>
+</tr>
+</tbody></table></div><p>The dashboard is not meant to be fast on the TV. You open it in a browser on another device, so its cost falls on that device. The launcher has to run on the TV all the time, so it is where memory matters. Since 0.5.0 the launcher is also the first bundled plugin: it updates and rolls back together with Vetro, and it cannot be removed or replaced from the plugin catalog (<a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PLUGIN-ARCHITECTURE.md" rel="noopener" target="_blank">plugin architecture</a>).</p>
+<p><figure><img src="/vetro/assets/img/launcher-on-tv.jpg" alt="The Vetro launcher at the bottom of the TV screen: the apps from Samsung&amp;#39;s Home, a Source hint, and Settings and Samsung Home buttons" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>The Vetro launcher at the bottom of the TV screen: the apps from Samsung&amp;#39;s Home, a Source hint, and Settings and Samsung Home buttons</figcaption></figure></p>
+<h2 id="how-much-memory-does-the-native-launcher-use">How much memory does the native launcher use?<a class="anchor" href="#how-much-memory-does-the-native-launcher-use" aria-label="Link to this section">#</a></h2>
+<p>From the project&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md" rel="noopener" target="_blank">performance record</a>, on a Samsung QE50Q80AATXZT with firmware T-NKM2DEUC-2301.1:</p>
+<div class="table-wrap"><table><thead><tr>
+<th>Measurement</th>
+<th align="right">Samsung Home running</th>
+<th align="right">Launcher on, Samsung Home closed</th>
+</tr>
+</thead><tbody><tr>
+<td>Available RAM</td>
+<td align="right">533 MB</td>
+<td align="right">662 MB</td>
+</tr>
+<tr>
+<td>Samsung Home (<code>com.samsung.tv.csfs</code>), resident memory</td>
+<td align="right">about 152 MB (PSS about 100 MB)</td>
+<td align="right">closed</td>
+</tr>
+<tr>
+<td>Launcher process, resident memory</td>
+<td align="right">none</td>
+<td align="right">about 22 MB (about 30 MB in a later read, PSS 5.7 MB)</td>
+</tr>
+</tbody></table></div><p>Available RAM rose by about 129 MB, or 24%. The record is explicit that this was a single run taken by hand during development, not an A/B test, not repeated, and dependent on what else was running. Nothing there shows a change in frame rate, input latency or the time to open an app. The claim is only that the launcher leaves more memory free, and the README says other TVs will differ.</p>
+<p>There is no measurement of a web launcher in the project&#39;s files, so this page makes no comparison with one. The only measurement of web content on the TV is the small Vetro page that reports the model. The <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">0.3.0 changelog</a> says its web app and web process held about 100 MiB resident (RSS, which includes shared pages) in a benchmark sample on the Q80A, and that the page now closes itself 5 seconds after the report reaches the service. See the <a href="/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/">comparison of Vetro, AeroTizen, free-my-tv and TizenBrew</a> for the other tools.</p>
+<h2 id="how-does-it-start-on-the-home-key">How does it start on the Home key?<a class="anchor" href="#how-does-it-start-on-the-home-key" aria-label="Link to this section">#</a></h2>
+<p>Vetro runs the launcher process and starts it again after a restart or a crash, backing off for up to five minutes between tries (0.3.0). If the launcher stops, the Home key goes back to Samsung&#39;s Home, and nothing is disabled or removed. Turning it on also switches off the Autorun Smart Hub setting, which Vetro restores if it was the one that changed it.</p>
+<p>The awkward part is that the system also sends Home to Samsung&#39;s own Home app. The launcher therefore closes that app again. According to <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/STATE-MACHINES.md" rel="noopener" target="_blank">STATE-MACHINES.md</a>, a Home press arms one guard process that kills Samsung Home at 0.15, 0.3, 0.45, 0.7 and 1.2 seconds, and every kill first checks a generation counter. If you choose Samsung Home from the bar, the guard is cancelled so the remaining kills do nothing. A Home press seen by both the display server and the input device within 1.5 seconds is counted once.</p>
+<p>That guard is how the memory is held. Since 0.5.0 the guard also handles Samsung&#39;s Home panels that overlap the launcher, adapted from community pull requests <a href="https://github.com/andrearicci93/vetro/pull/23" rel="noopener" target="_blank">#23</a> and <a href="https://github.com/andrearicci93/vetro/pull/24" rel="noopener" target="_blank">#24</a>.</p>
+<h2 id="what-does-native-cost">What does native cost?<a class="anchor" href="#what-does-native-cost" aria-label="Link to this section">#</a></h2>
+<p>The first cost is fewer visual options. The dock README lists what could not be ported from the design page: the blurred background behind the bar, label fonts, the brightness boost on a selected pill and desaturation of unselected icons. The shipped look has no name labels and no clock.</p>
+<p>The second is a tighter tie to the firmware. The launcher calls the TV&#39;s <a href="https://www.enlightenment.org/about-efl" rel="noopener" target="_blank">EFL</a> libraries directly and is built for the .NET Core 3.1 runtime on the TV. The 0.3.2 changelog notes that on Tizen 9 TVs the launcher then closed only <code>com.samsung.tv.csfs</code>, so the memory freed may be smaller than on the Q80A; 0.5.0 added the multi-app guard above, and no memory figure for a Tizen 9 TV is documented.</p>
+<p>The third is narrow testing. The README reports the launcher working on 2022 sets only from 0.3.1 onward (the Home cache folder fix), the HDMI options were tested on an S95C by their author, and on The Frame (<a href="/vetro/tested-tvs/ls03b/">LS03B</a>) the launcher was not tried. Compatibility is listed per model in the README and the <a href="/vetro/tested-tvs/">tested TVs index</a>.</p>
+<p>The fourth is that a guard racing a slow app is a workaround, not an official Samsung switch. If you want any app on the Home key instead, Vetro&#39;s Custom launcher does that without drawing a bar; see <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a> for its caveats, and <a href="/vetro/speed/custom-launcher-samsung-tv/">a custom launcher for a Samsung TV</a> for the general idea. For removing Samsung&#39;s ads from Home, see <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">removing ads from the home screen</a>, and for memory in general, <a href="/vetro/speed/samsung-tv-memory-usage/">what uses memory on a Samsung TV</a>.</p>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<p>This is a design note, not a benchmark. The documented numbers cover memory on one TV. Launcher start time, input latency and frame rate have not been measured, and the performance record says so. The dashboard now asks for a pairing code but still runs over plain HTTP, which the <a href="/vetro/reference/vetro-security-model/">security model</a> covers. The upstream root that Vetro builds on is <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">Chris Ritsen&#39;s samsung-tv-root research</a>.</p>
+
+
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/custom-launcher-samsung-tv/"><span class="eyebrow">Home screen and speed</span><strong>Custom launcher for Samsung TV: how it replaces Home</strong><span>How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.</span></a><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/speed/samsung-tv-memory-usage/"><span class="eyebrow">Home screen and speed</span><strong>Samsung TV memory usage: what uses RAM and how to read it</strong><span>What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/"><span class="eyebrow">Comparisons</span><strong>Samsung TV launcher tools compared: Vetro, AeroTizen, more</strong><span>Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which. With limits.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><a href="/vetro/reference/vetro-security-model/"><span>Previous</span>Vetro security model: pairing, plain HTTP, trusted LAN</a><span></span></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-native-and-what-is-web-in-vetro">What is native and what is web in Vetro?</a></li><li class="l2"><a href="#how-much-memory-does-the-native-launcher-use">How much memory does the native launcher use?</a></li><li class="l2"><a href="#how-does-it-start-on-the-home-key">How does it start on the Home key?</a></li><li class="l2"><a href="#what-does-native-cost">What does native cost?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>
