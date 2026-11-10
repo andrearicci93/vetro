@@ -1,0 +1,6 @@
+node_modules/
+dist/
+review/
+build-report.txt
+AUTHORING.md
+FIXING.md

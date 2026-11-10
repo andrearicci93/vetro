@@ -1,0 +1,189 @@
+[
+ {
+  "slug": "q80a",
+  "name": "Samsung Q80A",
+  "code": "QE50Q80AATXZT",
+  "year": 2021,
+  "tizen": "Tizen 6",
+  "firmware": "T-NKM2DEUC-2301.1",
+  "status": "Developed and tested",
+  "issue": null,
+  "summary": "The Q80A is the TV Vetro is developed on. Every feature is tried here first, including the Launcher, the root agent after a cold boot and the self-update path. A second firmware, 2310.0, has also been used for test runs."
+ },
+ {
+  "slug": "q70a",
+  "name": "Samsung Q70A",
+  "code": "QE55Q70AATXXC",
+  "year": 2021,
+  "tizen": "Tizen 6 (by model year)",
+  "firmware": "T-NKM2DEUC-2301.1",
+  "status": "Reported working",
+  "issue": 8,
+  "summary": "A community report with a diagnostic export showing the app, the service and the root agent running."
+ },
+ {
+  "slug": "q60a",
+  "name": "Samsung Q60A",
+  "code": "QN70Q60AAVXZC",
+  "year": 2021,
+  "tizen": "Tizen 6 (by model year)",
+  "firmware": "T-NKLAAKUC-2310.0",
+  "status": "Reported working",
+  "issue": 28,
+  "summary": "Reported working. The reporter changed the listen port to avoid a clash with tizen-youtube, which also listens on a default port."
+ },
+ {
+  "slug": "qn85a",
+  "name": "Samsung QN85A",
+  "code": "GQ65QN85AATXZG",
+  "year": 2021,
+  "tizen": "Tizen 6 (by model year)",
+  "firmware": "T-NKM2DEUC-2301.1",
+  "status": "Reported working",
+  "issue": null,
+  "summary": "Reported working, and back after a reboot. This report came without a numbered issue."
+ },
+ {
+  "slug": "q67b",
+  "name": "Samsung Q67B",
+  "code": "QE43Q67BAUXXH",
+  "year": 2022,
+  "tizen": "Tizen 6.5 (by model year)",
+  "firmware": "T-NKLBDEUC-1720.7",
+  "status": "Reported working",
+  "issue": null,
+  "summary": "Reported working on firmware 1720.7, the same firmware family as several other 2022 reports."
+ },
+ {
+  "slug": "bu8002",
+  "name": "Samsung UE65BU8002",
+  "code": "UE65BU8002KXXH",
+  "year": 2022,
+  "tizen": "Tizen 6.5 (by model year)",
+  "firmware": "T-KSU2EBDEUC-1720.7",
+  "status": "Reported working",
+  "issue": 22,
+  "summary": "Reported working. The Launcher needed the 0.3.1 fix for the Home cache folder before it started on this TV."
+ },
+ {
+  "slug": "qn85b",
+  "name": "Samsung QE75QN85B",
+  "code": "QE75QN85BATXXU",
+  "year": 2022,
+  "tizen": "Tizen 6.5 (by model year)",
+  "firmware": "1720.7",
+  "status": "Core functions reported working",
+  "issue": 25,
+  "summary": "Core functions were reported working. The Launcher failed before 0.3.1 because of the Home cache folder."
+ },
+ {
+  "slug": "s95b",
+  "name": "Samsung QN55S95B",
+  "code": "QN55S95BAFXZA",
+  "year": 2022,
+  "tizen": "Tizen 6.5 (by model year)",
+  "firmware": "T-PTMAKUC-1720.7",
+  "status": "Reported working",
+  "issue": 14,
+  "summary": "Reported working on a US-market QD-OLED model."
+ },
+ {
+  "slug": "ls03b",
+  "name": "Samsung The Frame LS03B",
+  "code": "QN75LS03BAFXZA",
+  "year": 2022,
+  "tizen": "Tizen 6.5 (by model year)",
+  "firmware": "T-PTMAKUC-1720.7",
+  "status": "Reported working",
+  "issue": 39,
+  "summary": "Reported working. The service started by itself after a cold boot. The Launcher was not tried on this TV."
+ },
+ {
+  "slug": "s95c",
+  "name": "Samsung Q65S95C",
+  "code": "Q65S95C",
+  "year": 2023,
+  "tizen": "Tizen 7 (by model year)",
+  "firmware": "T-PTMCDEUC-0090-2220.4",
+  "status": "Reported working",
+  "issue": 13,
+  "summary": "Reported working on a 2023 QD-OLED model."
+ },
+ {
+  "slug": "s90c",
+  "name": "Samsung S90C",
+  "code": "TQ65S90CATXXC",
+  "year": 2023,
+  "tizen": "Tizen 7.0",
+  "firmware": "T-PTMCDEUC-2000.2",
+  "status": "Reported working",
+  "issue": 16,
+  "summary": "Reported working on Tizen 7.0."
+ },
+ {
+  "slug": "cu7179",
+  "name": "Samsung GU75CU7179",
+  "code": "GU75CU7179",
+  "year": 2023,
+  "tizen": "Tizen 9.0",
+  "firmware": "23_KSUE_UB_T09",
+  "status": "Reported working",
+  "issue": 17,
+  "summary": "Reported working on Tizen 9.0, installed with Apps2Samsung. A 2023 TV running a 2024-generation Tizen shows why model year alone does not tell you the Tizen version."
+ },
+ {
+  "slug": "q65d",
+  "name": "Samsung QN55Q65D",
+  "code": "QN55Q65DAGXZS",
+  "year": 2024,
+  "tizen": "Tizen 8 (launch generation) (by model year)",
+  "firmware": "T-NKLDUABC-0090-2123.9",
+  "status": "Reported working",
+  "issue": 10,
+  "summary": "Reported working, installed with Apps2Samsung."
+ },
+ {
+  "slug": "s90d",
+  "name": "Samsung S90D",
+  "code": "QA65S90DAULXL",
+  "year": 2024,
+  "tizen": "Tizen 9",
+  "firmware": "T-PTMDUABC-0090-2130.0",
+  "status": "Reported working",
+  "issue": 36,
+  "summary": "Reported working on Tizen 9, with the root agent back after a full restart (the owner's account)."
+ },
+ {
+  "slug": "smart-monitor-m8",
+  "name": "Samsung Smart Monitor M8",
+  "code": "LS32BM801UNXGO",
+  "year": null,
+  "tizen": "Tizen (not stated)",
+  "firmware": "T-PTMWWC-1720.7",
+  "status": "Installed, what works not reported",
+  "issue": 15,
+  "summary": "Installed, with the service and root agent running. What works beyond that has not been reported yet."
+ },
+ {
+  "slug": "q80r",
+  "name": "Samsung Q80R",
+  "code": "QN65Q80RAFXZA",
+  "year": 2019,
+  "tizen": "Tizen 5.0",
+  "firmware": "T-MSMAKUC-1500.5",
+  "status": "Works with local changes",
+  "issue": 35,
+  "summary": "Works only with local changes, not with the stock package: a personal port with its own launcher host, app registry paths and Node.js 16.20.2. It was not reviewed or merged."
+ },
+ {
+  "slug": "nu7090",
+  "name": "Samsung UE43NU7090",
+  "code": "UE43NU7090",
+  "year": 2018,
+  "tizen": "Tizen 4",
+  "firmware": "1400.2",
+  "status": "Not working so far",
+  "issue": 2,
+  "summary": "Not working so far. Tizen 4 is outside what the stock package targets."
+ }
+]
