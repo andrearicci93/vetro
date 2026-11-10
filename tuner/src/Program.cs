@@ -40,6 +40,14 @@ namespace Tuner
         private static readonly TvsClient Tvs = new TvsClient();
         private static ChannelList _list;            // null until the worker has read it
         private static Channel _shown;                // the channel the screen (and, soon, the daemon) is on
+        private static Channel _previous;             // the one watched before it: Back goes there, as on Samsung's own tuner (and back again on the next Back)
+
+        /// <summary>The channel on screen changes: the one it was on becomes the one Back returns to.</summary>
+        private static void SetShown(Channel c)
+        {
+            if (_shown != null && c != null && _shown.Id != c.Id) _previous = _shown;
+            _shown = c;
+        }
         private static int _startMajor;
         private static bool _resident, _active;
         private static string _controlPath;
@@ -283,7 +291,7 @@ namespace Tuner
             if (c == null) return;
             Interlocked.Increment(ref _goGen);
             if (_list != null) _list.Select(c);
-            _shown = c;
+            SetShown(c);
             Interlocked.Increment(ref _prefetchGen);                    // a pass reading other channels gives way to the tune
             if (_active) { ShowBanner(c, false); ShowKnown(c); }        // the programme is asked for below, once the tune has gone out
             Interlocked.Exchange(ref _wantId, (long)c.Id);
@@ -729,9 +737,19 @@ namespace Tuner
                 if (d >= 0) { Entry.TypeDigit(d); DrawPad(); ArmDigitCommit(); }
                 return;
             }
-            // Back with nothing open only clears the banner. The tuner stays up and keeps the keyboard focus (the window is transparent, so the picture is
-            // full screen): hiding it would hand the focus to Samsung's live TV app, which answers Back with "previous channel" and its own banner.
-            if (back) { if (_bannerTimer != IntPtr.Zero) { Efl.ecore_timer_del(_bannerTimer); _bannerTimer = IntPtr.Zero; } _banner.Hide(); _toast.Hide(); return; }
+            // Back with nothing open: while the banner is up it only clears it; the next Back goes to the channel watched before, as Samsung's tuner does.
+            // The tuner stays up and keeps the keyboard focus either way (the window is transparent, so the picture is full screen): hiding it would hand
+            // the focus to Samsung's live TV app, which would answer the same Back with its own "previous channel" and banner.
+            if (back)
+            {
+                if (_banner.Visible || _toast.Visible)
+                {
+                    if (_bannerTimer != IntPtr.Zero) { Efl.ecore_timer_del(_bannerTimer); _bannerTimer = IntPtr.Zero; }
+                    _banner.Hide(); _toast.Hide();
+                }
+                else if (_previous != null) GoTo(_previous);
+                return;
+            }
             if (code == KeyInfo) { OpenInfo(); return; }
             if (code == KeyUp || code == KeyEpg || code == KeyGuide) { OpenGuide(); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { if (_list != null) GoTo(_list.Step(+1)); return; }
@@ -783,7 +801,7 @@ namespace Tuner
                     if (goGen != Volatile.Read(ref _goGen)) return;      // we asked for a channel ourselves since this was read: that decides
                     if (_shown != null && _shown.Id == cur.Id) return;
                     Log("resync: the TV is on " + cur.Major + " " + cur.Name);
-                    _shown = cur;
+                    SetShown(cur);
                     if (_list != null) _list.SetCurrent(cur.Id);
                     if (_active) { ShowBanner(cur); StartPrefetch(); }
                 });
