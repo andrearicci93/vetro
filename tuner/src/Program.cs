@@ -729,7 +729,9 @@ namespace Tuner
                 if (d >= 0) { Entry.TypeDigit(d); DrawPad(); ArmDigitCommit(); }
                 return;
             }
-            if (back) { Deactivate(); return; }
+            // Back with nothing open only clears the banner. The tuner stays up and keeps the keyboard focus (the window is transparent, so the picture is
+            // full screen): hiding it would hand the focus to Samsung's live TV app, which answers Back with "previous channel" and its own banner.
+            if (back) { if (_bannerTimer != IntPtr.Zero) { Efl.ecore_timer_del(_bannerTimer); _bannerTimer = IntPtr.Zero; } _banner.Hide(); _toast.Hide(); return; }
             if (code == KeyInfo) { OpenInfo(); return; }
             if (code == KeyUp || code == KeyEpg || code == KeyGuide) { OpenGuide(); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { if (_list != null) GoTo(_list.Step(+1)); return; }

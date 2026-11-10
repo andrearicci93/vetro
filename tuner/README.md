@@ -77,7 +77,7 @@ would vanish on it.
 | OK | 28 | opens the channel list; in the list tunes the selection; on the pad presses the key |
 | Up / Down / Left / Right | 103 / 108 / 105 / 106 | list, pad and guide movement; with nothing open: Up opens the guide, Left our pad, Right switches audio |
 | Guide / EPG | 362 / 365 | opens (and closes) the guide on remotes that have the key; the Smart Control has none |
-| Back | 1 (ESC) | closes the list/pad, then hides the tuner (resident) or exits |
+| Back | 1 (ESC) | closes the list/pad/guide/info panel, then clears the banner; the tuner stays up and keeps the focus, so Samsung's app never sees the key (a hidden tuner hands the focus over and Samsung answers Back with "previous channel" and its own banner) |
 | Home | 63 | the tuner steps aside (hides/exits) and the system's Home handles the key; also 172 (HOMEPAGE), 139 (MENU), 116 (POWER) |
 | "123" | 140 | Samsung's own pad opens whatever we do (owner confirmed 2026-11-07), so it is not used: our pad is on Left |
 | ? | 67 (F9) | unknown, no effect |
