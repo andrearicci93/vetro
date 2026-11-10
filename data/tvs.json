@@ -44,6 +44,17 @@
   "summary": "Reported working, and back after a reboot. This report came without a numbered issue."
  },
  {
+  "slug": "au7000",
+  "name": "Samsung AU7000",
+  "code": "UA50AU7000UXTW",
+  "year": 2021,
+  "tizen": "Tizen 6",
+  "firmware": "T-KSU2EUABC-2310.0",
+  "status": "Dashboard works; root agent did not connect",
+  "issue": 134,
+  "summary": "Service and dashboard reported working; the root agent did not connect (the Host PC IP step was not confirmed), so the features that need it stay off."
+ },
+ {
   "slug": "q67b",
   "name": "Samsung Q67B",
   "code": "QE43Q67BAUXXH",
@@ -165,6 +176,28 @@
   "summary": "Installed, with the service and root agent running. What works beyond that has not been reported yet."
  },
  {
+  "slug": "tu7090",
+  "name": "Samsung TU7090",
+  "code": "UE43TU7090UXZT",
+  "year": 2020,
+  "tizen": "Tizen 5.5",
+  "firmware": "T-KTSU2DEUC-2501.1",
+  "status": "Dashboard works; root features unavailable",
+  "issue": 132,
+  "summary": "Dashboard, app list and diagnostics reported working; features that need root access are unavailable."
+ },
+ {
+  "slug": "t4300",
+  "name": "Samsung T4300",
+  "code": "UN32T4300AGXZD",
+  "year": 2020,
+  "tizen": "Tizen 5.5",
+  "firmware": "T-KTS2UABC-2743.0",
+  "status": "Dashboard works; root features unavailable",
+  "issue": 128,
+  "summary": "Dashboard, app list and diagnostics reported working; features that need root access are unavailable."
+ },
+ {
   "slug": "q80r",
   "name": "Samsung Q80R",
   "code": "QN65Q80RAFXZA",
@@ -182,8 +215,8 @@
   "year": 2018,
   "tizen": "Tizen 4",
   "firmware": "1400.2",
-  "status": "Not working so far",
+  "status": "Dashboard works; root features unavailable",
   "issue": 2,
-  "summary": "Not working so far. Tizen 4 is outside what the stock package targets."
+  "summary": "Dashboard, app list and diagnostics reported working; features that need root access are unavailable."
  }
 ]
