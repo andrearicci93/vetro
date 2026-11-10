@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Root a Tizen 6 Samsung TV (2021): models and firmware | Vetro</title>
+<meta name="description" content="2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats.">
+<link rel="canonical" href="https://andrearicci93.github.io/vetro/root/root-tizen-6-samsung-tv/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta property="og:site_name" content="Vetro">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Root a Tizen 6 Samsung TV (2021): models and firmware">
+<meta property="og:description" content="2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats.">
+<meta property="og:url" content="https://andrearicci93.github.io/vetro/root/root-tizen-6-samsung-tv/">
+<meta property="og:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Root a Tizen 6 Samsung TV (2021): models and firmware">
+<meta name="twitter:description" content="2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats.">
+<meta name="twitter:image" content="https://andrearicci93.github.io/vetro/assets/og.png">
+<link rel="icon" type="image/png" href="/vetro/assets/icon.png">
+<link rel="apple-touch-icon" href="/vetro/assets/icon.png">
+<link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwb017rx">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Root a Tizen 6 Samsung TV (2021): models and firmware","description":"2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"root tizen 6 tv, samsung q80a root, samsung 2021 tv root","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/root-tizen-6-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Root a Tizen 6 Samsung TV (2021): models and firmware","item":"https://andrearicci93.github.io/vetro/root/root-tizen-6-samsung-tv/"}]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
+  </div>
+</header>
+<main id="main">
+<div class="wrap article-layout">
+<article>
+<nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Root a Tizen 6 Samsung TV (2021): models and firmware</span></li></ol></nav>
+<header class="article-head">
+<p class="eyebrow">Rooting guides</p>
+<h1>Root a Tizen 6 Samsung TV (2021): models and firmware</h1>
+<p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the Vetro 0.5.0 README compatibility table, the CHANGELOG compatibility entries and the install guide.</span></p>
+</header>
+<div class="prose">
+<p>Samsung&#39;s 2021 TVs run Tizen 6.0, and this is the generation Vetro is built on: the project&#39;s reference TV is a <a href="/vetro/tested-tvs/q80a/">Q80A</a>. Five 2021 models are in the compatibility table. Four are reported working; the fifth, the <a href="/vetro/tested-tvs/au7000/">AU7000</a>, got the dashboard but its root agent did not connect. Vetro is experimental, needs root and ships no signed installer (see <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">the risks</a>).</p>
+<p>The root comes from <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">Chris Ritsen&#39;s research</a>. That repository is written for researchers and can contain exploit code. This page contains none; for the general picture see <a href="/vetro/root/how-to-root-samsung-tv/">how to root a Samsung TV</a>.</p>
+<h2 id="which-2021-samsung-tvs-have-been-reported">Which 2021 Samsung TVs have been reported?<a class="anchor" href="#which-2021-samsung-tvs-have-been-reported" aria-label="Link to this section">#</a></h2>
+<div class="table-wrap"><table><thead><tr>
+<th>TV</th>
+<th>Firmware</th>
+<th>Status</th>
+<th>Report</th>
+</tr>
+</thead><tbody><tr>
+<td><a href="/vetro/tested-tvs/q80a/">Q80A</a> (QE50Q80AATXZT)</td>
+<td>T-NKM2DEUC-2301.1</td>
+<td>Developed and tested</td>
+<td>the project&#39;s own TV</td>
+</tr>
+<tr>
+<td><a href="/vetro/tested-tvs/q70a/">Q70A</a> (QE55Q70AATXXC)</td>
+<td>T-NKM2DEUC-2301.1</td>
+<td>Reported working</td>
+<td><a href="https://github.com/andrearicci93/vetro/issues/8" rel="noopener" target="_blank">#8</a></td>
+</tr>
+<tr>
+<td><a href="/vetro/tested-tvs/q60a/">Q60A</a> (QN70Q60AAVXZC)</td>
+<td>T-NKLAAKUC-2310.0</td>
+<td>Reported working; listen port changed to avoid a clash</td>
+<td><a href="https://github.com/andrearicci93/vetro/issues/28" rel="noopener" target="_blank">#28</a></td>
+</tr>
+<tr>
+<td><a href="/vetro/tested-tvs/qn85a/">QN85A</a> (GQ65QN85AATXZG)</td>
+<td>T-NKM2DEUC-2301.1</td>
+<td>Reported working; back after a reboot once the owner enabled the service&#39;s on-boot and auto-restart flags</td>
+<td>no issue number</td>
+</tr>
+<tr>
+<td><a href="/vetro/tested-tvs/au7000/">AU7000</a> (UA50AU7000UXTW)</td>
+<td>T-KSU2EUABC-2310.0</td>
+<td>Service and dashboard work; the root agent did not connect, so root features stay off</td>
+<td><a href="https://github.com/andrearicci93/vetro/issues/134" rel="noopener" target="_blank">#134</a></td>
+</tr>
+</tbody></table></div><h2 id="what-did-each-report-actually-confirm">What did each report actually confirm?<a class="anchor" href="#what-did-each-report-actually-confirm" aria-label="Link to this section">#</a></h2>
+<p>The Q70A report (firmware 2301.1) says setup with root access completed, that Quick settings, the Debloater and domain blocking were used, and that the diagnostic export confirmed 29 controls against the TV&#39;s own method list, according to the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">changelog</a>. It is the most complete 2021 report apart from the reference TV.</p>
+<p>The QN85A report has no public issue, so the only evidence is the changelog entry: the app, the service and the UID-0 agent were working and recovered after a reboot, once the owner had enabled the service&#39;s on-boot and auto-restart flags. A new owner should not assume that recovery is automatic. The changelog also records that a DNS filter blocking one Samsung certificate host made Certificate Manager fail on that TV.</p>
+<p>A contributor&#39;s test on a Q60A used a personal certificate; the changelog says the service started on every launch of the app there. &quot;Reported working&quot; always means the owner said what worked, not that every feature was tried.</p>
+<h2 id="why-did-the-q60a-need-a-different-port">Why did the Q60A need a different port?<a class="anchor" href="#why-did-the-q60a-need-a-different-port" aria-label="Link to this section">#</a></h2>
+<p>The Q60A owner changed the listen port to avoid a clash with tizen-youtube, which uses the same default port. The changelog says the same about TizenTube. If another app already holds the port, Vetro says so in its service log and retries instead of taking over. The <a href="/vetro/control/tizentube-samsung-tv/">TizenTube article</a> covers the interaction.</p>
+<h2 id="what-went-wrong-on-the-au7000">What went wrong on the AU7000?<a class="anchor" href="#what-went-wrong-on-the-au7000" aria-label="Link to this section">#</a></h2>
+<p>The AU7000 report (<a href="https://github.com/andrearicci93/vetro/issues/134" rel="noopener" target="_blank">#134</a>) is the one failed 2021 result in the README. The service and dashboard ran, but the root agent did not connect because the Host PC IP step was not confirmed, so everything that needs root stayed off. The README&#39;s 2021 row says one TV needs that step confirmed. The install guide has the step as its own part and a troubleshooting table that starts from what the status page shows, so read it before concluding a TV cannot be rooted.</p>
+<p>If your TV is not listed, open a <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener" target="_blank">diagnostic report issue</a> with the exact model, firmware and what worked or failed. The README says the report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it.</p>
+<h2 id="what-should-i-check-before-i-try-a-2021-tv">What should I check before I try a 2021 TV?<a class="anchor" href="#what-should-i-check-before-i-try-a-2021-tv" aria-label="Link to this section">#</a></h2>
+<ul>
+<li>Your exact model code and firmware string, using <a href="/vetro/reference/samsung-model-code-decoder/">the model code decoder</a>.</li>
+<li>That the TV is on Tizen 6. <a href="/vetro/root/samsung-tv-tizen-version-by-year/">Samsung TV Tizen version by year</a> lists the versions.</li>
+<li>That Developer Mode works and that you can enter an IP address. The <a href="/vetro/root/samsung-tv-developer-mode/">Developer Mode guide</a> lists the usual snags.</li>
+<li>That you allow time: after a cold boot, startup and root can take up to 90 seconds, according to the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">install guide</a>. <a href="/vetro/root/keep-root-after-restart/">Does root survive a restart</a> says what has been measured.</li>
+</ul>
+<h2 id="next-steps">Next steps<a class="anchor" href="#next-steps" aria-label="Link to this section">#</a></h2>
+<p>If your TV is a 2021 set that behaves like the AU7000, read the <a href="/vetro/root/install-vetro-apps2samsung/">install guide</a> troubleshooting table before assuming the Host PC IP step was enough. For the next generation, see the <a href="/vetro/root/root-samsung-tizen-6-5-2022/">2022 TVs on Tizen 6.5</a>; for the older ones, the <a href="/vetro/root/root-samsung-2019-2020-tizen-5/">2019 and 2020 page</a>.</p>
+
+
+</div>
+<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/root-samsung-tizen-6-5-2022/"><span class="eyebrow">Rooting guides</span><strong>Root a 2022 Samsung TV (Tizen 6.5): models and firmware</strong><span>2022 Samsung TVs run Tizen 6.5. Five models have Vetro reports (Q67B, BU8002, QN85B, S95B, The Frame), the Home cache fix and what stayed unconfirmed.</span></a><a class="card" href="/vetro/root/samsung-tv-tizen-version-by-year/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV Tizen version by year, 2017 to 2026</strong><span>Which Tizen version a Samsung TV shipped with, year by year from 2017 to 2026, why your TV may run a newer one now, and how the version relates to rooting.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/reference/samsung-model-code-decoder/"><span class="eyebrow">Reference</span><strong>Samsung TV model number decoder: model code and firmware</strong><span>Read a Samsung TV model number letter by letter, from QE50Q80AATXZT to the year letter, and learn what a firmware string like T-NKM2DEUC-2301.1 can tell you.</span></a></div></section>
+<nav class="pager" aria-label="More in this section"><a href="/vetro/root/how-to-root-samsung-tv/"><span>Previous</span>How to root a Samsung TV (Tizen): what works in 2026</a><a class="next" href="/vetro/root/root-samsung-tizen-6-5-2022/"><span>Next</span>Root a 2022 Samsung TV (Tizen 6.5): models and firmware</a></nav>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
+</article>
+<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#which-2021-samsung-tvs-have-been-reported">Which 2021 Samsung TVs have been reported?</a></li><li class="l2"><a href="#what-did-each-report-actually-confirm">What did each report actually confirm?</a></li><li class="l2"><a href="#why-did-the-q60a-need-a-different-port">Why did the Q60A need a different port?</a></li><li class="l2"><a href="#what-went-wrong-on-the-au7000">What went wrong on the AU7000?</a></li><li class="l2"><a href="#what-should-i-check-before-i-try-a-2021-tv">What should I check before I try a 2021 TV?</a></li><li class="l2"><a href="#next-steps">Next steps</a></li></ol></aside>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+    </div>
+    <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
+  </div>
+</footer>
+</body>
+</html>
