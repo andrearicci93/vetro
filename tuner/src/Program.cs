@@ -1021,9 +1021,21 @@ namespace Tuner
             if (got == 0) return;
             _presses.Clear(); _held.Clear(); _released.Clear();
             _readers[index].Feed(_buf, (int)got, _presses, _held, _released);
+            if (DockPadOpen()) { _presses.RemoveAll(c => !SystemKeys.Contains(c)); _held.Clear(); }   // the launcher's 123 pad has the keys: not ours
             foreach (int code in _presses.ToArray()) { OnKey(code); BeginHold(code); }
             foreach (int code in _held.ToArray()) OnRepeat(code);
             foreach (int code in _released.ToArray()) EndHold(code);
+        }
+
+        /// <summary>
+        /// The launcher's 123 pad is open: it keeps the file below fresh (touched on every key, gone when it closes). A file older than 20 s is
+        /// a leftover (the pad closes itself after 14 s without a key), so a crashed launcher cannot leave the tuner deaf.
+        /// </summary>
+        private const string DockPadFlag = "/tmp/vetro-numpad.open";
+        private static bool DockPadOpen()
+        {
+            try { return File.Exists(DockPadFlag) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(DockPadFlag)).TotalSeconds < 20; }
+            catch (Exception) { return false; }
         }
 
         private static void WatchNodes()

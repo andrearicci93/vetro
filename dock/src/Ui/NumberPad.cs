@@ -21,6 +21,9 @@ namespace Launcher.Ui
         private const int NotificationLevelTop = 40, WindowLayer = 900;
         private const string Font = "SamsungOneUI 500,Sans";
         private const double FadeSeconds = 0.12, IdleSeconds = 14, SlideRate = 18;
+        // While the pad is open this file exists (touched on every key). The tuner reads the remote straight from the input device, so it
+        // sees the arrows and OK too; it ignores the keys while the file is fresh, or Left/Right would also cycle its audio and open its channel pad.
+        private const string OpenFlag = "/tmp/vetro-numpad.open";
 
         private sealed class Slot { public IntPtr Text, Icon, Dot; public int X; }
 
@@ -268,6 +271,7 @@ namespace Launcher.Ui
                 {
                     _fade = 0; Efl.evas_object_hide(_win);
                     _shown = false; _closing = false; _animator = IntPtr.Zero;
+                    MarkOpen(false);
                     return 0;
                 }
                 if (!_model.OnDone)
@@ -279,7 +283,7 @@ namespace Launcher.Ui
                 Apply();
                 return 1;
             }
-            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; Efl.evas_object_hide(_win); return 0; }
+            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; Efl.evas_object_hide(_win); MarkOpen(false); return 0; }
         }
 
         private void OnKey(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo)
@@ -306,7 +310,13 @@ namespace Launcher.Ui
             catch (Exception ex) { _log("pad key: " + ex.Message); }
         }
 
-        private void ArmIdle() { DisarmIdle(); _idle = Efl.ecore_timer_add(IdleSeconds, _idleCb, IntPtr.Zero); }
+        private void MarkOpen(bool on)
+        {
+            try { if (on) File.WriteAllText(OpenFlag, "1"); else if (File.Exists(OpenFlag)) File.Delete(OpenFlag); }
+            catch (Exception ex) { _log("pad flag: " + ex.Message); }
+        }
+
+        private void ArmIdle() { MarkOpen(true); DisarmIdle(); _idle = Efl.ecore_timer_add(IdleSeconds, _idleCb, IntPtr.Zero); }
         private void DisarmIdle() { if (_idle != IntPtr.Zero) { Efl.ecore_timer_del(_idle); _idle = IntPtr.Zero; } }
         private byte OnIdle(IntPtr data) { _idle = IntPtr.Zero; Close(); return 0; }
     }
