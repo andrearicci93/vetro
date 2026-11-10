@@ -80,7 +80,7 @@ The changelog for 0.5.0 lists these launcher options, and none involve ads:
 - Fix TizenTube gives the TizenTube tile the YouTube icon and closes Samsung's YouTube before TizenTube starts.
 - The app list is read from Samsung's Home each time the launcher starts, so apps you add, remove or reorder there follow. On TVs where the Home row holds only recent apps, the launcher adds the other visible installed apps.
 
-If you remove an app tile from the Home row, the launcher follows. A promotional tile that can't be removed isn't an app in that row, so we expect the launcher not to show it, but we haven't checked that tile by tile.
+Home-row order follows Samsung's saved row, but on layouts that contain only recent apps, Vetro also adds other visible installed apps. Removing a tile from the row may therefore leave the app visible in Vetro. A promotional tile that can't be removed isn't an app in that row, so we expect the launcher not to show it, but we haven't checked that tile by tile.
 
 ## In what order should you try things?
 
@@ -89,7 +89,7 @@ From least to most invasive:
 1. Use the menus. Delete apps you don't want from the Home row, delete Samsung TV Plus channels and review the advertising and privacy settings. This needs only the remote.
 2. Block at the network. A router-level or Pi-hole filter covers every device that uses it and leaves the TV alone, but it won't remove tiles that are already cached.
 3. Switch off background services. On a rooted TV, Vetro's Quick settings can stop components that recognise what is on screen, send usage logs and fetch ads. This is about data and requests, not about the layout of Home.
-4. Replace Samsung's Home. This is the only step that changes what appears on the Home key, and it is the one that needs root and carries the most risk.
+4. Replace Samsung's Home. Vetro's launcher requires root. AeroTizen also documents no-root Home modes; see the [launcher comparison](/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/) for their compatibility limits.
 
 Each step reverses differently. Menu changes go back in the menu. Vetro's switches show Done or Partly done and can be turned back on. The 0.5.0 changelog also adds Restore the TV, which shows the changes Vetro recorded and puts them back after one confirmation; uninstalled apps and settings without a saved previous value need manual recovery, and the changelog says Restore the TV has not been tried on a TV.
 
@@ -104,7 +104,7 @@ The dashboard is served over plain HTTP. Once the Vetro app on the TV has been s
 The changelog and README table are candid about it, which is what "beta" means in practice:
 
 - On two 2022 TVs, a UE65BU8002KXXH ([#22](https://github.com/andrearicci93/vetro/issues/22), [model page](/tested-tvs/bu8002/)) and a QE75QN85BATXXU ([#25](https://github.com/andrearicci93/vetro/issues/25), [model page](/tested-tvs/qn85b/)), turning the launcher on failed with "The Home row is empty or unreadable". Those TVs keep Samsung's Home order cache in a different folder, which release 0.3.1 reads.
-- On Tizen 9 the launcher still closes only the one Home process, so the memory it frees may be smaller than on the Q80A.
+- The 0.3.2 notes described a single-process limitation on Tizen 9. Version 0.5.0 added a multi-app Home guard; no Tizen 9 memory-saving measurement is published.
 - Some models run the dashboard but have not tried the launcher. The Frame ([LS03B](/tested-tvs/ls03b/), [#39](https://github.com/andrearicci93/vetro/issues/39)) is one: its report says the launcher was not tried.
 
 The [tested TVs index](/tested-tvs/) shows which confirmed cases exist.

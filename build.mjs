@@ -18,6 +18,23 @@ const tvs = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/tvs.json'), 'utf8')
 const sections = manifest.sections;
 const sectionOrder = Object.keys(sections);
 
+// Real pixel size of a local JPEG/PNG so <img> reserves the right aspect ratio.
+function imgDims(file) {
+  const buf = fs.readFileSync(file);
+  if (buf[0] === 0x89 && buf[1] === 0x50) return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+  let i = 2;
+  while (i < buf.length) {
+    if (buf[i] !== 0xff) { i++; continue; }
+    const m = buf[i + 1];
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    i += 2 + buf.readUInt16BE(i + 2);
+  }
+  return null;
+}
+const imgSize = (sitePath) => {
+  const f = path.join(ROOT, sitePath.replace(/^\//, ''));
+  try { const d = imgDims(f); return d ? ` width="${d.w}" height="${d.h}"` : ''; } catch { return ''; }
+};
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const url = (p) => `${BASE}${p}`; // site-relative path -> served path
 const abs = (p) => `${ORIGIN}${BASE}${p}`;
@@ -73,7 +90,7 @@ function render(md) {
       },
       image(href, title, text) {
         const h = href.startsWith('/') ? url(href) : href;
-        return `<figure><img src="${esc(h)}" alt="${esc(text)}" loading="lazy" decoding="async" width="1000" height="auto"><figcaption>${esc(title || text)}</figcaption></figure>`;
+        return `<figure><img src="${esc(h)}" alt="${esc(text)}" loading="lazy" decoding="async"${h.startsWith(BASE + '/') || href.startsWith('/') ? imgSize(href) : ''}><figcaption>${esc(title || text)}</figcaption></figure>`;
       },
       table(header, body) {
         return `<div class="table-wrap"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
@@ -220,31 +237,39 @@ for (const s of sectionOrder) {
 
 // Tested TVs
 const rootForYear = (y) => (y === 2021 ? 'root-tizen-6-samsung-tv' : y === 2022 ? 'root-samsung-tizen-6-5-2022' : y === 2023 ? 'root-samsung-tizen-7-2023' : y && y >= 2024 ? 'root-samsung-tizen-8-9-2024' : y && y <= 2020 ? 'root-samsung-2019-2020-tizen-5' : 'how-to-root-samsung-tv');
+const rootNote = (t) => {
+  const base = "Vetro's launcher, privacy switches and remapper require compatible root support. Apps2Samsung handles signing and installation; manual signing is another route.";
+  if (/root features unavailable/i.test(t.status)) return `${base} On this TV the root features are unavailable in the stock package; only the dashboard, app list and diagnostics were reported working.`;
+  if (t.slug === 'q80r') return `${base} The stock package did not work on this TV; the report used a personal port with local changes.`;
+  return base;
+};
 const issueLink = (t) => (t.issue ? `<a href="${REPO}/issues/${t.issue}" rel="noopener">#${t.issue}</a>` : 'no issue number');
 {
   const p = '/tested-tvs/';
   const crumbs = [{ name: 'Vetro', path: '/' }, { name: 'Tested TVs', path: p }];
   const rows = tvs.map((t) => `<tr><td><a href="${url(`/tested-tvs/${t.slug}/`)}">${esc(t.name)}</a><br><span class="muted">${esc(t.code)}</span></td><td>${t.year ?? 'n/a'}</td><td>${esc(t.tizen)}</td><td><code>${esc(t.firmware)}</code></td><td>${esc(t.status)}</td><td>${issueLink(t)}</td></tr>`).join('');
   const body = `<div class="wrap hub">${crumbsHtml(crumbs)}<h1>Samsung TVs tested with Vetro</h1>
-<p class="lede">Vetro is developed on a Samsung Q80A. Every other TV below is there because an owner reported it, usually with a diagnostic export. Reported working means the app, the service and the root agent were running and the owner said what worked. It does not mean every feature was tried.</p>
+<p class="lede">Vetro is developed on a Samsung Q80A. Every other TV below is there because an owner reported it, usually with a diagnostic export. Reported working reflects the evidence recorded for each model in Vetro's README. Reports vary in detail and do not establish that every feature was tested.</p>
 <div class="table-wrap"><table><thead><tr><th>TV</th><th>Year</th><th>Tizen</th><th>Firmware</th><th>Status</th><th>Report</th></tr></thead><tbody>${rows}</tbody></table></div>
 <p class="note">Where the project's README does not state a Tizen version, the table shows the version Samsung launched that model year with, marked "by model year". Samsung's update policy can move a TV to a newer Tizen, as the GU75CU7179 shows. Read <a href="${url('/root/samsung-tv-tizen-version-by-year/')}">Samsung TV Tizen version by year</a> and <a href="${url('/reference/samsung-model-code-decoder/')}">how to read a model code and firmware string</a> before you compare your TV with this list.</p>
 <h2>Not on the list?</h2>
 <p>Open a <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">diagnostic report issue</a> with your exact model, firmware and what worked or failed. Failed attempts help too. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Start with <a href="${url('/root/how-to-root-samsung-tv/')}">how rooting a Samsung TV works</a> and <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a>.</p></div>`;
-  emit(p, layout({ title: 'Samsung TVs tested with Vetro: models, Tizen, firmware', description: 'Every Samsung TV reported with Vetro: Q80A, Q70A, Q60A, QN85A, S90C, S90D and more, with Tizen version, firmware string and the issue behind each report.', path: p, body, jsonld: [crumbsLd(crumbs)], navActive: 'tested-tvs' }), { lastmod: TODAY, priority: '0.9' });
+  emit(p, layout({ title: 'Samsung TVs tested with Vetro: models, Tizen, firmware', description: 'Samsung TV reports listed in the Vetro compatibility table: Q80A, Q70A, Q60A, QN85A, S90C, S90D and more, with Tizen version, firmware string and the issue behind each report.', path: p, body, jsonld: [crumbsLd(crumbs)], navActive: 'tested-tvs' }), { lastmod: TODAY, priority: '0.9' });
   for (const t of tvs) {
     const tp = `/tested-tvs/${t.slug}/`;
     const c2 = [...crumbs, { name: t.name, path: tp }];
     const art = bySlug[rootForYear(t.year)];
     const others = tvs.filter((x) => x.slug !== t.slug && x.year === t.year).slice(0, 5);
-    const title = `${t.name} (${t.code}) with Vetro: ${t.status.toLowerCase()}`;
-    const desc = `${t.name}${t.year ? `, ${t.year}` : ''}: ${t.status.toLowerCase()} with Vetro. Firmware ${t.firmware}, ${t.tizen}. What was reported and what to check before you try it.`.slice(0, 158);
+    const title = `${t.name}: Vetro compatibility and limits`;
+    // Whole sentences only: prefer the longest variant that fits, never cut mid-sentence.
+    const lead = `${t.name} with Vetro: ${t.status.toLowerCase()}. ${t.firmwareLabel ? 'Reported platform identifier' : 'Firmware'} ${t.firmware}, ${t.tizen}.`;
+    const desc = t.description || [`${lead} What was reported and what to check first.`, lead, `${t.name} with Vetro: ${t.status.toLowerCase()}.`].find((s) => s.length <= 158);
     const b = `<div class="wrap article-layout"><article>${crumbsHtml(c2)}<header class="article-head"><p class="eyebrow">Tested TVs</p><h1>${esc(t.name)} with Vetro</h1><p class="meta">${esc(t.status)} · Model code <code>${esc(t.code)}</code></p></header>
 <div class="prose"><p>${esc(t.summary)}</p>
 <h2>Report details</h2>
-<table><tbody><tr><th>Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th>Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th>Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th>Firmware</th><td><code>${esc(t.firmware)}</code></td></tr><tr><th>Status</th><td>${esc(t.status)}</td></tr><tr><th>Report</th><td>${issueLink(t)}</td></tr></tbody></table>
+<table><tbody><tr><th>Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th>Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th>Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th>${esc(t.firmwareLabel || 'Firmware')}</th><td><code>${esc(t.firmware)}</code></td></tr><tr><th>Status</th><td>${esc(t.status)}</td></tr><tr><th>Report</th><td>${issueLink(t)}</td></tr></tbody></table>
 <h2>Before you try it on this TV</h2>
-<p>A firmware update can change the result, even within one model family, so compare your firmware string with the one above. Vetro needs root, which comes from a package you build and sign yourself; the <a href="${url('/root/install-vetro-apps2samsung/')}">install guide</a> covers the route, and <a href="${url('/root/samsung-tv-developer-mode/')}">Developer Mode</a> comes first.${art ? ` The closest rooting guide for this model year is <a href="${url(art.path)}">${esc(art.title)}</a>.` : ''} Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> too. Vetro is experimental and not affiliated with Samsung.</p>
+<p>A firmware update can change the result, even within one model family, so compare your firmware string with the one above. ${rootNote(t)} The <a href="${url('/root/install-vetro-apps2samsung/')}">install guide</a> covers the route, and <a href="${url('/root/samsung-tv-developer-mode/')}">Developer Mode</a> comes first.${art ? ` The closest rooting guide for this model year is <a href="${url(art.path)}">${esc(art.title)}</a>.` : ''} Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> too. Vetro is experimental and not affiliated with Samsung.</p>
 ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a href="${url(`/tested-tvs/${o.slug}/`)}">${esc(o.name)}</a>: ${esc(o.status.toLowerCase())}</li>`).join('')}</ul>` : ''}
 <p><a href="${url('/tested-tvs/')}">Back to all tested TVs</a> · <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">Report your own TV</a></p></div></article></div>`;
     emit(tp, layout({ title, description: desc, path: tp, body: b, type: 'article', jsonld: [crumbsLd(c2)], navActive: 'tested-tvs' }), { lastmod: TODAY, priority: '0.6' });
@@ -284,13 +309,13 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <p class="actions"><a class="btn primary" href="${url(bySlug['how-to-root-samsung-tv'] ? '/root/how-to-root-samsung-tv/' : '/root/')}">Rooting guides</a><a class="btn" href="${url('/tested-tvs/')}">See tested TVs</a><a class="btn" href="${REPO}" rel="noopener">Vetro on GitHub</a></p>
 </div></section>
 <div class="wrap">
-<section class="shots"><figure><img src="${url('/assets/img/dashboard-quick-settings.jpg')}" alt="Vetro dashboard, Quick settings: HbbTV, advertising and tracking, domain blocking and voice assistant switches" width="1000" height="auto" decoding="async"><figcaption>The Vetro dashboard on a Samsung Q80A.</figcaption></figure>
-<figure><img src="${url('/assets/img/launcher-on-tv.jpg')}" alt="The Vetro launcher at the bottom of the TV screen with the apps from Samsung's Home" width="1000" height="auto" loading="lazy" decoding="async"><figcaption>The launcher as the TV draws it, over a plain backdrop.</figcaption></figure></section>
+<section class="shots"><figure><img src="${url('/assets/img/dashboard-quick-settings.jpg')}" alt="Vetro dashboard, Quick settings with privacy, DNS blocking and voice-assistant controls"${imgSize('/assets/img/dashboard-quick-settings.jpg')} decoding="async"><figcaption>The Vetro dashboard on a Samsung Q80A.</figcaption></figure>
+<figure><img src="${url('/assets/img/launcher-on-tv.jpg')}" alt="The Vetro launcher at the bottom of the TV screen with the apps from Samsung's Home"${imgSize('/assets/img/launcher-on-tv.jpg')} loading="lazy" decoding="async"><figcaption>The launcher as the TV draws it, over a plain backdrop.</figcaption></figure></section>
 <h2>Start here</h2><div class="cards">${start.map(card).join('')}</div>
 <h2>Browse by topic</h2><div class="hubs">${hubs}</div>
 <h2>What Vetro does</h2>
 <div class="three"><div><h3>Launcher</h3><p>A native, glass-style bar on the Home key with the same apps in the same order. On the Q80A, available RAM went from 533 MB to 662 MB while it ran (one measurement, memory only). In beta. <a href="${url('/speed/custom-launcher-samsung-tv/')}">More</a></p></div><div><h3>Debloater</h3><p>Switches for advertising, viewing data, HbbTV, voice assistants and automatic firmware updates, plus a task manager that lists every app and service. <a href="${url('/reference/what-each-vetro-switch-changes/')}">What each switch changes</a></p></div><div><h3>Remapper</h3><p>Press a remote key, pick an app, save. Shortcuts survive restarts, and a key can send an MQTT message to Home Assistant. <a href="${url('/control/remap-samsung-remote-buttons/')}">How it works</a></p></div></div>
-<p class="note">Vetro needs root on the TV, which comes from a package you build and sign yourself. It is experimental software, independent from Samsung. Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> before you start.</p>
+<p class="note">Vetro's main features need root on a compatible TV. Install with <a href="${url('/root/install-vetro-apps2samsung/')}">Apps2Samsung</a> or follow the <a href="${url('/root/samsung-tv-developer-mode/')}">manual signing guide</a>. It is experimental software, independent from Samsung. Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> before you start.</p>
 </div>`;
   const ld = [
     { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Vetro', url: abs('/'), inLanguage: 'en', publisher: orgLd },

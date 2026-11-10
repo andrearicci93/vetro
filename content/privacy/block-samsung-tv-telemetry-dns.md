@@ -1,6 +1,6 @@
 ---
 title: "Block Samsung TV telemetry with Pi-hole or AdGuard"
-description: "Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all."
+description: "Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and breakage risks."
 keywords: ["samsung tv pihole blocklist", "block samsung tv telemetry", "adguard home samsung tv", "samsung tv hardcoded dns"]
 date: 2026-11-10
 updated: 2026-11-10
@@ -28,7 +28,7 @@ The "commonly attributed" column is our reading, not a claim from either source.
 
 The gist's own header warns: "It could be that the TV does not receive any more updates or other services no longer work." Its comments are about several device brands, and the Samsung-specific ones are thin. One commenter said `samsungqbe.com` and its subdomains seemed to be required for smart TV functions, and those entries are now commented out in the list. A Pi-hole forum thread, ["Samsung TV Apps won't open with PiHole on"](https://discourse.pi-hole.net/t/samsung-tv-apps-wont-open-with-pihole-on/29621/3), shows the same pattern from the user side, though it names no domain. Its advice is to tail the Pi-hole log to find what is blocked.
 
-The parent-domain entries `samsungcloudsolution.com` and `.net` are the riskiest: they catch hostnames the TV uses for basic functions.
+Wildcard or suffix rules for `samsungcloudsolution.com` and `samsungcloudsolution.net` can also block hostnames needed for basic functions. An exact-host entry blocks only that hostname; check your blocker's matching rules. A plain hosts-list entry does not automatically cover subdomains; see [AdGuard Home rule syntax](https://github.com/AdguardTeam/AdGuardHome/wiki/Hosts-Blocklists) and [Pi-hole matching examples](https://docs.pi-hole.net/regex/tutorial/).
 
 ### Which names does Vetro refuse to block?
 
@@ -52,7 +52,7 @@ Router support varies; one commenter calls it "100% router device dependent". A 
 
 Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) and [the Apps2Samsung install route](/root/install-vetro-apps2samsung/).
 
-Its DNS blocking switch (called domain blocking before 0.5.0 in the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)) writes full hostnames to the TV's hosts file and keeps your DNS servers. DOMAIN-FILTER.md says it matches exact names only: blocking `samsungads.com` does not block `rtb-config.samsungads.com`. The candidate list therefore holds hostnames found in the Q80A firmware, grouped as advertising, analytics and KPI, and diagnostic logs, plus a reported group and one group the project labels probable and unverified. Our own reasoning, not something the project tested, is that a hosts-file entry does not depend on which DNS server the TV asks.
+Its DNS blocking switch (called domain blocking before 0.5.0 in the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)) writes full hostnames to the TV's hosts file and keeps your DNS servers. DOMAIN-FILTER.md says it matches exact names only: blocking `samsungads.com` does not block `rtb-config.samsungads.com`. The candidate list therefore holds hostnames found in the Q80A firmware, grouped as advertising, analytics and KPI, and diagnostic logs, plus a reported group and one group the project labels probable and unverified. For applications that consult the TV's hosts file, a matching entry is resolved locally before DNS. Applications with their own resolver or a hard-coded destination IP can bypass it; Vetro has not verified all resolver paths on a TV.
 
 DOMAIN-FILTER.md also says whether a firmware-derived name is reached at run time, and what happens when it is blocked, has not been tested on a TV. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) says plainly that domain filtering does not guarantee that every app's ads or telemetry are blocked. The project's own test TV is the [Q80A](/tested-tvs/q80a/).
 

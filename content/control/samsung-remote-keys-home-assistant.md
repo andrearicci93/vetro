@@ -20,10 +20,10 @@ Vetro's Remapper listens to the remote's input device on the TV, and a saved sho
 
 1. Set up a broker and connect both Home Assistant and Vetro to it, as described in [Samsung TV and Home Assistant: three ways](/control/home-assistant-samsung-tv/).
 2. Turn on physical input interception. The guide calls this part of the dashboard Remote; the 0.5.0 dashboard has a Remapper tab, and the MQTT page is now named Home Assistant.
-3. Create a Remapper rule for the button with an MQTT action.
+3. Open Home Assistant → Rules. Select Physical key as the trigger, enter the key code found in Remapper, choose Publish MQTT message, enter a destination topic and message, and select Add rule.
 4. In Home Assistant, create an automation with an MQTT trigger on the same topic.
 
-The guide does not name a topic for outgoing key presses, so use the topic you enter in the rule. The only topic it names is `vetro/command/open-app`, an incoming command. It also says rules that connect an input topic directly to an output topic are rejected to prevent loops, and recommends separate topics for commands and state.
+The guide does not name a topic for outgoing key presses, so use the topic you enter in the rule. The guide uses `vetro/command/open-app` as an incoming-command example; it also documents telemetry and availability topics, but specifies no standard outgoing key-press topic. It also says rules that connect an input topic directly to an output topic are rejected to prevent loops, and recommends separate topics for commands and state.
 
 On the Home Assistant side, the [automation trigger documentation](https://www.home-assistant.io/docs/automation/trigger/) includes an MQTT trigger with a `topic`:
 
@@ -56,4 +56,4 @@ Read [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/
 
 ## Can I do this without root?
 
-The only workaround in the community thread above is hardware, an IR receiver with an ESP board next to the remote. It is not a Samsung feature and we have not tested it.
+The linked LG discussion suggests an ESP board with an IR receiver. That can only detect buttons that actually transmit infrared; it does not establish support for Samsung Smart Remote Bluetooth button presses. We have not tested this workaround.

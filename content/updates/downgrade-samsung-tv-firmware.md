@@ -20,7 +20,7 @@ Samsung's consumer community shows what that looks like in practice. In [a US co
 
 SamyGO is a community forum for Samsung TV modding. Both threads below are old, and neither proves anything about current TVs.
 
-In [a K-series thread](https://forum.samygo.tv/viewtopic.php?t=12055) (K series, 2015 to 2023 Tizen TVs), an owner of a 2017 UN70KU6300 asked how to downgrade after the TV did not detect firmware copied from Samsung's site to a thumb drive, and whether the service menu could help. A moderator replied that downgrading is not possible. In April 2018 a poster suggested raising the version number of an older file so the TV treats it as an upgrade, noting that the file is probably encrypted; the thread presents this as a theory. Another poster said a downgrade is possible with root, with the same procedure as for the J series, and that without root there is no other way. The thread contains no confirmed procedure.
+In [a K-series thread](https://forum.samygo.tv/viewtopic.php?t=12055) in SamyGO's Tizen TV forum, an owner of a UN70KU6300 asked how to downgrade after the TV did not detect firmware copied from Samsung's site to a thumb drive, and whether the service menu could help. A moderator replied that downgrading is not possible. In April 2018 a poster suggested raising the version number of an older file so the TV treats it as an upgrade, noting that the file is probably encrypted; the thread presents this as a theory. Another poster said a downgrade is possible with root, with the same procedure as for the J series, and that without root there is no other way. The thread contains no confirmed procedure.
 
 In [an F-series thread](http://forum.samygo.tv/viewtopic.php?t=12284) from February to March 2018, an owner of an already-rooted F6350 reported going from firmware 2225 to 1116 with root still working, then back to 1200. The instructions were in a donor-only section of the forum, so the page contains no procedure either.
 
@@ -32,7 +32,7 @@ We can't say. The [samsung-tv-root](https://github.com/chris-ritsen/samsung-tv-r
 
 Vetro offers prevention, not a rollback: a Quick settings switch, Disable automatic firmware update, so that a new firmware does not remove root behind your back (README). See [stopping Samsung TV auto updates](/updates/stop-samsung-tv-auto-update/). If an update has already happened, [will a firmware update remove root](/updates/firmware-update-remove-root/) lists what Vetro's records show. Vetro is experimental, needs root and ships no signed installer; see [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
 
-![Vetro Quick settings with the switches for HbbTV, advertising and tracking, domain blocking and voice assistant](/assets/img/dashboard-quick-settings.jpg)
+![Vetro Quick settings with privacy, DNS blocking and voice-assistant controls](/assets/img/dashboard-quick-settings.jpg)
 
 ## Why do people ask for a downgrade?
 

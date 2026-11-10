@@ -8,7 +8,7 @@ verified: "Checked on 2026-11-10 against the Linux kernel proc documentation and
 related: ["samsung-tv-slow-fix", "custom-launcher-samsung-tv", "remove-ads-samsung-tv-home-screen", "what-each-vetro-switch-changes", "keep-root-after-restart"]
 ---
 
-On a Samsung Q80A ([model page](/tested-tvs/q80a/)), Samsung's Home (the process `com.samsung.tv.csfs`) held about 152 MB of resident memory, HbbTV about 22 MB, MultiScreen about 15 MB and Ambient about 59 MB, according to Vetro's [performance notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md) and [README](https://github.com/andrearicci93/vetro/blob/main/README.md). All of it comes from one TV, and all of it is resident-memory readings, not the "memory used" figure the TV shows. This page explains the difference and how to read the counters.
+On a Samsung Q80A ([model page](/tested-tvs/q80a/)), Samsung's Home (the process `com.samsung.tv.csfs`) held about 152 MB of resident memory, HbbTV about 22 MB, MultiScreen about 15 MB and Ambient about 59 MB, according to Vetro's [performance notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md) and [0.3.0 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md). All of it comes from one TV, and all of it is resident-memory readings, not the "memory used" figure the TV shows. This page explains the difference and how to read the counters.
 
 ## Should I look at available RAM or used RAM?
 
@@ -29,17 +29,17 @@ The table gives what Vetro's notes record for the Q80A. Resident set size (RSS) 
 | --- | ---: | --- |
 | Samsung Home, `com.samsung.tv.csfs` | about 152 MB RSS (PSS about 100 MB) | performance notes, 2026-10-23 run |
 | Vetro launcher | about 22 MB RSS (about 30 MB in a later read, PSS 5.7 MB) | same run |
-| HbbTV | about 22 MB | README, process survey |
-| MultiScreen (Multi View) autostart | about 15 MB | README, process survey |
-| Ambient | about 59 MB | README, process survey |
+| HbbTV | about 22 MB | CHANGELOG 0.3.0, Q80A process survey |
+| MultiScreen (Multi View) autostart | about 15 MB | CHANGELOG 0.3.0, Q80A process survey |
+| Ambient | about 59 MB | CHANGELOG 0.3.0, Q80A process survey |
 
 In the one run measured with the launcher, available RAM went from 533 MB to 662 MB, about 129 MB or 24%, on firmware 2301.1. The notes describe it as a single run taken by hand during development, not an A/B test and not repeated.
 
 ### Does stopping them free that much?
 
-Not necessarily. The README sizes for HbbTV, MultiScreen and Ambient come from a survey of a running Q80A, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the effect of each change on a running TV is not yet verified.
+Not necessarily. The 0.3.0 changelog's sizes for HbbTV, MultiScreen and Ambient come from a survey of a running Q80A, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the effect of each change on a running TV is not yet verified.
 
-HbbTV and Ambient also restart themselves on this TV. According to the changelog, turning HbbTV off in the menu does not stop the app, and a firmware service starts it again at boot, on a source change and on wake. Ambient is started again by Samsung's screen daemon, so Vetro's Stop Ambient is described as a partial block. Vetro's switches work around both, but how long the result lasts depends on your firmware.
+HbbTV and Ambient also restart themselves on this TV. According to the changelog, turning HbbTV off in the menu does not stop the app, and a firmware service starts it again at boot, on a source change and on wake. The 0.3.0 notes described Ambient returning after a stop. The 0.5.0 changelog reports that Stop Ambient is more reliable on the Q80A and stays stopped after a restart; users can still open Ambient themselves. Other firmware needs verification.
 
 ## How do I see memory use on the TV?
 
@@ -67,7 +67,7 @@ The notes say no tuning is offered. The TV reports Linux 4.1.10, a vendor kernel
 
 ## What do the numbers not show?
 
-They don't show frame rate, input latency or time to open an app. The notes call for repeated ABBA trials with the same network, workload and boot age before any such claim, and point out that a 60 Hz display doesn't mean every app produces 60 frames. Your numbers will differ with model, firmware and what is running. On Tizen 9 TVs the launcher still closes only the one Home process, so it may free less (changelog).
+They don't show frame rate, input latency or time to open an app. The notes call for repeated ABBA trials with the same network, workload and boot age before any such claim, and point out that a 60 Hz display doesn't mean every app produces 60 frames. Your numbers will differ with model, firmware and what is running. Version 0.5.0 added a multi-app Home guard, but publishes no memory measurement for Tizen 9.
 
 ## Next steps
 

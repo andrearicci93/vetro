@@ -8,7 +8,7 @@
   "firmware": "T-NKM2DEUC-2301.1",
   "status": "Developed and tested",
   "issue": null,
-  "summary": "The Q80A is the TV Vetro is developed on. Every feature is tried here first, including the Launcher, the root agent after a cold boot and the self-update path. A second firmware, 2310.0, has also been used for test runs."
+  "summary": "The Q80A is the TV Vetro is developed on. Published Q80A records cover launcher behavior, root-agent startup and signed self-updates. Some 0.5.0 features, including Restore the TV, still lack a recorded manual TV test."
  },
  {
   "slug": "q70a",
@@ -140,7 +140,8 @@
   "firmware": "23_KSUE_UB_T09",
   "status": "Reported working",
   "issue": 17,
-  "summary": "Reported working on Tizen 9.0, installed with Apps2Samsung. A 2023 TV running a 2024-generation Tizen shows why model year alone does not tell you the Tizen version."
+  "summary": "Reported working on Tizen 9.0, installed with Apps2Samsung. A 2023 TV reported on Tizen 9.0 shows why model year alone does not tell you the installed Tizen version.",
+  "firmwareLabel": "Reported platform identifier"
  },
  {
   "slug": "q65d",
@@ -173,7 +174,8 @@
   "firmware": "T-PTMWWC-1720.7",
   "status": "Installed, what works not reported",
   "issue": 15,
-  "summary": "Installed, with the service and root agent running. What works beyond that has not been reported yet."
+  "summary": "Installed, with the service and root agent running. What works beyond that has not been reported yet.",
+  "description": "Samsung Smart Monitor M8 with Vetro: service and root agent reported running on firmware T-PTMWWC-1720.7. Feature testing and Tizen version were not reported."
  },
  {
   "slug": "tu7090",

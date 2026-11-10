@@ -8,7 +8,7 @@ verified: "Re-read on 2026-11-10: Samsung's UAE microphone-switch and voice-assi
 related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "samsung-ads-opt-out", "remap-samsung-remote-buttons", "what-each-vetro-switch-changes"]
 ---
 
-The most reliable way to stop a Samsung TV's microphone is the physical microphone switch, on models that have one. Otherwise, turn off Voice Wake-up and review the Voice menu for Bixby and Alexa. Samsung's voice-assistant page gives the path Home, Menu, Settings, All Settings, General & Privacy, Voice, Voice Wake-up, and says some options may not be supported on all models or regions. On a rooted TV, Vetro can also disable the voice components, including the remote's microphone button.
+On models with a built-in microphone switch, use it to disable the TV's built-in microphone. Review the remote microphone and any connected audio device separately. Otherwise, turn off Voice Wake-up and review the Voice menu for Bixby and Alexa. Samsung's voice-assistant page gives the path Home, Menu, Settings, All Settings, General & Privacy, Voice, Voice Wake-up, and says some options may not be supported on all models or regions. On a rooted TV, Vetro can also disable the voice components, including the remote's microphone button.
 
 ## Does my Samsung TV have a microphone switch?
 
@@ -18,7 +18,7 @@ Neither page gives a software menu path for the switch itself, and neither says 
 
 ## How do I turn off Alexa on a Samsung TV?
 
-[Samsung Australia's Alexa page](https://www.samsung.com/au/support/tv-audio-video/set-up-alexa/) says Alexa is available on all Samsung Smart TV models produced in 2021 and beyond, plus select 2020 models. It lists the setting as Settings > General / Advanced Features > Voice > Alexa Settings, with a hands-free wake-up option, and says that if wake-up is not enabled, the remote's voice button is the only way to activate Alexa. It also says Alexa "can be used only when the microphone switch at the bottom of the TV is active".
+[Samsung Australia's Alexa page](https://www.samsung.com/au/support/tv-audio-video/set-up-alexa/) says Alexa is available on all Samsung Smart TV models produced in 2021 and beyond, plus select 2020 models. It lists the setting as Settings > General / Advanced Features > Voice > Alexa Settings, with a hands-free wake-up option, and says that if wake-up is not enabled, the remote's voice button is the only way to activate Alexa. The microphone-switch condition on that page applies to Voice Wake-up. It separately describes holding the remote's microphone button and speaking into the remote.
 
 For the always-listening trigger, use Samsung's [voice-assistant troubleshooting page](https://www.samsung.com/ae/support/tv-audio-video/voice-assistant-issues-on-my-samsung-tv/):
 

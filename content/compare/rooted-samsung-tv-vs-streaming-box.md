@@ -12,7 +12,7 @@ For most people a streaming box is the easier answer to a Samsung TV full of ads
 
 ## What does a streaming box fix?
 
-A box replaces the TV's operating system for everyday use. You switch the TV to that HDMI input, and Samsung's Home screen, its recommendation rows and its apps stop being what you look at. The TV's own software is still there, and so is whatever it does in the background. For the TV's own settings, see [how to turn off ACR on a Samsung TV](/privacy/turn-off-acr-samsung-tv/) and [what data a Samsung TV collects](/privacy/what-data-samsung-tv-collects/).
+A box supplies its own apps and home screen over HDMI; the TV continues running Samsung's operating system. You switch the TV to that HDMI input, and Samsung's Home screen, its recommendation rows and its apps stop being what you look at. The TV's own software is still there, and so is whatever it does in the background. For the TV's own settings, see [how to turn off ACR on a Samsung TV](/privacy/turn-off-acr-samsung-tv/) and [what data a Samsung TV collects](/privacy/what-data-samsung-tv-collects/).
 
 The box has its own software, and its own ads and data collection:
 
@@ -20,11 +20,11 @@ The box has its own software, and its own ads and data collection:
 - On Google TV, Google's [ad settings help page](https://support.google.com/googletv/answer/13392198?hl=en) says: "You can't turn off ads, but you can control the use of your advertising ID for personalized ads across installed apps." You can reset or delete the advertising ID under Settings, Privacy, Ads. Apps can still show ads, and a deleted ID can still leave ads based on other factors.
 - On Apple TV, Apple's [privacy settings guide](https://support.apple.com/guide/tv/adjust-privacy-settings-atvb66239fa1/tvos) lists a Tracking control that stops apps from asking to track you across other companies' apps, and separate switches for sharing analytics with Apple and with developers, and for Siri audio review. It is not a list of home screen ads, and we did not check how many sponsored items the Apple TV home screen shows.
 
-So a box moves you from one company's advertising setup to another.
+A box changes the platform whose apps, privacy controls and promotions you use; the experience depends on the platform.
 
 ## What does a rooted Samsung give you?
 
-On a rooted TV, [Vetro](https://github.com/andrearicci93/vetro) can do things the stock menus do not. Vetro is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/). Its [README](https://github.com/andrearicci93/vetro/blob/main/README.md) lists switches that stop the viewing-data services (the ones that recognise what is on screen, log remote presses and send usage logs), block ad and tracking domains with a filter on the TV that keeps your DNS servers, disable HbbTV, MultiScreen autostart and Ambient, and turn off voice assistants. A Task manager lists every app and service with a plain description and a role, and lets you disable, stop or uninstall. The launcher replaces Samsung's Home with one that shows your apps in the same order. In [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md), available RAM rose from 533 MB to 662 MB on a [Q80A](/tested-tvs/q80a/) in one run, a memory figure only.
+On a rooted TV, [Vetro](https://github.com/andrearicci93/vetro) can do things the stock menus do not. Vetro is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/). Its [README](https://github.com/andrearicci93/vetro/blob/main/README.md) lists switches that stop the viewing-data services (the ones that recognise what is on screen, log remote presses and send usage logs), block ad and tracking domains with a filter on the TV that keeps your DNS servers, disable HbbTV, Multi View autostart and Ambient, and turn off voice assistants. A Task manager lists every app and service with a plain description and a role, and lets you disable, stop or uninstall. The launcher replaces Samsung's Home with one that shows your apps in the same order. In [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md), available RAM rose from 533 MB to 662 MB on a [Q80A](/tested-tvs/q80a/) in one run, a memory figure only.
 
 Stock Samsung menus cover only part of this, and what they offer depends on model, year and firmware. For the home screen, see [remove ads from the Samsung TV home screen](/speed/remove-ads-samsung-tv-home-screen/).
 
@@ -32,7 +32,7 @@ Stock Samsung menus cover only part of this, and what they offer depends on mode
 
 | | Streaming box | Rooted, debloated Samsung |
 | --- | --- | --- |
-| Setup | Plug in and sign in | Developer Mode, build and sign a package, root route |
+| Setup | Plug in and sign in | Developer Mode, Apps2Samsung or manual signing, compatible root route |
 | Ads | Present on Fire TV and Google TV; check Apple TV yourself | Home screen ads can be replaced by a launcher; ads inside apps stay |
 | Tracking | Platform's own settings; the TV still has its own | Switches for viewing-data services, domain filter; no guarantee of full blocking |
 | Updates | Maintained by the platform vendor | A firmware update can remove root; Vetro can turn off automatic firmware updates |

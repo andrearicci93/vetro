@@ -41,7 +41,7 @@ The US policy offers these, with no mention of a TV menu:
 - The ad-industry opt-outs at aboutads.info/choices and networkadvertising.org/choices, which the policy lists.
 - A privacy request through [Samsung's rights page](https://www.samsung.com/us/privacy/rights/) or by calling 1-800-SAMSUNG (1-800-726-7864).
 
-These cover your Samsung account and web activity and do not replace the TV's own switch.
+Browser and ad-industry opt-outs do not replace the TV's own switch. Samsung's privacy-request process is broader and can cover personal information from its devices and services, subject to the applicable rights and exceptions.
 
 ## What about Texas?
 

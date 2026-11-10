@@ -8,7 +8,7 @@ verified: "Checked on 2026-11-10 against the Vetro README, CHANGELOG, PERFORMANC
 related: ["remove-ads-samsung-tv-home-screen", "samsung-tv-memory-usage", "samsung-tv-slow-fix", "vetro-vs-aerotizen-free-my-tv-tizenbrew", "why-vetro-is-native", "remap-samsung-remote-buttons"]
 ---
 
-A custom launcher on a Samsung TV is an app that opens when you press the Home key, instead of Samsung's own Home screen. Replacing Home needs either a rooted TV or a tool that watches for Samsung's Home and reopens your app. Vetro's launcher is a native bar that runs on a rooted TV. It is in beta, and this page covers what it does, the one memory figure we can cite and where its documentation stops.
+A custom launcher on a Samsung TV is an app that opens when you press the Home key, instead of Samsung's own Home screen. Home replacement depends on the tool: Vetro requires root; AeroTizen documents both a no-root Native Home mode and a watcher that reopens its launcher. Vetro's launcher is a native bar that runs on a rooted TV. It is in beta, and this page covers what it does, the one memory figure we can cite and where its documentation stops.
 
 ## What is a launcher on Tizen?
 
@@ -46,7 +46,7 @@ The changelog says to keep Samsung's Home enabled: on the Q80A, disabling it can
 
 ## How does it compare with AeroTizen?
 
-AeroTizen is another launcher for Samsung TVs. Its [README](https://github.com/helalaou/AeroTizen/blob/main/README.md) says Developer Mode is sufficient for setup, a computer-based CLI installs it, and both of its Home modes work without root. Native Home sends Home presses directly to AeroTizen and is marked experimental, and the watcher reopens AeroTizen when it detects a return to Samsung's Home. The README states that Native Home is reported not to work on Tizen 10. That is a different trade-off: no root, but Samsung's Home still starts and a watcher reacts to it, while Vetro closes Samsung's Home but needs root. [Vetro versus AeroTizen, free-my-tv and TizenBrew](/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/) compares them and [why Vetro is native](/reference/why-vetro-is-native/) covers the design choice.
+AeroTizen is another launcher for Samsung TVs. Its [README](https://github.com/helalaou/AeroTizen/blob/main/README.md) says Developer Mode is sufficient for setup, a computer-based CLI installs it, and both of its Home modes work without root. Native Home sends Home presses directly to AeroTizen and is marked experimental, and the watcher reopens AeroTizen when it detects a return to Samsung's Home. The README states that Native Home is reported not to work on Tizen 10. AeroTizen's watcher reacts after Samsung Home appears; its experimental Native Home mode routes Home directly to AeroTizen. Both work without root, while Vetro requires root and closes Samsung Home. [Vetro versus AeroTizen, free-my-tv and TizenBrew](/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/) compares them and [why Vetro is native](/reference/why-vetro-is-native/) covers the design choice.
 
 ## What should I know before trying it?
 

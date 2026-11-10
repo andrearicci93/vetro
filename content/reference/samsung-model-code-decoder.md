@@ -8,7 +8,7 @@ verified: "Checked on 2026-11-10 against Samsung's US and Canada model-code supp
 related: ["samsung-tv-tizen-version-by-year", "root-tizen-6-samsung-tv", "firmware-update-remove-root", "keep-root-after-restart", "how-to-root-samsung-tv"]
 ---
 
-A Samsung model code is a string of fixed positions: type, region, screen size, series with a year letter, a generation letter, a tuner letter, a design letter and a country code. QE50Q80AATXZT is a 50-inch QLED sold in Europe, series Q80A, from 2021. The firmware string is a separate thing. It looks like T-NKM2DEUC-2301.1, and Samsung does not publish a decoder for it that we could find. This page reads both, and says which parts Samsung documents.
+Many Samsung TV model codes encode the display family, sales region, screen size, series, model year and market suffix. The layout varies by product family; the Q80A example below follows one common pattern. QE50Q80AATXZT is a 50-inch QLED sold in Europe, series Q80A, from 2021. The firmware string is a separate thing. It looks like T-NKM2DEUC-2301.1, and Samsung does not publish a decoder for it that we could find. This page reads both, and says which parts Samsung documents.
 
 ## Where do you find the model code and firmware?
 
@@ -61,7 +61,7 @@ Samsung does not document it. What we can say comes from the Vetro reports in th
 
 ## Why does the exact string matter?
 
-Rooting reports are only comparable when they name the exact model and firmware. The README says a firmware update can change the result, and Vetro's report form asks for both. A report that says "Samsung 55 inch, works" cannot be reproduced; one with QE55Q70AATXXC and T-NKM2DEUC-2301.1 can.
+Rooting reports are only comparable when they name the exact model and firmware. The README says a firmware update can change the result, and Vetro's report form asks for both. A report that says "Samsung 55 inch, works" is difficult to compare. An exact model and firmware identify the configuration, but reproducing the result also requires the Vetro version and test steps.
 
 Vetro's diagnostic report records the firmware and Tizen version and says where each came from. If the widget on the TV never posted its probe, the service reads the firmware and Tizen version itself, and, since 0.5.0, falls back to the TV's own remote-control API for a model name. The commercial model and platform code can still come only from the widget, so type the model into your report by hand if it is missing. The rules are in the [export documentation](https://github.com/andrearicci93/vetro/blob/main/app/docs/DIAGNOSTIC-EXPORT.md).
 

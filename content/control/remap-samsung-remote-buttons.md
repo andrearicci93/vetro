@@ -12,7 +12,7 @@ faq:
   - q: "Do remapped Samsung remote buttons survive a restart?"
     a: "Vetro saves the shortcuts and restores the interception after a restart. Until the Vetro service and its root helper are running again, which took about two minutes after boot in one Q80A audit, the key does what Samsung built it to do."
   - q: "Does remapping a Samsung remote button need root?"
-    a: "Vetro needs root to read the remote and block the original action. A TV without root has no supported way to do it, and Vetro ships no signed installer, so you install a package signed for your TV, for example with Apps2Samsung."
+    a: "Vetro needs root to read the remote and block the original action. Samsung provides no documented setting to reassign these shortcut buttons, and Vetro ships no signed installer, so you install a package signed for your TV, for example with Apps2Samsung."
   - q: "Can a Samsung remote button send a message to Home Assistant?"
     a: "With Vetro, a key can publish an MQTT message that Home Assistant listens for. The MQTT guide documents the broker setup; it lists Home Assistant's own UI behavior as still to be verified."
 ---
@@ -55,7 +55,7 @@ Try your remote and see what the listening step reports.
 - Native key behavior stays until Vetro and its helper are running. In the audit the key filter was seen connected at about 115 and 118 seconds of uptime, and until then the button opens whatever Samsung assigned.
 - In the same audit the TizenTube key was blocked and its launch action reported no error, but YouTube opened anyway; TizenTube behavior was not validated. See [TizenTube on a Samsung TV](/control/tizentube-samsung-tv/).
 - If a remote action fails, Vetro pauses shortcuts for a minute instead of for good.
-- The launcher is in beta and Vetro is developed on the Q80A. Other models are reported in the README's [compatibility table](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility); the [tested TVs](/tested-tvs/) index links each model page. Root features are not available on Tizen 5.5 and older per that table.
+- The launcher is in beta and Vetro is developed on the Q80A. Other models are reported in the README's [compatibility table](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility); the [tested TVs](/tested-tvs/) index links each model page. The stock package offers no root features on Tizen 5.5 or older. The README records one Q80R on Tizen 5.0 working with an unmerged personal port.
 - The dashboard runs over plain HTTP. Since 0.5.0, browsers and scripts pair with a six-digit code shown on the TV, but pairing is automatic: until the Vetro app on the TV has been seen, the dashboard is open to the local network. See [SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md) and the [security model](/reference/vetro-security-model/).
 
 ## How do I set up a remap?

@@ -1,6 +1,6 @@
 ---
-title: "Samsung TV launcher tools compared: Vetro, AeroTizen, more"
-description: "Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which. With limits."
+title: "Vetro vs AeroTizen, free-my-tv and TizenBrew"
+description: "Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which."
 keywords: ["samsung tv launcher debloat tools compared", "aerotizen vs vetro", "free-my-tv samsung", "tizenbrew alternative"]
 date: 2026-11-10
 updated: 2026-11-10
@@ -42,7 +42,7 @@ The repository is tagged "debloat" and credits a debloat project for identifying
 
 [free-my-tv](https://github.com/simbasjungles/free-my-tv) is a fast home screen for Google TV, LG webOS and Samsung Tizen. On Samsung it is an app you open; Samsung's home screen stays in place and nothing is rooted. You turn on Developer Mode, install through TizenBrew Installer (or build it and run a Python script), and optionally enable Autorun Last App so the TV opens into it. The README lists trending picks that need your own TMDB key, a shelf of apps, an inputs drawer, weather, a theme and a screensaver.
 
-It has the most detailed compatibility notes of the four: it needs a Samsung TV from 2015 or newer; 2015 and 2016 TVs cannot run TizenBrew and need a self-built install; TV Settings is missing from the drawer on 2015 and 2016 sets and freezes on 2017 and 2018 ones; and autorun does not reopen the app on 2019 and 2020 TVs. The README has a `hide_apps` setting that hides built-in apps from its own shelf, and its list of system changes has no Samsung entries. Pick it for a simple shelf of apps; it does not document any tracking switches.
+Its Samsung compatibility notes say: it needs a Samsung TV from 2015 or newer; 2015 and 2016 TVs cannot run TizenBrew and need a self-built install; TV Settings is missing from the drawer on 2015 and 2016 sets and freezes on 2017 and 2018 ones; and autorun does not reopen the app on 2019 and 2020 TVs. The README has a `hide_apps` setting that hides built-in apps from its own shelf, and its list of system changes has no Samsung entries. Pick it for a simple shelf of apps; it does not document any tracking switches.
 
 ## What is TizenBrew?
 
