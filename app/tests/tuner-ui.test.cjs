@@ -6,14 +6,18 @@ const page = require('../service/tuner-page.js');
 
 // 1. Navigation and static content.
 assert.match(html, /<button type="button" role="tab" id="utab-tuner" data-ui-tab="tuner"[^>]*>Live TV<\/button>/, 'the tuner is the Live TV tab of Vetro UI');
-assert.match(html, /<section id="vetroui" hidden>[\s\S]*<div id="uiPanel-tuner"[^>]*hidden><div id="tuner">/);
-assert.ok(page.KEYS.length >= 8, 'the remote buttons are documented');
+assert.match(html, /<section id="vetroui" hidden>[\s\S]*<div id="uiPanel-tuner"[^>]*hidden><div id="tuner" class="stack">/);
+assert.equal(page.KEYS.length, 5, 'the five main keys: CH, OK, Up, Left, Right');
 page.KEYS.forEach(function (k) { assert.ok(html.indexOf(k[1]) >= 0, 'key help on the page: ' + k[1].slice(0, 30)); });
-const previews = page.previewsMarkup();
-assert.equal((previews.match(/<svg class="tuner-screen"/g) || []).length, 6, 'six previews: banner, channel list, number pad, guide, info panel, audio');
+assert.match(page.KEYS[3][1], /^Next audio track/, 'Left switches the audio');
+assert.match(page.KEYS[4][1], /^Number pad/, 'Right opens the pad');
+const slides = page.slides(), previews = slides.map(s => s.svg).join('');
+assert.equal((previews.match(/<svg class="tuner-screen"/g) || []).length, 6, 'six screens: banner, guide, channel list, number pad, info panel, audio');
 assert.equal((previews.match(/<svg class="tuner-screen"[^>]*role="img" aria-label="[^"]{20,}/g) || []).length, 6, 'each preview has a text alternative');
 assert.doesNotMatch(previews, /<script|onload=|href="http/, 'previews are inert, self-contained pictures');
-assert.ok(html.indexOf(previews) >= 0, 'the previews are on the page');
+assert.ok(html.indexOf('var TUNER_SLIDES=' + JSON.stringify(slides)) >= 0, 'the slides are in the page script');
+assert.match(page.guide(true), /<svg x="0" y="316" width="1920" height="616" overflow="hidden"><g class="tg-scroll">/, 'the slideshow guide scrolls inside a window of seven rows');
+assert.doesNotMatch(page.guide(true), / id="/, 'no ids: the same guide is on the page twice');
 assert.ok(html.indexOf(page.keysMarkup()) >= 0, 'the key table is on the page');
 assert.doesNotMatch(page.css, /border-top(-color)?\s*:\s*[^;]*(var\(--(accent|ok|warn|danger))/, 'no coloured top border on a rounded card');
 

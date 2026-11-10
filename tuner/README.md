@@ -63,9 +63,9 @@ would vanish on it.
   "No programme information".
 * **Channel list** (OK): right side, 11 rows around the selection. Up/Down move (wrapping); held down they run on and speed up (1, 3, then 8 rows a step, if the remote auto-repeats); Left/Right jump a page. OK tunes, Back closes, it closes itself after 8 s.
 * **TV guide** (Up, or the Guide/EPG key): see "TV guide" below.
-* **Number pad** (Left): 4x3 grid 1-9, Delete, 0, Go; arrows move, OK presses; shows the typed number and the channel it would go to
+* **Number pad** (Right): 4x3 grid 1-9, Delete, 0, Go; arrows move, OK presses; shows the typed number and the channel it would go to
   ("No such channel" otherwise). Once a number is typed, 2 s without a key take it and tune (any key starts the 2 s again; Go still works at once). A real digit key opens it too. Closes after 20 s.
-* **Audio** (Right): cycles the audio track and shows "Audio: Italian" for 2 s.
+* **Audio** (Left): cycles the audio track and shows "Audio: Italian" for 2 s.
 * **Info panel** (Info key 358, or `info` on the control pipe): a card at the top, 1728 x 348 px, same slate look. Channel number in a badge, the programme on air (title, channel name, start-end, a bar and the time left), up to three lines of its description, and on the right the clock, the date, the tuner (`GetTvMode`: Antenna/Cable/Satellite) and the audio track. Built from the store (programme) at once, then the worker reads the description (`ReadPresentTexts`), the audio and the tuner (`Core/InfoPanel.cs` has the date, the audio text and the word wrapping, with tests; `Ui/InfoView.cs` draws it with pooled objects). Any key closes it, then does its usual job (Back and Info only close it); 10 s timeout. Not shown, because nothing reads it yet: resolution, audio format, subtitle and teletext badges, genre.
   The launcher's 123 pad sends its Info key as `input_keyevent XF86Info`, which the tuner never sees (it goes to `tv-viewer`). While the tuner is on screen the file `/tmp/vetro-tuner.ctl.shown` exists (the pipe alone only says a tuner is resident, and `info` would bring it up over any app). To open this panel from the pad, the pad does `sh -c '[ -e /tmp/vetro-tuner.ctl.shown ] && { exec 3<>/tmp/vetro-tuner.ctl; echo info >&3; }'` and sends `XF86Info` as before when that returns non-zero. The read-write `exec 3<>` never blocks, even if the tuner died and left the pipe behind (the TV has no `timeout`). Tried on the Q80A: hidden = no flag, shown = flag, the command opened the panel.
 
@@ -75,11 +75,11 @@ would vanish on it.
 | --- | --- | --- |
 | CH+ / CH- | 88 / 87 | next / previous channel |
 | OK | 28 | opens the channel list; in the list tunes the selection; on the pad presses the key |
-| Up / Down / Left / Right | 103 / 108 / 105 / 106 | list, pad and guide movement; with nothing open: Up opens the guide, Left our pad, Right switches audio |
+| Up / Down / Left / Right | 103 / 108 / 105 / 106 | list, pad and guide movement; with nothing open: Up opens the guide, Right our pad, Left switches audio |
 | Guide / EPG | 362 / 365 | opens (and closes) the guide on remotes that have the key; the Smart Control has none |
 | Back | 1 (ESC) | closes the list/pad/guide/info panel, then clears the banner, then goes to the channel watched before (and back again on the next Back), as Samsung's tuner does; the tuner stays up and keeps the focus, so Samsung's app never sees the key (a hidden tuner hands the focus over and Samsung answers Back with its own "previous channel" and banner) |
 | Home | 63 | the tuner steps aside (hides/exits) and the system's Home handles the key; also 172 (HOMEPAGE), 139 (MENU), 116 (POWER) |
-| "123" | 140 | Samsung's own pad opens whatever we do (owner confirmed 2026-11-07), so it is not used: our pad is on Left |
+| "123" | 140 | Samsung's own pad opens whatever we do (owner confirmed 2026-11-07), so it is not used: our pad is on Right |
 | ? | 67 (F9) | unknown, no effect |
 
 **Remotes with number keys (not tested on real hardware, the owner has none).** The input devices of the IR/RC remotes on this TV
@@ -167,7 +167,7 @@ title, description, raw descriptor, source name, guidance. `Core/GuideText.cs` r
 * **EPG** is done (see "TV guide"); what remains is running it on the TV. `GetProgram(EProgramIndicator, TCProgramId, ...)` (code 3) is still not understood, but nothing needs it now.
 * **Subtitles.** No public call turns them on. Who draws them (the daemon or `tv-viewer-graphics`) is not known: switch them on in Samsung's tuner and look
   at `enlightenment_info -topvwins`. If `tv-viewer-graphics` draws them, a daemon call alone would not show them under our window.
-* **Audio list.** The client cannot list the tracks: Right tries the next index and reads it back, going back to the first when there is none.
+* **Audio list.** The client cannot list the tracks: Left tries the next index and reads it back, going back to the first when there is none.
   Checked on a channel with one track only (stays on the first); not yet on a channel with two.
 
 * **Channel logos.** Samsung's tuner has a logo path (`banner/info/channel_logo_path`, fallback `info_nologo_default.png`) and a downloader

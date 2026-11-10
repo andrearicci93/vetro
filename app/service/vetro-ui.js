@@ -1,10 +1,10 @@
 'use strict';
-// Vetro UI: the launcher, the live TV tuner and the on-screen displays (glass volume bar, glass number pad) as one set of parts.
+// Vetro UI: the launcher, the live TV tuner and the on-screen displays (volume bar, number pad) as one set of parts.
 // Pure rules, shared by the service (GET /remap lists the keys Vetro UI holds) and the dashboard page (the functions are
 // inlined into the page with toString(), so they are plain ES5, with no template strings).
 //
 // What depends on what (read from the code, see app/docs/VETRO-UI.md):
-//   * the glass volume bar and the glass number pad are drawn by the launcher process: it runs when the Vetro launcher is on,
+//   * the volume bar and the number pad are drawn by the launcher process: it runs when the Vetro launcher is on,
 //     and, headless, when another app is the launcher (custom mode). With the launcher off they are saved but do nothing;
 //   * both need the remote interception (the Remapper's input bridge): it holds Vol+, Vol-, Mute and 123 back from Samsung and
 //     hands them to the launcher. Vetro UI turns the interception on by itself when one of them is switched on;
@@ -15,10 +15,10 @@
 //   * the tuner stands alone. The number pad's Done tunes it when it runs, and its Info key opens the tuner's info panel.
 
 var UI_RESERVED = [
-    {code: '68', label: 'Vol +', owner: 'volume', name: 'Glass volume bar'},
-    {code: '67', label: 'Vol −', owner: 'volume', name: 'Glass volume bar'},
-    {code: '66', label: 'Mute', owner: 'volume', name: 'Glass volume bar'},
-    {code: '140', label: '123', owner: 'pad', name: 'Glass number pad'}
+    {code: '68', label: 'Vol +', owner: 'volume', name: 'Volume bar', icon: 'rocker-vol-up'},
+    {code: '67', label: 'Vol −', owner: 'volume', name: 'Volume bar', icon: 'rocker-vol-down'},
+    {code: '66', label: 'Mute', owner: 'volume', name: 'Volume bar', icon: 'rocker-vol-press'},
+    {code: '140', label: '123', owner: 'pad', name: 'Number pad', icon: 'color-123'}
 ];
 
 // The keys Vetro TV Tuner answers (evdev codes of the remote, tuner/src/Program.cs). The remote bridge does not pass on a key that a
@@ -46,7 +46,7 @@ function uiReservedKeys(d) {
     var live = uiLauncherMode(d) !== 'off', out = [];
     for (var i = 0; i < UI_RESERVED.length; i++) {
         var k = UI_RESERVED[i], on = !!d && (k.owner === 'volume' ? d.volumePill === true : d.numberPad === true);
-        if (on) out.push({code: k.code, label: k.label, owner: k.owner, name: k.name, live: live});
+        if (on) out.push({code: k.code, label: k.label, owner: k.owner, name: k.name, icon: k.icon, live: live});
     }
     return out;
 }

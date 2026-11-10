@@ -34,8 +34,8 @@ It starts again by itself after a restart or a crash (back-off from 30 s up to 5
 | CH +, CH − | Next and previous channel, with the banner |
 | OK | Opens the channel list; in the list it tunes; on the number pad it presses the key |
 | Up | Opens the TV guide; moves in lists and the guide |
-| Left | Opens the number pad; jumps a page in the list |
-| Right | Switches the audio track |
+| Left | Switches the audio track; jumps a page back in the list |
+| Right | Opens the number pad; jumps a page on in the list |
 | Back | Closes what is open, then clears the banner, then goes to the channel you were watching before (and back again on the next Back), as Samsung's tuner does. The tuner stays up, so Samsung's tuner does not appear |
 | Home | The tuner steps aside for the TV's own screen |
 | Digits (remotes that have them) | Open the number pad with the digit; 2 s later it tunes, OK tunes at once |

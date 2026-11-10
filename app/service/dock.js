@@ -115,7 +115,7 @@ Dock.prototype.installed = function () {
     catch (e) { return false; }
 };
 
-var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the glass volume bar sits (the dock's --volume-edge)
+var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the volume bar sits (the dock's --volume-edge)
 
 Dock.prototype.readState = function () {
     try {
@@ -627,7 +627,7 @@ Dock.prototype.setVolumeEdge = function (edge) {
         throw e;
     });
 };
-// The same for the glass number pad that replaces Samsung's 123 pad.
+// The same for the number pad that replaces Samsung's 123 pad.
 Dock.prototype.setNumberPad = function (on) { return this.setKeyOption('numberPad', on); };
 Dock.prototype.setKeyOption = function (name, on) {
     if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));

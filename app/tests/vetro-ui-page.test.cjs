@@ -23,7 +23,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
                 dock = Object.assign({}, dock, {[body.action]: body.on});
                 const on = dock.volumePill || dock.numberPad;
                 input = {devices: [], status: {policy: {mode: on ? 'filter' : 'off', connected: on}, preference: {enabled: on}, events: []}};
-                remap = Object.assign({}, remap, {reserved: (dock.volumePill ? [{code: '68', label: 'Vol +', owner: 'volume', name: 'Glass volume bar', live: true}] : []), interception: {auto: on, problem: null}});
+                remap = Object.assign({}, remap, {reserved: (dock.volumePill ? [{code: '68', label: 'Vol +', owner: 'volume', name: 'Volume bar', live: true}] : []), interception: {auto: on, problem: null}});
             }
             if (body.action === 'volumeEdge') dock = Object.assign({}, dock, {volumeEdge: body.edge});
             data = dock;
@@ -51,15 +51,19 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     let over = el('uiOverview').innerHTML;
     ['data-ui-launcher', 'data-ui-tuner', 'data-ui-osd="volumePill"', 'data-ui-osd="numberPad"'].forEach(a => assert.ok(over.includes(a), 'overview switch: ' + a));
     assert.match(over, /The Home key opens the Vetro launcher/);
-    assert.match(over, /drawn by the launcher’s process/); assert.match(over, /Vetro UI turns it on by itself/); assert.match(over, /Your shortcuts come second/);
+    assert.match(over, /drawn by the launcher/); assert.match(over, /which Vetro UI turns on for you/); assert.match(over, /Vetro UI comes first/);
+    // The slideshow beside the switches: the launcher rising, the guide scrolling, the bar, the pad, the task manager.
+    assert.match(over, /data-show="overview"/); assert.equal((over.match(/class="tuner-shot tshow-slide/g) || []).length, 5);
+    assert.match(over, /class="lp[^"]* lp-rise"/); assert.match(over, /Up opens the sources/); assert.match(over, /Up, while watching live TV/); assert.match(over, /class="tg-scroll"/); assert.match(over, /tshow-slide is-on/);
+    assert.match(over, /data-show-pause aria-pressed="false"/);
 
     // The displays: what they need, their switches, the bar's position and a preview that follows it.
     let osd = el('osd').innerHTML;
-    assert.match(osd, /Drawn by the Vetro launcher’s process, which is on/);
+    assert.match(osd, /Drawn by the Vetro launcher, which is on/);
     assert.match(osd, /The remote interception is off/);
     assert.match(osd, /data-osd="volumePill"/); assert.match(osd, /data-osd-edge/);
-    assert.match(osd, /aria-label="The glass volume bar on the left edge/);
-    assert.doesNotMatch(el('dockBody').innerHTML, /Glass volume bar|Glass number pad/, 'no longer on the Launcher tab');
+    assert.match(osd, /aria-label="The volume bar on the left edge/);
+    assert.doesNotMatch(el('dockBody').innerHTML, /Volume bar|Number pad/, 'no longer on the Launcher tab');
     assert.doesNotMatch(el('tunerBody').innerHTML, /data-tuner-dock/, 'nor among the tuner’s switches');
 
     // Turning the bar on while a shortcut of the user's is on Vol +: a question that names it, nothing sent before the answer.
@@ -77,7 +81,7 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).slice(before).map(c => c.body), [{action: 'volumePill', on: true}]);
     osd = el('osd').innerHTML;
     assert.match(osd, /Remote interception on, turned on by Vetro UI/);
-    assert.match(sandbox.operationEntries[0].message, /Glass volume bar on\./);
+    assert.match(sandbox.operationEntries[0].message, /Volume bar on\./);
 
     // The pad has no conflict: no question.
     await el('osd').onchange({target: {dataset: {osd: 'numberPad'}, checked: true}}); await tick(8);
@@ -85,24 +89,24 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     // The position moves the preview.
     await el('osd').onchange({target: {dataset: {osdEdge: ''}, value: 'bottom'}}); await tick(8);
     assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'volumeEdge', edge: 'bottom'});
-    assert.match(el('osd').innerHTML, /aria-label="The glass volume bar on the bottom edge/);
+    assert.match(el('osd').innerHTML, /aria-label="The volume bar on the bottom edge/);
 
     // With Samsung's Home on the Home key the displays say they do nothing, and where to choose a launcher.
     sandbox.dockData = Object.assign({}, dock, {enabled: false, mode: 'off'}); sandbox.renderOsd();
-    assert.match(el('osd').innerHTML, /these displays do nothing/); assert.match(el('osd').innerHTML, /data-ui-open="launcher"/);
+    assert.match(el('osd').innerHTML, /these do nothing/); assert.match(el('osd').innerHTML, /data-ui-open="launcher"/);
     sandbox.dockData = dock;
 
     // The Remapper lists the keys Vetro UI holds, locked, first; the user's shortcut on the same key says it is overridden.
     sandbox.switchPanel('remote'); await tick(8);
     const list = el('rules').innerHTML;
-    assert.match(list, /rule-locked[^>]*data-held="68"[\s\S]*aria-label="Locked"[\s\S]*Glass volume bar[\s\S]*Vetro UI/);
+    assert.match(list, /rule-locked[^>]*data-held="68"[\s\S]*aria-label="Locked"[\s\S]*Volume bar[\s\S]*Vetro UI/);
     assert.ok(list.indexOf('rule-locked') < list.indexOf('data-delete'), 'the locked rows come first');
     assert.doesNotMatch(list.slice(0, list.indexOf('data-delete')), /data-delete="68"/, 'a locked row cannot be deleted');
     assert.match(list, /Overridden by Vetro UI/);
     // A new shortcut on a held key asks first.
     el('inputCode').value = '68'; el('targetApp').value = 'org.example.other'; answer = false;
     await el('saveRule').onclick(); await tick();
-    assert.match(confirms.pop(), /Key 68 \(Vol \+\) is used by Vetro UI \(Glass volume bar\)/);
+    assert.match(confirms.pop(), /Key 68 \(Vol \+\) is used by Vetro UI \(Volume bar\)/);
     assert.ok(!calls.some(c => c.url === '/remap' && c.body), 'declined: nothing saved');
     // Turning the interception off while Vetro UI uses it asks first; declined, the switch stays on.
     const filter = el('filter'); filter.checked = false;
@@ -113,12 +117,12 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     sandbox.uiRules = [{id: 'physical_68', enabled: true, trigger: {type: 'physical', value: '68'}, actions: [{type: 'launch', appId: 'org.example.app'}]},
         {id: 'physical_88', enabled: true, trigger: {type: 'physical', value: '88'}, actions: [{type: 'launch', appId: 'org.example.ch'}]}];
     sandbox.dockData = Object.assign({}, dock, {enabled: false, mode: 'off', volumePill: true}); sandbox.dockConfirm = true; sandbox.renderDock();
-    assert.match(el('dockBody').innerHTML, /One of your shortcuts stops running\.<\/strong> Key Vol \+ \(68\) opens org\.example\.app: the glass volume bar is on/);
+    assert.match(el('dockBody').innerHTML, /One of your shortcuts stops running\.<\/strong> Key Vol \+ \(68\) opens org\.example\.app: the volume bar is on/);
     sandbox.dockConfirm = false; sandbox.dockData = Object.assign({}, dock, {enabled: true, mode: 'vetro'}); sandbox.renderDock();
     // A shortcut on a tuner key: the Live TV tab says the tuner never gets it, the Remapper marks it.
     sandbox.tunerData = Object.assign({}, tuner, {enabled: true, running: true}); sandbox.renderTuner();
     assert.match(el('tunerBody').innerHTML, /A shortcut of yours uses a key of the tuner: CH \+ \(88\) opens org\.example\.ch\. While the remote interception is on, that key goes to the shortcut/);
-    sandbox.remapTuner = true; sandbox.rules = sandbox.uiRules; sandbox.reservedKeys = [{code: '68', label: 'Vol +', owner: 'volume', name: 'Glass volume bar', live: false}]; sandbox.showRules();
+    sandbox.remapTuner = true; sandbox.rules = sandbox.uiRules; sandbox.reservedKeys = [{code: '68', label: 'Vol +', owner: 'volume', name: 'Volume bar', live: false}]; sandbox.showRules();
     assert.match(el('rules').innerHTML, /Live TV does not get CH \+/);
     assert.doesNotMatch(el('rules').innerHTML, /Overridden by Vetro UI/, 'a held key that waits for a launcher does not override anything yet');
     // The task manager: a switch on the Launcher tab and in the overview, the hint under the bar in the preview, the panel's preview,

@@ -23,7 +23,7 @@ namespace Tuner
     {
         // Linux input codes (what the remote sends through evdev).
         // Seen on the Q80A with the Smart Control (2026-11-07): Back = 1 (ESC), CH+ = 88 and CH- = 87, OK = 28, arrows 103/105/106/108,
-        // Home = 63 (the dock's --home-code). The remote has no digit keys: "123" (140) opens the system's own pad (and that cannot be stopped), so our pad is on Left.
+        // Home = 63 (the dock's --home-code). The remote has no digit keys: "123" (140) opens the system's own pad (and that cannot be stopped), so our pad is on Right.
         // 158/174/402/403 stay for other remotes.
         private const int KeyBack = 158, KeyEsc = 1, KeyExit = 174, KeyChannelUp = 88, KeyChannelDown = 87, KeyChannelUp2 = 402, KeyChannelDown2 = 403;
         private const int KeyUp = 103, KeyDown = 108, KeyLeft = 105, KeyRight = 106, KeyEnter = 28, KeyPower = 116;
@@ -754,8 +754,8 @@ namespace Tuner
             if (code == KeyUp || code == KeyEpg || code == KeyGuide) { OpenGuide(); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { if (_list != null) GoTo(_list.Step(+1)); return; }
             if (code == KeyChannelDown || code == KeyChannelDown2) { if (_list != null) GoTo(_list.Step(-1)); return; }
-            if (code == KeyLeft) { OpenPad(-1); return; }   // not "123" (140): Samsung opens its own pad on that key whatever we do
-            if (code == KeyRight) { CycleAudio(); return; }
+            if (code == KeyRight) { OpenPad(-1); return; }   // not "123" (140): Samsung opens its own pad on that key whatever we do
+            if (code == KeyLeft) { CycleAudio(); return; }
             if (code == KeyEnter) { OpenList(); return; }
             int digit = Digit(code);
             if (digit >= 0) OpenPad(digit);
@@ -869,7 +869,7 @@ namespace Tuner
             Restart(ref _listTimer, ListSeconds, OnListTimeout);
         }
 
-        // ---- number pad (Left or "123"; a real digit key opens it too) ----
+        // ---- number pad (Right; a real digit key opens it too) ----
 
         private static void OpenPad(int firstDigit)
         {
@@ -919,7 +919,7 @@ namespace Tuner
             else { Log("no channel " + n); ShowToast(n > 0 ? "No channel " + n : "Type a channel number"); }
         }
 
-        // ---- audio (Right) ----
+        // ---- audio (Left) ----
 
         private static void CycleAudio()
         {

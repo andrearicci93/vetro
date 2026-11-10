@@ -61,7 +61,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .share em{font-style:normal;color:var(--bad);font-weight:700}.share em.w{color:var(--warn)}
 .keys{display:flex;justify-content:flex-end;margin-top:18px;font-size:22px;color:var(--muted)}
 .keys span{margin-left:28px}
-.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:12px;color:var(--text)}
+.keys span{display:inline-flex;align-items:center}.ki{display:inline-flex;vertical-align:middle;margin-right:10px;color:var(--text)}.ki svg{width:44px;height:44px}.more .ki svg{width:36px;height:36px}.more{display:flex;align-items:center}
 
 /* Quick controls (the main view): five tiles that do what one switch of the dashboard does, and a strip with the checks.
    Same system as the rest of the page: system sans at 400 and 500 only, 16 px surfaces, 8 px controls, solid fills, a uniform border
@@ -129,6 +129,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 var BASE = 'http://127.0.0.1:8099';
 var ICON = 'icon.png';
 var IDLE_MS = 300000;
+// Pictures of the Smart Remote's keys for the hints, from the dashboard's set (they take the text colour).
+/* remote-icons:begin (app/design-system/remote/build.cjs) */
+var KEY_ICONS = {"pad-ok":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 96\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"48\" cy=\"48\" r=\"44\" fill=\"currentColor\" fill-opacity=\".08\" stroke=\"currentColor\" stroke-opacity=\".4\" stroke-width=\"1.5\"/><circle cx=\"48\" cy=\"48\" r=\"22.5\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\".22\" stroke-width=\"1.5\"/><path d=\"M43.8 16.85L48 12.65L52.2 16.85\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M79.15 43.8L83.35 48L79.15 52.2\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M43.8 79.15L48 83.35L52.2 79.15\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M16.85 43.8L12.65 48L16.85 52.2\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><circle cx=\"48\" cy=\"48\" r=\"17\" fill=\"var(--remote-accent, #8fbaff)\" fill-opacity=\"0.32\" stroke=\"var(--remote-accent, #8fbaff)\" stroke-opacity=\"1\" stroke-width=\"1.5\"/><g fill=\"none\" stroke=\"var(--remote-accent, #8fbaff)\" stroke-opacity=\"1\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><ellipse cx=\"43\" cy=\"48\" rx=\"3.3\" ry=\"4.4\"/><path d=\"M49.4 43.6v8.8M54.2 43.6l-4.6 4.6M51.3 46.7l3.1 5.7\"/></g></svg>","pad-down":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 96\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"48\" cy=\"48\" r=\"44\" fill=\"currentColor\" fill-opacity=\".08\" stroke=\"currentColor\" stroke-opacity=\".4\" stroke-width=\"1.5\"/><path d=\"M64.67 65.26L77.52 78.57A42.5 42.5 0 0 1 18.48 78.57L31.33 65.26A24 24 0 0 0 64.67 65.26Z\" fill=\"var(--remote-accent, #8fbaff)\" fill-opacity=\".32\"/><circle cx=\"48\" cy=\"48\" r=\"22.5\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\".22\" stroke-width=\"1.5\"/><path d=\"M43.8 16.85L48 12.65L52.2 16.85\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M79.15 43.8L83.35 48L79.15 52.2\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M43.8 79.15L48 83.35L52.2 79.15\" fill=\"none\" stroke=\"var(--remote-accent, #8fbaff)\" stroke-opacity=\"1\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M16.85 43.8L12.65 48L16.85 52.2\" fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.45\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><circle cx=\"48\" cy=\"48\" r=\"17\" fill=\"currentColor\" fill-opacity=\"0.14\" stroke=\"currentColor\" stroke-opacity=\"0.5\" stroke-width=\"1.5\"/><g fill=\"none\" stroke=\"currentColor\" stroke-opacity=\"0.75\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><ellipse cx=\"43\" cy=\"48\" rx=\"3.3\" ry=\"4.4\"/><path d=\"M49.4 43.6v8.8M54.2 43.6l-4.6 4.6M51.3 46.7l3.1 5.7\"/></g></svg>","back":"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 48 48\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"24\" cy=\"24\" r=\"22\" fill=\"currentColor\" fill-opacity=\".08\" stroke=\"currentColor\" stroke-opacity=\".4\" stroke-width=\"1.5\"/><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14.5 19.5H27.5a6.5 6.5 0 0 1 0 13H17.5\"/><path d=\"M19 15l-4.5 4.5L19 24\"/></g></svg>"};
+/* remote-icons:end */
+function keyIcon(name, label) { return '<span class="ki" role="img" aria-label="' + label + '">' + (KEY_ICONS[name] || '') + '</span>'; }
 var report = {probe: {}, apps: [], packages: [], settings: {}};
 var delivered = false, running = false, idleTimer = null;
 // The whole check stops after TOTAL_MS even if a step is stuck (every step also has its own limit).
@@ -550,7 +555,7 @@ function renderMain(d) {
     '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : 'The address appears once the TV is on the network.') + '</p></div></div>' +
     '<div class="sec"><h2>Quick controls</h2><span>' + esc(right) + '</span></div><div class="tiles">' + tiles + '</div>' +
     '<div class="diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === 5 ? ' focus' : '') + '"><h4>Diagnostics</h4><div class="chips">' + chips + '</div><div class="more">' +
-    (focus === 5 ? '<b style="color:var(--text)">OK</b> Details' : 'Down for details') + '</div></div><div class="toast" id="toast" style="display:none"></div>';
+    (focus === 5 ? '<b style="color:var(--text)">' + keyIcon('pad-ok', 'OK') + '</b>Details' : keyIcon('pad-down', 'Down') + 'for details') + '</div></div><div class="toast" id="toast" style="display:none"></div>';
   paintToast();
 }
 function render(d, waiting) {
@@ -652,7 +657,7 @@ function renderDetails(d, waiting) {
     '<div class="panel ' + (bad ? 'bad' : warn ? 'warn' : '') + '"><div class="ph"><h2>Diagnostics</h2><div class="sum ' + (state === 'ok' ? '' : state) + '" id="sum">' + esc(sum) + '</div></div>' +
     '<div class="grid">' + cells + '</div>' +
     '<div class="share"><div class="t">Asking for help? Read out or photograph this line.</div><code>' + (waiting ? 'Collecting the details&hellip;' : line.join(' &middot; ')) + '</code></div>' +
-    '<div class="keys">' + (waiting ? '' : '<span><i>OK</i>Check again</span>') + '<span><i>Back</i>Close</span></div></div>';
+    '<div class="keys">' + (waiting ? '' : '<span>' + keyIcon('pad-ok', 'OK') + 'Check again</span>') + '<span>' + keyIcon('back', 'Back') + 'Close</span></div></div>';
 }
 function fit() {
   var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), s = document.getElementById('stage');

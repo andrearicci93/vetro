@@ -731,7 +731,7 @@ function handleSettings(req, res) {
 }
 
 function handleRemap(req, res) {
-    // reserved: the keys Vetro UI holds (glass volume bar, glass number pad). Computed, never stored with the rules, and they come first.
+    // reserved: the keys Vetro UI holds (volume bar, number pad). Computed, never stored with the rules, and they come first.
     if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token, reserved: vetroUi.reservedKeys(dock.readState()),
         interception: {auto: !!(remapStore.input && remapStore.input.auto && remapStore.input.enabled), problem: vetroUiInputProblem},
         // Whether Vetro TV Tuner is on: a shortcut on one of its keys takes that key away from it (the page warns).

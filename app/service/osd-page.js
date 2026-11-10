@@ -1,14 +1,13 @@
 'use strict';
-// Pictures of Vetro UI's on-screen displays for the dashboard: the glass volume bar on the chosen edge, the glass number pad and
+// Pictures of Vetro UI's on-screen displays for the dashboard: the volume bar on the chosen edge, the number pad and
 // the launcher's task manager.
 // Drawn at the launcher's screen size (1920 x 1080) with the numbers of dock/src/Core/VolumePlacement.cs and dock/src/Ui/NumberPad.cs,
 // so the bar moves when the Position menu changes. The functions are inlined into the page script (toString), so they are plain
-// ES5 with no template strings. Not screenshots: the TV picture behind them is a stand-in.
+// ES5 with no template strings. Not screenshots: the TV picture behind them is the launcher preview's sunset (tuner-page.js DEFS).
 
 function osdSvg(label, parts) {
     return '<svg class="tuner-screen osd-screen" viewBox="0 0 1920 1080" role="img" aria-label="' + label + '" font-family="SamsungOneUI, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="500">' +
-        '<defs><linearGradient id="osdVideo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d2b44"/><stop offset=".55" stop-color="#2f3f5c"/><stop offset="1" stop-color="#11182a"/></linearGradient></defs>' +
-        '<rect width="1920" height="1080" fill="url(#osdVideo)"/>' + parts.join('') + '</svg>';
+        '<use href="#tvScene"/>' + parts.join('') + '</svg>';   // the shared TV picture (tuner-page.js DEFS), as in the launcher preview
 }
 
 // The volume bar: 88 x 480 on the left or right edge, 640 x 88 at the top or bottom, 96 px from the edge, the level in light blue.
@@ -31,7 +30,7 @@ function osdVolumePreview(edge, level) {
         parts.push('<text x="' + (x + w - 28) + '" y="' + (y + h / 2 + 11) + '" font-size="32" fill="#fff" text-anchor="end">' + Math.round(f * 100) + '</text>');
         parts.push(osdSpeaker(x + 24, y + (h - 40) / 2));
     }
-    return osdSvg('The glass volume bar on the ' + (edge || 'left') + ' edge of the screen, at level ' + Math.round(f * 100) + '.', parts);
+    return osdSvg('The volume bar on the ' + (edge || 'left') + ' edge of the screen, at level ' + Math.round(f * 100) + '.', parts);
 }
 
 function osdSpeaker(x, y) {
@@ -39,7 +38,7 @@ function osdSpeaker(x, y) {
         '<path d="M6 15h7l9-8v26l-9-8H6z" fill="#fff"/><path d="M28 13c3 4 3 10 0 14M32 9c5 6 5 16 0 22"/></g>';
 }
 
-// The number pad: one glass row at the bottom with the digits and Done, the number typed so far in a chip above it.
+// The number pad: one row at the bottom with the digits and Done, the number typed so far in a chip above it.
 function osdPadPreview() {
     var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Done'], cw = 80, done = 140, bw = 10 * cw + done + 24;
     var x = (1920 - bw) / 2, top = 1080 - 64 - 200, y = top + 92, parts = [];
@@ -53,7 +52,7 @@ function osdPadPreview() {
         parts.push('<text x="' + (cx + kw / 2) + '" y="' + (y + 60) + '" font-size="' + (keys[i] === 'Done' ? 28 : 36) + '" fill="#fff" text-anchor="middle">' + keys[i] + '</text>');
         cx += kw;
     }
-    return osdSvg('The glass number pad at the bottom of the screen: the digits 1 to 0 and Done in one row, 12 typed so far, 3 selected.', parts);
+    return osdSvg('The number pad at the bottom of the screen: the digits 1 to 0 and Done in one row, 12 typed so far, 3 selected.', parts);
 }
 
 // The launcher's task manager (Down from the apps row): the panel stands where the bar ends, 880 px wide, a 70 px header,
@@ -75,7 +74,23 @@ function osdTasksPreview() {
         parts.push('<text x="' + cpuRight + '" y="' + (top + 47) + '" font-size="26" fill="#fff" fill-opacity=".75" text-anchor="end">' + apps[i][1] + '</text>');
         parts.push('<text x="' + memRight + '" y="' + (top + 47) + '" font-size="26" fill="#fff" text-anchor="end">' + apps[i][2] + '</text>');
     }
-    parts.push('<text x="960" y="' + (list + apps.length * 76 + 14 + 26) + '" font-size="21" fill="#fff" fill-opacity=".7" text-anchor="middle">OK  open        Hold OK  close        ‹ ›  sort        Up / Back  return</text>');
+    // The footer as the launcher draws it (TaskPanel.cs): the remote's keys as pictures (remote-icons.js, when the page has
+    // them) and short words, 34 px keys, 8 px inside a group, 40 px between groups. Word widths are estimated (21 px font).
+    var foot = [['k', 'pad-ok', 8], ['t', 'open', 40], ['t', 'Hold', 8], ['k', 'pad-ok', 8], ['t', 'close', 40], ['k', 'pad-left', 2], ['k', 'pad-right', 8],
+        ['t', 'sort', 40], ['k', 'pad-up', 2], ['k', 'back', 8], ['t', 'return', 0]], fw = 0, fy = list + apps.length * 76 + 14, j;
+    for (j = 0; j < foot.length; j++) fw += (foot[j][0] === 'k' ? 34 : Math.round(foot[j][1].length * 10.5)) + foot[j][2];
+    var fx = 960 - fw / 2;
+    for (j = 0; j < foot.length; j++) {
+        if (foot[j][0] === 'k') {
+            var pic = typeof REMOTE_ICONS !== 'undefined' && REMOTE_ICONS[foot[j][1]];
+            if (pic) parts.push(pic.replace('<svg ', '<svg x="' + fx + '" y="' + (fy - 4) + '" width="34" height="34" style="color:#fff" '));
+            fx += 34;
+        } else {
+            parts.push('<text x="' + fx + '" y="' + (fy + 20) + '" font-size="21" fill="#fff" fill-opacity=".6">' + foot[j][1] + '</text>');
+            fx += Math.round(foot[j][1].length * 10.5);
+        }
+        fx += foot[j][2];
+    }
     return osdSvg('The launcher’s task manager: the running apps with their CPU and memory, sorted by memory, the first one selected. Example apps.', parts);
 }
 

@@ -248,8 +248,8 @@ async function openDetails(r) {
   assert.ok(waiting.screen.innerHTML.includes('1&ndash;2 minutes: please do not close this screen'), 'the wait is announced');
   assert.equal(waiting.screen.textContent, 'Checking 7 of 9 done \u00b7 Starting the service \u00b7 0 s', 'how many are done, which is open and the seconds');
   assert.ok(waiting.intervals.some(t => t.ms === 1000), 'the seconds tick');
-  assert.ok(!waiting.screen.innerHTML.includes('<i>OK</i>'), 'no OK key while OK does nothing (#104)');
-  assert.ok((await run()).screen.innerHTML.includes('<i>OK</i>Check again'), 'and back once the checks are done');
+  assert.ok(!waiting.screen.innerHTML.includes('aria-label="OK"'), 'no OK key while OK does nothing (#104)');
+  assert.ok((await run()).screen.innerHTML.includes('aria-label="OK"><svg'), 'and back once the checks are done');
   // A step stuck past the total limit: the screen gives its verdict anyway, and says which steps did not answer.
   const capped = await run({hangLaunch: true});
   capped.timers.find(t => t.ms === 100000).f();
@@ -327,7 +327,7 @@ async function openDetails(r) {
   assert.ok(t.screen.innerHTML.includes('3 still on'), 'the voice tile says how many members still run');
   assert.ok(t.screen.innerHTML.includes('Check for update'));
   assert.ok(t.screen.innerHTML.includes('id="pin" hidden'), 'the sign-in code slot is still reserved');
-  assert.ok(/<div class="diag "/.test(t.screen.innerHTML) && t.screen.innerHTML.includes('Down for details'));
+  assert.ok(/<div class="diag "/.test(t.screen.innerHTML) && t.screen.innerHTML.includes('aria-label="Down"><svg') && t.screen.innerHTML.includes('</span>for details'));
   assert.ok(!t.screen.innerHTML.includes('Asking for help'), 'the support line is behind Details');
   assert.ok(!t.timers.some(x => x.ms === 5000 && false) && posted(t).length === 0, 'nothing is changed just by opening the screen');
   assert.ok(!/border-top|borderTop/.test(html.slice(html.indexOf('.tile{'), html.indexOf('.diag{'))), 'no coloured top edge on the rounded tiles');
@@ -396,7 +396,7 @@ async function openDetails(r) {
   key(t, 13); assert.deepEqual(posted(t), [{id: 'launcher', on: true}]);
   // The strip opens the details (checks list and support line); Back returns to the tiles; Back again closes.
   t = await tilesOf();
-  key(t, 40); assert.ok(t.screen.innerHTML.includes('<b style="color:var(--text)">OK</b> Details'));
+  key(t, 40); assert.ok(t.screen.innerHTML.includes('aria-label="OK"><svg') && t.screen.innerHTML.includes('</span></b>Details'));
   key(t, 13); assert.ok(t.screen.innerHTML.includes('Asking for help') && t.screen.innerHTML.includes('<div class="c">'));
   key(t, 10009); assert.ok(/class="tiles"/.test(t.screen.innerHTML) && t.exits.length === 0);
   key(t, 10009); assert.equal(t.exits.length, 1);

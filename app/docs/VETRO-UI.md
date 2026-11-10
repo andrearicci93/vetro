@@ -1,6 +1,6 @@
 # Vetro UI
 
-Vetro UI is everything Vetro draws on the TV, gathered on one page of the dashboard: the **launcher**, **live TV** (Vetro TV Tuner) and the **on-screen displays** (the glass volume bar and the glass number pad). It replaces the separate Launcher and Vetro TV Tuner pages.
+Vetro UI is everything Vetro draws on the TV, gathered on one page of the dashboard: the **launcher**, **live TV** (Vetro TV Tuner) and the **on-screen displays** (the volume bar and the number pad). It replaces the separate Launcher and Vetro TV Tuner pages.
 
 The page has four tabs:
 
@@ -9,7 +9,7 @@ The page has four tabs:
 | **Overview** | One switch per part, its state, what it still needs, and how the parts depend on each other |
 | **Launcher** | What the Home key opens: the Vetro launcher (with its preview, the task manager, HDMI and TizenTube options) or **another app** you installed (the custom launcher). Samsung’s Home switch lives here too |
 | **Live TV** | The tuner: its switch, each of its parts (banner, channel list, TV guide (EPG), number pad, info panel, audio key, hold-to-repeat), the remote buttons and a picture of every screen |
-| **On-screen displays** | The glass volume bar (with its position) and the glass number pad, what they need, and a picture of each that follows the chosen position |
+| **On-screen displays** | The volume bar (with its position) and the number pad, what they need, and a picture of each that follows the chosen position |
 
 Old links still work: opening the former Launcher or Tuner page opens Vetro UI on the matching tab.
 

@@ -29,10 +29,10 @@ function text(x, y, size, alpha, str, anchor) {
 function sheet(x, y, w, h) {
     return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="16" fill="' + SHEET + '" stroke="#fff" stroke-opacity="0.16" stroke-width="2" filter="url(#tpShadow)"/>';
 }
-// One picture: the dark stand-in for the video, the parts, a text for screen readers.
+// One picture: the TV picture (the launcher preview's sunset), the parts, a text for screen readers.
 function screen(label, parts) {
     return '<svg class="tuner-screen" viewBox="0 0 1920 1080" role="img" aria-label="' + esc(label) + '" font-family="' + FONT + '" font-weight="500">' +
-        '<rect width="1920" height="1080" fill="url(#tpVideo)"/>' + parts.join('') + '</svg>';
+        '<use href="#tvScene"/>' + parts.join('') + '</svg>';
 }
 function figure(title, keys, description, picture) {
     return '<figure class="tuner-shot">' + picture + '<figcaption><strong>' + esc(title) + '</strong><span class="tuner-opens">' + keys + '</span><span>' + esc(description) + '</span></figcaption></figure>';
@@ -93,7 +93,9 @@ function clock(minutes) {
     return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
 }
 
-function guide() {
+// scroll: the version for the slideshows, where the channels run upwards one row at a time, as when Down is held. Fourteen rows
+// (the seven samples twice) move by seven inside a window of seven, so the loop has no seam; no focus ring, it would not follow.
+function guide(scroll) {
     var SX = 64, SY = 56, SW = 1792, SH = 968, Pad = 40, AxisY = 268, RowsY = 316, RowH = 88, CellH = 76, LabelX = SX + Pad, CellsX = LabelX + 246 + 14, CellsW = 1440, PX = 8;
     var parts = [sheet(SX, SY, SW, SH),
         text(LabelX, SY + 26, 40, 255, 'Evening Film'),
@@ -103,13 +105,16 @@ function guide() {
     GUIDE_TIMES.forEach(function (t, i) { parts.push(text(CellsX + i * 30 * PX, AxisY + 6, 24, 178, t)); });
     parts.push(fill(CellsX, RowsY - 4, CellsW, 2, 40, 0));
     var nowX = CellsX + 40 * PX, focus = null;
-    GUIDE.forEach(function (row, r) {
-        var y = RowsY + r * RowH, cy = y + (RowH - CellH) / 2, focusRow = r === 1;
+    var rows = scroll ? GUIDE.concat(GUIDE) : GUIDE, top = scroll ? 0 : RowsY, out = parts;
+    if (scroll) out = [];
+    rows.forEach(function (row, i) {
+        var r = i % GUIDE.length, y = top + i * RowH, cy = y + (RowH - CellH) / 2, focusRow = !scroll && r === 1;
+        var parts = out;
         parts.push(text(LabelX, y + 22, 30, focusRow ? 255 : 178, String(8 + r)), text(LabelX + 68, y + 24, 27, focusRow ? 255 : 178, NAMES[8 + r]));
         row.forEach(function (p, c) {
             var start = Math.max(0, p[0]), end = Math.min(180, p[0] + p[1]);
             if (end <= start) return;
-            var x = CellsX + start * PX, w = (end - start) * PX - 4, onAir = p[0] <= 40 && 40 < p[0] + p[1], isFocus = r === 1 && c === 0;
+            var x = CellsX + start * PX, w = (end - start) * PX - 4, onAir = p[0] <= 40 && 40 < p[0] + p[1], isFocus = !scroll && r === 1 && c === 0;
             parts.push(fill(x, cy, w, CellH, isFocus ? 66 : onAir ? 66 : 51, 12));
             if (isFocus) focus = [x, cy, w];
             if (w >= 64) {
@@ -118,7 +123,8 @@ function guide() {
             }
         });
     });
-    parts.push(ring(focus[0], focus[1], focus[2], CellH, 12));
+    if (scroll) parts.push('<svg x="0" y="' + RowsY + '" width="1920" height="' + (GUIDE.length * RowH) + '" overflow="hidden"><g class="tg-scroll">' + out.join('') + '</g></svg>');
+    else parts.push(ring(focus[0], focus[1], focus[2], CellH, 12));
     parts.push(fill(nowX - 1, AxisY + 30, 3, RowsY - AxisY - 32, 255, 1, LIGHT), fill(nowX, RowsY, 1, 7 * RowH - 6, 45, 0));
     parts.push(text(LabelX, SY + SH - 52, 24, 178, 'OK  Watch        Left / Right  Time        Up / Down  Channel        CH + / -  Page        Back  Close'));
     return screen('The TV guide: the programme in focus with its times and description, a time axis, and seven channels with their programmes as boxes.', parts);
@@ -146,54 +152,84 @@ function audioToast() {
 var DEFS = '<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>' +
     '<filter id="tpShadow" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#000" flood-opacity="0.45"/></filter>' +
     '<linearGradient id="tpVideo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c2b45"/><stop offset="0.55" stop-color="#101a2e"/><stop offset="1" stop-color="#0a1120"/></linearGradient>' +
+    // The TV picture behind every preview: the same sunset as the launcher's preview (.lp-scene in the dashboard), drawn once
+    // here and placed with <use>, so a picture inside a hidden slide still finds it.
+    '<linearGradient id="tvSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#101c3f"/><stop offset=".45" stop-color="#553b73"/><stop offset=".72" stop-color="#d9707a"/><stop offset="1" stop-color="#f6b26b"/></linearGradient><radialGradient id="tvSun" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff2cf" stop-opacity=".95"/><stop offset=".35" stop-color="#ffc58a" stop-opacity=".5"/><stop offset="1" stop-color="#ffc58a" stop-opacity="0"/></radialGradient><linearGradient id="tvWater" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0a26c"/><stop offset="1" stop-color="#1a2547"/></linearGradient>' +
+    '<g id="tvScene"><rect width="1920" height="1080" fill="url(#tvSky)"/><circle cx="1330" cy="640" r="420" fill="url(#tvSun)"/><circle cx="1330" cy="640" r="64" fill="#fff0c9"/><path d="M0 690 220 520 420 640 640 470 880 650 1080 560 1290 690 1500 540 1740 660 1920 590V760H0z" fill="#42375f"/><path d="M0 760 180 640 400 740 640 620 900 760 1160 650 1420 770 1680 670 1920 740V800H0z" fill="#26274a"/><rect y="780" width="1920" height="300" fill="url(#tvWater)"/><rect x="1250" y="790" width="160" height="6" rx="3" fill="#ffe3b3" opacity=".7"/><rect x="1280" y="820" width="100" height="5" rx="2" fill="#ffe3b3" opacity=".45"/><rect x="1300" y="850" width="60" height="4" rx="2" fill="#ffe3b3" opacity=".3"/><path d="M0 900 0 1080H1920V920C1700 880 1500 930 1250 900 900 860 600 930 0 900z" fill="#0d1530" opacity=".55"/></g>' +
     '</defs></svg>';
 
 // ---- the remote ----
+// A key of the Smart Remote is drawn as its picture (app/design-system/remote); keys it does not have stay text keycaps.
+var remoteKey = require('./remote-icons.js').key;
+var KEY_PICTURES = {'CH +': 'rocker-ch-up', 'CH \u2212': 'rocker-ch-down', 'OK': 'pad-ok', '\u25b2': 'pad-up', '\u25bc': 'pad-down', '\u25c0': 'pad-left', '\u25b6': 'pad-right',
+    'Back': 'back', 'Home': 'home', 'Power': 'power', '123': 'color-123'};
+var KEY_NAMES = {'\u25b2': 'Up', '\u25bc': 'Down', '\u25c0': 'Left', '\u25b6': 'Right'};
 function caps() {
-    return Array.prototype.slice.call(arguments).map(function (k) { return '<kbd class="keycap">' + esc(k) + '</kbd>'; }).join(' ');
+    return Array.prototype.slice.call(arguments).map(function (k) {
+        return KEY_PICTURES[k] ? remoteKey(KEY_PICTURES[k], KEY_NAMES[k] || k) : '<kbd class="keycap">' + esc(k) + '</kbd>';
+    }).join(' ').replace(remoteKey('rocker-ch-up', 'CH +') + ' ' + remoteKey('rocker-ch-down', 'CH \u2212'), remoteKey('rocker-ch-both', 'CH + or CH \u2212'));
 }
 var KEYS = [
-    [caps('CH +', 'CH −'), 'Next and previous channel. The banner shows the channel and the programme on air.'],
-    [caps('OK'), 'Opens the channel list. In the list it tunes the selected channel; on the number pad it presses the selected key.'],
-    [caps('▲'), 'Opens the TV guide when nothing else is open. In a list, the guide or the pad it moves up. Hold it to scroll faster.'],
-    [caps('◀'), 'Opens the number pad. There it moves left. In the guide it moves to the previous programme.'],
-    [caps('▶'), 'Switches the audio track and says which one. In the guide it moves to the next programme.'],
-    [caps('▼'), 'Moves down in the list, the pad and the guide.'],
-    [caps('0–9'), 'On remotes that have number keys: type a channel. It tunes after two seconds, or at once with OK.'],
-    [caps('Guide'), 'On remotes that have a Guide or EPG key: opens and closes the TV guide.'],
-    [caps('Info'), 'On remotes that have an Info key: opens the info panel with the programme, its description, the clock and the audio track. Any key closes it; Back and Info only close it.'],
-    [caps('Back'), 'Closes the list, the pad, the guide or the info panel. Pressed again, it puts the tuner away; CH +, CH − or Info then bring it back.'],
-    [caps('Home', 'Menu', 'Power'), 'The tuner steps aside and the TV handles the key as usual.'],
-    [caps('123'), 'On the Smart Control this key belongs to the TV’s own 123 pad (or to the launcher’s, when that replaces it), so the tuner’s number pad is on ◀.']
+    [caps('CH +', 'CH \u2212'), 'Next and previous channel.'],
+    [caps('OK'), 'Channel list. In the list, tunes.'],
+    [caps('\u25b2'), 'TV guide. Hold to scroll faster.'],
+    [caps('\u25c0'), 'Next audio track. In the guide, earlier.'],
+    [caps('\u25b6'), 'Number pad. In the guide, later.']
 ];
 
 function keysMarkup() {
     return '<ul class="tuner-keys">' + KEYS.map(function (k) { return '<li><span class="tuner-keycaps">' + k[0] + '</span><span>' + esc(k[1]) + '</span></li>'; }).join('') + '</ul>';
 }
 
+// The tuner's screens for the slideshow at the top of the Live TV tab (the dashboard draws and turns them).
+function slides() {
+    return [
+        {title: 'Channel banner', keys: caps('CH +', 'CH \u2212'), text: 'Number, name and what’s on.', svg: banner()},
+        {title: 'TV guide', keys: caps('\u25b2'), text: 'Seven channels, three hours.', svg: guide(true)},
+        {title: 'Channel list', keys: caps('OK'), text: 'Every channel, in order.', svg: channelList()},
+        {title: 'Number pad', keys: caps('\u25b6'), text: 'See the channel before you tune.', svg: numberPad()},
+        {title: 'Info panel', keys: caps('Info'), text: 'Programme, description, clock and audio.', svg: info()},
+        {title: 'Audio', keys: caps('\u25c0'), text: 'Next audio track.', svg: audioToast()}
+    ];
+}
+
 function previewsMarkup() {
     return DEFS + '<div class="tuner-shots">' + [
         figure('Channel banner', caps('CH +', 'CH −'), 'Appears on every channel change: number, name, the programme on air, when it ends and how far it has gone.', banner()),
         figure('Channel list', caps('OK'), 'All channels in order, eleven at a time. Hold up or down to run through them; OK tunes.', channelList()),
-        figure('Number pad', caps('◀'), 'Type a channel number and see where it goes before you tune.', numberPad()),
+        figure('Number pad', caps('▶'), 'Type a channel number and see where it goes before you tune.', numberPad()),
         figure('TV guide', caps('▲'), 'Seven channels over three hours. Any channel, also on other frequencies, with its description when you stop on a programme.', guide()),
         figure('Info panel', caps('Info'), 'Everything about what is on: programme, times, description, clock and date, the tuner and the audio track. It closes by itself after ten seconds.', info()),
-        figure('Audio', caps('▶'), 'Switches to the next audio track and names it for two seconds.', audioToast())
+        figure('Audio', caps('◀'), 'Switches to the next audio track and names it for two seconds.', audioToast())
     ].join('') + '</div>';
 }
 
 // CSS for the page. Tokens come from the dashboard; no coloured top borders on rounded cards (the screens are plain frames).
 var CSS = [
+    // The slideshows (Live TV and the Overview): one picture at a time, fading in; dots and a pause button under it.
+    '.tshow{display:grid;gap:var(--s2)}.tshow .tshow-slide{margin:0;display:none}.tshow .tshow-slide.is-on{display:grid;gap:var(--s2)}.tshow .tshow-slide.is-enter{animation:tshowIn .6s ease}',
+    '@keyframes tshowIn{from{opacity:0}to{opacity:1}}',
+    '.tshow-bar{display:flex;align-items:center;gap:var(--s1);flex-wrap:wrap}',
+    '.tshow-bar button{min-height:0;padding:0;border:0;background:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:var(--muted)}',
+    '.tshow-bar button:focus-visible{outline:2px solid var(--vetro-focus,var(--accent));outline-offset:2px}',
+    '.tshow-dot::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.45}.tshow-dot[aria-current="true"]{color:var(--accent)}.tshow-dot[aria-current="true"]::before{opacity:1;width:20px;border-radius:4px}',
+    '.tshow-pause svg{width:14px;height:14px;fill:currentColor}',
+    // Inside the pictures: the guide's channels run up a row at a time (the launcher's rise is in the dashboard, .lp-rise).
+    '.tg-scroll{animation:tgScroll 8s infinite}',
+    '@keyframes tgScroll{0%,8%{transform:translateY(0)}14%,22%{transform:translateY(-88px)}28%,36%{transform:translateY(-176px)}42%,50%{transform:translateY(-264px)}56%,64%{transform:translateY(-352px)}70%,78%{transform:translateY(-440px)}84%,92%{transform:translateY(-528px)}98%,100%{transform:translateY(-616px)}}',
+    '@media (prefers-reduced-motion:reduce){.tshow .tshow-slide.is-enter,.tg-scroll{animation:none}}',
     '.tuner-keys{list-style:none;margin:var(--s3) 0 0;padding:0;display:grid;gap:var(--s2)}',
     '.tuner-keys li{display:grid;grid-template-columns:minmax(7.5rem,10rem) minmax(0,1fr);gap:var(--s3);align-items:start;padding:var(--s2) 0;border-bottom:1px solid var(--border)}',
     '.tuner-keys li:last-child{border-bottom:0}',
     '.tuner-keys li>span:last-child{font-size:var(--fs-s);line-height:1.5;color:var(--muted);max-width:var(--vetro-prose-measure)}',
-    '.tuner-keycaps{display:flex;flex-wrap:wrap;gap:var(--s1)}',
+    '.tuner-keycaps{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1)}',
+    // Pictures of the remote's keys (remote-icons.js): the text colour, the lit part in the page accent.
+    '.rkey{display:inline-flex;align-items:center;color:var(--text);--remote-accent:var(--accent)}.rkey svg{height:2.5rem;width:auto;display:block}.tuner-keycaps .rkey svg{height:3rem}.tuner-keycaps .rkey[class*=rkey-rocker] svg,.tuner-opens .rkey[class*=rkey-rocker] svg{height:3.25rem}.tuner-opens{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1)}',
     '.keycap{display:inline-flex;align-items:center;justify-content:center;min-width:2.25rem;min-height:2rem;padding:0 var(--s2);border:1px solid var(--vetro-control-border);border-radius:8px;background:var(--raised);color:var(--text);font:600 var(--fs-s) var(--font-mono)}',
     '.tuner-shots{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--s4);margin-top:var(--s3)}',
     '@supports(grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))){.tuner-shots{grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))}}',
     '.tuner-shot{margin:0;display:grid;gap:var(--s2);align-content:start}',
-    '.tuner-screen{display:block;width:100%;height:auto;aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--r-surface);background:#0a1120}',
+    '.tuner-screen{display:block;width:100%;height:auto;aspect-ratio:16/9;border:1px solid var(--border);border-radius:var(--r);background:#0a1120}',
     '.tuner-shot figcaption{display:grid;gap:var(--s1);font-size:var(--fs-s);line-height:1.5;color:var(--muted)}',
     '.tuner-shot figcaption strong{color:var(--text);font-size:1rem;font-weight:600}',
     '.tuner-opens{display:flex;flex-wrap:wrap;gap:var(--s1);align-items:center}',
@@ -201,4 +237,4 @@ var CSS = [
     '@media(max-width:620px){.tuner-keys li{grid-template-columns:minmax(0,1fr);gap:var(--s1)}}'
 ].join('');
 
-module.exports = {keysMarkup: keysMarkup, previewsMarkup: previewsMarkup, css: CSS, KEYS: KEYS};
+module.exports = {keysMarkup: keysMarkup, previewsMarkup: previewsMarkup, slides: slides, guide: guide, defs: DEFS, css: CSS, KEYS: KEYS};

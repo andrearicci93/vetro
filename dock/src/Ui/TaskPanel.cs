@@ -36,7 +36,12 @@ namespace Launcher.Ui
         private readonly Dictionary<string, Row> _byId = new Dictionary<string, Row>(StringComparer.Ordinal);
 
         private IntPtr _clip, _listClip, _shadow, _bg, _divider, _glow, _plate, _ring;
-        private IntPtr _title, _sub, _sort, _footer, _empty;
+        private IntPtr _title, _sub, _sort, _empty;
+        // The footer: pictures of the remote's keys (res/key_*.png, the dashboard's set) and short words, in one centred line.
+        private const int FootKey = 34, FootInner = 8, FootGroup = 40;
+        private IntPtr[] _foot;
+        private bool[] _footKey;
+        private int[] _footGap;   // space after each part
         private int _alpha = -1, _glowAlpha = -1, _glowRgb = -1;
         private string _subText = "", _sortText = "";
         private bool _visible, _loaded;
@@ -72,12 +77,55 @@ namespace Launcher.Ui
             Efl.evas_object_text_text_set(_title, "Running apps");
             _sub = Text(Font, 22);
             _sort = Text(Font, 24);
-            _footer = Text(Font, 21);
-            Efl.evas_object_text_text_set(_footer, "OK  open        Hold OK  close        ‹ ›  sort        Up / Back  return");
+            BuildFooter();
             _empty = Text(Font, 26);
             Efl.evas_object_text_text_set(_empty, "Looking for running apps…");
             Efl.evas_object_clip_set(_empty, _listClip);
             SetVisible(false);
+        }
+
+        // OK open · Hold OK close · Left Right sort · Up Back return
+        private void BuildFooter()
+        {
+            var parts = new List<IntPtr>(); var keys = new List<bool>(); var gaps = new List<int>();
+            Action<string, bool, int> add = delegate (string what, bool key, int gap)
+            {
+                parts.Add(key ? FootIcon(what) : FootText(what)); keys.Add(key); gaps.Add(gap);
+            };
+            add("key_ok", true, FootInner); add("open", false, FootGroup);
+            add("Hold", false, FootInner); add("key_ok", true, FootInner); add("close", false, FootGroup);
+            add("key_left", true, 2); add("key_right", true, FootInner); add("sort", false, FootGroup);
+            add("key_up", true, 2); add("key_back", true, FootInner); add("return", false, 0);
+            _foot = parts.ToArray(); _footKey = keys.ToArray(); _footGap = gaps.ToArray();
+        }
+
+        private IntPtr FootText(string word)
+        {
+            IntPtr t = Text(Font, 21);
+            Efl.evas_object_text_text_set(t, word);
+            return t;
+        }
+
+        private IntPtr FootIcon(string name)
+        {
+            IntPtr img = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
+            if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) _log("tasks: asset missing: " + name);
+            Efl.evas_object_image_filled_set(img, true);
+            Efl.evas_object_image_smooth_scale_set(img, true);
+            Efl.evas_object_resize(img, FootKey, FootKey);
+            Efl.evas_object_clip_set(img, _clip);
+            Efl.evas_object_color_set(img, 0, 0, 0, 0);
+            Efl.evas_object_show(img);
+            return img;
+        }
+
+        /// <summary>Width of the footer line: keys, words and the spaces between them.</summary>
+        private int FooterWidth()
+        {
+            int w = 0;
+            for (int i = 0; i < _foot.Length; i++) w += (_footKey[i] ? FootKey : Efl.evas_object_text_horiz_advance_get(_foot[i])) + _footGap[i];
+            return w;
         }
 
         private IntPtr Slice(string name, int border, double scale)
@@ -287,8 +335,14 @@ namespace Launcher.Ui
             Box div; div.X = _layout.PanelX + TaskLayout.PadX; div.W = TaskLayout.PanelW - 2 * TaskLayout.PadX; div.H = 1;
             div.Y = _layout.ListTop(n, slide) - 6;
             Place(_divider, div);
-            int footW = Efl.evas_object_text_horiz_advance_get(_footer);
-            Efl.evas_object_move(_footer, _layout.PanelX + (TaskLayout.PanelW - footW) / 2, _layout.FooterTop(n, slide));
+            int fx = _layout.PanelX + (TaskLayout.PanelW - FooterWidth()) / 2, fmid = _layout.FooterTop(n, slide) + FootKey / 2 - 4;
+            for (int i = 0; i < _foot.Length; i++)
+            {
+                int w = _footKey[i] ? FootKey : Efl.evas_object_text_horiz_advance_get(_foot[i]);
+                int h = _footKey[i] ? FootKey : Efl.evas_object_text_vert_advance_get(_foot[i]);
+                Efl.evas_object_move(_foot[i], fx, fmid - h / 2);
+                fx += w + _footGap[i];
+            }
 
             if (a != _alpha)
             {
@@ -299,7 +353,7 @@ namespace Launcher.Ui
                 TintText(_title, a);
                 TintText(_sub, a * 6 / 10);
                 TintText(_sort, a * 9 / 10);
-                TintText(_footer, a * 55 / 100);
+                for (int i = 0; i < _foot.Length; i++) { if (_footKey[i]) Tint(_foot[i], a * 85 / 100); else TintText(_foot[i], a * 55 / 100); }
                 TintText(_empty, n == 0 ? a * 6 / 10 : 0);
                 foreach (Row r in _rows) r.Alpha = -1;
             }
