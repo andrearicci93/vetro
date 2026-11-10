@@ -24,7 +24,7 @@
 - [Turn off ACR on a Samsung TV: menu steps and limits](https://andrearicci93.github.io/vetro/privacy/turn-off-acr-samsung-tv/): Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.
 - [Samsung ACR Texas settlement: consent rules explained](https://andrearicci93.github.io/vetro/privacy/samsung-acr-texas-settlement/): Texas sued five TV makers over ACR in December 2025, won then lost a restraining order against Samsung, and settled in February 2026. Dates, terms and limits.
 - [What data does a Samsung TV collect? A plain inventory](https://andrearicci93.github.io/vetro/privacy/what-data-samsung-tv-collects/): What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.
-- [Block Samsung TV telemetry with Pi-hole or AdGuard](https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/): Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. No list blocks all.
+- [Block Samsung TV telemetry with Pi-hole or AdGuard](https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/): Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and breakage risks.
 - [Turn off Bixby, Alexa and the mic on a Samsung TV](https://andrearicci93.github.io/vetro/privacy/turn-off-bixby-alexa-samsung-tv/): How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does.
 - [Samsung TV ads opt-out: turn off interest-based ads](https://andrearicci93.github.io/vetro/privacy/samsung-ads-opt-out/): Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.
 
@@ -52,7 +52,7 @@
 
 ## Comparisons
 
-- [Samsung TV launcher tools compared: Vetro, AeroTizen, more](https://andrearicci93.github.io/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/): Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which. With limits.
+- [Vetro vs AeroTizen, free-my-tv and TizenBrew](https://andrearicci93.github.io/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/): Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which.
 - [Rooted Samsung TV vs streaming box: which one to choose](https://andrearicci93.github.io/vetro/compare/rooted-samsung-tv-vs-streaming-box/): A debloated, rooted Samsung TV or a Fire TV, Google TV or Apple TV box? Compared on ads, privacy, updates and effort. Neither route removes every ad.
 
 ## Reference

@@ -24,7 +24,7 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwb1v94c">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwb3d4uj">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Samsung TV remote buttons as Home Assistant events","description":"Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv remote button home assistant, home assistant remote button trigger, samsung remote mqtt, samsung tv remote events","articleSection":"Remote, apps and smart home","mainEntityOfPage":"https://andrearicci93.github.io/vetro/control/samsung-remote-keys-home-assistant/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Remote, apps and smart home","item":"https://andrearicci93.github.io/vetro/control/"},{"@type":"ListItem","position":3,"name":"Samsung TV remote buttons as Home Assistant events","item":"https://andrearicci93.github.io/vetro/control/samsung-remote-keys-home-assistant/"}]}</script>
 </head>
@@ -55,10 +55,10 @@
 <ol>
 <li>Set up a broker and connect both Home Assistant and Vetro to it, as described in <a href="/vetro/control/home-assistant-samsung-tv/">Samsung TV and Home Assistant: three ways</a>.</li>
 <li>Turn on physical input interception. The guide calls this part of the dashboard Remote; the 0.5.0 dashboard has a Remapper tab, and the MQTT page is now named Home Assistant.</li>
-<li>Create a Remapper rule for the button with an MQTT action.</li>
+<li>Open Home Assistant → Rules. Select Physical key as the trigger, enter the key code found in Remapper, choose Publish MQTT message, enter a destination topic and message, and select Add rule.</li>
 <li>In Home Assistant, create an automation with an MQTT trigger on the same topic.</li>
 </ol>
-<p>The guide does not name a topic for outgoing key presses, so use the topic you enter in the rule. The only topic it names is <code>vetro/command/open-app</code>, an incoming command. It also says rules that connect an input topic directly to an output topic are rejected to prevent loops, and recommends separate topics for commands and state.</p>
+<p>The guide does not name a topic for outgoing key presses, so use the topic you enter in the rule. The guide uses <code>vetro/command/open-app</code> as an incoming-command example; it also documents telemetry and availability topics, but specifies no standard outgoing key-press topic. It also says rules that connect an input topic directly to an output topic are rejected to prevent loops, and recommends separate topics for commands and state.</p>
 <p>On the Home Assistant side, the <a href="https://www.home-assistant.io/docs/automation/trigger/" rel="noopener" target="_blank">automation trigger documentation</a> includes an MQTT trigger with a <code>topic</code>:</p>
 <pre><code class="language-yaml">triggers:
   - trigger: mqtt
@@ -79,7 +79,7 @@
 <h2 id="what-are-the-risks">What are the risks?<a class="anchor" href="#what-are-the-risks" aria-label="Link to this section">#</a></h2>
 <p>Read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a> before you start; the <a href="/vetro/root/install-vetro-apps2samsung/">Apps2Samsung install guide</a> shows the install. The dashboard runs over plain HTTP and the MQTT template uses TCP without TLS, so keep the TV and broker on a trusted LAN. Since 0.5.0 the dashboard uses a pairing code, but pairing is automatic and the dashboard stays open until the Vetro app on the TV has been seen (<a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a>, <a href="/vetro/reference/vetro-security-model/">security model</a>). Every switch is listed in <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a>.</p>
 <h2 id="can-i-do-this-without-root">Can I do this without root?<a class="anchor" href="#can-i-do-this-without-root" aria-label="Link to this section">#</a></h2>
-<p>The only workaround in the community thread above is hardware, an IR receiver with an ESP board next to the remote. It is not a Samsung feature and we have not tested it.</p>
+<p>The linked LG discussion suggests an ESP board with an IR receiver. That can only detect buttons that actually transmit infrared; it does not establish support for Samsung Smart Remote Bluetooth button presses. We have not tested this workaround.</p>
 
 
 </div>
