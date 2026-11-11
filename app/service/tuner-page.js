@@ -95,6 +95,23 @@ function clock(minutes) {
 
 // scroll: the version for the slideshows, where the channels run upwards one row at a time, as when Down is held. Fourteen rows
 // (the seven samples twice) move by seven inside a window of seven, so the loop has no seam; no focus ring, it would not follow.
+// The guide's footer as the tuner draws it (GuideScene.Footer): the remote's keys as pictures (remote-icons.js) and a word, 34 px keys,
+// 2 px between two keys, 8 px key to word, 56 px between groups; word widths are estimated at 12 px a letter, like the tuner does.
+var FOOTER = [[['pad-ok'], 'Watch'], [['pad-left', 'pad-right'], 'Time'], [['pad-up', 'pad-down'], 'Channel'], [['rocker-ch-both'], 'Page'], [['back'], 'Close']];
+function guideFooter(x, top) {
+    var icons = require('./remote-icons.js').icons, out = '';
+    FOOTER.forEach(function (g) {
+        g[0].forEach(function (name, i) {
+            var w = name === 'rocker-ch-both' ? Math.floor(34 * 96 / 62) : 34;
+            out += icons[name].replace('<svg ', '<svg x="' + x + '" y="' + (top - 2) + '" width="' + w + '" height="34" style="color:#fff;opacity:.85" ');
+            x += w + (i < g[0].length - 1 ? 2 : 8);
+        });
+        out += text(x, top, 24, 178, g[1]);
+        x += g[1].length * 12 + 56;
+    });
+    return out;
+}
+
 function guide(scroll) {
     var SX = 64, SY = 56, SW = 1792, SH = 968, Pad = 40, AxisY = 268, RowsY = 316, RowH = 88, CellH = 76, LabelX = SX + Pad, CellsX = LabelX + 246 + 14, CellsW = 1440, PX = 8;
     var parts = [sheet(SX, SY, SW, SH),
@@ -126,7 +143,7 @@ function guide(scroll) {
     if (scroll) parts.push('<svg x="0" y="' + RowsY + '" width="1920" height="' + (GUIDE.length * RowH) + '" overflow="hidden"><g class="tg-scroll">' + out.join('') + '</g></svg>');
     else parts.push(ring(focus[0], focus[1], focus[2], CellH, 12));
     parts.push(fill(nowX - 1, AxisY + 30, 3, RowsY - AxisY - 32, 255, 1, LIGHT), fill(nowX, RowsY, 1, 7 * RowH - 6, 45, 0));
-    parts.push(text(LabelX, SY + SH - 52, 24, 178, 'OK  Watch        Left / Right  Time        Up / Down  Channel        CH + / -  Page        Back  Close'));
+    parts.push(guideFooter(LabelX, SY + SH - 52));
     return screen('The TV guide: the programme in focus with its times and description, a time axis, and seven channels with their programmes as boxes.', parts);
 }
 

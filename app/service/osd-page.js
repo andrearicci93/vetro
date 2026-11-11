@@ -38,21 +38,30 @@ function osdSpeaker(x, y) {
         '<path d="M6 15h7l9-8v26l-9-8H6z" fill="#fff"/><path d="M28 13c3 4 3 10 0 14M32 9c5 6 5 16 0 22"/></g>';
 }
 
-// The number pad: one row at the bottom with the digits and Done, the number typed so far in a chip above it.
+// The number pad, as dock/src/Ui/NumberPad.cs lays it out (1100 x 200 window, 64 px above the bottom edge): a capsule 96 px tall with the digits
+// 1 to 0 and the dash, 72 px each, then backspace and the palette that leads to the colour keys (its four dots in the colour keys' colours, in
+// their order: red, green, yellow, blue, along the arc from the lower left over the top); the number typed so far at the top left and the Done chip at the top right. Glyphs: Phosphor (MIT).
 function osdPadPreview() {
-    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Done'], cw = 80, done = 140, bw = 10 * cw + done + 24;
-    var x = (1920 - bw) / 2, top = 1080 - 64 - 200, y = top + 92, parts = [];
-    parts.push('<rect x="' + ((1920 - 180) / 2) + '" y="' + (top + 28) + '" width="180" height="52" rx="26" fill="#243448" fill-opacity=".92" stroke="#fff" stroke-opacity=".18" stroke-width="2"/>');
-    parts.push('<text x="960" y="' + (top + 64) + '" font-size="32" fill="#fff" text-anchor="middle">12</text>');
-    parts.push('<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="96" rx="48" fill="#243448" fill-opacity=".92" stroke="#fff" stroke-opacity=".18" stroke-width="2"/>');
-    var cx = x + 12;
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', 'bs', 'palette'], gaps = {bs: 24}, cw = 72, bw = 48 + 11 * cw + (24 + cw) + cw;
+    var bx = (1920 - bw) / 2, win = 1080 - 200 - 64, by = win + 92, parts = [];
+    var BS = 'M216,40H68.53a16.08,16.08,0,0,0-13.72,7.77L9.14,123.88a8,8,0,0,0,0,8.24l45.67,76.11A16.08,16.08,0,0,0,68.53,216H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM61.67,204.12,68.53,200h0ZM216,200H68.53l-43.2-72,43.2-72H216ZM106.34,146.34,124.69,128l-18.35-18.34a8,8,0,0,1,11.32-11.32L136,116.69l18.34-18.35a8,8,0,0,1,11.32,11.32L147.31,128l18.35,18.34a8,8,0,0,1-11.32,11.32L136,139.31l-18.34,18.35a8,8,0,0,1-11.32-11.32Z', PAL = 'M200.77,53.89A103.27,103.27,0,0,0,128,24h-1.07A104,104,0,0,0,24,128c0,43,26.58,79.06,69.36,94.17A32,32,0,0,0,136,192a16,16,0,0,1,16-16h46.21a31.81,31.81,0,0,0,31.2-24.88,104.43,104.43,0,0,0,2.59-24A103.28,103.28,0,0,0,200.77,53.89Zm13,93.71A15.89,15.89,0,0,1,198.21,160H152a32,32,0,0,0-32,32,16,16,0,0,1-21.31,15.07C62.49,194.3,40,164,40,128a88,88,0,0,1,87.09-88h.9a88.35,88.35,0,0,1,88,87.25A88.86,88.86,0,0,1,213.81,147.6Z';
+    var DOTS = [[84, 156, '#E5484D'], [84, 100, '#30A46C'], [128, 76, '#F2B01E'], [172, 100, '#3E7BFA']];
+    parts.push('<rect x="' + bx + '" y="' + by + '" width="' + bw + '" height="96" rx="48" fill="#243448" fill-opacity=".92" stroke="#fff" stroke-opacity=".18" stroke-width="2"/>');
+    parts.push('<text x="' + (bx + 12) + '" y="' + (win + 68) + '" font-size="68" fill="#fff">12</text>');
+    parts.push('<rect x="' + (bx + bw - 112) + '" y="' + (win + 28) + '" width="112" height="52" rx="26" fill="#243448" fill-opacity=".92" stroke="#fff" stroke-opacity=".18" stroke-width="2"/>');
+    parts.push('<text x="' + (bx + bw - 56) + '" y="' + (win + 63) + '" font-size="26" fill="#fff" text-anchor="middle">Done</text>');
+    var cx = bx + 24;
     for (var i = 0; i < keys.length; i++) {
-        var kw = keys[i] === 'Done' ? done : cw, focus = i === 2;
-        if (focus) parts.push('<rect x="' + (cx + 4) + '" y="' + (y + 12) + '" width="' + (kw - 8) + '" height="72" rx="36" fill="#fff" fill-opacity=".2" stroke="#e4f2ff" stroke-width="3"/>');
-        parts.push('<text x="' + (cx + kw / 2) + '" y="' + (y + 60) + '" font-size="' + (keys[i] === 'Done' ? 28 : 36) + '" fill="#fff" text-anchor="middle">' + keys[i] + '</text>');
-        cx += kw;
+        var k = keys[i], mid, ink = i === 2 ? '#243448' : '#fff';
+        cx += gaps[k] || 0; mid = cx + cw / 2;
+        if (i === 2) parts.push('<rect x="' + cx + '" y="' + (win + 104) + '" width="' + cw + '" height="72" rx="36" fill="#e4f2ff" fill-opacity=".96"/>');
+        if (k === 'bs' || k === 'palette') {
+            parts.push('<svg x="' + (mid - 20) + '" y="' + (win + 120) + '" width="40" height="40" viewBox="0 0 256 256"><path d="' + (k === 'bs' ? BS : PAL) + '" fill="#fff" fill-opacity=".92"/>' +
+                (k === 'palette' ? DOTS.map(function (d) { return '<circle cx="' + d[0] + '" cy="' + d[1] + '" r="14" fill="' + d[2] + '"/>'; }).join('') : '') + '</svg>');
+        } else parts.push('<text x="' + mid + '" y="' + (win + 152) + '" font-size="36" fill="' + ink + '" text-anchor="middle">' + k + '</text>');
+        cx += cw;
     }
-    return osdSvg('The number pad at the bottom of the screen: the digits 1 to 0 and Done in one row, 12 typed so far, 3 selected.', parts);
+    return osdSvg('The number pad at the bottom of the screen: the digits 1 to 0, a dash, backspace and a palette key with four coloured dots in one row, Done above on the right, 12 typed so far, 3 selected.', parts);
 }
 
 // The launcher's task manager (Down from the apps row): the panel stands where the bar ends, 880 px wide, a 70 px header,

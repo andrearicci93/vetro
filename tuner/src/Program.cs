@@ -38,6 +38,10 @@ namespace Tuner
         private static double BannerSeconds = 4.0;
 
         private static readonly TvsClient Tvs = new TvsClient();
+        private static readonly LogoSource Logos = new LogoSource();   // the TV's own channel logos; read once after the list, nothing is downloaded
+        /// <summary>True when there are logos to show and the "logos" switch is on: the views then keep room for one in every row.</summary>
+        private static bool LogosOn { get { return Logos.Available && _features.On("logos"); } }
+        private static string LogoOf(Channel c) { return LogosOn ? Logos.PathFor(c) : null; }
         private static ChannelList _list;            // null until the worker has read it
         private static Channel _shown;                // the channel the screen (and, soon, the daemon) is on
         private static Channel _previous;             // the one watched before it: Back goes there, as on Samsung's own tuner (and back again on the next Back)
@@ -247,8 +251,13 @@ namespace Tuner
                 if (cur != null) Ui(() => { _shown = cur; if (_active) ShowBanner(cur); RequestProgram(); });
                 List<Channel> all = Tvs.ReadChannels(out status);
                 Log("tvs: " + status);
+                string logoStatus;
+                LogoIndex logoIndex = Logos.Read(all, out logoStatus);
+                Log(logoStatus);
                 Ui(() =>
                 {
+                    Logos.Install(logoIndex);
+                    if (_active && _banner.Visible && _shown != null) _banner.SetLogo(LogoOf(_shown), LogosOn);   // the banner that came up before the logos were read
                     _list = new ChannelList(all);
                     if (cur != null) _list.SetCurrent(cur.Id);
                     if (_startMajor > 0)
@@ -477,7 +486,7 @@ namespace Tuner
             GuideEvent fe = _grid.FocusEvent;
             string desc = "";
             if (fe != null) Details.TryGetValue(DetailKey(_grid.FocusChannel, fe), out desc);
-            _guideView.Draw(GuideScene.Build(_grid, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), _utcOffset, desc ?? ""));
+            _guideView.Draw(GuideScene.Build(_grid, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), _utcOffset, desc ?? "", LogosOn ? (Func<Channel, string>)LogoOf : null));
         }
 
         /// <summary>Starts a worker pass over the channels on screen and the pages around: each one not read yet (or stale) is read and the guide redrawn.</summary>
@@ -645,7 +654,7 @@ namespace Tuner
             if (c == null) { ShowToast("Channel not known yet"); return; }
             CloseList(); ClosePad(); CloseGuide(); _banner.Hide(); _toast.Hide();
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            _info = new InfoData { Number = c.Major.ToString(), Name = c.Name, Clock = ProgramClock.Clock(now, _utcOffset), Date = InfoText.Date(now, _utcOffset) };
+            _info = new InfoData { Number = c.Major.ToString(), Name = c.Name, Clock = ProgramClock.Clock(now, _utcOffset), Date = InfoText.Date(now, _utcOffset), Logo = LogoOf(c), LogoRoom = LogosOn };
             ApplyInfoProgram(c, Store.Current(c.Id, now), now);
             _infoView.Draw(_info);
             Restart(ref _infoTimer, InfoSeconds, OnInfoTimeout);
@@ -865,7 +874,7 @@ namespace Tuner
 
         private static void DrawList()
         {
-            _listView.Draw(_list, _sel);
+            _listView.Draw(_list, _sel, LogoOf, LogosOn);
             Restart(ref _listTimer, ListSeconds, OnListTimeout);
         }
 
@@ -884,7 +893,7 @@ namespace Tuner
         private static void DrawPad()
         {
             Channel c = Entry.Text.Length > 0 && _list != null ? _list.ByNumber(Entry.Value) : null;
-            _padView.Draw(Entry, c != null ? c.Name : (Entry.Text.Length > 0 ? "No such channel" : ""));
+            _padView.Draw(Entry, c != null ? c.Name : (Entry.Text.Length > 0 ? "No such channel" : ""), c != null ? LogoOf(c) : null);
             Restart(ref _padTimer, PadSeconds, OnPadTimeout);
         }
 
@@ -944,7 +953,7 @@ namespace Tuner
         private static void ShowBanner(Channel c, bool readProgram = true)
         {
             if (c == null || !_features.On("banner") || _listView.Visible || _padView.Visible || GuideOpen || InfoOpen) return;
-            _banner.ShowChannel(c.Major.ToString(), c.Name);
+            _banner.ShowChannel(c.Major.ToString(), c.Name, LogoOf(c), LogosOn);
             Restart(ref _bannerTimer, BannerSeconds, OnBannerTimeout);
             if (readProgram) ShowKnown(c);
             if (readProgram) { _programAttempt = 0; RequestProgram(); }   // already on this channel: the programme is there to read
@@ -1012,6 +1021,9 @@ namespace Tuner
                 case "toggle": if (_active) Deactivate(); else Activate(); break;
                 case "quit": Efl.elm_exit(); break;
                 case "audio": if (_active) CycleAudio(); break;
+                case "banner": Activate(); ShowBanner(_list != null ? _list.Current : null); break;   // the channel banner, as after a channel change
+                case "list": Activate(); OpenList(); break;
+                case "pad": Activate(); OpenPad(-1); break;
                 case "info": Activate(); if (InfoOpen) CloseInfo(); else OpenInfo(); break;
                 case "guide": Activate(); if (GuideOpen) CloseGuide(); else OpenGuide(); break;
                 case "repeat": int rk; if (p.Length > 1 && int.TryParse(p[1], out rk)) OnRepeat(rk); break;

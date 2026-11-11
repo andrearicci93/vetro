@@ -25,7 +25,7 @@ namespace Launcher.Ui
         // sees the arrows and OK too; it ignores the keys while the file is fresh, or Left/Right would also cycle its audio and open its channel pad.
         private const string OpenFlag = "/tmp/vetro-numpad.open";
 
-        private sealed class Slot { public IntPtr Text, Icon, Dot; public int X; }
+        private sealed class Slot { public IntPtr Text, Icon, Mark, Dot; public int X; }
 
         private readonly string _assets;
         private readonly Action<string> _log;
@@ -109,6 +109,7 @@ namespace Launcher.Ui
                         var s = new Slot();
                         if (c.Kind == CellKind.Key && c.Label != null && c.Color != 0) s.Dot = Image(evas, "pill_cap", 0);
                         if (c.Icon != null) s.Icon = Image(evas, c.Icon, 0);
+                        if (c.Mark != null) s.Mark = Image(evas, c.Mark, 0);   // over the icon, so it is created after it
                         if (c.Label != null) s.Text = Text(evas, c.Label, c.Kind == CellKind.Digit ? 36 : 30);
                         _slots[p][i] = s;
                     }
@@ -174,6 +175,7 @@ namespace Launcher.Ui
                     Slot s = _slots[p][i];
                     if (s.Dot != IntPtr.Zero) SetShown(s.Dot, p == page);
                     if (s.Icon != IntPtr.Zero) SetShown(s.Icon, p == page);
+                    if (s.Mark != IntPtr.Zero) SetShown(s.Mark, p == page);
                     if (s.Text != IntPtr.Zero) SetShown(s.Text, p == page);
                 }
             int x = _bodyX + 24;
@@ -192,6 +194,7 @@ namespace Launcher.Ui
                 else
                 {
                     if (s.Icon != IntPtr.Zero) { Efl.evas_object_move(s.Icon, cx - 20, cy - 20); Efl.evas_object_resize(s.Icon, 40, 40); }
+                    if (s.Mark != IntPtr.Zero) { Efl.evas_object_move(s.Mark, cx - 20, cy - 20); Efl.evas_object_resize(s.Mark, 40, 40); }
                     if (s.Text != IntPtr.Zero) CenterText(s.Text, cx, cy);
                 }
                 x += c.Width;
@@ -256,6 +259,7 @@ namespace Launcher.Ui
                 double al = (f ? 1.0 : 0.92) * a;
                 if (s.Dot != IntPtr.Zero) Tint(s.Dot, c.Color, a);
                 if (s.Icon != IntPtr.Zero) Tint(s.Icon, ink, al);
+                if (s.Mark != IntPtr.Zero) Tint(s.Mark, 0xFFFFFF, al);   // white: the picture holds its own colours
                 if (s.Text != IntPtr.Zero) Tint(s.Text, ink, al);
             }
         }

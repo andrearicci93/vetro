@@ -110,6 +110,7 @@ internal static partial class Tests
         Check(GuideText.Texts(cut).Length == 0, "a truncated reply gives no texts");
         TakeoverTests();
         InfoTests();
+        LogoChecks();
         Check(Languages.Name("ITA") == "Italian" && Languages.Name("xyz") == "XYZ" && Languages.Name("") == "Original", "language names");
 
         GuideChecks();

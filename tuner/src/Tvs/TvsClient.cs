@@ -97,7 +97,18 @@ namespace Tuner.Tvs
 
         private static Channel ToChannel(ServiceData d)
         {
-            return new Channel { Id = d.GetServiceId(), Major = d.GetMajor(), Name = d.Get(ServiceDataTag.ServiceName) as string ?? "" };
+            return new Channel
+            {
+                Id = d.GetServiceId(), Major = d.GetMajor(), Name = d.Get(ServiceDataTag.ServiceName) as string ?? "",
+                Onid = Number(d, ServiceDataTag.OriginalNetworkID), Tsid = Number(d, ServiceDataTag.TransportStreamID), Sid = Number(d, ServiceDataTag.ProgramNumber)
+            };
+        }
+
+        /// <summary>A numeric column of a service as an int, -1 when the daemon did not give it (the DVB triplet is only used to find a logo).</summary>
+        private static int Number(ServiceData d, ServiceDataTag tag)
+        {
+            try { object v = d.Get(tag); return v == null ? -1 : Convert.ToInt32(v); }
+            catch (Exception) { return -1; }
         }
 
         // Zapping. SetSource(TV, id) is the destructive path: mute, TuneStop, SiStopped, ~350 ms of teardown and a full relock even
@@ -355,6 +366,9 @@ namespace Tuner.Tvs
             c.Fetch((int)ServiceDataTag.ServiceID);
             c.Fetch((int)ServiceDataTag.Major);
             c.Fetch((int)ServiceDataTag.ServiceName);
+            c.Fetch((int)ServiceDataTag.OriginalNetworkID);      // with the next two: the DVB triplet, the second way to find a channel's logo
+            c.Fetch((int)ServiceDataTag.TransportStreamID);
+            c.Fetch((int)ServiceDataTag.ProgramNumber);
             return c;
         }
     }

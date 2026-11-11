@@ -17,6 +17,12 @@ assert.equal(icons.key('nope', 'x'), '');
 assert.match(icons.key('back', 'a "b" <c>'), /aria-label="a &quot;b&quot; &lt;c>"/);
 assert.doesNotMatch(icons.pageSource(), /`|\$\{/);
 new Function(icons.pageSource());
+// Every key the TV page names as a picture is in the page's block (a missing one draws nothing).
+const tvPage = fs.readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+const inBlock = new Set((tvPage.match(/var KEY_ICONS = (\{.*\});/) ? Object.keys(JSON.parse(RegExp.$1)) : []));
+const used = (tvPage.match(/keyIcon\('([a-z0-9-]+)'/g) || []).map(m => /'([a-z0-9-]+)'/.exec(m)[1]);
+assert.ok(used.length >= 4, 'the TV page uses key pictures');
+used.forEach(n => assert.ok(inBlock.has(n), 'the TV page uses keyIcon(' + n + ') but its KEY_ICONS block lacks it: add it to TV_KEYS in build.cjs'));
 // The pad's OK is drawn, not typed: the PNGs for the TV are rendered without fonts.
 assert.doesNotMatch(icons.icons['pad-ok'], /<text/);
 console.log('PASS remote key pictures: generated copies up to date, no ids, named wrapper, page-safe');

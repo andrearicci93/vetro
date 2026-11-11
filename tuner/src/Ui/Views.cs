@@ -11,11 +11,13 @@ namespace Tuner.Ui
     /// </summary>
     internal sealed class BannerView
     {
-        private const int X = 96, W = 780, Pad = 36, H = 204, Bottom = 984, Y = Bottom - H, BarH = 6;
+        private const int X = 96, W = 780, Pad = 36, H = 204, Bottom = 984, Y = Bottom - H, BarH = 6, LogoSize = 64;
         private readonly Surface _s;
         private readonly IntPtr _num, _name, _title, _times, _left;
         private readonly Chip _track, _fill;
+        private readonly Logo _logo;
         private int _numW;
+        private string _nameText = "";
 
         public BannerView(Surface s)
         {
@@ -28,6 +30,7 @@ namespace Tuner.Ui
             _left = s.Text(26, Theme.TextMuted);
             _track = s.Bar();
             _fill = s.Bar();
+            _logo = s.Logo();
             Efl.evas_object_move(_num, X + Pad, Y + 22);
             Efl.evas_object_move(_title, X + Pad, Y + 84);
             Efl.evas_object_move(_times, X + Pad, Y + 126);
@@ -37,13 +40,16 @@ namespace Tuner.Ui
         public bool Visible { get { return _s.Visible; } }
         public void Hide() { _s.Hide(); }
 
-        /// <summary>The channel; the programme rows are emptied until <see cref="SetProgram"/> or <see cref="SetNoProgram"/> fills them.</summary>
-        public void ShowChannel(string number, string name)
+        /// <summary>
+        /// The channel; the programme rows are emptied until <see cref="SetProgram"/> or <see cref="SetNoProgram"/> fills them.
+        /// <paramref name="room"/> keeps the top right corner for the logo (the TV has logos to show): the name gives way to it, whether or not this channel has one.
+        /// </summary>
+        public void ShowChannel(string number, string name, string logo = null, bool room = false)
         {
             Efl.evas_object_text_text_set(_num, number);
             _numW = Efl.evas_object_text_horiz_advance_get(_num);
-            Surface.SetFitted(_name, name, W - 2 * Pad - Math.Max(110, _numW + 30) - 4);
-            Efl.evas_object_move(_name, X + Pad + Math.Max(110, _numW + 30), Y + 32);
+            _nameText = name;
+            SetLogo(logo, room);
             Efl.evas_object_text_text_set(_title, "");
             Efl.evas_object_text_text_set(_times, "");
             Efl.evas_object_text_text_set(_left, "");
@@ -51,6 +57,15 @@ namespace Tuner.Ui
             _track.SetWhite(0);
             _fill.SetWhite(0);
             _s.Show();
+        }
+
+        /// <summary>Puts the logo (file path, or null for none) in the top right corner and fits the name to what is left.</summary>
+        public void SetLogo(string logo, bool room)
+        {
+            int nameX = X + Pad + Math.Max(110, _numW + 30);
+            Surface.SetFitted(_name, _nameText, W - 2 * Pad - Math.Max(110, _numW + 30) - 4 - (room ? LogoSize + 16 : 0));
+            Efl.evas_object_move(_name, nameX, Y + 32);
+            if (logo != null) _logo.Show(logo, X + W - Pad - LogoSize, Y + 18, LogoSize); else _logo.Hide();
         }
 
         private static void Tint(IntPtr t, int a) { Efl.evas_object_color_set(t, a, a, a, a); }
@@ -83,29 +98,31 @@ namespace Tuner.Ui
     /// <summary>The channel list (OK), right side: twelve rows around the selection.</summary>
     internal sealed class ListView
     {
-        public const int Rows = 11, RowH = 64, X = 1284, Y = 110, W = 540, Pad = 24;
+        public const int Rows = 11, RowH = 64, X = 1284, Y = 110, W = 540, Pad = 24, LogoSize = 44;
         private readonly Surface _s;
         private readonly Chip _fill, _ring;
         private readonly IntPtr[] _num = new IntPtr[Rows], _name = new IntPtr[Rows];
+        private readonly Logo[] _logo = new Logo[Rows];
 
         public ListView(Surface s)
         {
             _s = s;
             s.Card().SetRect(X, Y, W, Rows * RowH + 2 * Pad);
             _fill = s.Chip(); _ring = s.Ring();
-            for (int i = 0; i < Rows; i++) { _num[i] = s.Text(32, Theme.TextMuted); _name[i] = s.Text(32, Theme.TextMain); }
+            for (int i = 0; i < Rows; i++) { _logo[i] = s.Logo(); _num[i] = s.Text(32, Theme.TextMuted); _name[i] = s.Text(32, Theme.TextMain); }
         }
 
         public bool Visible { get { return _s.Visible; } }
         public void Hide() { _s.Hide(); }
 
-        public void Draw(ChannelList list, int selected)
+        /// <param name="logo">The logo file of a channel (null for none); <paramref name="room"/> keeps a column for it in every row.</param>
+        public void Draw(ChannelList list, int selected, Func<Channel, string> logo = null, bool room = false)
         {
             int top = Math.Max(0, Math.Min(selected - Rows / 2, list.Count - Rows));
             for (int r = 0; r < Rows; r++)
             {
                 int idx = top + r;
-                if (idx >= list.Count) { Efl.evas_object_hide(_num[r]); Efl.evas_object_hide(_name[r]); continue; }
+                if (idx >= list.Count) { Efl.evas_object_hide(_num[r]); Efl.evas_object_hide(_name[r]); _logo[r].Hide(); continue; }
                 Efl.evas_object_show(_num[r]); Efl.evas_object_show(_name[r]);
                 Channel c = list[idx];
                 int y = Y + Pad + r * RowH;
@@ -113,9 +130,12 @@ namespace Tuner.Ui
                 if (sel) { _fill.SetRect(X + 16, y + 2, W - 32, RowH - 4); _fill.SetWhite(77); _ring.SetRect(X + 16, y + 2, W - 32, RowH - 4); _ring.SetWhite(255); }
                 Efl.evas_object_text_text_set(_num[r], c.Major.ToString());
                 Efl.evas_object_color_set(_num[r], sel ? 255 : Theme.TextMuted, sel ? 255 : Theme.TextMuted, sel ? 255 : Theme.TextMuted, sel ? 255 : Theme.TextMuted);
-                Surface.SetFitted(_name[r], c.Name, W - 150 - 40);
+                int nameX = room ? X + 172 : X + 150;
+                Surface.SetFitted(_name[r], c.Name, X + W - 40 - nameX);
                 Efl.evas_object_move(_num[r], X + 44, y + 10);
-                Efl.evas_object_move(_name[r], X + 150, y + 10);
+                Efl.evas_object_move(_name[r], nameX, y + 10);
+                string file = logo == null ? null : logo(c);
+                if (file != null) _logo[r].Show(file, X + 114, y + (RowH - LogoSize) / 2, LogoSize); else _logo[r].Hide();
             }
             _s.Show();
         }
@@ -127,6 +147,7 @@ namespace Tuner.Ui
         private const int X = 1284, Y = 110, W = 540, Pad = 34, KeyW = 148, KeyH = 76, Gap = 14, GridY = 232, H = 232 + 4 * 76 + 3 * 14 + 38;
         private readonly Surface _s;
         private readonly IntPtr _title, _typed, _preview;
+        private readonly Logo _logo;
         private readonly Chip[] _key = new Chip[NumberEntry.Rows * NumberEntry.Cols];
         private readonly IntPtr[] _label = new IntPtr[NumberEntry.Rows * NumberEntry.Cols];
         private readonly Chip _ring;
@@ -141,6 +162,7 @@ namespace Tuner.Ui
             _typed = s.Text(76, Theme.TextMain);
             Efl.evas_object_move(_typed, X + Pad, Y + 62);
             _preview = s.Text(28, Theme.TextMuted);
+            _logo = s.Logo();
             Efl.evas_object_move(_preview, X + Pad, Y + 166);
             for (int i = 0; i < _key.Length; i++)
             {
@@ -166,10 +188,12 @@ namespace Tuner.Ui
         public void Hide() { _s.Hide(); }
 
         /// <summary>Redraws the pad. <paramref name="preview"/> is the name of the channel the typed number would go to ("" for none).</summary>
-        public void Draw(NumberEntry e, string preview)
+        public void Draw(NumberEntry e, string preview, string logo = null)
         {
             Efl.evas_object_text_text_set(_typed, e.Text.Length > 0 ? e.Text : "–");
-            Efl.evas_object_text_text_set(_preview, preview);
+            Surface.SetFitted(_preview, preview, W - 2 * Pad - (logo != null ? 52 : 0));
+            Efl.evas_object_move(_preview, X + Pad + (logo != null ? 52 : 0), Y + 166);
+            if (logo != null) _logo.Show(logo, X + Pad, Y + 158, 44); else _logo.Hide();
             for (int i = 0; i < _key.Length; i++)
                 _key[i].SetWhite(i == e.Row * NumberEntry.Cols + e.Col ? 66 : 51);
             _ring.SetRect(Left(e.Col), Top(e.Row), KeyW, KeyH);

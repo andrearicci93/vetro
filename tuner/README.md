@@ -54,7 +54,7 @@ The look is the dock's (`dock/designer/chosen.json`, `dock/src/Core/Design.cs`):
 soft drop shadow, 24 px corners, white text, a white 2 px ring on the selection. `res/dock_bg.png` and `res/shadow.png` are the dock's own
 pictures; `res/solid.png` and `res/ring.png` are plain white rounded rectangles (64 px, radius 16) drawn as 9-slice and tinted. `src/Ui/Surface.cs`
 holds the theme and the building blocks (one clipper per view, so a view is shown or hidden as one), `src/Ui/Views.cs` the four views.
-Nothing is drawn with a coloured top border. Run with `--backdrop` for screenshots: the compositor shows the video plane as white and white text
+The guide's footer names the remote's keys with their pictures (`res/key_*.png`, made from `app/design-system/remote` by `tools/render-remote-keys.cjs`; `GuideScene.Footer` places them). Nothing is drawn with a coloured top border. Run with `--backdrop` for screenshots: the compositor shows the video plane as white and white text
 would vanish on it.
 
 * **Banner** (bottom left, 4 s): always the same card: channel number and name, then the programme on air (title, start-end times, time left, progress bar).
@@ -99,7 +99,7 @@ The process stays alive with its window hidden and is driven through a pipe (`--
 opened read-write so it never reports end-of-file). One command per line:
 
 ```
-show | hide | toggle | guide | info | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests)
+show | hide | toggle | banner | list | pad | guide | info | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests)
 ```
 
 A launcher (the dock, Vetro's root agent) only has to run `echo show > /tmp/vetro-tuner.ctl`. Showing is instant (in-process ~1 ms; a cold start is
@@ -170,13 +170,17 @@ title, description, raw descriptor, source name, guidance. `Core/GuideText.cs` r
 * **Audio list.** The client cannot list the tracks: Left tries the next index and reads it back, going back to the first when there is none.
   Checked on a channel with one track only (stays on the first); not yet on a channel with two.
 
-* **Channel logos.** Samsung's tuner has a logo path (`banner/info/channel_logo_path`, fallback `info_nologo_default.png`) and a downloader
-  (`libbroadcastapp-util`: `CBroadcastImagesDownloader::DownloadChannelLogo(serviceId)`, libcurl, temp `/run/user/5001/BroadcastImagesDownloader/temp.png`;
-  `org.tizen.channel-list` `CChannelItem::GetLogo` -> "Logo URL" -> `FCThumbnailManager::GetDownloadedItem(downloadId)` from `libslive-provider`). The daemon columns
-  `ServiceDataTag.LogoID/LogoVersion/IconRoute` exist but are **0 / empty for all 517 channels on this TV** (probe mode `logos`), no logo files are bundled in the
-  firmware and that directory does not exist on the TV. The URL source for DVB channels was not found (`channel-list` is stripped, `DownloadChannelLogo` has no
-  URL in it); what is certain is that the logo is fetched from a server, not read from the signal. The Hybridcast/TV Plus path is `GetChannelLogo(serviceId, size)`
-  in `FCVirtualChannels`. Not implemented in the tuner.
+* **Channel logos.** The Banner, Channel list, Channel pad, Info and EPG show a channel's logo where there is room (switch `logos`, on by default).
+  The tuner draws what Samsung's own tuner shows: the TV's slive daemon keeps a table of channels with a picture address and the DVB triplet
+  (original network, transport stream, service) of each, a second table that joins them to the tvs service ids, and a folder with the pictures it
+  has downloaded. `Tvs/LogoSource.cs` reads the two tables once at start (SQLite, read-only, through `Native/Sqlite.cs`) and `Core/ChannelLogos.cs`
+  matches a channel by its service id first, by its triplet second, **never by name**; a match is turned into the file name the daemon gave the
+  picture (`LogoNames.CacheFile`). A channel with no match, or whose file is not saved, shows no logo and the layout stays as it was: the views
+  reserve the logo's room only when the tables gave something. Nothing is downloaded and nothing is written.
+  Checked on the Q80A (2026-11-11): both tables open fine read-only, but **they are empty there** (the daemon has no lineup configured and the picture
+  folder has not grown since May), so on that TV the logos only appear once the daemon fills them; how Samsung's own tuner gets them then is open.
+  Not verified: that the service id equals the tvs channel id, and which tag carries the DVB service number (the probe's `logos` mode prints the triplet). The start log has a `logos:` line with
+  the counts (channels, matched, with a file). Downloading the missing pictures is a separate step, not done.
 
 ## Open questions (in order)
 
@@ -220,7 +224,7 @@ Log: `/tmp/vetro-tuner.log`. Tests of the pure logic: `dotnet run` in `tests/` (
 ## Layout
 
 * `src/` the app: `Program.cs` (window, keys, worker thread, control pipe), `Ui/` (theme and views), `Tvs/TvsClient.cs` (Samsung client, the only file that loads it), `Core/` (pure logic with tests: channel list, number pad, programme clock, programme text, language names, guide reply / store / grid / scene), `Native/` (EFL, libc), `Input/Evdev.cs`, `res/` (pictures). Options: `--notif` (notification-level window, needed to be seen over an app), `--resident`, `--control PATH`, `--major N`, `--seconds N` (auto exit), `--hold` (banner stays), `--shm` (software engine), `--backdrop` (dark ground for screenshots).
-* `tools/probe/` read-only probe of the TV service, plus `guide <major>` (read-only: present programme, texts, audio, caption mode), `rawpresent <major>` (read-only: hex of the reply), `tune <major>`, `bench <from> <to> <rounds>`, `signals <from> <to> <rounds>` `schedule MAJOR[:HOURS]` (read-only: GetProgramList, replies in /tmp/vtsched_*.bin), `logos` (read-only), and `nd <from> <to> <rounds>` (env `ND_CODE` picks the function code: 0, 1, 15, 21...) which **change the channel**; `listen <sec>` is read-only (prints the tvs signals while someone else zaps) (run them only when the
+* `tools/probe/` read-only probe of the TV service, plus `guide <major>` (read-only: present programme, texts, audio, caption mode), `rawpresent <major>` (read-only: hex of the reply), `tune <major>`, `bench <from> <to> <rounds>`, `signals <from> <to> <rounds>` `schedule MAJOR[:HOURS]` (read-only: GetProgramList, replies in /tmp/vtsched_*.bin), `logos` (read-only: the logo columns and the DVB triplet), and `nd <from> <to> <rounds>` (env `ND_CODE` picks the function code: 0, 1, 15, 21...) which **change the channel**; `listen <sec>` is read-only (prints the tvs signals while someone else zaps) (run them only when the
   TV is free). Build: `dotnet build -c Release -p:TvsDll=<path to Tizen.TV.Broadcast.TVService.dll from the firmware>`.
   The DLL is referenced at compile time only and is never copied or shipped.
 

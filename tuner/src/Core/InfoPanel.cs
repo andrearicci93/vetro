@@ -14,6 +14,8 @@ namespace Tuner.Core
         public string Clock = "", Date = "";
         public string Source = "", Audio = "";
         public bool NoProgram;             // the daemon has none for this channel: the title row says so
+        public string Logo;                // file of the channel's logo, null when it has none
+        public bool LogoRoom;              // the TV has logos: the text keeps its place for one whether or not this channel has it
     }
 
     /// <summary>The text side of the info panel (the card at the top that the Info key opens): date and time, word wrapping.</summary>

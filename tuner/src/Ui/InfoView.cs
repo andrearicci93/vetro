@@ -13,11 +13,12 @@ namespace Tuner.Ui
     internal sealed class InfoView
     {
         public const int DescriptionLines = 3;
-        private const int X = 96, Y = 56, W = 1728, H = 348, Pad = 44, SideW = 380, BadgeSize = 96, LineH = 40, DescTop = 212;
+        private const int X = 96, Y = 56, W = 1728, H = 348, Pad = 44, SideW = 380, BadgeSize = 96, LineH = 40, DescTop = 212, LogoSize = 72, LogoGap = 20;
         private readonly Surface _s;
         private readonly IntPtr _num, _title, _name, _times, _left, _clock, _date, _source, _audio, _probe;
         private readonly IntPtr[] _desc = new IntPtr[DescriptionLines];
         private readonly Chip _badge, _track, _fill;
+        private readonly Logo _logo;
         private readonly int _textX, _textW, _sideX, _descW;
 
         public InfoView(Surface s)
@@ -25,6 +26,7 @@ namespace Tuner.Ui
             _s = s;
             s.Card().SetRect(X, Y, W, H);
             _badge = s.Chip(); _track = s.Bar(); _fill = s.Bar();
+            _logo = s.Logo();
             _num = s.Text(44, Theme.TextMain);
             _title = s.Text(44, Theme.TextMain);
             _name = s.Text(30, Theme.TextMuted);
@@ -41,9 +43,6 @@ namespace Tuner.Ui
             _textW = _sideX - 40 - _textX;
             _descW = W - 2 * Pad;
             _badge.SetRect(X + Pad, Y + 36, BadgeSize, BadgeSize); _badge.SetWhite(51);
-            Efl.evas_object_move(_title, _textX, Y + 28);
-            Efl.evas_object_move(_name, _textX, Y + 88);
-            Efl.evas_object_move(_times, _textX, Y + 130);
             Efl.evas_object_move(_clock, _sideX, Y + 28);
             Efl.evas_object_move(_date, _sideX, Y + 90);
             Efl.evas_object_move(_source, _sideX, Y + 128);
@@ -60,17 +59,23 @@ namespace Tuner.Ui
 
         public void Draw(InfoData d)
         {
+            int shift = d.LogoRoom ? LogoSize + LogoGap : 0;         // the logo sits between the badge and the text; the text gives way to it
+            int textX = _textX + shift, textW = _textW - shift;
+            Efl.evas_object_move(_title, textX, Y + 28);
+            Efl.evas_object_move(_name, textX, Y + 88);
+            Efl.evas_object_move(_times, textX, Y + 130);
+            if (d.Logo != null) _logo.Show(d.Logo, _textX, Y + 36 + (BadgeSize - LogoSize) / 2, LogoSize); else _logo.Hide();
             Efl.evas_object_text_text_set(_num, d.Number);
             Efl.evas_object_move(_num, X + Pad + (BadgeSize - Efl.evas_object_text_horiz_advance_get(_num)) / 2, Y + 36 + 18);
             if (d.NoProgram) { Tint(_title, Theme.TextFaint); Efl.evas_object_text_text_set(_title, "No programme information"); }
-            else { Tint(_title, Theme.TextMain); Surface.SetFitted(_title, d.Title, _textW); }
-            Surface.SetFitted(_name, d.Name, _textW);
+            else { Tint(_title, Theme.TextMain); Surface.SetFitted(_title, d.Title, textW); }
+            Surface.SetFitted(_name, d.Name, textW);
             Efl.evas_object_text_text_set(_times, d.Range);
             int timesW = Efl.evas_object_text_horiz_advance_get(_times);
             if (d.Fraction == null) { _track.SetWhite(0); _fill.SetWhite(0); Efl.evas_object_text_text_set(_left, ""); }
             else
             {
-                int barX = _textX + timesW + 24, barW = 260;
+                int barX = textX + timesW + 24, barW = 260;
                 _track.SetRect(barX, Y + 144, barW, 6); _track.SetWhite(56);
                 _fill.SetRect(barX, Y + 144, Math.Max(12, (int)(barW * Math.Max(0, Math.Min(1, d.Fraction.Value)))), 6); _fill.SetTint(Theme.Light, 255);
                 Efl.evas_object_text_text_set(_left, d.Left);

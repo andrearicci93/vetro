@@ -16,9 +16,12 @@ namespace Tuner.Ui
         private readonly Card _card;
         private readonly Chip[] _fills = new Chip[GuideScene.MaxFills];
         private readonly Chip _ring;
+        private readonly Logo[] _logos = new Logo[GuideScene.MaxLogos];
         private readonly IntPtr[] _texts = new IntPtr[GuideScene.MaxTexts];
         private readonly string[] _lastText = new string[GuideScene.MaxTexts];
         private readonly int[] _lastSize = new int[GuideScene.MaxTexts], _lastW = new int[GuideScene.MaxTexts];
+        private readonly Dictionary<string, IntPtr> _keys = new Dictionary<string, IntPtr>();   // the footer's remote key pictures, one object each
+        private readonly HashSet<string> _keysShown = new HashSet<string>();
         private int _fillsUsed, _textsUsed;
 
         public GuideView(Surface s)
@@ -28,7 +31,9 @@ namespace Tuner.Ui
             _card.SetOpacity(242);          // the guide's sheet is at 95%: a little of the picture shows through
             for (int i = 0; i < _fills.Length; i++) _fills[i] = s.Chip();
             _ring = s.Ring();
+            for (int i = 0; i < _logos.Length; i++) _logos[i] = s.Logo();
             for (int i = 0; i < _texts.Length; i++) { _texts[i] = s.Text(24, Theme.TextMain); Efl.evas_object_hide(_texts[i]); }
+            foreach (string k in GuideScene.KeyNames) _keys[k] = s.Picture(k);
         }
 
         public bool Visible { get { return _s.Visible; } }
@@ -36,8 +41,9 @@ namespace Tuner.Ui
 
         public void Draw(List<Prim> scene)
         {
-            int fills = 0, texts = 0;
+            int fills = 0, texts = 0, logos = 0;
             bool ring = false;
+            _keysShown.Clear();
             foreach (Prim p in scene)
             {
                 switch (p.Kind)
@@ -48,9 +54,20 @@ namespace Tuner.Ui
                         break;
                     case PrimKind.Ring: _ring.SetRect(p.X, p.Y, p.W, p.H); _ring.SetWhite(p.Alpha); ring = true; break;
                     case PrimKind.Text: texts = Text(p, texts); break;
+                    case PrimKind.Logo: if (logos < _logos.Length) _logos[logos++].Show(p.Text, p.X, p.Y, p.W); break;
+                    case PrimKind.Key:
+                        IntPtr k;
+                        if (_keys.TryGetValue(p.Text, out k) && _keysShown.Add(p.Text))
+                        {
+                            Efl.evas_object_move(k, p.X, p.Y); Efl.evas_object_resize(k, p.W, p.H);
+                            Efl.evas_object_color_set(k, p.Alpha, p.Alpha, p.Alpha, p.Alpha); Efl.evas_object_show(k);
+                        }
+                        break;
                 }
             }
             if (!ring) _ring.SetWhite(0);
+            foreach (var kv in _keys) if (!_keysShown.Contains(kv.Key)) Efl.evas_object_hide(kv.Value);
+            for (int i = logos; i < _logos.Length; i++) _logos[i].Hide();
             for (int i = fills; i < _fillsUsed; i++) _fills[i].SetWhite(0);
             for (int i = texts; i < _textsUsed; i++) Efl.evas_object_hide(_texts[i]);
             _fillsUsed = fills; _textsUsed = texts;

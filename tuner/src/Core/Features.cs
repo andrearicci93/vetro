@@ -11,7 +11,7 @@ namespace Tuner.Core
     /// </summary>
     internal sealed class Features
     {
-        public static readonly string[] Names = { "banner", "list", "guide", "pad", "info", "audio", "hold" };
+        public static readonly string[] Names = { "banner", "list", "guide", "pad", "info", "audio", "hold", "logos" };
 
         private readonly string _path;
         private readonly Func<long> _clock;

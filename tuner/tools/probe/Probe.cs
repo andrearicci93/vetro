@@ -32,7 +32,7 @@ static class Probe
             else if (args.Length == 4 && args[0] == "signals") Events(int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]), 0);
             else if (args.Length >= 2 && args[0] == "guide") Guide(int.Parse(args[1]));   // read-only: present program, audio/caption components, program list for a channel
             else if (args.Length >= 1 && args[0] == "schedule") Schedule(args);   // read-only: GetProgramList (code 1) with window values read from libtvs-dvbbase-guide; saves the raw replies
-            else if (args.Length >= 1 && args[0] == "logos") Logos();   // read-only: LogoID / LogoVersion / IconRoute columns of the first channels
+            else if (args.Length >= 1 && args[0] == "logos") Logos();   // read-only: LogoID / LogoVersion / IconRoute and the DVB triplet (OriginalNetworkID, TransportStreamID, ProgramNumber) of the first channels
             else if (args.Length == 2 && args[0] == "rawpresent") RawPresent(int.Parse(args[1]));   // read-only: same call as GetPresentProgram, prints the reply bytes
             else if (args.Length == 4 && args[0] == "nd") { _nonDestructive = true; if (Environment.GetEnvironmentVariable("ND_CODE") != null) _ndCode = short.Parse(Environment.GetEnvironmentVariable("ND_CODE")); Events(int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]), 0); }   // WRITES: same, but with SetServiceNonDestructive (function code 21) called by reflection   // WRITES: tunes from->to, rounds times, with the event timeline
             else if (args.Length == 4 && args[0] == "bench") Bench(int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]));   // WRITES: from-major to-major rounds
@@ -171,6 +171,9 @@ static class Probe
             c.Fetch((int)ServiceDataTag.LogoID);
             c.Fetch((int)ServiceDataTag.LogoVersion);
             c.Fetch((int)ServiceDataTag.IconRoute);
+            c.Fetch((int)ServiceDataTag.OriginalNetworkID);   // the DVB triplet the logo lookup falls back on: which tag holds the service id (ProgramNumber or ServiceID)?
+            c.Fetch((int)ServiceDataTag.TransportStreamID);
+            c.Fetch((int)ServiceDataTag.ProgramNumber);
             var list = new List<ServiceData>();
             int r = nav.GetServiceList(c, list);
             Console.WriteLine("list r=" + r + " n=" + list.Count);
@@ -179,7 +182,9 @@ static class Probe
                 var d = list[i];
                 Console.WriteLine("  " + d.GetMajor() + " " + d.Get(ServiceDataTag.ServiceName)
                     + " logoId=" + d.Get(ServiceDataTag.LogoID) + " logoVer=" + d.Get(ServiceDataTag.LogoVersion)
-                    + " iconRoute=" + d.Get(ServiceDataTag.IconRoute));
+                    + " iconRoute=" + d.Get(ServiceDataTag.IconRoute)
+                    + " id=" + d.Get(ServiceDataTag.ServiceID)
+                    + " onid=" + d.Get(ServiceDataTag.OriginalNetworkID) + " tsid=" + d.Get(ServiceDataTag.TransportStreamID) + " program=" + d.Get(ServiceDataTag.ProgramNumber));
             }
         }
     }

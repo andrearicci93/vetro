@@ -12,6 +12,8 @@ namespace Launcher.Core
     internal sealed class PadCell
     {
         public CellKind Kind; public string Label, Icon, Tip, Key; public int Color, Width, Gap;
+        /// <summary>A second picture over the icon that keeps its own colours (the palette's four dots): drawn white, never tinted with the icon's ink. Null for none.</summary>
+        public string Mark;
         public PadCell(CellKind kind, string label, string icon, string tip, string key, int color, int width, int gap)
         { Kind = kind; Label = label; Icon = icon; Tip = tip; Key = key; Color = color; Width = width; Gap = gap; }
     }
@@ -50,7 +52,7 @@ namespace Launcher.Core
             var l = new List<PadCell>();
             foreach (char c in "1234567890-") l.Add(new PadCell(CellKind.Digit, c.ToString(), null, null, null, 0, 72, 0));
             l.Add(new PadCell(CellKind.Erase, null, "pad_bs", null, null, 0, 72, 24));
-            l.Add(new PadCell(CellKind.ToColors, null, "pad_colors", null, null, 0, 72, 0));
+            l.Add(new PadCell(CellKind.ToColors, null, "pad_colors", null, null, 0, 72, 0) { Mark = "pad_colors_dots" });
             return l.ToArray();
         }
 

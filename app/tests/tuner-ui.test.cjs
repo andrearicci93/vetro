@@ -18,6 +18,10 @@ assert.doesNotMatch(previews, /<script|onload=|href="http/, 'previews are inert,
 assert.ok(html.indexOf('var TUNER_SLIDES=' + JSON.stringify(slides)) >= 0, 'the slides are in the page script');
 assert.match(page.guide(true), /<svg x="0" y="316" width="1920" height="616" overflow="hidden"><g class="tg-scroll">/, 'the slideshow guide scrolls inside a window of seven rows');
 assert.doesNotMatch(page.guide(true), / id="/, 'no ids: the same guide is on the page twice');
+// The guide's footer shows the remote's keys as pictures, like the task manager's (GuideScene.Footer in the tuner): no key named in words.
+['Watch', 'Time', 'Channel', 'Page', 'Close'].forEach(w => assert.ok(page.guide(true).indexOf('>' + w + '</text>') >= 0, 'guide footer word: ' + w));
+assert.doesNotMatch(page.guide(true), />(OK|Left \/ Right|Up \/ Down|CH \+ \/ -|Back)\s+(Watch|Time|Channel|Page|Close)/, 'the guide footer no longer spells the keys');
+['pad-ok', 'pad-left', 'pad-right', 'pad-up', 'pad-down', 'rocker-ch-both', 'back'].forEach(k => assert.ok(page.guide(true).indexOf(require('../service/remote-icons.js').icons[k].slice(60, 160)) >= 0, 'guide footer key picture: ' + k));
 assert.ok(html.indexOf(page.keysMarkup()) >= 0, 'the key table is on the page');
 assert.doesNotMatch(page.css, /border-top(-color)?\s*:\s*[^;]*(var\(--(accent|ok|warn|danger))/, 'no coloured top border on a rounded card');
 

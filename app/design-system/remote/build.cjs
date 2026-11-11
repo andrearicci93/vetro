@@ -134,7 +134,7 @@ emit(SERVICE, "'use strict';\n" +
     'module.exports = {icons: REMOTE_ICONS, key: remoteKey, pageSource: pageSource};\n');
 
 // 3. The TV page (app/index.html) has no service modules: the few keys it shows are written between two markers.
-const TV = path.join(OUT, '..', '..', 'index.html'), TV_KEYS = ['pad-ok', 'pad-down', 'back'];
+const TV = path.join(OUT, '..', '..', 'index.html'), TV_KEYS = ['pad-ok', 'pad-down', 'pad-left', 'pad-right', 'back'];
 const page = fs.readFileSync(TV, 'utf8'), begin = '/* remote-icons:begin (app/design-system/remote/build.cjs) */', end = '/* remote-icons:end */';
 const a = page.indexOf(begin), b = page.indexOf(end);
 if (a < 0 || b < a) throw new Error('index.html has no remote-icons markers');

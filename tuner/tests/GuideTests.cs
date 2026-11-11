@@ -183,13 +183,15 @@ internal static partial class Tests
         {
             switch (rnd0.Next(5)) { case 0: g.MoveTime(+1); break; case 1: g.MoveTime(-1); break; case 2: g.MoveRow(+1); break; case 3: g.MoveRow(-1); break; default: g.MovePage(rnd0.Next(2) == 0 ? 1 : -1); break; }
             List<Prim> scene = GuideScene.Build(g, ProbeNow, TimeSpan.FromHours(1), "A description.");
-            int fills = 0, texts = 0, rings = 0;
+            int fills = 0, texts = 0, rings = 0; var keyNames = new HashSet<string>();
             foreach (Prim p in scene)
             {
+                if (p.Kind == PrimKind.Key && (!keyNames.Add(p.Text) || Array.IndexOf(GuideScene.KeyNames, p.Text) < 0 || p.W != GuideScene.KeyWidth(p.Text) || p.H != GuideScene.KeyH)) { sceneOk = false; sceneWhy = "footer key " + p.Text; }
                 if (p.Kind == PrimKind.Fill) fills++; else if (p.Kind == PrimKind.Text) texts++; else if (p.Kind == PrimKind.Ring) rings++;
                 if (p.Kind != PrimKind.Text && (p.X < GuideLayout.SheetX || p.X + p.W > GuideLayout.SheetX + GuideLayout.SheetW || p.Y < GuideLayout.SheetY || p.Y + p.H > GuideLayout.SheetY + GuideLayout.SheetH)) { sceneOk = false; sceneWhy = "shape outside the sheet"; }
                 if (p.Kind == PrimKind.Text && (p.Text == null || p.MaxW <= 0 || p.X < GuideLayout.SheetX || p.X > GuideLayout.SheetX + GuideLayout.SheetW)) { sceneOk = false; sceneWhy = "text placement"; }
             }
+            if (keyNames.Count != GuideScene.KeyNames.Length) { sceneOk = false; sceneWhy = "footer shows " + keyNames.Count + " of " + GuideScene.KeyNames.Length + " keys"; }
             if (fills > GuideScene.MaxFills || texts > GuideScene.MaxTexts || rings != 1) { sceneOk = false; sceneWhy = "pools: fills " + fills + " texts " + texts + " rings " + rings; }
         }
         Check(sceneOk, "400 scenes fit the pools and the sheet, with one focus ring" + (sceneOk ? "" : " (" + sceneWhy + ")"));

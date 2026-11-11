@@ -650,7 +650,7 @@ namespace Launcher.Tests
                 m.Reset(); T.Eq(m.Typed, "", "reset clears"); m.Key("Up"); T.Eq(m.Key("Return"), PadResult.Close, "Done with nothing typed just closes");
                 m.Reset(); for (int i = 0; i < 8; i++) m.Key("5");
                 T.Eq(m.Typed, "55555", "at most five characters"); T.Eq(m.Key("BackSpace"), PadResult.Erased, "BackSpace erases");
-                T.Eq(NumberPadModel.BodyWidth(NumberPadModel.Digits), 1008, "digits capsule width"); T.True(NumberPadModel.BodyWidth(NumberPadModel.Colors) <= 800, "colour capsule fits");
+                T.Eq(NumberPadModel.BodyWidth(NumberPadModel.Digits), 1008, "digits capsule width"); T.Eq(NumberPadModel.Digits[NumberPadModel.Digits.Length - 1].Mark, "pad_colors_dots", "the palette key carries the picture of its four coloured dots"); T.True(NumberPadModel.BodyWidth(NumberPadModel.Colors) <= 800, "colour capsule fits");
                 string c16 = NumberPadModel.SendCommand("16", "/usr/bin/input_keyevent ");
                 T.True(c16.StartsWith("(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid"), "the tuner is looked for first");
                 T.True(c16.Contains("then echo 'tune 16' > /tmp/vetro-tuner.ctl; else"), "tuner running: one tune command with the whole number");

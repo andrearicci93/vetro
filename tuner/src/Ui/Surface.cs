@@ -71,11 +71,38 @@ namespace Tuner.Ui
             return Clipped(img);
         }
 
-        /// <summary>Empty when the five pictures load; otherwise which ones did not, with the EFL error number.</summary>
+        /// <summary>A picture drawn as it is (a remote key, res/key_*.png), hidden until it is placed. Colours are premultiplied like the rest.</summary>
+        public IntPtr Picture(string name)
+        {
+            IntPtr img = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
+            Efl.evas_object_image_filled_set(img, true);
+            Efl.evas_object_image_smooth_scale_set(img, true);
+            Efl.evas_object_color_set(img, 0, 0, 0, 0);
+            Clipped(img);
+            Efl.evas_object_hide(img);
+            return img;
+        }
+
+        /// <summary>A channel logo: one picture object whose file changes (the TV's own saved logo, 87 px, round). Hidden until <see cref="Logo.Show"/>.</summary>
+        public Logo Logo()
+        {
+            IntPtr img = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_image_filled_set(img, true);
+            Efl.evas_object_image_smooth_scale_set(img, true);
+            Efl.evas_object_color_set(img, 255, 255, 255, 255);
+            Clipped(img);
+            Efl.evas_object_hide(img);
+            return new Logo(img);
+        }
+
+        /// <summary>Empty when the pictures load; otherwise which ones did not, with the EFL error number.</summary>
         public string AssetProblems()
         {
             string problems = "";
-            foreach (string n in new[] { "dock_bg", "shadow", "solid", "ring", "bar" })
+            var names = new System.Collections.Generic.List<string>(new[] { "dock_bg", "shadow", "solid", "ring", "bar" });
+            names.AddRange(Tuner.Core.GuideScene.KeyNames);
+            foreach (string n in names)
             {
                 IntPtr img = Efl.evas_object_image_add(_evas);
                 Efl.evas_object_image_file_set(img, Path.Combine(_assets, n + ".png"), null);
@@ -129,6 +156,30 @@ namespace Tuner.Ui
             Efl.evas_object_move(_sheet, x, y);
             Efl.evas_object_resize(_sheet, w, h);
         }
+    }
+
+    /// <summary>A channel logo drawn as a square of the given size. The file is only set again when the path changes; a file that does not load leaves it hidden.</summary>
+    internal sealed class Logo
+    {
+        private readonly IntPtr _img;
+        private string _path;
+        internal Logo(IntPtr img) { _img = img; }
+
+        public void Show(string path, int x, int y, int size)
+        {
+            if (string.IsNullOrEmpty(path)) { Hide(); return; }
+            if (path != _path)
+            {
+                Efl.evas_object_image_file_set(_img, path, null);
+                if (Efl.evas_object_image_load_error_get(_img) != Efl.EvasLoadErrorNone) { _path = null; Efl.evas_object_hide(_img); return; }
+                _path = path;
+            }
+            Efl.evas_object_move(_img, x, y);
+            Efl.evas_object_resize(_img, size, size);
+            Efl.evas_object_show(_img);
+        }
+
+        public void Hide() { Efl.evas_object_hide(_img); }
     }
 
     internal sealed class Chip
