@@ -7,6 +7,7 @@
 <meta name="description" content="Connect a Samsung TV to Home Assistant with the built-in integration, a community fork, or MQTT from the TV itself. What each does, needs and cannot do.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/control/home-assistant-samsung-tv/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Home Assistant Samsung TV: three ways to connect it","description":"Connect a Samsung TV to Home Assistant with the built-in integration, a community fork, or MQTT from the TV itself. What each does, needs and cannot do.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"home assistant samsung tv, samsungtv integration, ha-samsungtv-smart, samsung tv mqtt home assistant","articleSection":"Remote, apps and smart home","mainEntityOfPage":"https://andrearicci93.github.io/vetro/control/home-assistant-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Remote, apps and smart home","item":"https://andrearicci93.github.io/vetro/control/"},{"@type":"ListItem","position":3,"name":"Home Assistant Samsung TV: three ways to connect it","item":"https://andrearicci93.github.io/vetro/control/home-assistant-samsung-tv/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/" aria-current="page">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/" aria-current="page">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,12 +47,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><span aria-current="page">Home Assistant Samsung TV: three ways to connect it</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Remote, apps and smart home</p>
-<h1>Home Assistant Samsung TV: three ways to connect it</h1>
+<h1 id="page-title" tabindex="-1">Home Assistant Samsung TV: three ways to connect it</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the Home Assistant samsungtv integration page, the ha-samsungtv-smart and ha-samsungtv-tizen READMEs, and the Vetro 0.5.0 MQTT guide, README and SECURITY.md.</span></p>
 </header>
 <div class="prose">
 <p>There are three practical ways to connect a Samsung TV to Home Assistant. The built-in Samsung Smart TV integration controls Tizen TVs from 2016 onward over your local network. Community forks add more entities, and some of their features need a SmartThings token. The third route runs on the TV: with Vetro on a rooted TV, the TV publishes its state over MQTT and can react to MQTT messages. Vetro is experimental, needs root and ships no signed installer. Start with the built-in integration and go further only when it falls short.</p>
-<h2 id="how-do-i-add-a-samsung-tv-to-home-assistant">How do I add a Samsung TV to Home Assistant?<a class="anchor" href="#how-do-i-add-a-samsung-tv-to-home-assistant" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-add-a-samsung-tv-to-home-assistant">How do I add a Samsung TV to Home Assistant?<a class="anchor" href="#how-do-i-add-a-samsung-tv-to-home-assistant" aria-label="Link to section: How do I add a Samsung TV to Home Assistant?">#</a></h2>
 <p>Home Assistant&#39;s <a href="https://www.home-assistant.io/integrations/samsungtv/" rel="noopener" target="_blank">Samsung Smart TV integration</a> is the default choice and needs nothing on the TV beyond network access. According to its documentation:</p>
 <ul>
 <li>It supports Samsung Smart TVs on Tizen from 2016, plus TVs with a WebSocket API, and its IoT class is &quot;Local Push&quot;.</li>
@@ -60,12 +64,12 @@
 <li>WebSocket connections fail across different subnets or VLANs. Newer TVs may ask for permission on every connection until you set Access notification to &quot;First time only&quot; in the TV&#39;s Device connection manager.</li>
 </ul>
 <p>Menu labels differ by model and year. The page covers sending commands to the TV only and says nothing about receiving presses from the physical remote; <a href="/vetro/control/samsung-remote-keys-home-assistant/">Samsung remote keys as Home Assistant events</a> covers that gap.</p>
-<h2 id="when-do-i-need-a-custom-samsung-tv-integration">When do I need a custom Samsung TV integration?<a class="anchor" href="#when-do-i-need-a-custom-samsung-tv-integration" aria-label="Link to this section">#</a></h2>
+<h2 id="when-do-i-need-a-custom-samsung-tv-integration">When do I need a custom Samsung TV integration?<a class="anchor" href="#when-do-i-need-a-custom-samsung-tv-integration" aria-label="Link to section: When do I need a custom Samsung TV integration?">#</a></h2>
 <p>Two GitHub projects extend the built-in integration. Both install as custom components and are independent of Home Assistant and Samsung. The READMEs do not state which Home Assistant versions they support, so check each project&#39;s supported versions and open issues before installing.</p>
 <p><a href="https://github.com/ollo69/ha-samsungtv-smart" rel="noopener" target="_blank">ha-samsungtv-smart</a> is licensed Apache-2.0 and installs through HACS or by copying the <code>samsungtv_smart</code> folder into <code>custom_components</code>. Its README says it is only for 2016 and newer TVs. A SmartThings token is optional but &quot;strongly suggested&quot;. The README lists TV status, channel names and running-app information, channel logos, automatic source detection, sound and picture mode selection and the SmartThings keys as depending on it. Initial setup is through the web UI.</p>
 <p><a href="https://github.com/mcc05/ha-samsungtv-tizen" rel="noopener" target="_blank">ha-samsungtv-tizen</a> is a fork of jaruba/ha-samsungtv-tizen, described as a modified version of the built-in integration. It also targets 2016 and newer TVs, installs through HACS or by copying the <code>samsungtv_tizen</code> folder, and then needs a <code>media_player</code> entry in <code>configuration.yaml</code> with host, port and MAC address. The SmartThings Cloud API is used only when both an API key and a device ID are set. It is Apache-2.0 licensed.</p>
 <p>Pick a fork when you want the extra details above. The cost is a dependency on a community project and, for part of the feature set, a cloud account.</p>
-<h2 id="how-does-vetro-connect-to-home-assistant-over-mqtt">How does Vetro connect to Home Assistant over MQTT?<a class="anchor" href="#how-does-vetro-connect-to-home-assistant-over-mqtt" aria-label="Link to this section">#</a></h2>
+<h2 id="how-does-vetro-connect-to-home-assistant-over-mqtt">How does Vetro connect to Home Assistant over MQTT?<a class="anchor" href="#how-does-vetro-connect-to-home-assistant-over-mqtt" aria-label="Link to section: How does Vetro connect to Home Assistant over MQTT?">#</a></h2>
 <p><a href="https://github.com/andrearicci93/vetro" rel="noopener" target="_blank">Vetro</a> reads state on the TV and publishes it to an MQTT broker, and Home Assistant receives those messages. The built-in integration separately combines periodic power checks with supported state events, so the two routes complement each other. Vetro needs root, so this route is only worth it if you already want Vetro for something else. Read <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a>, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting is safe</a> and the <a href="/vetro/root/install-vetro-apps2samsung/">Apps2Samsung install guide</a> first.</p>
 <p>The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/mqtt/README.md" rel="noopener" target="_blank">Vetro MQTT guide</a> describes the setup in four parts:</p>
 <ol>
@@ -76,12 +80,12 @@
 </ol>
 <p>The guide&#39;s own test is to publish <code>open</code> to <code>vetro/command/open-app</code> with Home Assistant&#39;s <code>mqtt.publish</code> action, and the TV opens the app you chose. The volume, mute and source entities are state only, not controls, and channel number and name are not exposed. The guide also warns that MQTT service availability means Vetro is connected, not that the TV screen is on, so do not use these sensors as a replacement for the TV&#39;s power state.</p>
 <p>The guide&#39;s validation note says a Q80A was verified connected to a real broker on 2026-10-13, and that a separate subscriber received the discovery records, live telemetry and volume, mute and source values. It adds that Home Assistant UI behavior and TLS against a real broker &quot;still require verification&quot;, so treat the Home Assistant side as not yet confirmed by the project.</p>
-<h2 id="which-samsung-tv-integration-should-i-use">Which Samsung TV integration should I use?<a class="anchor" href="#which-samsung-tv-integration-should-i-use" aria-label="Link to this section">#</a></h2>
-<div class="table-wrap"><table><thead><tr>
-<th></th>
-<th>Built-in</th>
-<th>Community fork</th>
-<th>Vetro MQTT</th>
+<h2 id="which-samsung-tv-integration-should-i-use">Which Samsung TV integration should I use?<a class="anchor" href="#which-samsung-tv-integration-should-i-use" aria-label="Link to section: Which Samsung TV integration should I use?">#</a></h2>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Which Samsung TV integration should I use?"><table><thead><tr>
+<th scope="col"></th>
+<th scope="col">Built-in</th>
+<th scope="col">Community fork</th>
+<th scope="col">Vetro MQTT</th>
 </tr>
 </thead><tbody><tr>
 <td>Root needed</td>
@@ -114,28 +118,63 @@
 <td>Yes, through a remap rule</td>
 </tr>
 </tbody></table></div><p>The built-in integration is enough for power, volume and sources. Reach for Vetro when you want the TV to report things the integration does not, or you want a remote button to start an automation. Do not root a TV only for Home Assistant.</p>
-<h2 id="what-are-the-security-limits">What are the security limits?<a class="anchor" href="#what-are-the-security-limits" aria-label="Link to this section">#</a></h2>
+<h2 id="what-are-the-security-limits">What are the security limits?<a class="anchor" href="#what-are-the-security-limits" aria-label="Link to section: What are the security limits?">#</a></h2>
 <p>The Vetro dashboard runs over plain HTTP, and the MQTT template sends credentials without TLS, so keep both on a trusted LAN. Since 0.5.0 the dashboard uses a pairing code shown on the TV, but pairing is automatic: until the Vetro app on the TV has been seen, the dashboard is open to the local network. See <a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a> and the <a href="/vetro/reference/vetro-security-model/">security model</a>.</p>
 <p>Next steps: <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a>, <a href="/vetro/control/remap-samsung-remote-buttons/">remap Samsung remote buttons</a>, and <a href="/vetro/control/tizentube-samsung-tv/">TizenTube</a> if YouTube is your goal.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/control/samsung-remote-keys-home-assistant/"><span class="eyebrow">Remote, apps and smart home</span><strong>Samsung TV remote buttons as Home Assistant events</strong><span>Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/control/tizentube-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>TizenTube on Samsung TV: install steps and requirements</strong><span>How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/control/samsung-remote-keys-home-assistant/"><span class="eyebrow">Remote, apps and smart home</span><strong>Samsung TV remote buttons as Home Assistant events</strong><span>Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/control/tizentube-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>TizenTube on Samsung TV: install steps and requirements</strong><span>How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/control/remap-samsung-remote-buttons/"><span>Previous</span>Remap Samsung remote buttons (Netflix, Prime and more)</a><a class="next" href="/vetro/control/samsung-remote-keys-home-assistant/"><span>Next</span>Samsung TV remote buttons as Home Assistant events</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#how-do-i-add-a-samsung-tv-to-home-assistant">How do I add a Samsung TV to Home Assistant?</a></li><li class="l2"><a href="#when-do-i-need-a-custom-samsung-tv-integration">When do I need a custom Samsung TV integration?</a></li><li class="l2"><a href="#how-does-vetro-connect-to-home-assistant-over-mqtt">How does Vetro connect to Home Assistant over MQTT?</a></li><li class="l2"><a href="#which-samsung-tv-integration-should-i-use">Which Samsung TV integration should I use?</a></li><li class="l2"><a href="#what-are-the-security-limits">What are the security limits?</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#how-do-i-add-a-samsung-tv-to-home-assistant">How do I add a Samsung TV to Home Assistant?</a></li><li class="l2"><a href="#when-do-i-need-a-custom-samsung-tv-integration">When do I need a custom Samsung TV integration?</a></li><li class="l2"><a href="#how-does-vetro-connect-to-home-assistant-over-mqtt">How does Vetro connect to Home Assistant over MQTT?</a></li><li class="l2"><a href="#which-samsung-tv-integration-should-i-use">Which Samsung TV integration should I use?</a></li><li class="l2"><a href="#what-are-the-security-limits">What are the security limits?</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 <meta name="description" content="Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/root/uninstall-vetro-samsung-tv/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Uninstall Vetro from a Samsung TV and clean up leftovers","description":"Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"uninstall app samsung tv leftovers, uninstall vetro samsung tv, remove sideloaded app samsung tizen, restore samsung tv after vetro","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/uninstall-vetro-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Uninstall Vetro from a Samsung TV and clean up leftovers","item":"https://andrearicci93.github.io/vetro/root/uninstall-vetro-samsung-tv/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/" aria-current="page">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,12 +47,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Uninstall Vetro from a Samsung TV and clean up leftovers</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Rooting guides</p>
-<h1>Uninstall Vetro from a Samsung TV and clean up leftovers</h1>
+<h1 id="page-title" tabindex="-1">Uninstall Vetro from a Samsung TV and clean up leftovers</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the uninstalling section of Vetro 0.5.0's published INSTALLATION.md, its README, CHANGELOG, SECURITY.md, Samsung's command line page and the Apps2Samsung README.</span></p>
 </header>
 <div class="prose">
 <p>To uninstall Vetro cleanly, restore what it changed first, then delete the app, then undo Developer Mode. Deleting the app alone leaves some changes behind: the domain filter keeps hiding names from the hosts file and the saved settings stay in the share folder. The steps below follow the uninstalling section of Vetro&#39;s published <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#uninstalling" rel="noopener" target="_blank">installation guide</a>, which covers 0.5.0. The guide is the only published uninstall procedure; this page adds the context around it.</p>
-<h2 id="what-does-a-plain-uninstall-leave-behind">What does a plain uninstall leave behind?<a class="anchor" href="#what-does-a-plain-uninstall-leave-behind" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-a-plain-uninstall-leave-behind">What does a plain uninstall leave behind?<a class="anchor" href="#what-does-a-plain-uninstall-leave-behind" aria-label="Link to section: What does a plain uninstall leave behind?">#</a></h2>
 <p>The guide says Vetro changes the TV in several places: it can replace Home, stop services, disable components and block domains. A package uninstall does not reverse that.</p>
 <ul>
 <li>The domain filter. Names Vetro added to the hosts file stay hidden.</li>
@@ -56,7 +60,7 @@
 <li>Disabled components and stopped services, if you used the Task manager or Quick settings.</li>
 </ul>
 <p>Vetro cannot remove itself: its own package is protected from the Task manager on purpose.</p>
-<h2 id="how-do-i-uninstall-vetro-step-by-step">How do I uninstall Vetro step by step?<a class="anchor" href="#how-do-i-uninstall-vetro-step-by-step" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-uninstall-vetro-step-by-step">How do I uninstall Vetro step by step?<a class="anchor" href="#how-do-i-uninstall-vetro-step-by-step" aria-label="Link to section: How do I uninstall Vetro step by step?">#</a></h2>
 <ol>
 <li>Restore the TV. In the dashboard open Quick settings, Maintenance, Restore the TV (the 0.5.0 changelog lists it under General). Press Review what will change to see the list, then Restore everything. Nothing changes before you confirm, and the report says what could not be put back.</li>
 <li>Optionally remove Vetro&#39;s saved data. In Remove Vetro, choose to remove the saved data. It is offered only when nothing is left to put back, because those files hold the values used to restore. A package uninstall does not remove them.</li>
@@ -66,7 +70,7 @@
 <li>Developer Mode. If you turned it on only for Vetro, switch it off, or set Host PC IP back, in the same Apps screen. See <a href="/vetro/root/samsung-tv-developer-mode/">Developer Mode</a>. Without Vetro&#39;s service there is nothing on the TV to get root back after a restart; see <a href="/vetro/root/keep-root-after-restart/">does root survive a restart</a>.</li>
 <li>Home Assistant. If you used the MQTT bridge, delete the TV device there. Its entities stay until you do.</li>
 </ol>
-<h2 id="what-can-restore-the-tv-not-put-back">What can Restore the TV not put back?<a class="anchor" href="#what-can-restore-the-tv-not-put-back" aria-label="Link to this section">#</a></h2>
+<h2 id="what-can-restore-the-tv-not-put-back">What can Restore the TV not put back?<a class="anchor" href="#what-can-restore-the-tv-not-put-back" aria-label="Link to section: What can Restore the TV not put back?">#</a></h2>
 <p>The <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a> and the <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a> give these limits:</p>
 <ul>
 <li>Apps you uninstalled with the Task manager, settings without a saved previous value and changes made by plugins need manual recovery.</li>
@@ -75,35 +79,70 @@
 <li>Restore the TV turns off Allow SDB from the local network, if you had enabled it.</li>
 </ul>
 <p>If your Vetro version has no Restore the TV button, turn off the switches you used before deleting the app; the README says every Quick settings switch can be turned back on. See <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a>.</p>
-<h2 id="what-does-restore-the-tv-cover">What does Restore the TV cover?<a class="anchor" href="#what-does-restore-the-tv-cover" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-restore-the-tv-cover">What does Restore the TV cover?<a class="anchor" href="#what-does-restore-the-tv-cover" aria-label="Link to section: What does Restore the TV cover?">#</a></h2>
 <p>The changelog says it shows the changes Vetro recorded and puts them back after one confirmation, with a result for each step. The 0.5.0 notes and hardening review name some of what is included: the Disable AirPlay switch, the original Autorun Smart Hub value that the custom launcher changed, and Allow SDB from the local network. If any step fails or cannot be read, the result says so instead of reporting complete. Read the per-step results before you delete the app, because anything marked as needing manual recovery will not be fixed by the uninstall.</p>
-<h2 id="how-do-i-check-that-the-tv-is-back-to-normal">How do I check that the TV is back to normal?<a class="anchor" href="#how-do-i-check-that-the-tv-is-back-to-normal" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-check-that-the-tv-is-back-to-normal">How do I check that the TV is back to normal?<a class="anchor" href="#how-do-i-check-that-the-tv-is-back-to-normal" aria-label="Link to section: How do I check that the TV is back to normal?">#</a></h2>
 <p>The guide gives no checklist, so these are checks drawn from its steps. After the restart, confirm the Home key opens Samsung&#39;s Home, that the Apps screen no longer lists Vetro, and that the Developer Mode entry is off if you switched it off. If you used the domain filter, check that the apps you rely on still reach their servers. If something stays changed, the Restore report names it, and the <a href="/vetro/reference/what-each-vetro-switch-changes/">switch reference</a> says what each one does.</p>
-<h2 id="can-i-uninstall-from-the-command-line">Can I uninstall from the command line?<a class="anchor" href="#can-i-uninstall-from-the-command-line" aria-label="Link to this section">#</a></h2>
+<h2 id="can-i-uninstall-from-the-command-line">Can I uninstall from the command line?<a class="anchor" href="#can-i-uninstall-from-the-command-line" aria-label="Link to section: Can I uninstall from the command line?">#</a></h2>
 <p>Samsung&#39;s <a href="https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/command-line-interface.html" rel="noopener" target="_blank">command line page</a> says that to uninstall TV applications the <code>-p</code> option requires the application ID, not the package ID, and that the ID is in the app&#39;s <code>config.xml</code>. We do not give Vetro&#39;s ID here, and the guide&#39;s TV menu route is simpler. Use the command only with an ID you have read from your own TV. Connecting is covered in <a href="/vetro/root/samsung-sdb-connect-tv/">connecting with sdb</a>.</p>
-<h2 id="what-about-the-port-and-reinstalling">What about the port and reinstalling?<a class="anchor" href="#what-about-the-port-and-reinstalling" aria-label="Link to this section">#</a></h2>
+<h2 id="what-about-the-port-and-reinstalling">What about the port and reinstalling?<a class="anchor" href="#what-about-the-port-and-reinstalling" aria-label="Link to section: What about the port and reinstalling?">#</a></h2>
 <p>Vetro listens on port 8099 unless it was built with another one, a build-time choice, so reinstalling with a different port means installing again. See <a href="/vetro/root/install-vetro-apps2samsung/">install Vetro with Apps2Samsung</a>. If a reinstall is refused because of a different author certificate, see <a href="/vetro/root/samsung-developer-certificate-errors/">certificate errors</a>.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>The published guide covers Vetro&#39;s own uninstall; it does not cover removing other apps&#39; leftover Home tiles or files. Rooting has risks that an uninstall does not erase; see <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">is it safe to root a Samsung TV</a>. Vetro is experimental, needs root and ships no signed installer. Vetro is not affiliated with Samsung.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/root/keep-root-after-restart/"><span>Previous</span>Does root survive a restart on a Samsung TV?</a><span></span></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-does-a-plain-uninstall-leave-behind">What does a plain uninstall leave behind?</a></li><li class="l2"><a href="#how-do-i-uninstall-vetro-step-by-step">How do I uninstall Vetro step by step?</a></li><li class="l2"><a href="#what-can-restore-the-tv-not-put-back">What can Restore the TV not put back?</a></li><li class="l2"><a href="#what-does-restore-the-tv-cover">What does Restore the TV cover?</a></li><li class="l2"><a href="#how-do-i-check-that-the-tv-is-back-to-normal">How do I check that the TV is back to normal?</a></li><li class="l2"><a href="#can-i-uninstall-from-the-command-line">Can I uninstall from the command line?</a></li><li class="l2"><a href="#what-about-the-port-and-reinstalling">What about the port and reinstalling?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-does-a-plain-uninstall-leave-behind">What does a plain uninstall leave behind?</a></li><li class="l2"><a href="#how-do-i-uninstall-vetro-step-by-step">How do I uninstall Vetro step by step?</a></li><li class="l2"><a href="#what-can-restore-the-tv-not-put-back">What can Restore the TV not put back?</a></li><li class="l2"><a href="#what-does-restore-the-tv-cover">What does Restore the TV cover?</a></li><li class="l2"><a href="#how-do-i-check-that-the-tv-is-back-to-normal">How do I check that the TV is back to normal?</a></li><li class="l2"><a href="#can-i-uninstall-from-the-command-line">Can I uninstall from the command line?</a></li><li class="l2"><a href="#what-about-the-port-and-reinstalling">What about the port and reinstalling?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

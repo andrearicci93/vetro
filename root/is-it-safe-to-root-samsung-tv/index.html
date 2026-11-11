@@ -7,6 +7,7 @@
 <meta name="description" content="Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/root/is-it-safe-to-root-samsung-tv/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,17 +25,20 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Is it safe to root a Samsung TV? Risks and what to undo","description":"Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"is it safe to root samsung tv, root samsung tv risks, samsung tv root brick, samsung tv root warranty","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/is-it-safe-to-root-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Is it safe to root a Samsung TV? Risks and what to undo","item":"https://andrearicci93.github.io/vetro/root/is-it-safe-to-root-samsung-tv/"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is it safe to root a Samsung TV?","acceptedAnswer":{"@type":"Answer","text":"Not risk free. Rooting changes a locked-down device, the tools are experimental, and root results are confirmed only for exact models and firmware builds. Use a TV you own, read what each change does and keep the TV on a trusted network."}},{"@type":"Question","name":"Will rooting void my Samsung warranty?","acceptedAnswer":{"@type":"Answer","text":"We cannot say. Read Samsung's terms for your TV and region before you start. Nothing on this page is warranty advice."}},{"@type":"Question","name":"Can rooting brick a Samsung TV?","acceptedAnswer":{"@type":"Answer","text":"The published Vetro files record no bricked TV, but they do document two boot hazards: on the Q80A, disabling Samsung's Home app can keep the TV from finishing its boot, and opening Samsung's factory colour test app could start that test at every boot. Vetro 0.5.0 avoids the first by default and no longer opens the second app."}},{"@type":"Question","name":"Does a Samsung firmware update remove root?","acceptedAnswer":{"@type":"Answer","text":"It can change the result, even within one model family, according to the Vetro README. Root is also volatile and has to be acquired again after each restart."}},{"@type":"Question","name":"Can I undo what Vetro changed?","acceptedAnswer":{"@type":"Answer","text":"Mostly. Restore the TV puts back the changes Vetro recorded after one confirmation. Uninstalled apps, settings without a saved previous value and changes made by plugins need manual recovery."}}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/" aria-current="page">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -44,26 +48,26 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Is it safe to root a Samsung TV? Risks and what to undo</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Rooting guides</p>
-<h1>Is it safe to root a Samsung TV? Risks and what to undo</h1>
+<h1 id="page-title" tabindex="-1">Is it safe to root a Samsung TV? Risks and what to undo</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the published Vetro 0.5.0 README, CHANGELOG, SECURITY.md, sign-in and update guides, and the samsung-tv-root project page.</span></p>
 </header>
 <div class="prose">
 <p>Rooting a Samsung TV is not risk free. It changes a device Samsung locked down, the tools are experimental, and a firmware update can change the result. The published <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">Vetro 0.5.0 documents</a> a boot hazard on the Q80A, a plain-HTTP dashboard and plugins that run with full access. Most changes can be reversed; a few cannot. For the method itself, see <a href="/vetro/root/how-to-root-samsung-tv/">how to root a Samsung TV</a>.</p>
-<h2 id="what-does-rooting-actually-change">What does rooting actually change?<a class="anchor" href="#what-does-rooting-actually-change" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-rooting-actually-change">What does rooting actually change?<a class="anchor" href="#what-does-rooting-actually-change" aria-label="Link to section: What does rooting actually change?">#</a></h2>
 <p>Vetro needs root to do its work: it replaces Samsung&#39;s Home with a launcher, stops services that collect viewing data, blocks domains and remaps remote keys. Vetro is experimental, needs root and ships no signed installer; the <a href="/vetro/root/install-vetro-apps2samsung/">install guide</a> explains how people get it onto a TV.</p>
 <p>The root comes from <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">Chris Ritsen&#39;s samsung-tv-root research</a>. That page says root results are for exact models and firmware, not every size or regional variant in a series, that &quot;UID 0 is not proof that every security boundary is gone&quot;, and that an interrupted run may leave staged files on user storage. It also says root and its changes remain volatile. Vetro&#39;s README adds its own warning: privileged changes can disrupt TV features.</p>
-<h2 id="will-rooting-void-the-warranty">Will rooting void the warranty?<a class="anchor" href="#will-rooting-void-the-warranty" aria-label="Link to this section">#</a></h2>
+<h2 id="will-rooting-void-the-warranty">Will rooting void the warranty?<a class="anchor" href="#will-rooting-void-the-warranty" aria-label="Link to section: Will rooting void the warranty?">#</a></h2>
 <p>We do not know and will not claim either answer. Check Samsung&#39;s terms for your model and region. <a href="/vetro/root/samsung-tv-developer-mode/">Developer Mode</a> is a documented Samsung feature, but the root steps are not something Samsung documents.</p>
-<h2 id="can-rooting-brick-a-samsung-tv">Can rooting brick a Samsung TV?<a class="anchor" href="#can-rooting-brick-a-samsung-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="can-rooting-brick-a-samsung-tv">Can rooting brick a Samsung TV?<a class="anchor" href="#can-rooting-brick-a-samsung-tv" aria-label="Link to section: Can rooting brick a Samsung TV?">#</a></h2>
 <p>The published Vetro files record no bricked TV. They do document two hazards that involve boot.</p>
-<h3 id="disabling-samsung-home-on-the-q80a">Disabling Samsung Home on the Q80A<a class="anchor" href="#disabling-samsung-home-on-the-q80a" aria-label="Link to this section">#</a></h3>
+<h3 id="disabling-samsung-home-on-the-q80a">Disabling Samsung Home on the Q80A<a class="anchor" href="#disabling-samsung-home-on-the-q80a" aria-label="Link to section: Disabling Samsung Home on the Q80A">#</a></h3>
 <p>The 0.5.0 <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>, in its custom launcher entry, says: keep Samsung&#39;s Home enabled, because on the <a href="/vetro/tested-tvs/q80a/">Q80A</a> disabling it can keep the TV from finishing its boot. Vetro&#39;s custom launcher leaves Samsung&#39;s Home enabled and closes it after each Home press. The separate Samsung Home switch sits at the bottom of the Custom launcher tab and asks for confirmation. The same entry says the custom launcher was not yet tried by hand on a TV.</p>
 <p>The changelog states this for the Q80A only. Other models may behave differently, which is a reason to read each switch before turning it on.</p>
-<h3 id="the-factory-colour-test">The factory colour test<a class="anchor" href="#the-factory-colour-test" aria-label="Link to this section">#</a></h3>
+<h3 id="the-factory-colour-test">The factory colour test<a class="anchor" href="#the-factory-colour-test" aria-label="Link to section: The factory colour test">#</a></h3>
 <p>Per the changelog, opening Samsung&#39;s AgingApp could leave a TV starting a factory colour test at every boot, with the volume bar hidden, even after a factory reset (<a href="https://github.com/andrearicci93/vetro/issues/135" rel="noopener" target="_blank">#135</a>). Vetro 0.5.0 no longer opens AgingApp or the service menus and asks for confirmation before opening other hotel, shop or factory apps. If the test is on, Quick settings offers to turn it off. The changelog says this guard was tried only against a simulated TV.</p>
-<h2 id="what-about-firmware-updates">What about firmware updates?<a class="anchor" href="#what-about-firmware-updates" aria-label="Link to this section">#</a></h2>
+<h2 id="what-about-firmware-updates">What about firmware updates?<a class="anchor" href="#what-about-firmware-updates" aria-label="Link to section: What about firmware updates?">#</a></h2>
 <p>A new firmware can change the result even within one model family, says the <a href="https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility" rel="noopener" target="_blank">README</a>. Vetro has a Disable automatic firmware update switch so an update does not arrive unnoticed. According to the 0.3.0 changelog notes it writes one value in the TV&#39;s menu database, keeps the old value and restores it when you switch it off. See <a href="/vetro/updates/firmware-update-remove-root/">what a firmware update does to root</a> and <a href="/vetro/updates/stop-samsung-tv-auto-update/">stopping automatic updates</a>.</p>
-<h2 id="is-the-vetro-dashboard-secure">Is the Vetro dashboard secure?<a class="anchor" href="#is-the-vetro-dashboard-secure" aria-label="Link to this section">#</a></h2>
+<h2 id="is-the-vetro-dashboard-secure">Is the Vetro dashboard secure?<a class="anchor" href="#is-the-vetro-dashboard-secure" aria-label="Link to section: Is the Vetro dashboard secure?">#</a></h2>
 <p>Not by default. <a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a> says pairing is automatic: it switches on once the Vetro app on the TV has been seen. Until then, and on a TV whose app is never recognised, any device on the local network can use the dashboard and API, including root commands, and the dashboard warns about it. With pairing on, each browser needs a six-digit code shown on the TV (<a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/SIGN-IN.md" rel="noopener" target="_blank">sign-in guide</a>). A Require pairing switch in Quick settings, Developer settings lets you force it on or off.</p>
 <p>Traffic is still plain HTTP, so someone watching your network could copy a key. SECURITY.md says to deploy only on a trusted isolated LAN and never to forward the port or expose it to the internet.</p>
 <p>Two further switches widen the trust:</p>
@@ -72,10 +76,10 @@
 <li>Vetro Shards (plugins) are third-party code with no sandbox: a plugin can do whatever Vetro can, including running commands as root. They are off until switched on, and the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/plugins.md" rel="noopener" target="_blank">plugin guide</a> says to enable only ones you trust.</li>
 </ul>
 <p>More in the <a href="/vetro/reference/vetro-security-model/">Vetro security model</a>. Do not share signing keys or developer-account credentials. Diagnostic reports exclude many private fields but can still show which software is installed, so read one before you post it.</p>
-<h2 id="what-can-i-undo">What can I undo?<a class="anchor" href="#what-can-i-undo" aria-label="Link to this section">#</a></h2>
-<div class="table-wrap"><table><thead><tr>
-<th>Change</th>
-<th>Can you reverse it?</th>
+<h2 id="what-can-i-undo">What can I undo?<a class="anchor" href="#what-can-i-undo" aria-label="Link to section: What can I undo?">#</a></h2>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What can I undo?"><table><thead><tr>
+<th scope="col">Change</th>
+<th scope="col">Can you reverse it?</th>
 </tr>
 </thead><tbody><tr>
 <td>A Quick settings switch</td>
@@ -102,9 +106,9 @@
 <td>The previous version is restored if the new one does not start within four minutes</td>
 </tr>
 </tbody></table></div><p>If Vetro cannot read its saved state, it keeps its backups and blocks data removal. Turning a switch back is not a recovery guarantee after a stalled boot or a lost network. For the full procedure see <a href="/vetro/root/uninstall-vetro-samsung-tv/">uninstall Vetro and clean up</a>.</p>
-<h2 id="when-is-rooting-a-samsung-tv-worth-the-risk">When is rooting a Samsung TV worth the risk?<a class="anchor" href="#when-is-rooting-a-samsung-tv-worth-the-risk" aria-label="Link to this section">#</a></h2>
+<h2 id="when-is-rooting-a-samsung-tv-worth-the-risk">When is rooting a Samsung TV worth the risk?<a class="anchor" href="#when-is-rooting-a-samsung-tv-worth-the-risk" aria-label="Link to section: When is rooting a Samsung TV worth the risk?">#</a></h2>
 <p>If you own the TV, accept that privileged changes can disrupt TV features and want the control, it can be reasonable. If the TV is a rental, or you need a settled warranty position, check Samsung&#39;s terms first. If your only aim is privacy, read <a href="/vetro/privacy/turn-off-acr-samsung-tv/">turn off ACR on a Samsung TV</a> before deciding you need root at all.</p>
-<h2 id="a-checklist-before-you-start">A checklist before you start<a class="anchor" href="#a-checklist-before-you-start" aria-label="Link to this section">#</a></h2>
+<h2 id="a-checklist-before-you-start">A checklist before you start<a class="anchor" href="#a-checklist-before-you-start" aria-label="Link to section: A checklist before you start">#</a></h2>
 <ul>
 <li>Use a TV you own or are allowed to administer, as SECURITY.md says.</li>
 <li>Find your model in the README compatibility table and the <a href="/vetro/tested-tvs/">tested TVs</a>. Apart from the Q80A, rows are community reports, and the Tizen 4 and 5.5 TVs listed get the dashboard and diagnostics only.</li>
@@ -114,24 +118,59 @@
 </ul>
 <p>Vetro is not affiliated with Samsung. This page is not legal, warranty or security advice.</p>
 
-<section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">Frequently asked questions</h2><h3>Is it safe to root a Samsung TV?</h3><p>Not risk free. Rooting changes a locked-down device, the tools are experimental, and root results are confirmed only for exact models and firmware builds. Use a TV you own, read what each change does and keep the TV on a trusted network.</p><h3>Will rooting void my Samsung warranty?</h3><p>We cannot say. Read Samsung's terms for your TV and region before you start. Nothing on this page is warranty advice.</p><h3>Can rooting brick a Samsung TV?</h3><p>The published Vetro files record no bricked TV, but they do document two boot hazards: on the Q80A, disabling Samsung's Home app can keep the TV from finishing its boot, and opening Samsung's factory colour test app could start that test at every boot. Vetro 0.5.0 avoids the first by default and no longer opens the second app.</p><h3>Does a Samsung firmware update remove root?</h3><p>It can change the result, even within one model family, according to the Vetro README. Root is also volatile and has to be acquired again after each restart.</p><h3>Can I undo what Vetro changed?</h3><p>Mostly. Restore the TV puts back the changes Vetro recorded after one confirmation. Uninstalled apps, settings without a saved previous value and changes made by plugins need manual recovery.</p></section>
+<section class="faq"><h2 id="faq-h">Frequently asked questions</h2><h3>Is it safe to root a Samsung TV?</h3><p>Not risk free. Rooting changes a locked-down device, the tools are experimental, and root results are confirmed only for exact models and firmware builds. Use a TV you own, read what each change does and keep the TV on a trusted network.</p><h3>Will rooting void my Samsung warranty?</h3><p>We cannot say. Read Samsung's terms for your TV and region before you start. Nothing on this page is warranty advice.</p><h3>Can rooting brick a Samsung TV?</h3><p>The published Vetro files record no bricked TV, but they do document two boot hazards: on the Q80A, disabling Samsung's Home app can keep the TV from finishing its boot, and opening Samsung's factory colour test app could start that test at every boot. Vetro 0.5.0 avoids the first by default and no longer opens the second app.</p><h3>Does a Samsung firmware update remove root?</h3><p>It can change the result, even within one model family, according to the Vetro README. Root is also volatile and has to be acquired again after each restart.</p><h3>Can I undo what Vetro changed?</h3><p>Mostly. Restore the TV puts back the changes Vetro recorded after one confirmation. Uninstalled apps, settings without a saved previous value and changes made by plugins need manual recovery.</p></section>
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/updates/firmware-update-remove-root/"><span class="eyebrow">Firmware updates</span><strong>Will a Samsung TV firmware update remove root? What we know</strong><span>Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/updates/firmware-update-remove-root/"><span class="eyebrow">Firmware updates</span><strong>Will a Samsung TV firmware update remove root? What we know</strong><span>Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/root/samsung-tv-developer-mode/"><span>Previous</span>How to enable Developer Mode on a Samsung TV</a><a class="next" href="/vetro/root/samsung-sdb-connect-tv/"><span>Next</span>Connect to a Samsung TV with sdb (port 26101)</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-does-rooting-actually-change">What does rooting actually change?</a></li><li class="l2"><a href="#will-rooting-void-the-warranty">Will rooting void the warranty?</a></li><li class="l2"><a href="#can-rooting-brick-a-samsung-tv">Can rooting brick a Samsung TV?</a></li><li class="l3"><a href="#disabling-samsung-home-on-the-q80a">Disabling Samsung Home on the Q80A</a></li><li class="l3"><a href="#the-factory-colour-test">The factory colour test</a></li><li class="l2"><a href="#what-about-firmware-updates">What about firmware updates?</a></li><li class="l2"><a href="#is-the-vetro-dashboard-secure">Is the Vetro dashboard secure?</a></li><li class="l2"><a href="#what-can-i-undo">What can I undo?</a></li><li class="l2"><a href="#when-is-rooting-a-samsung-tv-worth-the-risk">When is rooting a Samsung TV worth the risk?</a></li><li class="l2"><a href="#a-checklist-before-you-start">A checklist before you start</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-does-rooting-actually-change">What does rooting actually change?</a></li><li class="l2"><a href="#will-rooting-void-the-warranty">Will rooting void the warranty?</a></li><li class="l2"><a href="#can-rooting-brick-a-samsung-tv">Can rooting brick a Samsung TV?</a></li><li class="l3"><a href="#disabling-samsung-home-on-the-q80a">Disabling Samsung Home on the Q80A</a></li><li class="l3"><a href="#the-factory-colour-test">The factory colour test</a></li><li class="l2"><a href="#what-about-firmware-updates">What about firmware updates?</a></li><li class="l2"><a href="#is-the-vetro-dashboard-secure">Is the Vetro dashboard secure?</a></li><li class="l2"><a href="#what-can-i-undo">What can I undo?</a></li><li class="l2"><a href="#when-is-rooting-a-samsung-tv-worth-the-risk">When is rooting a Samsung TV worth the risk?</a></li><li class="l2"><a href="#a-checklist-before-you-start">A checklist before you start</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

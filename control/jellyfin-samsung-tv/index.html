@@ -7,6 +7,7 @@
 <meta name="description" content="Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/control/jellyfin-samsung-tv/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Jellyfin on a Samsung TV: official app or sideloading","description":"Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"jellyfin samsung tv, jellyfin tizen, install jellyfin samsung tv, sideload jellyfin samsung","articleSection":"Remote, apps and smart home","mainEntityOfPage":"https://andrearicci93.github.io/vetro/control/jellyfin-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Remote, apps and smart home","item":"https://andrearicci93.github.io/vetro/control/"},{"@type":"ListItem","position":3,"name":"Jellyfin on a Samsung TV: official app or sideloading","item":"https://andrearicci93.github.io/vetro/control/jellyfin-samsung-tv/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/" aria-current="page">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/" aria-current="page">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,16 +47,16 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><span aria-current="page">Jellyfin on a Samsung TV: official app or sideloading</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Remote, apps and smart home</p>
-<h1>Jellyfin on a Samsung TV: official app or sideloading</h1>
+<h1 id="page-title" tabindex="-1">Jellyfin on a Samsung TV: official app or sideloading</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Android Authority's 2026-02-04 report, the jellyfin-tizen and Apps2Samsung READMEs, Samsung's TV device page and the Vetro 0.5.0 README.</span></p>
 </header>
 <div class="prose">
 <p>Jellyfin now has an app in Samsung&#39;s Tizen app store, but only some TVs can install it. If yours cannot, you can sideload Jellyfin with a desktop tool such as Apps2Samsung or build it yourself with Tizen Studio. Neither route needs root or Vetro. For sideloading you need Developer Mode on the TV, a signing certificate that your TV accepts, and a computer or phone on the same network. Check the store first, because it is the least effort.</p>
-<h2 id="is-there-an-official-jellyfin-app-for-samsung-tvs">Is there an official Jellyfin app for Samsung TVs?<a class="anchor" href="#is-there-an-official-jellyfin-app-for-samsung-tvs" aria-label="Link to this section">#</a></h2>
+<h2 id="is-there-an-official-jellyfin-app-for-samsung-tvs">Is there an official Jellyfin app for Samsung TVs?<a class="anchor" href="#is-there-an-official-jellyfin-app-for-samsung-tvs" aria-label="Link to section: Is there an official Jellyfin app for Samsung TVs?">#</a></h2>
 <p>Yes, for some models. <a href="https://www.androidauthority.com/jellyfin-samsung-tvs-3637724/" rel="noopener" target="_blank">Android Authority reported on 4 February 2026</a> that Jellyfin had appeared in the Tizen app store and that a Jellyfin developer confirmed the release. The same article says the app needs Tizen 6.0 or higher, quotes the developer as saying &quot;It&#39;s not all models that are eligible yet, just some&quot;, and notes that some users in Brazil, Canada and France did not see it.</p>
 <p>That is a February snapshot, so open the Apps store on your TV and search for Jellyfin. If it is there, install it and stop reading; it is the supported route and updates through the store.</p>
 <p>The article says owners of older Samsung TVs still need to sideload. Not sure which Tizen your TV runs? See <a href="/vetro/root/samsung-tv-tizen-version-by-year/">Tizen version by year</a>.</p>
-<h2 id="how-do-you-sideload-jellyfin-without-tizen-studio">How do you sideload Jellyfin without Tizen Studio?<a class="anchor" href="#how-do-you-sideload-jellyfin-without-tizen-studio" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-you-sideload-jellyfin-without-tizen-studio">How do you sideload Jellyfin without Tizen Studio?<a class="anchor" href="#how-do-you-sideload-jellyfin-without-tizen-studio" aria-label="Link to section: How do you sideload Jellyfin without Tizen Studio?">#</a></h2>
 <p><a href="https://github.com/Apps2Samsung/Apps2Samsung" rel="noopener" target="_blank">Apps2Samsung</a> is a community tool that installs apps on Samsung Tizen TVs, projectors and smart monitors. According to its README it finds the device, creates a signing certificate and installs the app, so you do not need Tizen Studio. Jellyfin is in its catalog, next to other apps and your own <code>.wgt</code> or <code>.tpk</code> files. Apps2Samsung asks for the server address before installing it. A Tizen certificate from the SDK&#39;s own authority, which needs no Samsung account, is the README&#39;s alternative to the Samsung sign-in.</p>
 <p>What you need (for sideloading, not for the store app):</p>
 <ol>
@@ -70,7 +74,7 @@
 </ol>
 <p>The tool reports when Developer Mode is off, the host PC IP is wrong or a restart is needed. It also flags apps that need a newer Tizen than your TV has. Orsay TVs from before 2015 are not supported.</p>
 <p>Certificate trouble is the most common failure. The <a href="/vetro/root/samsung-developer-certificate-errors/">certificate errors guide</a> covers how author and distributor certificates work and what to try when an install is refused.</p>
-<h2 id="how-do-you-build-jellyfin-with-tizen-studio">How do you build Jellyfin with Tizen Studio?<a class="anchor" href="#how-do-you-build-jellyfin-with-tizen-studio" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-you-build-jellyfin-with-tizen-studio">How do you build Jellyfin with Tizen Studio?<a class="anchor" href="#how-do-you-build-jellyfin-with-tizen-studio" aria-label="Link to section: How do you build Jellyfin with Tizen Studio?">#</a></h2>
 <p>The <a href="https://github.com/jellyfin/jellyfin-tizen" rel="noopener" target="_blank">jellyfin-tizen README</a> is the official route and the most work. Its prerequisites are Tizen Studio 4.6 or later (the IDE or the CLI, with the TV SDK), Git, Node.js 20 or later and a Tizen certificate made in Certificate Manager. If the Tizen certificate causes install problems, the README suggests a Samsung certificate, which needs a Samsung account.</p>
 <p>In outline, from the README:</p>
 <ol>
@@ -81,12 +85,12 @@
 <li>Install it with <code>tizen install</code>, after connecting to the TV with Device Manager or <code>sdb connect</code>.</li>
 </ol>
 <p>The README says to repeat the build when jellyfin-web changes. It does not list install error codes, so we do not list any here either.</p>
-<h2 id="which-route-should-you-pick">Which route should you pick?<a class="anchor" href="#which-route-should-you-pick" aria-label="Link to this section">#</a></h2>
-<div class="table-wrap"><table><thead><tr>
-<th>Route</th>
-<th>Effort</th>
-<th>Needs</th>
-<th>Updates</th>
+<h2 id="which-route-should-you-pick">Which route should you pick?<a class="anchor" href="#which-route-should-you-pick" aria-label="Link to section: Which route should you pick?">#</a></h2>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Which route should you pick?"><table><thead><tr>
+<th scope="col">Route</th>
+<th scope="col">Effort</th>
+<th scope="col">Needs</th>
+<th scope="col">Updates</th>
 </tr>
 </thead><tbody><tr>
 <td>Store app</td>
@@ -107,30 +111,65 @@
 <td>You rebuild</td>
 </tr>
 </tbody></table></div><p>Android Authority also describes a community tool, Samsung-Jellyfin-Installer, that automates some sideloading steps such as creating a certificate. We have not reviewed it.</p>
-<h2 id="does-jellyfin-need-a-rooted-tv-or-vetro">Does Jellyfin need a rooted TV or Vetro?<a class="anchor" href="#does-jellyfin-need-a-rooted-tv-or-vetro" aria-label="Link to this section">#</a></h2>
+<h2 id="does-jellyfin-need-a-rooted-tv-or-vetro">Does Jellyfin need a rooted TV or Vetro?<a class="anchor" href="#does-jellyfin-need-a-rooted-tv-or-vetro" aria-label="Link to section: Does Jellyfin need a rooted TV or Vetro?">#</a></h2>
 <p>No. Both sideload routes use Samsung&#39;s own Developer Mode and signing. Root is a separate step, and <a href="/vetro/root/how-to-root-samsung-tv/">how to root a Samsung TV</a> explains what it involves and why you would not do it only for Jellyfin.</p>
 <p>Vetro, a launcher and remapper for rooted TVs, can sit beside a sideloaded Jellyfin. The Remapper can assign a remote button to open an app you choose; see <a href="/vetro/control/remap-samsung-remote-buttons/">remap Samsung remote buttons</a>. We have not tested Jellyfin with it. Vetro is experimental, needs root and ships no signed installer; read <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a>, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting is safe</a> and the <a href="/vetro/root/install-vetro-apps2samsung/">Apps2Samsung install guide</a> first. The same tooling installs other apps: <a href="/vetro/control/tizentube-samsung-tv/">TizenTube</a> goes on with Apps2Samsung too.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>We did not run these routes on a TV for this page; the steps come from the projects&#39; documentation and one news report. Menu names and Developer Mode behavior vary by model and year. Check Samsung&#39;s terms if you are unsure what Developer Mode does to your warranty.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/control/tizentube-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>TizenTube on Samsung TV: install steps and requirements</strong><span>How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/control/tizentube-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>TizenTube on Samsung TV: install steps and requirements</strong><span>How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/control/samsung-remote-keys-home-assistant/"><span>Previous</span>Samsung TV remote buttons as Home Assistant events</a><a class="next" href="/vetro/control/tizentube-samsung-tv/"><span>Next</span>TizenTube on Samsung TV: install steps and requirements</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#is-there-an-official-jellyfin-app-for-samsung-tvs">Is there an official Jellyfin app for Samsung TVs?</a></li><li class="l2"><a href="#how-do-you-sideload-jellyfin-without-tizen-studio">How do you sideload Jellyfin without Tizen Studio?</a></li><li class="l2"><a href="#how-do-you-build-jellyfin-with-tizen-studio">How do you build Jellyfin with Tizen Studio?</a></li><li class="l2"><a href="#which-route-should-you-pick">Which route should you pick?</a></li><li class="l2"><a href="#does-jellyfin-need-a-rooted-tv-or-vetro">Does Jellyfin need a rooted TV or Vetro?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#is-there-an-official-jellyfin-app-for-samsung-tvs">Is there an official Jellyfin app for Samsung TVs?</a></li><li class="l2"><a href="#how-do-you-sideload-jellyfin-without-tizen-studio">How do you sideload Jellyfin without Tizen Studio?</a></li><li class="l2"><a href="#how-do-you-build-jellyfin-with-tizen-studio">How do you build Jellyfin with Tizen Studio?</a></li><li class="l2"><a href="#which-route-should-you-pick">Which route should you pick?</a></li><li class="l2"><a href="#does-jellyfin-need-a-rooted-tv-or-vetro">Does Jellyfin need a rooted TV or Vetro?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

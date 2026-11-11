@@ -7,6 +7,7 @@
 <meta name="description" content="What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"What each Vetro switch changes on a Samsung TV (0.5.0)","description":"What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"vetro quick settings, vetro switches, vetro task manager, vetro debloater","articleSection":"Reference","mainEntityOfPage":"https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Reference","item":"https://andrearicci93.github.io/vetro/reference/"},{"@type":"ListItem","position":3,"name":"What each Vetro switch changes on a Samsung TV (0.5.0)","item":"https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/" aria-current="page">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/" aria-current="page">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,21 +47,21 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/reference/">Reference</a></li><li><span aria-current="page">What each Vetro switch changes on a Samsung TV (0.5.0)</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Reference</p>
-<h1>What each Vetro switch changes on a Samsung TV (0.5.0)</h1>
+<h1 id="page-title" tabindex="-1">What each Vetro switch changes on a Samsung TV (0.5.0)</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Rebuilt on 2026-11-10 against the published Vetro 0.5.0 README, CHANGELOG, DOMAIN-FILTER.md, SIGN-IN.md, HARDENING-0.5.0.md and RELEASE-0.5.0.md on GitHub.</span></p>
 </header>
 <div class="prose">
 <p>Each Vetro switch does one specific thing on the TV: it sets a disable flag on a group of components, writes a file that a Samsung service checks, stops a process, or changes one menu value. This page describes Vetro 0.5.0, released on 2026-11-06 and republished twice on 7 November (there was never a 0.4.0 release; its work is part of 0.5.0). It lists what each switch does, how to undo it, and what the project says is not yet verified, using the <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a>, the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a> and the documents they link.</p>
 <p>Vetro is experimental and needs root, and it ships no signed installer: <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a> and <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">the risks of rooting</a> come first, and <a href="/vetro/root/install-vetro-apps2samsung/">Apps2Samsung</a> does the signing. Most effects were tried on one Samsung <a href="/vetro/tested-tvs/q80a/">Q80A</a>. Where the changelog says a part was not tried on a TV, the table says so.</p>
 <p><figure><img src="/vetro/assets/img/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings: HbbTV, advertising and tracking, domain blocking and voice assistant switches" loading="lazy" decoding="async" width="1425" height="1100"><figcaption>Vetro dashboard, Quick settings: HbbTV, advertising and tracking, domain blocking and voice assistant switches</figcaption></figure></p>
-<h2 id="what-do-the-quick-settings-switches-do">What do the Quick settings switches do?<a class="anchor" href="#what-do-the-quick-settings-switches-do" aria-label="Link to this section">#</a></h2>
+<h2 id="what-do-the-quick-settings-switches-do">What do the Quick settings switches do?<a class="anchor" href="#what-do-the-quick-settings-switches-do" aria-label="Link to section: What do the Quick settings switches do?">#</a></h2>
 <p>Quick settings opens on General, followed by Privacy and ads, Voice, Disable and Developer settings. Every switch shows Done or Partly done. The undo column uses only behavior the changelog or README documents; where none is documented, it says so.</p>
-<h3 id="general">General<a class="anchor" href="#general" aria-label="Link to this section">#</a></h3>
-<div class="table-wrap"><table><thead><tr>
-<th>Switch</th>
-<th>What it does on the TV</th>
-<th>How to undo it</th>
-<th>Status and caveats</th>
+<h3 id="general">General<a class="anchor" href="#general" aria-label="Link to section: General">#</a></h3>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: General"><table><thead><tr>
+<th scope="col">Switch</th>
+<th scope="col">What it does on the TV</th>
+<th scope="col">How to undo it</th>
+<th scope="col">Status and caveats</th>
 </tr>
 </thead><tbody><tr>
 <td>Software update</td>
@@ -95,12 +99,12 @@
 <td>None documented</td>
 <td>Tried only against a simulated TV</td>
 </tr>
-</tbody></table></div><h3 id="privacy-and-ads">Privacy and ads<a class="anchor" href="#privacy-and-ads" aria-label="Link to this section">#</a></h3>
-<div class="table-wrap"><table><thead><tr>
-<th>Switch</th>
-<th>What it does on the TV</th>
-<th>How to undo it</th>
-<th>Status and caveats</th>
+</tbody></table></div><h3 id="privacy-and-ads">Privacy and ads<a class="anchor" href="#privacy-and-ads" aria-label="Link to section: Privacy and ads">#</a></h3>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Privacy and ads"><table><thead><tr>
+<th scope="col">Switch</th>
+<th scope="col">What it does on the TV</th>
+<th scope="col">How to undo it</th>
+<th scope="col">Status and caveats</th>
 </tr>
 </thead><tbody><tr>
 <td>Disable advertising and tracking services</td>
@@ -120,12 +124,12 @@
 <td>Switch off. An undo you make during startup is respected: pending retries no longer apply the change again. No other undo detail is documented</td>
 <td>Effects on recognition and suggestions have not been verified</td>
 </tr>
-</tbody></table></div><h3 id="voice">Voice<a class="anchor" href="#voice" aria-label="Link to this section">#</a></h3>
-<div class="table-wrap"><table><thead><tr>
-<th>Switch</th>
-<th>What it does on the TV</th>
-<th>How to undo it</th>
-<th>Status and caveats</th>
+</tbody></table></div><h3 id="voice">Voice<a class="anchor" href="#voice" aria-label="Link to section: Voice">#</a></h3>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Voice"><table><thead><tr>
+<th scope="col">Switch</th>
+<th scope="col">What it does on the TV</th>
+<th scope="col">How to undo it</th>
+<th scope="col">Status and caveats</th>
 </tr>
 </thead><tbody><tr>
 <td>Disable all voice assistants, or Alexa, Google Assistant, Bixby and the other voice services one by one</td>
@@ -133,12 +137,12 @@
 <td>Switch off</td>
 <td>Also turns off the remote&#39;s microphone button, Voice Guide (read-aloud) and voice suggestions in search. Vetro asks you to confirm</td>
 </tr>
-</tbody></table></div><h3 id="disable">Disable<a class="anchor" href="#disable" aria-label="Link to this section">#</a></h3>
-<div class="table-wrap"><table><thead><tr>
-<th>Switch</th>
-<th>What it does on the TV</th>
-<th>How to undo it</th>
-<th>Status and caveats</th>
+</tbody></table></div><h3 id="disable">Disable<a class="anchor" href="#disable" aria-label="Link to section: Disable">#</a></h3>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Disable"><table><thead><tr>
+<th scope="col">Switch</th>
+<th scope="col">What it does on the TV</th>
+<th scope="col">How to undo it</th>
+<th scope="col">Status and caveats</th>
 </tr>
 </thead><tbody><tr>
 <td>Disable HbbTV</td>
@@ -165,12 +169,12 @@
 <td>Appears only on TVs whose AirPlay setup supports it. Tried on a Q80A</td>
 </tr>
 </tbody></table></div><p>The memory figures come from a process survey of one TV, not from a speed test. The project&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md" rel="noopener" target="_blank">performance record</a> measured memory only, not frame rate or input latency; see <a href="/vetro/speed/samsung-tv-memory-usage/">what uses memory on a Samsung TV</a>.</p>
-<h3 id="developer-settings">Developer settings<a class="anchor" href="#developer-settings" aria-label="Link to this section">#</a></h3>
-<div class="table-wrap"><table><thead><tr>
-<th>Switch</th>
-<th>What it does on the TV</th>
-<th>How to undo it</th>
-<th>Status and caveats</th>
+<h3 id="developer-settings">Developer settings<a class="anchor" href="#developer-settings" aria-label="Link to section: Developer settings">#</a></h3>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Developer settings"><table><thead><tr>
+<th scope="col">Switch</th>
+<th scope="col">What it does on the TV</th>
+<th scope="col">How to undo it</th>
+<th scope="col">Status and caveats</th>
 </tr>
 </thead><tbody><tr>
 <td>Require pairing</td>
@@ -190,7 +194,7 @@
 <td>Nothing to undo</td>
 <td>Optional setting Include details about unrecognised components is off by default</td>
 </tr>
-</tbody></table></div><h2 id="how-does-the-domain-filter-choose-its-names">How does the domain filter choose its names?<a class="anchor" href="#how-does-the-domain-filter-choose-its-names" aria-label="Link to this section">#</a></h2>
+</tbody></table></div><h2 id="how-does-the-domain-filter-choose-its-names">How does the domain filter choose its names?<a class="anchor" href="#how-does-the-domain-filter-choose-its-names" aria-label="Link to section: How does the domain filter choose its names?">#</a></h2>
 <p>The filter matches exact hostnames: blocking <code>samsungads.com</code> does not block <code>rtb-config.samsungads.com</code>. The candidate names come in three groups, described in <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md" rel="noopener" target="_blank">DOMAIN-FILTER.md</a>.</p>
 <ul>
 <li>Firmware-derived names are strings found in the Q80A firmware image, each tied to the component that references it. Whether a name is reached at run time, and what happens when it is blocked, was not tested on a TV.</li>
@@ -198,13 +202,13 @@
 <li>One probable name, <code>gpm.samsungqbe.com</code>, is a guess at where the viewing-data service learns its servers. It is not in the firmware and not confirmed in traffic, so the dashboard labels it unverified.</li>
 </ul>
 <p>The filter refuses the names the TV uses for its internet check, its clock and Samsung&#39;s Certificate Manager. The software-update servers are not on that list, but blocking them stops firmware updates, so the project points to the auto-update switch as the easier one to undo. The usage-log domain that Stop viewing-data collection adds to your saved list does not turn the filter on: DNS blocking stays your choice, and the data service can still run until it is on.</p>
-<h2 id="what-do-the-launcher-options-change">What do the Launcher options change?<a class="anchor" href="#what-do-the-launcher-options-change" aria-label="Link to this section">#</a></h2>
+<h2 id="what-do-the-launcher-options-change">What do the Launcher options change?<a class="anchor" href="#what-do-the-launcher-options-change" aria-label="Link to section: What do the Launcher options change?">#</a></h2>
 <p>The launcher is off until you turn it on in the Launcher tab, after an in-page warning. Turning it on closes Samsung&#39;s Home and switches off the Autorun Smart Hub setting so the TV no longer powers on to Samsung&#39;s Home. Vetro remembers the old value and puts it back only if it changed it. Nothing is removed: if the launcher stops, the Home key goes back to Samsung&#39;s Home. <a href="/vetro/reference/why-vetro-is-native/">Why the launcher is native</a> explains the design.</p>
-<div class="table-wrap"><table><thead><tr>
-<th>Option</th>
-<th>What it does</th>
-<th>How to undo it</th>
-<th>Status and caveats</th>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What do the Launcher options change?"><table><thead><tr>
+<th scope="col">Option</th>
+<th scope="col">What it does</th>
+<th scope="col">How to undo it</th>
+<th scope="col">Status and caveats</th>
 </tr>
 </thead><tbody><tr>
 <td>Reduce motion</td>
@@ -242,12 +246,12 @@
 <td>Switch Samsung Home back on</td>
 <td>Keep Samsung&#39;s Home enabled: on the Q80A, disabling it can keep the TV from finishing its boot (see <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-0.5.0.md" rel="noopener" target="_blank">RELEASE-0.5.0.md</a>)</td>
 </tr>
-</tbody></table></div><h2 id="what-do-the-task-manager-actions-do">What do the Task manager actions do?<a class="anchor" href="#what-do-the-task-manager-actions-do" aria-label="Link to this section">#</a></h2>
+</tbody></table></div><h2 id="what-do-the-task-manager-actions-do">What do the Task manager actions do?<a class="anchor" href="#what-do-the-task-manager-actions-do" aria-label="Link to section: What do the Task manager actions do?">#</a></h2>
 <p>The Task manager lists every app and service on the TV with a plain description and a role: Tracking, Optional or Keep. The Not used at home role was removed in 0.5.0. Hotel, shop and factory apps open only after a warning.</p>
-<div class="table-wrap"><table><thead><tr>
-<th>Action</th>
-<th>Effect</th>
-<th>Undo</th>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What do the Task manager actions do?"><table><thead><tr>
+<th scope="col">Action</th>
+<th scope="col">Effect</th>
+<th scope="col">Undo</th>
 </tr>
 </thead><tbody><tr>
 <td>Disable</td>
@@ -265,30 +269,65 @@
 <td>Needs an installer to recover. Keep removed apps removed will keep it off until you select Allow again</td>
 </tr>
 </tbody></table></div><p>Protected system components cannot be touched, and uninstalling a package also protects its siblings. Quick settings and the Task manager share one inventory, so an assistant disabled in one shows as disabled in the other.</p>
-<h2 id="what-do-the-other-tabs-change">What do the other tabs change?<a class="anchor" href="#what-do-the-other-tabs-change" aria-label="Link to this section">#</a></h2>
+<h2 id="what-do-the-other-tabs-change">What do the other tabs change?<a class="anchor" href="#what-do-the-other-tabs-change" aria-label="Link to section: What do the other tabs change?">#</a></h2>
 <p>The Remapper turns a remote key into an app launch. Shortcuts survive restarts, and a key can also send an MQTT message (<a href="/vetro/control/remap-samsung-remote-buttons/">remapping Samsung remote buttons</a>). Settings and controls writes supported picture and advanced settings with read-back, and restore of saved values. The Home Assistant tab publishes the TV&#39;s state and accepts actions on exact topics (<a href="/vetro/control/home-assistant-samsung-tv/">Home Assistant and Samsung TV</a>). Vetro Shards (plugins) are third-party code with the same access as Vetro, off until you switch them on.</p>
-<h2 id="is-every-switch-reversible">Is every switch reversible?<a class="anchor" href="#is-every-switch-reversible" aria-label="Link to this section">#</a></h2>
+<h2 id="is-every-switch-reversible">Is every switch reversible?<a class="anchor" href="#is-every-switch-reversible" aria-label="Link to section: Is every switch reversible?">#</a></h2>
 <p>Turning a switch back is the documented undo, but it only works while Vetro and its root helper stay reachable, and it is not a promise to recover from every failure, such as lost network access or a TV that stalls its boot. Restore the TV puts back what Vetro recorded and lists what needs manual recovery. The dashboard now asks for a six-digit code shown on the TV once the Vetro app has been seen; see <a href="/vetro/reference/vetro-security-model/">the security model</a>, and the <a href="/vetro/root/uninstall-vetro-samsung-tv/">uninstall guide</a> for removal.</p>
 <p>Next steps: <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">remove ads from the home screen</a>, <a href="/vetro/privacy/turn-off-acr-samsung-tv/">turn off ACR</a>, or check your model in the <a href="/vetro/tested-tvs/">tested TVs index</a>.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/reference/samsung-model-code-decoder/"><span>Previous</span>Samsung TV model number decoder: model code and firmware</a><a class="next" href="/vetro/reference/vetro-security-model/"><span>Next</span>Vetro security model: pairing, plain HTTP, trusted LAN</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-do-the-quick-settings-switches-do">What do the Quick settings switches do?</a></li><li class="l3"><a href="#general">General</a></li><li class="l3"><a href="#privacy-and-ads">Privacy and ads</a></li><li class="l3"><a href="#voice">Voice</a></li><li class="l3"><a href="#disable">Disable</a></li><li class="l3"><a href="#developer-settings">Developer settings</a></li><li class="l2"><a href="#how-does-the-domain-filter-choose-its-names">How does the domain filter choose its names?</a></li><li class="l2"><a href="#what-do-the-launcher-options-change">What do the Launcher options change?</a></li><li class="l2"><a href="#what-do-the-task-manager-actions-do">What do the Task manager actions do?</a></li><li class="l2"><a href="#what-do-the-other-tabs-change">What do the other tabs change?</a></li><li class="l2"><a href="#is-every-switch-reversible">Is every switch reversible?</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-do-the-quick-settings-switches-do">What do the Quick settings switches do?</a></li><li class="l3"><a href="#general">General</a></li><li class="l3"><a href="#privacy-and-ads">Privacy and ads</a></li><li class="l3"><a href="#voice">Voice</a></li><li class="l3"><a href="#disable">Disable</a></li><li class="l3"><a href="#developer-settings">Developer settings</a></li><li class="l2"><a href="#how-does-the-domain-filter-choose-its-names">How does the domain filter choose its names?</a></li><li class="l2"><a href="#what-do-the-launcher-options-change">What do the Launcher options change?</a></li><li class="l2"><a href="#what-do-the-task-manager-actions-do">What do the Task manager actions do?</a></li><li class="l2"><a href="#what-do-the-other-tabs-change">What do the other tabs change?</a></li><li class="l2"><a href="#is-every-switch-reversible">Is every switch reversible?</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

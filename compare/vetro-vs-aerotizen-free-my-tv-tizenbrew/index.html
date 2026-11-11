@@ -7,6 +7,7 @@
 <meta name="description" content="Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Vetro vs AeroTizen, free-my-tv and TizenBrew","description":"Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv launcher debloat tools compared, aerotizen vs vetro, free-my-tv samsung, tizenbrew alternative","articleSection":"Comparisons","mainEntityOfPage":"https://andrearicci93.github.io/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Comparisons","item":"https://andrearicci93.github.io/vetro/compare/"},{"@type":"ListItem","position":3,"name":"Vetro vs AeroTizen, free-my-tv and TizenBrew","item":"https://andrearicci93.github.io/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/" aria-current="page">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/" aria-current="page">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,18 +47,18 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><span aria-current="page">Vetro vs AeroTizen, free-my-tv and TizenBrew</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Comparisons</p>
-<h1>Vetro vs AeroTizen, free-my-tv and TizenBrew</h1>
+<h1 id="page-title" tabindex="-1">Vetro vs AeroTizen, free-my-tv and TizenBrew</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the AeroTizen, free-my-tv and TizenBrew READMEs, the TizenBrew guide, and the Vetro 0.5.0 README, CHANGELOG, SECURITY.md and PERFORMANCE.md.</span></p>
 </header>
 <div class="prose">
 <p>These four projects solve different problems. AeroTizen and free-my-tv give you a nicer home screen without root. TizenBrew is a loader for modded web apps such as TizenTube, not a launcher. Vetro needs root, and in exchange it can replace Samsung&#39;s Home, switch off tracking services and remap the remote. If you want a better-looking app row and nothing else, you probably do not need Vetro. This page compares them from each project&#39;s own documentation. This site is published by the Vetro project, so weigh that.</p>
-<h2 id="the-short-comparison">The short comparison<a class="anchor" href="#the-short-comparison" aria-label="Link to this section">#</a></h2>
-<div class="table-wrap"><table><thead><tr>
-<th></th>
-<th>Vetro</th>
-<th>AeroTizen</th>
-<th>free-my-tv</th>
-<th>TizenBrew</th>
+<h2 id="the-short-comparison">The short comparison<a class="anchor" href="#the-short-comparison" aria-label="Link to section: The short comparison">#</a></h2>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: The short comparison"><table><thead><tr>
+<th scope="col"></th>
+<th scope="col">Vetro</th>
+<th scope="col">AeroTizen</th>
+<th scope="col">free-my-tv</th>
+<th scope="col">TizenBrew</th>
 </tr>
 </thead><tbody><tr>
 <td>What it is</td>
@@ -105,23 +109,23 @@
 <td>Compatibility notes per year</td>
 <td>Needs Tizen 3.0 or later</td>
 </tr>
-</tbody></table></div><h2 id="what-does-vetro-offer">What does Vetro offer?<a class="anchor" href="#what-does-vetro-offer" aria-label="Link to this section">#</a></h2>
+</tbody></table></div><h2 id="what-does-vetro-offer">What does Vetro offer?<a class="anchor" href="#what-does-vetro-offer" aria-label="Link to section: What does Vetro offer?">#</a></h2>
 <p><a href="https://github.com/andrearicci93/vetro" rel="noopener" target="_blank">Vetro</a> runs on the TV with root and serves a dashboard you open from a computer or phone. Per its <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a>, the launcher shows the same apps as Samsung&#39;s Home, in the same order, and returns after a restart or standby, with Samsung&#39;s Home one press away. In a single run on the <a href="/vetro/tested-tvs/q80a/">Q80A</a>, available RAM went from 533 MB to 662 MB with the launcher on, about 24% more. <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md" rel="noopener" target="_blank">PERFORMANCE.md</a> says that is a memory figure only: nothing there shows a change in frame rate, input latency or time to open an app.</p>
 <p>The rest of Vetro is the debloater (Quick settings and a Task manager that lists every app and service), a Remapper for remote buttons, MQTT for Home Assistant and diagnostics. The README says every switch can be turned back on. The root comes from <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">Chris Ritsen&#39;s samsung-tv-root research</a>, and Vetro is experimental and ships no signed installer: you use a package signed for your TV, for example with Apps2Samsung (see <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a> and the <a href="/vetro/root/install-vetro-apps2samsung/">install guide</a>). The dashboard runs over plain HTTP; since 0.5.0 it uses a pairing code, but pairing is automatic and the dashboard is open until the Vetro app on the TV has been seen (<a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a>). Vetro was developed on the Q80A and community reports cover other models; see the <a href="/vetro/tested-tvs/">tested TVs</a>.</p>
 <p>Pick it if you want the debloater and the remapper as well as a launcher, and you accept <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">the risks of rooting</a>. Do not pick it if you only want a different home screen, or if you cannot get root on your TV.</p>
-<h2 id="aerotizen">AeroTizen<a class="anchor" href="#aerotizen" aria-label="Link to this section">#</a></h2>
+<h2 id="aerotizen">AeroTizen<a class="anchor" href="#aerotizen" aria-label="Link to section: AeroTizen">#</a></h2>
 <p><a href="https://github.com/helalaou/AeroTizen" rel="noopener" target="_blank">AeroTizen</a> puts your favourite apps and HDMI inputs in one place and adds Continue Watching, weather and automatic location. Its README says both Home options work without root and links a separate, optional root setup guide.</p>
 <p>You install it with the <code>aerotizen</code> command-line tool, which runs on macOS, Windows x64 and Linux x64: enable Developer Mode, set the host PC IP, then <code>discover</code>, <code>status</code>, <code>certs</code> (Samsung sign-in) and <code>install launcher</code>. There are two ways to reach it from Home. &quot;Native Home&quot; sends Home presses to AeroTizen and tries to open it at power-on, after the CLI backs up the original Home and startup settings. It is marked experimental, and the README says it is reported not to work on Tizen 10, where you should use the watcher. The watcher, the default option, reopens AeroTizen when it sees the TV return to Samsung Home. The README warns that some apps, including YouTube and Prime Video, can leave you on Samsung Home.</p>
 <p>The repository is tagged &quot;debloat&quot; and credits a debloat project for identifying which Samsung packages are safe to remove, and it links guides for ads and DNS blocklists, but the README does not clearly say AeroTizen removes packages itself. It says to use it at your own risk and that it is not affiliated with Samsung. Pick it for a home screen with no root.</p>
-<h2 id="what-is-free-my-tv">What is free-my-tv?<a class="anchor" href="#what-is-free-my-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-free-my-tv">What is free-my-tv?<a class="anchor" href="#what-is-free-my-tv" aria-label="Link to section: What is free-my-tv?">#</a></h2>
 <p><a href="https://github.com/simbasjungles/free-my-tv" rel="noopener" target="_blank">free-my-tv</a> is a fast home screen for Google TV, LG webOS and Samsung Tizen. On Samsung it is an app you open; Samsung&#39;s home screen stays in place and nothing is rooted. You turn on Developer Mode, install through TizenBrew Installer (or build it and run a Python script), and optionally enable Autorun Last App so the TV opens into it. The README lists trending picks that need your own TMDB key, a shelf of apps, an inputs drawer, weather, a theme and a screensaver.</p>
 <p>Its Samsung compatibility notes say: it needs a Samsung TV from 2015 or newer; 2015 and 2016 TVs cannot run TizenBrew and need a self-built install; TV Settings is missing from the drawer on 2015 and 2016 sets and freezes on 2017 and 2018 ones; and autorun does not reopen the app on 2019 and 2020 TVs. The README has a <code>hide_apps</code> setting that hides built-in apps from its own shelf, and its list of system changes has no Samsung entries. Pick it for a simple shelf of apps; it does not document any tracking switches.</p>
-<h2 id="what-is-tizenbrew">What is TizenBrew?<a class="anchor" href="#what-is-tizenbrew" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-tizenbrew">What is TizenBrew?<a class="anchor" href="#what-is-tizenbrew" aria-label="Link to section: What is TizenBrew?">#</a></h2>
 <p><a href="https://github.com/reisxd/TizenBrew" rel="noopener" target="_blank">TizenBrew</a> runs modded websites such as TizenTube and installs newer apps without going through Tizen Studio each time. Its <a href="https://github.com/reisxd/TizenBrew/blob/main/docs/README.md" rel="noopener" target="_blank">getting started guide</a> says it needs Tizen 3.0 or later. The preferred route is a desktop installer, with a Samsung account sign-in on Tizen 7 and above; a command-line route exists; the USB demo package is deprecated because Samsung shut down the service needed to make it. It is GPL-3.0 licensed.</p>
 <p>It is not a launcher and not a debloater. It is a loader, and the apps it loads are the point: <a href="/vetro/control/tizentube-samsung-tv/">TizenTube</a> is the example in its README. free-my-tv uses it as an install route. Pick it if you want modded YouTube or similar and nothing more.</p>
-<h2 id="can-i-combine-them">Can I combine them?<a class="anchor" href="#can-i-combine-them" aria-label="Link to this section">#</a></h2>
+<h2 id="can-i-combine-them">Can I combine them?<a class="anchor" href="#can-i-combine-them" aria-label="Link to section: Can I combine them?">#</a></h2>
 <p>Some pairings are documented. free-my-tv installs through TizenBrew Installer. Vetro&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">installation guide</a> names <a href="https://github.com/Apps2Samsung/Apps2Samsung" rel="noopener" target="_blank">Apps2Samsung</a> as the fastest way to install Vetro. We have not tested Vetro&#39;s launcher together with AeroTizen&#39;s Native Home, and both want the Home key, so do not assume they coexist.</p>
-<h2 id="which-tool-should-i-choose">Which tool should I choose?<a class="anchor" href="#which-tool-should-i-choose" aria-label="Link to this section">#</a></h2>
+<h2 id="which-tool-should-i-choose">Which tool should I choose?<a class="anchor" href="#which-tool-should-i-choose" aria-label="Link to section: Which tool should I choose?">#</a></h2>
 <ul>
 <li>For a nicer home screen without root, use AeroTizen or free-my-tv.</li>
 <li>For YouTube with the ad blocking TizenTube describes, and no root, use TizenBrew with TizenTube, or the Apps2Samsung route in the <a href="/vetro/control/tizentube-samsung-tv/">TizenTube guide</a>.</li>
@@ -129,27 +133,62 @@
 <li>For fewer ads on the home screen only, read <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">remove ads from the Samsung TV home screen</a> first. A launcher may be more than you need.</li>
 </ul>
 <p>For how the native launcher differs from web ones, see <a href="/vetro/reference/why-vetro-is-native/">why Vetro&#39;s launcher is native</a> and <a href="/vetro/speed/custom-launcher-samsung-tv/">a custom launcher for a Samsung TV</a>. What each Vetro switch does is in <a href="/vetro/reference/what-each-vetro-switch-changes/">the switch reference</a>.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>This comparison comes from each project&#39;s documentation, not its code, and we did not run AeroTizen, free-my-tv or TizenBrew for this page. Supported TVs and maintenance status in those repositories change, so check them before you decide. Other projects exist in this space and are not covered.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/custom-launcher-samsung-tv/"><span class="eyebrow">Home screen and speed</span><strong>Custom launcher for Samsung TV: how it replaces Home</strong><span>How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.</span></a><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/reference/why-vetro-is-native/"><span class="eyebrow">Reference</span><strong>Why Vetro's launcher is native, not a web app</strong><span>Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.</span></a><a class="card" href="/vetro/control/tizentube-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>TizenTube on Samsung TV: install steps and requirements</strong><span>How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/custom-launcher-samsung-tv/"><span class="eyebrow">Home screen and speed</span><strong>Custom launcher for Samsung TV: how it replaces Home</strong><span>How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.</span></a><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/reference/why-vetro-is-native/"><span class="eyebrow">Reference</span><strong>Why Vetro's launcher is native, not a web app</strong><span>Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.</span></a><a class="card" href="/vetro/control/tizentube-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>TizenTube on Samsung TV: install steps and requirements</strong><span>How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><span></span><a class="next" href="/vetro/compare/rooted-samsung-tv-vs-streaming-box/"><span>Next</span>Rooted Samsung TV vs streaming box: which one to choose</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#the-short-comparison">The short comparison</a></li><li class="l2"><a href="#what-does-vetro-offer">What does Vetro offer?</a></li><li class="l2"><a href="#aerotizen">AeroTizen</a></li><li class="l2"><a href="#what-is-free-my-tv">What is free-my-tv?</a></li><li class="l2"><a href="#what-is-tizenbrew">What is TizenBrew?</a></li><li class="l2"><a href="#can-i-combine-them">Can I combine them?</a></li><li class="l2"><a href="#which-tool-should-i-choose">Which tool should I choose?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#the-short-comparison">The short comparison</a></li><li class="l2"><a href="#what-does-vetro-offer">What does Vetro offer?</a></li><li class="l2"><a href="#aerotizen">AeroTizen</a></li><li class="l2"><a href="#what-is-free-my-tv">What is free-my-tv?</a></li><li class="l2"><a href="#what-is-tizenbrew">What is TizenBrew?</a></li><li class="l2"><a href="#can-i-combine-them">Can I combine them?</a></li><li class="l2"><a href="#which-tool-should-i-choose">Which tool should I choose?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

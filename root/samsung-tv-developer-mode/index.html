@@ -7,6 +7,7 @@
 <meta name="description" content="Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/root/samsung-tv-developer-mode/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,17 +25,20 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"How to enable Developer Mode on a Samsung TV","description":"Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv developer mode, samsung tv 12345 developer mode, host pc ip samsung tv, enable developer mode samsung tizen","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/samsung-tv-developer-mode/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"How to enable Developer Mode on a Samsung TV","item":"https://andrearicci93.github.io/vetro/root/samsung-tv-developer-mode/"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is the Samsung TV developer mode code?","acceptedAnswer":{"@type":"Answer","text":"Samsung's developer guide says to enter 12345 in the Apps settings panel. A popup appears where you set Developer mode to On and enter the IP address of your computer."}},{"@type":"Question","name":"My remote will not enter 12345. What do I do?","acceptedAnswer":{"@type":"Answer","text":"Press the 123 button on the remote to open the on-screen number pad and type 12345 there. Apps2Samsung's FAQ gives this fix for remotes without number buttons."}},{"@type":"Question","name":"Why does the TV show my IP address backwards?","acceptedAnswer":{"@type":"Answer","text":"Apps2Samsung's FAQ says the TV can read the address left to right and convert 192.168.1.2 into 2.1.168.192. Its fix is to turn Developer Mode on again and enter the address in reversed order."}},{"@type":"Question","name":"How do I turn Developer Mode off?","acceptedAnswer":{"@type":"Answer","text":"Open the same Apps settings screen and switch it off, or set the host IP back. Samsung's page does not describe turning it off; this step comes from Vetro's installation guide."}},{"@type":"Question","name":"Does Developer Mode void the warranty?","acceptedAnswer":{"@type":"Answer","text":"We do not know. Check Samsung's terms for your TV and region before you change anything."}}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/" aria-current="page">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -44,12 +48,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">How to enable Developer Mode on a Samsung TV</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Rooting guides</p>
-<h1>How to enable Developer Mode on a Samsung TV</h1>
+<h1 id="page-title" tabindex="-1">How to enable Developer Mode on a Samsung TV</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Samsung's tv-device developer page, the Apps2Samsung and Jellyfin2Samsung FAQs, and the Vetro 0.5.0 installation guide and SECURITY.md.</span></p>
 </header>
 <div class="prose">
 <p>To enable Developer Mode on a Samsung TV, open Smart Hub, go to <strong>Apps</strong>, open the Apps settings, enter <strong>12345</strong> with the remote, set Developer mode to On, type the IP address of your computer and restart the TV. After the restart, &quot;Develop Mode&quot; shows at the top of the Apps panel. That is the whole procedure in <a href="https://developer.samsung.com/SmartTV/develop/getting-started/using-sdk/tv-device.html" rel="noopener" target="_blank">Samsung&#39;s developer guide</a>. The rest of this page covers what to type in the IP field, what goes wrong and how to switch it off.</p>
-<h2 id="how-do-i-enable-developer-mode-step-by-step">How do I enable Developer Mode step by step?<a class="anchor" href="#how-do-i-enable-developer-mode-step-by-step" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-enable-developer-mode-step-by-step">How do I enable Developer Mode step by step?<a class="anchor" href="#how-do-i-enable-developer-mode-step-by-step" aria-label="Link to section: How do I enable Developer Mode step by step?">#</a></h2>
 <ol>
 <li>Press Home and open Smart Hub, then the Apps panel.</li>
 <li>Scroll to App Settings.</li>
@@ -59,14 +63,14 @@
 <li>Restart the TV. The Developer Mode entry shows only after the restart.</li>
 </ol>
 <p>Menu names and the place of the Apps settings differ between years and regions, so expect small differences. Vetro&#39;s guide says the same about its tested Q80A.</p>
-<h2 id="what-if-the-remote-will-not-take-12345">What if the remote will not take 12345?<a class="anchor" href="#what-if-the-remote-will-not-take-12345" aria-label="Link to this section">#</a></h2>
+<h2 id="what-if-the-remote-will-not-take-12345">What if the remote will not take 12345?<a class="anchor" href="#what-if-the-remote-will-not-take-12345" aria-label="Link to section: What if the remote will not take 12345?">#</a></h2>
 <p>Some remotes have no number keys. Press the 123 button to open the on-screen keypad and type the code there. The <a href="https://github.com/Apps2Samsung/Apps2Samsung/wiki/FAQ" rel="noopener" target="_blank">Apps2Samsung FAQ</a> and the <a href="https://github.com/Jellyfin2Samsung/Samsung-Jellyfin-Installer/wiki/FAQ" rel="noopener" target="_blank">Jellyfin2Samsung FAQ</a> both give this fix.</p>
-<h2 id="what-ip-address-goes-in-the-field">What IP address goes in the field?<a class="anchor" href="#what-ip-address-goes-in-the-field" aria-label="Link to this section">#</a></h2>
+<h2 id="what-ip-address-goes-in-the-field">What IP address goes in the field?<a class="anchor" href="#what-ip-address-goes-in-the-field" aria-label="Link to section: What IP address goes in the field?">#</a></h2>
 <p>It depends on who talks to the TV.</p>
-<div class="table-wrap"><table><thead><tr>
-<th>When</th>
-<th>What to enter</th>
-<th>Why</th>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What IP address goes in the field?"><table><thead><tr>
+<th scope="col">When</th>
+<th scope="col">What to enter</th>
+<th scope="col">Why</th>
 </tr>
 </thead><tbody><tr>
 <td>Installing from a computer or phone</td>
@@ -80,40 +84,75 @@
 </tr>
 </tbody></table></div><p>During installation the field holds the address of the computer. The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">Vetro installation guide</a> then has you change it to <code>127.0.0.1</code> and restart, which lets Vetro start its root helper from the TV itself with no computer attached. While it is set, a computer cannot use SDB on that TV by default, so to install a newer build you put the computer&#39;s address back first. The one documented exception is Vetro&#39;s Allow SDB from the local network switch (Quick settings, Developer settings, Developer access), which is off by default and gives any reachable client developer access without pairing; see <a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a> and <a href="/vetro/root/samsung-sdb-connect-tv/">connecting with sdb</a>.</p>
 <p>The guide also says not to change the TV&#39;s custom DNS for this. It is a different setting.</p>
-<h2 id="why-does-the-tv-show-my-ip-backwards">Why does the TV show my IP backwards?<a class="anchor" href="#why-does-the-tv-show-my-ip-backwards" aria-label="Link to this section">#</a></h2>
+<h2 id="why-does-the-tv-show-my-ip-backwards">Why does the TV show my IP backwards?<a class="anchor" href="#why-does-the-tv-show-my-ip-backwards" aria-label="Link to section: Why does the TV show my IP backwards?">#</a></h2>
 <p>Both FAQs describe it: the TV can read the address left to right and turn 192.168.1.2 into 2.1.168.192. The fix is to turn Developer Mode on again and type the address with the octets in reverse order. The host IP has to match the machine you install from, so check it with <code>ipconfig</code> on Windows or <code>ifconfig</code> or <code>ip addr</code> on macOS and Linux.</p>
-<h2 id="what-other-problems-come-up">What other problems come up?<a class="anchor" href="#what-other-problems-come-up" aria-label="Link to this section">#</a></h2>
+<h2 id="what-other-problems-come-up">What other problems come up?<a class="anchor" href="#what-other-problems-come-up" aria-label="Link to section: What other problems come up?">#</a></h2>
 <ul>
 <li>No connection after setup. The Jellyfin2Samsung FAQ says that if the connection fails after a restart, a full power cycle (unplug the TV, wait 10 to 15 seconds, plug it back in) helps the SDB port open. Apps2Samsung&#39;s FAQ lists &quot;TV Name could not be found&quot; for a TV that is off, on another network, without Developer Mode, or with a host IP that does not match.</li>
 <li>Samsung account. Both FAQs say a Samsung developer account is needed on Tizen 7 or newer in developer mode. That affects signing, not the Developer Mode screen. See <a href="/vetro/root/samsung-developer-certificate-errors/">certificate errors</a>.</li>
 <li>Port 26101. Samsung&#39;s page says it is an internal device port that cannot be opened separately.</li>
 </ul>
-<h2 id="which-messages-does-samsung-document">Which messages does Samsung document?<a class="anchor" href="#which-messages-does-samsung-document" aria-label="Link to this section">#</a></h2>
+<h2 id="which-messages-does-samsung-document">Which messages does Samsung document?<a class="anchor" href="#which-messages-does-samsung-document" aria-label="Link to section: Which messages does Samsung document?">#</a></h2>
 <p>Samsung&#39;s page lists a few. Error 1010, &quot;App install fail&quot;, is often a signing certificate problem; see <a href="/vetro/root/samsung-developer-certificate-errors/">certificate errors</a>. Error 1009, &quot;App uninstall fail&quot;, is fixed by uninstalling from the TV&#39;s Apps panel instead of Tizen Studio. Error 1013, &quot;App run fail&quot;, means retry the launch or reboot the device. &quot;You are not an authorized user!&quot; and null pointer errors usually come from older firmware or SDK, so update both. &quot;Failed to get a device information&quot; appears only on 2015 devices and does not affect running the app. The page also says installing apps over USB is no longer supported, so a USB stick will not replace this route.</p>
-<h2 id="how-do-i-turn-developer-mode-off">How do I turn Developer Mode off?<a class="anchor" href="#how-do-i-turn-developer-mode-off" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-turn-developer-mode-off">How do I turn Developer Mode off?<a class="anchor" href="#how-do-i-turn-developer-mode-off" aria-label="Link to section: How do I turn Developer Mode off?">#</a></h2>
 <p>Samsung&#39;s page does not describe it. The Vetro guide&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#uninstalling" rel="noopener" target="_blank">uninstall section</a> says to switch it off, or set Host PC IP back, in the same Apps screen if you turned it on only for Vetro. Vetro needs Developer Mode with <code>127.0.0.1</code> to keep working, so turning it off stops its root helper from starting. See <a href="/vetro/root/keep-root-after-restart/">does root survive a restart</a>.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>This page covers the TV side only. A TV from a different year may show a different Apps screen, field name or confirmation; Samsung&#39;s page and the Apps2Samsung FAQ are the two places to check first. It says nothing about warranty. Developer Mode is a Samsung feature, but rooting is a separate step with real risks; read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">is it safe to root a Samsung TV</a>. Vetro is experimental, needs root and ships no signed installer. Vetro is not affiliated with Samsung.</p>
 <p>Next: <a href="/vetro/root/install-vetro-apps2samsung/">install Vetro with Apps2Samsung</a> or the full <a href="/vetro/root/how-to-root-samsung-tv/">rooting guide</a>.</p>
 
-<section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">Frequently asked questions</h2><h3>What is the Samsung TV developer mode code?</h3><p>Samsung's developer guide says to enter 12345 in the Apps settings panel. A popup appears where you set Developer mode to On and enter the IP address of your computer.</p><h3>My remote will not enter 12345. What do I do?</h3><p>Press the 123 button on the remote to open the on-screen number pad and type 12345 there. Apps2Samsung's FAQ gives this fix for remotes without number buttons.</p><h3>Why does the TV show my IP address backwards?</h3><p>Apps2Samsung's FAQ says the TV can read the address left to right and convert 192.168.1.2 into 2.1.168.192. Its fix is to turn Developer Mode on again and enter the address in reversed order.</p><h3>How do I turn Developer Mode off?</h3><p>Open the same Apps settings screen and switch it off, or set the host IP back. Samsung's page does not describe turning it off; this step comes from Vetro's installation guide.</p><h3>Does Developer Mode void the warranty?</h3><p>We do not know. Check Samsung's terms for your TV and region before you change anything.</p></section>
+<section class="faq"><h2 id="faq-h">Frequently asked questions</h2><h3>What is the Samsung TV developer mode code?</h3><p>Samsung's developer guide says to enter 12345 in the Apps settings panel. A popup appears where you set Developer mode to On and enter the IP address of your computer.</p><h3>My remote will not enter 12345. What do I do?</h3><p>Press the 123 button on the remote to open the on-screen number pad and type 12345 there. Apps2Samsung's FAQ gives this fix for remotes without number buttons.</p><h3>Why does the TV show my IP address backwards?</h3><p>Apps2Samsung's FAQ says the TV can read the address left to right and convert 192.168.1.2 into 2.1.168.192. Its fix is to turn Developer Mode on again and enter the address in reversed order.</p><h3>How do I turn Developer Mode off?</h3><p>Open the same Apps settings screen and switch it off, or set the host IP back. Samsung's page does not describe turning it off; this step comes from Vetro's installation guide.</p><h3>Does Developer Mode void the warranty?</h3><p>We do not know. Check Samsung's terms for your TV and region before you change anything.</p></section>
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-sdb-connect-tv/"><span class="eyebrow">Rooting guides</span><strong>Connect to a Samsung TV with sdb (port 26101)</strong><span>How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/root/root-tizen-6-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Root a Tizen 6 Samsung TV (2021): models and firmware</strong><span>2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-sdb-connect-tv/"><span class="eyebrow">Rooting guides</span><strong>Connect to a Samsung TV with sdb (port 26101)</strong><span>How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/root/root-tizen-6-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Root a Tizen 6 Samsung TV (2021): models and firmware</strong><span>2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/root/samsung-tv-tizen-version-by-year/"><span>Previous</span>Samsung TV Tizen version by year, 2017 to 2026</a><a class="next" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span>Next</span>Is it safe to root a Samsung TV? Risks and what to undo</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#how-do-i-enable-developer-mode-step-by-step">How do I enable Developer Mode step by step?</a></li><li class="l2"><a href="#what-if-the-remote-will-not-take-12345">What if the remote will not take 12345?</a></li><li class="l2"><a href="#what-ip-address-goes-in-the-field">What IP address goes in the field?</a></li><li class="l2"><a href="#why-does-the-tv-show-my-ip-backwards">Why does the TV show my IP backwards?</a></li><li class="l2"><a href="#what-other-problems-come-up">What other problems come up?</a></li><li class="l2"><a href="#which-messages-does-samsung-document">Which messages does Samsung document?</a></li><li class="l2"><a href="#how-do-i-turn-developer-mode-off">How do I turn Developer Mode off?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#how-do-i-enable-developer-mode-step-by-step">How do I enable Developer Mode step by step?</a></li><li class="l2"><a href="#what-if-the-remote-will-not-take-12345">What if the remote will not take 12345?</a></li><li class="l2"><a href="#what-ip-address-goes-in-the-field">What IP address goes in the field?</a></li><li class="l2"><a href="#why-does-the-tv-show-my-ip-backwards">Why does the TV show my IP backwards?</a></li><li class="l2"><a href="#what-other-problems-come-up">What other problems come up?</a></li><li class="l2"><a href="#which-messages-does-samsung-document">Which messages does Samsung document?</a></li><li class="l2"><a href="#how-do-i-turn-developer-mode-off">How do I turn Developer Mode off?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

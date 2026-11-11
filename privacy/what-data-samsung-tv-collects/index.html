@@ -7,6 +7,7 @@
 <meta name="description" content="What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/privacy/what-data-samsung-tv-collects/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"What data does a Samsung TV collect? A plain inventory","description":"What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv privacy data collected, what data does samsung tv collect, samsung tv viewing data, samsung smart tv privacy","articleSection":"Privacy and tracking","mainEntityOfPage":"https://andrearicci93.github.io/vetro/privacy/what-data-samsung-tv-collects/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Privacy and tracking","item":"https://andrearicci93.github.io/vetro/privacy/"},{"@type":"ListItem","position":3,"name":"What data does a Samsung TV collect? A plain inventory","item":"https://andrearicci93.github.io/vetro/privacy/what-data-samsung-tv-collects/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/" aria-current="page">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/" aria-current="page">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,18 +47,18 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><span aria-current="page">What data does a Samsung TV collect? A plain inventory</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Privacy and tracking</p>
-<h1>What data does a Samsung TV collect? A plain inventory</h1>
+<h1 id="page-title" tabindex="-1">What data does a Samsung TV collect? A plain inventory</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Re-read on 2026-11-10: Samsung's US privacy policy (effective 2026-07-20), Samsung Australia's ads notice (effective 2021-04-01), Malwarebytes (2026-03-02, 2026-10-27) and the Vetro 0.5.0 README and DIAGNOSTIC-EXPORT.md.</span></p>
 </header>
 <div class="prose">
 <p>A Samsung smart TV can collect what you watch, identifiers used for advertising, voice recordings if you use voice features, usage and diagnostic logs, and some location information. Which of these happen depends on your model, region and the choices you made at setup. This page lists the categories as Samsung&#39;s own notices describe them, then shows where a rooted TV running Vetro lets you see the components behind them.</p>
 <p>It is an inventory, not an accusation. A category being listed in a policy does not tell you how much data your TV sends.</p>
-<h2 id="which-categories-does-samsung-say-it-collects">Which categories does Samsung say it collects?<a class="anchor" href="#which-categories-does-samsung-say-it-collects" aria-label="Link to this section">#</a></h2>
+<h2 id="which-categories-does-samsung-say-it-collects">Which categories does Samsung say it collects?<a class="anchor" href="#which-categories-does-samsung-say-it-collects" aria-label="Link to section: Which categories does Samsung say it collects?">#</a></h2>
 <p>The two primary sources are <a href="https://www.samsung.com/us/account/privacy-policy/" rel="noopener" target="_blank">Samsung&#39;s US privacy policy</a> (effective 2026-07-20) and <a href="https://www.samsung.com/au/info/ads-privacy/" rel="noopener" target="_blank">Samsung Australia&#39;s ads notice</a> (effective 1 April 2021). The US text we read does not mention &quot;viewing information&quot; or ACR by name, so the viewing-data row relies on the Australian notice. Policies differ by region; check yours.</p>
-<div class="table-wrap"><table><thead><tr>
-<th>Category</th>
-<th>What the notice says</th>
-<th>Source</th>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: Which categories does Samsung say it collects?"><table><thead><tr>
+<th scope="col">Category</th>
+<th scope="col">What the notice says</th>
+<th scope="col">Source</th>
 </tr>
 </thead><tbody><tr>
 <td>Viewing data</td>
@@ -82,7 +86,7 @@
 <td>Samsung Australia ads notice</td>
 </tr>
 </tbody></table></div><p>The Australian notice&#39;s list of what viewing history covers is networks, channels, websites visited, programs viewed and time spent; we quote it from the notice, and the page can change.</p>
-<h2 id="where-do-i-control-each-one">Where do I control each one?<a class="anchor" href="#where-do-i-control-each-one" aria-label="Link to this section">#</a></h2>
+<h2 id="where-do-i-control-each-one">Where do I control each one?<a class="anchor" href="#where-do-i-control-each-one" aria-label="Link to section: Where do I control each one?">#</a></h2>
 <p>Menu names vary by model and year.</p>
 <ul>
 <li>Viewing Information Services and Interest-Based Advertisements sit in Privacy Choices under Terms &amp; Privacy. <a href="https://www.malwarebytes.com/blog/news/2026/03/samsung-tvs-stop-spying-on-viewers-in-texas-heres-how-to-disable-acr-anywhere" rel="noopener" target="_blank">Malwarebytes</a> gives Settings, Support, Terms &amp; Privacy, Privacy Choices. See <a href="/vetro/privacy/turn-off-acr-samsung-tv/">how to turn off ACR</a>.</li>
@@ -90,37 +94,72 @@
 <li>Samsung Australia&#39;s notice says you can reset the advertising ID on the TV by selecting &quot;Reset PSID&quot; on the settings menu. The <a href="/vetro/privacy/samsung-ads-opt-out/">Samsung Ads opt-out</a> page covers what that does.</li>
 <li>Usage and diagnostic logs have no single switch in the Samsung documents we read. That is a gap in what we found, not a statement that none exists on your TV.</li>
 </ul>
-<h2 id="what-does-samsung-say-you-can-still-not-stop">What does Samsung say you can still not stop?<a class="anchor" href="#what-does-samsung-say-you-can-still-not-stop" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-samsung-say-you-can-still-not-stop">What does Samsung say you can still not stop?<a class="anchor" href="#what-does-samsung-say-you-can-still-not-stop" aria-label="Link to section: What does Samsung say you can still not stop?">#</a></h2>
 <p>Samsung Australia&#39;s notice says opting out of customised ads &quot;does not prevent the delivery of all ads from Samsung&quot;, and that a TV user who opts out may still see ads based on generalised location information and other estimated or inferred information. The notice does not say whether data already collected is deleted when you opt out or reset. It says only that it will no longer be used for customised ads.</p>
-<h2 id="what-about-sound-detection-and-microphones">What about sound detection and microphones?<a class="anchor" href="#what-about-sound-detection-and-microphones" aria-label="Link to this section">#</a></h2>
+<h2 id="what-about-sound-detection-and-microphones">What about sound detection and microphones?<a class="anchor" href="#what-about-sound-detection-and-microphones" aria-label="Link to section: What about sound detection and microphones?">#</a></h2>
 <p><a href="https://www.malwarebytes.com/blog/news/2026/10/samsung-tvs-without-mics-may-listen-through-soundbars-researcher-says" rel="noopener" target="_blank">Malwarebytes (2026-10-27)</a> notes that Samsung advertises on-device AI features, Pet Care and Family Care, that detect barking dogs and crying babies. It also reports an online researcher&#39;s claims that a 2025 Samsung TV ran an always-on voice component that counted such sounds and reported them to Samsung, and that TVs without a microphone look for paired soundbars or Bluetooth microphones. Malwarebytes says these claims &quot;haven&#39;t been independently verified&quot; and that Samsung does not appear to have commented. We treat them as claims. The documented hardware control is the microphone switch on some models, covered in the <a href="/vetro/privacy/turn-off-bixby-alexa-samsung-tv/">voice guide</a>.</p>
-<h2 id="what-does-the-task-manager-show-on-a-rooted-samsung-tv">What does the Task manager show on a rooted Samsung TV?<a class="anchor" href="#what-does-the-task-manager-show-on-a-rooted-samsung-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-the-task-manager-show-on-a-rooted-samsung-tv">What does the Task manager show on a rooted Samsung TV?<a class="anchor" href="#what-does-the-task-manager-show-on-a-rooted-samsung-tv" aria-label="Link to section: What does the Task manager show on a rooted Samsung TV?">#</a></h2>
 <p>Policies tell you what Samsung says it may do. A rooted TV running Vetro lets you see which components are installed. Vetro is experimental, its launcher is in beta, it needs root and it ships no signed installer: read <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a>, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">the Apps2Samsung install route</a> first.</p>
 <p>The Vetro <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a> says the Task manager lists every app and service on the TV with a plain description and a role: Tracking, Optional or Keep. You can search by name, package or purpose, then disable, stop or uninstall with an in-page confirmation. Protected system components cannot be touched. The project is developed on a <a href="/vetro/tested-tvs/q80a/">Q80A</a>.</p>
 <p><figure><img src="/vetro/assets/img/task-manager.jpg" alt="Vetro Task manager filtered to Tracking, with descriptions and startup flags" loading="lazy" decoding="async" width="1425" height="990"><figcaption>Vetro Task manager filtered to Tracking, with descriptions and startup flags</figcaption></figure></p>
 <p>The project&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/DIAGNOSTIC-EXPORT.md" rel="noopener" target="_blank">DIAGNOSTIC-EXPORT.md</a> says the catalog descriptions come from the Q80A firmware, that process data is &quot;a snapshot, not viewing history or a benchmark&quot;, and that the report excludes credentials, IP and MAC addresses, serial numbers and consent records. A classification of a component is not proof of what it sends. The project&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md" rel="noopener" target="_blank">domain notes</a> say that for the firmware-derived hostnames, whether a name is reached at run time has not been tested on a TV.</p>
-<h2 id="what-this-article-does-not-cover">What this article does not cover<a class="anchor" href="#what-this-article-does-not-cover" aria-label="Link to this section">#</a></h2>
+<h2 id="what-this-article-does-not-cover">What this article does not cover<a class="anchor" href="#what-this-article-does-not-cover" aria-label="Link to section: What this article does not cover">#</a></h2>
 <p>It does not measure traffic from any TV, and it does not compare regions beyond the notices we read. Third-party apps have their own privacy policies. It is not legal advice.</p>
 <p>Next steps: <a href="/vetro/privacy/turn-off-acr-samsung-tv/">turn off ACR</a>, <a href="/vetro/privacy/samsung-ads-opt-out/">opt out of interest-based ads</a>, <a href="/vetro/privacy/block-samsung-tv-telemetry-dns/">block telemetry domains</a>, and <a href="/vetro/privacy/samsung-acr-texas-settlement/">the Texas settlement</a>.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/privacy/samsung-ads-opt-out/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung TV ads opt-out: turn off interest-based ads</strong><span>Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.</span></a><a class="card" href="/vetro/privacy/turn-off-bixby-alexa-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off Bixby, Alexa and the mic on a Samsung TV</strong><span>How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does.</span></a><a class="card" href="/vetro/privacy/block-samsung-tv-telemetry-dns/"><span class="eyebrow">Privacy and tracking</span><strong>Block Samsung TV telemetry with Pi-hole or AdGuard</strong><span>Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and breakage risks.</span></a><a class="card" href="/vetro/privacy/samsung-acr-texas-settlement/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung ACR Texas settlement: consent rules explained</strong><span>Texas sued five TV makers over ACR in December 2025, won then lost a restraining order against Samsung, and settled in February 2026. Dates, terms and limits.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/privacy/samsung-ads-opt-out/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung TV ads opt-out: turn off interest-based ads</strong><span>Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.</span></a><a class="card" href="/vetro/privacy/turn-off-bixby-alexa-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off Bixby, Alexa and the mic on a Samsung TV</strong><span>How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does.</span></a><a class="card" href="/vetro/privacy/block-samsung-tv-telemetry-dns/"><span class="eyebrow">Privacy and tracking</span><strong>Block Samsung TV telemetry with Pi-hole or AdGuard</strong><span>Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and breakage risks.</span></a><a class="card" href="/vetro/privacy/samsung-acr-texas-settlement/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung ACR Texas settlement: consent rules explained</strong><span>Texas sued five TV makers over ACR in December 2025, won then lost a restraining order against Samsung, and settled in February 2026. Dates, terms and limits.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/privacy/samsung-acr-texas-settlement/"><span>Previous</span>Samsung ACR Texas settlement: consent rules explained</a><a class="next" href="/vetro/privacy/block-samsung-tv-telemetry-dns/"><span>Next</span>Block Samsung TV telemetry with Pi-hole or AdGuard</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#which-categories-does-samsung-say-it-collects">Which categories does Samsung say it collects?</a></li><li class="l2"><a href="#where-do-i-control-each-one">Where do I control each one?</a></li><li class="l2"><a href="#what-does-samsung-say-you-can-still-not-stop">What does Samsung say you can still not stop?</a></li><li class="l2"><a href="#what-about-sound-detection-and-microphones">What about sound detection and microphones?</a></li><li class="l2"><a href="#what-does-the-task-manager-show-on-a-rooted-samsung-tv">What does the Task manager show on a rooted Samsung TV?</a></li><li class="l2"><a href="#what-this-article-does-not-cover">What this article does not cover</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#which-categories-does-samsung-say-it-collects">Which categories does Samsung say it collects?</a></li><li class="l2"><a href="#where-do-i-control-each-one">Where do I control each one?</a></li><li class="l2"><a href="#what-does-samsung-say-you-can-still-not-stop">What does Samsung say you can still not stop?</a></li><li class="l2"><a href="#what-about-sound-detection-and-microphones">What about sound detection and microphones?</a></li><li class="l2"><a href="#what-does-the-task-manager-show-on-a-rooted-samsung-tv">What does the Task manager show on a rooted Samsung TV?</a></li><li class="l2"><a href="#what-this-article-does-not-cover">What this article does not cover</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 <meta name="description" content="Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/control/samsung-remote-keys-home-assistant/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Samsung TV remote buttons as Home Assistant events","description":"Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv remote button home assistant, home assistant remote button trigger, samsung remote mqtt, samsung tv remote events","articleSection":"Remote, apps and smart home","mainEntityOfPage":"https://andrearicci93.github.io/vetro/control/samsung-remote-keys-home-assistant/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Remote, apps and smart home","item":"https://andrearicci93.github.io/vetro/control/"},{"@type":"ListItem","position":3,"name":"Samsung TV remote buttons as Home Assistant events","item":"https://andrearicci93.github.io/vetro/control/samsung-remote-keys-home-assistant/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/" aria-current="page">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/" aria-current="page">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,14 +47,14 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><span aria-current="page">Samsung TV remote buttons as Home Assistant events</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Remote, apps and smart home</p>
-<h1>Samsung TV remote buttons as Home Assistant events</h1>
+<h1 id="page-title" tabindex="-1">Samsung TV remote buttons as Home Assistant events</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Home Assistant's samsungtv integration and trigger docs, a Home Assistant community thread, and the Vetro 0.5.0 MQTT guide, README, SECURITY.md and release audit.</span></p>
 </header>
 <div class="prose">
 <p>Home Assistant&#39;s Samsung integration sends keys to the TV. Its documentation does not describe receiving a press from the TV&#39;s own remote, so an automation like &quot;when I press the Netflix button, dim the lights&quot; cannot be built from that integration alone. On a rooted TV, Vetro can fill the gap: its Remapper intercepts a remote key and can publish an MQTT message, which Home Assistant reads as a trigger. Vetro is experimental, needs root and ships no signed installer. This page shows the flow and where the documentation stops.</p>
-<h2 id="why-doesn-39-t-home-assistant-see-samsung-remote-presses">Why doesn&#39;t Home Assistant see Samsung remote presses?<a class="anchor" href="#why-doesn-39-t-home-assistant-see-samsung-remote-presses" aria-label="Link to this section">#</a></h2>
+<h2 id="why-doesn-39-t-home-assistant-see-samsung-remote-presses">Why doesn&#39;t Home Assistant see Samsung remote presses?<a class="anchor" href="#why-doesn-39-t-home-assistant-see-samsung-remote-presses" aria-label="Link to section: Why doesn't Home Assistant see Samsung remote presses?">#</a></h2>
 <p>The <a href="https://www.home-assistant.io/integrations/samsungtv/" rel="noopener" target="_blank">Samsung Smart TV integration page</a> describes sending key codes and key sequences to the TV, plus power and media state. It says nothing about receiving presses from the remote. A <a href="https://community.home-assistant.io/t/automation-when-press-button-on-tv-remote-control-activate-scene/429272" rel="noopener" target="_blank">Home Assistant community thread about triggering a scene from a TV remote</a> shows the usual workaround. The poster had an LG webOS TV, and the only reply suggested an IR receiver on an ESP board to read the button presses. That is a different brand, so it is not proof about Samsung, but the idea is the same: put a sensor next to the remote.</p>
-<h2 id="how-does-vetro-turn-a-key-press-into-an-mqtt-message">How does Vetro turn a key press into an MQTT message?<a class="anchor" href="#how-does-vetro-turn-a-key-press-into-an-mqtt-message" aria-label="Link to this section">#</a></h2>
+<h2 id="how-does-vetro-turn-a-key-press-into-an-mqtt-message">How does Vetro turn a key press into an MQTT message?<a class="anchor" href="#how-does-vetro-turn-a-key-press-into-an-mqtt-message" aria-label="Link to section: How does Vetro turn a key press into an MQTT message?">#</a></h2>
 <p>Vetro&#39;s Remapper listens to the remote&#39;s input device on the TV, and a saved shortcut can open an app, send a native key or publish an MQTT message. The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/mqtt/README.md" rel="noopener" target="_blank">Vetro MQTT guide</a> says: &quot;A physical remote button can also publish an MQTT message.&quot; The steps:</p>
 <ol>
 <li>Set up a broker and connect both Home Assistant and Vetro to it, as described in <a href="/vetro/control/home-assistant-samsung-tv/">Samsung TV and Home Assistant: three ways</a>.</li>
@@ -65,40 +69,75 @@
     topic: &quot;YOUR/TOPIC/HERE&quot;
 </code></pre>
 <p>Replace the topic with the one from your Vetro rule. The trigger page links to a separate MQTT trigger reference for the remaining options, so check it for current syntax.</p>
-<h2 id="what-happens-to-the-button-39-s-normal-action">What happens to the button&#39;s normal action?<a class="anchor" href="#what-happens-to-the-button-39-s-normal-action" aria-label="Link to this section">#</a></h2>
+<h2 id="what-happens-to-the-button-39-s-normal-action">What happens to the button&#39;s normal action?<a class="anchor" href="#what-happens-to-the-button-39-s-normal-action" aria-label="Link to section: What happens to the button's normal action?">#</a></h2>
 <p>Interception means Vetro blocks the original action for keys you save. In the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md" rel="noopener" target="_blank">release audit</a> for an earlier build on a <a href="/vetro/tested-tvs/q80a/">Q80A</a>, two saved key codes were blocked after a reboot and the Prime Video button opened Stremio instead. A remapped button therefore stops doing what Samsung built it to do. The documentation does not say whether a button can keep its old function and also publish a message, and we have not tested it.</p>
-<h2 id="what-is-verified-and-what-is-not">What is verified and what is not?<a class="anchor" href="#what-is-verified-and-what-is-not" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-verified-and-what-is-not">What is verified and what is not?<a class="anchor" href="#what-is-verified-and-what-is-not" aria-label="Link to section: What is verified and what is not?">#</a></h2>
 <ul>
 <li>The MQTT guide says a Q80A was verified connected to a real broker on 2026-10-13, with a separate subscriber receiving discovery records, telemetry and volume, mute and source values. Rules with an MQTT trigger and an Open app action are documented with a Home Assistant <code>mqtt.publish</code> test.</li>
 <li>The same guide says Home Assistant UI behavior and TLS against a real broker still require verification. No recorded end-to-end test of a remote button publishing to Home Assistant is published, so treat the flow as documented rather than proven.</li>
 <li>After a restart the key filter was seen connected at about 115 and 118 seconds of uptime in the audit. Until then the button does what Samsung assigned and no message is sent. Incoming MQTT rules work in the background while the TV and the Vetro service are running.</li>
 <li>Which keys can be intercepted depends on firmware. See <a href="/vetro/control/remap-samsung-remote-buttons/">remap Samsung remote buttons</a>.</li>
 </ul>
-<h2 id="what-does-the-finished-chain-look-like">What does the finished chain look like?<a class="anchor" href="#what-does-the-finished-chain-look-like" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-the-finished-chain-look-like">What does the finished chain look like?<a class="anchor" href="#what-does-the-finished-chain-look-like" aria-label="Link to section: What does the finished chain look like?">#</a></h2>
 <p>A press is read on the TV, the original action is blocked, the Remapper publishes a message to the broker, and Home Assistant&#39;s MQTT trigger fires an automation: a light, a scene, anything you attach. The reverse direction works through exact-topic rules, so an automation can open an app on the TV. Keep command topics and state topics separate.</p>
-<h2 id="what-are-the-risks">What are the risks?<a class="anchor" href="#what-are-the-risks" aria-label="Link to this section">#</a></h2>
+<h2 id="what-are-the-risks">What are the risks?<a class="anchor" href="#what-are-the-risks" aria-label="Link to section: What are the risks?">#</a></h2>
 <p>Read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a> before you start; the <a href="/vetro/root/install-vetro-apps2samsung/">Apps2Samsung install guide</a> shows the install. The dashboard runs over plain HTTP and the MQTT template uses TCP without TLS, so keep the TV and broker on a trusted LAN. Since 0.5.0 the dashboard uses a pairing code, but pairing is automatic and the dashboard stays open until the Vetro app on the TV has been seen (<a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a>, <a href="/vetro/reference/vetro-security-model/">security model</a>). Every switch is listed in <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a>.</p>
-<h2 id="can-i-do-this-without-root">Can I do this without root?<a class="anchor" href="#can-i-do-this-without-root" aria-label="Link to this section">#</a></h2>
+<h2 id="can-i-do-this-without-root">Can I do this without root?<a class="anchor" href="#can-i-do-this-without-root" aria-label="Link to section: Can I do this without root?">#</a></h2>
 <p>The linked LG discussion suggests an ESP board with an IR receiver. That can only detect buttons that actually transmit infrared; it does not establish support for Samsung Smart Remote Bluetooth button presses. We have not tested this workaround.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/control/home-assistant-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>Home Assistant Samsung TV: three ways to connect it</strong><span>Connect a Samsung TV to Home Assistant with the built-in integration, a community fork, or MQTT from the TV itself. What each does, needs and cannot do.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/control/home-assistant-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>Home Assistant Samsung TV: three ways to connect it</strong><span>Connect a Samsung TV to Home Assistant with the built-in integration, a community fork, or MQTT from the TV itself. What each does, needs and cannot do.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/control/home-assistant-samsung-tv/"><span>Previous</span>Home Assistant Samsung TV: three ways to connect it</a><a class="next" href="/vetro/control/jellyfin-samsung-tv/"><span>Next</span>Jellyfin on a Samsung TV: official app or sideloading</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#why-doesn-39-t-home-assistant-see-samsung-remote-presses">Why doesn&amp;#39;t Home Assistant see Samsung remote presses?</a></li><li class="l2"><a href="#how-does-vetro-turn-a-key-press-into-an-mqtt-message">How does Vetro turn a key press into an MQTT message?</a></li><li class="l2"><a href="#what-happens-to-the-button-39-s-normal-action">What happens to the button&amp;#39;s normal action?</a></li><li class="l2"><a href="#what-is-verified-and-what-is-not">What is verified and what is not?</a></li><li class="l2"><a href="#what-does-the-finished-chain-look-like">What does the finished chain look like?</a></li><li class="l2"><a href="#what-are-the-risks">What are the risks?</a></li><li class="l2"><a href="#can-i-do-this-without-root">Can I do this without root?</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#why-doesn-39-t-home-assistant-see-samsung-remote-presses">Why doesn't Home Assistant see Samsung remote presses?</a></li><li class="l2"><a href="#how-does-vetro-turn-a-key-press-into-an-mqtt-message">How does Vetro turn a key press into an MQTT message?</a></li><li class="l2"><a href="#what-happens-to-the-button-39-s-normal-action">What happens to the button's normal action?</a></li><li class="l2"><a href="#what-is-verified-and-what-is-not">What is verified and what is not?</a></li><li class="l2"><a href="#what-does-the-finished-chain-look-like">What does the finished chain look like?</a></li><li class="l2"><a href="#what-are-the-risks">What are the risks?</a></li><li class="l2"><a href="#can-i-do-this-without-root">Can I do this without root?</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

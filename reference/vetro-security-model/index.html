@@ -7,6 +7,7 @@
 <meta name="description" content="Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/reference/vetro-security-model/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Vetro security model: pairing, plain HTTP, trusted LAN","description":"Vetro 0.5.0 pairs browsers with a six-digit code shown on the TV, but traffic stays plain HTTP. What pairing covers, what stays open, SDB, plugins, reports.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"vetro security, vetro pairing, samsung tv root security, vetro diagnostic report privacy","articleSection":"Reference","mainEntityOfPage":"https://andrearicci93.github.io/vetro/reference/vetro-security-model/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Reference","item":"https://andrearicci93.github.io/vetro/reference/"},{"@type":"ListItem","position":3,"name":"Vetro security model: pairing, plain HTTP, trusted LAN","item":"https://andrearicci93.github.io/vetro/reference/vetro-security-model/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/" aria-current="page">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/" aria-current="page">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,18 +47,18 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/reference/">Reference</a></li><li><span aria-current="page">Vetro security model: pairing, plain HTTP, trusted LAN</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Reference</p>
-<h1>Vetro security model: pairing, plain HTTP, trusted LAN</h1>
+<h1 id="page-title" tabindex="-1">Vetro security model: pairing, plain HTTP, trusted LAN</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Vetro 0.5.0 SECURITY.md, SIGN-IN.md, HARDENING-0.5.0.md, DIAGNOSTIC-EXPORT.md and the CHANGELOG on GitHub, and GitHub and MDN documentation.</span></p>
 </header>
 <div class="prose">
 <p>Vetro 0.5.0 asks every browser or script to pair with the TV using a six-digit code shown on the TV screen, but the dashboard still runs over plain HTTP, and pairing switches on by itself only after the Vetro app on the TV has been seen. Until then the dashboard is open to anyone on your network. The project&#39;s advice is unchanged: use a trusted, isolated LAN, never forward its ports and never expose it to the Internet. This page explains what pairing protects, what stays open, and how to report a vulnerability.</p>
 <p>Vetro is experimental, privileged software for a rooted TV, and it ships no signed installer. Start with <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a> and <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">the risks of rooting</a>. The source for this page is <a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">SECURITY.md</a>, the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/SIGN-IN.md" rel="noopener" target="_blank">sign-in guide</a> and the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/HARDENING-0.5.0.md" rel="noopener" target="_blank">0.5.0 hardening record</a>.</p>
-<h2 id="is-the-vetro-dashboard-protected-by-a-password">Is the Vetro dashboard protected by a password?<a class="anchor" href="#is-the-vetro-dashboard-protected-by-a-password" aria-label="Link to this section">#</a></h2>
+<h2 id="is-the-vetro-dashboard-protected-by-a-password">Is the Vetro dashboard protected by a password?<a class="anchor" href="#is-the-vetro-dashboard-protected-by-a-password" aria-label="Link to section: Is the Vetro dashboard protected by a password?">#</a></h2>
 <p>It is protected by pairing, not a password. With pairing on, the service answers only devices that have paired with the TV, because its routes can run commands as root.</p>
 <p>Pairing is automatic by default. It switches on the first time the Vetro app on the TV is seen, which shows the TV can display the code. Until then, and on a TV whose app is never recognised, the service behaves like Vetro 0.3.5: any device on the home network can use the dashboard and API, including root commands, and the dashboard says so while it waits.</p>
 <p>This matters because of what happened to the first 0.5.0 build. It had pairing always on, and on a Samsung Q8F (Tizen 9) the TV app could not reach the service, so the code never appeared and nobody could open the dashboard. The <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a> records the republish with the automatic mode, which has not yet been tried on a Q8F. If you installed 0.5.0 before the 7 November republish, reinstall it with Apps2Samsung (see the <a href="/vetro/root/install-vetro-apps2samsung/">install guide</a>): Check for update will not offer the new build, because its version number is the same. The two builds can be told apart by the source revision in the diagnostic report.</p>
 <p>You can choose yourself in Quick settings &gt; Developer settings &gt; Pairing: Require pairing can be automatic, always on or always off. Turning it on from an unpaired browser first pairs that browser, so nobody is locked out. Turning it off asks for confirmation. Restore the TV does not change it, and existing paired keys stay valid in every mode.</p>
-<h2 id="how-does-pairing-work">How does pairing work?<a class="anchor" href="#how-does-pairing-work" aria-label="Link to this section">#</a></h2>
+<h2 id="how-does-pairing-work">How does pairing work?<a class="anchor" href="#how-does-pairing-work" aria-label="Link to section: How does pairing work?">#</a></h2>
 <ol>
 <li>Open the dashboard at the TV&#39;s address and choose Show a code on the TV. The Vetro app on the TV shows a six-digit code for two minutes, with the name the sign-in page sent.</li>
 <li>Type the code in the browser. The browser receives a random key in an <code>HttpOnly</code>, <code>SameSite=Strict</code> cookie valid for a year. <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie" rel="noopener" target="_blank">MDN</a> explains the two attributes: the first hides the cookie from page JavaScript, the second stops the browser sending it on cross-site requests.</li>
@@ -67,7 +71,7 @@
 <li>A browser Origin must match the Host on pairing and paired requests, so other web pages cannot start a pairing or reuse a paired browser&#39;s cookie.</li>
 <li>Keys are 32 random bytes and only SHA-256 hashes are stored on the TV.</li>
 </ul>
-<h2 id="what-is-still-open">What is still open?<a class="anchor" href="#what-is-still-open" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-still-open">What is still open?<a class="anchor" href="#what-is-still-open" aria-label="Link to section: What is still open?">#</a></h2>
 <p>Several things are outside what pairing covers.</p>
 <ul>
 <li>Traffic is plain HTTP. A device that can watch your LAN traffic could copy a key, so a paired browser is only as safe as the network.</li>
@@ -77,35 +81,70 @@
 <li>The root helper uses its own internal protocol, which does not protect the browser interface.</li>
 </ul>
 <p>Keep the TV on a trusted network, do not forward 8099 or any other Vetro port, and think about whether guests on your Wi-Fi should reach the TV at all. That last point is general networking advice, not a Vetro feature.</p>
-<h2 id="what-can-a-plugin-or-an-update-do">What can a plugin or an update do?<a class="anchor" href="#what-can-a-plugin-or-an-update-do" aria-label="Link to this section">#</a></h2>
+<h2 id="what-can-a-plugin-or-an-update-do">What can a plugin or an update do?<a class="anchor" href="#what-can-a-plugin-or-an-update-do" aria-label="Link to section: What can a plugin or an update do?">#</a></h2>
 <p>Vetro Shards are third-party code that runs inside Vetro&#39;s service. There is no sandbox: the host guards failures, but a plugin can do what Vetro can, including running commands as root, whatever permissions it declares. Plugins are off until you switch them on and can be installed only by a paired device. The public list is signed and spot-checked, not audited; a signature shows that a file is the one the list published, not that its code is safe. Plugins outside the list need Developer mode, which is off by default. Install only plugins you trust.</p>
 <p>Software update replaces Vetro&#39;s files through the root helper. An update is accepted only if its manifest is signed with the Vetro release key, whose public half ships in the package, and the previous version is restored if the new one does not start. The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md" rel="noopener" target="_blank">update guide</a> has the details.</p>
-<h2 id="what-does-the-diagnostic-report-contain">What does the diagnostic report contain?<a class="anchor" href="#what-does-the-diagnostic-report-contain" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-the-diagnostic-report-contain">What does the diagnostic report contain?<a class="anchor" href="#what-does-the-diagnostic-report-contain" aria-label="Link to section: What does the diagnostic report contain?">#</a></h2>
 <p>The report is built from an allowlist and downloaded to your own computer; Vetro does not upload it or record watched content. The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/DIAGNOSTIC-EXPORT.md" rel="noopener" target="_blank">export documentation</a> lists what is excluded: credentials, IP and MAC addresses, the hostname, serial, boot, machine and MQTT identities, custom display names, SSIDs, configured DNS addresses, MQTT topics and payloads, process arguments, URLs, raw error strings, user actions and consent records.</p>
 <p>Included are package and component IDs and versions, running process names, TV setting values, and the state of the launcher, quick settings and MQTT counters. Installed package IDs can reveal which software you have, so read the file before posting it. The optional Include details about unrecognised components setting is off by default. When on, it adds manifest details of unrecognised packages: whether a manifest was found, its SHA-256, a shortened privilege list and start-up flags, plus checksums of up to 40 boot executables.</p>
-<h2 id="how-do-i-report-a-vulnerability">How do I report a vulnerability?<a class="anchor" href="#how-do-i-report-a-vulnerability" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-report-a-vulnerability">How do I report a vulnerability?<a class="anchor" href="#how-do-i-report-a-vulnerability" aria-label="Link to section: How do I report a vulnerability?">#</a></h2>
 <p>Use GitHub&#39;s <a href="https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability" rel="noopener" target="_blank">private vulnerability reporting</a> if the repository maintainer has enabled it. SECURITY.md says that if no private channel is configured, you should ask for one in an issue without credentials, exploits, device identifiers, raw logs or sensitive reproduction data. Check the <a href="https://github.com/andrearicci93/vetro" rel="noopener" target="_blank">Vetro repository</a> for what is available when you read this.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>This page describes the documented 0.5.0 behavior and is not an audit of the code. The hardening record says its checks are source and fixture audits, that no changes from it had been installed on a TV when it was written, and that MQTT was not validated against a live broker. It does not cover the upstream root research or Samsung&#39;s own security. For installation see <a href="/vetro/root/install-vetro-apps2samsung/">installing Vetro with Apps2Samsung</a>; for the switches that pairing protects, see <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a>; for the launcher, <a href="/vetro/reference/why-vetro-is-native/">why it is native</a>.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/reference/why-vetro-is-native/"><span class="eyebrow">Reference</span><strong>Why Vetro's launcher is native, not a web app</strong><span>Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/reference/samsung-model-code-decoder/"><span class="eyebrow">Reference</span><strong>Samsung TV model number decoder: model code and firmware</strong><span>Read a Samsung TV model number letter by letter, from QE50Q80AATXZT to the year letter, and learn what a firmware string like T-NKM2DEUC-2301.1 can tell you.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/reference/why-vetro-is-native/"><span class="eyebrow">Reference</span><strong>Why Vetro's launcher is native, not a web app</strong><span>Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/reference/samsung-model-code-decoder/"><span class="eyebrow">Reference</span><strong>Samsung TV model number decoder: model code and firmware</strong><span>Read a Samsung TV model number letter by letter, from QE50Q80AATXZT to the year letter, and learn what a firmware string like T-NKM2DEUC-2301.1 can tell you.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/reference/what-each-vetro-switch-changes/"><span>Previous</span>What each Vetro switch changes on a Samsung TV (0.5.0)</a><a class="next" href="/vetro/reference/why-vetro-is-native/"><span>Next</span>Why Vetro's launcher is native, not a web app</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#is-the-vetro-dashboard-protected-by-a-password">Is the Vetro dashboard protected by a password?</a></li><li class="l2"><a href="#how-does-pairing-work">How does pairing work?</a></li><li class="l2"><a href="#what-is-still-open">What is still open?</a></li><li class="l2"><a href="#what-can-a-plugin-or-an-update-do">What can a plugin or an update do?</a></li><li class="l2"><a href="#what-does-the-diagnostic-report-contain">What does the diagnostic report contain?</a></li><li class="l2"><a href="#how-do-i-report-a-vulnerability">How do I report a vulnerability?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#is-the-vetro-dashboard-protected-by-a-password">Is the Vetro dashboard protected by a password?</a></li><li class="l2"><a href="#how-does-pairing-work">How does pairing work?</a></li><li class="l2"><a href="#what-is-still-open">What is still open?</a></li><li class="l2"><a href="#what-can-a-plugin-or-an-update-do">What can a plugin or an update do?</a></li><li class="l2"><a href="#what-does-the-diagnostic-report-contain">What does the diagnostic report contain?</a></li><li class="l2"><a href="#how-do-i-report-a-vulnerability">How do I report a vulnerability?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 <meta name="description" content="Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/root/install-vetro-apps2samsung/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Install Vetro on a Samsung TV with Apps2Samsung","description":"Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"install app samsung tv apps2samsung, install vetro samsung tv, apps2samsung vetro, sideload app samsung tizen tv","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/install-vetro-apps2samsung/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Install Vetro on a Samsung TV with Apps2Samsung","item":"https://andrearicci93.github.io/vetro/root/install-vetro-apps2samsung/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/" aria-current="page">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,22 +47,22 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Install Vetro on a Samsung TV with Apps2Samsung</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Rooting guides</p>
-<h1>Install Vetro on a Samsung TV with Apps2Samsung</h1>
+<h1 id="page-title" tabindex="-1">Install Vetro on a Samsung TV with Apps2Samsung</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Vetro 0.5.0's published INSTALLATION.md, README, CHANGELOG, SIGN-IN.md and UPDATING.md, and the Apps2Samsung README.</span></p>
 </header>
 <div class="prose">
 <p>To install Vetro with Apps2Samsung: turn on Developer Mode on the TV, run Apps2Samsung on a computer or phone on the same network, pick Vetro from its catalog and confirm the root badge, open Vetro once on the TV, then set Host PC IP to <code>127.0.0.1</code>, restart the TV and open the dashboard at <code>http://TV_IP:8099/</code>. There is no signed installer to download, because a Samsung certificate belongs to its owner. Vetro is experimental, needs root and its launcher is in beta, so read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">is it safe to root a Samsung TV</a> first.</p>
-<h2 id="what-is-apps2samsung">What is Apps2Samsung?<a class="anchor" href="#what-is-apps2samsung" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-apps2samsung">What is Apps2Samsung?<a class="anchor" href="#what-is-apps2samsung" aria-label="Link to section: What is Apps2Samsung?">#</a></h2>
 <p><a href="https://github.com/Apps2Samsung/Apps2Samsung" rel="noopener" target="_blank">Apps2Samsung</a> is an MIT-licensed installer for Samsung Tizen TVs. Its README says it runs on Windows, Linux, macOS, Android and iPhone, ships a command line tool (<code>apps2samsung-cli</code>) and has a community catalog of 130+ apps. The first install signs you in to Samsung once to make a signing certificate, which is then reused. It reports what is still wrong when a TV is not ready, such as Developer Mode off, a Host PC IP pointing elsewhere or a restart needed.</p>
 <p>The Vetro README lists it as the recommended way to install, and two community reports used it: <a href="https://github.com/andrearicci93/vetro/issues/10" rel="noopener" target="_blank">#10</a> on a 2024 <a href="/vetro/tested-tvs/q65d/">Q65D</a> and <a href="https://github.com/andrearicci93/vetro/issues/17" rel="noopener" target="_blank">#17</a> on a 2023 <a href="/vetro/tested-tvs/cu7179/">CU7179</a>, both listed as reported working. Apps2Samsung is a separate project and not affiliated with Vetro or Samsung.</p>
-<h2 id="what-do-i-need-before-i-start">What do I need before I start?<a class="anchor" href="#what-do-i-need-before-i-start" aria-label="Link to this section">#</a></h2>
+<h2 id="what-do-i-need-before-i-start">What do I need before I start?<a class="anchor" href="#what-do-i-need-before-i-start" aria-label="Link to section: What do I need before I start?">#</a></h2>
 <ul>
 <li>A TV you own or are allowed to administer, listed in the README <a href="https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility" rel="noopener" target="_blank">compatibility table</a> or the <a href="/vetro/tested-tvs/">tested TVs</a>. Vetro is developed on a <a href="/vetro/tested-tvs/q80a/">Q80A</a>; other models are reports, not guarantees.</li>
 <li>A computer or phone on the same trusted network. The dashboard uses plain HTTP; see the <a href="https://github.com/andrearicci93/vetro/blob/main/SECURITY.md" rel="noopener" target="_blank">security notes</a>.</li>
 <li>The package with the root integration. The app-only package shows the TV&#39;s apps but cannot change anything and reports &quot;TV platform adapter unavailable&quot;.</li>
 </ul>
 <p>You never run C# files or DLLs yourself; they are parts of the root integration and start by themselves. The root comes from <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">Chris Ritsen&#39;s samsung-tv-root research</a>.</p>
-<h2 id="how-do-i-install-vetro-with-apps2samsung">How do I install Vetro with Apps2Samsung?<a class="anchor" href="#how-do-i-install-vetro-with-apps2samsung" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-install-vetro-with-apps2samsung">How do I install Vetro with Apps2Samsung?<a class="anchor" href="#how-do-i-install-vetro-with-apps2samsung" aria-label="Link to section: How do I install Vetro with Apps2Samsung?">#</a></h2>
 <ol>
 <li>Get Apps2Samsung from its <a href="https://github.com/Apps2Samsung/Apps2Samsung/releases" rel="noopener" target="_blank">releases page</a>: desktop app, Android app or command line.</li>
 <li>Turn on Developer Mode on the TV: open Apps, enter 12345, switch it on, enter the address of the computer or phone running Apps2Samsung in Host PC IP and restart. Fixes are in <a href="/vetro/root/samsung-tv-developer-mode/">how to enable Developer Mode</a>.</li>
@@ -67,7 +71,7 @@
 <li>Change the port only if needed. Vetro uses 8099, and the guide says to change it only if another app on the TV uses the same port, for example tizen-youtube. A <a href="/vetro/tested-tvs/q60a/">Q60A</a> report (<a href="https://github.com/andrearicci93/vetro/issues/28" rel="noopener" target="_blank">#28</a>) did. The port is written into the package, so changing it later means installing again.</li>
 </ol>
 <p>If you installed 0.5.0 before 7 November 2026, the CHANGELOG says to reinstall with Apps2Samsung: in-place update does not offer the republished build, because the version number is the same.</p>
-<h2 id="what-are-the-last-steps-after-the-install">What are the last steps after the install?<a class="anchor" href="#what-are-the-last-steps-after-the-install" aria-label="Link to this section">#</a></h2>
+<h2 id="what-are-the-last-steps-after-the-install">What are the last steps after the install?<a class="anchor" href="#what-are-the-last-steps-after-the-install" aria-label="Link to section: What are the last steps after the install?">#</a></h2>
 <p>The guide ends every route with the same two steps.</p>
 <ol>
 <li>Open Vetro on the TV once. The guide calls this required: on some TVs the installer registers the service with start at boot and auto-restart off, and Vetro turns them on by itself only after it has run once and the root agent has connected (<a href="https://github.com/andrearicci93/vetro/issues/25" rel="noopener" target="_blank">#25</a>). A visible icon or an accepted install is not proof that the background service works.</li>
@@ -77,9 +81,9 @@
 </ol>
 <p>Root helper startup goes through the TV&#39;s own SDB service, which is why the TV has to talk to itself. The guide says this step is tested on a Q80A and that reports from other models describe it as the step that made the TV root itself. While it is set, a computer cannot use SDB on that TV by default. To install a new build from a computer, put the computer&#39;s IP back, restart, install, and repeat the step. Do not change the TV&#39;s custom DNS for this. More in <a href="/vetro/root/samsung-sdb-connect-tv/">connecting with sdb</a>.</p>
 <p>If the dashboard does not say connected, open <code>http://TV_IP:8099/status</code> (if pairing is on, pair the browser first):</p>
-<div class="table-wrap"><table><thead><tr>
-<th>You see</th>
-<th>Meaning</th>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What are the last steps after the install?"><table><thead><tr>
+<th scope="col">You see</th>
+<th scope="col">Meaning</th>
 </tr>
 </thead><tbody><tr>
 <td><code>&quot;mode&quot;: &quot;app-only&quot;</code></td>
@@ -93,33 +97,68 @@
 <td>The page does not load</td>
 <td>The background service is not running; open Vetro once and reload</td>
 </tr>
-</tbody></table></div><h2 id="how-do-i-check-that-it-starts-by-itself">How do I check that it starts by itself?<a class="anchor" href="#how-do-i-check-that-it-starts-by-itself" aria-label="Link to this section">#</a></h2>
+</tbody></table></div><h2 id="how-do-i-check-that-it-starts-by-itself">How do I check that it starts by itself?<a class="anchor" href="#how-do-i-check-that-it-starts-by-itself" aria-label="Link to section: How do I check that it starts by itself?">#</a></h2>
 <p>The guide&#39;s test is to fully power off the TV, unplug it for 30 seconds, turn it on and check <code>/status</code> and <code>/monitor?scope=summary</code> without opening Vetro. You are looking for a new boot, a running service and an authenticated UID-0 agent. Standby is not a cold boot. Details are in <a href="/vetro/root/keep-root-after-restart/">does root survive a restart</a>.</p>
-<h2 id="can-i-update-vetro-without-reinstalling">Can I update Vetro without reinstalling?<a class="anchor" href="#can-i-update-vetro-without-reinstalling" aria-label="Link to this section">#</a></h2>
+<h2 id="can-i-update-vetro-without-reinstalling">Can I update Vetro without reinstalling?<a class="anchor" href="#can-i-update-vetro-without-reinstalling" aria-label="Link to section: Can I update Vetro without reinstalling?">#</a></h2>
 <p>Yes, in most cases. <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md" rel="noopener" target="_blank">Quick settings, General, Software update</a> checks GitHub when you press the button, verifies a signed bundle and replaces the files, with no computer attached and Host PC IP staying at <code>127.0.0.1</code>. It cannot change what <code>config.xml</code> declares; when a version does, you install again with Apps2Samsung.</p>
-<h2 id="what-if-i-would-rather-sign-it-myself">What if I would rather sign it myself?<a class="anchor" href="#what-if-i-would-rather-sign-it-myself" aria-label="Link to this section">#</a></h2>
+<h2 id="what-if-i-would-rather-sign-it-myself">What if I would rather sign it myself?<a class="anchor" href="#what-if-i-would-rather-sign-it-myself" aria-label="Link to section: What if I would rather sign it myself?">#</a></h2>
 <p>The installation guide has two other routes. A coding agent with a terminal can follow the guide for you; the guide names Codex or Gemini CLI, says not Claude because its cybersecurity safeguards stop it on the root steps, and says to type passwords yourself and never paste them into the chat. The manual route needs Tizen Studio&#39;s TV extension and Samsung Certificate Extension, your own certificate profile bound to your TV, and the root builder in the <code>rooting</code> folder with your certificate paths and passwords in environment variables. Install with <code>tizen install</code>, not <code>sdb install</code>, which a community report found did nothing without an error. The steps are in <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">INSTALLATION.md</a>.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>Compatibility is by model and firmware, not by year, and a firmware update can change it. To remove Vetro, see <a href="/vetro/root/uninstall-vetro-samsung-tv/">uninstall Vetro and clean up</a>. The main walkthrough is <a href="/vetro/root/how-to-root-samsung-tv/">how to root a Samsung TV</a>. Vetro is not affiliated with Samsung.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/root/samsung-sdb-connect-tv/"><span>Previous</span>Connect to a Samsung TV with sdb (port 26101)</a><a class="next" href="/vetro/root/samsung-developer-certificate-errors/"><span>Next</span>Samsung TV certificate errors when installing an app</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-apps2samsung">What is Apps2Samsung?</a></li><li class="l2"><a href="#what-do-i-need-before-i-start">What do I need before I start?</a></li><li class="l2"><a href="#how-do-i-install-vetro-with-apps2samsung">How do I install Vetro with Apps2Samsung?</a></li><li class="l2"><a href="#what-are-the-last-steps-after-the-install">What are the last steps after the install?</a></li><li class="l2"><a href="#how-do-i-check-that-it-starts-by-itself">How do I check that it starts by itself?</a></li><li class="l2"><a href="#can-i-update-vetro-without-reinstalling">Can I update Vetro without reinstalling?</a></li><li class="l2"><a href="#what-if-i-would-rather-sign-it-myself">What if I would rather sign it myself?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-apps2samsung">What is Apps2Samsung?</a></li><li class="l2"><a href="#what-do-i-need-before-i-start">What do I need before I start?</a></li><li class="l2"><a href="#how-do-i-install-vetro-with-apps2samsung">How do I install Vetro with Apps2Samsung?</a></li><li class="l2"><a href="#what-are-the-last-steps-after-the-install">What are the last steps after the install?</a></li><li class="l2"><a href="#how-do-i-check-that-it-starts-by-itself">How do I check that it starts by itself?</a></li><li class="l2"><a href="#can-i-update-vetro-without-reinstalling">Can I update Vetro without reinstalling?</a></li><li class="l2"><a href="#what-if-i-would-rather-sign-it-myself">What if I would rather sign it myself?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

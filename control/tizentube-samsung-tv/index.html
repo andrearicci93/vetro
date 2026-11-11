@@ -7,6 +7,7 @@
 <meta name="description" content="How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/control/tizentube-samsung-tv/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"TizenTube on Samsung TV: install steps and requirements","description":"How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"tizentube samsung tv, youtube without ads samsung tv, tizenbrew, tizentube install apps2samsung","articleSection":"Remote, apps and smart home","mainEntityOfPage":"https://andrearicci93.github.io/vetro/control/tizentube-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Remote, apps and smart home","item":"https://andrearicci93.github.io/vetro/control/"},{"@type":"ListItem","position":3,"name":"TizenTube on Samsung TV: install steps and requirements","item":"https://andrearicci93.github.io/vetro/control/tizentube-samsung-tv/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/" aria-current="page">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/" aria-current="page">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,14 +47,14 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><span aria-current="page">TizenTube on Samsung TV: install steps and requirements</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Remote, apps and smart home</p>
-<h1>TizenTube on Samsung TV: install steps and requirements</h1>
+<h1 id="page-title" tabindex="-1">TizenTube on Samsung TV: install steps and requirements</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the TizenTube README and installation guide, the TizenBrew guide, the Apps2Samsung README, and the Vetro README, CHANGELOG and release audit.</span></p>
 </header>
 <div class="prose">
 <p>TizenTube is a community YouTube app for Samsung Tizen TVs whose developers describe ad blocking and SponsorBlock support. It needs Tizen 3 (2017) or later. The documented install is Developer Mode plus Apps2Samsung, a sideloading tool, and it needs no root. Vetro is not required; its only link to TizenTube is a launcher icon fix and a port clash described below. The steps on this page follow the <a href="https://github.com/reisxd/TizenTube/blob/main/docs/README.md" rel="noopener" target="_blank">upstream installation guide</a>, which is the page to trust if the two ever differ.</p>
-<h2 id="what-is-tizentube">What is TizenTube?<a class="anchor" href="#what-is-tizentube" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-tizentube">What is TizenTube?<a class="anchor" href="#what-is-tizentube" aria-label="Link to section: What is TizenTube?">#</a></h2>
 <p>According to its <a href="https://github.com/reisxd/TizenTube" rel="noopener" target="_blank">GitHub repository</a>, TizenTube is a TizenBrew module that removes ads and adds SponsorBlock support. The README also lists picture-in-picture, playback speed control and DeArrow support, says it &quot;now works as a standalone app&quot;, and names the GPL-3.0 license. The README does not explain how the ad blocking works, and we found no independent test of it, so read &quot;no ads&quot; as the project&#39;s claim. Check YouTube&#39;s terms of service yourself.</p>
-<h2 id="how-do-i-install-tizentube-on-a-samsung-tv">How do I install TizenTube on a Samsung TV?<a class="anchor" href="#how-do-i-install-tizentube-on-a-samsung-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-install-tizentube-on-a-samsung-tv">How do I install TizenTube on a Samsung TV?<a class="anchor" href="#how-do-i-install-tizentube-on-a-samsung-tv" aria-label="Link to section: How do I install TizenTube on a Samsung TV?">#</a></h2>
 <p>The upstream guide gives this sequence for Apps2Samsung. Menu names vary by model and year.</p>
 <ol>
 <li>Download the latest <a href="https://github.com/Apps2Samsung/Apps2Samsung/releases" rel="noopener" target="_blank">Apps2Samsung release</a> and install it on a computer or Android phone. It runs on Windows, Linux, macOS and Android, and on iPhone through SideStore.</li>
@@ -68,9 +72,9 @@
 <li>Start TizenTube from the TV&#39;s app row. If you see &quot;A network error has occured&quot;, go to the troubleshooting section below.</li>
 </ol>
 <p>A refused install is usually a signing problem; see <a href="/vetro/root/samsung-developer-certificate-errors/">Samsung TV certificate errors</a>. The same tool installs other apps, for example <a href="/vetro/control/jellyfin-samsung-tv/">Jellyfin</a>.</p>
-<h2 id="what-does-the-proxy-address-build-need">What does the proxy-address build need?<a class="anchor" href="#what-does-the-proxy-address-build-need" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-the-proxy-address-build-need">What does the proxy-address build need?<a class="anchor" href="#what-does-the-proxy-address-build-need" aria-label="Link to section: What does the proxy-address build need?">#</a></h2>
 <p><code>TizenTubeCobaltTizenTubeProxyAddress.wgt</code> sets the proxy address to <code>http://tizentube:8101</code>. The guide says your DNS must resolve the name <code>tizentube</code> to the TV&#39;s IP address, either through a DNS entry in your router or a DNS service that allows custom entries, and that the TV&#39;s address must be static because it can change. Without that entry the TV cannot find the proxy, so choose this build only if you can add the record.</p>
-<h2 id="what-does-a-tizentube-network-error-mean">What does a TizenTube network error mean?<a class="anchor" href="#what-does-a-tizentube-network-error-mean" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-a-tizentube-network-error-mean">What does a TizenTube network error mean?<a class="anchor" href="#what-does-a-tizentube-network-error-mean" aria-label="Link to section: What does a TizenTube network error mean?">#</a></h2>
 <p>The guide says a &quot;network error&quot; at launch means the TV cannot reach the TizenTube proxy server. Its listed causes:</p>
 <ul>
 <li>&quot;Force Samsung Certificate&quot; and &quot;Partner Signing&quot; were not enabled while installing.</li>
@@ -79,7 +83,7 @@
 <li>The TV has no internet connection.</li>
 <li>After a cold boot the proxy can take a few seconds to start; wait and try again.</li>
 </ul>
-<h2 id="what-about-tizenbrew">What about TizenBrew?<a class="anchor" href="#what-about-tizenbrew" aria-label="Link to this section">#</a></h2>
+<h2 id="what-about-tizenbrew">What about TizenBrew?<a class="anchor" href="#what-about-tizenbrew" aria-label="Link to section: What about TizenBrew?">#</a></h2>
 <p><a href="https://github.com/reisxd/TizenBrew" rel="noopener" target="_blank">TizenBrew</a> is the loader TizenTube was built as a module for. Its <a href="https://github.com/reisxd/TizenBrew/blob/main/docs/README.md" rel="noopener" target="_blank">guide</a> says it needs Tizen 3.0 or newer and describes these routes:</p>
 <ul>
 <li>The TizenBrew Installer on a desktop is the preferred route. On Tizen 7 and above it asks you to sign in to a Samsung account to create a certificate.</li>
@@ -87,34 +91,69 @@
 <li>The USB demo package is deprecated, because Samsung shut down the service needed to make those packages.</li>
 </ul>
 <p>For TizenTube itself the standalone Apps2Samsung route above is the one the TizenTube guide documents. <a href="/vetro/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/">Samsung TV launcher tools compared</a> shows where TizenBrew fits among the other tools.</p>
-<h2 id="does-tizentube-work-with-vetro">Does TizenTube work with Vetro?<a class="anchor" href="#does-tizentube-work-with-vetro" aria-label="Link to this section">#</a></h2>
+<h2 id="does-tizentube-work-with-vetro">Does TizenTube work with Vetro?<a class="anchor" href="#does-tizentube-work-with-vetro" aria-label="Link to section: Does TizenTube work with Vetro?">#</a></h2>
 <p>Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; read <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a>, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting is safe</a> and the <a href="/vetro/root/install-vetro-apps2samsung/">Apps2Samsung install guide</a> first. Three documented points touch TizenTube:</p>
 <ul>
 <li>A Fix TizenTube switch in the Launcher tab gives the TizenTube tile the YouTube icon and closes Samsung&#39;s own YouTube just before TizenTube starts, according to the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>. The launcher is in beta and was developed on the <a href="/vetro/tested-tvs/q80a/">Q80A</a>; see <a href="/vetro/speed/custom-launcher-samsung-tv/">a custom launcher for a Samsung TV</a>.</li>
 <li>TizenTube and tizen-youtube use the same port as Vetro&#39;s default, 8099. A <a href="/vetro/tested-tvs/q60a/">Q60A</a> owner hit this (<a href="https://github.com/andrearicci93/vetro/issues/28" rel="noopener" target="_blank">#28</a>), and Vetro&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">installation guide</a> explains how to build the package with another port.</li>
 <li>The Remapper can open an app from a remote button. In an earlier build&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md" rel="noopener" target="_blank">release audit</a>, the TizenTube key was blocked and its launch action reported no error, but the TV opened YouTube instead; TizenTube behavior was not validated. See <a href="/vetro/control/remap-samsung-remote-buttons/">remap Samsung remote buttons</a>.</li>
 </ul>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>We have not run the TizenTube installer for this page; the steps come from the upstream guide, which can change. Behavior varies by model, year and firmware. Not affiliated with Samsung, Google or the TizenTube authors.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/control/jellyfin-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>Jellyfin on a Samsung TV: official app or sideloading</strong><span>Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root.</span></a><a class="card" href="/vetro/speed/custom-launcher-samsung-tv/"><span class="eyebrow">Home screen and speed</span><strong>Custom launcher for Samsung TV: how it replaces Home</strong><span>How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-developer-certificate-errors/"><span class="eyebrow">Rooting guides</span><strong>Samsung TV certificate errors when installing an app</strong><span>Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.</span></a><a class="card" href="/vetro/control/jellyfin-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>Jellyfin on a Samsung TV: official app or sideloading</strong><span>Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root.</span></a><a class="card" href="/vetro/speed/custom-launcher-samsung-tv/"><span class="eyebrow">Home screen and speed</span><strong>Custom launcher for Samsung TV: how it replaces Home</strong><span>How a custom launcher replaces Samsung's Home on a rooted Tizen TV: the Home key, what Vetro's native launcher does, one memory figure and its beta limits.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/control/jellyfin-samsung-tv/"><span>Previous</span>Jellyfin on a Samsung TV: official app or sideloading</a><span></span></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-tizentube">What is TizenTube?</a></li><li class="l2"><a href="#how-do-i-install-tizentube-on-a-samsung-tv">How do I install TizenTube on a Samsung TV?</a></li><li class="l2"><a href="#what-does-the-proxy-address-build-need">What does the proxy-address build need?</a></li><li class="l2"><a href="#what-does-a-tizentube-network-error-mean">What does a TizenTube network error mean?</a></li><li class="l2"><a href="#what-about-tizenbrew">What about TizenBrew?</a></li><li class="l2"><a href="#does-tizentube-work-with-vetro">Does TizenTube work with Vetro?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-tizentube">What is TizenTube?</a></li><li class="l2"><a href="#how-do-i-install-tizentube-on-a-samsung-tv">How do I install TizenTube on a Samsung TV?</a></li><li class="l2"><a href="#what-does-the-proxy-address-build-need">What does the proxy-address build need?</a></li><li class="l2"><a href="#what-does-a-tizentube-network-error-mean">What does a TizenTube network error mean?</a></li><li class="l2"><a href="#what-about-tizenbrew">What about TizenBrew?</a></li><li class="l2"><a href="#does-tizentube-work-with-vetro">Does TizenTube work with Vetro?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

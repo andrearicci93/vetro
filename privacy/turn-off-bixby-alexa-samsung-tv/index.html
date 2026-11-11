@@ -7,6 +7,7 @@
 <meta name="description" content="How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/privacy/turn-off-bixby-alexa-samsung-tv/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Turn off Bixby, Alexa and the mic on a Samsung TV","description":"How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"disable bixby samsung tv, turn off alexa samsung tv, samsung tv microphone switch, samsung tv voice wake-up","articleSection":"Privacy and tracking","mainEntityOfPage":"https://andrearicci93.github.io/vetro/privacy/turn-off-bixby-alexa-samsung-tv/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Privacy and tracking","item":"https://andrearicci93.github.io/vetro/privacy/"},{"@type":"ListItem","position":3,"name":"Turn off Bixby, Alexa and the mic on a Samsung TV","item":"https://andrearicci93.github.io/vetro/privacy/turn-off-bixby-alexa-samsung-tv/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/" aria-current="page">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/" aria-current="page">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,15 +47,15 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><span aria-current="page">Turn off Bixby, Alexa and the mic on a Samsung TV</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Privacy and tracking</p>
-<h1>Turn off Bixby, Alexa and the mic on a Samsung TV</h1>
+<h1 id="page-title" tabindex="-1">Turn off Bixby, Alexa and the mic on a Samsung TV</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Re-read on 2026-11-10: Samsung's UAE microphone-switch and voice-assistant pages, Samsung Canada's microphone-switch page, Samsung Australia's Alexa page, Malwarebytes (2026-10-27) and the Vetro 0.5.0 README and CHANGELOG.</span></p>
 </header>
 <div class="prose">
 <p>On models with a built-in microphone switch, use it to disable the TV&#39;s built-in microphone. Review the remote microphone and any connected audio device separately. Otherwise, turn off Voice Wake-up and review the Voice menu for Bixby and Alexa. Samsung&#39;s voice-assistant page gives the path Home, Menu, Settings, All Settings, General &amp; Privacy, Voice, Voice Wake-up, and says some options may not be supported on all models or regions. On a rooted TV, Vetro can also disable the voice components, including the remote&#39;s microphone button.</p>
-<h2 id="does-my-samsung-tv-have-a-microphone-switch">Does my Samsung TV have a microphone switch?<a class="anchor" href="#does-my-samsung-tv-have-a-microphone-switch" aria-label="Link to this section">#</a></h2>
+<h2 id="does-my-samsung-tv-have-a-microphone-switch">Does my Samsung TV have a microphone switch?<a class="anchor" href="#does-my-samsung-tv-have-a-microphone-switch" aria-label="Link to section: Does my Samsung TV have a microphone switch?">#</a></h2>
 <p>Some do. <a href="https://www.samsung.com/ae/support/tv-audio-video/how-to-enable-or-disable-the-microphone-switch-on-samsung-smart-tvs/" rel="noopener" target="_blank">Samsung&#39;s UAE support page</a> says the switch is &quot;typically positioned at the bottom center or bottom right side of the TV frame&quot;, that the design varies by model, and that it exists on select models in the Galaxy View, The Frame, QLED, Neo QLED and Crystal UHD series. It adds that &quot;if the microphone is off, voice input features will not work&quot;, and that an on-screen pop-up shows whether the microphone is on or off. <a href="https://www.samsung.com/ca/support/tv-audio-video/how-to-enable-or-disable-the-microphone-switch-on-samsung-smart-tvs" rel="noopener" target="_blank">Samsung Canada&#39;s page</a> describes the switch on the lower edge, in the centre or toward the right, and says voice commands are unavailable while it is off.</p>
 <p>Neither page gives a software menu path for the switch itself, and neither says what happens to microphone data when the switch is off. If your TV has no switch, there is nothing to flip. Check your model&#39;s manual.</p>
-<h2 id="how-do-i-turn-off-alexa-on-a-samsung-tv">How do I turn off Alexa on a Samsung TV?<a class="anchor" href="#how-do-i-turn-off-alexa-on-a-samsung-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-turn-off-alexa-on-a-samsung-tv">How do I turn off Alexa on a Samsung TV?<a class="anchor" href="#how-do-i-turn-off-alexa-on-a-samsung-tv" aria-label="Link to section: How do I turn off Alexa on a Samsung TV?">#</a></h2>
 <p><a href="https://www.samsung.com/au/support/tv-audio-video/set-up-alexa/" rel="noopener" target="_blank">Samsung Australia&#39;s Alexa page</a> says Alexa is available on all Samsung Smart TV models produced in 2021 and beyond, plus select 2020 models. It lists the setting as Settings &gt; General / Advanced Features &gt; Voice &gt; Alexa Settings, with a hands-free wake-up option, and says that if wake-up is not enabled, the remote&#39;s voice button is the only way to activate Alexa. The microphone-switch condition on that page applies to Voice Wake-up. It separately describes holding the remote&#39;s microphone button and speaking into the remote.</p>
 <p>For the always-listening trigger, use Samsung&#39;s <a href="https://www.samsung.com/ae/support/tv-audio-video/voice-assistant-issues-on-my-samsung-tv/" rel="noopener" target="_blank">voice-assistant troubleshooting page</a>:</p>
 <ol>
@@ -59,40 +63,75 @@
 <li>Select Voice Wake-up and turn it off (the page also describes lowering its sensitivity).</li>
 </ol>
 <p>Switching wake-up off stops the wake word, but the remote&#39;s microphone button still works. Samsung&#39;s pages we opened do not say how to remove Alexa from the TV.</p>
-<h2 id="how-do-i-turn-off-bixby-on-a-samsung-tv">How do I turn off Bixby on a Samsung TV?<a class="anchor" href="#how-do-i-turn-off-bixby-on-a-samsung-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="how-do-i-turn-off-bixby-on-a-samsung-tv">How do I turn off Bixby on a Samsung TV?<a class="anchor" href="#how-do-i-turn-off-bixby-on-a-samsung-tv" aria-label="Link to section: How do I turn off Bixby on a Samsung TV?">#</a></h2>
 <p>The Samsung pages we opened do not give a Bixby removal or Bixby-specific off path. Samsung Canada&#39;s microphone page says that when the switch is back on, &quot;Bixby and other voice features&quot; work again, which tells you the microphone switch affects Bixby. The Voice menu on your TV is the place to look for each assistant&#39;s setting, and the labels differ by model.</p>
 <p><a href="https://www.malwarebytes.com/blog/news/2026/03/samsung-tvs-stop-spying-on-viewers-in-texas-heres-how-to-disable-acr-anywhere" rel="noopener" target="_blank">Malwarebytes</a> lists Voice Recognition Services as a separate toggle under Samsung&#39;s privacy choices. <a href="https://www.samsung.com/us/account/privacy-policy/" rel="noopener" target="_blank">Samsung&#39;s US privacy policy</a> says you can make &quot;feature-specific choices&quot; about whether to allow collection through a voice recognition feature, and that voice recordings are collected &quot;when you enable this function&quot; and use voice commands. Our <a href="/vetro/privacy/what-data-samsung-tv-collects/">inventory of collected data</a> shows where voice sits next to the other categories.</p>
-<h2 id="what-about-voice-guide-and-voice-search">What about Voice Guide and voice search?<a class="anchor" href="#what-about-voice-guide-and-voice-search" aria-label="Link to this section">#</a></h2>
+<h2 id="what-about-voice-guide-and-voice-search">What about Voice Guide and voice search?<a class="anchor" href="#what-about-voice-guide-and-voice-search" aria-label="Link to section: What about Voice Guide and voice search?">#</a></h2>
 <p>Voice Guide, the read-aloud accessibility feature, is a separate setting. We have no Samsung page to cite for its menu path, so we give none. Vetro&#39;s voice switch also turns it off, as described below.</p>
-<h2 id="is-the-tv-listening-to-the-room">Is the TV listening to the room?<a class="anchor" href="#is-the-tv-listening-to-the-room" aria-label="Link to this section">#</a></h2>
+<h2 id="is-the-tv-listening-to-the-room">Is the TV listening to the room?<a class="anchor" href="#is-the-tv-listening-to-the-room" aria-label="Link to section: Is the TV listening to the room?">#</a></h2>
 <p><a href="https://www.malwarebytes.com/blog/news/2026/10/samsung-tvs-without-mics-may-listen-through-soundbars-researcher-says" rel="noopener" target="_blank">Malwarebytes (2026-10-27)</a> reports an online researcher&#39;s claims that a 2025 Samsung TV ran an always-on voice component that counted sounds such as barking dogs and crying infants and reported the counts to Samsung, and that TVs without microphones look for paired soundbars or Bluetooth microphones. Malwarebytes says the claims &quot;haven&#39;t been independently verified&quot; and that Samsung does not appear to have commented. We treat them as unproven. The microphone switch, where it exists, is a hardware control, and Samsung&#39;s page says voice features stop working while it is off.</p>
-<h2 id="what-does-vetro-do-about-voice-assistants">What does Vetro do about voice assistants?<a class="anchor" href="#what-does-vetro-do-about-voice-assistants" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-vetro-do-about-voice-assistants">What does Vetro do about voice assistants?<a class="anchor" href="#what-does-vetro-do-about-voice-assistants" aria-label="Link to section: What does Vetro do about voice assistants?">#</a></h2>
 <p>Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer: see <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a>, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">the Apps2Samsung install route</a>. The stock menus are the better answer if you only want to stop wake-up.</p>
 <p>According to the Vetro 0.5.0 <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>, Quick settings has a Voice section with a Disable all voice assistants switch, plus per-feature switches for Alexa, Google Assistant, Bixby and other voice services. The all-in switch disables whatever the Task manager files under voice assistants on that TV. It asks for confirmation because it also turns off the remote&#39;s microphone button, Voice Guide (read-aloud) and voice suggestions in search. The <a href="https://github.com/andrearicci93/vetro/blob/main/README.md" rel="noopener" target="_blank">README</a> says each switch shows Done or Partly done.</p>
 <p><figure><img src="/vetro/assets/img/dashboard-quick-settings.jpg" alt="Vetro Quick settings with the voice assistants switch" loading="lazy" decoding="async" width="1425" height="1100"><figcaption>Vetro Quick settings with the voice assistants switch</figcaption></figure></p>
 <p>The evidence is limited. The CHANGELOG records a community report from a Samsung Q65S95C (2023) on Vetro 0.2.3 (<a href="https://github.com/andrearicci93/vetro/issues/13" rel="noopener" target="_blank">#13</a>; see the <a href="/vetro/tested-tvs/s95c/">S95C page</a>) with 23 voice-assistant and ACR components disabled from Quick settings and 29 of 29 controls confirmed. The project itself is developed on the <a href="/vetro/tested-tvs/q80a/">Q80A</a>, and the Task manager descriptions come from the Q80A firmware, so other models may leave some packages unclassified. Disabling a component does not prove that no audio leaves the TV, and the project has not published a traffic capture.</p>
 <p>If you want the microphone button for something else, Vetro also remaps remote keys; see <a href="/vetro/control/remap-samsung-remote-buttons/">remapping Samsung remote buttons</a>.</p>
-<h2 id="what-this-article-does-not-cover">What this article does not cover<a class="anchor" href="#what-this-article-does-not-cover" aria-label="Link to this section">#</a></h2>
+<h2 id="what-this-article-does-not-cover">What this article does not cover<a class="anchor" href="#what-this-article-does-not-cover" aria-label="Link to section: What this article does not cover">#</a></h2>
 <p>It does not cover Google Assistant on soundbars, phones or other brands, and it gives no legal or warranty advice. The other privacy switches are in <a href="/vetro/privacy/turn-off-acr-samsung-tv/">how to turn off ACR</a>, and the advertising switch is in <a href="/vetro/privacy/samsung-ads-opt-out/">Samsung Ads opt-out</a>.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/privacy/what-data-samsung-tv-collects/"><span class="eyebrow">Privacy and tracking</span><strong>What data does a Samsung TV collect? A plain inventory</strong><span>What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.</span></a><a class="card" href="/vetro/privacy/samsung-ads-opt-out/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung TV ads opt-out: turn off interest-based ads</strong><span>Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/privacy/samsung-acr-texas-settlement/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung ACR Texas settlement: consent rules explained</strong><span>Texas sued five TV makers over ACR in December 2025, won then lost a restraining order against Samsung, and settled in February 2026. Dates, terms and limits.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/privacy/what-data-samsung-tv-collects/"><span class="eyebrow">Privacy and tracking</span><strong>What data does a Samsung TV collect? A plain inventory</strong><span>What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.</span></a><a class="card" href="/vetro/privacy/samsung-ads-opt-out/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung TV ads opt-out: turn off interest-based ads</strong><span>Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a><a class="card" href="/vetro/privacy/samsung-acr-texas-settlement/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung ACR Texas settlement: consent rules explained</strong><span>Texas sued five TV makers over ACR in December 2025, won then lost a restraining order against Samsung, and settled in February 2026. Dates, terms and limits.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/privacy/block-samsung-tv-telemetry-dns/"><span>Previous</span>Block Samsung TV telemetry with Pi-hole or AdGuard</a><a class="next" href="/vetro/privacy/samsung-ads-opt-out/"><span>Next</span>Samsung TV ads opt-out: turn off interest-based ads</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#does-my-samsung-tv-have-a-microphone-switch">Does my Samsung TV have a microphone switch?</a></li><li class="l2"><a href="#how-do-i-turn-off-alexa-on-a-samsung-tv">How do I turn off Alexa on a Samsung TV?</a></li><li class="l2"><a href="#how-do-i-turn-off-bixby-on-a-samsung-tv">How do I turn off Bixby on a Samsung TV?</a></li><li class="l2"><a href="#what-about-voice-guide-and-voice-search">What about Voice Guide and voice search?</a></li><li class="l2"><a href="#is-the-tv-listening-to-the-room">Is the TV listening to the room?</a></li><li class="l2"><a href="#what-does-vetro-do-about-voice-assistants">What does Vetro do about voice assistants?</a></li><li class="l2"><a href="#what-this-article-does-not-cover">What this article does not cover</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#does-my-samsung-tv-have-a-microphone-switch">Does my Samsung TV have a microphone switch?</a></li><li class="l2"><a href="#how-do-i-turn-off-alexa-on-a-samsung-tv">How do I turn off Alexa on a Samsung TV?</a></li><li class="l2"><a href="#how-do-i-turn-off-bixby-on-a-samsung-tv">How do I turn off Bixby on a Samsung TV?</a></li><li class="l2"><a href="#what-about-voice-guide-and-voice-search">What about Voice Guide and voice search?</a></li><li class="l2"><a href="#is-the-tv-listening-to-the-room">Is the TV listening to the room?</a></li><li class="l2"><a href="#what-does-vetro-do-about-voice-assistants">What does Vetro do about voice assistants?</a></li><li class="l2"><a href="#what-this-article-does-not-cover">What this article does not cover</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 <meta name="description" content="Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/updates/firmware-update-remove-root/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Will a Samsung TV firmware update remove root? What we know","description":"Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv firmware update remove root, samsung tv root after update, samsung tv firmware 2310.0 root, keep root samsung tv update","articleSection":"Firmware updates","mainEntityOfPage":"https://andrearicci93.github.io/vetro/updates/firmware-update-remove-root/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Firmware updates","item":"https://andrearicci93.github.io/vetro/updates/"},{"@type":"ListItem","position":3,"name":"Will a Samsung TV firmware update remove root? What we know","item":"https://andrearicci93.github.io/vetro/updates/firmware-update-remove-root/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/" aria-current="page">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/" aria-current="page">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,19 +47,19 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><span aria-current="page">Will a Samsung TV firmware update remove root? What we know</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Firmware updates</p>
-<h1>Will a Samsung TV firmware update remove root? What we know</h1>
+<h1 id="page-title" tabindex="-1">Will a Samsung TV firmware update remove root? What we know</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against the samsung-tv-root README, Samsung's Auto Update support page and developer FAQ, and the Vetro README, CHANGELOG, UPDATING.md and PERFORMANCE.md for release 0.5.0.</span></p>
 </header>
 <div class="prose">
 <p>A firmware update can change whether root works, and nobody outside Samsung can promise otherwise. The root research Vetro builds on records results for exact models and firmware, not whole series, and Vetro&#39;s README says a firmware update can change the result even within one model family. Vetro&#39;s public files mention two firmware versions on one TV, the Q80A. This page gives them and says what they don&#39;t show.</p>
-<h2 id="what-does-the-root-research-say">What does the root research say?<a class="anchor" href="#what-does-the-root-research-say" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-the-root-research-say">What does the root research say?<a class="anchor" href="#what-does-the-root-research-say" aria-label="Link to section: What does the root research say?">#</a></h2>
 <p>Chris Ritsen&#39;s <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">samsung-tv-root</a> README says its root results are &quot;for exact models and firmware, not every size or regional variant in a series&quot;. It never mentions firmware updates or whether one removes root. It does say root and UEP changes remain volatile: a controller reacquires root from another computer after a TV reboot, and the project installs no boot service on the TV. Its author also writes that his TVs are blocked from the internet after Developer Mode is enabled. The research doesn&#39;t answer the question, so the honest answer is that it depends on the firmware.</p>
-<h2 id="what-do-vetro-39-s-public-records-show">What do Vetro&#39;s public records show?<a class="anchor" href="#what-do-vetro-39-s-public-records-show" aria-label="Link to this section">#</a></h2>
+<h2 id="what-do-vetro-39-s-public-records-show">What do Vetro&#39;s public records show?<a class="anchor" href="#what-do-vetro-39-s-public-records-show" aria-label="Link to section: What do Vetro's public records show?">#</a></h2>
 <p>Vetro&#39;s files record two firmware strings on the Q80A (<a href="/vetro/tested-tvs/q80a/">model page</a>):</p>
-<div class="table-wrap"><table><thead><tr>
-<th>Record</th>
-<th>Firmware</th>
-<th>What it covers</th>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What do Vetro's public records show?"><table><thead><tr>
+<th scope="col">Record</th>
+<th scope="col">Firmware</th>
+<th scope="col">What it covers</th>
 </tr>
 </thead><tbody><tr>
 <td><a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md" rel="noopener" target="_blank">PERFORMANCE.md</a>, measurements of 2026-10-11 and 2026-10-23</td>
@@ -69,12 +73,12 @@
 </tr>
 </tbody></table></div><p>The README table still lists 2301.1 for the Q80A. The files don&#39;t say how the TV went from one version to the other, so they don&#39;t record a test of the update itself. What they do show is that the root agent worked on 2310.0, because the self-update test replaced files with it. A different model, the Q60A (<a href="/vetro/tested-tvs/q60a/">model page</a>, <a href="https://github.com/andrearicci93/vetro/issues/28" rel="noopener" target="_blank">#28</a>), is reported working on 2310.0.</p>
 <p>That is two firmware versions on one TV. It is not a guarantee for any other model. See the <a href="/vetro/tested-tvs/">tested TVs index</a>.</p>
-<h2 id="does-root-come-back-after-a-restart">Does root come back after a restart?<a class="anchor" href="#does-root-come-back-after-a-restart" aria-label="Link to this section">#</a></h2>
+<h2 id="does-root-come-back-after-a-restart">Does root come back after a restart?<a class="anchor" href="#does-root-come-back-after-a-restart" aria-label="Link to section: Does root come back after a restart?">#</a></h2>
 <p>Root from this route is volatile: it is gained again at each start. That is separate from a firmware update, and <a href="/vetro/root/keep-root-after-restart/">does root survive a restart</a> covers it. After a cold boot, the install guide says startup and root can take up to 90 seconds.</p>
-<h2 id="does-vetro-39-s-own-update-change-the-firmware">Does Vetro&#39;s own update change the firmware?<a class="anchor" href="#does-vetro-39-s-own-update-change-the-firmware" aria-label="Link to this section">#</a></h2>
+<h2 id="does-vetro-39-s-own-update-change-the-firmware">Does Vetro&#39;s own update change the firmware?<a class="anchor" href="#does-vetro-39-s-own-update-change-the-firmware" aria-label="Link to section: Does Vetro's own update change the firmware?">#</a></h2>
 <p>No. Vetro&#39;s self-update replaces Vetro&#39;s files, not the TV&#39;s firmware. Per <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md" rel="noopener" target="_blank">UPDATING.md</a>, Check for update asks GitHub for a signed bundle, the TV verifies it and replaces files with the root agent. If the new version doesn&#39;t confirm itself within four minutes, a watchdog puts the old files back, and you can roll back by hand. It cannot change what <code>config.xml</code> declares; that needs a reinstall.</p>
 <p>UPDATING.md describes an end-to-end test on a Q80A with a throw-away key, and the 0.5.0 changelog says a signed update with the release key was tried by hand on a Q80A. UPDATING.md lists what is still not measured, including a reboot after a file swap.</p>
-<h2 id="what-should-i-do-before-updating">What should I do before updating?<a class="anchor" href="#what-should-i-do-before-updating" aria-label="Link to this section">#</a></h2>
+<h2 id="what-should-i-do-before-updating">What should I do before updating?<a class="anchor" href="#what-should-i-do-before-updating" aria-label="Link to section: What should I do before updating?">#</a></h2>
 <p>Vetro has no tested procedure for this, so this is cautious practice, not a guarantee.</p>
 <ol>
 <li>Write down your exact model code and firmware. Vetro&#39;s diagnostic report records them, and <a href="/vetro/reference/samsung-model-code-decoder/">the model code decoder</a> explains the string.</li>
@@ -83,33 +87,68 @@
 <li>Assume going back is not possible. Samsung&#39;s <a href="https://developer.samsung.com/smarttv/develop/faq/device-information-and-firmware.html" rel="noopener" target="_blank">developer FAQ</a> says downgrading is not supported; see <a href="/vetro/updates/downgrade-samsung-tv-firmware/">can you downgrade</a>.</li>
 <li>Know how to remove Vetro if root is lost: <a href="/vetro/root/uninstall-vetro-samsung-tv/">uninstalling Vetro</a>.</li>
 </ol>
-<h2 id="why-must-i-check-the-exact-model-and-firmware">Why must I check the exact model and firmware?<a class="anchor" href="#why-must-i-check-the-exact-model-and-firmware" aria-label="Link to this section">#</a></h2>
+<h2 id="why-must-i-check-the-exact-model-and-firmware">Why must I check the exact model and firmware?<a class="anchor" href="#why-must-i-check-the-exact-model-and-firmware" aria-label="Link to section: Why must I check the exact model and firmware?">#</a></h2>
 <p>The README lists reports for specific model and firmware combinations. It does not say what an update does to other combinations. The 2021 <a href="/vetro/tested-tvs/q70a/">Q70A</a> (<a href="https://github.com/andrearicci93/vetro/issues/8" rel="noopener" target="_blank">#8</a>) and <a href="/vetro/tested-tvs/qn85a/">QN85A</a> are listed on firmware 2301.1 and the <a href="/vetro/tested-tvs/q60a/">Q60A</a> on 2310.0. The 2022 <a href="/vetro/tested-tvs/bu8002/">BU8002</a> (<a href="https://github.com/andrearicci93/vetro/issues/22" rel="noopener" target="_blank">#22</a>) and <a href="/vetro/tested-tvs/qn85b/">QN85B</a> (<a href="https://github.com/andrearicci93/vetro/issues/25" rel="noopener" target="_blank">#25</a>) are on 1720.7. Each is a separate report, not a before-and-after comparison. Not every report is full support: a 2018 <a href="/vetro/tested-tvs/nu7090/">UE43NU7090</a> (<a href="https://github.com/andrearicci93/vetro/issues/2" rel="noopener" target="_blank">#2</a>) has the dashboard, app list and diagnostics working and the features that need root unavailable.</p>
-<h2 id="what-should-i-send-if-something-changes">What should I send if something changes?<a class="anchor" href="#what-should-i-send-if-something-changes" aria-label="Link to this section">#</a></h2>
+<h2 id="what-should-i-send-if-something-changes">What should I send if something changes?<a class="anchor" href="#what-should-i-send-if-something-changes" aria-label="Link to section: What should I send if something changes?">#</a></h2>
 <p>Open a diagnostic report issue with your exact model and firmware, what worked or failed and the report from Quick settings, Developer settings, Diagnostic report. The README says the report excludes credentials, IP and MAC addresses, serial numbers and viewing history, and asks you to read it before you upload it. A report with the firmware before and after an update is more useful than one that says it stopped.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>Vetro&#39;s public files contain no record of what changes inside a firmware update, no test of a Q80A moving between those versions and no data on most other models. Vetro is experimental, needs root and ships no signed installer; start with <a href="/vetro/root/how-to-root-samsung-tv/">Vetro&#39;s root requirements</a>, <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">whether rooting a Samsung TV is safe</a> and <a href="/vetro/root/install-vetro-apps2samsung/">how to install Vetro with Apps2Samsung</a>.</p>
-<h2 id="next-steps">Next steps<a class="anchor" href="#next-steps" aria-label="Link to this section">#</a></h2>
+<h2 id="next-steps">Next steps<a class="anchor" href="#next-steps" aria-label="Link to section: Next steps">#</a></h2>
 <p>Read <a href="/vetro/reference/what-each-vetro-switch-changes/">what each Vetro switch changes</a> for the firmware-update switch.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/updates/downgrade-samsung-tv-firmware/"><span class="eyebrow">Firmware updates</span><strong>Can you downgrade Samsung TV firmware? What reports say</strong><span>Samsung says downgrading TV firmware is not supported. See what its community and SamyGO threads report, and why Vetro offers prevention, not a rollback.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/root/keep-root-after-restart/"><span class="eyebrow">Rooting guides</span><strong>Does root survive a restart on a Samsung TV?</strong><span>What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.</span></a><a class="card" href="/vetro/updates/downgrade-samsung-tv-firmware/"><span class="eyebrow">Firmware updates</span><strong>Can you downgrade Samsung TV firmware? What reports say</strong><span>Samsung says downgrading TV firmware is not supported. See what its community and SamyGO threads report, and why Vetro offers prevention, not a rollback.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a><a class="card" href="/vetro/reference/what-each-vetro-switch-changes/"><span class="eyebrow">Reference</span><strong>What each Vetro switch changes on a Samsung TV (0.5.0)</strong><span>What each Vetro 0.5.0 Quick settings switch, Launcher option and Task manager action changes on a Samsung TV, how to undo it, and what is untested.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/updates/downgrade-samsung-tv-firmware/"><span>Previous</span>Can you downgrade Samsung TV firmware? What reports say</a><span></span></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-does-the-root-research-say">What does the root research say?</a></li><li class="l2"><a href="#what-do-vetro-39-s-public-records-show">What do Vetro&amp;#39;s public records show?</a></li><li class="l2"><a href="#does-root-come-back-after-a-restart">Does root come back after a restart?</a></li><li class="l2"><a href="#does-vetro-39-s-own-update-change-the-firmware">Does Vetro&amp;#39;s own update change the firmware?</a></li><li class="l2"><a href="#what-should-i-do-before-updating">What should I do before updating?</a></li><li class="l2"><a href="#why-must-i-check-the-exact-model-and-firmware">Why must I check the exact model and firmware?</a></li><li class="l2"><a href="#what-should-i-send-if-something-changes">What should I send if something changes?</a></li><li class="l2"><a href="#limits">Limits</a></li><li class="l2"><a href="#next-steps">Next steps</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-does-the-root-research-say">What does the root research say?</a></li><li class="l2"><a href="#what-do-vetro-39-s-public-records-show">What do Vetro's public records show?</a></li><li class="l2"><a href="#does-root-come-back-after-a-restart">Does root come back after a restart?</a></li><li class="l2"><a href="#does-vetro-39-s-own-update-change-the-firmware">Does Vetro's own update change the firmware?</a></li><li class="l2"><a href="#what-should-i-do-before-updating">What should I do before updating?</a></li><li class="l2"><a href="#why-must-i-check-the-exact-model-and-firmware">Why must I check the exact model and firmware?</a></li><li class="l2"><a href="#what-should-i-send-if-something-changes">What should I send if something changes?</a></li><li class="l2"><a href="#limits">Limits</a></li><li class="l2"><a href="#next-steps">Next steps</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

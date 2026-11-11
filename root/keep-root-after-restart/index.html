@@ -7,6 +7,7 @@
 <meta name="description" content="What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/root/keep-root-after-restart/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Does root survive a restart on a Samsung TV?","description":"What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv root persistent reboot, does root survive restart samsung tv, samsung tv root after power cycle, vetro root agent boot","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/keep-root-after-restart/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Does root survive a restart on a Samsung TV?","item":"https://andrearicci93.github.io/vetro/root/keep-root-after-restart/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/" aria-current="page">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,21 +47,21 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Does root survive a restart on a Samsung TV?</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Rooting guides</p>
-<h1>Does root survive a restart on a Samsung TV?</h1>
+<h1 id="page-title" tabindex="-1">Does root survive a restart on a Samsung TV?</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Vetro 0.5.0's published BOOT-TEST.md, RELEASE-AUDIT.md, INSTALLATION.md, rooting README, README and CHANGELOG, and the samsung-tv-root project page.</span></p>
 </header>
 <div class="prose">
 <p>Root on a Samsung TV does not stay switched on across a restart; it has to be obtained again. The research Vetro builds on describes root as volatile. What Vetro does is get it back automatically: after the TV starts, its background service uses the TV&#39;s own SDB service to launch a root helper, and the helper connects back. The installation guide says this can take up to 90 seconds. Evidence comes from one Q80A and a few community reports, not from every model, so treat it as likely rather than guaranteed.</p>
-<h2 id="what-is-persistent-root-here">What is &quot;persistent&quot; root here?<a class="anchor" href="#what-is-persistent-root-here" aria-label="Link to this section">#</a></h2>
+<h2 id="what-is-persistent-root-here">What is &quot;persistent&quot; root here?<a class="anchor" href="#what-is-persistent-root-here" aria-label="Link to section: What is &quot;persistent&quot; root here?">#</a></h2>
 <p>Not kernel-level or firmware-level. Chris Ritsen&#39;s <a href="https://github.com/chris-ritsen/samsung-tv-root" rel="noopener" target="_blank">samsung-tv-root project</a> says &quot;Root and UEP changes remain volatile&quot;. Its own host controller reacquires root from another computer after a TV reboot, which the page says makes root appear semi-persistent, and it states that it does not install a TV-side boot service.</p>
 <p>Vetro changes where that happens. Its root agent is a small helper that runs as UID 0 on the TV. The Vetro service starts with the TV, reaches the TV&#39;s own SDB service through Developer Mode with Host PC IP set to <code>127.0.0.1</code>, starts the helper, and the helper connects back. The <a href="https://github.com/andrearicci93/vetro/blob/main/README.md#install" rel="noopener" target="_blank">README</a> says no computer needs to stay connected. The dashboard shows Root agent: connected when it worked. See <a href="/vetro/root/samsung-sdb-connect-tv/">connecting with sdb</a> and the <a href="/vetro/root/install-vetro-apps2samsung/">install guide</a>.</p>
-<h2 id="how-long-does-it-take-after-a-restart">How long does it take after a restart?<a class="anchor" href="#how-long-does-it-take-after-a-restart" aria-label="Link to this section">#</a></h2>
+<h2 id="how-long-does-it-take-after-a-restart">How long does it take after a restart?<a class="anchor" href="#how-long-does-it-take-after-a-restart" aria-label="Link to section: How long does it take after a restart?">#</a></h2>
 <p>The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#check-that-it-starts-by-itself" rel="noopener" target="_blank">installation guide</a> says startup and root can take up to 90 seconds after a cold boot, and to wait before treating an unavailable dashboard or agent as a failure. Several diagnostic report sections say &quot;unavailable: no root agent connected&quot; until the helper is up, which is expected in that window.</p>
 <p>The project&#39;s <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md" rel="noopener" target="_blank">release audit</a>, a document from 11 October 2026 about the 0.2.x builds, records two results on a <a href="/vetro/tested-tvs/q80a/">Q80A</a>. After a complete power cycle without opening Vetro, the service and an authenticated UID-0 agent were back; the audit calls this one cold boot of the then-installed package, not proof across firmware or repeated boots. After a later reboot without opening Vetro, two distinct boots were verified, with the DNS filter seen connected at roughly 115 and 118 seconds of uptime. The audit says native key behavior stays in place until Vetro and the helper are ready, and that this is not a guarantee for all firmware or an unplugged cold boot.</p>
-<h2 id="what-about-standby-a-full-power-cycle-and-a-firmware-update">What about standby, a full power cycle and a firmware update?<a class="anchor" href="#what-about-standby-a-full-power-cycle-and-a-firmware-update" aria-label="Link to this section">#</a></h2>
-<div class="table-wrap"><table><thead><tr>
-<th>Event</th>
-<th>What the published files say</th>
+<h2 id="what-about-standby-a-full-power-cycle-and-a-firmware-update">What about standby, a full power cycle and a firmware update?<a class="anchor" href="#what-about-standby-a-full-power-cycle-and-a-firmware-update" aria-label="Link to section: What about standby, a full power cycle and a firmware update?">#</a></h2>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Table: What about standby, a full power cycle and a firmware update?"><table><thead><tr>
+<th scope="col">Event</th>
+<th scope="col">What the published files say</th>
 </tr>
 </thead><tbody><tr>
 <td>Standby</td>
@@ -76,7 +80,7 @@
 <td>Listed as outstanding validation in the audit. The README says an update can change the result, even inside one model family</td>
 </tr>
 </tbody></table></div><p>The README adds a switch, Disable automatic firmware update, so a new firmware does not remove root behind your back. More in <a href="/vetro/updates/firmware-update-remove-root/">what a firmware update does to root</a> and <a href="/vetro/updates/stop-samsung-tv-auto-update/">stopping automatic updates</a>.</p>
-<h2 id="what-do-community-reports-say">What do community reports say?<a class="anchor" href="#what-do-community-reports-say" aria-label="Link to this section">#</a></h2>
+<h2 id="what-do-community-reports-say">What do community reports say?<a class="anchor" href="#what-do-community-reports-say" aria-label="Link to section: What do community reports say?">#</a></h2>
 <p>These come from the README table and the <a href="https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md" rel="noopener" target="_blank">CHANGELOG</a>, and are the reporters&#39; own accounts:</p>
 <ul>
 <li>A 2024 <a href="/vetro/tested-tvs/s90d/">S90D</a> (<a href="https://github.com/andrearicci93/vetro/issues/36" rel="noopener" target="_blank">#36</a>): the root agent was back after a full restart.</li>
@@ -86,11 +90,11 @@
 <li>A 2023 <a href="/vetro/tested-tvs/s90c/">S90C</a> (<a href="https://github.com/andrearicci93/vetro/pull/29" rel="noopener" target="_blank">#29</a>): three clean installs registered the service with on-boot and auto-restart off, so it did not start after a restart until the app was opened. Since 0.3.2 Vetro puts the two flags back once the root agent connects, and the changelog says the service then started 40 to 65 seconds after a restart or power cut on that TV.</li>
 </ul>
 <p>The pattern is that it works on models that reported it, and the first install may need the app opened once.</p>
-<h2 id="why-is-boot-time-root-not-guaranteed">Why is boot-time root not guaranteed?<a class="anchor" href="#why-is-boot-time-root-not-guaranteed" aria-label="Link to this section">#</a></h2>
+<h2 id="why-is-boot-time-root-not-guaranteed">Why is boot-time root not guaranteed?<a class="anchor" href="#why-is-boot-time-root-not-guaranteed" aria-label="Link to section: Why is boot-time root not guaranteed?">#</a></h2>
 <p>The installation guide notes that the on-boot service has been investigated with Partner-level distribution privileges and that ordinary public signing is not evidence that boot execution is supported. Signing does not prove root compatibility either, and the rooting README says the same. Firmware, not the Tizen number, decides; see <a href="/vetro/root/samsung-tv-tizen-version-by-year/">Tizen version by year</a>.</p>
-<h2 id="how-can-i-test-it-on-my-tv">How can I test it on my TV?<a class="anchor" href="#how-can-i-test-it-on-my-tv" aria-label="Link to this section">#</a></h2>
+<h2 id="how-can-i-test-it-on-my-tv">How can I test it on my TV?<a class="anchor" href="#how-can-i-test-it-on-my-tv" aria-label="Link to section: How can I test it on my TV?">#</a></h2>
 <p>BOOT-TEST.md describes <code>scripts/boot-test.py</code> in the <code>app</code> folder, which records startup from a computer without installing anything or rebooting the TV. It needs the key from pairing in <code>VETRO_TOKEN</code> (see the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/SIGN-IN.md" rel="noopener" target="_blank">sign-in guide</a>). Run <code>preflight</code>, then <code>record --mode passive</code>, mark the reboot, and do not open Vetro while the TV starts. A result counts when it shows a new boot, a new service and a connected agent. Keep boot identifiers private.</p>
-<h2 id="what-if-root-does-not-come-back">What if root does not come back?<a class="anchor" href="#what-if-root-does-not-come-back" aria-label="Link to this section">#</a></h2>
+<h2 id="what-if-root-does-not-come-back">What if root does not come back?<a class="anchor" href="#what-if-root-does-not-come-back" aria-label="Link to section: What if root does not come back?">#</a></h2>
 <p>The installation guide&#39;s table starts from <code>http://TV_IP:8099/status</code> (pair the browser first if pairing is on):</p>
 <ul>
 <li><code>&quot;mode&quot;: &quot;app-only&quot;</code>: the package has no root integration.</li>
@@ -99,27 +103,62 @@
 <li>Launches that end without <code>agent-connected</code>: root did not work on this firmware or SDB refused the connection. The guide asks for the diagnostic report in a new issue.</li>
 </ul>
 <p>A TV where the Host PC IP step was skipped shows the same missing-agent picture; one 2021 TV in the README is in that state (<a href="https://github.com/andrearicci93/vetro/issues/134" rel="noopener" target="_blank">#134</a>).</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>The evidence is one TV&#39;s measurements plus reports. Do not rely on root being back for anything critical. Vetro is experimental, needs root and ships no signed installer. Read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">is it safe to root a Samsung TV</a> and the main <a href="/vetro/root/how-to-root-samsung-tv/">rooting guide</a>. Vetro is not affiliated with Samsung.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/updates/firmware-update-remove-root/"><span class="eyebrow">Firmware updates</span><strong>Will a Samsung TV firmware update remove root? What we know</strong><span>Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/root/samsung-sdb-connect-tv/"><span class="eyebrow">Rooting guides</span><strong>Connect to a Samsung TV with sdb (port 26101)</strong><span>How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/updates/firmware-update-remove-root/"><span class="eyebrow">Firmware updates</span><strong>Will a Samsung TV firmware update remove root? What we know</strong><span>Can a firmware update remove root on a Samsung TV? What the root research and Vetro's public records say, what to do before updating, and what is unknown.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what Samsung says keeps installing anyway, what router blocking does, and what Vetro's switch changes on a rooted TV.</span></a><a class="card" href="/vetro/root/samsung-sdb-connect-tv/"><span class="eyebrow">Rooting guides</span><strong>Connect to a Samsung TV with sdb (port 26101)</strong><span>How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.</span></a><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/is-it-safe-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Is it safe to root a Samsung TV? Risks and what to undo</strong><span>Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/root/samsung-developer-certificate-errors/"><span>Previous</span>Samsung TV certificate errors when installing an app</a><a class="next" href="/vetro/root/uninstall-vetro-samsung-tv/"><span>Next</span>Uninstall Vetro from a Samsung TV and clean up leftovers</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-persistent-root-here">What is &amp;quot;persistent&amp;quot; root here?</a></li><li class="l2"><a href="#how-long-does-it-take-after-a-restart">How long does it take after a restart?</a></li><li class="l2"><a href="#what-about-standby-a-full-power-cycle-and-a-firmware-update">What about standby, a full power cycle and a firmware update?</a></li><li class="l2"><a href="#what-do-community-reports-say">What do community reports say?</a></li><li class="l2"><a href="#why-is-boot-time-root-not-guaranteed">Why is boot-time root not guaranteed?</a></li><li class="l2"><a href="#how-can-i-test-it-on-my-tv">How can I test it on my TV?</a></li><li class="l2"><a href="#what-if-root-does-not-come-back">What if root does not come back?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-is-persistent-root-here">What is &quot;persistent&quot; root here?</a></li><li class="l2"><a href="#how-long-does-it-take-after-a-restart">How long does it take after a restart?</a></li><li class="l2"><a href="#what-about-standby-a-full-power-cycle-and-a-firmware-update">What about standby, a full power cycle and a firmware update?</a></li><li class="l2"><a href="#what-do-community-reports-say">What do community reports say?</a></li><li class="l2"><a href="#why-is-boot-time-root-not-guaranteed">Why is boot-time root not guaranteed?</a></li><li class="l2"><a href="#how-can-i-test-it-on-my-tv">How can I test it on my TV?</a></li><li class="l2"><a href="#what-if-root-does-not-come-back">What if root does not come back?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

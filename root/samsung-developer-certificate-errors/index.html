@@ -7,6 +7,7 @@
 <meta name="description" content="Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/root/samsung-developer-certificate-errors/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,16 +25,19 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Samsung TV certificate errors when installing an app","description":"Why a sideloaded app fails on a Samsung TV: author vs distributor certificates, the DUID, a leftover build with another certificate, account and DNS blocks.","datePublished":"2026-11-10","dateModified":"2026-11-10","inLanguage":"en","keywords":"samsung tv certificate error install, tizen author certificate not match, samsung distributor certificate duid, tizen app install fail 1010","articleSection":"Rooting guides","mainEntityOfPage":"https://andrearicci93.github.io/vetro/root/samsung-developer-certificate-errors/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Rooting guides","item":"https://andrearicci93.github.io/vetro/root/"},{"@type":"ListItem","position":3,"name":"Samsung TV certificate errors when installing an app","item":"https://andrearicci93.github.io/vetro/root/samsung-developer-certificate-errors/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/" aria-current="page">Rooting guides</a><a href="/vetro/privacy/">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/" aria-current="page">Rooting</a></li><li><a href="/vetro/privacy/">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
@@ -43,12 +47,12 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><a href="/vetro/root/">Rooting guides</a></li><li><span aria-current="page">Samsung TV certificate errors when installing an app</span></li></ol></nav>
 <header class="article-head">
 <p class="eyebrow">Rooting guides</p>
-<h1>Samsung TV certificate errors when installing an app</h1>
+<h1 id="page-title" tabindex="-1">Samsung TV certificate errors when installing an app</h1>
 <p class="meta"><time datetime="2026-11-10">Updated 10 November 2026</time> · <span class="verified">Checked on 2026-11-10 against Samsung's creating-certificates, tv-device and command-line pages, the Apps2Samsung and Jellyfin2Samsung FAQs, the jellyfin-tizen README and Vetro 0.5.0's INSTALLATION.md.</span></p>
 </header>
 <div class="prose">
 <p>A Samsung TV refuses a sideloaded app when its signature does not fit the TV: the certificate profile is missing, was made for another TV, belongs to a different author than an app already installed, or was never created because an earlier step failed. The usual fixes are to check the certificate profile and the DUID, remove the older build that another certificate signed, and finish the Samsung account sign-in. This page explains the pieces and the errors Samsung and the installer projects document.</p>
-<h2 id="what-are-author-and-distributor-certificates">What are author and distributor certificates?<a class="anchor" href="#what-are-author-and-distributor-certificates" aria-label="Link to this section">#</a></h2>
+<h2 id="what-are-author-and-distributor-certificates">What are author and distributor certificates?<a class="anchor" href="#what-are-author-and-distributor-certificates" aria-label="Link to section: What are author and distributor certificates?">#</a></h2>
 <p>Samsung&#39;s <a href="https://developer.samsung.com/smarttv/develop/getting-started/setting-up-sdk/creating-certificates.html" rel="noopener" target="_blank">certificate guide</a> says a certificate profile &quot;consists of an author certificate and 1 or more distributor certificates&quot;.</p>
 <ul>
 <li>The author certificate identifies who published the app. Back it up: updates to an app must use the same author certificate as the original, or the update may be treated as a different app.</li>
@@ -57,10 +61,10 @@
 </ul>
 <p>You also need a Samsung Developers Portal account and the Samsung Certificate Extension, which comes with the TV SDK.</p>
 <p>This is why there is no universal signed installer for Vetro. Its <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md" rel="noopener" target="_blank">installation guide</a> says a Samsung certificate belongs to its owner and is tied to your TV, so you must not reuse someone else&#39;s signed package or certificates. Apps2Samsung creates your own certificate at the first install; see <a href="/vetro/root/install-vetro-apps2samsung/">install Vetro with Apps2Samsung</a>.</p>
-<h2 id="why-does-installing-say-the-author-certificate-does-not-match">Why does installing say the author certificate does not match?<a class="anchor" href="#why-does-installing-say-the-author-certificate-does-not-match" aria-label="Link to this section">#</a></h2>
+<h2 id="why-does-installing-say-the-author-certificate-does-not-match">Why does installing say the author certificate does not match?<a class="anchor" href="#why-does-installing-say-the-author-certificate-does-not-match" aria-label="Link to section: Why does installing say the author certificate does not match?">#</a></h2>
 <p>The <a href="https://github.com/Apps2Samsung/Apps2Samsung/wiki/FAQ" rel="noopener" target="_blank">Apps2Samsung FAQ</a> says &quot;Author certificate not match&quot; usually means a Jellyfin app is already installed, and the <a href="https://github.com/Jellyfin2Samsung/Samsung-Jellyfin-Installer/wiki/FAQ" rel="noopener" target="_blank">Jellyfin2Samsung FAQ</a> says the same. Their fix is to delete the existing app on the TV: highlight it, hold the Enter button until a menu appears, and delete it.</p>
 <p>The reason is the author rule above: the TV treats a build signed by another author as a different app. For leftovers after a removal, see <a href="/vetro/root/uninstall-vetro-samsung-tv/">uninstall Vetro and clean up</a>.</p>
-<h2 id="what-does-a-failed-install-with-no-clear-message-mean">What does a failed install with no clear message mean?<a class="anchor" href="#what-does-a-failed-install-with-no-clear-message-mean" aria-label="Link to this section">#</a></h2>
+<h2 id="what-does-a-failed-install-with-no-clear-message-mean">What does a failed install with no clear message mean?<a class="anchor" href="#what-does-a-failed-install-with-no-clear-message-mean" aria-label="Link to section: What does a failed install with no clear message mean?">#</a></h2>
 <p>Samsung&#39;s <a href="https://developer.samsung.com/SmartTV/develop/getting-started/using-sdk/tv-device.html" rel="noopener" target="_blank">tv-device page</a> lists these messages:</p>
 <ul>
 <li>1010, &quot;App install fail&quot;: often a signing certificate problem; check the certificates and retry.</li>
@@ -76,33 +80,68 @@
 <li>Expiry. Apps2Samsung&#39;s FAQ says existing certificates can be reused when found and not expired.</li>
 <li>The right command. Samsung&#39;s page says only .wgt files install on a TV. Vetro&#39;s guide says to use <code>tizen install</code>, because <code>sdb install</code> did nothing and showed no error in a community report.</li>
 </ol>
-<h2 id="do-i-need-a-samsung-account-on-newer-tvs">Do I need a Samsung account on newer TVs?<a class="anchor" href="#do-i-need-a-samsung-account-on-newer-tvs" aria-label="Link to this section">#</a></h2>
+<h2 id="do-i-need-a-samsung-account-on-newer-tvs">Do I need a Samsung account on newer TVs?<a class="anchor" href="#do-i-need-a-samsung-account-on-newer-tvs" aria-label="Link to section: Do I need a Samsung account on newer TVs?">#</a></h2>
 <p>The Jellyfin2Samsung FAQ and the Apps2Samsung FAQ both say a Samsung developer account is required for Tizen 7 or later in developer mode. Apps2Samsung&#39;s first install signs you in to Samsung once to create a certificate, which it then reuses. See the <a href="/vetro/root/samsung-tv-tizen-version-by-year/">Tizen version by year</a> table to check whether your TV is in that group.</p>
-<h2 id="why-does-certificate-manager-crash-or-save-a-block-page">Why does Certificate Manager crash or save a block page?<a class="anchor" href="#why-does-certificate-manager-crash-or-save-a-block-page" aria-label="Link to this section">#</a></h2>
+<h2 id="why-does-certificate-manager-crash-or-save-a-block-page">Why does Certificate Manager crash or save a block page?<a class="anchor" href="#why-does-certificate-manager-crash-or-save-a-block-page" aria-label="Link to section: Why does Certificate Manager crash or save a block page?">#</a></h2>
 <p>Vetro&#39;s guide records a community report where Certificate Manager failed with <code>ArrayIndexOutOfBoundsException</code>. A DNS filter or ad blocker on the computer was blocking <code>svdca.samsungqbe.com</code>, and the plugin had saved the block page as <code>author.crt</code>. Allowing the domain made the official certificate flow work. Samsung&#39;s certificate page also says Certificate Manager in Tizen Studio 2.0 and lower can freeze while Tizen Studio is running, so close Tizen Studio after launching Certificate Manager.</p>
-<h2 id="what-should-i-include-when-i-ask-for-help">What should I include when I ask for help?<a class="anchor" href="#what-should-i-include-when-i-ask-for-help" aria-label="Link to this section">#</a></h2>
+<h2 id="what-should-i-include-when-i-ask-for-help">What should I include when I ask for help?<a class="anchor" href="#what-should-i-include-when-i-ask-for-help" aria-label="Link to section: What should I include when I ask for help?">#</a></h2>
 <p>Say your exact TV model and firmware, which tool you used (Tizen Studio, Apps2Samsung or another), the exact message it printed and whether the TV already had an older build of the same app. Leave out your DUID, IP address, certificate files and passwords. Vetro&#39;s diagnostic reports follow the same rule: no credentials, addresses or serial numbers. Vetro&#39;s guide says to type signing passwords yourself and never paste them into a chat with an AI assistant.</p>
-<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to this section">#</a></h2>
+<h2 id="limits">Limits<a class="anchor" href="#limits" aria-label="Link to section: Limits">#</a></h2>
 <p>Install failures have causes beyond certificates, and different TVs and firmware behave differently. This page does not tell you how to get root, and Vetro does not ship certificates. Vetro is experimental, needs root and ships no signed installer: read <a href="/vetro/root/is-it-safe-to-root-samsung-tv/">is it safe to root a Samsung TV</a>, then the <a href="/vetro/root/install-vetro-apps2samsung/">install guide</a> and the main <a href="/vetro/root/how-to-root-samsung-tv/">rooting guide</a>. Vetro is not affiliated with Samsung.</p>
 
 
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/samsung-sdb-connect-tv/"><span class="eyebrow">Rooting guides</span><strong>Connect to a Samsung TV with sdb (port 26101)</strong><span>How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/control/jellyfin-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>Jellyfin on a Samsung TV: official app or sideloading</strong><span>Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/root/install-vetro-apps2samsung/"><span class="eyebrow">Rooting guides</span><strong>Install Vetro on a Samsung TV with Apps2Samsung</strong><span>Step by step: Developer Mode, Apps2Samsung, the root package, pairing, Host PC IP 127.0.0.1 and a restart, then the Vetro dashboard on port 8099.</span></a><a class="card" href="/vetro/root/samsung-tv-developer-mode/"><span class="eyebrow">Rooting guides</span><strong>How to enable Developer Mode on a Samsung TV</strong><span>Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.</span></a><a class="card" href="/vetro/root/samsung-sdb-connect-tv/"><span class="eyebrow">Rooting guides</span><strong>Connect to a Samsung TV with sdb (port 26101)</strong><span>How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a><a class="card" href="/vetro/root/how-to-root-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>How to root a Samsung TV (Tizen): what works in 2026</strong><span>How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.</span></a><a class="card" href="/vetro/control/jellyfin-samsung-tv/"><span class="eyebrow">Remote, apps and smart home</span><strong>Jellyfin on a Samsung TV: official app or sideloading</strong><span>Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/root/install-vetro-apps2samsung/"><span>Previous</span>Install Vetro on a Samsung TV with Apps2Samsung</a><a class="next" href="/vetro/root/keep-root-after-restart/"><span>Next</span>Does root survive a restart on a Samsung TV?</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
-<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-are-author-and-distributor-certificates">What are author and distributor certificates?</a></li><li class="l2"><a href="#why-does-installing-say-the-author-certificate-does-not-match">Why does installing say the author certificate does not match?</a></li><li class="l2"><a href="#what-does-a-failed-install-with-no-clear-message-mean">What does a failed install with no clear message mean?</a></li><li class="l2"><a href="#do-i-need-a-samsung-account-on-newer-tvs">Do I need a Samsung account on newer TVs?</a></li><li class="l2"><a href="#why-does-certificate-manager-crash-or-save-a-block-page">Why does Certificate Manager crash or save a block page?</a></li><li class="l2"><a href="#what-should-i-include-when-i-ask-for-help">What should I include when I ask for help?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></aside>
+<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol><li class="l2"><a href="#what-are-author-and-distributor-certificates">What are author and distributor certificates?</a></li><li class="l2"><a href="#why-does-installing-say-the-author-certificate-does-not-match">Why does installing say the author certificate does not match?</a></li><li class="l2"><a href="#what-does-a-failed-install-with-no-clear-message-mean">What does a failed install with no clear message mean?</a></li><li class="l2"><a href="#do-i-need-a-samsung-account-on-newer-tvs">Do I need a Samsung account on newer TVs?</a></li><li class="l2"><a href="#why-does-certificate-manager-crash-or-save-a-block-page">Why does Certificate Manager crash or save a block page?</a></li><li class="l2"><a href="#what-should-i-include-when-i-ask-for-help">What should I include when I ask for help?</a></li><li class="l2"><a href="#limits">Limits</a></li></ol></nav>
 </div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

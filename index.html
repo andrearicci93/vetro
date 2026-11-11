@@ -7,8 +7,9 @@
 <meta name="description" content="Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. See compatibility, installation, privacy controls and rooting guides.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/">
 <meta name="robots" content="index, follow, max-image-preview:large">
-<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#080d18" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Vetro: Launcher &amp; Debloater for Samsung Tizen TVs">
@@ -24,25 +25,27 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","@id":"https://andrearicci93.github.io/vetro/#website","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","inLanguage":"en","publisher":{"@id":"https://andrearicci93.github.io/vetro/#organization"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@id":"https://andrearicci93.github.io/vetro/#organization","@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"],"description":"Open source launcher, debloater and remapper for rooted Samsung Tizen TVs."}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","@id":"https://andrearicci93.github.io/vetro/#webpage","url":"https://andrearicci93.github.io/vetro/","name":"Vetro: Launcher & Debloater for Samsung Tizen TVs","description":"Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. See compatibility, installation, privacy controls and rooting guides.","inLanguage":"en","isPartOf":{"@id":"https://andrearicci93.github.io/vetro/#website"},"mainEntity":{"@id":"https://andrearicci93.github.io/vetro/#software"}},{"@type":"SoftwareApplication","@id":"https://andrearicci93.github.io/vetro/#software","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","description":"Open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Experimental software; root features require a compatible Tizen 6+ TV.","softwareVersion":"0.5.0","operatingSystem":"Samsung Tizen","applicationCategory":"UtilitiesApplication","license":"https://opensource.org/license/mit","sameAs":["https://github.com/andrearicci93/vetro"],"publisher":{"@id":"https://andrearicci93.github.io/vetro/#organization"},"isBasedOn":{"@type":"SoftwareSourceCode","codeRepository":"https://github.com/andrearicci93/vetro","name":"Vetro source code"}}]}</script>
 </head>
 <body class="is-home">
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header home-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav nav-inline" aria-label="Main"><a href="#product">Product</a><a href="#guides">Guides</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="#product">Product</a></li><li><a href="#guides">Guides</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
-    <details class="menu"><summary aria-label="Menu"><span>Menu</span></summary><nav aria-label="Main menu"><a href="#product">Product</a><a href="#guides">Guides</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav></details>
   </div>
 </header>
 <main id="main">
 <div class="home">
 <section class="hero"><div class="wrap">
-<h1>A cleaner Home for your Samsung TV</h1>
+<h1 id="page-title" tabindex="-1">A cleaner Home for your Samsung TV</h1>
 <p class="lede">Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Replace Home, disable selected tracking services and give remote buttons new shortcuts.</p>
 <p class="actions"><a class="btn primary" href="/vetro/root/install-vetro-apps2samsung/">Install Vetro</a><a class="textlink" href="/vetro/root/how-to-root-samsung-tv/">How Samsung TV rooting works</a></p>
 <p class="req">Vetro 0.5.0. Root features require a compatible Tizen 6+ TV. Experimental software; launcher in beta.</p>
@@ -51,14 +54,14 @@
 <p class="stage-note">Vetro runs on the TV. Open its dashboard from a computer or phone on the same network.</p>
 </div></section>
 
-<section class="compat" aria-labelledby="compat-h"><div class="wrap">
+<section class="compat"><div class="wrap">
 <h2 id="compat-h">Check your Samsung TV first</h2>
 <p class="copy">Vetro is developed and tested on the Q80A. Other models have community reports, with different results by firmware. Root features target Tizen 6 and newer; Tizen 9 and 10 have mixed reports. Older TVs have limited dashboard support.</p>
 <ul class="band"><li>Developed on Q80A</li><li>Community reports vary</li><li>Check model and firmware</li></ul>
 <p class="links"><a href="/vetro/tested-tvs/">See tested TVs and firmware</a><a href="/vetro/tested-tvs/q80a/">Q80A test record</a><a href="/vetro/root/is-it-safe-to-root-samsung-tv/">Read the rooting risks</a></p>
 </div></section>
 
-<section class="chapter" id="product" aria-labelledby="launcher-h"><div class="wrap grid">
+<section class="chapter" id="product"><div class="wrap grid">
 <div class="text"><h2 id="launcher-h">Replace Samsung Home</h2>
 <p class="copy">Press Home for a minimal app bar with the same apps and icons in the same order. Samsung Home closes while Vetro's launcher is on, and remains one press away. The launcher returns after a restart or standby.</p>
 <p class="copy evidence">On one Q80A measurement, available RAM rose from 533 MB to 662 MB. This measures memory, not frame rate; other TVs will differ.</p>
@@ -66,30 +69,30 @@
 <figure class="media"><img src="/vetro/assets/img/launcher-dashboard.jpg" alt="Vetro dashboard, Launcher page with the app list and a preview of the app bar" width="1425" height="700" loading="lazy" decoding="async"><figcaption>The Launcher dashboard and its app-bar preview. Earlier interface shown. <a class="full" href="/vetro/assets/img/launcher-dashboard.jpg">View full-size screenshot</a></figcaption></figure>
 </div></section>
 
-<section class="chapter wide" aria-labelledby="privacy-h"><div class="wrap grid">
+<section class="chapter wide"><div class="wrap grid">
 <div class="text"><h2 id="privacy-h">Choose what runs on your TV</h2>
 <p class="copy">Quick settings groups privacy and background-service switches. Task manager explains apps and services so you can disable selected components. Disabling keeps a component installed and can be reversed; uninstalling needs an installer to recover.</p>
 <p class="copy evidence">DNS blocking does not guarantee that every app's ads or telemetry are blocked.</p>
 <p class="links"><a href="/vetro/reference/what-each-vetro-switch-changes/">See what each Vetro switch changes</a><a href="/vetro/privacy/turn-off-acr-samsung-tv/">Turn off Samsung TV ACR</a></p></div>
 <div class="media-stack"><figure class="media"><div class="scroll"><img src="/vetro/assets/img/task-manager.jpg" alt="Vetro dashboard, Task manager listing apps and services with their status" width="1425" height="990" loading="lazy" decoding="async"></div><figcaption>Task manager showing tracking components. Earlier interface shown. <a class="full" href="/vetro/assets/img/task-manager.jpg">View full-size screenshot</a></figcaption></figure>
-<details class="more-shot"><summary>See Quick settings</summary><figure class="media"><img src="/vetro/assets/img/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings with privacy and background-service switches" width="1425" height="1100" loading="lazy" decoding="async"><figcaption>Earlier Quick settings interface; controls and grouping differ in 0.5.0. <a class="full" href="/vetro/assets/img/dashboard-quick-settings.jpg">View full-size screenshot</a></figcaption></figure></details></div>
+<details class="more-shot"><summary>See Quick settings</summary><figure class="media"><img src="/vetro/assets/img/dashboard-quick-settings.jpg" alt="Vetro dashboard, Quick settings with privacy and background-service switches" width="1425" height="1100" fetchpriority="low" loading="lazy" decoding="async"><figcaption>Earlier Quick settings interface; controls and grouping differ in 0.5.0. <a class="full" href="/vetro/assets/img/dashboard-quick-settings.jpg">View full-size screenshot</a></figcaption></figure></details></div>
 </div></section>
 
-<section class="chapter flip" aria-labelledby="remap-h"><div class="wrap grid">
+<section class="chapter flip"><div class="wrap grid">
 <div class="text"><h2 id="remap-h">Give remote buttons new shortcuts</h2>
 <p class="copy">Press a remote button, choose an app and save the shortcut. Saved shortcuts survive restarts. The Home Assistant page can also turn a key press into an MQTT message.</p>
 <p class="cta-link"><a href="/vetro/control/remap-samsung-remote-buttons/">See Samsung remote remapping</a></p></div>
 <figure class="media"><img src="/vetro/assets/img/remapper-dashboard.jpg" alt="Vetro dashboard, Remapper page with a captured key and saved app shortcuts" width="1425" height="700" loading="lazy" decoding="async"><figcaption>Capture a key and choose an app in Remapper. Earlier interface shown. <a class="full" href="/vetro/assets/img/remapper-dashboard.jpg">View full-size screenshot</a></figcaption></figure>
 </div></section>
 
-<section class="chapter install" aria-labelledby="install-h"><div class="wrap">
+<section class="chapter install"><div class="wrap">
 <h2 id="install-h">Install Vetro on a compatible TV</h2>
 <p class="copy">Apps2Samsung handles signing and installation. After installing, open Vetro once, set Host PC IP to 127.0.0.1 in Developer Mode and restart the TV. Follow the complete guide for prerequisites and checks.</p>
 <p class="actions"><a class="btn primary" href="/vetro/root/install-vetro-apps2samsung/">Follow the Vetro installation guide</a><a class="textlink" href="https://github.com/andrearicci93/vetro" rel="noopener">Read the source and release notes</a></p>
 <aside class="secnote"><p>The dashboard uses plain HTTP. Keep it on a trusted local network and never expose it to the Internet. Automatic pairing starts after the TV app has been seen; until then the dashboard can be open.</p><a href="/vetro/reference/vetro-security-model/">Dashboard security and pairing</a></aside>
 </div></section>
 
-<section class="guides" id="guides" aria-labelledby="guides-h"><div class="wrap">
+<section class="guides" id="guides"><div class="wrap">
 <h2 id="guides-h">Samsung TV rooting, privacy and speed guides</h2>
 <p class="copy">Understand root, reduce viewing-data collection and compare ways to improve your TV. Each guide explains what the stock menus allow and where a compatible rooted TV changes the options.</p>
 <p class="lead-guide"><a href="/vetro/root/how-to-root-samsung-tv/">How to root a Samsung TV: compatibility and risks</a></p>
@@ -101,12 +104,47 @@
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>

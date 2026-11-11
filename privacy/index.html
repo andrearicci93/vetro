@@ -7,6 +7,7 @@
 <meta name="description" content="ACR, viewing data, advertising IDs and voice: what Samsung TVs collect and how to switch it off.">
 <link rel="canonical" href="https://andrearicci93.github.io/vetro/privacy/">
 <meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="Vetro">
@@ -24,32 +25,70 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwbxvtad">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwc0sh0l">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Privacy and tracking","item":"https://andrearicci93.github.io/vetro/privacy/"}]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"CollectionPage","name":"Privacy and tracking","description":"ACR, viewing data, advertising IDs and voice: what Samsung TVs collect and how to switch it off.","url":"https://andrearicci93.github.io/vetro/privacy/","hasPart":[{"@type":"Article","headline":"Turn off ACR on a Samsung TV: menu steps and limits","url":"https://andrearicci93.github.io/vetro/privacy/turn-off-acr-samsung-tv/"},{"@type":"Article","headline":"Samsung ACR Texas settlement: consent rules explained","url":"https://andrearicci93.github.io/vetro/privacy/samsung-acr-texas-settlement/"},{"@type":"Article","headline":"What data does a Samsung TV collect? A plain inventory","url":"https://andrearicci93.github.io/vetro/privacy/what-data-samsung-tv-collects/"},{"@type":"Article","headline":"Block Samsung TV telemetry with Pi-hole or AdGuard","url":"https://andrearicci93.github.io/vetro/privacy/block-samsung-tv-telemetry-dns/"},{"@type":"Article","headline":"Turn off Bixby, Alexa and the mic on a Samsung TV","url":"https://andrearicci93.github.io/vetro/privacy/turn-off-bixby-alexa-samsung-tv/"},{"@type":"Article","headline":"Samsung TV ads opt-out: turn off interest-based ads","url":"https://andrearicci93.github.io/vetro/privacy/samsung-ads-opt-out/"}]}</script>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<a class="skip" href="#page-title">Skip to content</a>
 <header class="site-header">
-  <div class="wrap bar">
+  <div class="wrap header-inner">
     <a class="brand" href="/vetro/"><img src="/vetro/assets/icon.png" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main"><a href="/vetro/root/">Rooting guides</a><a href="/vetro/privacy/" aria-current="page">Privacy and tracking</a><a href="/vetro/speed/">Home screen and speed</a><a href="/vetro/updates/">Firmware updates</a><a href="/vetro/control/">Remote, apps and smart home</a><a href="/vetro/compare/">Comparisons</a><a href="/vetro/reference/">Reference</a><a href="/vetro/tested-tvs/">Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto"><li><a href="/vetro/root/">Rooting</a></li><li><a href="/vetro/privacy/" aria-current="page">Privacy</a></li><li><a href="/vetro/speed/">Speed</a></li><li><a href="/vetro/updates/">Updates</a></li><li><a href="/vetro/control/">Control</a></li><li><a href="/vetro/compare/">Compare</a></li><li><a href="/vetro/reference/">Reference</a></li><li><a href="/vetro/tested-tvs/">Tested TVs</a></li></ul>
+    </nav>
     <a class="gh" href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a>
   </div>
 </header>
 <main id="main">
-<div class="wrap hub"><nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><span aria-current="page">Privacy and tracking</span></li></ol></nav><h1>Privacy and tracking</h1><p class="lede">ACR, viewing data, advertising IDs and voice: what Samsung TVs collect and how to switch it off.</p>
+<div class="wrap hub"><nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="/vetro/">Vetro</a></li><li><span aria-current="page">Privacy and tracking</span></li></ol></nav><h1 id="page-title" tabindex="-1">Privacy and tracking</h1><p class="lede">ACR, viewing data, advertising IDs and voice: what Samsung TVs collect and how to switch it off.</p>
 <div class="cards"><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/privacy/samsung-acr-texas-settlement/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung ACR Texas settlement: consent rules explained</strong><span>Texas sued five TV makers over ACR in December 2025, won then lost a restraining order against Samsung, and settled in February 2026. Dates, terms and limits.</span></a><a class="card" href="/vetro/privacy/what-data-samsung-tv-collects/"><span class="eyebrow">Privacy and tracking</span><strong>What data does a Samsung TV collect? A plain inventory</strong><span>What a Samsung TV collects according to Samsung's own notices: viewing data, advertising IDs, voice, usage logs and location, and where each setting lives.</span></a><a class="card" href="/vetro/privacy/block-samsung-tv-telemetry-dns/"><span class="eyebrow">Privacy and tracking</span><strong>Block Samsung TV telemetry with Pi-hole or AdGuard</strong><span>Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and breakage risks.</span></a><a class="card" href="/vetro/privacy/turn-off-bixby-alexa-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off Bixby, Alexa and the mic on a Samsung TV</strong><span>How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does.</span></a><a class="card" href="/vetro/privacy/samsung-ads-opt-out/"><span class="eyebrow">Privacy and tracking</span><strong>Samsung TV ads opt-out: turn off interest-based ads</strong><span>Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary.</span></a></div></div>
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
-      <div><strong>Site</strong><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="https://github.com/andrearicci93/vetro" rel="noopener">Source on GitHub</a> · <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul><li><a href="/vetro/root/">Rooting guides</a></li><li><a href="/vetro/privacy/">Privacy and tracking</a></li><li><a href="/vetro/speed/">Home screen and speed</a></li><li><a href="/vetro/updates/">Firmware updates</a></li><li><a href="/vetro/control/">Remote, apps and smart home</a></li><li><a href="/vetro/compare/">Comparisons</a></li><li><a href="/vetro/reference/">Reference</a></li></ul></div>
+      <div><h2>Site</h2><ul><li><a href="/vetro/tested-tvs/">Tested TVs</a></li><li><a href="/vetro/about/">About this site</a></li><li><a href="/vetro/rss.xml">RSS</a></li><li><a href="/vetro/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>
