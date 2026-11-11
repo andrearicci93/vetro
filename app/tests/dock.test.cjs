@@ -326,3 +326,20 @@ function fixture(options) {
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
 { const local=new (require('../service/dock.js').Dock)({execute:()=>Promise.reject(Error('no TV'))}); for(const slug of ['settings','samsunghome']) { const icon=local.iconFile(slug); assert.ok(icon && icon.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'local preview system icon: '+slug); } }
+
+{
+    // A software Home toggles the dock while the Vetro launcher holds the key, and falls back otherwise.
+    const send = '/usr/bin/input_keyevent XF86Home';
+    const f = fixture();
+    assert.equal(f.dock.homeKeyCommand(send), send, 'launcher off: the key is sent as before');
+    fs.writeFileSync(f.dock.stateFile, JSON.stringify({enabled: true}));
+    const cmd = f.dock.homeKeyCommand(send);
+    assert.ok(cmd.includes('echo toggle > /home/owner/tvlauncher.fifo'), 'Vetro mode: Home toggles the dock: ' + cmd);
+    assert.ok(/grep -q tvlauncher-dotnet\.dll \/proc\/\$p\/cmdline/.test(cmd) && cmd.includes('[ -p /home/owner/tvlauncher.fifo ]'),
+        'the pipe is written only while the dock is alive');
+    assert.ok(cmd.endsWith('else ' + send + '; fi'), 'with no live dock the key is sent as before');
+    assert.ok(!cmd.includes('\\'), 'no backslashes: the root agent doubles them');
+    fs.writeFileSync(f.dock.stateFile, JSON.stringify({enabled: false, customApp: 'com.example.launcher'}));
+    assert.equal(f.dock.homeKeyCommand(send), send, 'custom mode: the dock does not claim Home, so the key is sent as before');
+    console.log('PASS dock: software Home goes through the dock while the launcher holds the key');
+}

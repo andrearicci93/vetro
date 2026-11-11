@@ -231,6 +231,17 @@ Dock.prototype.statusNow = function () {
     });
 };
 
+// In Vetro launcher mode the dock claims the Home key, so a Home made by input_keyevent (the dashboard, remapper
+// actions, Home Assistant) reaches neither the system nor the dock. Such a Home toggles the dock through its
+// command pipe instead. With no live dock, or in another mode, the caller's own command runs. The pipe is written
+// only while the dock's process is alive: a pipe without a reader would block the shell.
+Dock.prototype.homeKeyCommand = function (fallback) {
+    var state = this.readState();
+    if (!state.enabled || state.customApp) return fallback;
+    return 'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && grep -q ' + DLL + ' /proc/$p/cmdline 2>/dev/null && [ -p ' + FIFO + ' ]; ' +
+        'then echo toggle > ' + FIFO + '; else ' + fallback + '; fi';
+};
+
 // The launch line. Paths are fixed constants or come from this package's own folder, and are quoted.
 //
 // The dock runs as its own systemd service (a transient unit made by systemd-run), NOT as a child of the
