@@ -62,13 +62,16 @@ inode labels also match the service. It checks identity and a temporary file rou
 and writes a private report. It does not start Vetro, its plugins or restores.
 Staging/launching it still requires the owner's authorization.
 
-Pending: one-direction-only tests, genuine installation/service restart and
-cold boot of the new backend, isolation from other packages sharing a UID, durable
-association/revocation and update/rollback. Fresh session secrets are not a
+This is an experimental first integration for an independently authorized
+bootstrap. It is ready for review within that scope, rather than a complete
+implementation of the broader external-root design. Follow-ups: one-direction-only
+tests, hardware validation of the full official 0.5 app, isolation from other
+packages sharing a UID, durable association/revocation and update/rollback.
+Fresh session secrets are not a
 replacement for the persistent association in the upstream
 [external-root design](https://github.com/andrearicci93/vetro/blob/release-0.5.0/rooting/EXTERNAL-ROOT-DESIGN.md).
-Do not announce general Tizen 5.5 support or install over a working custom
-widget based on these offline results.
+Do not announce general Tizen 5.5 support based on the tested Q74T combination.
+Keep a signed recovery package before changing a working custom widget.
 
 ## Q74T hardware baseline, 11 November 2026
 
@@ -105,6 +108,33 @@ while the narrowed reverse rule only granted `w`. Relabelling **only the private
 probe staging** to the service label fixed that harness error; no global access
 was added. Installed app data is already labelled for its service. This is why
 matching only the UID is insufficient for this reproduction.
+
+## Installed UI4 integration, 11 November 2026
+
+The owner next installed the actual external adapter in the existing Vetro
+0.3.5/UI4 widget, retaining Home revision `20261104.1`. Four resource files
+changed (build metadata, platform, protocol server and Node agent), and the
+three helper modules were added. HTML, app main, native libraries and runtime
+profile remained byte-identical to the preceding verified widget. The legacy
+metadata field `rootMethod: remote-pc` was retained for that app's dock-runtime
+preflight; the real backend is reported as `rooting.backend: external-root`.
+
+After a full TV reboot and opening Vetro, the real installed service reported
+the new adapter connected, with UID/EUID/GID/EGID-0 agent and full effective
+capabilities. Kernel readback contained only the two `w` rules. A fresh command
+completed through this installed channel.
+
+Two controlled recovery checks then passed: terminating only the authenticated
+agent produced a new root agent while the Vetro service PID stayed unchanged;
+terminating/relaunching the Vetro service produced both a new service and new
+root-agent PID. Each recovery completed a fresh root command. PID, UID, SMACK
+label and process start-time checks guarded the targeted terminations. These
+tests did not change settings, startup hooks or the firmware. The user's TV
+reboot was separate from these service/process restarts.
+
+This establishes installation, cold-boot recovery and real-service reconnection
+on the stated **0.3.5/UI4 embedding**. The official 0.5 app is covered by the
+offline integration package/contract fixtures, not by this widget hardware test.
 
 Offline validation on upstream base `aa37060`: 105 app suites, 22 integration
 suites, 19 diagnostic parser tests and release audit passed. The Node 4 guard
