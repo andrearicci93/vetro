@@ -38,6 +38,7 @@
 
 ### Remapper
 
+- **The on-screen keyboard also works on TVs whose key router does not know the forwarded remote's name.** With the remote interception on, the forwarded device now also gets the "remote control" subclass from the compositor, where the TV has the command for it (`enlightenment_info -input_subtype_set`; Tizen 6 does not, and nothing changes there). The 0.5.0 fix only worked when the real remote's name is on the key router's list of Samsung remotes. Reported and first fixed by MoryCorp on a Frame 2024 ([#143](https://github.com/andrearicci93/vetro/issues/143)); not tried on a TV yet.
 - **Switch to an HDMI input from a remapper rule.** Rules can now end in `KEY_HDMI1` to `KEY_HDMI4` (and the key injector accepts `XF86DiscretHDMI1-4`), so a physical button can jump straight to an input instead of going through Source. `XF86DiscretHDMI3` was checked on a Q80A (the HDMI 3 banner appears); the other three use the same key family and are covered by tests only.
 
 ### Update notices
