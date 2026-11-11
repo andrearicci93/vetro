@@ -102,7 +102,7 @@ function render(md) {
 
 // ---------- layout ----------
 const CSS_HASH = Date.now().toString(36);
-function layout({ title, description, path: p, body, type = 'website', jsonld = [], noindex = false, image = '/assets/og.png', navActive = '' }) {
+function layout({ title, description, path: p, body, type = 'website', jsonld = [], noindex = false, image = '/assets/og.png', navActive = '', bodyClass = '', homeHeader = false }) {
   const canonical = abs(p);
   const fullTitle = p === '/' ? title : `${title} | ${SITE}`;
   const nav = sectionOrder.map((s) => `<a href="${url(`/${s}/`)}"${navActive === s ? ' aria-current="page"' : ''}>${esc(sections[s].title)}</a>`).join('');
@@ -135,15 +135,22 @@ ${noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" cont
 <link rel="stylesheet" href="${url('/assets/site.css')}?v=${CSS_HASH}">
 ${jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</script>`).join('\n')}
 </head>
-<body>
+<body${bodyClass ? ` class="${bodyClass}"` : ''}>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header">
+${homeHeader ? `<header class="site-header home-header">
+  <div class="wrap bar">
+    <a class="brand" href="${url('/')}"><img src="${url('/assets/icon.png')}" alt="" width="28" height="28"><span>Vetro</span></a>
+    <nav class="nav nav-inline" aria-label="Main"><a href="#product">Product</a><a href="#guides">Guides</a><a href="${url('/tested-tvs/')}">Tested TVs</a></nav>
+    <a class="gh" href="${REPO}" rel="noopener">GitHub</a>
+    <details class="menu"><summary aria-label="Menu"><span>Menu</span></summary><nav aria-label="Main menu"><a href="#product">Product</a><a href="#guides">Guides</a><a href="${url('/tested-tvs/')}">Tested TVs</a></nav></details>
+  </div>
+</header>` : `<header class="site-header">
   <div class="wrap bar">
     <a class="brand" href="${url('/')}"><img src="${url('/assets/icon.png')}" alt="" width="28" height="28"><span>Vetro</span></a>
     <nav class="nav" aria-label="Main">${nav}<a href="${url('/tested-tvs/')}"${navActive === 'tested-tvs' ? ' aria-current="page"' : ''}>Tested TVs</a></nav>
     <a class="gh" href="${REPO}" rel="noopener">GitHub</a>
   </div>
-</header>
+</header>`}
 <main id="main">
 ${body}
 </main>
@@ -296,32 +303,79 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 
 // Home
 {
-  const hubs = sectionOrder.map((s) => {
-    const list = articles.filter((a) => a.section === s).sort((a, b) => (b.pillar || b.pillarOf ? 1 : 0) - (a.pillar || a.pillarOf ? 1 : 0));
-    if (!list.length) return '';
-    return `<section class="hub-card"><h3><a href="${url(`/${s}/`)}">${esc(sections[s].title)}</a></h3><p>${esc(sections[s].desc)}</p><ul>${list.slice(0, 4).map((a) => `<li><a href="${url(a.path)}">${esc(a.title)}</a></li>`).join('')}</ul><a class="more" href="${url(`/${s}/`)}">All ${list.length} guides</a></section>`;
-  }).join('');
-  const start = ['how-to-root-samsung-tv', 'turn-off-acr-samsung-tv', 'remove-ads-samsung-tv-home-screen', 'samsung-tv-slow-fix', 'stop-samsung-tv-auto-update', 'remap-samsung-remote-buttons'].map((s) => bySlug[s]).filter(Boolean);
-  const body = `<section class="hero"><div class="wrap">
-<p class="eyebrow">Open source · Samsung Tizen TVs</p>
-<h1>Take your Samsung TV back</h1>
-<p class="lede">Guides for rooting, privacy, speed and control on Samsung Tizen TVs, and the open source project behind them. Vetro replaces Samsung's Home with a light launcher, switches off what tracks you, and makes the remote do what you want.</p>
-<p class="actions"><a class="btn primary" href="${url(bySlug['how-to-root-samsung-tv'] ? '/root/how-to-root-samsung-tv/' : '/root/')}">Rooting guides</a><a class="btn" href="${url('/tested-tvs/')}">See tested TVs</a><a class="btn" href="${REPO}" rel="noopener">Vetro on GitHub</a></p>
+  const hubLinks = [['root', 'Rooting'], ['privacy', 'Privacy and tracking'], ['speed', 'Home screen and speed'], ['updates', 'Firmware updates'], ['control', 'Remote and smart home'], ['compare', 'Comparisons'], ['reference', 'Reference']]
+    .map(([s, label]) => `<li><a href="${url(`/${s}/`)}">${label}</a></li>`).join('');
+  const shot = (file, alt, eager = false) => `<img src="${url(`/assets/img/${file}`)}" alt="${esc(alt)}"${imgSize(`/assets/img/${file}`)}${eager ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"'}>`;
+  const full = (file, label) => `<a class="full" href="${url(`/assets/img/${file}`)}">${label}</a>`;
+  const body = `<div class="home">
+<section class="hero"><div class="wrap">
+<h1>A cleaner Home for your Samsung TV</h1>
+<p class="lede">Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Replace Home, disable selected tracking services and give remote buttons new shortcuts.</p>
+<p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Install Vetro</a><a class="textlink" href="${url('/root/how-to-root-samsung-tv/')}">How Samsung TV rooting works</a></p>
+<p class="req">Vetro 0.5.0. Root features require a compatible Tizen 6+ TV. Experimental software; launcher in beta.</p>
+<figure class="stage"><div class="stage-glass"><a class="stage-img" href="${url('/assets/img/launcher-on-tv.jpg')}" aria-label="View launcher image">${shot('launcher-on-tv.jpg', "The Vetro launcher, a horizontal app bar at the bottom of the TV screen with the apps from Samsung's Home", true)}</a></div>
+<figcaption>Vetro's launcher on the TV. Your apps stay in Samsung's order; Samsung Home is one press away. ${full('launcher-on-tv.jpg', 'View launcher image')}</figcaption></figure>
+<p class="stage-note">Vetro runs on the TV. Open its dashboard from a computer or phone on the same network.</p>
 </div></section>
-<div class="wrap">
-<section class="shots"><figure><img src="${url('/assets/img/dashboard-quick-settings.jpg')}" alt="Vetro dashboard, Quick settings with privacy, DNS blocking and voice-assistant controls"${imgSize('/assets/img/dashboard-quick-settings.jpg')} decoding="async"><figcaption>The Vetro dashboard on a Samsung Q80A.</figcaption></figure>
-<figure><img src="${url('/assets/img/launcher-on-tv.jpg')}" alt="The Vetro launcher at the bottom of the TV screen with the apps from Samsung's Home"${imgSize('/assets/img/launcher-on-tv.jpg')} loading="lazy" decoding="async"><figcaption>The launcher as the TV draws it, over a plain backdrop.</figcaption></figure></section>
-<h2>Start here</h2><div class="cards">${start.map(card).join('')}</div>
-<h2>Browse by topic</h2><div class="hubs">${hubs}</div>
-<h2>What Vetro does</h2>
-<div class="three"><div><h3>Launcher</h3><p>A native, glass-style bar on the Home key with the same apps in the same order. On the Q80A, available RAM went from 533 MB to 662 MB while it ran (one measurement, memory only). In beta. <a href="${url('/speed/custom-launcher-samsung-tv/')}">More</a></p></div><div><h3>Debloater</h3><p>Switches for advertising, viewing data, HbbTV, voice assistants and automatic firmware updates, plus a task manager that lists every app and service. <a href="${url('/reference/what-each-vetro-switch-changes/')}">What each switch changes</a></p></div><div><h3>Remapper</h3><p>Press a remote key, pick an app, save. Shortcuts survive restarts, and a key can send an MQTT message to Home Assistant. <a href="${url('/control/remap-samsung-remote-buttons/')}">How it works</a></p></div></div>
-<p class="note">Vetro's main features need root on a compatible TV. Install with <a href="${url('/root/install-vetro-apps2samsung/')}">Apps2Samsung</a> or follow the <a href="${url('/root/samsung-tv-developer-mode/')}">manual signing guide</a>. It is experimental software, independent from Samsung. Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> before you start.</p>
+
+<section class="compat" aria-labelledby="compat-h"><div class="wrap">
+<h2 id="compat-h">Check your Samsung TV first</h2>
+<p class="copy">Vetro is developed and tested on the Q80A. Other models have community reports, with different results by firmware. Root features target Tizen 6 and newer; Tizen 9 and 10 have mixed reports. Older TVs have limited dashboard support.</p>
+<ul class="band"><li>Developed on Q80A</li><li>Community reports vary</li><li>Check model and firmware</li></ul>
+<p class="links"><a href="${url('/tested-tvs/')}">See tested TVs and firmware</a><a href="${url('/tested-tvs/q80a/')}">Q80A test record</a><a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">Read the rooting risks</a></p>
+</div></section>
+
+<section class="chapter" id="product" aria-labelledby="launcher-h"><div class="wrap grid">
+<div class="text"><h2 id="launcher-h">Replace Samsung Home</h2>
+<p class="copy">Press Home for a minimal app bar with the same apps and icons in the same order. Samsung Home closes while Vetro's launcher is on, and remains one press away. The launcher returns after a restart or standby.</p>
+<p class="copy evidence">On one Q80A measurement, available RAM rose from 533 MB to 662 MB. This measures memory, not frame rate; other TVs will differ.</p>
+<p class="cta-link"><a href="${url('/speed/custom-launcher-samsung-tv/')}">Read about the Samsung TV launcher</a></p></div>
+<figure class="media">${shot('launcher-dashboard.jpg', "Vetro dashboard, Launcher page with the app list and a preview of the app bar")}<figcaption>The Launcher dashboard and its app-bar preview. Earlier interface shown. ${full('launcher-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
+</div></section>
+
+<section class="chapter wide" aria-labelledby="privacy-h"><div class="wrap grid">
+<div class="text"><h2 id="privacy-h">Choose what runs on your TV</h2>
+<p class="copy">Quick settings groups privacy and background-service switches. Task manager explains apps and services so you can disable selected components. Disabling keeps a component installed and can be reversed; uninstalling needs an installer to recover.</p>
+<p class="copy evidence">DNS blocking does not guarantee that every app's ads or telemetry are blocked.</p>
+<p class="links"><a href="${url('/reference/what-each-vetro-switch-changes/')}">See what each Vetro switch changes</a><a href="${url('/privacy/turn-off-acr-samsung-tv/')}">Turn off Samsung TV ACR</a></p></div>
+<div class="media-stack"><figure class="media"><div class="scroll">${shot('task-manager.jpg', "Vetro dashboard, Task manager listing apps and services with their status")}</div><figcaption>Task manager showing tracking components. Earlier interface shown. ${full('task-manager.jpg', 'View full-size screenshot')}</figcaption></figure>
+<details class="more-shot"><summary>See Quick settings</summary><figure class="media">${shot('dashboard-quick-settings.jpg', "Vetro dashboard, Quick settings with privacy and background-service switches")}<figcaption>Earlier Quick settings interface; controls and grouping differ in 0.5.0. ${full('dashboard-quick-settings.jpg', 'View full-size screenshot')}</figcaption></figure></details></div>
+</div></section>
+
+<section class="chapter flip" aria-labelledby="remap-h"><div class="wrap grid">
+<div class="text"><h2 id="remap-h">Give remote buttons new shortcuts</h2>
+<p class="copy">Press a remote button, choose an app and save the shortcut. Saved shortcuts survive restarts. The Home Assistant page can also turn a key press into an MQTT message.</p>
+<p class="cta-link"><a href="${url('/control/remap-samsung-remote-buttons/')}">See Samsung remote remapping</a></p></div>
+<figure class="media">${shot('remapper-dashboard.jpg', "Vetro dashboard, Remapper page with a captured key and saved app shortcuts")}<figcaption>Capture a key and choose an app in Remapper. Earlier interface shown. ${full('remapper-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
+</div></section>
+
+<section class="chapter install" aria-labelledby="install-h"><div class="wrap">
+<h2 id="install-h">Install Vetro on a compatible TV</h2>
+<p class="copy">Apps2Samsung handles signing and installation. After installing, open Vetro once, set Host PC IP to 127.0.0.1 in Developer Mode and restart the TV. Follow the complete guide for prerequisites and checks.</p>
+<p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Follow the Vetro installation guide</a><a class="textlink" href="${REPO}" rel="noopener">Read the source and release notes</a></p>
+<aside class="secnote"><p>The dashboard uses plain HTTP. Keep it on a trusted local network and never expose it to the Internet. Automatic pairing starts after the TV app has been seen; until then the dashboard can be open.</p><a href="${url('/reference/vetro-security-model/')}">Dashboard security and pairing</a></aside>
+</div></section>
+
+<section class="guides" id="guides" aria-labelledby="guides-h"><div class="wrap">
+<h2 id="guides-h">Samsung TV rooting, privacy and speed guides</h2>
+<p class="copy">Understand root, reduce viewing-data collection and compare ways to improve your TV. Each guide explains what the stock menus allow and where a compatible rooted TV changes the options.</p>
+<p class="lead-guide"><a href="${url('/root/how-to-root-samsung-tv/')}">How to root a Samsung TV: compatibility and risks</a></p>
+<ul class="rows"><li><a href="${url('/privacy/turn-off-acr-samsung-tv/')}">Turn off Samsung TV ACR</a></li><li><a href="${url('/speed/samsung-tv-slow-fix/')}">Samsung TV slow? Start with these fixes</a></li><li><a href="${url('/speed/remove-ads-samsung-tv-home-screen/')}">Remove ads from Samsung Home: the options</a></li></ul>
+<ul class="hublist" aria-label="Guide sections">${hubLinks}</ul>
+</div></section>
 </div>`;
+  const desc = 'Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. See compatibility, installation, privacy controls and rooting guides.';
   const ld = [
-    { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Vetro', url: abs('/'), inLanguage: 'en', publisher: orgLd },
-    { '@context': 'https://schema.org', ...orgLd, description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs.' },
+    { '@context': 'https://schema.org', '@type': 'WebSite', '@id': abs('/#website'), name: 'Vetro', url: abs('/'), inLanguage: 'en', publisher: { '@id': abs('/#organization') } },
+    { '@context': 'https://schema.org', '@id': abs('/#organization'), ...orgLd, description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs.' },
+    {
+      '@context': 'https://schema.org', '@graph': [
+        { '@type': 'WebPage', '@id': abs('/#webpage'), url: abs('/'), name: 'Vetro: Launcher & Debloater for Samsung Tizen TVs', description: desc, inLanguage: 'en', isPartOf: { '@id': abs('/#website') }, mainEntity: { '@id': abs('/#software') } },
+        { '@type': 'SoftwareApplication', '@id': abs('/#software'), name: 'Vetro', url: abs('/'), description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Experimental software; root features require a compatible Tizen 6+ TV.', softwareVersion: '0.5.0', operatingSystem: 'Samsung Tizen', applicationCategory: 'UtilitiesApplication', license: 'https://opensource.org/license/mit', sameAs: [REPO], publisher: { '@id': abs('/#organization') }, isBasedOn: { '@type': 'SoftwareSourceCode', codeRepository: REPO, name: 'Vetro source code' } },
+      ],
+    },
   ];
-  emit('/', layout({ title: 'Vetro: Samsung TV rooting, privacy and speed guides', description: 'Guides for Samsung Tizen TVs: how rooting works, how to turn off ACR and ads, speed up a slow TV, and the open source Vetro launcher, debloater and remapper.', path: '/', body, jsonld: ld }), { lastmod: TODAY, priority: '1.0' });
+  emit('/', layout({ title: 'Vetro: Launcher & Debloater for Samsung Tizen TVs', description: desc, path: '/', body, jsonld: ld, bodyClass: 'is-home', homeHeader: true }), { lastmod: TODAY, priority: '1.0' });
 }
 
 // 404
