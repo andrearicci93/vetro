@@ -21,7 +21,7 @@ function create(options) {
     var lifetime = options.lifetimeMs == null ? 900000 : options.lifetimeMs;
     if (!Number.isInteger(lifetime) || lifetime < 1000 || lifetime > 7200000) throw new Error('Invalid external-root lifetime');
     var smack = options.smack || 'none';
-    if (['none', 'agent-write', 'both-write'].indexOf(smack) < 0) throw new Error('Invalid external-root SMACK mode');
+    if (['none', 'both-write'].indexOf(smack) < 0) throw new Error('Invalid external-root SMACK mode');
     var server = null, directory = null, secret = null, deadline = null, retry = null, generation = 0;
     var state = {running: false, prepared: false, setupRequired: true, agent: {connected: false},
         rooting: {backend: 'external-root', phase: 'stopped', failure: null}};
@@ -46,7 +46,7 @@ function create(options) {
         var runtime = '/tmp/vr-' + crypto.randomBytes(12).toString('hex');
         var log = '/tmp/vetro-root-' + crypto.randomBytes(12).toString('hex') + '.log';
         state.bootstrapLog = log;
-        var rules = smack === 'none' ? '' : buildRules({reverse: smack === 'both-write'});
+        var rules = smack === 'none' ? '' : buildRules();
         var inline = 'require(' + JSON.stringify(dir + '/node-root-agent.js') + ').main(process.argv.slice(1))';
         return '#!/bin/sh\numask 077\n' +
             '[ "$(id -u)" = 0 ] && [ "$(id -g)" = 0 ] || exit 1\n' +

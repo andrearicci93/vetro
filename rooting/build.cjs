@@ -39,7 +39,7 @@ function collectIntegration() {
         const context = {module: {exports: {}}};
         require('vm').runInNewContext(info.data.toString(), context);
         const smack = process.env.VETRO_EXTERNAL_SMACK || 'none';
-        if (!['none', 'agent-write', 'both-write'].includes(smack)) throw new Error('Unknown VETRO_EXTERNAL_SMACK');
+        if (!['none', 'both-write'].includes(smack)) throw new Error('Unknown VETRO_EXTERNAL_SMACK');
         if (process.env.VETRO_EXTERNAL_AUTO_RENEW && !['0', '1'].includes(process.env.VETRO_EXTERNAL_AUTO_RENEW)) {
             throw new Error('VETRO_EXTERNAL_AUTO_RENEW must be 0 or 1');
         }

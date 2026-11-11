@@ -24,7 +24,7 @@ try {
     assert.equal(context.module.exports.externalRoot.autoRenew, false);
     assert.equal(context.module.exports.externalRoot.smack, 'none');
     process.env.VETRO_EXTERNAL_SMACK = 'rwxat'; assert.throws(collect, /Unknown VETRO_EXTERNAL_SMACK/);
-    process.env.VETRO_EXTERNAL_SMACK = 'agent-write'; process.env.VETRO_EXTERNAL_AUTO_RENEW = 'true';
+    process.env.VETRO_EXTERNAL_SMACK = 'both-write'; process.env.VETRO_EXTERNAL_AUTO_RENEW = 'true';
     assert.throws(collect, /AUTO_RENEW must/);
     process.env.VETRO_EXTERNAL_AUTO_RENEW = '1';
     assert.doesNotThrow(collect);

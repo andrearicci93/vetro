@@ -36,13 +36,13 @@ Without it, expiry stops preparation. There is no Remote PC credential trigger
 in this adapter. Installation and native package activation return unavailable;
 launcher/input capabilities are unverified, not implied by a root connection.
 
-## SMACK candidates, not hardware conclusions
+## Write-only SMACK policy
 
-SMACK policy is untouched by default. `VETRO_EXTERNAL_SMACK=agent-write` opts
-into one `_ -> service` write rule, the direction reported by the original
-Q74T denial. `both-write` adds the reverse write rule for a controlled comparison.
-Neither mode grants `r`, `x`, `a` or `t`. These reduced policies need clean-boot
-hardware tests; pre-existing broad rules can otherwise produce a false pass.
+SMACK policy is untouched by default. `VETRO_EXTERNAL_SMACK=both-write` opts
+into `_ -> service` and `service -> _` write-only rules. No `r`, `x`, `a` or `t`
+is granted. The two-write policy was verified after a full Q74T reboot, with
+readback showing that the old `rwxat` permissions were absent. This tests the
+permission set, not whether the second direction is individually necessary.
 Even a write-only rule applies to the label pair, not just this agent/socket.
 
 ## Evidence and remaining work
@@ -57,13 +57,13 @@ bounds, uncertain outcomes without replay, fresh reconnect, explicit stop,
 renewal and package boundaries. They are not hardware attestation.
 
 `tools/external-root-probe.js` is a bounded TV test harness: run it as the actual
-service UID and SMACK label, from a private temporary staging directory. It
-checks identity and a temporary file round trip, stops after success or 90 s,
+service UID and SMACK label, from a private temporary staging directory whose
+inode labels also match the service. It checks identity and a temporary file round trip, stops after success or 90 s,
 and writes a private report. It does not start Vetro, its plugins or restores.
 Staging/launching it still requires the owner's authorization.
 
-Pending: new hardware execution, minimum-SMACK clean boots, genuine service
-restart and cold boot, isolation from other packages sharing a UID, durable
+Pending: one-direction-only tests, genuine installation/service restart and
+cold boot of the new backend, isolation from other packages sharing a UID, durable
 association/revocation and update/rollback. Fresh session secrets are not a
 replacement for the persistent association in the upstream
 [external-root design](https://github.com/andrearicci93/vetro/blob/release-0.5.0/rooting/EXTERNAL-ROOT-DESIGN.md).
@@ -87,6 +87,24 @@ The existing root connection remained available and the probe staging directory
 was removed. This is a new runtime/channel test, **not** a full-app or cold-boot
 test. The TV already had the old broad SMACK rules loaded: the successful probe
 used `smack: none` and does not validate either reduced rule candidate.
+
+The owner then installed a UI4 test package containing only the inline rule
+reduction and a diagnostic marker, and performed a full reboot. Live kernel
+readback showed only `w` for both label directions and the installed agent
+returned as UID/GID 0. Under that policy the separate new-adapter probe also
+completed its checks and explicit stop/start with fresh rendezvous/agent pairs.
+An additional probe enabled `autoRenew` with a shortened 10-second window; it
+completed the checks again in a fresh session after automatic deadline renewal,
+without an explicit stop/start between the two sessions. Both probes left the
+installed widget and its original root channel unchanged and removed their
+private staging afterward.
+
+An initial repeat failed before adapter startup because the root-created probe
+directory retained label `_`: creating its report required directory `wx`,
+while the narrowed reverse rule only granted `w`. Relabelling **only the private
+probe staging** to the service label fixed that harness error; no global access
+was added. Installed app data is already labelled for its service. This is why
+matching only the UID is insufficient for this reproduction.
 
 Offline validation on upstream base `aa37060`: 105 app suites, 22 integration
 suites, 19 diagnostic parser tests and release audit passed. The Node 4 guard
