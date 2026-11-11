@@ -47,6 +47,7 @@ function fixture(options) {
     assert.equal(f.dock.readState().customHomeDisabled, false);
     assert.ok(/--home-launch com\.example\.launcher/.test(f.tv.started) && /--kill-on-home com\.samsung\.tv\.csfs,com\.samsung\.tv\.home\.sidebar,com\.samsung\.tv\.home\.media/.test(f.tv.started),
         'the guard that closes Samsung Home after each press is on: ' + f.tv.started);
+    assert.ok(!f.tv.started.includes('--grab-home'), 'no Home claim: the headless dock has no shown window to claim it on');
     assert.equal(f.tv.autorun, 0, 'the TV does not power on into Samsung Home');
     assert.equal(f.tv.csfsKilled, true, 'Samsung Home is closed once');
     assert.ok(f.tv.scripts.every(c => !/pkgcmd/.test(c)), 'no package command at all');

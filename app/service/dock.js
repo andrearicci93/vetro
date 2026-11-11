@@ -3,9 +3,11 @@
 //
 // The dock is a .NET process that the TV's own `dotnet` runs from this package. It is not a
 // Tizen app, so nothing restarts it: the service starts it as root through the agent, checks on
-// it now and then, and stops it when the switch goes off. The dock closes Samsung's Home
-// (com.samsung.tv.csfs) itself after each Home press, so a dead dock hands the Home key
-// straight back to Samsung: the worst case of a crash is the TV as it was before.
+// it now and then, and stops it when the switch goes off. In Vetro launcher mode, the dock claims
+// the Home key from the compositor, so Samsung's Home (com.samsung.tv.csfs) never receives it. If
+// the compositor refuses the claim, the dock closes Samsung's Home itself after each Home press.
+// The claim ends with the dock's process, so after a crash Samsung's Home receives the key again
+// and the TV works as it did before Vetro started the dock.
 //
 // State lives in one small file next to the other Vetro settings. In the Vetro launcher mode nothing else on
 // the TV is changed: no package is disabled and the default Home is untouched.
@@ -240,8 +242,9 @@ Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
+    // Only Vetro mode claims Home: the dock makes the claim on its shown window, and custom mode never shows one.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
-        ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
+        ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : ' --grab-home exclusive') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
     return [
         this.stopLines(),
