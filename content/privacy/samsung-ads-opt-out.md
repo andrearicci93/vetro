@@ -5,7 +5,7 @@ keywords: ["samsung tv ads opt out", "interest based advertisements samsung tv",
 date: 2026-11-10
 updated: 2026-11-10
 verified: "Re-read on 2026-11-10: Samsung's US privacy policy (effective 2026-07-20), Samsung Australia's ads notice (effective 2021-04-01), Malwarebytes (2026-03-02) and the Vetro 0.5.0 README, CHANGELOG and DOMAIN-FILTER.md."
-related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "remove-ads-samsung-tv-home-screen", "block-samsung-tv-telemetry-dns", "samsung-acr-texas-settlement"]
+related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "remove-ads-samsung-tv-home-screen", "block-samsung-tv-telemetry-dns", "samsung-acr-texas-settlement", "rooted-samsung-tv-vs-streaming-box"]
 ---
 
 To opt out of Samsung's interest-based advertising on the TV, open Terms & Privacy (Settings, Support on many sets), go to Privacy Choices and turn off Interest-Based Advertisements. You will still see ads: [Samsung Australia's notice](https://www.samsung.com/au/info/ads-privacy/) says opting out of customised ads "does not prevent the delivery of all ads from Samsung". What changes is how much the ads are based on your viewing history and interests. Menus differ by model, year and region, so treat the paths below as a starting point.

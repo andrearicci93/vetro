@@ -5,7 +5,7 @@ keywords: ["remove ads samsung tv home screen", "samsung tv home screen ads", "d
 date: 2026-11-10
 updated: 2026-11-10
 verified: "Checked on 2026-11-10 against two Samsung community threads, Samsung Canada's TV Plus support page, and the Vetro README, CHANGELOG, DOMAIN-FILTER.md, PERFORMANCE.md and SECURITY.md for release 0.5.0."
-related: ["custom-launcher-samsung-tv", "disable-samsung-tv-plus", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "samsung-tv-slow-fix", "samsung-tv-memory-usage"]
+related: ["custom-launcher-samsung-tv", "disable-samsung-tv-plus", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "rooted-samsung-tv-vs-streaming-box", "samsung-tv-slow-fix"]
 faq:
   - q: "Can you turn off ads on the Samsung TV home screen?"
     a: "Not completely on every TV. In a November 2025 Samsung community thread, a 2025 Q6F owner found no toggle for promotional previews. You can delete apps and Samsung TV Plus channels you don't want, but new content can appear."

@@ -36,6 +36,7 @@ const imgSize = (sitePath) => {
   try { const d = imgDims(f); return d ? ` width="${d.w}" height="${d.h}"` : ''; } catch { return ''; }
 };
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const decodeEnt = (s) => String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&amp;/g, '&');
 const url = (p) => `${BASE}${p}`; // site-relative path -> served path
 const abs = (p) => `${ORIGIN}${BASE}${p}`;
 const slugify = (s) => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -68,10 +69,14 @@ for (const m of manifest.articles) {
 }
 const bySlug = Object.fromEntries(articles.map((a) => [a.slug, a]));
 
+// A scrolling table needs to be keyboard-reachable and named (region + tabindex + label).
+const tableWrap = (inner, label) => `<div class="table-wrap" role="region" tabindex="0" aria-label="${esc(label)}"><table>${inner}</table></div>`;
+
 // ---------- markdown ----------
 function render(md) {
   const toc = [];
   const used = new Set();
+  let lastHeading = '';
   const marked = new Marked({ gfm: true, mangle: false, headerIds: false });
   marked.use({
     renderer: {
@@ -79,8 +84,10 @@ function render(md) {
         let id = slugify(text) || 'section';
         while (used.has(id)) id += '-2';
         used.add(id);
-        if (level === 2 || level === 3) toc.push({ level, id, text: text.replace(/<[^>]+>/g, '') });
-        return `<h${level} id="${id}">${text}<a class="anchor" href="#${id}" aria-label="Link to this section">#</a></h${level}>\n`;
+        const plain = decodeEnt(text.replace(/<[^>]+>/g, ''));
+        lastHeading = plain;
+        if (level === 2 || level === 3) toc.push({ level, id, text: plain });
+        return `<h${level} id="${id}">${text}<a class="anchor" href="#${id}" aria-label="Link to section: ${esc(plain)}">#</a></h${level}>\n`;
       },
       link(href, title, text) {
         let h = href;
@@ -92,8 +99,12 @@ function render(md) {
         const h = href.startsWith('/') ? url(href) : href;
         return `<figure><img src="${esc(h)}" alt="${esc(text)}" loading="lazy" decoding="async"${h.startsWith(BASE + '/') || href.startsWith('/') ? imgSize(href) : ''}><figcaption>${esc(title || text)}</figcaption></figure>`;
       },
+      tablecell(content, flags) {
+        const tag = flags.header ? 'th' : 'td';
+        return `<${tag}${flags.header ? ' scope="col"' : ''}${flags.align ? ` style="text-align:${flags.align}"` : ''}>${content}</${tag}>\n`;
+      },
       table(header, body) {
-        return `<div class="table-wrap"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
+        return tableWrap(`<thead>${header}</thead><tbody>${body}</tbody>`, lastHeading ? `Table: ${lastHeading}` : 'Data table');
       },
     },
   });
@@ -102,10 +113,17 @@ function render(md) {
 
 // ---------- layout ----------
 const CSS_HASH = Date.now().toString(36);
+// Short labels keep the nine-link row inline on desktop; the footer and hubs use the full section titles.
+const NAV_LABEL = { root: 'Rooting', privacy: 'Privacy', speed: 'Speed', updates: 'Updates', control: 'Control', compare: 'Compare', reference: 'Reference' };
 function layout({ title, description, path: p, body, type = 'website', jsonld = [], noindex = false, image = '/assets/og.png', navActive = '', bodyClass = '', homeHeader = false }) {
   const canonical = abs(p);
   const fullTitle = p === '/' ? title : `${title} | ${SITE}`;
-  const nav = sectionOrder.map((s) => `<a href="${url(`/${s}/`)}"${navActive === s ? ' aria-current="page"' : ''}>${esc(sections[s].title)}</a>`).join('');
+  const navItems = homeHeader
+    ? [['#product', 'Product', false], ['#guides', 'Guides', false], [url('/tested-tvs/'), 'Tested TVs', false]]
+    : [...sectionOrder.map((x) => [url(`/${x}/`), NAV_LABEL[x] || sections[x].title, navActive === x]), [url('/tested-tvs/'), 'Tested TVs', navActive === 'tested-tvs']];
+  const navList = navItems.map(([href, label, cur]) => `<li><a href="${href}"${cur ? ' aria-current="page"' : ''}>${esc(label)}</a></li>`).join('');
+  // Skip link lands on the page's single h1 (made programmatically focusable), per the accessibility guide.
+  const pageBody = body.replace('<h1>', '<h1 id="page-title" tabindex="-1">');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -115,8 +133,9 @@ function layout({ title, description, path: p, body, type = 'website', jsonld = 
 <meta name="description" content="${esc(description)}">
 <link rel="canonical" href="${canonical}">
 ${noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" content="index, follow, max-image-preview:large">'}
-<meta name="theme-color" content="#0b1118" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f4f7fa" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="${homeHeader ? '#080d18' : '#0b1118'}" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="${homeHeader ? '#f3f6fb' : '#f4f7fa'}" media="(prefers-color-scheme: light)">
 <meta property="og:site_name" content="${SITE}">
 <meta property="og:type" content="${type}">
 <meta property="og:title" content="${esc(title)}">
@@ -136,34 +155,65 @@ ${noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" cont
 ${jsonld.map((j) => `<script type="application/ld+json">${JSON.stringify(j)}</script>`).join('\n')}
 </head>
 <body${bodyClass ? ` class="${bodyClass}"` : ''}>
-<a class="skip" href="#main">Skip to content</a>
-${homeHeader ? `<header class="site-header home-header">
-  <div class="wrap bar">
+<a class="skip" href="#page-title">Skip to content</a>
+<header class="site-header${homeHeader ? ' home-header' : ''}">
+  <div class="wrap header-inner">
     <a class="brand" href="${url('/')}"><img src="${url('/assets/icon.png')}" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav nav-inline" aria-label="Main"><a href="#product">Product</a><a href="#guides">Guides</a><a href="${url('/tested-tvs/')}">Tested TVs</a></nav>
-    <a class="gh" href="${REPO}" rel="noopener">GitHub</a>
-    <details class="menu"><summary aria-label="Menu"><span>Menu</span></summary><nav aria-label="Main menu"><a href="#product">Product</a><a href="#guides">Guides</a><a href="${url('/tested-tvs/')}">Tested TVs</a></nav></details>
-  </div>
-</header>` : `<header class="site-header">
-  <div class="wrap bar">
-    <a class="brand" href="${url('/')}"><img src="${url('/assets/icon.png')}" alt="" width="28" height="28"><span>Vetro</span></a>
-    <nav class="nav" aria-label="Main">${nav}<a href="${url('/tested-tvs/')}"${navActive === 'tested-tvs' ? ' aria-current="page"' : ''}>Tested TVs</a></nav>
+    <nav class="site-nav" aria-label="Main">
+      <button class="menu-button" type="button" popovertarget="site-menu" popovertargetaction="toggle" aria-controls="site-menu"><span>Menu</span></button>
+      <ul id="site-menu" class="site-menu" popover="auto">${navList}</ul>
+    </nav>
     <a class="gh" href="${REPO}" rel="noopener">GitHub</a>
   </div>
-</header>`}
+</header>
 <main id="main">
-${body}
+${pageBody}
 </main>
 <footer class="site-footer">
   <div class="wrap">
     <div class="cols">
-      <div><strong>Vetro</strong><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="${REPO}" rel="noopener">Source on GitHub</a> · <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
-      <div><strong>Guides</strong><ul>${sectionOrder.map((s) => `<li><a href="${url(`/${s}/`)}">${esc(sections[s].title)}</a></li>`).join('')}</ul></div>
-      <div><strong>Site</strong><ul><li><a href="${url('/tested-tvs/')}">Tested TVs</a></li><li><a href="${url('/about/')}">About this site</a></li><li><a href="${url('/rss.xml')}">RSS</a></li><li><a href="${url('/sitemap.xml')}">Sitemap</a></li></ul></div>
+      <div><h2>Vetro</h2><p>Launcher, debloater and remapper for rooted Samsung Tizen TVs. Open source, MIT licensed.</p><p><a href="${REPO}" rel="noopener">Source on GitHub</a> · <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">Report your TV</a></p></div>
+      <div><h2>Guides</h2><ul>${sectionOrder.map((s) => `<li><a href="${url(`/${s}/`)}">${esc(sections[s].title)}</a></li>`).join('')}</ul></div>
+      <div><h2>Site</h2><ul><li><a href="${url('/tested-tvs/')}">Tested TVs</a></li><li><a href="${url('/about/')}">About this site</a></li><li><a href="${url('/rss.xml')}">RSS</a></li><li><a href="${url('/sitemap.xml')}">Sitemap</a></li></ul></div>
     </div>
     <p class="legal">Independent project. Not affiliated with, endorsed by or sponsored by Samsung. Samsung, Tizen, Bixby and SmartThings are trademarks of their owners. Rooting and modifying a TV can affect its warranty and can disrupt features: read each guide's limits before you act, and check Samsung's current terms.</p>
   </div>
 </footer>
+<script>
+// Collapse the site menu into a native popover only when the inline row does not fit.
+// Without script the header stays collapsed (menu button + popover), which works at every width.
+(() => {
+  const h = document.querySelector('.site-header');
+  const inner = h && h.querySelector('.header-inner');
+  const menu = h && h.querySelector('.site-menu');
+  const btn = h && h.querySelector('.menu-button');
+  if (!menu || !btn) return;
+  if (!Object.hasOwn(HTMLElement.prototype, 'popover')) { h.classList.add('is-wide', 'no-popover'); return; }
+  let wide = null, lastW = 0;
+  const apply = () => {
+    const w = h.clientWidth;
+    if (wide === false && w <= lastW) { lastW = w; return; }
+    lastW = w;
+    const wasOpen = menu.matches(':popover-open');
+    h.classList.add('is-measuring', 'is-wide');
+    menu.removeAttribute('popover');
+    wide = inner.scrollWidth <= inner.clientWidth;
+    if (!wide) {
+      h.classList.remove('is-wide');
+      menu.setAttribute('popover', 'auto');
+      if (wasOpen) menu.showPopover();
+    }
+    requestAnimationFrame(() => h.classList.remove('is-measuring'));
+  };
+  apply();
+  new ResizeObserver(apply).observe(h);
+  new ResizeObserver(apply).observe(menu);
+  menu.addEventListener('click', (e) => { if (e.target.closest('a') && menu.matches(':popover-open')) menu.hidePopover(); });
+  if (!CSS.supports('anchor-name', '--a')) {
+    menu.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') menu.style.insetBlockStart = btn.getBoundingClientRect().bottom + 'px'; });
+  }
+})();
+</script>
 </body>
 </html>`;
 }
@@ -193,10 +243,10 @@ for (const a of articles) {
   const pillar = secs.find((x) => x.pillar || x.pillarOf);
   const crumbs = [{ name: 'Vetro', path: '/' }, { name: sections[a.section].title, path: `/${a.section}/` }, { name: a.title, path: a.path }];
   const faqHtml = a.faq.length
-    ? `<section class="faq" aria-labelledby="faq-h"><h2 id="faq-h">Frequently asked questions</h2>${a.faq.map((f) => `<h3>${esc(f.q)}</h3><p>${esc(f.a)}</p>`).join('')}</section>`
+    ? `<section class="faq"><h2 id="faq-h">Frequently asked questions</h2>${a.faq.map((f) => `<h3>${esc(f.q)}</h3><p>${esc(f.a)}</p>`).join('')}</section>`
     : '';
   const tocHtml = toc.length > 2
-    ? `<aside class="toc" aria-label="On this page"><strong>On this page</strong><ol>${toc.map((t) => `<li class="l${t.level}"><a href="#${t.id}">${esc(t.text)}</a></li>`).join('')}</ol></aside>`
+    ? `<nav class="toc" aria-label="On this page"><strong>On this page</strong><ol>${toc.map((t) => `<li class="l${t.level}"><a href="#${t.id}">${esc(t.text)}</a></li>`).join('')}</ol></nav>`
     : '';
   const body = `<div class="wrap article-layout">
 <article>
@@ -210,7 +260,7 @@ ${crumbsHtml(crumbs)}
 ${html}
 ${faqHtml}
 </div>
-<section class="related" aria-labelledby="rel-h"><h2 id="rel-h">Related guides</h2><div class="cards">${related.map(card).join('')}</div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards">${related.map(card).join('')}</div></section>
 <nav class="pager" aria-label="More in this section">${prev ? `<a href="${url(prev.path)}"><span>Previous</span>${esc(prev.title)}</a>` : '<span></span>'}${next ? `<a class="next" href="${url(next.path)}"><span>Next</span>${esc(next.title)}</a>` : '<span></span>'}</nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="${url('/root/install-vetro-apps2samsung/')}">Install guide</a> · <a href="${url('/tested-tvs/')}">Tested TVs</a> · <a href="${REPO}" rel="noopener">GitHub</a></aside>
 </article>
@@ -257,7 +307,7 @@ const issueLink = (t) => (t.issue ? `<a href="${REPO}/issues/${t.issue}" rel="no
   const rows = tvs.map((t) => `<tr><td><a href="${url(`/tested-tvs/${t.slug}/`)}">${esc(t.name)}</a><br><span class="muted">${esc(t.code)}</span></td><td>${t.year ?? 'n/a'}</td><td>${esc(t.tizen)}</td><td><code>${esc(t.firmware)}</code></td><td>${esc(t.status)}</td><td>${issueLink(t)}</td></tr>`).join('');
   const body = `<div class="wrap hub">${crumbsHtml(crumbs)}<h1>Samsung TVs tested with Vetro</h1>
 <p class="lede">Vetro is developed on a Samsung Q80A. Every other TV below is there because an owner reported it, usually with a diagnostic export. Reported working reflects the evidence recorded for each model in Vetro's README. Reports vary in detail and do not establish that every feature was tested.</p>
-<div class="table-wrap"><table><thead><tr><th>TV</th><th>Year</th><th>Tizen</th><th>Firmware</th><th>Status</th><th>Report</th></tr></thead><tbody>${rows}</tbody></table></div>
+${tableWrap(`<thead><tr><th scope="col">TV</th><th scope="col">Year</th><th scope="col">Tizen</th><th scope="col">Firmware</th><th scope="col">Status</th><th scope="col">Report</th></tr></thead><tbody>${rows}</tbody>`, 'Samsung TVs tested with Vetro')}
 <p class="note">Where the project's README does not state a Tizen version, the table shows the version Samsung launched that model year with, marked "by model year". Samsung's update policy can move a TV to a newer Tizen, as the GU75CU7179 shows. Read <a href="${url('/root/samsung-tv-tizen-version-by-year/')}">Samsung TV Tizen version by year</a> and <a href="${url('/reference/samsung-model-code-decoder/')}">how to read a model code and firmware string</a> before you compare your TV with this list.</p>
 <h2>Not on the list?</h2>
 <p>Open a <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">diagnostic report issue</a> with your exact model, firmware and what worked or failed. Failed attempts help too. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Start with <a href="${url('/root/how-to-root-samsung-tv/')}">how rooting a Samsung TV works</a> and <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a>.</p></div>`;
@@ -274,7 +324,7 @@ const issueLink = (t) => (t.issue ? `<a href="${REPO}/issues/${t.issue}" rel="no
     const b = `<div class="wrap article-layout"><article>${crumbsHtml(c2)}<header class="article-head"><p class="eyebrow">Tested TVs</p><h1>${esc(t.name)} with Vetro</h1><p class="meta">${esc(t.status)} · Model code <code>${esc(t.code)}</code></p></header>
 <div class="prose"><p>${esc(t.summary)}</p>
 <h2>Report details</h2>
-<table><tbody><tr><th>Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th>Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th>Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th>${esc(t.firmwareLabel || 'Firmware')}</th><td><code>${esc(t.firmware)}</code></td></tr><tr><th>Status</th><td>${esc(t.status)}</td></tr><tr><th>Report</th><td>${issueLink(t)}</td></tr></tbody></table>
+<table><tbody><tr><th scope="row">Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th scope="row">Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th scope="row">Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th scope="row">${esc(t.firmwareLabel || 'Firmware')}</th><td><code>${esc(t.firmware)}</code></td></tr><tr><th scope="row">Status</th><td>${esc(t.status)}</td></tr><tr><th scope="row">Report</th><td>${issueLink(t)}</td></tr></tbody></table>
 <h2>Before you try it on this TV</h2>
 <p>A firmware update can change the result, even within one model family, so compare your firmware string with the one above. ${rootNote(t)} The <a href="${url('/root/install-vetro-apps2samsung/')}">install guide</a> covers the route, and <a href="${url('/root/samsung-tv-developer-mode/')}">Developer Mode</a> comes first.${art ? ` The closest rooting guide for this model year is <a href="${url(art.path)}">${esc(art.title)}</a>.` : ''} Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> too. Vetro is experimental and not affiliated with Samsung.</p>
 ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a href="${url(`/tested-tvs/${o.slug}/`)}">${esc(o.name)}</a>: ${esc(o.status.toLowerCase())}</li>`).join('')}</ul>` : ''}
@@ -305,7 +355,8 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 {
   const hubLinks = [['root', 'Rooting'], ['privacy', 'Privacy and tracking'], ['speed', 'Home screen and speed'], ['updates', 'Firmware updates'], ['control', 'Remote and smart home'], ['compare', 'Comparisons'], ['reference', 'Reference']]
     .map(([s, label]) => `<li><a href="${url(`/${s}/`)}">${label}</a></li>`).join('');
-  const shot = (file, alt, eager = false) => `<img src="${url(`/assets/img/${file}`)}" alt="${esc(alt)}"${imgSize(`/assets/img/${file}`)}${eager ? ' fetchpriority="high" decoding="async"' : ' loading="lazy" decoding="async"'}>`;
+  // eager = the LCP image (fetchpriority high, never lazy); hidden = revealed only after interaction (low priority, lazy); default = lazy.
+  const shot = (file, alt, mode = '') => `<img src="${url(`/assets/img/${file}`)}" alt="${esc(alt)}"${imgSize(`/assets/img/${file}`)}${mode === 'eager' ? ' fetchpriority="high" decoding="async"' : mode === 'hidden' ? ' fetchpriority="low" loading="lazy" decoding="async"' : ' loading="lazy" decoding="async"'}>`;
   const full = (file, label) => `<a class="full" href="${url(`/assets/img/${file}`)}">${label}</a>`;
   const body = `<div class="home">
 <section class="hero"><div class="wrap">
@@ -313,19 +364,19 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <p class="lede">Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Replace Home, disable selected tracking services and give remote buttons new shortcuts.</p>
 <p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Install Vetro</a><a class="textlink" href="${url('/root/how-to-root-samsung-tv/')}">How Samsung TV rooting works</a></p>
 <p class="req">Vetro 0.5.0. Root features require a compatible Tizen 6+ TV. Experimental software; launcher in beta.</p>
-<figure class="stage"><div class="stage-glass"><a class="stage-img" href="${url('/assets/img/launcher-on-tv.jpg')}" aria-label="View launcher image">${shot('launcher-on-tv.jpg', "The Vetro launcher, a horizontal app bar at the bottom of the TV screen with the apps from Samsung's Home", true)}</a></div>
+<figure class="stage"><div class="stage-glass"><a class="stage-img" href="${url('/assets/img/launcher-on-tv.jpg')}" aria-label="View launcher image">${shot('launcher-on-tv.jpg', "The Vetro launcher, a horizontal app bar at the bottom of the TV screen with the apps from Samsung's Home", 'eager')}</a></div>
 <figcaption>Vetro's launcher on the TV. Your apps stay in Samsung's order; Samsung Home is one press away. ${full('launcher-on-tv.jpg', 'View launcher image')}</figcaption></figure>
 <p class="stage-note">Vetro runs on the TV. Open its dashboard from a computer or phone on the same network.</p>
 </div></section>
 
-<section class="compat" aria-labelledby="compat-h"><div class="wrap">
+<section class="compat"><div class="wrap">
 <h2 id="compat-h">Check your Samsung TV first</h2>
 <p class="copy">Vetro is developed and tested on the Q80A. Other models have community reports, with different results by firmware. Root features target Tizen 6 and newer; Tizen 9 and 10 have mixed reports. Older TVs have limited dashboard support.</p>
 <ul class="band"><li>Developed on Q80A</li><li>Community reports vary</li><li>Check model and firmware</li></ul>
 <p class="links"><a href="${url('/tested-tvs/')}">See tested TVs and firmware</a><a href="${url('/tested-tvs/q80a/')}">Q80A test record</a><a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">Read the rooting risks</a></p>
 </div></section>
 
-<section class="chapter" id="product" aria-labelledby="launcher-h"><div class="wrap grid">
+<section class="chapter" id="product"><div class="wrap grid">
 <div class="text"><h2 id="launcher-h">Replace Samsung Home</h2>
 <p class="copy">Press Home for a minimal app bar with the same apps and icons in the same order. Samsung Home closes while Vetro's launcher is on, and remains one press away. The launcher returns after a restart or standby.</p>
 <p class="copy evidence">On one Q80A measurement, available RAM rose from 533 MB to 662 MB. This measures memory, not frame rate; other TVs will differ.</p>
@@ -333,30 +384,30 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <figure class="media">${shot('launcher-dashboard.jpg', "Vetro dashboard, Launcher page with the app list and a preview of the app bar")}<figcaption>The Launcher dashboard and its app-bar preview. Earlier interface shown. ${full('launcher-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
 </div></section>
 
-<section class="chapter wide" aria-labelledby="privacy-h"><div class="wrap grid">
+<section class="chapter wide"><div class="wrap grid">
 <div class="text"><h2 id="privacy-h">Choose what runs on your TV</h2>
 <p class="copy">Quick settings groups privacy and background-service switches. Task manager explains apps and services so you can disable selected components. Disabling keeps a component installed and can be reversed; uninstalling needs an installer to recover.</p>
 <p class="copy evidence">DNS blocking does not guarantee that every app's ads or telemetry are blocked.</p>
 <p class="links"><a href="${url('/reference/what-each-vetro-switch-changes/')}">See what each Vetro switch changes</a><a href="${url('/privacy/turn-off-acr-samsung-tv/')}">Turn off Samsung TV ACR</a></p></div>
 <div class="media-stack"><figure class="media"><div class="scroll">${shot('task-manager.jpg', "Vetro dashboard, Task manager listing apps and services with their status")}</div><figcaption>Task manager showing tracking components. Earlier interface shown. ${full('task-manager.jpg', 'View full-size screenshot')}</figcaption></figure>
-<details class="more-shot"><summary>See Quick settings</summary><figure class="media">${shot('dashboard-quick-settings.jpg', "Vetro dashboard, Quick settings with privacy and background-service switches")}<figcaption>Earlier Quick settings interface; controls and grouping differ in 0.5.0. ${full('dashboard-quick-settings.jpg', 'View full-size screenshot')}</figcaption></figure></details></div>
+<details class="more-shot"><summary>See Quick settings</summary><figure class="media">${shot('dashboard-quick-settings.jpg', "Vetro dashboard, Quick settings with privacy and background-service switches", 'hidden')}<figcaption>Earlier Quick settings interface; controls and grouping differ in 0.5.0. ${full('dashboard-quick-settings.jpg', 'View full-size screenshot')}</figcaption></figure></details></div>
 </div></section>
 
-<section class="chapter flip" aria-labelledby="remap-h"><div class="wrap grid">
+<section class="chapter flip"><div class="wrap grid">
 <div class="text"><h2 id="remap-h">Give remote buttons new shortcuts</h2>
 <p class="copy">Press a remote button, choose an app and save the shortcut. Saved shortcuts survive restarts. The Home Assistant page can also turn a key press into an MQTT message.</p>
 <p class="cta-link"><a href="${url('/control/remap-samsung-remote-buttons/')}">See Samsung remote remapping</a></p></div>
 <figure class="media">${shot('remapper-dashboard.jpg', "Vetro dashboard, Remapper page with a captured key and saved app shortcuts")}<figcaption>Capture a key and choose an app in Remapper. Earlier interface shown. ${full('remapper-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
 </div></section>
 
-<section class="chapter install" aria-labelledby="install-h"><div class="wrap">
+<section class="chapter install"><div class="wrap">
 <h2 id="install-h">Install Vetro on a compatible TV</h2>
 <p class="copy">Apps2Samsung handles signing and installation. After installing, open Vetro once, set Host PC IP to 127.0.0.1 in Developer Mode and restart the TV. Follow the complete guide for prerequisites and checks.</p>
 <p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Follow the Vetro installation guide</a><a class="textlink" href="${REPO}" rel="noopener">Read the source and release notes</a></p>
 <aside class="secnote"><p>The dashboard uses plain HTTP. Keep it on a trusted local network and never expose it to the Internet. Automatic pairing starts after the TV app has been seen; until then the dashboard can be open.</p><a href="${url('/reference/vetro-security-model/')}">Dashboard security and pairing</a></aside>
 </div></section>
 
-<section class="guides" id="guides" aria-labelledby="guides-h"><div class="wrap">
+<section class="guides" id="guides"><div class="wrap">
 <h2 id="guides-h">Samsung TV rooting, privacy and speed guides</h2>
 <p class="copy">Understand root, reduce viewing-data collection and compare ways to improve your TV. Each guide explains what the stock menus allow and where a compatible rooted TV changes the options.</p>
 <p class="lead-guide"><a href="${url('/root/how-to-root-samsung-tv/')}">How to root a Samsung TV: compatibility and risks</a></p>
