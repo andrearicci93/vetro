@@ -40,6 +40,8 @@ internal static class SamsungTvRemoteInputAgent
     private const uint UiDeviceDestroy = 0x00005502;
     private const uint UiSetPhysical32 = 0x4004556c;
     private const uint UiSetPhysical64 = 0x4008556c;
+    // UI_GET_SYSNAME(64): the "inputN" name of the device uinput created.
+    private const uint UiGetSysName = 0x8040552c;
     // Marks Vetro's own forwarding device; must match FORWARDED_PHYS in app/service/physical-input.js.
     private const string ForwardedPhys = "vetro-forwarded-remote";
     private const int UinputUserDeviceSize = 1116;
@@ -109,12 +111,77 @@ internal static class SamsungTvRemoteInputAgent
                 {
                     throw NativeError("UI_DEV_CREATE");
                 }
+                MarkAsRemoteControl();
             }
             catch
             {
                 Dispose();
                 throw;
             }
+        }
+
+        // The TV's keyrouter gives the Remocon subclass to a device by its name (a list of Samsung remotes) or
+        // when it has neither 'a' nor Esc. A forwarded device under a name outside that list is taken for a
+        // keyboard and the on-screen keyboard hides on the first key it gets (issue #143). Newer firmware can
+        // be told the subclass directly; older firmware has no such command, so a failure here is not an error.
+        private void MarkAsRemoteControl()
+        {
+            byte[] sysName = new byte[64];
+            if (ioctl_buffer(descriptor, UiGetSysName, sysName) < 0)
+            {
+                return;
+            }
+            string inputName = Encoding.ASCII.GetString(sysName).TrimEnd('\0');
+            if (inputName.Length == 0 || inputName.IndexOf('/') >= 0)
+            {
+                return;
+            }
+            Task.Run(() =>
+            {
+                try
+                {
+                    for (int attempt = 0; attempt < 12; attempt++)
+                    {
+                        System.Threading.Thread.Sleep(250);
+                        string folder = "/sys/devices/virtual/input/" + inputName;
+                        if (!Directory.Exists(folder))
+                        {
+                            continue;
+                        }
+                        string node = null;
+                        foreach (string entry in Directory.GetDirectories(folder, "event*"))
+                        {
+                            node = "/dev/input/" + Path.GetFileName(entry);
+                        }
+                        if (node == null)
+                        {
+                            continue;
+                        }
+                        if (!File.Exists("/usr/bin/enlightenment_info"))
+                        {
+                            return;
+                        }
+                        using (System.Diagnostics.Process process = new System.Diagnostics.Process())
+                        {
+                            process.StartInfo.FileName = "/usr/bin/enlightenment_info";
+                            process.StartInfo.Arguments = "-input_subtype_set " + node + " Remocon";
+                            process.StartInfo.UseShellExecute = false;
+                            process.StartInfo.RedirectStandardOutput = true;
+                            process.StartInfo.RedirectStandardError = true;
+                            process.Start();
+                            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+                            process.WaitForExit(5000);
+                            if (output.Contains("Success"))
+                            {
+                                return;
+                            }
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            });
         }
 
         public void Forward(byte[] inputEvent)
@@ -211,6 +278,9 @@ internal static class SamsungTvRemoteInputAgent
 
     [DllImport(Libc, SetLastError = true, EntryPoint = "ioctl")]
     private static extern int ioctl_no_argument(int descriptor, uint request);
+
+    [DllImport(Libc, SetLastError = true, EntryPoint = "ioctl")]
+    private static extern int ioctl_buffer(int descriptor, uint request, [Out] byte[] buffer);
 
     [DllImport(Libc, SetLastError = true, EntryPoint = "ioctl", CharSet = CharSet.Ansi)]
     private static extern int ioctl_string(int descriptor, uint request, string value);
