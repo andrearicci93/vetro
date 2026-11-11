@@ -1086,6 +1086,7 @@ var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developer
     registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/catalog/index.json',
     services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
 plugins.register(require('./plugin-launcher.js').definition(dock));
+dock.setShards(plugins);       // plugins that take over an app's launcher tile (manifest "intercepts")
 plugins.register(require('./plugin-tuner.js').definition(tuner));
 plugins.start();
 // A plugin's timer or socket callback throws outside every guard the host has. Without this the whole service ended with it

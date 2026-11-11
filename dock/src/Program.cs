@@ -1214,6 +1214,15 @@ namespace Launcher
         {
             try
             {
+                if (e.ViaShard)
+                {
+                    string viaService = ShardLaunch.Command(e, ShardLaunch.ServicePort);
+                    if (viaService != null)
+                    {
+                        Log("launch " + e.AppId + " through its plugin rc=" + Libc.system(viaService));
+                        return;
+                    }
+                }
                 if (e.KillFirst != null && e.AppId != null)
                 {
                     // Close the other app first, then start this one: one detached shell, so the dock does not wait.

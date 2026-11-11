@@ -83,6 +83,25 @@ namespace Launcher.Tests
                 T.Eq(r.Problems.Length, 5, "five problems reported");
             });
 
+            T.Run("catalog: tiles a plugin has taken over", () =>
+            {
+                var r = Catalog.Parse("yt\tYouTube\tcom.samsung.tv.cobalt-yt\t\t\t\tshard\nplain\tP\ta.b\t\t\t\t\nlater\tL\tc.d\t\t\t\tsomething-new\nkey\tK\tkey:XF86Menu\torg.tizen.menu\t\t\tshard\nsysapp\tS\tsys:com.x.y\t\t\t\tshard\n");
+                T.Eq(r.Problems.Length, 0, "no problems");
+                T.True(r.Entries[0].ViaShard, "shard column is read");
+                T.True(!r.Entries[1].ViaShard, "blank is a normal tile");
+                T.True(!r.Entries[2].ViaShard, "an unknown word is ignored, the tile stays normal");
+                T.True(!r.Entries[3].ViaShard, "a key tile cannot be taken over");
+                T.True(!r.Entries[4].ViaShard, "a system tile cannot be taken over");
+                string cmd = ShardLaunch.Command(r.Entries[0], 8099);
+                T.Eq(cmd, "( /usr/bin/curl -sf -m 5 -X POST 'http://127.0.0.1:8099/plugins/launcher/api/open?slug=yt' >/dev/null 2>&1 || /usr/bin/app_launcher -s com.samsung.tv.cobalt-yt >/dev/null 2>&1 ) &", "the service is asked first, the plain launch is the fallback");
+                T.Eq(ShardLaunch.Command(r.Entries[1], 8099), null, "a normal tile has no plugin command");
+                T.Eq(ShardLaunch.Command(null, 8099), null, "null is refused");
+                var evil = new AppEntry("a;reboot", "x", "a.b", null, null, -1, null, false, null, null, true);
+                T.Eq(ShardLaunch.Command(evil, 8099), null, "a slug with shell characters is refused");
+                var evil2 = new AppEntry("ok", "x", "a.b;reboot", null, null, -1, null, false, null, null, true);
+                T.Eq(ShardLaunch.Command(evil2, 8099), null, "an app id with shell characters is refused");
+            });
+
             T.Run("catalog handles CRLF and empty input", () =>
             {
                 T.Eq(Catalog.Parse("a\tA\tx.y\r\nb\tB\tx.z\r\n").Entries.Length, 2, "crlf");

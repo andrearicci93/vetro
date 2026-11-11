@@ -11,6 +11,7 @@
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
 //   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|taskManager|enableCustom|disableCustom, on, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
+//   POST api/open     ?slug=<tile>  start the app of a tile a plugin has taken over (the launcher calls this; answers 202 at once)
 //
 // Plain ES5, like every module the TV loads.
 
@@ -111,6 +112,15 @@ function definition(dock, options) {
                             action(p).then(function (d) { vetro.json(res, d); })
                                 .catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
                         });
+                        return true;
+                    }
+                    // The launcher asks for this when a plugin has taken a tile over (a seventh column "shard" in its list). Answers at once
+                    // and starts the app afterwards: a plugin may need a minute to get ready, and the launcher must not wait or start it too.
+                    if (sub === 'open' && req.method === 'POST') {
+                        var slug = slugOf(req.url);
+                        if (!dock.shardEntry(slug)) { vetro.json(res, { ok: false, error: 'No plugin tile with that name' }, 404); return true; }
+                        vetro.json(res, { ok: true }, 202);
+                        dock.openEntry(slug).catch(function () { /* openEntry never rejects; belt and braces */ });
                         return true;
                     }
                     if (sub === 'icon' && req.method === 'GET') {

@@ -35,6 +35,10 @@ var VIEWER = 'org.tizen.tv-viewer';
 // Samsung's registry holds for YouTube.
 var TIZENTUBE = /TizenTube/i;
 var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
+// Samsung's own YouTube row (widget 111299001912, wrapper app 9Ur5IzDKqV.TizenYouTube). The wrapper and its registry
+// row can be gone from the TV while the Home row still lists it; the real YouTube is then only the Cobalt app,
+// which starts under its own id.
+var OFFICIAL_YOUTUBE_ROW = '111299001912';
 // The dock repeats this check, but the file is written here, so refuse a bad path here as well.
 function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0; }
 
@@ -191,6 +195,10 @@ function build(parsed, options) {
         }
         if (kind !== 'd/webapp') { skipped.push({item: item, reason: 'Unsupported entry'}); return; }
         var reg = parsed.registry[ident];
+        if (!reg && ident === OFFICIAL_YOUTUBE_ROW && parsed.installedCount >= MIN_PACKAGES && parsed.installed[COBALT_YOUTUBE]) {
+            add('youtube', 'YouTube', COBALT_YOUTUBE, parsed.icons[ident]);
+            return;
+        }
         if (!reg) { skipped.push({item: item, reason: 'Not installed'}); return; }
         if (reg.hidden) { skipped.push({item: item, reason: 'Hidden in the registry'}); return; }
         if (!APP_ID.test(reg.appId)) { skipped.push({item: item, reason: 'Unusable app id'}); return; }
@@ -217,10 +225,17 @@ function build(parsed, options) {
                 add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]);
             });
     }
+    // A plugin that claims an app (manifest "intercepts") takes over its tile: the dock asks Vetro to start it instead of
+    // starting it itself. Only the flag goes into the list, never anything the plugin wrote. The viewer is Live TV, not an app.
+    var claimed = options.intercepted || {};
+    entries.forEach(function (e) {
+        if (e.appId !== VIEWER && Object.prototype.hasOwnProperty.call(claimed, e.appId)) e.viaShard = true;
+    });
     return {entries: entries, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
 }
 
-function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(TRAILING_TABS_RE, ''); }
+// Seventh column: "shard" when a plugin has taken the tile over. An older dock ignores the column and starts the app itself.
+function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
 function inputsTsv(built) {
     return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
 }
@@ -279,3 +294,4 @@ function load(execute, options) {
 }
 
 module.exports = {sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+

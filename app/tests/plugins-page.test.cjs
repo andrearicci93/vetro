@@ -60,3 +60,28 @@ assert.doesNotMatch(shardsNav,/M9 3v4M15 3v4/,'plug icon replaced');
 assert.match(html,/plugins:\['Vetro Shards','The plugin system for Vetro/);
 assert.match(html,/Shards are plugins that add features to Vetro/);
 assert.match(html,/Installed Shards<\/h2>/);assert.match(html,/Shard catalog<\/h2>/);
+
+// A Shard that intercepts an app says so, on its card, in the catalog and in the install question.
+{
+    const vm = require('vm');
+    const grab = name => new RegExp('function ' + name + '\\([^)]*\\)\\{[^\\n]*\\}\\n').exec(html)[0];
+    const special = /HTML_SPECIAL_RE\s*=\s*[^;]*;/.exec(html)[0].replace(/^[^H]*/, 'var ');
+    const code = special + ['esc', 'chip', 'interceptList', 'interceptKey', 'interceptChips', 'interceptNote', 'interceptWords'].map(grab).join('');
+    const ctx = vm.createContext({});
+    vm.runInContext(code, ctx);
+    const yt = [{appId: 'com.samsung.tv.cobalt-yt', label: 'YouTube'}];
+    assert.match(vm.runInContext('interceptChips', ctx)(yt), /Intercepts the YouTube app/, 'the card names the app');
+    assert.match(vm.runInContext('interceptChips', ctx)(yt, ['com.samsung.tv.cobalt-yt']), /Conflict · YouTube tile/, 'a conflict is shown instead');
+    assert.equal(vm.runInContext('interceptChips', ctx)(undefined), '', 'a Shard without the field shows nothing');
+    assert.equal(vm.runInContext('interceptNote', ctx)([]), '');
+    assert.match(vm.runInContext('interceptNote', ctx)(yt), /launcher tile of YouTube \(com\.samsung\.tv\.cobalt-yt\) starts this Shard.*Switched off, the tile is untouched/, 'says what changes and that off gives it back');
+    assert.match(vm.runInContext('interceptNote', ctx)(yt, ['x']), /neither is used/);
+    assert.match(vm.runInContext('interceptWords', ctx)(yt), /intercepts the launcher tile of YouTube/, 'the install question says it too');
+    assert.equal(vm.runInContext('interceptWords', ctx)(), '');
+    const key = vm.runInContext('interceptKey', ctx);
+    assert.equal(key(yt), key([{appId: 'com.samsung.tv.cobalt-yt', label: 'YouTube', extra: 1}]));
+    assert.notEqual(key(yt), key([]), 'a bundle that intercepts more than the list says is refused');
+    assert.match(vm.runInContext('esc', ctx)('<b>"x"</b>'), /&lt;b&gt;/, 'labels are escaped');
+    assert.match(html, /The downloaded file intercepts different apps than the list says/);
+    console.log('plugins page: intercept label ok');
+}

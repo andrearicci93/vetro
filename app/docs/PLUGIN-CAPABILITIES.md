@@ -125,6 +125,9 @@ Notes:
   isolation, by design: that is exactly what the boundary removes. The catalog should be checked for this before
   isolation ships (today it holds one Shard).
 - Under API 1, `exec` stays the only permission; unknown permissions are refused, as now.
+- **`intercepts` is a manifest key, not a permission,** and is already part of API 1 (see [plugins.md](plugins.md#taking-over-an-apps-launcher-tile-intercepts)).
+  New permissions would make a Shard fail to load on an older Vetro; an optional key is ignored there. Under isolation `launch(appId)` is a call from the host into the Shard, so it keeps working
+  and needs the same `exec` (or its future replacement) to start the app. The launcher only ever sees that a tile is taken over, never what the Shard does.
 
 ## The catalog (vetro-plugins)
 

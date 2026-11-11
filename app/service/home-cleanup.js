@@ -22,6 +22,7 @@ var WAS_DB = '/opt/dbspace/.webappservice.db';
 var PKG_DB = '/opt/dbspace/.pkgmgr_parser.db';
 var ICON_ROOT = '/opt/share/webappservice/apps_icon/all';
 var BACKUP_DIR = '/opt/usr/home/owner/share/vetro-uninstall-backup';
+var PROTECTED_ROWS = ['111299001912'];
 var ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var HEX_RE = /^(?:[a-fA-F0-9]{2})*$/;
 
@@ -173,6 +174,8 @@ function orphans(execute, options) {
         var o = parseOrphans(r.stdout);
         // An unreadable or empty registry would make every line look orphaned: report none then.
         if (!o.registryRows || o.registryRows < 5) return {orphans: [], registryRows: o.registryRows, unsafe: true};
+        // Samsung's YouTube row stays in the Home even when its wrapper app is gone: the dock starts the Cobalt app for it.
+        o.orphans = o.orphans.filter(function (id) { return PROTECTED_ROWS.indexOf(id) < 0; });
         return o;
     });
 }
@@ -201,3 +204,4 @@ function sweep(execute, options) {
 module.exports = {learn: learn, clean: clean, orphans: orphans, sweep: sweep, validId: validId,
     learnScript: learnScript, cleanScript: cleanScript, orphansScript: orphansScript, sweepScript: sweepScript, parseResult: parseResult,
     parseLearn: parseLearn, parseOrphans: parseOrphans, wrap: wrap};
+

@@ -83,6 +83,21 @@ assert.equal(noYt.entries[0].killFirst, 'com.samsung.tv.cobalt-yt', 'still close
 assert.equal(noYt.entries[0].icon, tt.icons.tt, 'without a YouTube icon the app keeps its own');
 assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
 
+// Samsung's YouTube: the Home row lists widget 111299001912, the wrapper app and its registry row are gone, Cobalt YouTube is installed
+const pkgs = {}; for (let i = 0; i < 25; i++) pkgs['p.' + i] = true;
+const ytGone = {order: ['d/webapp@111299001912', 'd/webapp@aaa'], icons: {'111299001912': '/opt/share/webappservice/apps_icon/all/111299001912/224x224.png'}, packageIcons: {},
+    registry: {aaa: {title: 'Netflix', appId: 'org.tizen.netflix-app', hidden: false}}, installed: Object.assign({'com.samsung.tv.cobalt-yt': true, 'org.tizen.netflix-app': true}, pkgs), installedCount: 27};
+const ytBuilt = catalog.build(ytGone);
+assert.equal(ytBuilt.entries[0].appId, 'com.samsung.tv.cobalt-yt', 'YouTube is started through the Cobalt app');
+assert.equal(ytBuilt.entries[0].label, 'YouTube');
+assert.equal(ytBuilt.entries[0].icon, '/opt/share/webappservice/apps_icon/all/111299001912/224x224.png');
+assert.equal(ytBuilt.skipped.length, 0, 'shown, so not listed as skipped');
+const ytNoCobalt = catalog.build(Object.assign({}, ytGone, {installed: Object.assign({'org.tizen.netflix-app': true}, pkgs), installedCount: 26}));
+assert.equal(ytNoCobalt.entries.length, 1, 'no Cobalt app: the row stays out');
+assert.equal(ytNoCobalt.skipped[0].reason, 'Not installed');
+const ytShort = catalog.build(Object.assign({}, ytGone, {installedCount: 3}));
+assert.equal(ytShort.entries.length, 1, 'a short package list is not trusted: the row stays out');
+
 // load(): one read of the Home data, one check that the icon files exist; errors are explicit
 (async function () {
     const missing = '/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png';

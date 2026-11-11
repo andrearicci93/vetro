@@ -3,7 +3,8 @@
 // in the plugin directory with a manifest.json and an entry file (docs/plugins.md):
 //
 //   manifest: { id, name, version, apiVersion: 1, permissions: ['exec'], main: 'index.js',
-//               ui: { label } (optional: a page in the dashboard sidebar while it runs) }
+//               ui: { label } (optional: a page in the dashboard sidebar while it runs),
+//               intercepts: [{ appId, label }] (optional: launcher tiles of those apps start this plugin's launch(appId)) }
 //   index.js: module.exports = function (ctx) { return { start, stop, status, route } }
 //
 // Most of Vetro's own features are not plugins yet; the launcher is the first bundled one (bundled: true, see
@@ -26,10 +27,34 @@ var API_SUB_RE = /^api(?:\/(.*))?$/;
 var API_VERSION = 1;
 var PERMISSIONS = ['exec'];
 var ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
+var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
+var CONTROL_RE = /[\u0000-\u001f\u007f<>]/;
+var INTERCEPT_MAX = 3;
+var LAUNCH_MS = 120000;
 var RESERVED = ['install', 'resume', 'developer'];
 var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
 var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
+
+// "intercepts": the apps whose launcher tile this plugin takes over, each with the name the Plugins page shows. Optional, and
+// not a permission, so a plugin that has it still loads on a Vetro that does not know it (unknown manifest keys are ignored).
+function checkIntercepts(list, who) {
+    if (list == null) return;
+    if (!Array.isArray(list) || !list.length || list.length > INTERCEPT_MAX) throw new Error(who + 'intercepts must be a list of 1-' + INTERCEPT_MAX + ' apps');
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+        var a = list[i];
+        if (!a || typeof a !== 'object' || Array.isArray(a)) throw new Error(who + 'intercepts[' + i + '] must be an object with appId and label');
+        if (typeof a.appId !== 'string' || !APP_ID_RE.test(a.appId) || /^\.+$/.test(a.appId)) throw new Error(who + 'intercepts[' + i + '].appId must be a Tizen app id');
+        if (typeof a.label !== 'string' || !a.label.trim() || a.label.length > 24 || CONTROL_RE.test(a.label)) throw new Error(who + 'intercepts[' + i + '].label must be 1-24 characters of plain text');
+        if (seen[a.appId]) throw new Error(who + 'intercepts lists ' + a.appId + ' twice');
+        seen[a.appId] = true;
+    }
+}
+
+function copyIntercepts(list) {
+    return (list || []).map(function (a) { return { appId: a.appId, label: a.label }; });
+}
 
 // Manifest rules shared by the loader, the installer and `vetro-plugin.cjs pack/check`.
 function checkManifest(m) {
@@ -45,6 +70,7 @@ function checkManifest(m) {
     if (m.author != null && (typeof m.author !== 'string' || m.author.length > 60)) throw new Error('author must be a string of up to 60 characters');
     if (m.ui != null && (typeof m.ui.label !== 'string' || !m.ui.label || m.ui.label.length > 24)) throw new Error('ui.label must be 1-24 characters');
     if (m.main != null && (typeof m.main !== 'string' || !FILE_RE.test(m.main))) throw new Error('main must be a file name inside the plugin folder');
+    checkIntercepts(m.intercepts, '');
 }
 
 // A whole bundle object (parsed JSON): manifest, file names, sizes, entry file. Returns the file names.
@@ -98,6 +124,7 @@ function PluginHost(opts) {
     this.services = opts.services || {};        // what Vetro lends to bundled plugins only (ctx.vetro)
     this.entries = Object.create(null);
     this.order = [];
+    this.listeners = [];                       // see onInterceptChange
     this.safeMode = false;
     this.started = false;
     this.stableTimer = null;
@@ -168,7 +195,7 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     };
     this.register({
         id: id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author, apiVersion: manifest.apiVersion,
-        permissions: manifest.permissions, ui: manifest.ui, create: create
+        permissions: manifest.permissions, ui: manifest.ui, intercepts: manifest.intercepts, create: create
     });
 };
 
@@ -309,6 +336,7 @@ PluginHost.prototype.register = function (def) {
     if (def.ui != null && (typeof def.ui.label !== 'string' || !def.ui.label || def.ui.label.length > 24)) {
         throw new Error(def.id + ': ui.label must be 1-24 characters');
     }
+    checkIntercepts(def.intercepts, def.id + ': ');
     // A bundled plugin ships in the Vetro package: on unless its definition says otherwise.
     this.entries[def.id] = {
         def: def, instance: null, state: 'stopped', errors: 0, lastError: null,
@@ -393,6 +421,7 @@ PluginHost.prototype._halt = function (entry) {
     var inst = entry.instance;
     entry.instance = null;
     try { if (inst && inst.stop) inst.stop(); } catch (e) { /* already failing */ }
+    if (inst) this._interceptsChanged(entry);
 };
 
 // An exception that nothing caught: a timer or socket callback of a plugin runs outside every guard above, and an
@@ -424,12 +453,91 @@ PluginHost.prototype._startEntry = function (entry) {
         entry.state = 'running';
         entry.errors = 0;
         entry.lastError = null;
+        this._interceptsChanged(entry);
     } catch (e) {
         this._halt(entry);                    // give a half-started plugin the chance to release what it grabbed
         entry.state = 'failed';
         entry.errors = this.maxErrors;
         entry.lastError = String(e && e.message || e);
     }
+};
+
+// --- plugins that take over a launcher tile (manifest "intercepts") -------------------------------------------------------
+// A plugin claims an app by listing it in its manifest and exporting launch(appId) (a Promise). The claim only counts while the
+// plugin is running, so switching it off gives the tile back. Two running plugins on one app: neither wins, the tile launches
+// the app as before and both plugins' entries say so.
+
+PluginHost.prototype._claimants = function (appId) {
+    var ids = [];
+    for (var i = 0; i < this.order.length; i++) {
+        var entry = this.entries[this.order[i]];
+        if (!entry || !entry.instance || entry.state !== 'running') continue;
+        var list = entry.def.intercepts || [];
+        for (var j = 0; j < list.length; j++) if (list[j].appId === appId) { ids.push(entry.def.id); break; }
+    }
+    return ids;
+};
+
+PluginHost.prototype._conflictsOf = function (id) {
+    var entry = this.entries[id], out = [];
+    if (!entry || !entry.instance || entry.state !== 'running') return out;
+    var list = entry.def.intercepts || [];
+    for (var j = 0; j < list.length; j++) if (this._claimants(list[j].appId).length > 1) out.push(list[j].appId);
+    return out;
+};
+
+// {appId: {plugin, label}} for the apps with exactly one running claimant that can launch. The launcher builds its list from this.
+PluginHost.prototype.intercepted = function () {
+    var out = {};
+    for (var i = 0; i < this.order.length; i++) {
+        var entry = this.entries[this.order[i]];
+        if (!entry || !entry.instance || entry.state !== 'running' || typeof entry.instance.launch !== 'function') continue;
+        var list = entry.def.intercepts || [];
+        for (var j = 0; j < list.length; j++) {
+            if (this._claimants(list[j].appId).length === 1) out[list[j].appId] = { plugin: entry.def.id, label: list[j].label };
+        }
+    }
+    return out;
+};
+
+// Starts the app through the plugin that claims it. Always resolves: {handled: true, plugin} when the plugin started it, else
+// {handled: false, reason} and the caller starts the app itself (a failing or slow plugin must not leave a dead tile).
+PluginHost.prototype.launch = function (appId) {
+    var host = this, ids = this._claimants(appId);
+    if (ids.length !== 1) return Promise.resolve({ handled: false, reason: ids.length ? 'Several plugins claim ' + appId : 'No plugin claims ' + appId });
+    var entry = this.entries[ids[0]];
+    if (typeof entry.instance.launch !== 'function') return Promise.resolve({ handled: false, reason: ids[0] + ' has no launch()' });
+    return new Promise(function (resolve) {
+        var done = false, timer = null;
+        function finish(result) {
+            if (done) return;
+            done = true;
+            if (timer) clearTimeout(timer);
+            resolve(result);
+        }
+        timer = setTimeout(function () { finish({ handled: false, reason: ids[0] + ' did not answer in time' }); }, host.launchMs || LAUNCH_MS);
+        if (timer.unref) timer.unref();
+        var out;
+        try { out = entry.instance.launch(appId); }
+        catch (e) { entry.lastError = String(e && e.message || e); finish({ handled: false, reason: entry.lastError }); return; }
+        Promise.resolve(out).then(function (r) {
+            finish(r === false ? { handled: false, reason: ids[0] + ' declined' } : { handled: true, plugin: ids[0] });
+        }, function (e) {
+            entry.lastError = String(e && e.message || e);
+            finish({ handled: false, reason: entry.lastError });
+        });
+    });
+};
+
+// fn() runs after a running plugin that claims apps starts or stops, so the launcher can rebuild its list. A plugin that listens
+// must not throw; one that does is ignored.
+PluginHost.prototype.onInterceptChange = function (fn) {
+    if (typeof fn === 'function') this.listeners.push(fn);
+};
+
+PluginHost.prototype._interceptsChanged = function (entry) {
+    if (!entry.def.intercepts || !this.listeners.length) return;
+    for (var i = 0; i < this.listeners.length; i++) { try { this.listeners[i](); } catch (e) { /* the listener's problem */ } }
 };
 
 PluginHost.prototype.start = function () {
@@ -535,6 +643,8 @@ PluginHost.prototype.status = function (id) {
         author: entry.def.author || null,
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
+        intercepts: copyIntercepts(entry.def.intercepts),
+        interceptConflicts: this._conflictsOf(id),
         bundled: !!entry.def.bundled,
         trust: entry.def.bundled ? 'bundled' : st.trust[id] || 'folder',
         enabled: enabled == null ? entry.defaultEnabled : enabled,
@@ -683,4 +793,4 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     return true;
 };
 
-module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle };
+module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle, checkIntercepts: checkIntercepts, INTERCEPT_MAX: INTERCEPT_MAX };

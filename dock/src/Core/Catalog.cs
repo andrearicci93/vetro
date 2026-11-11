@@ -44,6 +44,12 @@ namespace Launcher.Core
         /// </summary>
         public readonly string KillFirst;
 
+        /// <summary>
+        /// True when a Vetro plugin has taken this tile over (seventh column "shard"): the dock asks Vetro to start the
+        /// app, and Vetro asks the plugin. Only this flag comes from the list; nothing a plugin wrote is ever run.
+        /// </summary>
+        public readonly bool ViaShard;
+
         public AppEntry(string slug, string label, string appId, string fallbackAppId)
             : this(slug, label, appId, fallbackAppId, null) { }
 
@@ -60,9 +66,12 @@ namespace Launcher.Core
             : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, null) { }
 
         public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst)
+            : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, false) { }
+
+        public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard)
         {
             Slug = slug; Label = label; AppId = appId; FallbackAppId = fallbackAppId; Key = key;
-            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst;
+            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard;
         }
     }
 
@@ -125,6 +134,7 @@ namespace Launcher.Core
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
         /// <summary>True for a plain Tizen app id (letters, digits, dot, dash, underscore): safe to put on a command line.</summary>
         public static bool ValidAppId(string s) { return s != null && IsAppId(s); }
+        public static bool ValidSlug(string s) { return s != null && IsSlug(s); }
         // Plain digits, at most five: it is only ever formatted back into a number string.
         private static bool IsSourceType(string s, out int value)
         {
@@ -163,6 +173,7 @@ namespace Launcher.Core
                 string fallback = f.Length > 3 ? f[3].Trim() : "";
                 string icon = f.Length > 4 ? f[4].Trim() : "";
                 string killFirst = f.Length > 5 ? f[5].Trim() : "";
+                string via = f.Length > 6 ? f[6].Trim() : "";     // "shard", or blank; anything else is a later version's word and is ignored
                 string key = null, panel = null;
                 int sourceType = -1;
                 bool special = false, systemApp = false;
@@ -201,7 +212,8 @@ namespace Launcher.Core
                 if (killFirst.Length > 0 && !IsAppId(killFirst)) { problems.Add("line " + (n + 1) + ": bad kill-first app id"); continue; }
                 if (!seen.Add(slug)) { problems.Add("line " + (n + 1) + ": duplicate slug " + slug); continue; }
                 if (entries.Count >= MaxEntries) { problems.Add("line " + (n + 1) + ": more than " + MaxEntries + " entries, ignored"); continue; }
-                entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null));
+                bool viaShard = via == "shard" && !special && !systemApp && appId.Length > 0;   // a plain app tile only
+                entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null, viaShard));
             }
             return new CatalogResult(entries.ToArray(), problems.ToArray());
         }

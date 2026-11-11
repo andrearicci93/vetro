@@ -108,6 +108,9 @@ function Dock(options) {
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
+    this.shards = null;            // the plugin host, once setShards() has been called
+    this.shardTimer = null;
+    this.lastShardLaunch = null;
 }
 
 Dock.prototype.installed = function () {
@@ -230,7 +233,7 @@ Dock.prototype.statusNow = function () {
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
-        entries: this.entries(), inputs: this.inputEntries()};
+        entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch};
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
     }).catch(function (e) {
@@ -278,7 +281,8 @@ Dock.prototype.writeCatalog = function () {
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
+        intercepted: this.shards ? this.shards.intercepted() : {}}).then(function (c) {
         try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -318,6 +322,56 @@ Dock.prototype.refreshCatalogLater = function () {
     if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S) return;
     this.refreshPending = false;
     this.writeCatalog().catch(function () {});
+};
+
+// Plugins that claim an app's tile (manifest "intercepts"). `host` is the plugin host: intercepted() says which apps are claimed,
+// launch(appId) starts one through its plugin. When a claiming plugin starts or stops, the list is rebuilt so the tile follows;
+// in the first minutes after a boot, and while another change is under way, the rebuild waits for the normal later pass.
+Dock.prototype.setShards = function (host) {
+    var self = this;
+    this.shards = host;
+    if (!host || typeof host.onInterceptChange !== 'function') return;
+    host.onInterceptChange(function () {
+        var state = self.readState();
+        if (!state.enabled || state.customApp) return;
+        if (self.busy || self.uptime() < BOOT_WINDOW_S) { self.refreshPending = true; return; }
+        if (self.shardTimer) clearTimeout(self.shardTimer);
+        self.shardTimer = setTimeout(function () {
+            self.shardTimer = null;
+            if (self.busy) { self.refreshPending = true; return; }
+            self.refresh().catch(function () { /* the next change or the page's rebuild button tries again */ });
+        }, 1500);
+        if (self.shardTimer.unref) self.shardTimer.unref();
+    });
+};
+
+// The tile of this slug when a plugin has taken it over, else null.
+Dock.prototype.shardEntry = function (slug) {
+    if (!SLUG_RE.test(String(slug))) return null;
+    var found = this.entries().filter(function (e) { return e.slug === slug && e.shard && APP_ID_RE.test(e.appId); })[0];
+    return found || null;
+};
+
+// Starts the app of a plugin tile: through the plugin that claims it, otherwise the plain way. The decision is made here and not in
+// the launcher, so the launcher never starts the app a second time while a plugin is still preparing. Always resolves.
+Dock.prototype.openEntry = function (slug) {
+    var self = this, entry = this.shardEntry(slug);
+    if (!entry) return Promise.resolve({ok: false, via: null, reason: 'No such tile'});
+    var asked;
+    try { asked = this.shards ? Promise.resolve(this.shards.launch(entry.appId)) : Promise.resolve({handled: false, reason: 'Plugins are not available'}); }
+    catch (e) { asked = Promise.reject(e); }
+    // A host that fails is the same as a plugin that cannot: the app still has to start.
+    return asked.then(null, function (e) { return {handled: false, reason: String(e && e.message || e)}; }).then(function (r) {
+        if (r && r.handled) { self.lastShardLaunch = {slug: slug, appId: entry.appId, via: r.plugin, reason: null, at: self.now()}; return {ok: true, via: r.plugin}; }
+        var reason = r && r.reason || 'The plugin did not start it';
+        return self.execute('app_launcher -s ' + entry.appId, 15000).then(function () {
+            self.lastShardLaunch = {slug: slug, appId: entry.appId, via: null, reason: reason, at: self.now()};
+            return {ok: true, via: null, reason: reason};
+        });
+    }).catch(function (e) {
+        self.lastShardLaunch = {slug: slug, appId: entry.appId, via: null, reason: String(e && e.message || e), at: self.now()};
+        return {ok: false, via: null, reason: self.lastShardLaunch.reason};
+    });
 };
 
 Dock.prototype.hasSavedApps = function () {
@@ -506,7 +560,7 @@ Dock.prototype.giveUpCustom = function (reason) {
 function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
         var f = l.split('\t'), target = f[2] || '';
-        return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null,
+        return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null, shard: f[6] === 'shard',
             system: TARGET_SYSTEM_RE.test(target), panel: TARGET_PANEL_RE.test(target), source: TARGET_SOURCE_RE.test(target) ? +target.slice(7) : null};
     }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }

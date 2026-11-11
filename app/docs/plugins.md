@@ -59,6 +59,7 @@ Edit, `pack` again, install again: it updates in place and comes back switched o
 | `permissions` | no | `[]` or `["exec"]` (see below) |
 | `main` | no | entry file, default `index.js` |
 | `ui` | no | `{ "label": "…" }` (1–24 chars): adds a tab inside Vetro Shards while the plugin runs |
+| `intercepts` | no | `[{ "appId": "…", "label": "…" }]` (1–3 apps): the launcher tile of each app starts your `launch(appId)` while the plugin is on. See [Taking over an app's tile](#taking-over-an-apps-launcher-tile-intercepts) |
 
 ### index.js
 
@@ -72,6 +73,9 @@ module.exports = function (ctx) {
         status: function () { return {}; },  // shown to the dashboard as `detail`
         route: function (req, res, sub) {    // /plugins/<id>/api/<sub>; return false if not yours
             return false;
+        },
+        launch: function (appId) {           // only with `intercepts`: start that app your way, return a Promise
+            return Promise.resolve();
         }
     };
 };
@@ -89,6 +93,34 @@ With `ui`, `GET /plugins/<id>/api/ui` must return an HTML page. It is shown in a
 (`allow-scripts`, no same-origin): use **relative URLs** (`fetch("count")`), no cookies, no storage. The page URL holds a session token
 that opens your routes and expires after 8 hours or when the plugin is switched off: build every request from a relative URL and the token follows.
 JSON `POST` works: the host answers the CORS preflight. Dark/light: add `<meta name="color-scheme" content="light dark">`.
+
+### Taking over an app's launcher tile (`intercepts`)
+
+Some apps need to be started in a particular way: with a proxy, a flag, another user, a patch applied first. A Shard can say
+that it does that for an app, and the launcher (Vetro UI → Launcher) will then start the Shard instead of the app when that
+app's tile is pressed. Example: the Ad-free YouTube Shard starts Samsung's YouTube with its proxy; a Twitch Shard could do the same for the Twitch app.
+
+```json
+{ "id": "youtube", "apiVersion": 1, "permissions": ["exec"],
+  "intercepts": [{ "appId": "com.samsung.tv.cobalt-yt", "label": "YouTube" }] }
+```
+
+- **`appId`** is the Tizen id of the app, as in `app_launcher -s <id>` (letters, digits, `.`, `_`, `-`). **`label`** is the name people read
+  (1–24 characters, plain text). Up to three apps; the same app twice is refused. It is checked everywhere the manifest is:
+  by `vetro-plugin.cjs pack` and `check`, by the installer and by the loader.
+- **The dashboard says it.** The Shard's card in Installed Shards and in the catalog shows **Intercepts the YouTube app**, with the app id and
+  what changes underneath, and the install question lists it. The catalog entry carries the same list, and an install is refused if the downloaded file
+  intercepts other apps than the entry says.
+- **It is not a permission.** `permissions` stays `[]` or `["exec"]`. The key is optional and older Vetro versions ignore it, so a Shard that has it still loads
+  there (its tile is simply not taken over).
+- **`launch(appId)`** is a method of the object your `index.js` returns. It returns a Promise: resolve when the app is starting, resolve `false` or reject
+  when you cannot. It is called with the id from your manifest, once per press, and may take a while the first time (up to 2 minutes). Vetro waits for it and does not start the app a second time.
+- **The fallback is Vetro's, not yours.** If your Shard is off or not running, has no `launch`, declines, throws, rejects or takes longer than 2 minutes,
+  Vetro starts the app the normal way (`app_launcher -s <appId>`), so a broken Shard never leaves a dead tile. The last result, and the reason for a fallback, appear in the launcher's status as `lastShardLaunch`.
+- **Only while it is on.** Switching the Shard off (or removing it) gives the tile back; the launcher list is rebuilt a moment after a Shard that intercepts apps starts or stops.
+  The list holds nothing but the fact that the tile is taken over: the launcher, which runs as root, never reads anything from a Shard.
+- **Two Shards on one app: neither wins.** The tile starts the app normally and both Shards show a **Conflict** label until one is switched off.
+- **What it cannot take:** Live TV, Settings, Source and the other system tiles, and apps that are not in the launcher's list. A Shard that does not run `exec` commands can still intercept; what its `launch` may do is the same as for any code that runs in Vetro (see the next sections).
 
 ### The `exec` permission
 
@@ -198,6 +230,7 @@ HTTP (on the TV, port of the dashboard):
 | `POST /plugins/<id>/enable` · `disable` · `remove` | |
 | `POST /plugins/resume` | leave safe mode (takes effect after a restart of Vetro) |
 | `* /plugins/<id>/api/<sub>` | your `route()` |
+| `POST /plugins/launcher/api/open?slug=<tile>` | used by the launcher itself when a tile is taken over by a Shard: answers `202` at once and starts the app in the background |
 
 Bundle: `{ "format": "vetro-plugin", "version": 1, "manifest": {…}, "files": { "index.js": "…" } }`.
 
@@ -212,6 +245,7 @@ Bundle: `{ "format": "vetro-plugin", "version": 1, "manifest": {…}, "files": {
 - A plugin whose `start()` throws gets `stop()` called so it can release what it took, and is marked Failed.
 - Not done yet: if an update installs but its `start()` fails, the previous version is not restored automatically (the plugin shows Failed; install the old bundle again).
 - A plugin cannot take a Vetro route; it only gets `/plugins/<id>/api/...`.
+- `launch()` of a Shard that intercepts an app is guarded: a throw, a rejection or no answer within 2 minutes falls back to the plain launch and is not counted as one of the 3 errors.
 - This is fault isolation, **not** a security sandbox: a plugin runs inside Vetro's process. Only paired devices can install,
   switch on or remove plugins (`SIGN-IN.md`), and a plugin page gets a session limited to its own routes; but a plugin you
   switch on has the same power as Vetro's service. Installing one is a trust decision.

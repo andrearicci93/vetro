@@ -45,6 +45,7 @@ function entryFor(r, url) {
     if (m.description) e.description = m.description;
     if (m.author) e.author = m.author;
     e.permissions = m.permissions || [];
+    if (m.intercepts && m.intercepts.length) e.intercepts = m.intercepts.map(a => ({ appId: a.appId, label: a.label }));   // the dashboard shows it before the install
     e.url = url;
     e.sha256 = r.sha256;
     return e;
@@ -59,6 +60,7 @@ function load(folder, manifest) {
     if (!inst || typeof inst !== 'object') throw new Error('The function must return an object: { start, stop, status, route }');
     for (const k of ['start', 'stop', 'status', 'route']) if (inst[k] != null && typeof inst[k] !== 'function') throw new Error(k + ' must be a function');
     if (manifest.ui && typeof inst.route !== 'function') throw new Error('manifest.ui is set, so route(req, res, sub) must serve "ui"');
+    if (manifest.intercepts && typeof inst.launch !== 'function') throw new Error('manifest.intercepts is set, so launch(appId) must be a function that returns a Promise');
     return inst;
 }
 
@@ -100,6 +102,7 @@ try {
         console.log('OK ' + r.id + ' ' + r.version + ' · ' + Object.keys(JSON.parse(r.text).files).length + ' files · ' + r.size + ' bytes');
         if (r.skipped.length) console.log('not bundled: ' + r.skipped.join(', '));
         if (r.manifest.permissions && r.manifest.permissions.length) console.log('asks for: ' + r.manifest.permissions.join(', ') + ' (shown to the user)');
+        if (r.manifest.intercepts) console.log('intercepts: ' + r.manifest.intercepts.map(a => a.label + ' (' + a.appId + ')').join(', ') + ' (shown to the user)');
     } else if (cmd === 'pack') {
         if (!a) die('usage: node scripts/vetro-plugin.cjs pack <folder> [outDir]', 2);
         const r = pack(a), file = path.join(b || '.', r.id + '-' + r.version + '.vplugin');

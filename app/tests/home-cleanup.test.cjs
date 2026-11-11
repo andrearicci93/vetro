@@ -115,6 +115,13 @@ const opts = extra => Object.assign({homeDirs: [home], wasDb: was, pkgDb: pkg, i
         o = await cleanup.orphans(executor(), opts());
         assert.deepEqual(o.orphans, []); assert.equal(o.unsafe, true);
         console.log('PASS sweep finds only lines of apps known nowhere, and nothing when the registry cannot be read');
+        // Samsung's YouTube row survives the sweep even when its wrapper is gone from both databases: the dock starts the Cobalt app for it
+        world(); sql(was, "DELETE FROM widgetinfo WHERE id='111299001912';");
+        o = await cleanup.orphans(executor(), opts());
+        assert.ok(!o.orphans.includes('111299001912') && o.orphans.includes('xvvl3S1TT1'), 'the YouTube row is protected, real leftovers are still found');
+        await cleanup.sweep(executor(), opts());
+        assert.ok(lines('.appLayerCache.1').includes('d/webapp@111299001912'), 'and its Home line stays');
+        console.log('PASS the sweep keeps Samsung\'s YouTube line');
     } catch (e) { console.log('FAIL ' + (e.stack || e)); process.exitCode = 1; }
     fs.rmSync(tmp, {recursive: true, force: true});
 })();
