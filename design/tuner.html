@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vetro tuner — as on the TV</title>
+<!--
+  The tuner as on the TV (approved look: design round opus6, DESIGN.md "TV material").
+  Banner and Info stand on the veil (assets/tuner/veil_corner.png) with the halo under every text; Channel list, Channel pad and
+  Audio toast are panels of the osd 123's material (pill_rim + pill_bg, radius 40 or capsule, no shadow) with the ice focus capsule.
+  URL: ?view=info|list|pad|toast opens a state; ?tune=N starts on channel N; ?still keeps every view on screen (no auto-hide: screenshots).
+  Keys (tuner/src/Program.cs): CH+/CH- = PageUp/PageDown, Enter = Channel list, Right = Channel pad, Left = audio track (toast),
+  I = Info, Up or G = EPG, digits = Channel pad, Esc = close, H = the toolbar.
+-->
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="tv-common.css">
+<link rel="stylesheet" href="tv-material.css">
+<style>
+  /* A channel logo: Samsung's round picture (the TV's own file). Here a plain stand-in, so no Samsung or Gracenote artwork is kept in the design folder. */
+  .logo { position: absolute; border-radius: 50%; display: grid; place-items: center; font: 700 14px/1 var(--vetro-font, system-ui, sans-serif); color: #fff; overflow: hidden; }
+  .key { line-height: 1.2; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="canvas"></div></div>
+<script src="tv-common.js"></script>
+<script>
+(function () {
+  var C = document.getElementById('canvas');
+  var bar = Tv.toolbar('CH+ / CH-: PageUp / PageDown · Enter: list · Right: Channel pad · Left: audio · I: Info · Up: EPG · digits · Esc: close · H: this bar', [['EPG', 'epg.html'], ['Dock', 'dock.html'], ['Design system', 'index.html']]);
+  var X_ = Tv.px, STILL = /[?&]still/.test(location.search);
+
+  /* ---- sample channels and programmes (the TV has 517 channels and the daemon's schedule) ---- */
+  var NAMES = ['Cinema', 'Sport 1', 'Sport 2', 'Doc', 'News 24', 'Kids', 'Music', 'Retro', 'Quiz', 'Cucina', 'Viaggi', 'Storia', 'Natura', 'Serie', 'Commedia', 'Notte', 'Teatro', 'Arte', 'Motori', 'Radio Uno', 'Radio Due', 'Meteo', 'Shop', 'Mondo'];
+  var TITLES = ['La notte del cacciatore', 'Serie A: la partita', 'Oceani', 'Notizie della sera', 'Cartoni della sera', 'Concerto dal vivo', 'Sit-com', 'Il sorpasso', 'Il processo', 'Savana', 'Top 50', 'Film western'];
+  var DESC = 'A preacher with a past comes to a quiet river town, and two children hold the secret he wants. Before the night is over, everyone has to decide whom to trust.';
+  var CH = NAMES.map(function (n, i) { return { num: i < 19 ? i + 1 : 700 + i - 19, name: n, radio: n.indexOf('Radio') === 0 }; });
+  function prog(c, i) {
+    if (c.radio) return null;
+    var now = Date.now() / 1000, dur = (60 + (i * 37) % 70) * 60, start = Math.floor((now - ((10 + (i * 53) % 50) * 60)) / 300) * 300;
+    return { title: TITLES[i % TITLES.length], start: start, end: start + dur };
+  }
+  function hhmm(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function left(p) { var m = Math.max(0, Math.round((p.end - Date.now() / 1000) / 60)); return m <= 0 ? '' : m >= 60 ? Math.floor(m / 60) + ' h ' + ('0' + m % 60).slice(-2) + ' min left' : m + ' min left'; }
+  function frac(p) { return Math.max(0, Math.min(1, (Date.now() / 1000 - p.start) / (p.end - p.start))); }
+  var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  /* ---- a surface: shown or hidden as a group (the C# clips each view with one rectangle) ---- */
+  function surface() { var g = document.createElement('div'); g.style.cssText = 'position:absolute;inset:0;display:none'; C.appendChild(g); return g; }
+  function txt(g, s, x, y, size, kind, maxW, right) { return Tv.text(g, s, x, y, size, kind, maxW, right); }
+  /* Logos: a coloured disc with the initials. Some channels have none (the TV only shows what it has saved): the views then keep the column empty. */
+  var LOGOS = true;                                                   // the "logos" switch of the Vetro page
+  function hasLogo(c) { return LOGOS && !c.radio && c.num % 5 !== 0; }
+  function logoEl(g, size) { var e = Tv.mk(g, 'logo', 0, 0, size, size); e.style.display = 'none'; return e; }
+  function setLogo(e, c, x, y, size) {
+    if (!hasLogo(c)) { e.style.display = 'none'; return; }
+    var h = 0; for (var i = 0; i < c.name.length; i++) h = (h * 31 + c.name.charCodeAt(i)) % 360;
+    e.textContent = c.name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+    e.style.background = 'hsl(' + h + ' 55% 40%)'; e.style.fontSize = Math.round(size * .3) + 'px';
+    Tv.place(e, x, y, size, size); e.style.display = '';
+  }
+  var cur = 0, view = null, timers = {};
+  function later(name, ms, fn) { clearTimeout(timers[name]); if (!STILL) timers[name] = setTimeout(fn, ms); }
+
+  /* ---- the veil: one object for Banner and Info (Surface.cs Veil); Info wins when both are up ---- */
+  var VEIL = Tv.veil(C), veilOn = { banner: false, info: false };
+  function veil(which, on) { veilOn[which] = on; Tv.setVeil(VEIL, veilOn.info ? 'info' : veilOn.banner ? 'banner' : null); }
+
+  /* ---- Banner: bottom-left corner, block x 96..936, 4 s (Views.cs BannerView) ---- */
+  var X0 = X_('--vetro-tv-banner-x0'), X1 = X_('--vetro-tv-banner-x1'), LINE = X_('--vetro-tv-banner-line-y'), LG = X_('--vetro-tv-logo-banner');
+  var B = (function () {
+    var g = surface();
+    return {
+      show: function (i) {
+        g.innerHTML = '';
+        var c = CH[i], p = prog(c, i);
+        var num = txt(g, String(c.num), X0, 798, 128, 'v w200', 400), nx = X0 + Tv.textW(String(c.num), 128, 200) + 30;
+        setLogo(logoEl(g, LG), c, X1 - LG, 818, LG);
+        txt(g, c.name, nx, 822, 56, 'v w600', (hasLogo(c) ? X1 - LG - 24 : X1) - nx);
+        var second = p ? txt(g, p.title, nx, 890, 32, 'v title', X1 - nx) : txt(g, 'No programme information', nx, 892, 30, 'v faint', X1 - nx);
+        Tv.onBaseline(num, 128, p ? 890 : 892, p ? 32 : 30);      // the number stands on the second line's baseline
+        if (p) Tv.progressRow(g, X0, X1, 946, LINE, hhmm(p.start), hhmm(p.end), left(p), frac(p));
+        g.style.display = ''; veil('banner', true);
+        later('banner', 4000, B.hide);
+      },
+      hide: function () { g.style.display = 'none'; veil('banner', false); }, visible: function () { return g.style.display !== 'none'; }
+    };
+  }());
+
+  /* ---- Info: the same corner grown up and right, block 96..1296 (InfoView.cs), 10 s ---- */
+  var INFO = (function () {
+    var g = surface(), R = X_('--vetro-tv-info-right'), COL = X1, LGI = X_('--vetro-tv-logo-info');
+    return {
+      show: function (i) {
+        g.innerHTML = '';
+        var c = CH[i], p = prog(c, i), now = new Date();
+        var num = txt(g, String(c.num), X0, 590, 64, 'v w200', 300), nmx = X0 + Tv.textW(String(c.num), 64, 200) + 20;
+        setLogo(logoEl(g, LGI), c, R - LGI, 584, LGI);
+        txt(g, c.name, nmx, 606, 36, 'v muted w600', R - LGI - 32 - nmx);
+        Tv.onBaseline(num, 64, 606, 36);                                 // the number stands on the name's baseline
+        if (p) txt(g, p.title, X0, 672, 72, 'v w600', R - X0); else txt(g, 'No programme information', X0, 684, 56, 'v faint w600', R - X0);
+        if (p) Tv.progressRow(g, X0, COL, 780, 826, hhmm(p.start), hhmm(p.end), left(p), frac(p));
+        txt(g, hhmm(now / 1000), R + 4, 776, 88, 'v w200', 400, true);
+        txt(g, DAYS[now.getDay()] + ' ' + now.getDate() + ' ' + MONTHS[now.getMonth()], R, 878, 26, 'v muted', 500, true);
+        txt(g, c.radio ? 'Antenna · Radio' : 'Antenna', R, 918, 26, 'v muted', 500, true);
+        txt(g, 'Audio: ' + AUDIO[audio], R, 958, 26, 'v muted', 500, true);
+        if (p) { var d = txt(g, DESC, X0, 866, 30, 'v muted', COL - X0); d.style.whiteSpace = 'normal'; d.style.lineHeight = '42px'; d.style.top = (866 - 6) + 'px'; d.style.maxHeight = (3 * 42) + 'px'; d.style.overflow = 'hidden'; }
+        g.style.display = ''; veil('info', true);
+        later('info', 10000, INFO.hide);
+      },
+      hide: function () { g.style.display = 'none'; veil('info', false); if (view === 'info') view = null; }, visible: function () { return g.style.display !== 'none'; }
+    };
+  }());
+
+  /* ---- Channel list (OK): 11 rows around the selection, right edge, centred on y 540 (Views.cs ListView) ---- */
+  var LIST = (function () {
+    var g = surface(), ROWS = 11, RH = X_('--vetro-tv-list-row-h'), LX = X_('--vetro-tv-list-x'), LW = X_('--vetro-tv-list-w'), pad = X_('--vetro-tv-list-pad'), LY = 540 - (ROWS * RH + 2 * pad) / 2;
+    var NUMR = X_('--vetro-tv-list-num-right'), LL = X_('--vetro-tv-logo-list'), NAMEX = LX + (LOGOS ? 172 : 150);
+    Tv.panel(g, LX, LY, LW, ROWS * RH + 2 * pad, X_('--vetro-tv-panel-radius'));
+    var focus = Tv.cap(g, 0, 0, 0, 0), nums = [], names = [], logos = [];
+    for (var i = 0; i < ROWS; i++) { nums.push(txt(g, '', NUMR, 0, 32, 'muted', 90, true)); logos.push(logoEl(g, LL)); names.push(txt(g, '', NAMEX, 0, 32, '', LX + LW - 40 - NAMEX)); }
+    var sel = 0;
+    function arm() { later('list', 8000, function () { g.style.display = 'none'; view = null; }); }
+    function draw() {
+      var topi = Math.max(0, Math.min(sel - Math.floor(ROWS / 2), CH.length - ROWS));
+      for (var r = 0; r < ROWS; r++) {
+        var idx = topi + r, y = LY + pad + r * RH, on = idx === sel;
+        nums[r].style.top = (y + 13) + 'px'; names[r].style.top = (y + 13) + 'px';
+        nums[r].textContent = CH[idx].num; names[r].textContent = CH[idx].name;
+        nums[r].className = 't r ' + (on ? 'ink' : 'muted'); names[r].className = 't' + (on ? ' ink' : '');
+        setLogo(logos[r], CH[idx], LX + 114, y + (RH - LL) / 2, LL);
+        if (on) Tv.placeCap(focus, LX + 16, y + 2, LW - 32, RH - 4);
+      }
+      g.style.display = '';
+    }
+    return {
+      open: function (i) { sel = i; draw(); arm(); },
+      move: function (d) { sel = (sel + d + CH.length) % CH.length; draw(); arm(); },
+      page: function (d) { sel = Math.max(0, Math.min(CH.length - 1, sel + d * ROWS)); draw(); arm(); },
+      selected: function () { return sel; }, hide: function () { g.style.display = 'none'; }
+    };
+  }());
+
+  /* ---- Channel pad (Right or a digit): 4x3 capsule keys, typed number, the channel it would go to; right edge, centred on y 540 (Views.cs PadView) ---- */
+  var PAD = (function () {
+    var g = surface(), LX = X_('--vetro-tv-list-x'), LW = X_('--vetro-tv-list-w'), P = X_('--vetro-tv-pad-pad'),
+        kw = X_('--vetro-tv-pad-key-w'), kh = X_('--vetro-tv-pad-key-h'), gp = X_('--vetro-tv-pad-gap'), GY = 232, H = GY + 4 * kh + 3 * gp + 38, LY = X_('--vetro-tv-pad-y');
+    Tv.panel(g, LX, LY, LW, H, X_('--vetro-tv-panel-radius'));
+    txt(g, 'Channel number', LX + P, LY + 30, 26, 'muted', LW - 2 * P);
+    var LP = X_('--vetro-tv-logo-pad'), plg = logoEl(g, LP);
+    var typed = txt(g, '–', LX + P, LY + 62, 76, '', LW - 2 * P), prev = txt(g, '', LX + P, LY + 166, 28, 'muted', LW - 2 * P);
+    var LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Delete', '0', 'Go'], keys = [], labs = [];
+    LABELS.forEach(function (l, i) {
+      var c = i % 3, r = Math.floor(i / 3), x = LX + P + c * (kw + gp), y = LY + GY + r * (kh + gp);
+      keys.push(Tv.cap(g, x, y, kw, kh, true));
+    });
+    var focus = Tv.cap(g, 0, 0, kw, kh);
+    LABELS.forEach(function (l, i) {
+      var c = i % 3, r = Math.floor(i / 3), x = LX + P + c * (kw + gp), y = LY + GY + r * (kh + gp);
+      var k = Tv.mk(g, 'key' + (l.length > 1 ? ' w' : ''), x, y, kw, kh); k.textContent = l; labs.push(k);
+    });
+    var row = 0, col = 0, text = '', manual = false;
+    function chOf(t) { for (var i = 0; i < CH.length; i++) if (String(CH[i].num) === t) return i; return -1; }
+    function draw() {
+      typed.textContent = text || '–';
+      var i = text ? chOf(text) : -2; prev.textContent = text ? (i >= 0 ? CH[i].name : 'No such channel') : '';
+      var lw = i >= 0 && hasLogo(CH[i]);
+      prev.style.left = (LX + P + (lw ? LP + 8 : 0)) + 'px'; prev.style.width = (LW - 2 * P - (lw ? LP + 8 : 0)) + 'px';
+      if (i >= 0) setLogo(plg, CH[i], LX + P, LY + 158, LP); else plg.style.display = 'none';
+      var f = row * 3 + col;
+      keys.forEach(function (k, n) { k.style.display = n === f ? 'none' : ''; });          // the focus capsule takes the key's place
+      labs.forEach(function (k, n) { k.style.color = n === f ? 'var(--vetro-tv-focus-ink)' : ''; });
+      Tv.placeCap(focus, LX + P + col * (kw + gp), LY + GY + row * (kh + gp), kw, kh);
+      g.style.display = '';
+      later('pad', 20000, function () { PADAPI.close(); });
+      clearTimeout(timers.tune);
+      if (text && manual) timers.tune = setTimeout(function () { var j = chOf(text); if (j >= 0) tune(j); PADAPI.close(); }, 2000);   // 2 s without a key takes the number
+    }
+    var PADAPI = {
+      open: function (d) { row = 0; col = 0; text = d || ''; manual = !!d; draw(); },
+      move: function (dr, dc) { row = Math.max(0, Math.min(3, row + dr)); col = Math.max(0, Math.min(2, col + dc)); manual = false; draw(); },
+      press: function () {
+        var l = LABELS[row * 3 + col];
+        if (l === 'Delete') text = text.slice(0, -1); else if (l === 'Go') { var j = chOf(text); if (j >= 0) { tune(j); PADAPI.close(); return; } } else if (text.length < 4) text += l;
+        manual = text.length > 0 && l !== 'Delete'; draw();
+      },
+      digit: function (d) { if (text.length < 4) text += d; manual = true; draw(); },
+      close: function () { clearTimeout(timers.pad); clearTimeout(timers.tune); g.style.display = 'none'; if (view === 'pad') view = null; },
+      typedNow: function () { return text.length > 0 && manual; }, goTyped: function () { var j = chOf(text); if (j >= 0) { tune(j); PADAPI.close(); } }
+    };
+    return PADAPI;
+  }());
+
+  /* ---- Audio toast: the osd 123's capsule, top right, 2 s (Views.cs ToastView) ---- */
+  var TOAST = (function () {
+    var g = surface(), pad = X_('--vetro-tv-toast-pad'), H = X_('--vetro-tv-toast-h'), right = 1920 - X_('--vetro-tv-margin'), Y = X_('--vetro-tv-toast-y');
+    var c = Tv.panel(g, right - 300, Y, 300, H, H / 2), t = txt(g, '', 0, Y + Math.round((H - 32 * 1.2) / 2), 32, '', 900);
+    return { show: function (s) { t.textContent = s; var w = Tv.textW(s, 32, 500) + 2 * pad; t.style.left = (right - w + pad + 1) + 'px'; c.move(right - w, Y, w, H, H / 2); g.style.display = ''; later('toast', 2000, function () { g.style.display = 'none'; }); } };
+  }());
+
+  /* ---- behaviour ---- */
+  var AUDIO = ['Italian', 'English', 'Original'], audio = 0;
+  function tune(i) { cur = i; bar.say('CH ' + CH[i].num + ' ' + CH[i].name); INFO.hide(); B.show(i); }
+  function closeViews() { LIST.hide(); PAD.close(); INFO.hide(); clearTimeout(timers.list); view = null; }
+
+  addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (k === 'h' || k === 'H') { document.getElementById('bar').classList.toggle('idle'); return; }
+    if (/^[0-9]$/.test(k)) { if (view !== 'pad') { closeViews(); B.hide(); view = 'pad'; PAD.open(k); } else PAD.digit(k); }
+    else if (k === 'PageUp' || k === '+' || k === '=') { closeViews(); tune((cur + 1) % CH.length); }
+    else if (k === 'PageDown' || k === '-') { closeViews(); tune((cur - 1 + CH.length) % CH.length); }
+    else if (view === 'list') {
+      if (k === 'ArrowUp') LIST.move(-1); else if (k === 'ArrowDown') LIST.move(1);
+      else if (k === 'ArrowLeft') LIST.page(-1); else if (k === 'ArrowRight') LIST.page(1);
+      else if (k === 'Enter') { var s = LIST.selected(); closeViews(); tune(s); }
+      else if (k === 'Escape' || k === 'Backspace') closeViews(); else return;
+    } else if (view === 'pad') {
+      if (k === 'ArrowUp') PAD.move(-1, 0); else if (k === 'ArrowDown') PAD.move(1, 0); else if (k === 'ArrowLeft') PAD.move(0, -1); else if (k === 'ArrowRight') PAD.move(0, 1);
+      else if (k === 'Enter') { if (PAD.typedNow()) PAD.goTyped(); else PAD.press(); }
+      else if (k === 'Escape' || k === 'Backspace') closeViews(); else return;
+    } else if (view === 'info') {
+      if (k === 'Escape' || k === 'Backspace' || k === 'i' || k === 'I') closeViews();
+      else if (k === 'ArrowUp' || k === 'g' || k === 'G') location.href = 'epg.html?ch=' + cur; else return;
+    } else {
+      if (k === 'Enter') { B.hide(); view = 'list'; LIST.open(cur); }
+      else if (k === 'ArrowRight') { B.hide(); view = 'pad'; PAD.open(''); }
+      else if (k === 'ArrowLeft') { audio = (audio + 1) % AUDIO.length; TOAST.show('Audio: ' + AUDIO[audio]); }
+      else if (k === 'i' || k === 'I') { B.hide(); view = 'info'; INFO.show(cur); }
+      else if (k === 'ArrowUp' || k === 'g' || k === 'G') location.href = 'epg.html?ch=' + cur;
+      else if (k === 'Escape') { B.hide(); bar.say('Back: the tuner steps aside (resident) or exits'); } else return;
+    }
+    e.preventDefault();
+  });
+
+  Tv.fit();
+  Tv.ready(function () {
+    var q = /[?&]tune=(\d+)/.exec(location.search); if (q) { var f = CH.findIndex(function (c) { return String(c.num) === q[1]; }); if (f >= 0) cur = f; } else cur = 6;
+    var v = /[?&]view=(\w+)/.exec(location.search);
+    if (v && v[1] === 'list') { view = 'list'; LIST.open(cur); }
+    else if (v && v[1] === 'pad') { view = 'pad'; PAD.open(''); }
+    else if (v && v[1] === 'info') { view = 'info'; INFO.show(cur); }
+    else if (v && v[1] === 'toast') { tune(cur); TOAST.show('Audio: ' + AUDIO[1] + ' · track 2'); }
+    else tune(cur);
+  });
+}());
+</script>
+</body>
+</html>

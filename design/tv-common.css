@@ -1,0 +1,32 @@
+/* Shared by dock.html, tuner.html, epg.html: a 1920x1080 canvas scaled to the window, drawn from tokens.css (--vetro-tv-*). */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+#stage { position: fixed; inset: 0; display: grid; place-items: center; }
+#canvas { position: relative; line-height: 1.2; width: var(--vetro-tv-w); height: var(--vetro-tv-h); flex: none; transform-origin: 50% 50%; overflow: hidden; background: var(--bd); font-family: var(--vetro-tv-font); font-weight: var(--vetro-tv-weight); color: var(--vetro-tv-ink); --bd: #000; }
+html[data-bd="video"] #canvas { --bd: radial-gradient(ellipse 30% 40% at 18% 30%, #6b5a46 0%, transparent 70%), radial-gradient(ellipse 26% 36% at 82% 24%, #b58a4c 0%, transparent 65%), radial-gradient(ellipse 40% 30% at 55% 85%, #2e4a63 0%, transparent 70%), linear-gradient(160deg, #1b2230 0%, #0d1118 55%, #202a38 100%); }
+html[data-bd="light"] #canvas { --bd: linear-gradient(160deg, #f2f2ee 0%, #cfd6df 100%); }
+html[data-bd="black"] #canvas { --bd: #000; }
+html[data-bd="grid"] #canvas { --bd: conic-gradient(#fff 25%, #888 0 50%, #fff 0 75%, #888 0) 0 0 / 80px 80px; }
+#canvas * { margin: 0; }
+.abs { position: absolute; }
+.t { position: absolute; white-space: pre; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-text-main) * 100%), transparent); }
+.t.muted { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-text-muted) * 100%), transparent); }
+.t.faint { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-text-faint) * 100%), transparent); }
+.t.r { text-align: right; }
+.sheet { position: absolute; border-radius: var(--vetro-tv-sheet-radius); background: color-mix(in srgb, var(--vetro-tv-sheet) calc(var(--vetro-tv-sheet-alpha) * 100%), transparent); border: var(--vetro-tv-sheet-border-w) solid color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-sheet-border-alpha) * 100%), transparent); box-shadow: 0 var(--vetro-tv-shadow-dy) var(--vetro-tv-shadow-blur) rgba(0, 0, 0, var(--vetro-tv-shadow-alpha)); }   /* RETIRED old sheet: only tv-system.html (the 2026-11-08 comparison) still draws it */
+.fill { position: absolute; border-radius: var(--vetro-tv-chip-radius); background: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--a, var(--vetro-tv-fill-rest)) * 100%), transparent); }
+.ring { position: absolute; border-radius: var(--vetro-tv-chip-radius); border: var(--vetro-tv-ring-w) solid var(--vetro-tv-ring-color); }
+.keyimg { position: absolute; }  /* a remote key picture of the footers (the tuner's res/key_*.png) */
+.rule { position: absolute; background: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--a, var(--vetro-tv-hairline)) * 100%), transparent); }
+.key { position: absolute; display: grid; place-items: center; font-size: var(--vetro-tv-type-title); }
+.key.w { font-size: var(--vetro-tv-type-body); }
+.track { position: absolute; height: 6px; border-radius: 3px; }
+/* the floating bar: backdrop and a hint line; fades when the pointer is idle */
+#bar { position: fixed; top: 10px; left: 10px; z-index: 10; display: flex; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 10px; background: rgba(8, 15, 35, .82); color: #e8eefc; font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; transition: opacity .3s; backdrop-filter: blur(6px); max-width: calc(100vw - 20px); flex-wrap: wrap; }
+#bar.idle { opacity: 0; pointer-events: none; }
+#bar button { font: inherit; color: inherit; background: transparent; border: 1px solid #44567a; border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+#bar button[aria-pressed="true"] { background: #123bb5; border-color: #123bb5; }
+#bar .hint { color: #aab8d1; }
+#bar a { color: #8fbaff; }
+#bar .status { color: #fff; min-width: 6ch; }
+

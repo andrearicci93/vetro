@@ -1,0 +1,148 @@
+# Vetro design system
+
+The single record of how Vetro looks. Open `index.html` in a browser to see it; `tokens.css` holds the values.
+
+| File | What it is |
+| --- | --- |
+| `tokens.css` | Every colour, size, radius and duration, as `--vetro-*` custom properties. Dark by default; `data-vetro-theme="light"` on a container switches to light. Reduced motion sets both durations to 0. The `--vetro-tv-*` block holds the values of the native TV screens (dock, tuner, guide). |
+| `index.html` | A reference page that renders the palette, gradients, both themes and the rhythm from `tokens.css`, then the TV material and **every TV screen as a mock-up** (Dock, Task manager, Volume bar, osd 123, Banner, Info, Channel list, Channel pad, Audio toast, EPG) built from the `--vetro-tv-*` tokens and the pictures in `assets/`, with sliders to try values and a switch for the backdrop (video, black, light, checker). |
+| `dock.html`, `tuner.html`, `epg.html` | The three TV interfaces **as they are on the TV**, full screen and driven by the keyboard like the remote (arrows, Enter, Esc, PageUp / PageDown for CH+ / CH-, digits in the tuner). They draw with the real pictures in `assets/` (`dock/res`, `tuner/res`: veil, panel and rim, focus capsule, progress, ring, glow, system icons) and port the layout code: `DockLayout` and `Design.cs` (dock, linear 0.30 s motion, entrance stagger, glow cross-fade, Sources on Up, Task manager on Down, Volume bar on + / -, osd 123 on N), the tuner's Banner, Info, Channel list, Channel pad and Audio toast with their timers (Banner 4 s, Info 10 s, list 8 s, pad 20 s, number taken after 2 s, toast 2 s), and `GuideGrid` / `GuideScene` (180-minute window, 72 h horizon, row scrolling, background reading of the schedules). `?still` skips the dock entrance and every auto-hide timer (for screenshots); `dock.html?view=sources|tasks|volume|pad123`, `tuner.html?view=info|list|pad|toast` and `epg.html?ch=N` open a state directly. Shared: `tv-common.css` (page shell), `tv-material.css` (SamsungOneUI from `assets/fonts/`, the veil, panel, rim, focus capsule, progress and EPG cells, drawn with the real white pictures tinted through a CSS mask; also linked by `index.html`), `tv-common.js` (helpers: `Tv.panel`, `Tv.cap`, `Tv.veil`, `Tv.progressRow`…; `?bd=` picks the backdrop on the three full-screen pages). |
+| `assets/` | Copies of `dock/res` and `tuner/res` (plus `assets/fonts/`). The opus6 pictures: `tuner/veil_corner.png`, `progress.png`, `bar.png`, `pill.png`, `hatch.png`, `pill_bg.png`, `pill_rim.png`, `pill_cap.png`; `dock/pill_*.png`, `vol_*.png`. `dock_bg`, `shadow`, `solid`, `ring` stay for the retired sheet. |
+| `icon-reference.png` | The app icon the palette was sampled from (the same picture as `app/icon.png`). |
+
+## Where it is used
+
+- **Dashboard** (`app/service/dashboard.js`): the token block is copied into the page's `:root`, then short names (`--bg`, `--surface`, `--border`, `--accent`…) point at it. `app/tests/dashboard-v2.test.cjs` fails if the page and `tokens.css` drift apart, so change `tokens.css` first and then the page.
+- **Icon**: `app/icon.png` is the app icon. The service serves it at `/icon.png`; the dashboard shows it in the sidebar and as the page icon.
+- **Launcher** (`dock/`): it has its own look, chosen in `dock/designer` and recorded in `dock/designer/chosen.json`. `dock/src/Core/Design.cs` is the single source for the native code. Its colours follow the icons it shows, not these tokens.
+
+## Rules
+
+- About 80% of the interface stays neutral (`--vetro-bg`, `--vetro-surface`, `--vetro-border`). Blue marks actions and selections.
+- Actions use Cobalto (`--vetro-action`) with light text; Luce (`--vetro-blue-400`) is for details and the progress bar. Links and focus use `--vetro-link`.
+- Controls are 44 px high with an 8 px radius; surfaces have a 16 px radius. Focus is a 2 px ring, 3 px away.
+- Glass and gradients are for small overlays and brand moments only. Everyday surfaces are solid.
+- **Never a coloured top border on a rounded card**: a thicker line on top makes coloured "ears" at the corners. Give a card a theme colour with a faint background, a uniform border and a coloured label or icon.
+- A switch is a **win**: its title says what you get ("Disable HbbTV", "Disable automatic firmware update"), and *on* means the win is applied. A chip under the title says *Done* or *Partly done*, in plain words.
+- **Keys of the remote are pictures, not words.** Wherever a screen tells you to press a key (the task manager's and the TV guide's footers, the Quick controls line of the Vetro page), it draws the key: OK, the four pad directions, the CH rocker, Back, from `app/design-system/remote`. The native screens use PNGs of them (`assets/tuner/key_*.png`, `assets/dock/key_*.png`). Prose that mentions a key stays words.
+- **The 123 pad's palette key** is a white outline (`assets/dock/pad_colors.png`, tinted with the cell's ink) with its four dots in a second picture (`pad_colors_dots.png`) that keeps its colours: red, green, yellow, blue along the arc from the lower left over the top to the right, the colours and order of the colour keys.
+- **Channel logos (tuner).** The tuner shows the logo Samsung's own tuner shows (the TV's saved picture, round, 87 px source) wherever a channel is named and there is room: Banner (72 px at the right end of the block, x 864, the name narrowed to make room), Channel list (44 px between number and name), Channel pad (44 px before the name of the typed channel), Info (72 px at the right end of the block, x 1224) and EPG (56 px in the label, the number over the name). Sizes are `--vetro-tv-logo-*` in `tokens.css`. The logo is a picture on its own round plate, drawn straight on the panel or the veil: no extra frame, no tint. **A channel with no logo keeps the column empty**, so names line up; with no data at all (switch `logos` off, tables unreadable) every view draws as it did before logos. Logos come only from the TV (matched by service id or DVB triplet, never by name) and are **not** copied into `assets/` or `tuner/res`: the mock-ups use a plain stand-in disc with the initials. A wrong logo is worse than none.
+- **Every graphic asset used by the TV UI lives in `assets/` too**: a picture added to `dock/res` or `tuner/res` is copied here, and the mock-ups use these files (see AGENTS.local.md).
+- Copy is English, short, and says what changes on the TV. A feature that is not finished carries a **Beta** chip.
+
+## Names of the TV screens
+
+- **Dock**: the bar of apps. **Task manager**: the list of running apps (Down on the dock). **Volume bar**: the pill that shows the level. **osd 123**: the launcher's 123 bar (digits, Done, the palette to the colour keys).
+- Tuner: **Banner** (the box that appears when the channel changes), **Channel list** (OK), **Channel pad** (the tuner's own number entry, Right), **Info** (the card at the top), **EPG** (the TV guide), **Audio toast** (the audio track message).
+
+## Two surfaces, one language
+
+| | Web (dashboard) | TV (dock, tuner, guide) |
+| --- | --- | --- |
+| Drawn with | HTML/CSS | EFL (Evas) from C#, in a transparent window over the live picture |
+| Colour | blue marks actions; neutrals everywhere else | **no accent**: the veil or the slate panel, white ink, hierarchy by opacity; Luce only for progress; colour only from app icons and logos |
+| Focus | 2 px ring, 3 px away | the ice capsule with slate text; on the dock icons a 2 px ice ring and a glow in the icon's own colour |
+| Depth | `--vetro-shadow`, glass only for small overlays | **no drop shadow**: a translucent panel with a 2 px light rim, or the veil; no blur of the picture behind |
+| Tokens | `--vetro-*` | `--vetro-tv-*` (dark only, canvas pixels at 1920x1080) |
+
+## TV material (native screens)
+
+Approved on 2026-11-11 (design round opus6: `challenge/opus6/NOTE.md` and its PNGs). Source of truth for the code: `dock/src/Core/Design.cs`, `Layout.cs`, `TaskPage.cs` (launcher), `tuner/src/Ui/Surface.cs`, `Views.cs`, `InfoView.cs`, `tuner/src/Core/GuideScene.cs` and `GuideLayout` (tuner). The tokens mirror them; a value settled here is carried back to the C# constant named in its comment. Where `dock/designer/chosen.json` and `Design.cs` differ, the code wins. The EPG is not coded in the new look yet: until it is, its values here come from the opus6 mock-up.
+
+The TV has **two materials** and nothing else.
+
+**1. The veil (Banner, Info, EPG).** One picture, `assets/tuner/veil_corner.png` (512x288, #111B2A): a quarter ellipse centred on the screen's bottom-left corner, no straight sides, full to 40% of the radius, then a falloff baked so that over **white** the perceived lightness (L\*) rises evenly to the video, with a +-0.6-level dither against banding. It is stretched (not 9-slice) from (0, 1080): Banner 1700x600 at alpha .58, Info 2500x1000 at .66, EPG 6400x3400 at .94 (it covers the screen). Banner, Info and EPG are the same object growing from the corner. A veil dense enough to carry white text alone is a dark block on a light picture, so the veil only tints: **contrast comes from a halo under the letters**, the EVAS soft shadow in black at .55 (the dock's text shadow), on every text of the Banner and Info. The dark sits only where the letters are.
+
+- **Banner** (bottom-left, 4 s): one block x 96..936. Big channel number SamsungOneUI 200, 128 px, standing on the baseline of the second line (the programme, 32 px at .92, or "No programme information", 30 px at .64; the name's baseline while there is no second line). Name 56 px 600 beside it (30 px gap), the logo 72 px at the block's right end. Progress row: times 26 px at .76 at both ends, the 6 px track (`bar.png`, white .22) with its top at y 992, the Luce progress with its head (`progress.png`). **"N min left"** (26 px 600, white) follows the head; when it would come within 28 px of a time, that time hides (alpha 0, same object) and the label may run to the line's end. Nothing overlaps, nothing touches.
+- **Info** (Info key, 10 s): the same corner grown up and right, block 96..1296. Left column 96..936: number 64 px 200 on the baseline of the name (36 px 600 at .76), the programme 72 px 600, the progress row (times at 780, line at 826), up to three lines of description (30 px at .76, 42 px apart). Right column, right-aligned at 1296: logo 72 at the top, clock 88 px 200, date, source and audio track (26 px at .76).
+- **EPG** (guide): no card. Header on the veil: title 64 px 600 at (96, 70), meta line 30 px at .76, two lines of description 28 px at .70, date 32 px right-aligned at 1824. Axis 26 px from x 400 (full hours 600 white, half hours 500 at .76). Seven lanes of 88 px from y 346; each programme a rounded cell (`pill.png`, radius 20, 76 high, 2 px apart) in white at **.09** (a programme), **.16** (on air), **.05** ("Loading…") or **.035 + `hatch.png`** (no information). Focus = the ice fill with slate text (title 600 and times). The now mark is Luce: 3 px on the axis, a .30 line through the rows. Label column: logo 56, number over name. Footer at y 984: the remote keys as pictures.
+
+**2. The panel (the old OSD: Dock, Sources, Task manager, Volume bar, osd 123, Channel pad, Channel list, Audio toast).** One material, the osd 123's: `pill_bg` (white picture, tinted slate #243448 at **90%**) with `pill_rim` (white at **22%**) drawn **2 px outside** it. The old sheet (`dock_bg` opaque + `shadow.png`) is **retired** from the OSD, and so are the glass tile, the grey glow and `solid`/`ring` as focus.
+
+- **No drop shadow anywhere.** (One object fewer per panel.)
+- **Radius 40 or capsule.** Panels (Dock, Sources, Task manager, Channel pad, Channel list) have radius **40**: the dock icons' radius (16% of 92 = 15) plus the bar's padding (26), so the corners are concentric. Everything one row high is a **capsule**, radius half the height: osd 123, Volume bar, Audio toast, chips, keys, list rows, the focus. One pair of pictures gives every radius through `border_scale` (radius / 48 on the body, (radius + 2) / 50 on the rim).
+- **One focus.** The ice capsule `pill_cap` (#E4F2FF at .96) with its text in slate #243448, everywhere: osd 123 cells, Task manager rows, Channel pad keys, Channel list rows, the dock's Settings / Samsung Home pills, the EPG cell. **The dock icons keep their own focus**: a 2 px ice ring on the icon, the icon rises 4 px and grows 92 -> 112, and a glow in its own colour at 44%. A focus never changes a size other than that.
+- **Resting keys** of the Channel pad are the same capsule in white at .14.
+- **Placement.** Dock and Sources bars centred on x 960, the dock 40 px above the bottom; "Source ˄" above it and "Task manager ˅" below (Sources: "Back ˅"). Task manager 880 wide, its bottom on the line of the dock bar (y 994). Volume bar at the left edge (x 96), vertical, centred on y 540; **Channel pad** (y 232..848) and **Channel list** (y 164..916) at the right edge (x 1284..1824), centred on y 540 as its mirror. Audio toast top-right, right edge 1824, y 96, 72 high, 40 px padding, text 32. Channel list numbers are **right-aligned** (at x 1376) so "10" and "11" never reach the logo.
+
+**Ink.** White at 100 / 70 / 55% on the panel (main / muted / faint); on the veil 100 / 76 / 64%, the Banner's programme at 92%. Slate only on the ice focus. Luce (#A5D8FF) only for progress, the volume level and the EPG's now line.
+
+**Type.** SamsungOneUI in three weights, never synthetic bold: **200** for the tuner's big numbers and the clock (Banner number 128, Info number 64, Info clock 88), **500** for text, **600** for names and titles. Sizes: 22 caption, 24 label, 26 meta, 28 body, 30 subtitle, 32 row, 40 key, 56 Banner name, 64 EPG title, 72 Info title. Text is cut with an ellipsis, never wrapped, except the EPG's two and the Info's three description lines. **Ask for a weight by one family name** ("SamsungOneUI 600"), never with a fallback list ("SamsungOneUI 600,Sans"): Evas gives the whole string to fontconfig as one family, which does not exist, and the TV then draws every weight as 400 (seen on the Q80A, 2026-11-11). **Place a text by its baseline with Evas's metrics**: Evas puts the baseline at y + max ascent, taken from the font's bounding box (SamsungOneUI head.yMax 1047/1024), not hhea (952), and a text with the soft shadow starts 1 px right of and below its object. The tuner's `Core/TextMetrics.cs` does this; the preview draws texts the same way. Measured: the Banner, Info and EPG baselines on the TV are within 1 px of the mock-up.
+
+**Motion.** Launcher: 300 ms at constant speed, 24 ms between one icon and the next; Task manager 140 ms, osd 123 120 ms. Tuner (coded in the opus6 fork, `tuner/src/Core/Motion.cs`): the veil grows Banner -> Info -> EPG in 320 ms while number, name and title fly to their new place (an `evas_map` uniform zoom of the larger copy; Banner -> EPG cross-fades the number, weight 200 -> 500, in the last 80 ms), focus and zap 220 ms, enter and exit 200 ms. Only position, size, alpha and a uniform map move. The "ease" is three linear segments (60% of the way in the first third, 90% in the second): piecewise linear, never a curve evaluated per frame. `--no-motion` (or the `motion` feature off) makes everything immediate.
+
+**Objects per window** (opus6 count, clip included): Dock 25, Sources 14, Task manager 40, Channel pad 31, Channel list 37, osd 123 21, Volume 8, Audio toast 4, Banner 11, Info 16-17, EPG 114.
+
+**Open (from the NOTE, check on the Q80A).** The halo is the classic soft-shadow text style, which the catalogue below lists "with care" (10-16 ms for 12 copies of 4-8 labels): the Banner has 7-9 such labels, the Info up to 16, and they have not been timed on the Q80A yet; the cheaper text filter program (2.2 ms) is the fallback. Banding in the veil's long tail is judged on a photo of the panel. The osd 123's typed number (68 px, outside the capsule, no shadow) is hard to read on snow: give it the halo or a `pill_chip`.
+
+## Performance first
+
+The TV is not a browser: a design that looks free on the web can cost frames there. Measured on the Q80A (firmware 2310.0, 145 prototypes, 2026-11-07; full data in `graphic-testing/report/`, hand-written conclusions in `report/FINDINGS.md`). The panel loop is capped at 20 ms (50 fps), so "free" means "no cost visible under the cap".
+
+Rules every TV screen follows:
+
+1. **Bake once, move forever.** Veils, glows, gradients, borders are pictures made at start-up (or PNGs prebaked on the Mac: `veil_corner`, `pill_bg`, `pill_rim`, `pill_cap`, `progress`, `pill`, `hatch`). On screen they are only moved, resized, faded or mapped.
+2. **No pixel work per frame.** No re-blur, regenerated gradient or recomputed shadow, not even an image upload inside an animation. Animate position, size, opacity and `evas_map` only.
+3. **Translucency and render ops are free.** Alpha cards, ADD/MUL accents, rotations, zoom, 3D and per-vertex alpha cost nothing visible at 12 copies.
+4. **The budget is objects, not effects.** Stay under about 200 live objects; 300 moving rectangles or 200 labels already take ~19 ms of CPU per 20 ms frame. The guide has ~400 objects (140 fills, 260 texts): static it is fine, in motion it is the screen to measure.
+5. **Glass is tint + hairline + top highlight.** Blur of what is behind a client window is not available; bake a blur only from pictures we draw ourselves.
+6. **Draw our own components.** `elm_toolbar` takes 1.6 s to create; the component sets (buttons, rows, grids) take 12-48 ms and nothing per frame.
+7. **No object filter programs** (`efl_gfx_filter_program_set`) until investigated: every one crashed the app in the test. Text filter programs (shadow, glow, outline on a label) work and are fine.
+8. **Baking is start-up or idle work** (40-150 ms per shadow or glass), never on a focus change.
+
+### Element catalogue
+
+Process CPU is per 20 ms frame with 12 copies of the element on screen (about a quarter of the screen); "build" is the one-off cost to create one. Figures: `graphic-testing/report/REPORT.md`.
+
+**Use: no visible cost (50 fps, CPU 2-5 ms)**
+
+| Element | Notes |
+| --- | --- |
+| Baked 9-slice panels and capsules (`pill_bg`, `pill_rim`, `pill_cap`, `pill` PNG, tinted by colour; radius by `border_scale`) | The base of every surface. Resize and fade freely. |
+| Baked shadows, any radius 8-64, two-layer elevation, coloured glow | CPU 2-3 ms; build 38 / 50 / 73 / 147 ms for blur 8 / 16 / 32 / 64, 128 ms for two layers. Bake once per size, reuse. |
+| Baked glass card: tint + hairline + top highlight | CPU 4-5 ms; build 112-150 ms. Sharp picture shows through: that is the look. |
+| Frosted card over **our own** backdrop: a low-resolution copy scaled up with smoothing (`L10`) | The only blur seen in the tests. CPU 2.7 ms, build 38 ms. Never over live video. |
+| Opacity, colour and group-alpha changes, fades, sliding panels | Free in motion. |
+| `evas_map`: rotate, zoom, 3D with perspective and lighting, per-vertex alpha, UV mirror | Carousel and spinning card in motion: CPU 4 ms. Set the map once, then move it. |
+| Render ops ADD, SUB, MUL, TINT and the COPY "hole" | CPU 4-9 ms. |
+| Static gradients (baked) | CPU 2-3 ms. Check dark banding in the shots before choosing the stops. |
+| Plain text, SamsungOneUI 200-700, 12-72 px, colour hierarchy by alpha | CPU 3-4 ms. |
+| Text filter programs (`evas_object_text_filter_program_set`): shadow, glow, outline | Render correctly; CPU 2.2 ms. The cheapest way to make a label legible on video. |
+| Full-screen image or alpha layers; a 1080p JPEG | CPU 1-3 ms. |
+| Elementary button, check, radio, slider, progressbar, label/entry, spinner, list, segment, diskselector, popup | Fine at run time. |
+
+**With care: costs something, spend it deliberately**
+
+| Element | Why |
+| --- | --- |
+| Classic text styles (shadow, outline, glow, soft shadow) | CPU 10-16 ms for 12 copies of 4-8 labels vs ~3.5 ms plain. A few labels on video, not a whole list. The Banner (7-9) and Info (up to 16) use the soft shadow as their halo: to time on the Q80A. |
+| Object count | 300 moving rectangles, 200 labels or many small images: CPU 19-20 ms of a 20 ms frame. Budget ~200 live objects. |
+| Re-setting an `evas_map` every frame | CPU 10.6 ms vs 3-4 ms for a map set once and moved. |
+| Baking (any of the 40-150 ms items above) | Start-up or idle only, never on a focus change; never 12 times when one image can be shared. |
+| Component sets drawn by hand (buttons, rows, tile grid) | 12-48 ms to create, nothing per frame. |
+
+**Avoid: measured as a problem, or not proven**
+
+| Element | Result |
+| --- | --- |
+| Any pixel work per frame: re-blurred glass, recomputed shadow, rewritten gradient | 1 fps (114 ms a copy), 2 fps (40 ms), 3 fps (31 ms) at 12 copies. |
+| Uploading a finished image every frame (`image_data_copy_set` in an animation) | 21 fps at 12 copies (2.3 ms each). |
+| `elm_toolbar` | 1.6 s to create, ~110 theme errors. |
+| Object filter programs (`efl_gfx_filter_program_set`: blur, curve, grow, tint, filter shadows) | Crashed the app in every test. |
+| Legacy snapshot and proxy + filter as "blur what is behind" | No blur seen; a snapshot only sees our own canvas, never the video. |
+| Blurring the live video | No client API found (`elm_win_blur_set` is not exported). Do not promise it. |
+| EO snapshot, webp, svg | Not verified (a test bug and unresolved loaders): do not rely on them yet. |
+
+Costs at 12 copies: baked images, maps, render ops, text styles, solid/glass/outline component sets, common Elementary widgets: 50 fps. CPU glass re-blurred each frame: 1 fps (114 ms a copy). Shadow per frame: 2 fps (40 ms). Animated gradient: 3 fps (31 ms). Per-frame upload of a finished image: 21 fps (2.3 ms).
+
+## Iterating
+
+- Open `index.html`, switch the backdrop to **Video** and to **Light**: the veil and the panels sit in front of the live picture on the TV, and a light picture is the hard case for the veil. Use the sliders for the veil alphas, the panel colour, opacity, radius and rim, the focus, the EPG cells, muted text and icon glow; **Copy changed tokens** gives a `:root { ... }` block to paste into `tokens.css`.
+- For a faithful look at one TV interface, open `dock.html`, `tuner.html` or `epg.html`; the sample data (apps, channels, programmes) is at the top of each script. The dock's app icons are stand-ins (the TV reads the real Home row), the tuner and guide data are generated.
+- To change a screen, edit its function in the script at the bottom of `index.html` (`screens.dock`, `.tasks`, `.volume`, `.pad123`, `.banner`, `.info`, `.list`, `.pad`, `.toast`, `.guide`); to add one (Vetro Home, PIN, plugins), add a function, a `<div class="tv-canvas" id="s-NAME">` and a heading.
+- The mock-ups are not pixel-exact: they load SamsungOneUI from `assets/fonts/` (200, 500, 600), but the browser's text rendering and the halo (CSS `text-shadow` for the EVAS soft shadow) differ from the TV's. On the three full-screen pages the panel, rim and focus are the real white pictures tinted through a CSS mask; `index.html` shows them scaled to half and draws the same shapes with `border-radius` (the masks leave seams when scaled). For the exact opus6 compositions and transitions, open `challenge/opus6/index.html`. Judge proportions, hierarchy and opacity here; judge the final look on the TV.
+- Check performance on the TV with `graphic-testing` before adding any new effect: a tile, `session.py bench --only <id>`, the verdict is in `REPORT.md`.
+
+## Merging back
+
+This folder is a working copy of `app/design-system/` plus the TV material and is **not committed**. To merge: copy the three files over `app/design-system/`, then update the page's token block in `app/service/dashboard.js` (`app/tests/dashboard-v2.test.cjs` fails if the page and `tokens.css` drift apart). The `--vetro-tv-*` tokens are not used by the dashboard; keep them out of its `:root` copy or teach the test to ignore the prefix.

@@ -1,0 +1,298 @@
+/* Vetro — minimal design tokens.
+ * Import once; use semantic tokens in components.
+ * Default: dark. Set data-vetro-theme="light" on a container for light mode.
+ * Blue and ice are sampled/normalized from the icon; UI neutrals are derived.
+ */
+:root {
+  --vetro-blue-950: #00115b;
+  --vetro-blue-700: #123bb5;
+  --vetro-blue-600: #0450ef;
+  --vetro-blue-400: #1674fb;
+  --vetro-ice-100: #e1ebfd;
+  --vetro-white: #f5f8ff;
+
+  --vetro-bg: #080f23;
+  --vetro-surface: #101c35;
+  --vetro-surface-raised: #192943;
+  --vetro-text: var(--vetro-white);
+  --vetro-text-muted: #aab8d1;
+  --vetro-border: #344360;
+  --vetro-action: var(--vetro-blue-700);
+  --vetro-action-hover: #0e3095;
+  --vetro-on-action: var(--vetro-white);
+  --vetro-link: #8fbaff;
+  --vetro-focus: #8fbaff;
+
+  /* Brand fields only: keep everyday UI surfaces solid. */
+  --vetro-gradient-brand: radial-gradient(ellipse at 24% 72%, #1674fb 0%, transparent 52%), radial-gradient(ellipse at 78% 22%, #0450ef 0%, transparent 54%), linear-gradient(135deg, #00115b, #123bb5 52%, #00115b);
+  --vetro-gradient-blue: linear-gradient(135deg, #00115b 0%, #123bb5 48%, #1674fb 100%);
+  --vetro-gradient-glass: linear-gradient(145deg, rgba(245, 248, 255, .16), rgba(225, 235, 253, .04) 55%, rgba(245, 248, 255, .10));
+  --vetro-glass-fill: rgba(16, 28, 53, .88);
+  --vetro-glass-edge: rgba(225, 235, 253, .22);
+  --vetro-glass-blur: 16px;
+  --vetro-shadow: 0 12px 32px rgba(0, 8, 35, .24);
+
+  --vetro-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vetro-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --vetro-text-small: .875rem;
+  --vetro-text-body: 1rem;
+  --vetro-text-title: 1.5rem;
+  --vetro-text-display: 2.5rem;
+  --vetro-weight-regular: 400;
+  --vetro-weight-medium: 500;
+  --vetro-line-body: 1.5;
+  --vetro-line-heading: 1.15;
+
+  --vetro-space-1: 4px;
+  --vetro-space-2: 8px;
+  --vetro-space-3: 12px;
+  --vetro-space-4: 16px;
+  --vetro-space-6: 24px;
+  --vetro-space-8: 32px;
+  --vetro-space-12: 48px;
+  --vetro-radius-control: 8px;
+  --vetro-radius-surface: 16px;
+  --vetro-control-height: 44px;
+  --vetro-focus-width: 2px;
+  --vetro-focus-offset: 3px;
+  --vetro-duration-fast: 120ms;
+  --vetro-duration-normal: 200ms;
+  --vetro-ease: cubic-bezier(.2, 0, 0, 1);
+}
+
+/* ======================================================================================================================
+ * TV (native screens: dock, tuner, guide)
+ * Not CSS on the TV: these are the values the native code draws with (dock/src/Core/Design.cs, dock/designer/chosen.json,
+ * tuner/src/Ui/Surface.cs, Views.cs, InfoView.cs, tuner/src/Core/GuideScene.cs; the approved opus6 round in challenge/opus6). index.html builds its mock-ups from them, so edit here and reload to iterate;
+ * when a value is settled, carry it to the C# constant named in its comment.
+ * Dark only. The 1080p canvas is 1920x1080 px; every length is in canvas pixels. Alpha tokens are the Evas 0..255 value / 255.
+ * PERFORMANCE FIRST (graphic-testing/report/FINDINGS.md): a sheet, a glow, a ring, a fill is a picture baked once and then only moved,
+ * resized or faded. Nothing here may be recomputed per frame, and the object count is the budget, not the effect.
+ * ==================================================================================================================== */
+  /* opus6 (approved 2026-11-11): TWO materials. The tuner's Banner, Info and EPG stand on the VEIL; everything else that floats
+   * (Dock, Sources, Task manager, Volume bar, osd 123, Channel pad, Channel list, Audio toast) is the PANEL, the osd 123's material.
+   * No drop shadow anywhere; one focus (the ice capsule) everywhere but on the dock icons. */
+:root {
+  --vetro-tv-w: 1920px;
+  --vetro-tv-h: 1080px;
+  --vetro-tv-margin: 96px;               /* safe margin: Banner/Info left, Volume bar left, Channel pad/list/toast right (1824) */
+
+  /* The veil: ONE picture, assets/tuner/veil_corner.png (512x288, #111B2A, a quarter ellipse centred on the screen's bottom-left corner,
+   * full to 40% of the radius, then a falloff baked so that over WHITE the perceived lightness L* rises evenly; +-0.6 dither). Stretched,
+   * not 9-slice, anchored at (0, 1080). Banner, Info and EPG are the same object grown from the corner. Surface.cs VeilShape */
+  --vetro-tv-veil-color: #111b2a;
+  --vetro-tv-veil-banner-w: 1700px;      /* rx */
+  --vetro-tv-veil-banner-h: 600px;       /* ry: top at y 480 */
+  --vetro-tv-veil-banner-alpha: .58;     /* 148 */
+  --vetro-tv-veil-info-w: 2500px;
+  --vetro-tv-veil-info-h: 1000px;        /* top at y 80 */
+  --vetro-tv-veil-info-alpha: .66;       /* 168 */
+  --vetro-tv-veil-epg-w: 6400px;         /* covers the whole screen */
+  --vetro-tv-veil-epg-h: 3400px;
+  --vetro-tv-veil-epg-alpha: .94;
+  /* Text on the veil: white, with the EVAS soft shadow (the dock's text shadow) in black under every letter. Theme.Veil*, HaloAlpha */
+  --vetro-tv-veil-text-muted: .76;       /* 194: times, the Info's name, date, source, audio, description */
+  --vetro-tv-veil-text-title: .92;       /* 235: the programme on the Banner's second line */
+  --vetro-tv-veil-text-faint: .64;       /* 163: "No programme information" */
+  --vetro-tv-halo-alpha: .55;            /* 140: the soft shadow's black, faded with its text */
+
+  /* The panel: the osd 123's material. pill_bg (white PNG 96, slice 48) tinted slate at 90% + pill_rim (white PNG 100, slice 50) white at 22%,
+   * 2 px outside. One pair of pictures gives every radius through border_scale (radius / 48, (radius + 2) / 50). Surface.cs Panel, Design.cs */
+  --vetro-tv-panel: #243448;             /* Fumé slate. Theme.Slate, Design.ShellColor */
+  --vetro-tv-panel-alpha: .90;           /* 229. Theme.SheetAlpha, Design.VolumeAlpha */
+  --vetro-tv-panel-rim-w: 2px;           /* Design.ShellBorderW */
+  --vetro-tv-panel-rim-alpha: .22;       /* 56. Theme.RimAlpha, Design.ShellBorderAlpha */
+  --vetro-tv-panel-radius: 40px;         /* Dock, Sources, Task manager, Channel pad, Channel list: the dock icons' radius 15 + padding 26. Design.PanelRadius */
+  --vetro-tv-capsule-radius: 9999px;     /* one-row things (osd 123, Volume bar, Audio toast, chips, keys, rows): half the height */
+  --vetro-tv-shadow: none;               /* no drop shadow in the OSD (shadow.png retired: -1 object a panel) */
+
+  /* The focus: ONE ice capsule (pill_cap.png, 72, slice 36, tinted) with its text in slate. The dock icons keep their ring + glow. */
+  --vetro-tv-focus-fill: #e4f2ff;        /* Theme.Ice, Design.RingColor */
+  --vetro-tv-focus-alpha: .96;           /* 245. Theme.FocusAlpha, Design.FocusFillAlpha */
+  --vetro-tv-focus-ink: #243448;         /* the text on the focus: slate, opaque */
+  --vetro-tv-key-rest: .14;              /* 36: a resting key of the Channel pad, a white capsule. Theme.KeyAlpha */
+
+  /* RETIRED from the OSD (kept for tv-system.html / tv-screens.js, the 2026-11-08 comparison): the old sheet = dock_bg.png + shadow.png. */
+  --vetro-tv-sheet: #243448;
+  --vetro-tv-sheet-alpha: 1;
+  --vetro-tv-sheet-radius: 16px;
+  --vetro-tv-sheet-border-w: 2px;
+  --vetro-tv-sheet-border-alpha: .22;
+  --vetro-tv-sheet-highlight-alpha: 0;
+  --vetro-tv-shadow-dy: 18px;
+  --vetro-tv-shadow-blur: 50px;
+  --vetro-tv-shadow-alpha: .45;
+
+  /* Ink: white; hierarchy is alpha, never a second colour (except slate on the ice focus). Theme.TextMain / TextMuted / TextFaint */
+  --vetro-tv-ink: #ffffff;
+  --vetro-tv-text-main: 1;
+  --vetro-tv-text-muted: .70;            /* 178, on the panel */
+  --vetro-tv-text-faint: .55;            /* 140 */
+
+  /* EPG cells: lanes of rounded cells (pill.png, white 64, radius 20, slice 24) on the veil. */
+  --vetro-tv-cell-radius: 20px;
+  --vetro-tv-cell-rest: .09;             /* a programme */
+  --vetro-tv-cell-onair: .16;            /* a programme on air */
+  --vetro-tv-cell-loading: .05;          /* "Loading…" */
+  --vetro-tv-cell-empty: .035;           /* no information: + hatch.png (16 px tile, diagonal lines at .10) */
+  /* RETIRED (old sheet fills, solid.png): */
+  --vetro-tv-fill-empty: .047;
+  --vetro-tv-fill-rest: .20;
+  --vetro-tv-fill-onair: .26;
+  --vetro-tv-fill-select: .30;
+  --vetro-tv-fill-key-focus: .26;
+  --vetro-tv-fill-focus: .26;
+
+  /* Progress (Banner, Info): track bar.png (16x6, slice 3) white at .22; progress.png (40x32, Luce, its head the right end, slice 0 32 0 4)
+   * drawn 32 tall from 13 px above the line, as wide as head - x0 + 16 (at least 40). */
+  --vetro-tv-track: .22;                 /* 56 */
+  --vetro-tv-track-empty: .157;
+  --vetro-tv-progress: .92;              /* retired: the white fill of the old Banner */
+  --vetro-tv-hairline: .157;             /* 40  rule under the EPG's time axis */
+  --vetro-tv-ring-w: 2px;                /* Design.RingW: the dock icons' ring */
+  --vetro-tv-ring-color: #e4f2ff;
+  --vetro-tv-light: #a5d8ff;             /* Luce: only progress, the volume level, the EPG's now line */
+  --vetro-tv-now-alpha: .30;             /* the EPG's now line through the rows (the mark on the axis is opaque) */
+  --vetro-tv-volume-alpha: .90;          /* = panel alpha */
+  --vetro-tv-guide-alpha: .95;           /* retired: the EPG is on the veil (.94) */
+  --vetro-tv-chip-radius: 12px;          /* retired with solid.png / ring.png */
+
+  /* Type: SamsungOneUI, three weights only: 200 big numbers and the clock, 500 text, 600 names and titles. */
+  --vetro-tv-font: "SamsungOneUI", "Samsung One UI Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vetro-tv-weight: 500;
+  --vetro-tv-weight-light: 200;
+  --vetro-tv-weight-bold: 600;
+  --vetro-tv-type-caption: 22px;         /* hints */
+  --vetro-tv-type-label: 24px;           /* EPG footer */
+  --vetro-tv-type-meta: 26px;            /* times on the veil, EPG axis */
+  --vetro-tv-type-body: 28px;            /* EPG cell, Channel pad's channel name */
+  --vetro-tv-type-subtitle: 30px;        /* Info description, EPG meta line */
+  --vetro-tv-type-row: 32px;             /* Banner programme, Channel list, Audio toast */
+  --vetro-tv-type-title: 40px;           /* Channel pad digits */
+  --vetro-tv-type-display: 56px;         /* Banner channel name (600) */
+  --vetro-tv-type-entry: 76px;           /* Channel pad typed number */
+  --vetro-tv-type-banner-num: 128px;     /* Banner channel number (200) */
+  --vetro-tv-type-info-title: 72px;      /* Info programme (600) */
+  --vetro-tv-type-clock: 88px;           /* Info clock (200) */
+  --vetro-tv-type-epg-title: 64px;       /* EPG header (600) */
+
+  /* Dock. Design.cs / Layout.cs */
+  --vetro-tv-dock-icon: 92px;
+  --vetro-tv-dock-icon-focus: 112px;
+  --vetro-tv-dock-gap: 18px;
+  --vetro-tv-dock-pad-x: 26px;
+  --vetro-tv-dock-pad-y: 16px;
+  --vetro-tv-dock-group-gap: 56px;
+  --vetro-tv-dock-bottom: 40px;          /* bar to screen bottom (the window margin) */
+  --vetro-tv-dock-icon-radius: 16%;      /* of the icon's side: ring and glow follow it; 15 px at 92 */
+  --vetro-tv-dock-icon-rim: .20;
+  --vetro-tv-dock-icon-dim: .94;         /* unselected icons */
+  --vetro-tv-dock-lift: 4px;
+  --vetro-tv-dock-glow: .44;
+  --vetro-tv-dock-glow-spread: 16px;
+  --vetro-tv-dock-divider: .3;           /* 2 x 72 */
+  --vetro-tv-dock-pill-w: 232px;
+  --vetro-tv-dock-pill-h: 48px;
+  --vetro-tv-dock-pill-gap: 8px;
+  --vetro-tv-dock-pill-border: .75;
+  --vetro-tv-dock-pill-dim: .88;
+  /* Task manager. TaskPage.cs TaskLayout */
+  --vetro-tv-tasks-w: 880px;
+  --vetro-tv-tasks-pad-x: 24px;
+  --vetro-tv-tasks-header-h: 70px;
+  --vetro-tv-tasks-row-h: 76px;          /* plate: inset 16 from the sides, 4 from the row's top and bottom (68 high) */
+  --vetro-tv-tasks-icon: 52px;
+  --vetro-tv-tasks-footer-h: 54px;
+  /* Volume bar (VolumePlacement.cs): vertical, x 96, centred on y 540 */
+  --vetro-tv-volume-thickness: 88px;
+  --vetro-tv-volume-long: 480px;
+  /* osd 123 (NumberPad.cs): capsule body 96 high, cells 72, the Done chip 52 */
+  --vetro-tv-pad123-body-h: 96px;
+  --vetro-tv-pad123-cell: 72px;
+  --vetro-tv-pad123-chip-h: 52px;
+
+  /* Tuner: Banner and Info in the bottom-left corner (on the veil); Channel list and Channel pad at the right edge, centred on y 540 */
+  --vetro-tv-banner-x0: 96px;            /* the block: x 96..936 */
+  --vetro-tv-banner-x1: 936px;
+  --vetro-tv-banner-line-y: 992px;       /* top of the 6 px progress line */
+  --vetro-tv-info-right: 1296px;         /* Info: left column 96..936, right column right-aligned at 1296 */
+  --vetro-tv-left-gap: 28px;             /* "N min left" follows the head; a time it would come closer than this to hides */
+  /* RETIRED: the old Banner card */
+  --vetro-tv-banner-w: 780px;
+  --vetro-tv-banner-h: 204px;
+  --vetro-tv-banner-bottom: 1000px;
+  --vetro-tv-banner-pad: 36px;
+  --vetro-tv-logo-banner: 72px;          /* channel logos (tuner): Banner (at the block's right end), Channel list, Channel pad, Info, EPG */
+  --vetro-tv-logo-list: 44px;
+  --vetro-tv-logo-pad: 44px;
+  --vetro-tv-logo-info: 72px;
+  --vetro-tv-logo-epg: 56px;
+  --vetro-tv-list-x: 1284px;             /* Channel list and Channel pad: x 1284..1824 */
+  --vetro-tv-list-y: 164px;              /* 11 rows: 164..916, centred on 540 */
+  --vetro-tv-list-w: 540px;
+  --vetro-tv-list-pad: 24px;
+  --vetro-tv-list-row-h: 64px;
+  --vetro-tv-list-num-right: 1376px;     /* numbers right-aligned here; logo at x 1398, name at x 1456 */
+  --vetro-tv-pad-y: 232px;               /* Channel pad 232..848, centred on 540 */
+  --vetro-tv-pad-key-w: 148px;
+  --vetro-tv-pad-key-h: 76px;
+  --vetro-tv-pad-gap: 14px;
+  --vetro-tv-pad-pad: 34px;              /* side padding (keys from x 1318); 38 under the last row */
+  --vetro-tv-toast-h: 72px;
+  --vetro-tv-toast-pad: 40px;
+  --vetro-tv-toast-y: 96px;
+
+  /* EPG (the opus6 mock-up; GuideLayout in the fork still has the old card values below) */
+  --vetro-tv-epg-cells-x: 400px;
+  --vetro-tv-epg-cells-w: 1440px;        /* 180 minutes at 8 px a minute */
+  --vetro-tv-epg-axis-y: 286px;
+  --vetro-tv-epg-rows-y: 346px;
+  --vetro-tv-epg-label-x: 96px;          /* logo; number over name at +70 */
+  --vetro-tv-epg-footer-y: 984px;
+  /* RETIRED: the old guide card */
+  --vetro-tv-guide-x: 64px;
+  --vetro-tv-guide-y: 56px;
+  --vetro-tv-guide-w: 1792px;
+  --vetro-tv-guide-h: 968px;
+  --vetro-tv-guide-pad: 40px;
+  --vetro-tv-guide-axis-y: 268px;
+  --vetro-tv-guide-rows-y: 316px;
+  --vetro-tv-guide-row-h: 88px;          /* still: 7 rows of 88, cells 76 */
+  --vetro-tv-guide-cell-h: 76px;
+  --vetro-tv-guide-cell-gap: 4px;
+  --vetro-tv-guide-label-w: 246px;
+  --vetro-tv-guide-px-per-min: 8px;
+
+  /* Motion on the TV: constant speed (Design.EnterSeconds, StaggerSeconds, FocusSeconds). The tuner's veil and morphs are the mock's
+   * values (320 / 220 / 200 ms), not coded yet. */
+  --vetro-tv-enter: 300ms;
+  --vetro-tv-stagger: 24ms;
+  --vetro-tv-focus: 300ms;
+  --vetro-tv-veil-morph: 320ms;          /* Banner -> Info -> EPG: the veil grows from the corner */
+  --vetro-tv-tuner-focus: 220ms;
+
+  /* Performance budget, measured on the Q80A (graphic-testing/report). Documentation, not CSS. */
+  --vetro-tv-frame-ms: 20ms;             /* the panel loop is capped here: 50 fps */
+  --vetro-tv-object-budget: 200;         /* live objects before the CPU nears a full 20 ms frame (300 rects / 200 labels measured ~19 ms) */
+}
+
+[data-vetro-theme="light"] {
+  --vetro-bg: var(--vetro-white);
+  --vetro-surface: #ffffff;
+  --vetro-surface-raised: var(--vetro-ice-100);
+  --vetro-text: #101c35;
+  --vetro-text-muted: #52617a;
+  --vetro-border: #bcc9de;
+  --vetro-link: var(--vetro-blue-700);
+  --vetro-focus: var(--vetro-blue-600);
+  --vetro-glass-fill: rgba(245, 248, 255, .92);
+  --vetro-glass-edge: rgba(18, 59, 181, .18);
+  --vetro-shadow: 0 12px 32px rgba(0, 17, 91, .10);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vetro-duration-fast: 0ms;
+    --vetro-duration-normal: 0ms;
+  }
+}

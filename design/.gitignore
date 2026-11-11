@@ -1,0 +1,8 @@
+# Fonts and captures of Samsung's own UI come from the TV firmware: third-party material, kept local only.
+*.ttf
+/samsung-native/
+/assets/samsung/
+/assets/samsung-tv/
+/.impeccable/
+/samsung-native.html
+/challenge/opus6/assets/samsunghome.png

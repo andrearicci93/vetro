@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vetro TV guide — as on the TV</title>
+<!--
+  The EPG as approved (design round opus6, DESIGN.md "TV material"): no card, the veil (veil_corner.png) grown over the whole screen at .94;
+  lanes of rounded cells (pill.png, radius 20) in white at .09 / .16 on air / .05 loading / .035 + hatch.png with no information; the focus is
+  the same cell in ice with its text in slate. Geometry from challenge/opus6 (the fork's GuideScene still draws the old card).
+  URL: ?ch=N focuses channel N (row index); ?still reads every schedule at once (screenshots); ?bd=video|black|light|grid.
+  Keys: Up / Down channel, Left / Right programme, PageUp / PageDown page, Enter watch, Esc close, H the toolbar.
+-->
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="tv-common.css">
+<link rel="stylesheet" href="tv-material.css">
+<style>
+  .clipbox { position: absolute; overflow: hidden; }
+  .logo { position: absolute; border-radius: 50%; display: grid; place-items: center; font: 700 14px/1 var(--vetro-font, system-ui, sans-serif); color: #fff; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="canvas"></div></div>
+<script src="tv-common.js"></script>
+<script>
+(function () {
+  var C = document.getElementById('canvas');
+  var bar = Tv.toolbar('Up / Down: channel · Left / Right: programme · PageUp / PageDown: page · Enter: watch · Esc: close · H: this bar', [['Tuner', 'tuner.html'], ['Dock', 'dock.html'], ['Design system', 'index.html']]);
+  var P = Tv.px;
+
+  /* ---- layout: the opus6 EPG on the veil (tokens.css --vetro-tv-epg-*; rows and cells as GuideLayout) ---- */
+  var M = P('--vetro-tv-margin'), R = 1920 - M, AXISY = P('--vetro-tv-epg-axis-y'), ROWSY = P('--vetro-tv-epg-rows-y'), ROWH = P('--vetro-tv-guide-row-h'), CELLH = P('--vetro-tv-guide-cell-h'),
+      CELLGAP = P('--vetro-tv-guide-cell-gap'), PXMIN = P('--vetro-tv-guide-px-per-min'), LABELX = P('--vetro-tv-epg-label-x');
+  var ROWS = 7, WINMIN = 180, CELLSX = P('--vetro-tv-epg-cells-x'), CELLSW = P('--vetro-tv-epg-cells-w'), LABELW = CELLSX - 28 - LABELX, MINCELLW = 4, MINTEXTW = 64, PXSEC = CELLSW / (WINMIN * 60);
+  var MUTED = .76, FAINT = .64;
+  var LOGO = P('--vetro-tv-logo-epg');
+  /* A channel logo: Samsung's round picture (the TV's own file). Here a stand-in disc with the initials, so no Samsung or Gracenote artwork is kept in the design folder. */
+  function hasLogo(c) { return !/Radio/.test(c.name) && c.num % 5 !== 0; }
+  function setLogo(e, c, x, y, size) {
+    var h = 0; for (var i = 0; i < c.name.length; i++) h = (h * 31 + c.name.charCodeAt(i)) % 360;
+    e.textContent = c.name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+    e.style.background = 'hsl(' + h + ' 55% 40%)'; e.style.fontSize = Math.round(size * .3) + 'px';
+    e.style.left = x + 'px'; e.style.top = y + 'px'; e.style.width = size + 'px'; e.style.height = size + 'px';
+  }
+  var HALF = 1800, WINSEC = WINMIN * 60, HORIZON = 72 * 3600;
+
+  /* ---- sample channels and schedules (the TV reads them from the daemon: 27-48 ms a channel) ---- */
+  var NAMES = ['Cinema', 'Sport 1', 'Sport 2', 'Doc', 'News 24', 'Kids', 'Music', 'Retro', 'Quiz', 'Cucina', 'Viaggi', 'Storia', 'Natura', 'Serie', 'Commedia', 'Notte', 'Teatro', 'Arte', 'Motori', 'Radio Uno', 'Radio Due', 'Meteo', 'Shop', 'Mondo'];
+  var CH = NAMES.map(function (n, i) { return { id: i, num: i < 19 ? i + 1 : 700 + i - 19, name: n }; });
+  var TITLES = ['La notte del cacciatore', 'Serie A: la partita', 'Oceani', 'Notizie della sera', 'Cartoni della sera', 'Concerto dal vivo', 'Sit-com', 'Il sorpasso', 'Il processo', 'Savana', 'Top 50', 'Film western', 'Telegiornale', 'Meteo e traffico', 'Speciale', 'Varietà', 'Alpi', 'Isole', 'Dopo partita', 'Nanna'];
+  var DESCR = 'A quiet town, a family and a stranger: before the night is over, everyone has to decide whom to trust. A long description is read from the guide only for the focused programme, and shown on two lines.';
+  var DUR = [25, 30, 45, 50, 60, 75, 90, 105, 120];
+  var NOW = Math.floor(Date.now() / 1000);
+  function rnd(seed) { var s = seed >>> 0; return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+  function makeSchedule(c) {
+    if (c.id === 21 || c.id === 22) return { events: [] };                       // a channel with no data (result 0, empty map)
+    var r = rnd(c.id * 7919 + 11), t = Math.floor(NOW / 1800) * 1800 - Math.floor(r() * 4) * 1800 - 1800, end = c.id % 5 === 3 ? NOW + 26 * 3600 : NOW + 72 * 3600, ev = [], k = Math.floor(r() * 20);
+    while (t < end) { var d = DUR[Math.floor(r() * DUR.length)] * 60; ev.push({ title: TITLES[(k++) % TITLES.length], start: t, end: t + d }); t += d; }
+    return { events: ev };
+  }
+  var store = {};
+  function readOrder(g) {
+    var order = [], seen = {}; function add(i) { if (i >= 0 && i < CH.length && !seen[i]) { seen[i] = 1; order.push(i); } }
+    add(g.focusRow); for (var k = 1; k < ROWS; k++) { add(g.focusRow + k); add(g.focusRow - k); }
+    for (k = 0; k < ROWS; k++) add(g.firstRow + ROWS + k); for (k = 1; k <= ROWS; k++) add(g.firstRow - k);
+    return order;
+  }
+  var reading = false;
+  function readMissing() {   // the worker: cancelable slices, the grid is redrawn after each row
+    if (reading) return; reading = true;
+    (function step() {
+      var next = readOrder(g).filter(function (i) { return !store[CH[i].id]; })[0];
+      if (next === undefined) { reading = false; return; }
+      setTimeout(function () { store[CH[next].id] = makeSchedule(CH[next]); draw(); step(); }, 100);
+    }());
+  }
+
+  /* ---- GuideGrid: the model (a faithful port; see tuner/src/Core/GuideGrid.cs) ---- */
+  function Floor(t) { return t - ((t % HALF) + HALF) % HALF; }
+  function Ceil(t) { var f = Floor(t); return f === t ? t : f + HALF; }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  var g = {
+    minStart: 0, windowStart: 0, firstRow: 0, focusRow: 0, focusTime: 0,
+    get windowEnd() { return this.windowStart + WINSEC; }, get maxEnd() { return this.minStart + HORIZON; },
+    maxFirst: function () { return Math.max(0, CH.length - ROWS); },
+    open: function (idx, now) { this.minStart = Floor(now); this.windowStart = this.minStart; this.focusTime = now; this.focusRow = clamp(idx, 0, CH.length - 1); this.firstRow = clamp(this.focusRow - 2, 0, this.maxFirst()); },
+    segments: function (c) {
+      var segs = [], sched = store[c.id];
+      if (!sched) { segs.push({ start: this.minStart, end: this.maxEnd, loading: true }); return segs; }
+      var at = this.minStart, any = false;
+      for (var i = 0; i < sched.events.length; i++) {
+        var e = sched.events[i];
+        if (e.end <= this.minStart) continue; if (e.start >= this.maxEnd) break; if (any && e.start < at) continue;
+        if (e.start > at) segs.push({ start: at, end: e.start });
+        segs.push({ start: e.start, end: e.end, ev: e }); at = e.end; any = true;
+      }
+      if (at < this.maxEnd) segs.push({ start: at, end: this.maxEnd });
+      return segs;
+    },
+    indexAt: function (segs, t) { for (var i = 0; i < segs.length; i++) if (segs[i].start <= t && t < segs[i].end) return i; return segs.length - 1; },
+    focusEvent: function () { var s = this.segments(CH[this.focusRow]); return s[this.indexAt(s, this.focusTime)].ev || null; },
+    moveRow: function (d) { this.setRow(this.focusRow + d, d); },
+    movePage: function (d) { this.setRow(this.focusRow + d * ROWS, d * ROWS); },
+    setRow: function (row, scrollBy) {
+      var anchor = Math.max(this.focusTime, this.windowStart); this.focusRow = clamp(row, 0, CH.length - 1);
+      if (this.focusRow < this.firstRow) this.firstRow = this.focusRow;
+      if (this.focusRow >= this.firstRow + ROWS) this.firstRow = this.focusRow - ROWS + 1;
+      if (Math.abs(scrollBy) >= ROWS) this.firstRow = clamp(this.firstRow, 0, this.maxFirst());
+      this.focusTime = anchor; this.ensureVisible();
+    },
+    moveTime: function (dir) {
+      var segs = this.segments(CH[this.focusRow]), i = this.indexAt(segs, this.focusTime), j = i + (dir > 0 ? 1 : -1);
+      if (j >= 0 && j < segs.length && segs[j].end > this.minStart) this.focusTime = Math.max(segs[j].start, this.minStart);
+      else if (dir > 0 && segs[i].end > this.windowEnd) { this.windowStart = Math.min(this.windowStart + HALF, this.maxEnd - WINSEC); this.focusTime = Math.max(this.focusTime, this.windowStart); }
+      else if (dir < 0 && segs[i].start < this.windowStart) { this.windowStart = Math.max(this.windowStart - HALF, this.minStart); this.focusTime = Math.min(this.focusTime, this.windowEnd - 1); }
+      this.ensureVisible();
+    },
+    ensureVisible: function () {
+      var segs = this.segments(CH[this.focusRow]), s = segs[this.indexAt(segs, this.focusTime)];
+      var a = Math.max(s.start, this.minStart), b = Math.min(s.end, this.maxEnd), shown = Math.min(b, this.windowEnd) - Math.max(a, this.windowStart);
+      if (shown < Math.min(HALF, b - a)) {
+        if (a < this.windowStart) this.windowStart = Floor(a);
+        else { var st = b - a <= WINSEC ? Ceil(b - WINSEC) : Floor(a); this.windowStart = st > a ? Floor(a) : st; }
+      }
+      this.windowStart = clamp(this.windowStart, this.minStart, this.maxEnd - WINSEC);
+      if (this.focusTime < this.windowStart) this.focusTime = this.windowStart;
+      if (this.focusTime >= this.windowEnd) this.focusTime = this.windowEnd - 1;
+    },
+    cells: function (row) {
+      var out = [], idx = this.firstRow + row; if (idx < 0 || idx >= CH.length) return out;
+      var segs = this.segments(CH[idx]);
+      for (var i = 0; i < segs.length; i++) {
+        var s = segs[i]; if (s.end <= this.windowStart || s.start >= this.windowEnd) continue;
+        var a = Math.max(s.start, this.windowStart), b = Math.min(s.end, this.windowEnd), x0 = Math.round((a - this.windowStart) * PXSEC), x1 = Math.round((b - this.windowStart) * PXSEC), w = x1 - x0 - CELLGAP;
+        var focus = idx === this.focusRow && s.start <= this.focusTime && this.focusTime < s.end;
+        if (w < MINCELLW) { if (!focus) continue; w = MINCELLW; }
+        out.push({ row: row, x: CELLSX + x0 + CELLGAP / 2, w: w, start: s.start, end: s.end, ev: s.ev || null, loading: !!s.loading, focus: focus });
+      }
+      return out;
+    },
+    nowX: function (now) { return now < this.windowStart || now >= this.windowEnd ? -1 : CELLSX + Math.round((now - this.windowStart) * PXSEC); }
+  };
+
+  /* ---- the scene (GuideScene in the new look): veil, header, axis, lanes of cells, focus, now, footer ---- */
+  function clock(t) { var d = new Date(t * 1000); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function minutes(sec) { var m = Math.floor((sec + 30) / 60); return m >= 60 ? Math.floor(m / 60) + ' h ' + ('0' + m % 60).slice(-2) + ' min' : m + ' min'; }
+  var desc = '', descFor = null;
+  /* a text: line-box top y (line height = size), weight, white at alpha a (or slate on the focus) */
+  function T(par, x, y, size, wt, a, s, maxW, right) {
+    var e = Tv.text(par, s, x, y, size, 'l1' + (wt !== 500 ? ' w' + wt : ''), maxW, right);
+    e.style.color = a === 'ink' ? 'var(--vetro-tv-focus-ink)' : 'rgba(255, 255, 255, ' + a + ')';
+    return e;
+  }
+  function draw() {
+    C.innerHTML = '';
+    Tv.setVeil(Tv.veil(C), 'epg');
+    var fe = g.focusEvent(), fc = CH[g.focusRow];
+    /* header */
+    if (fe) {
+      T(C, M, 70, 64, 600, 1, fe.title, 1360);
+      T(C, M, 152, 30, 500, MUTED, clock(fe.start) + ' – ' + clock(fe.end) + '   ·   ' + minutes(fe.end - fe.start) + '   ·   ' + fc.name, 1500);
+      if (desc && descFor === fe) { var d = T(C, M, 200, 28, 500, .70, desc, 1400); d.style.whiteSpace = 'normal'; d.style.lineHeight = '38px'; d.style.top = (200 - 5) + 'px'; d.style.maxHeight = '76px'; }
+    } else { T(C, M, 70, 64, 600, FAINT, 'No information', 1360); T(C, M, 152, 30, 500, MUTED, fc.name, 1500); }
+    var dt = new Date(g.focusTime * 1000), DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    T(C, R, 84, 32, 500, MUTED, DAYS[dt.getDay()] + ' ' + dt.getDate() + ' ' + MON[dt.getMonth()], 300, true);
+    /* axis: full hours 600 white, half hours 500 at .76; a hairline under it */
+    Tv.mk(C, 'rule', CELLSX, AXISY + 46, CELLSW, 2, { '--a': Tv.tok('--vetro-tv-hairline') });
+    var AX = Tv.mk(C, 'clipbox', CELLSX, AXISY, CELLSW, 52), G = Tv.mk(C, 'clipbox', CELLSX, ROWSY, CELLSW, ROWS * ROWH);
+    for (var t = g.windowStart; t < g.windowEnd; t += HALF) { var full = new Date(t * 1000).getMinutes() === 0; T(AX, Math.round((t - g.windowStart) * PXSEC), 4, 26, full ? 600 : 500, full ? 1 : MUTED, clock(t), 120); }
+    var nx = g.nowX(NOW);
+    if (nx >= 0) { Tv.mk(G, 'rule', nx - CELLSX, 0, 2, ROWS * ROWH, { 'background': 'var(--vetro-tv-light)', 'opacity': Tv.tok('--vetro-tv-now-alpha') }); }
+    /* lanes */
+    var focusCell = null;
+    for (var r = 0; r < ROWS; r++) {
+      var c = CH[g.firstRow + r]; if (!c) break;
+      var y = ROWSY + r * ROWH, fr = g.firstRow + r === g.focusRow;
+      if (hasLogo(c)) { var lg = Tv.mk(C, 'logo', 0, 0, LOGO, LOGO); setLogo(lg, c, LABELX, y + 16, LOGO); }
+      T(C, LABELX + 70, y + 12, 24, 500, fr ? 1 : MUTED, String(c.num), LABELW - 70);
+      T(C, LABELX + 70, y + 44, 26, fr ? 600 : 500, fr ? 1 : MUTED, c.name, LABELW - 70);
+      g.cells(r).forEach(function (cell) {
+        var cx = cell.x - CELLSX, cy = r * ROWH + (ROWH - CELLH) / 2, onAir = cell.ev && cell.start <= NOW && NOW < cell.end;
+        if (cell.focus) { focusCell = { cell: cell, y: ROWSY + cy }; return; }
+        var a = cell.loading ? Tv.tok('--vetro-tv-cell-loading') : !cell.ev ? Tv.tok('--vetro-tv-cell-empty') : onAir ? Tv.tok('--vetro-tv-cell-onair') : Tv.tok('--vetro-tv-cell-rest');
+        Tv.mk(G, 'cell', cx, cy, cell.w, CELLH, { opacity: a });
+        if (!cell.ev && !cell.loading && cell.w > 48) Tv.mk(G, 'hatch', cx + 20, cy, cell.w - 40, CELLH);
+        if (cell.ev) { if (cell.w >= 90) T(G, cx + 20, cy + 23, 28, 500, onAir ? 1 : .9, cell.ev.title, cell.w - 36); }
+        else if (cell.w >= (cell.loading ? 150 : 190)) T(G, cx + 20, cy + 26, 24, 500, FAINT, cell.loading ? 'Loading…' : 'No information', cell.w - 36);
+      });
+    }
+    /* the focus: the cell's own shape in ice, its text in slate (title 600, times 22) */
+    if (focusCell) {
+      var f = focusCell.cell, fy = focusCell.y;
+      Tv.mk(C, 'cell focus', f.x, fy, f.w, CELLH);
+      if (f.w >= MINTEXTW) {
+        if (f.ev) { T(C, f.x + 20, fy + 12, 28, 600, 'ink', f.ev.title, f.w - 36); if (f.w >= 128) T(C, f.x + 20, fy + 47, 22, 500, 'ink', f.w >= 230 ? clock(f.start) + ' – ' + clock(f.end) : clock(f.start), f.w - 36); }
+        else T(C, f.x + 20, fy + 26, 28, 500, 'ink', f.loading ? 'Loading…' : 'No information', f.w - 36);
+      }
+    }
+    if (nx >= 0) Tv.mk(AX, 'rule', nx - CELLSX - 1, 34, 3, 16, { 'background': 'var(--vetro-tv-light)', 'opacity': 1 });
+    /* footer: the remote's keys as pictures */
+    Tv.guideFooter(C, M, P('--vetro-tv-epg-footer-y'), 24, 'l1 muted', true);
+    bar.say(CH[g.focusRow].num + ' ' + CH[g.focusRow].name);
+  }
+  var descTimer;
+  function afterMove() { draw(); readMissing(); descFor = null; desc = ''; clearTimeout(descTimer); var fe = g.focusEvent(); if (fe) descTimer = setTimeout(function () { desc = DESCR; descFor = fe; draw(); }, 300); }   // the long text is read for the focused programme only
+
+  addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (k === 'ArrowUp') g.moveRow(-1); else if (k === 'ArrowDown') g.moveRow(1);
+    else if (k === 'ArrowLeft') g.moveTime(-1); else if (k === 'ArrowRight') g.moveTime(1);
+    else if (k === 'PageUp') g.movePage(1); else if (k === 'PageDown') g.movePage(-1);
+    else if (k === 'Enter') { location.href = 'tuner.html?tune=' + CH[g.focusRow].num; return; }
+    else if (k === 'Escape' || k === 'Backspace' || k === 'g' || k === 'G') { location.href = 'tuner.html'; return; }
+    else if (k === 'h' || k === 'H') { document.getElementById('bar').classList.toggle('idle'); return; }
+    else return;
+    e.preventDefault(); afterMove();
+  });
+
+  var q = /[?&]ch=(\d+)/.exec(location.search);
+  g.open(q ? parseInt(q[1], 10) : 2, NOW);
+  Tv.fit();
+  Tv.ready(function () {
+  // the first rows are read before the first draw on the TV; here they appear one by one, as "Loading…" first
+  if (location.search.indexOf('still') >= 0) CH.forEach(function (c) { store[c.id] = makeSchedule(c); });
+  desc = DESCR; descFor = null; afterMove();
+  if (location.search.indexOf('still') >= 0) { var fe = g.focusEvent(); if (fe) { desc = DESCR; descFor = fe; draw(); } }
+  });
+}());
+</script>
+</body>
+</html>

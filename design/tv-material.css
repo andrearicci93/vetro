@@ -1,0 +1,41 @@
+/* The TV materials and font, shared by dock.html, tuner.html, epg.html and index.html. Values from tokens.css (--vetro-tv-*); pictures from assets/. */
+/* SamsungOneUI, the TV's font, in its three weights (200 big numbers, 500 text, 600 names and titles). Not in tokens.css: that file is copied to the dashboard. */
+@font-face { font-family: "SamsungOneUI"; font-weight: 200; src: url(assets/fonts/SamsungOneUI-200.ttf); }
+@font-face { font-family: "SamsungOneUI"; font-weight: 500; src: url(assets/fonts/SamsungOneUI-500.ttf); }
+@font-face { font-family: "SamsungOneUI"; font-weight: 600; src: url(assets/fonts/SamsungOneUI-600.ttf); }
+
+/* ---------------- The two TV materials (DESIGN.md, "TV material"). Linked by dock.html, tuner.html, epg.html and index.html (after their own styles) ----------------
+   The panel: pill_rim (white at .22) 2 px outside pill_bg (white tinted slate at .90). The PNGs are white and tinted on the TV with evas_object_color_set;
+   here the picture is a 9-slice mask (-webkit-mask-box-image) over the tint. 47/49/35 instead of 48/50/36: the PNGs have no middle pixel to stretch.
+   --r is the radius: 40 for panels, half the height for capsules. No box-shadow anywhere. */
+.pnl-rim, .pnl-body, .cap { position: absolute; }
+.pnl-rim { background: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-panel-rim-alpha) * 100%), transparent); -webkit-mask-box-image: url(assets/tuner/pill_rim.png) 49 / calc(var(--r, 40px) + 2px) stretch; }
+.pnl-body { background: color-mix(in srgb, var(--vetro-tv-panel) calc(var(--vetro-tv-panel-alpha) * 100%), transparent); -webkit-mask-box-image: url(assets/tuner/pill_bg.png) 47 / var(--r, 40px) stretch; }
+/* the one focus: pill_cap tinted ice at .96 (text on it: .ink); a resting Channel pad key: the same capsule in white at .14 */
+.cap { background: color-mix(in srgb, var(--vetro-tv-focus-fill) calc(var(--vetro-tv-focus-alpha) * 100%), transparent); -webkit-mask-box-image: url(assets/tuner/pill_cap.png) 35 / var(--r, 36px) stretch; }
+.cap.rest { background: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-key-rest) * 100%), transparent); }
+.donechip { position: absolute; background: color-mix(in srgb, var(--vetro-tv-panel) calc(var(--vetro-tv-panel-alpha) * 100%), transparent); -webkit-mask-box-image: url(assets/dock/pill_chip.png) 25 / var(--r, 26px) stretch; }
+.t.ink { color: var(--vetro-tv-focus-ink); text-shadow: none; }
+/* the veil: veil_corner.png stretched from the bottom-left corner (already #111B2A; the object's alpha is the token) */
+.veil { position: absolute; background: url(assets/tuner/veil_corner.png) 0 0 / 100% 100% no-repeat; pointer-events: none; }
+/* text on the veil: line box = font size (the mock-up's tops), white with the halo (the EVAS soft shadow under the letters) */
+.t.v { line-height: 1; overflow: visible; text-shadow: 0 0 10px rgba(0, 0, 0, var(--vetro-tv-halo-alpha)), 0 1px 2px rgba(0, 0, 0, .45); }
+.t.v.muted { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-veil-text-muted) * 100%), transparent); }
+.t.v.title { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-veil-text-title) * 100%), transparent); }
+.t.v.faint { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-veil-text-faint) * 100%), transparent); }
+.t.l1 { line-height: 1; }
+.w200 { font-weight: 200; } .w600 { font-weight: 600; }
+/* progress: the track (bar.png, white .22) and the Luce progress with its head (progress.png, 32 high, head = the right 32 px) */
+.trk { position: absolute; height: 6px; border-style: solid; border-width: 0 3px; border-image: url(assets/tuner/bar.png) 0 3 fill / 0 3px stretch; opacity: var(--vetro-tv-track); }
+.prg { position: absolute; height: 32px; border-style: solid; border-width: 0 32px 0 4px; border-image: url(assets/tuner/progress.png) 0 32 0 4 fill / 0 32px 0 4px stretch; }
+/* EPG cells: pill.png (white, radius 20, slice 24) at the cell's alpha; no information adds hatch.png; the focus is the same shape in ice */
+.cell { position: absolute; border-style: solid; border-width: 24px; border-image: url(assets/tuner/pill.png) 24 fill / 24px stretch; }
+.cell.focus { border: 0; background: color-mix(in srgb, var(--vetro-tv-focus-fill) calc(var(--vetro-tv-focus-alpha) * 100%), transparent); -webkit-mask-box-image: url(assets/tuner/pill.png) 24 / 24px stretch; }
+.hatch { position: absolute; background: url(assets/tuner/hatch.png) repeat; }
+/* index.html shows the screens scaled to about half: there the 9-slice masks leave seams, so the same shapes are drawn with border-radius
+   (same radius, same tint). The full-screen pages keep the real pictures. */
+.tv-stage .pnl-body, .tv-stage .cap, .tv-stage .donechip, .tv-stage .cell.focus { -webkit-mask-box-image: none; border-radius: var(--r, 40px); }
+.tv-stage .cell.focus { border-radius: var(--vetro-tv-cell-radius); }
+.tv-stage .pnl-rim { -webkit-mask-box-image: none; border-radius: calc(var(--r, 40px) + 2px); }
+.tv-stage .pnl-rim { background: transparent; border: var(--vetro-tv-panel-rim-w) solid color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-panel-rim-alpha) * 100%), transparent); }
+.tv-stage .cell:not(.focus) { border: 0; border-image: none; border-radius: var(--vetro-tv-cell-radius); background: #fff; }

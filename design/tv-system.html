@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="it" data-bd="video">
+<head>
+<meta charset="utf-8">
+<title>Vetro · TV system · mock-up</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="tv-common.css">
+<script>try{if(/[?&]theme=old/.test(location.search))document.documentElement.setAttribute('data-theme','old');}catch(e){}</script>
+<style>
+  /* FUMÉ proposal (owner, 2026-11-08), mock only */
+  :root { --vetro-tv-sheet: #243448; --vetro-tv-sheet-alpha: 1; --vetro-tv-sheet-radius: 16px; --vetro-tv-chip-radius: 12px; --vetro-tv-fill-rest: .20; --vetro-tv-ring-color: #E4F2FF; --vetro-tv-light: #A5D8FF; --vetro-tv-volume-alpha: .90; --vetro-tv-guide-alpha: .95; --vetro-tv-fill-onair: .26; --vetro-tv-fill-select: .30; --vetro-tv-fill-focus: .26; --vetro-tv-fill-key-focus: .26; --vetro-tv-text-faint: .55; }
+  /* proposed token values, applied to the mock only (tokens.css untouched) */
+  /* BEFORE: the values the TV used before the Fumé port (?theme=old): slate sheet, radius 24/16, white focus and progress, margins 48/80 */
+  :root[data-theme="old"] { --vetro-tv-sheet: #2a3346; --vetro-tv-sheet-alpha: .98; --vetro-tv-sheet-radius: 24px; --vetro-tv-chip-radius: 16px; --vetro-tv-fill-rest: .094; --vetro-tv-fill-onair: .149; --vetro-tv-fill-select: .173; --vetro-tv-fill-key-focus: .22; --vetro-tv-fill-focus: .235; --vetro-tv-text-faint: .47; --vetro-tv-ring-color: #ffffff; --vetro-tv-light: #ebebeb; --vetro-tv-volume-alpha: .84; --vetro-tv-guide-alpha: .98; --vetro-tv-banner-bottom: 1000px; --vetro-tv-list-x: 1296px; --vetro-tv-pad-pad: 38px; --vetro-tv-toast-y: 80px; }
+
+  :root { --vetro-tv-banner-bottom: 984px; --vetro-tv-list-x: 1284px; --vetro-tv-pad-pad: 34px; --vetro-tv-toast-y: 96px; }
+  /* The page around the mock-ups (not part of the TV). tv-common.css draws the canvas pieces: .sheet .fill .ring .t .rule. */
+  html, body { height: auto; overflow: auto; background: var(--vetro-bg); }
+  body { margin: 0; color: var(--vetro-text); font: 16px/1.5 var(--vetro-font); padding: 0 24px 96px; }
+  main { max-width: 1320px; margin: 0 auto; }
+  h1 { font-size: 2rem; margin: 40px 0 4px; font-weight: 500; letter-spacing: -.02em; }
+  h2 { font-size: 1.4rem; margin: 56px 0 6px; font-weight: 500; }
+  h3 { font-size: 1rem; margin: 24px 0 6px; font-weight: 500; }
+  p, li { color: var(--vetro-text-muted); max-width: 78ch; }
+  code { font: .86em var(--vetro-font-mono); color: var(--vetro-link); }
+  table { border-collapse: collapse; font-size: .85rem; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid var(--vetro-border); padding: 6px 10px; text-align: left; }
+  th { background: var(--vetro-surface); font-weight: 500; }
+  td.bad { color: #ef8a80; } td.ok { color: #7fcba0; } td.mid { color: #e2b867; }
+  .row { display: grid; gap: 16px; }
+  .cell { box-sizing: content-box; position: relative; overflow: hidden; border-radius: 12px; border: 1px solid var(--vetro-border); }
+  .cell > .tv-canvas { position: absolute; transform-origin: 0 0; }
+  .cell small { position: absolute; left: 6px; bottom: 4px; z-index: 5; font: 11px/1.2 var(--vetro-font); color: #fff; background: rgba(0,0,0,.55); padding: 2px 6px; border-radius: 6px; }
+  .tv-canvas { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bd); font-family: var(--vetro-tv-font); font-weight: var(--vetro-tv-weight); color: var(--vetro-tv-ink); }
+  .big { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 12px; border: 1px solid var(--vetro-border); }
+  .big > .tv-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .switch { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .switch button { font: inherit; font-size: .85rem; color: var(--vetro-text); background: transparent; border: 1px solid var(--vetro-border); border-radius: 8px; padding: 6px 12px; cursor: pointer; min-height: 36px; }
+  .switch button[aria-pressed="true"] { background: var(--vetro-action); border-color: var(--vetro-action); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: .8rem; color: var(--vetro-text-muted); margin: 6px 0 12px; }
+  /* canvas backdrops: video, black, light, mid, blue, red, fine checker, thin stripes (text-like density) */
+  [data-bd="video"] { --bd: radial-gradient(ellipse 30% 40% at 18% 30%, #6b5a46 0%, transparent 70%), radial-gradient(ellipse 26% 36% at 82% 24%, #b58a4c 0%, transparent 65%), radial-gradient(ellipse 40% 30% at 55% 85%, #2e4a63 0%, transparent 70%), linear-gradient(160deg, #1b2230 0%, #0d1118 55%, #202a38 100%); }
+  [data-bd="black"] { --bd: #000; }
+  [data-bd="light"] { --bd: linear-gradient(160deg, #f2f2ee 0%, #cfd6df 100%); }
+  [data-bd="mid"] { --bd: #808080; }
+  [data-bd="blue"] { --bd: #0b5cff; }
+  [data-bd="red"] { --bd: #e04a2a; }
+  [data-bd="checker"] { --bd: conic-gradient(#fff 25%, #000 0 50%, #fff 0 75%, #000 0) 0 0 / 32px 32px; }
+  [data-bd="stripes"] { --bd: repeating-linear-gradient(0deg, #f4f4f4 0 5px, #1a1a1a 5px 10px); }
+  /* pieces of the existing screens (same rules as index.html) */
+  .app { position: absolute; border-radius: var(--vetro-tv-dock-icon-radius); display: grid; place-items: center; font-size: 34px; color: #fff; opacity: var(--vetro-tv-dock-icon-dim); box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff calc(var(--vetro-tv-dock-icon-rim) * 100%), transparent); }
+  .app.on { opacity: 1; transform: translateY(calc(var(--vetro-tv-dock-lift) * -1)); box-shadow: 0 0 0 var(--vetro-tv-ring-w) var(--vetro-tv-ring-color), 0 0 calc(var(--vetro-tv-dock-glow-spread) * 1.95) color-mix(in srgb, var(--c) calc(var(--vetro-tv-dock-glow) * 100%), transparent); }
+  .pill { position: absolute; display: grid; place-items: center; border-radius: 999px; border: 2px solid color-mix(in srgb, #fff calc(var(--vetro-tv-dock-pill-border) * 100%), transparent); font-size: var(--vetro-tv-type-caption); opacity: var(--vetro-tv-dock-pill-dim); }
+  .bar-track { position: absolute; height: 6px; border-radius: 3px; }
+  .key { position: absolute; display: grid; place-items: center; font-size: var(--vetro-tv-type-title); }
+  .key.w { font-size: var(--vetro-tv-type-body); }
+  .kb { display: grid; place-items: center; }
+
+  /* ---- TV pieces drawn here (HTML stand-ins for the baked pictures) ---- */
+  .ic { position: absolute; display: block; }
+  .ic svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+  .cap { position: absolute; border-radius: 999px; }
+  .wrap { position: absolute; white-space: normal; line-height: 1.22; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; }
+  .logo { position: absolute; background: url(icon-reference.png) center/cover; }
+  .tile-sw { position: absolute; border-radius: 999px; }
+  .tile-knob { position: absolute; border-radius: 50%; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Vetro · TV system</h1>
+  <p>Mock-up di lavoro per uniformare le superfici della TV: <b>pillola volume</b>, <b>OSD</b> (avvisi) e <b>schermata di Vetro sulla TV</b> (<code>app/index.html</code>). Nessun codice nativo toccato: ogni elemento è disegnato qui con i token <code>--vetro-tv-*</code> e icone Phosphor (regular). Tutto quello che si muove è solo opacità/posizione; ombre, bordi e riempimenti sono "pittura" già cotta, come sulla TV (vedi <code>DESIGN.md</code> › Performance first).</p>
+
+  <h2>Regole che applico a tutto</h2>
+  <table>
+    <tr><th>Cosa</th><th>Valore</th><th>Perché</th></tr>
+    <tr><td>Materia</td><td>foglio ardesia <code>#2A3346</code> al 98%, bordo bianco 22% da 2 px</td><td>È la materia già provata su dock, banner, lista, tastierino, guida.</td></tr>
+    <tr><td>Raggi</td><td><b>24</b> fogli · <b>16</b> chip, tasti, ring, riquadri interni · cerchio pieno solo per interruttore e per le tracce</td><td>Oggi tra pagina TV (12/16/999), pillola (48) e fogli (24) ci sono 5 raggi diversi.</td></tr>
+    <tr><td>Inchiostro</td><td>bianco 100 / 70 / 47%</td><td>Gerarchia per opacità; i colori restano a icone di stato e al blu delle varianti B.</td></tr>
+    <tr><td>Icone</td><td>Phosphor <i>regular</i>, 40 px in chip da 64 · 28 px nei chip piccoli</td><td>Un solo tratto e peso, come tastierino e volume (<code>dock/tools/render-glyphs.cjs</code>).</td></tr>
+    <tr><td>Stato</td><td>sempre icona + parola, mai solo colore</td><td>Distanza di lettura 3 m; leggibile anche in scala di grigi.</td></tr>
+    <tr><td>Testo</td><td>minimo 22 px, 24 px per descrizioni, 30+ per titoli</td><td>Soglie già nei token.</td></tr>
+    <tr><td>Costo</td><td>niente blur, niente gradienti animati; max circa 80 oggetti per schermata</td><td>Budget 200 oggetti; la pagina TV è HTML ma gira nel browser Tizen: solo superfici piene, nessun <code>backdrop-filter</code>.</td></tr>
+  </table>
+
+  <h2>Sfondi di prova</h2>
+  <p>Otto sfondi per misurare la leggibilità: <b>video</b> caldo (immagine tipica), <b>black</b>, <b>light</b> (neve, partita di calcio), <b>mid</b> grigio, <b>blue</b> e <b>red</b> saturi (loghi, intermezzi), <b>checker</b> (alta densità, 32 px), <b>stripes</b> (densità da testo: righe da 5 px, l'ostacolo peggiore per bordi e testo piccolo).</p>
+  <div class="switch" id="bdswitch"></div>
+
+  <h2>1 · Pillola volume</h2>
+  <p>A = quella che c'è oggi (capsula 96 px, raggio 48, traccia a capsula). B = <b>foglio</b> raggio 24 come tutto il resto, traccia raggio 16, valore numerico in alto. C = barra <b>orizzontale</b> in alto al centro (libera da dock e banner, che stanno in basso), per chi trova il lato sinistro troppo distante dal divano.</p>
+  <div class="big" id="big-vol"></div>
+  <h3>Livelli (muto · 8 · 35 · 62 · 100) su ogni sfondo</h3>
+  <div id="m-vol"></div>
+
+  <h2>2 · OSD (avvisi in alto a destra)</h2>
+  <p>A = oggi: una riga di testo. B = icona in chip 56 px (raggio 16) + testo; l'icona dice lo stato (spunta, avviso, errore). C = come B ma con seconda riga di spiegazione (azioni di Vetro: "Launcher on" + cosa cambia).</p>
+  <div class="big" id="big-osd"></div>
+  <div id="m-osd"></div>
+
+  <h2>3 · Schermata di Vetro sulla TV</h2>
+  <p>Oggi la pagina usa il "web look" (navy <code>#101c35</code>, bordo 2 px <code>#344360</code>, raggi 12/16/999, ombra nessuna). Le due varianti sotto la riscrivono con la materia nativa: <b>A · Ardesia</b> è monocroma (bianco su ardesia, anello bianco, come dock e tuner); <b>B · Ardesia + Cobalto</b> aggiunge il blu del marchio solo dove c'è un'azione: interruttore acceso, anello del focus, riquadro selezionato.</p>
+  <div class="switch" id="idxswitch"></div>
+  <div class="big" id="big-idx"></div>
+  <h3>Su tutti gli sfondi</h3>
+  <div id="m-idx"></div>
+
+  <h2>4 · Le altre schermate (dock, banner, lista, tastierino, guida/EPG)</h2>
+  <p>Quelle già nel sistema, riprese tali e quali da <code>index.html</code> e messe sugli stessi otto sfondi, per vedere se materia, raggi e inchiostro tengono anche fuori dal video. Sono la base su cui pillola, OSD e pagina Vetro si allineano.</p>
+  <div id="m-all"></div>
+
+  <h2>Contrasti misurati</h2>
+  <p>Calcolati dalla pagina con la formula WCAG (luminanza relativa). "Foglio vs sfondo" è il rapporto fra il foglio e la luminanza dello sfondo nel punto peggiore; "bordo vs sfondo" usa il bordo bianco al 22% (mescolato sul foglio). Sotto 3:1 il bordo da solo non tiene il margine e serve l'ombra.</p>
+  <div id="contrast"></div>
+
+  <h2>Note e decisioni da approvare</h2>
+  <ul id="notes"></ul>
+</main>
+
+<script src="tv-system-icons.js"></script>
+<script src="tv-screens.js"></script>
+<script>
+(function () {
+  'use strict';
+  var root = document.documentElement, cs = getComputedStyle(root);
+  function tok(n) { return cs.getPropertyValue(n).trim(); }
+  function px(n) { return parseFloat(tok(n)); }
+  var OLD = document.documentElement.getAttribute('data-theme') === 'old', TOPM = OLD ? 80 : 96;
+  var R_SHEET = px('--vetro-tv-sheet-radius'), R_CHIP = px('--vetro-tv-chip-radius'), FILL = px('--vetro-tv-fill-rest'), LIGHT = tok('--vetro-tv-light'), VOLA = px('--vetro-tv-volume-alpha') * 100;
+  var INK = function (a) { return 'rgba(255,255,255,' + a + ')'; };
+  var T_MUTED = px('--vetro-tv-text-muted'), T_FAINT = px('--vetro-tv-text-faint');
+  var BD = ['video', 'black', 'light', 'mid', 'blue', 'red', 'checker', 'stripes'];
+
+  /* ---------- tiny drawing helpers on a 1920x1080 canvas ---------- */
+  function mk(parent, cls, x, y, w, h, css) {
+    var e = document.createElement('div'); e.className = cls; e.style.left = x + 'px'; e.style.top = y + 'px';
+    if (w != null) e.style.width = w + 'px'; if (h != null) e.style.height = h + 'px';
+    if (css) for (var k in css) e.style.setProperty(k, css[k]);
+    parent.appendChild(e); return e;
+  }
+  function sheet(c, x, y, w, h, r) { var e = mk(c, 'sheet', x, y, w, h); if (r) e.style.borderRadius = r + 'px'; return e; }
+  function fill(c, x, y, w, h, a, r, color) { return mk(c, 'fill', x, y, w, h, { '--a': a, 'border-radius': (r == null ? R_CHIP : r) + 'px', 'background': color || '' }); }
+  function ring(c, x, y, w, h, r, color) { return mk(c, 'ring', x, y, w, h, { 'border-radius': (r == null ? R_CHIP : r) + 'px', 'border-color': color || '#fff' }); }
+  function text(c, s, x, y, size, kind, w, right) {
+    var e = mk(c, 't' + (kind ? ' ' + kind : '') + (right ? ' r' : ''), right ? x - w : x, y, w, null, { 'font-size': size + 'px' });
+    e.textContent = s; return e;
+  }
+  function wrap(c, s, x, y, w, size, lines, alpha) {
+    var e = mk(c, 'wrap', x, y, w, Math.round(size * 1.22 * lines), { 'font-size': size + 'px', '-webkit-line-clamp': lines, color: INK(alpha == null ? T_MUTED : alpha) });
+    e.textContent = s; return e;
+  }
+  function icon(c, name, x, y, size, color, alpha) {
+    var e = mk(c, 'ic', x, y, size, size, { color: color || '#fff', opacity: alpha == null ? 1 : alpha });
+    e.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true">' + PH[name] + '</svg>'; return e;
+  }
+  var OK = '#7fcba0', WARN = '#e2b867', BAD = '#ef8a80', LINK = '#8fbaff', BLUE = '#1674fb';
+
+  /* ---------- 1 · volume pill ---------- */
+  var TRACK = px('--vetro-tv-track');
+  var SPK = function (v, muted) { return muted || v <= 0 ? 'speaker-simple-slash' : v < 40 ? 'speaker-simple-low' : 'speaker-simple-high'; };
+  /* soft pill, one component, 4 positions: capsule sheet + capsule track that fills in white + speaker icon + number */
+  function softPill(c, pos, v, muted) {
+    var vert = pos === 'left' || pos === 'right', M = 96, i = 12;
+    var W = vert ? 88 : 640, H = vert ? 480 : 88;
+    var x = pos === 'left' ? M : pos === 'right' ? 1920 - M - W : (1920 - W) / 2;
+    var y = pos === 'top' ? M : pos === 'bottom' ? 1080 - M - H : (1080 - H) / 2;
+    mk(c, 'cap', x - 2, y - 2, W + 4, H + 4, { background: INK(.22) });
+    mk(c, 'cap', x, y, W, H, { background: 'color-mix(in srgb, var(--vetro-tv-sheet) ' + VOLA + '%, transparent)', 'box-shadow': '0 18px 50px rgba(0,0,0,.45)' });
+    var num = muted ? '\u2014' : String(v), nk = muted ? 'faint' : '';
+    if (vert) {
+      var tw = W - 2 * i, ty = y + 56, th = H - 56 - 64 - i, lv = muted ? 0 : Math.round(th * v / 100);
+      text(c, num, x, y + 14, 32, nk, W, false).style.textAlign = 'center';
+      mk(c, 'cap', x + i, ty, tw, th, { background: INK(.16) });
+      if (lv > 0) mk(c, 'cap', x + i, ty + th - Math.max(lv, tw), tw, Math.max(lv, tw), { background: LIGHT });
+      icon(c, SPK(v, muted), x + (W - 40) / 2, y + H - i - 40 - 6, 40, '#fff', .95);
+    } else {
+      var tx = x + 80, th2 = H - 2 * i, tw2 = W - 80 - 100, lv2 = muted ? 0 : Math.round(tw2 * v / 100);
+      icon(c, SPK(v, muted), x + 24, y + (H - 40) / 2, 40, '#fff', .95);
+      mk(c, 'cap', tx, y + i, tw2, th2, { background: INK(.16) });
+      if (lv2 > 0) mk(c, 'cap', tx, y + i, Math.max(lv2, th2), th2, { background: LIGHT });
+      text(c, num, x + W - 28, y + 28, 32, nk, 64, true);
+    }
+  }
+  var VOL = {
+    A: function (c, v, muted) { /* today: capsule 96x360, track capsule 72x264 */
+      var x = 28 + 12, y = (1080 - 400) / 2 + 20, w = 96, h = 360;
+      mk(c, 'cap', x - 2, y - 2, w + 4, h + 4, { background: INK(.22) });
+      mk(c, 'cap', x, y, w, h, { background: 'color-mix(in srgb, var(--vetro-tv-sheet) ' + VOLA + '%, transparent)', 'box-shadow': '0 18px 50px rgba(0,0,0,.45)' });
+      var tx = x + 12, ty = y + 12, tw = 72, th = 264, lv = muted ? 0 : Math.round(th * v / 100);
+      mk(c, 'cap', tx, ty, tw, th, { background: INK(.16) });
+      if (lv > 0) mk(c, 'cap', tx, ty + th - lv, tw, lv, { background: LIGHT, 'border-radius': (lv < 72 ? lv / 2 : 36) + 'px' });
+      icon(c, SPK(v, muted), x + 28, y + 12 + th + 22, 40, '#fff', .95);
+    },
+    B: function (c, v, muted) { /* sheet r24, chip track r16 at the token track alpha, number on top */
+      var x = 96, W = 112, H = 400, y = (1080 - H) / 2;
+      sheet(c, x, y, W, H, R_SHEET);
+      text(c, muted ? '—' : String(v), x, y + 22, 32, muted ? 'faint' : '', W, false).style.textAlign = 'center';
+      var tx = x + 28, tw = 56, ty = y + 76, th = 240, lv = muted ? 0 : Math.round(th * v / 100);
+      fill(c, tx, ty, tw, th, TRACK, R_CHIP);
+      if (lv > 0) { var fh = Math.max(lv, 8); fill(c, tx, ty + th - fh, tw, fh, 1, R_CHIP, LIGHT); }
+      icon(c, SPK(v, muted), x + (W - 40) / 2, y + H - 40 - 22, 40, '#fff', .95);
+    },
+    D: function (c, v, muted) { softPill(c, 'left', v, muted); },
+    E: function (c, v, muted) { softPill(c, 'bottom', v, muted); },
+    F: function (c, v, muted) { softPill(c, 'right', v, muted); },
+    G: function (c, v, muted) { softPill(c, 'top', v, muted); },
+    C: function (c, v, muted) { /* top centre, horizontal: clear of the dock (bottom) and the banner (bottom left) */
+      var W = 580, H = 96, x = (1920 - W) / 2, y = TOPM;
+      sheet(c, x, y, W, H, R_SHEET);
+      icon(c, SPK(v, muted), x + 28, y + 28, 40, '#fff', .95);
+      var tx = x + 96, tw = 332, ty = y + 36, th = 24, lv = muted ? 0 : Math.round(tw * v / 100);
+      fill(c, tx, ty, tw, th, TRACK, 12);
+      if (lv > 0) fill(c, tx, ty, Math.max(lv, 24), th, 1, 12, LIGHT);
+      text(c, muted ? 'Muted' : String(v), x + W - 28, y + 28, 32, muted ? 'faint' : '', 96, true);
+    }
+  };
+
+  /* ---------- 2 · OSD ---------- */
+  var OSD_DATA = {
+    ok: { line: 'Launcher on', sub: 'Home opens Vetro’s launcher', icon: 'check-circle', color: OK },
+    warn: { line: 'Voice assistants partly off', sub: 'Bixby is still running', icon: 'warning', color: WARN },
+    bad: { line: 'Could not apply', sub: 'The TV did not answer', icon: 'x-circle', color: BAD }
+  };
+  var OSD = {
+    A: function (c, kind) { var m = OSD_DATA[kind]; var pad = 32, H = 72, w = 430, right = 1920 - 96, y = TOPM; sheet(c, right - w, y, w, H, R_SHEET); text(c, m.line, right - w + pad, y + 17, 32, '', w - 2 * pad); },
+    B: function (c, kind) {
+      var m = OSD_DATA[kind], H = 96, w = 500, right = 1920 - 96, y = TOPM, x = right - w;
+      sheet(c, x, y, w, H, R_SHEET);
+      fill(c, x + 16, y + 16, 64, 64, FILL, R_CHIP);
+      icon(c, m.icon, x + 28, y + 28, 40, m.color);
+      text(c, m.line, x + 100, y + 29, 32, '', w - 100 - 28);
+    },
+    C: function (c, kind) {
+      var m = OSD_DATA[kind], H = 112, w = 510, right = 1920 - 96, y = TOPM, x = right - w;
+      sheet(c, x, y, w, H, R_SHEET);
+      fill(c, x + 24, y + 24, 64, 64, FILL, R_CHIP);
+      icon(c, m.icon, x + 36, y + 36, 40, m.color);
+      text(c, m.line, x + 112, y + 20, 32, '', w - 112 - 28);
+      text(c, m.sub, x + 112, y + 64, 24, 'muted', w - 112 - 28);
+    }
+  };
+
+  /* ---------- 3 · TV home page ---------- */
+  var TILES = [
+    { id: 'launcher', icon: 'squares-four', title: 'Vetro Launcher', tag: '', desc: 'The Home key opens Vetro’s fast launcher instead of Samsung’s Home.', on: true, val: 'On' },
+    { id: 'ads', icon: 'eye-slash', title: 'Disable ads and viewing data', tag: '', desc: 'Stops the ad players, analytics and the TV’s viewing-data collection.', on: true, val: 'Done' },
+    { id: 'voice', icon: 'microphone-slash', title: 'Disable all voice assistants', tag: 'MIC', desc: 'Alexa, Bixby, Google and voice search. The remote’s mic button stops working.', part: true, val: 'Partly done' },
+    { id: 'update', icon: 'arrow-circle-down', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.', btn: 'Check' },
+    { id: 'tuner', icon: 'television-simple', title: 'Vetro TV Tuner', tag: 'LIVE TV', desc: 'Live TV drawn by Vetro over Samsung’s tuner, which stays installed and is never changed.', on: false, val: 'Off' }
+  ];
+  var DIAG = [['check-circle', OK, 'Service', 'Running'], ['check-circle', OK, 'Root', 'Connected'], ['warning', WARN, 'Voice', 'Partly off'], ['minus-circle', 'rgba(255,255,255,.7)', 'Tuner', 'Off'], ['wifi-high', OK, 'Network', '192.168.1.40']];
+
+  function indexPage(c, variant, focusIdx) {
+    var blue = variant === 'B';
+    var X = 96, RIGHT = 1920 - 96, FW = RIGHT - X;
+    /* every piece of text sits on a sheet: nothing is drawn straight on the picture */
+    var HY = OLD ? 48 : 96, HH = 192;
+    sheet(c, X, HY, FW, HH, R_SHEET);
+    mk(c, 'logo', X + 28, HY + 32, 128, 128, { 'border-radius': R_SHEET + 'px' });
+    text(c, 'Vetro', X + 188, HY + 22, 56, '', 400);
+    text(c, 'Version 0.5.1 · QE55Q80A · firmware 2310.0', X + 188, HY + 90, 26, 'muted', 700);
+    var sw = 256;
+    fill(c, X + 188, HY + 130, sw, 44, FILL, R_CHIP);
+    icon(c, 'warning', X + 188 + 10, HY + 130 + 8, 28, WARN);
+    text(c, 'Mostly working', X + 188 + 48, HY + 130 + 6, 26, '', sw - 60);
+    var DW = 640, DX = RIGHT - 28 - DW, DY = HY + 24, DH = HH - 48;
+    fill(c, DX, DY, DW, DH, FILL, R_CHIP);
+    text(c, 'DASHBOARD', DX + 24, DY + 14, 24, 'faint', 300);
+    text(c, 'PIN', DX + DW - 24 - 190, DY + 14, 24, 'faint', 60);
+    text(c, '482 913', DX + DW - 24, DY + 10, 32, '', 160, true).style.fontFeatureSettings = '"tnum"';
+    var u = text(c, 'http://192.168.1.40:8099', DX + 24, DY + 52, 38, '', DW - 48); u.style.color = '#fff';
+    text(c, 'Open it on a phone or computer on the same network.', DX + 24, DY + 106, 24, 'muted', DW - 48);
+
+    /* section strip: title left, key hints right, on its own sheet */
+    var SY = HY + HH + 16, SH = 64;
+    sheet(c, X, SY, FW, SH, R_SHEET);
+    text(c, 'Quick controls', X + 32, SY + 13, 32, '', 400);
+    var hx = RIGHT - 28;
+    [['Back', 'Close', null], ['OK', 'Switch', null], [null, 'Choose', 1]].forEach(function (h) {
+      var lw = h[1].length * 13 + 8; hx -= lw; text(c, h[1], hx, SY + 17, 24, 'muted', lw);
+      var kw = h[2] ? 88 : (h[0] === 'Back' ? 96 : 72); hx -= kw + 12;
+      var kb = fill(c, hx, SY + 12, kw, 40, FILL, R_CHIP);
+      if (h[2]) { icon(c, 'caret-left', hx + 10, SY + 16, 32, '#fff'); icon(c, 'caret-right', hx + kw - 42, SY + 16, 32, '#fff'); }
+      else { kb.classList.add('kb'); kb.style.fontSize = '24px'; kb.textContent = h[0]; }
+      hx -= 28;
+    });
+
+    /* tiles */
+    var TY = SY + SH + 20, TH = 452, gap = 20, pitch = (FW + gap) / 5, pad = 28;
+    TILES.forEach(function (t, i) {
+      var x = X + Math.round(i * pitch), TW = Math.round((i + 1) * pitch) - Math.round(i * pitch) - gap, foc = i === focusIdx;
+      sheet(c, x, TY, TW, TH, R_SHEET);
+      if (foc) {
+        fill(c, x, TY, TW, TH, FILL, R_SHEET);
+        ring(c, x - 4, TY - 4, TW + 8, TH + 8, R_SHEET + 4);
+      }
+      fill(c, x + pad, TY + pad, 64, 64, foc ? .26 : FILL, R_CHIP);
+      icon(c, t.icon, x + pad + 12, TY + pad + 12, 40, '#fff');
+      if (t.tag) text(c, t.tag, x + TW - pad, TY + pad + 17, 26, 'muted', 140, true);
+      wrap(c, t.title, x + pad, TY + 112, TW - 2 * pad, 30, 2, 1);
+      wrap(c, t.desc, x + pad, TY + 206, TW - 2 * pad, 24, 5, T_MUTED);
+      var fy = TY + TH - pad - 48;
+      if (t.btn) {
+        var bw = 140; fill(c, x + pad, fy, bw, 48, foc ? .26 : FILL, R_CHIP); text(c, t.btn, x + pad, fy + 9, 26, '', bw, false).style.textAlign = 'center';
+      } else {
+        var on = !!t.on, part = !!t.part;
+        var trk = mk(c, 'tile-sw', x + pad, fy, 88, 48, {});
+        var tc = on ? (blue ? LIGHT : INK(.92)) : part ? (blue ? 'rgba(165,216,255,.55)' : INK(.55)) : INK(.22);
+        trk.style.background = tc; trk.style.border = '2px solid ' + (on || part ? 'transparent' : INK(.40));
+        var kn = mk(c, 'tile-knob', x + pad + (on ? 46 : part ? 26 : 6), fy + 6, 36, 36, {});
+        kn.style.background = on ? 'var(--vetro-tv-sheet)' : '#fff'; kn.style.opacity = on || part ? 1 : .7;
+        text(c, t.val, x + pad + 88 + 14, fy + 9, 26, on || part ? '' : 'muted', TW - 2 * pad - 102);
+      }
+    });
+    /* diagnostics strip */
+    var DGY = TY + TH + 24, DGH = 104;
+    sheet(c, X, DGY, FW, DGH, R_SHEET);
+    text(c, 'Diagnostics', X + 32, DGY + 35, 28, '', 200);
+    var cx0 = X + 250, cw = 262;
+    DIAG.forEach(function (d, i) {
+      icon(c, d[0], cx0 + i * cw, DGY + 38, 28, d[1]);
+      text(c, d[2], cx0 + i * cw + 40, DGY + 19, 24, 'faint', cw - 52);
+      text(c, d[3], cx0 + i * cw + 40, DGY + 53, 26, '', cw - 52);
+    });
+    icon(c, 'caret-right', RIGHT - 32 - 28, DGY + 38, 28, '#fff', .7);
+  }
+
+
+  /* ---------- scaffolding: canvases, crops, matrices ---------- */
+  function canvas(draw) { var c = document.createElement('div'); c.className = 'tv-canvas'; draw(c); return c; }
+  function bigStage(host, draw) {
+    host.innerHTML = '';
+    var c = canvas(draw); host.appendChild(c);
+    function fit() { c.style.transform = 'scale(' + host.clientWidth / 1920 + ')'; }
+    fit(); addEventListener('resize', fit);
+  }
+  function cropCell(host, bd, draw, cx, cy, cw, chh, cellW, label) {
+    var cell = document.createElement('div'); cell.className = 'cell'; cell.setAttribute('data-bd', bd);
+    var s = cellW / cw; cell.style.width = cellW + 'px'; cell.style.height = Math.ceil(chh * s) + 'px';
+    var c = canvas(draw); c.style.transform = 'translate(' + (-cx * s) + 'px,' + (-cy * s) + 'px) scale(' + s + ')';
+    cell.appendChild(c); var l = document.createElement('small'); l.textContent = label; cell.appendChild(l);
+    host.appendChild(cell);
+  }
+  function matrix(host, rows, cols, cellW, ratioBox) {
+    host.innerHTML = ''; host.className = 'row'; host.style.gridTemplateColumns = 'repeat(' + cols + ', max-content)';
+    rows.forEach(function (r) { cropCell(host, r.bd, r.draw, r.x, r.y, r.w, r.h, cellW, r.label); });
+  }
+
+  /* backdrop switch */
+  var cur = 'video'; try { cur = localStorage.getItem('vetro-bd2') || cur; } catch (e) {}
+  function setBd(n) { cur = n; try { localStorage.setItem('vetro-bd2', n); } catch (e) {} document.querySelectorAll('.big').forEach(function (b) { b.setAttribute('data-bd', n); }); document.querySelectorAll('#bdswitch button').forEach(function (b) { b.setAttribute('aria-pressed', b.textContent === n); }); }
+  var sw = document.getElementById('bdswitch');
+  BD.forEach(function (n) { var b = document.createElement('button'); b.type = 'button'; b.textContent = n; b.onclick = function () { setBd(n); }; sw.appendChild(b); });
+
+  /* 1 volume */
+    function drawBigVol() {
+    bigStage(document.getElementById('big-vol'), function (c) {
+      /* three variants shown at once on the one frame: A left, B middle... no: they sit in different places, so draw A and B stacked side by side by shifting canvases */
+      VOL.A(c, 62, false);
+      var g = document.createElement('div'); g.style.cssText = 'position:absolute;left:380px;top:0;width:1px;height:1px'; c.appendChild(g); VOL.B(g, 62, false);
+      VOL.C(c, 62, false);
+      text(c, 'A · today', 40, 160, 24, 'muted', 200); text(c, 'B · sheet', 420, 160, 24, 'muted', 200); text(c, 'C · bar', 640, 800, 24, 'muted', 200);
+    });
+    document.getElementById('big-vol').setAttribute('data-bd', cur);
+  }
+  drawBigVol();
+  var mv = document.getElementById('m-vol'); mv.className = '';
+  [['A', 'A · capsule (today)'], ['B', 'B · sheet r24'], ['C', 'C · bar'], ['D', 'D · soft pill, left (also right)'], ['E', 'E · soft pill, bottom (also top)']].forEach(function (v) {
+    var h = document.createElement('h3'); h.textContent = v[1]; mv.appendChild(h);
+    var box = document.createElement('div'); mv.appendChild(box);
+    var rows = [];
+    BD.forEach(function (bd) {
+      [['muted', 0, true], ['8', 8, false], ['35', 35, false], ['62', 62, false], ['100', 100, false]].forEach(function (lv) {
+        if ((v[0] === 'C' || v[0] === 'E') && lv[0] !== '62' && lv[0] !== 'muted') return;
+        rows.push({ bd: bd, label: bd + ' · ' + lv[0], draw: function (c) { VOL[v[0]](c, lv[1], lv[2]); },
+                    x: v[0] === 'C' ? 670 : v[0] === 'E' ? 640 : v[0] === 'B' ? 70 : 0, y: v[0] === 'C' ? 60 : v[0] === 'E' ? 880 : 280, w: v[0] === 'C' ? 580 : v[0] === 'E' ? 640 : 180, h: v[0] === 'C' ? 140 : v[0] === 'E' ? 120 : 520 });
+      });
+    });
+    box.style.cssText = 'display:grid;gap:10px;grid-template-columns:repeat(' + (v[0] === 'C' || v[0] === 'E' ? 4 : 5) + ',max-content)';
+    rows.forEach(function (r) { cropCell(box, r.bd, r.draw, r.x, r.y, r.w, r.h, v[0] === 'C' || v[0] === 'E' ? 280 : 120, r.label); });
+  });
+
+  /* 2 OSD */
+  function drawBigOsd() {
+    bigStage(document.getElementById('big-osd'), function (c) {
+      ['A', 'B', 'C'].forEach(function (v, i) {
+        var g = document.createElement('div'); g.style.cssText = 'position:absolute;left:0;top:' + (i * 190) + 'px;width:1px;height:1px'; c.appendChild(g);
+        OSD[v](g, i === 0 ? 'ok' : i === 1 ? 'warn' : 'bad');
+      });
+    });
+    document.getElementById('big-osd').setAttribute('data-bd', cur);
+  }
+  drawBigOsd();
+  var mo = document.getElementById('m-osd'); mo.style.cssText = 'display:grid;gap:10px;grid-template-columns:repeat(4,max-content);margin-top:12px';
+  ['A', 'B', 'C'].forEach(function (v) {
+    BD.forEach(function (bd, i) {
+      var kind = 'warn';
+      cropCell(mo, bd, function (c) { OSD[v](c, kind); }, 1000, 60, 840, 170, 300, v + ' · ' + bd + ' · ' + kind);
+    });
+  });
+
+  /* 3 index */
+  var idxVar = 'A'; try { idxVar = localStorage.getItem('vetro-idx') || idxVar; } catch (e) {}
+  var isw = document.getElementById('idxswitch');
+  [['A', 'A · Ardesia'], ['B', 'B · Ardesia + Cobalto']].forEach(function (v) { var b = document.createElement('button'); b.type = 'button'; b.textContent = v[1]; b.dataset.v = v[0]; b.onclick = function () { idxVar = v[0]; try { localStorage.setItem('vetro-idx', v[0]); } catch (e) {} drawBigIdx(); }; isw.appendChild(b); });
+  function drawBigIdx() {
+    isw.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.v === idxVar); });
+    bigStage(document.getElementById('big-idx'), function (c) { indexPage(c, idxVar, 1); });
+    document.getElementById('big-idx').setAttribute('data-bd', cur);
+  }
+  drawBigIdx();
+  var mi = document.getElementById('m-idx'); mi.style.cssText = 'display:grid;gap:10px;grid-template-columns:repeat(3,max-content)';
+  ['A', 'B'].forEach(function (v) {
+    BD.forEach(function (bd) { cropCell(mi, bd, function (c) { indexPage(c, v, 1); }, 0, 0, 1920, 1080, 410, v + ' · ' + bd); });
+  });
+  /* 4 the other screens */
+  var SCR = makeScreens(mk, text, sheet, fill, ring, px, tok);
+  var ma = document.getElementById('m-all');
+  [['dock', 'Dock', 200, 780, 1520, 300], ['banner', 'Tuner · banner', 60, 760, 840, 260], ['list', 'Tuner · lista canali', 1260, 80, 620, 820], ['pad', 'Tuner · tastierino', 1260, 80, 620, 700], ['toast', 'OSD attuale (toast)', 1000, 60, 840, 170], ['guide', 'Guida TV (EPG)', 40, 40, 1840, 1000]].forEach(function (s) {
+    var h3 = document.createElement('h3'); h3.textContent = s[1]; ma.appendChild(h3);
+    var box = document.createElement('div'); box.style.cssText = 'display:grid;gap:10px;grid-template-columns:repeat(' + (s[0] === 'list' || s[0] === 'pad' ? 4 : s[0] === 'guide' ? 2 : 3) + ',max-content)'; ma.appendChild(box);
+    var cw = s[0] === 'list' || s[0] === 'pad' ? 290 : s[0] === 'guide' ? 600 : 400;
+    BD.forEach(function (bd) { cropCell(box, bd, function (c) { SCR[s[0]](c); }, s[2], s[3], s[4], s[5], cw, s[1] + ' · ' + bd); });
+  });
+  setBd(cur);
+
+  /* ---------- contrast table ---------- */
+  function lin(u) { u /= 255; return u <= .03928 ? u / 12.92 : Math.pow((u + .055) / 1.055, 2.4); }
+  function lum(r, g, b) { return .2126 * lin(r) + .7152 * lin(g) + .0722 * lin(b); }
+  function hex(h) { return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16)]; }
+  function ratio(a, b) { var hi = Math.max(a, b), lo = Math.min(a, b); return (hi + .05) / (lo + .05); }
+  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
+  var sheetC = hex(tok('--vetro-tv-sheet')), white = [255, 255, 255], SA = px('--vetro-tv-sheet-alpha'), BA = px('--vetro-tv-sheet-border-alpha');
+  var LL = lum.apply(null, sheetC);
+  var muted = mix(sheetC, white, T_MUTED), faint = mix(sheetC, white, T_FAINT);
+  var border = mix(sheetC, white, BA);
+  var BDL = { video: ['#0d1118', '#1b2230', '#202a38', '#2e4a63', '#6b5a46', '#b58a4c'], black: ['#000000'], light: ['#cfd6df', '#f2f2ee'], mid: ['#808080'], blue: ['#0b5cff'], red: ['#e04a2a'], checker: ['#000000', '#ffffff'], stripes: ['#1a1a1a', '#f4f4f4'] };
+  var onFill = mix(sheetC, white, px('--vetro-tv-fill-rest')), fainterFill = mix(onFill, white, T_FAINT);
+  var h = '<table><tr><th>Testo</th><th>Rapporto</th><th>Soglia</th></tr>';
+  [['Bianco 100% sul foglio', white, LL, 4.5], ['Bianco 70% (muted) sul foglio', muted, LL, 4.5], ['Bianco faint (token) sul foglio', faint, LL, 3], ['Bianco faint (token) su un chip di riposo (fill-rest)', fainterFill, lum.apply(null, onFill), 3], ['Bianco 70% (muted) su chip di riposo', mix(onFill, white, T_MUTED), lum.apply(null, onFill), 4.5], ['Bianco 70% (muted) su chip a fuoco (fill-focus)', mix(mix(sheetC, white, px('--vetro-tv-fill-focus')), white, T_MUTED), lum.apply(null, mix(sheetC, white, px('--vetro-tv-fill-focus'))), 4.5], ['Bianco faint su chip a fuoco (fill-focus)', mix(mix(sheetC, white, px('--vetro-tv-fill-focus')), white, T_FAINT), lum.apply(null, mix(sheetC, white, px('--vetro-tv-fill-focus'))), 4.5], ['Anello ghiaccio #E4F2FF sul foglio (non testo)', hex('#E4F2FF'), LL, 3], ['Luce #A5D8FF sulla traccia del volume (indicatore)', hex('#A5D8FF'), lum.apply(null, mix(sheetC, white, px('--vetro-tv-track'))), 3], ['Luce #A5D8FF sul foglio (indicatore)', hex('#A5D8FF'), LL, 3]].forEach(function (t) {
+    var r = ratio(lum.apply(null, t[1]), t[2]); h += '<tr><td>' + t[0] + '</td><td class="' + (r >= t[3] ? 'ok' : 'bad') + '">' + r.toFixed(2) + ' : 1</td><td>' + t[3] + ' : 1' + (t[3] === 3 ? ' (3:1: testo da 24 px o elemento grafico)' : ' (testo regolare sotto 24 px)') + '</td></tr>';
+  });
+  h += '</table><p>Il foglio è al 98%: i valori sotto mescolano foglio e sfondo (compositing), per ogni colore campione dello sfondo; si mostra il caso peggiore. Per il video sono campionati sei colori del gradiente, ma un frame reale può avere tutti i valori: i numeri sono indicativi, la prova vera è sulla TV.</p><table><tr><th>Sfondo</th><th>Foglio vs sfondo (peggiore)</th><th>Bordo vs sfondo (peggiore)</th><th>Verdetto</th></tr>';
+  BD.forEach(function (n) {
+    var rs = 99, rb = 99, lb = lum.apply(null, border);
+    BDL[n].forEach(function (c) { var bg = hex(c), sh = mix(bg, sheetC, SA), bo = mix(sh, white, BA), lbg = lum.apply(null, bg); rs = Math.min(rs, ratio(lum.apply(null, sh), lbg)); rb = Math.min(rb, ratio(lum.apply(null, bo), lbg)); });
+    var v = rb >= 3 ? 'bordo basta' : rs >= 3 ? 'foglio basta' : 'né foglio né bordo arrivano a 3:1 nel punto peggiore: ombra necessaria, non misurata qui';
+    h += '<tr><td>' + n + '</td><td class="' + (rs >= 3 ? 'ok' : rs >= 1.5 ? 'mid' : 'bad') + '">' + rs.toFixed(2) + ' : 1</td><td class="' + (rb >= 3 ? 'ok' : rb >= 1.5 ? 'mid' : 'bad') + '">' + rb.toFixed(2) + ' : 1</td><td>' + v + '</td></tr>';
+  });
+  h += '</table>';
+  document.getElementById('contrast').innerHTML = h;
+
+  var cnt = (function () { var c = document.createElement('div'); c.className = 'tv-canvas'; indexPage(c, 'A', 1); document.body.appendChild(c); var n = c.querySelectorAll('*').length, t = c.querySelectorAll('.t,.wrap').length; c.remove(); return [n, t]; })();
+  document.getElementById('notes').innerHTML =
+    '<li><b>Pillola volume:</b> consiglio <b>B</b> (stesso foglio r24, traccia r16, numero visibile da lontano, a sinistra come oggi). C è spostata in alto al centro perché in basso invadeva dock e banner.</li>' +
+    '<li><b>OSD:</b> consiglio <b>B</b> per gli avvisi brevi (icona di stato + frase, chip 64/icona 40 come ovunque); <b>C</b> solo per azioni di Vetro che cambiano qualcosa sulla TV. <b>A</b> (oggi) tronca le frasi lunghe: la larghezza va calcolata sul testo.</li>' +
+    '<li><b>Pagina Vetro:</b> <b>A</b> è la più coerente con dock e tuner (nessun accento). <b>B</b> introduce il blu del marchio su focus, interruttori e indirizzo: è un\'<b>eccezione</b> a "TV: niente accento" in DESIGN.md e va approvata esplicitamente; su sfondo blu perde forza (vedi griglia).</li>' +
+    '<li><b>Tutto il testo sta su un foglio</b> (titolo sezione e suggerimenti compresi): il testo scoperto era illeggibile su light, mid e stripes (revisione GPT 6.1 Sol).</li>' +
+    '<li><b>Stato coerente:</b> con "Voice" parziale l\'intestazione dice "Mostly working" con icona di avviso; il tile dice "Partly done" come da regola DESIGN.md.</li>' +
+    '<li><b>Faint al 47%</b> regge 3:1 (testo da 24 px) ma non 4,5:1: sotto 24 px (guida e dock usano 22) serve il <b>55%</b> o testo più grande; l\'icona resta com\'è.</li>' +
+    '<li><b>Titoli su due righe e descrizioni su cinque</b> nei tile: DESIGN.md ammette il ritorno a capo solo nella guida. Da decidere: accorciare i testi in inglese (consigliato) o ammettere l\'eccezione per i tile.</li>' +
+    '<li><b>Oggetti:</b> la pagina A conta ' + cnt[0] + ' elementi DOM (' + cnt[1] + ' testi). Sulla TV la pagina è HTML nel browser Tizen: nessun blur, nessuna animazione tranne lo spinner esistente; l\'ombra del foglio va omessa o statica.</li>' +
+    '<li><b>Font:</b> qui è il fallback di sistema, non SamsungOneUI: i troncamenti vanno riverificati sulla TV.</li>' +
+    '<li><b>Icone:</b> solo Phosphor regular; 40 px nei chip da 64, 28 px nei chip piccoli e nello stato; i tasti ◀ ▶ ora sono caret Phosphor.</li>' +
+    '<li><b>Da decidere sulle schermate esistenti (token nativi, non toccati):</b> lista e tastierino finiscono a x=1836 (margine 84) invece di 1824 (96, come banner, toast e pagina Vetro): <code>--vetro-tv-list-x</code> 1296 → 1284. Il tastierino ha margini interni 38 a sinistra e 30 a destra (3 tasti da 148 + 2 gap da 14 = 472 in un foglio da 540 con pad 38): tasti 144 e pad 40 li rendono simmetrici. Il dock sta a 40 px dal bordo basso (gli altri 96). Testi della guida e del dock a 20-22 px con inchiostro al 47%: troppo piccoli e deboli a 3 m.</li>' +
+    '<li>Verifica indipendente: GPT 6.1 Sol (medium) ha rivisto la prima versione; ho applicato le correzioni sopra.</li>';
+
+  /* ?shot=idx-A|idx-B|vol-A|vol-B|vol-C|osd-A|osd-B|osd-C|dock|banner|list|pad|toast|guide  &bd=video|black|...  : one bare 1920x1080 frame, for review */
+  (function () {
+    var q = new URLSearchParams(location.search), sh = q.get('shot'); if (!sh || !/^(idx-[AB]|vol-[A-G]|osd-[ABC]|dock|banner|list|pad|toast|guide)$/.test(sh)) return;
+    var p = sh.split('-'), c = document.createElement('div'); c.className = 'tv-canvas'; c.setAttribute('data-bd', q.get('bd') || 'video');
+    c.style.position = 'fixed'; c.style.left = '0'; c.style.top = '0';
+    if (p[0] === 'idx') indexPage(c, p[1], 1); else if (p[0] === 'vol') VOL[p[1]](c, 62, false);
+    else if (p[0] === 'osd') OSD[p[1]](c, 'warn'); else SCR[p[0]](c);
+    document.body.innerHTML = ''; document.body.style.cssText = 'margin:0;padding:0;overflow:hidden;background:#000'; document.body.appendChild(c);
+  })();
+})();
+</script>
+</body>
+</html>

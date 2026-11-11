@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vetro TV: prima e dopo</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d141f; --panel:#16202e; --line:#2b3a50; --text:#f2f6fb; --muted:#9fb0c7; --accent:#a5d8ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 94%, transparent); border-bottom: 1px solid var(--line); padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+  header h1 { font-size: 1.1rem; margin: 0 12px 0 0; }
+  .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: .9rem; }
+  button { font: inherit; color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; min-height: 36px; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--panel); border-color: var(--accent); color: var(--accent); }
+  main { max-width: 1760px; margin: 0 auto; padding: 24px; display: grid; gap: 40px; }
+  section h2 { font-size: 1.15rem; margin: 0 0 4px; }
+  section p { margin: 0 0 12px; color: var(--muted); max-width: 80ch; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pair.overlay { grid-template-columns: 1fr; max-width: 1100px; }
+  figure { margin: 0; }
+  figcaption { font-size: .85rem; color: var(--muted); margin: 6px 0 0; display: flex; justify-content: space-between; gap: 12px; }
+  .frame { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #000; }
+  .frame iframe { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; background: #000; }
+  .frame.top { position: absolute; inset: 0; }
+  .stack { position: relative; }
+  .stack .after { position: absolute; inset: 0; opacity: var(--mix, 1); }
+  .mix { display: none; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: .9rem; }
+  .overlay + .mix, .overlayrow .mix { display: flex; }
+  .mix input { flex: 1; max-width: 420px; }
+  @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } main { padding: 16px; } }
+</style></head>
+<body>
+<header>
+  <h1>Vetro TV · prima e dopo</h1>
+  <div class="grp">Sfondo <span id="bds"></span></div>
+  <div class="grp">Vista <button id="v-side" aria-pressed="true">Affiancata</button><button id="v-mix" aria-pressed="false">Sovrapposta con cursore</button></div>
+</header>
+<main id="main"></main>
+<script>
+/* Ogni riga: [titolo, descrizione, prima, dopo]. "mock" = tv-system.html in modalità singolo frame; "page" = pagina HTML intera. */
+var BD = ['video','black','light','mid','blue','red','checker','stripes'], bd = 'video', mode = 'side';
+var ROWS = [
+  ['Pagina Vetro sulla TV', 'La pagina vera (app/index.html), prima e dopo. Dati di prova: il servizio finto risponde.', {page:'tv-page-before.html'}, {page:'tv-page-after.html'}],
+  ['Pillola volume', 'Prima: capsula verticale (96 px, bianca). Dopo: pillola morbida con numero, livello in luce azzurra, margine 96 (qui a sinistra; l impostazione Position la sposta).', {shot:'vol-A', old:1}, {shot:'vol-D'}],
+  ['Pillola volume · in basso', 'La stessa pillola nella posizione Basso (il prima non ha posizioni).', null, {shot:'vol-E'}],
+  ['OSD (avvisi brevi)', 'Prima: riquadro di solo testo (A, il toast di oggi). Dopo: foglio con chip icona di stato + frase (B).', {shot:'osd-A', old:1}, {shot:'osd-B'}],
+  ['Banner canale', 'Foglio fumé opaco, raggio 16, avanzamento in luce azzurra, bordo basso a 984.', {shot:'banner', old:1}, {shot:'banner'}],
+  ['Lista canali', 'Selezione con anello ghiaccio, colonna a x=1284 (margine 96).', {shot:'list', old:1}, {shot:'list'}],
+  ['Tastierino numerico', 'Margini interni 34/34, tasti raggio 12, tasto a fuoco con anello ghiaccio.', {shot:'pad', old:1}, {shot:'pad'}],
+  ['Toast', 'Posizione a y=96, raggio 16.', {shot:'toast', old:1}, {shot:'toast'}],
+  ['Guida TV (EPG)', 'Orari a 24 px, testo bianco sul programma a fuoco, riga "ora" in luce azzurra, foglio al 95%.', {shot:'guide', old:1}, {shot:'guide'}],
+  ['Dock', 'La barra del launcher con la nuova materia (sfondo opaco, raggio 16).', {shot:'dock', old:1}, {shot:'dock'}],
+  ['Pagina Vetro (mock)', 'Il mock di riferimento della nuova pagina (tv-system.html), per confronto con la pagina reale qui sopra.', null, {shot:'idx-B'}]
+];
+function src(c) {
+  if (!c) return null;
+  if (c.page) return c.page;
+  return 'tv-system.html?shot=' + c.shot + '&bd=' + bd + (c.old ? '&theme=old' : '');
+}
+function scale(frame) { var f = frame.querySelector('iframe'); f.style.transform = 'scale(' + (frame.clientWidth / 1920) + ')'; }
+function frame(c, cls) {
+  var d = document.createElement('div'); d.className = 'frame' + (cls ? ' ' + cls : '');
+  if (!c) { d.innerHTML = '<div style="position:absolute;inset:0;display:grid;place-items:center;color:#7e8da3">non esisteva prima</div>'; return d; }
+  var f = document.createElement('iframe'); f.loading = 'lazy'; f.src = src(c); f.title = 'anteprima'; d.appendChild(f); return d;
+}
+function build() {
+  var main = document.getElementById('main'); main.innerHTML = '';
+  ROWS.forEach(function (r, i) {
+    var s = document.createElement('section'), h = document.createElement('h2'), p = document.createElement('p');
+    h.textContent = r[0]; p.textContent = r[1]; s.appendChild(h); s.appendChild(p);
+    var pair = document.createElement('div'), canMix = r[2] && r[3];
+    pair.className = 'pair' + (mode === 'mix' && canMix ? ' overlay' : '');
+    if (mode === 'mix' && canMix) {
+      var st = document.createElement('div'); st.className = 'stack';
+      var a = frame(r[2]), b = frame(r[3]); b.classList.add('after'); st.appendChild(a); st.appendChild(b);
+      var fig = document.createElement('figure'); fig.appendChild(st); pair.appendChild(fig);
+      s.appendChild(pair);
+      var mix = document.createElement('label'); mix.className = 'mix'; mix.style.display = 'flex';
+      mix.innerHTML = 'Prima <input type="range" min="0" max="100" value="100" aria-label="Cursore prima e dopo"> Dopo';
+      mix.querySelector('input').oninput = function (e) { st.style.setProperty('--mix', e.target.value / 100); };
+      s.appendChild(mix);
+    } else {
+      [['Prima', r[2]], ['Dopo', r[3]]].forEach(function (x) {
+        var fig = document.createElement('figure'); fig.appendChild(frame(x[1]));
+        var cap = document.createElement('figcaption'); cap.innerHTML = '<span>' + x[0] + '</span><span>' + (x[1] ? (x[1].shot || x[1].page) : '') + '</span>';
+        fig.appendChild(cap); pair.appendChild(fig);
+      });
+      s.appendChild(pair);
+    }
+    main.appendChild(s);
+  });
+  requestAnimationFrame(rescale);
+}
+function rescale() { document.querySelectorAll('.frame').forEach(function (f) { if (f.querySelector('iframe')) scale(f); }); }
+window.addEventListener('resize', rescale);
+var bs = document.getElementById('bds');
+BD.forEach(function (b) { var x = document.createElement('button'); x.textContent = b; x.setAttribute('aria-pressed', b === bd); x.onclick = function () { bd = b; bs.querySelectorAll('button').forEach(function (y) { y.setAttribute('aria-pressed', y === x); }); build(); }; bs.appendChild(x); });
+function setMode(m) { mode = m; document.getElementById('v-side').setAttribute('aria-pressed', m === 'side'); document.getElementById('v-mix').setAttribute('aria-pressed', m === 'mix'); build(); }
+document.getElementById('v-side').onclick = function () { setMode('side'); };
+document.getElementById('v-mix').onclick = function () { setMode('mix'); };
+build();
+</script>
+</body></html>

@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vetro — Design system</title>
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--vetro-bg); color: var(--vetro-text); font: var(--vetro-text-body)/var(--vetro-line-body) var(--vetro-font); }
+    main { max-width: 1040px; margin: auto; padding: var(--vetro-space-12) var(--vetro-space-6); }
+    header { display: grid; grid-template-columns: 1fr 180px; align-items: center; gap: var(--vetro-space-8); padding-bottom: var(--vetro-space-8); }
+    header img { width: 100%; border-radius: var(--vetro-radius-surface); }
+    h1 { font-size: var(--vetro-text-display); line-height: var(--vetro-line-heading); margin: 8px 0 16px; font-weight: 500; letter-spacing: -.04em; }
+    h2 { font-size: var(--vetro-text-title); line-height: var(--vetro-line-heading); font-weight: 500; margin: 0 0 24px; }
+    p { max-width: 650px; }
+    .muted, small { color: var(--vetro-text-muted); }
+    small { font-size: var(--vetro-text-small); }
+    section { padding: var(--vetro-space-8) 0; border-top: 1px solid var(--vetro-border); }
+    .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .swatch { height: 90px; border-radius: var(--vetro-radius-control); margin-bottom: 12px; }
+    figure { margin: 0; min-width: 0; }
+    figcaption { display: flex; flex-direction: column; gap: 4px; }
+    code, pre { font-family: var(--vetro-font-mono); font-size: var(--vetro-text-small); overflow-wrap: anywhere; }
+    .gradients { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; }
+    .gradient { height: 150px; border-radius: var(--vetro-radius-surface); margin-bottom: 12px; }
+    .themes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .sample { padding: 24px; border-radius: var(--vetro-radius-surface); background: var(--vetro-surface); color: var(--vetro-text); border: 1px solid var(--vetro-border); }
+    .sample p { color: var(--vetro-text-muted); }
+    .sample a { color: var(--vetro-link); }
+    button { min-height: var(--vetro-control-height); padding: 10px 20px; border: 0; border-radius: var(--vetro-radius-control); background: var(--vetro-action); color: var(--vetro-on-action); font: inherit; font-weight: 500; cursor: pointer; transition: background var(--vetro-duration-fast) var(--vetro-ease); }
+    button:hover { background: var(--vetro-action-hover); }
+    button:focus-visible, a:focus-visible { outline: var(--vetro-focus-width) solid var(--vetro-focus); outline-offset: var(--vetro-focus-offset); }
+    .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    pre { background: var(--vetro-surface); border-radius: var(--vetro-radius-control); padding: 20px; white-space: pre-wrap; }
+    li { margin-bottom: 8px; }
+    @media (max-width: 640px) { main { padding: 24px 16px; } header { grid-template-columns: 1fr 100px; gap: 16px; } h1 { font-size: 2rem; } .palette { grid-template-columns: repeat(3, 1fr); } .gradients, .themes, .specs { grid-template-columns: 1fr; } }
+    @media (max-width: 360px) { header { grid-template-columns: 1fr; } header img { width: 100px; } }
+
+    /* ---------- TV mock-ups (everything reads the --vetro-tv-* tokens) ---------- */
+    nav.toc { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 0 var(--vetro-space-6); }
+    nav.toc a { color: var(--vetro-link); text-decoration: none; border: 1px solid var(--vetro-border); border-radius: 999px; padding: 4px 14px; font-size: var(--vetro-text-small); }
+    nav.toc a:hover { background: var(--vetro-surface); }
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 var(--vetro-space-4); }
+    .seg { display: inline-flex; border: 1px solid var(--vetro-border); border-radius: var(--vetro-radius-control); overflow: hidden; }
+    .seg button { min-height: 36px; padding: 6px 14px; border-radius: 0; background: transparent; color: var(--vetro-text); font-weight: 400; }
+    .seg button[aria-pressed="true"] { background: var(--vetro-action); color: var(--vetro-on-action); }
+    .seg button:hover { background: var(--vetro-surface-raised); }
+    .seg button[aria-pressed="true"]:hover { background: var(--vetro-action-hover); }
+    .ghost { background: transparent; border: 1px solid var(--vetro-border); color: var(--vetro-text); font-weight: 400; min-height: 36px; padding: 6px 14px; }
+    .ghost:hover { background: var(--vetro-surface-raised); }
+    .tuning { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 20px; padding: 16px; border: 1px solid var(--vetro-border); border-radius: var(--vetro-radius-surface); background: var(--vetro-surface); margin-bottom: var(--vetro-space-6); }
+    .tuning label { display: flex; flex-direction: column; gap: 4px; font-size: var(--vetro-text-small); color: var(--vetro-text-muted); }
+    .tuning output { color: var(--vetro-text); font-family: var(--vetro-font-mono); }
+    .tuning input[type=range] { width: 100%; accent-color: var(--vetro-blue-400); }
+    .tuning input[type=color] { width: 100%; height: 32px; border: 1px solid var(--vetro-border); border-radius: 6px; background: none; padding: 0; }
+    .screens { display: grid; gap: var(--vetro-space-8); }
+    .screens h3 { margin: 0 0 4px; font-size: 1.125rem; font-weight: 500; }
+    .screens p { margin: 0 0 12px; }
+    .tv-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 12px; border: 1px solid var(--vetro-border); background: #000; }
+    .tv-canvas { position: absolute; left: 0; top: 0; width: var(--vetro-tv-w); height: var(--vetro-tv-h); transform-origin: 0 0; overflow: hidden; line-height: 1.2; background: var(--bd); font-family: var(--vetro-tv-font); font-weight: var(--vetro-tv-weight); color: var(--vetro-tv-ink); --bd: #000; }
+    html[data-bd="video"] .tv-canvas { --bd: radial-gradient(ellipse 30% 40% at 18% 30%, #6b5a46 0%, transparent 70%), radial-gradient(ellipse 26% 36% at 82% 24%, #b58a4c 0%, transparent 65%), radial-gradient(ellipse 40% 30% at 55% 85%, #2e4a63 0%, transparent 70%), linear-gradient(160deg, #1b2230 0%, #0d1118 55%, #202a38 100%); }
+    html[data-bd="light"] .tv-canvas { --bd: linear-gradient(160deg, #f2f2ee 0%, #cfd6df 100%); }
+    html[data-bd="black"] .tv-canvas { --bd: #000; }
+    html[data-bd="grid"] .tv-canvas { --bd: conic-gradient(#fff 25%, #888 0 50%, #fff 0 75%, #888 0) 0 0 / 80px 80px; }
+    .tv-canvas * { box-sizing: border-box; margin: 0; }
+    .tv-canvas .abs { position: absolute; }
+    .tv-canvas .t { position: absolute; white-space: pre; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-text-main) * 100%), transparent); }
+    .tv-canvas .t.muted { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-text-muted) * 100%), transparent); }
+    .tv-canvas .t.faint { color: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-text-faint) * 100%), transparent); }
+    .tv-canvas .t.r { text-align: right; }
+    .sheet { position: absolute; border-radius: var(--vetro-tv-sheet-radius); background: color-mix(in srgb, var(--vetro-tv-sheet) calc(var(--vetro-tv-sheet-alpha) * 100%), transparent); }   /* retired: the old sheet (no longer drawn here) */
+    .fill { position: absolute; border-radius: var(--vetro-tv-chip-radius); background: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--a, var(--vetro-tv-fill-rest)) * 100%), transparent); }
+    .ring { position: absolute; border-radius: var(--vetro-tv-chip-radius); border: var(--vetro-tv-ring-w) solid var(--vetro-tv-ring-color); }
+    .keyimg { position: absolute; }  /* a remote key picture of the footers (assets/tuner/key_*.png) */
+    .rule { position: absolute; background: color-mix(in srgb, var(--vetro-tv-ink) calc(var(--a, var(--vetro-tv-hairline)) * 100%), transparent); }
+    /* dock */
+    .app { position: absolute; border-radius: var(--vetro-tv-dock-icon-radius); display: grid; place-items: center; font-size: 34px; color: #fff; opacity: var(--vetro-tv-dock-icon-dim); box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff calc(var(--vetro-tv-dock-icon-rim) * 100%), transparent); }
+    .app.on { opacity: 1; transform: translateY(calc(var(--vetro-tv-dock-lift) * -1)); box-shadow: 0 0 0 var(--vetro-tv-ring-w) var(--vetro-tv-ring-color), 0 0 calc(var(--vetro-tv-dock-glow-spread) * 1.95) color-mix(in srgb, var(--c) calc(var(--vetro-tv-dock-glow) * 100%), transparent); }
+    .chlogo { position: absolute; border-radius: 50%; display: grid; place-items: center; font-weight: 700; line-height: 1; color: #fff; overflow: hidden; }
+    .pill { position: absolute; display: grid; place-items: center; border-radius: 999px; border: 2px solid color-mix(in srgb, #fff calc(var(--vetro-tv-dock-pill-border) * 100%), transparent); font-size: var(--vetro-tv-type-caption); opacity: var(--vetro-tv-dock-pill-dim); }
+    /* tuner */
+    .bar-track { position: absolute; height: 6px; border-radius: 3px; }
+    .key { position: absolute; display: grid; place-items: center; font-size: var(--vetro-tv-type-title); }
+    .key.w { font-size: var(--vetro-tv-type-body); }
+    .code { font-family: var(--vetro-font-mono); font-size: var(--vetro-text-small); }
+    #perf h3 { font-size: 1.0625rem; font-weight: 500; margin: 24px 0 8px; }
+    table.perf { width: 100%; border-collapse: collapse; font-size: var(--vetro-text-small); margin: 0 0 16px; }
+    table.perf th, table.perf td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--vetro-border); vertical-align: top; }
+    table.perf th { color: var(--vetro-text-muted); font-weight: 500; }
+    .chip { display: inline-block; border: 1px solid var(--vetro-border); border-radius: 999px; padding: 0 10px; font-size: .75rem; color: var(--vetro-text-muted); }
+    .rules { counter-reset: r; list-style: none; padding: 0; }
+    .rules li { counter-increment: r; padding-left: 36px; position: relative; }
+    .rules li::before { content: counter(r); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--vetro-border); display: grid; place-items: center; font-size: .75rem; color: var(--vetro-text-muted); }
+  </style>
+  <link rel="stylesheet" href="tv-material.css">
+</head>
+<body>
+<main>
+  <header>
+    <div><small>VETRO / DESIGN SYSTEM</small><h1>Blu profondo.<br>Luce, con misura.</h1><p class="muted">Una base minimale ricavata dall’icona: blu per l’identità, ghiaccio per la luce, superfici tranquille per l’interfaccia.</p></div>
+    <img src="icon-reference.png" alt="Icona Vetro: anello trasparente su un gradiente blu">
+  </header>
+  <nav class="toc" aria-label="Sezioni"><a href="#web">Web</a><a href="#tv">TV: materia</a><a href="#screens">Schermate</a><a href="#perf">Prestazioni</a><a href="#usage">Uso</a></nav>
+  <section id="web">
+    <h2>Colori di base</h2>
+    <div class="palette">
+      <figure><div class="swatch" style="background:var(--vetro-blue-950)"></div><figcaption>Notte<code>#00115B</code><small>blue-950</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-blue-700)"></div><figcaption>Cobalto<code>#123BB5</code><small>blue-700 · azioni</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-blue-600)"></div><figcaption>Elettrico<code>#0450EF</code><small>blue-600</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-blue-400)"></div><figcaption>Luce<code>#1674FB</code><small>blue-400 · accento</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-ice-100)"></div><figcaption>Ghiaccio<code>#E1EBFD</code><small>ice-100</small></figcaption></figure>
+      <figure><div class="swatch" style="background:var(--vetro-white)"></div><figcaption>Bianco<code>#F5F8FF</code><small>white</small></figcaption></figure>
+    </div>
+    <p class="muted">Notte, Luce e Ghiaccio riprendono campioni dell’immagine. Cobalto, Elettrico e i neutri UI sono armonizzati per l’uso digitale.</p>
+  </section>
+  <section>
+    <h2>Tre gradienti, tre ruoli</h2>
+    <div class="gradients">
+      <figure><div class="gradient" style="background:var(--vetro-gradient-brand)"></div><figcaption>Brand<code>--vetro-gradient-brand</code><small>Icona, copertine, momenti di identità.</small></figcaption></figure>
+      <figure><div class="gradient" style="background:var(--vetro-gradient-blue)"></div><figcaption>Blue<code>--vetro-gradient-blue</code><small>Accenti compatti, senza testo piccolo.</small></figcaption></figure>
+      <figure><div class="gradient" style="background:var(--vetro-gradient-glass),var(--vetro-surface)"></div><figcaption>Glass<code>--vetro-gradient-glass</code><small>Riflesso discreto sopra una superficie.</small></figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2>Semantica: scuro e chiaro</h2>
+    <div class="themes">
+      <div class="sample"><small>SCURO / PREDEFINITO</small><h3>Una superficie, un’azione.</h3><p>Testo primario e secondario leggibili, bordo sottile, un solo blu operativo.</p><button type="button">Azione primaria</button><p><a href="#usage">Vedi i token</a></p></div>
+      <div class="sample" data-vetro-theme="light"><small>CHIARO / OPZIONALE</small><h3>La stessa gerarchia.</h3><p>I componenti usano gli stessi nomi: cambiano soltanto i valori del tema.</p><button type="button">Azione primaria</button><p><a href="#usage">Vedi i token</a></p></div>
+    </div>
+  </section>
+  <section>
+    <h2>Ritmo e materia</h2>
+    <div class="specs">
+      <div><p>Font di sistema · pesi 400 / 500<br>Scala: 14 / 16 / 24 / 40 px<br>Interlinea: 1,5 testo · 1,15 titoli</p><p>Spazi: 4 / 8 / 12 / 16 / 24 / 32 / 48 px<br>Raggi: 8 px controlli · 16 px superfici<br>Controlli: altezza minima 44 px</p></div>
+      <div><p>Movimento: 120 / 200 ms · decelerazione morbida<br>Focus: anello 2 px, distanza 3 px<br>Vetro: blur 16 px, con fondo opaco di riserva</p><p class="muted">Usare l’effetto vetro solo per piccoli overlay. La superficie piena garantisce leggibilità anche senza blur. I token di movimento rispettano le preferenze di movimento ridotto.</p></div>
+    </div>
+  </section>
+  <section id="tv">
+    <h2>TV: la materia nativa</h2>
+    <p class="muted">Dock, tuner e guida non sono web: sono disegnati con EFL sulla TV. Qui sono ricostruiti con gli stessi valori (<code>--vetro-tv-*</code> in <code>tokens.css</code>) e le stesse immagini (<code>assets/</code>) per poterli provare prima di toccare il C#. Approvato l’11/11/2026 (giro opus6): <strong>due materie sole</strong>. Banner, Info ed EPG stanno sul <strong>velo</strong>; tutto il resto è il <strong>pannello</strong> dell’osd 123. Nessuna ombra, un solo fuoco (la capsula ghiaccio con il testo in ardesia; le icone del Dock tengono anello e alone). Nessun colore di accento: Luce solo per l’avanzamento, il resto del colore arriva da icone e loghi.</p>
+    <div class="bar"><button class="ghost" id="copyTv" type="button">Copia i token modificati</button><button class="ghost" id="resetTv" type="button">Ripristina</button><small class="muted" id="copyNote" role="status"></small></div>
+    <div class="tuning" id="tuning"></div>
+    <div class="specs">
+      <div><p><strong>Velo</strong> · <code>veil_corner.png</code> (#111B2A), un quarto d’ellisse dall’angolo in basso a sinistra, stirato: Banner 1700×600 al 58%, Info 2500×1000 al 66%, EPG 6400×3400 al 94%. Il contrasto lo dà l’alone sotto le lettere (ombra morbida EVAS, nero al 55%).<br><strong>Pannello</strong> · <code>pill_bg</code> ardesia #243448 al 90% + <code>pill_rim</code> bianco al 22%, 2 px fuori. Raggio 40 per i pannelli, capsula per ciò che sta su una riga. Nessuna ombra.<br><strong>Fuoco</strong> · capsula ghiaccio #E4F2FF al 96% (<code>pill_cap</code>), testo in ardesia. Tasti a riposo: la stessa capsula bianca al 14%.</p></div>
+      <div><p><strong>EPG</strong> · celle arrotondate (raggio 20) bianche al 9% / 16% in onda / 5% in lettura / 3,5% + tratteggio senza dati.<br><strong>Testo</strong> · SamsungOneUI 200 (numeri grandi, orologio), 500, 600; bianco al 100 / 76 / 64% sul velo, 100 / 70 / 55% sul pannello.<br><strong>Dock</strong> · icone 92 px (112 con focus, sollevate di 4), raggio 16% del lato, anello ghiaccio 2 px e alone al 44% del colore dell’icona.<br><strong>Movimento</strong> · 300 ms a velocità costante, 24 ms tra un’icona e la successiva.</p><p class="muted">I font SamsungOneUI sono in <code>assets/fonts/</code>; il rendering del browser resta diverso da quello della TV di qualche pixel.</p></div>
+    </div>
+  </section>
+  <section id="screens">
+    <h2>Schermate</h2>
+    <p class="muted">Ogni schermata è a 1920×1080 e si scala alla larghezza della pagina. Cambia lo sfondo per vedere la trasparenza: sulla TV le lastre stanno davanti al video dal vivo, quindi il fondo “video” è quello che conta.</p>
+    <div class="bar"><div class="seg" role="group" aria-label="Sfondo" id="bdSeg"><button type="button" data-bd="video" aria-pressed="true">Video</button><button type="button" data-bd="black" aria-pressed="false">Nero</button><button type="button" data-bd="light" aria-pressed="false">Chiaro</button><button type="button" data-bd="grid" aria-pressed="false">Scacchi</button></div></div>
+    <div class="screens">
+      <div><h3>Dock</h3><p class="muted">Barra in basso, centrata su 960, pannello con raggio 40 senza ombra. “Source” sopra, “Task manager” sotto. Le icone tengono anello ghiaccio e alone. Sorgente: <code>Design.cs</code>, <code>Layout.cs</code>.</p><div class="tv-stage"><div class="tv-canvas" id="s-dock"></div></div></div>
+      <div><h3>Task manager</h3><p class="muted">Giù sul Dock. 880 px, fondo sulla linea della barra del Dock; la riga scelta è la capsula ghiaccio con il testo in ardesia.</p><div class="tv-stage"><div class="tv-canvas" id="s-tasks"></div></div></div>
+      <div><h3>Volume bar</h3><p class="muted">Verticale al bordo sinistro, centrata in altezza; livello in Luce. Stessa materia, capsula.</p><div class="tv-stage"><div class="tv-canvas" id="s-volume"></div></div></div>
+      <div><h3>osd 123</h3><p class="muted">La capsula da cui viene la materia di tutto l’OSD: cerchio ghiaccio sulla cifra scelta, “Done” in una <code>pill_chip</code>.</p><div class="tv-stage"><div class="tv-canvas" id="s-pad123"></div></div></div>
+      <div><h3>Tuner · Banner</h3><p class="muted">Angolo in basso a sinistra, sul velo, 4 secondi. Il numero grande (peso 200) poggia sulla base della seconda riga; “N min left” segue la testina e l’orario che toccherebbe sparisce.</p><div class="tv-stage"><div class="tv-canvas" id="s-banner"></div></div></div>
+      <div><h3>Tuner · Info</h3><p class="muted">Lo stesso angolo che si allarga in alto e a destra: colonna sinistra 96–936, colonna destra allineata a 1296.</p><div class="tv-stage"><div class="tv-canvas" id="s-info"></div></div></div>
+      <div><h3>Tuner · Channel list</h3><p class="muted">OK sul telecomando. A destra, centrata in altezza, numeri allineati a destra; la riga scelta è la capsula ghiaccio.</p><div class="tv-stage"><div class="tv-canvas" id="s-list"></div></div></div>
+      <div><h3>Tuner · Channel pad</h3><p class="muted">Destra sul telecomando. Tasti a capsula bianca al 14%, il tasto scelto è la capsula ghiaccio; a destra, centrato come il Volume a sinistra.</p><div class="tv-stage"><div class="tv-canvas" id="s-pad"></div></div></div>
+      <div><h3>Tuner · Audio toast</h3><p class="muted">La capsula del 123, in alto a destra, 2 secondi.</p><div class="tv-stage"><div class="tv-canvas" id="s-toast"></div></div></div>
+      <div><h3>EPG</h3><p class="muted">Niente scheda: il velo copre lo schermo al 94%. Corsie di celle arrotondate, fuoco ghiaccio. Con circa 114 oggetti resta la schermata più cara: vedi “Prestazioni”.</p><div class="tv-stage"><div class="tv-canvas" id="s-guide"></div></div></div>
+    </div>
+    <p class="muted">Le stesse schermate, a tutto schermo e con i tasti del telecomando, sono in tre pagine a parte: <a href="dock.html">dock.html</a>, <a href="tuner.html">tuner.html</a> ed <a href="epg.html">epg.html</a>. Usano le immagini vere (<code>assets/</code>, copiate da <code>dock/res</code> e <code>tuner/res</code>) e la logica di layout del codice C#. <code>?still</code> le ferma per gli screenshot.</p>
+    <p class="muted">Da aggiungere quando serviranno: Home di Vetro sulla TV, schermata PIN, plugin. Ogni schermata è una funzione in fondo a questa pagina (<code>screens.*</code>): copia una e cambia i dati.</p>
+  </section>
+  <section id="perf">
+    <h2>Prestazioni prima di tutto</h2>
+    <p class="muted">Misurato sulla Q80A (firmware 2310.0, 145 prove, 2026-11-07; dettagli in <code>graphic-testing/report/FINDINGS.md</code>). Il ciclo del pannello si ferma a 20 ms (50 fps): “gratis” significa che il costo non si vede sotto quel limite.</p>
+    <ol class="rules">
+      <li><strong>Cuoci una volta, poi muovi.</strong> Ombre, vetro, gradienti e bordi sono immagini preparate all’avvio (o PNG 9-slice fatti sul Mac). Sullo schermo si spostano, ridimensionano, sfumano o mappano soltanto.</li>
+      <li><strong>Mai pixel per frame.</strong> Niente blur, gradiente o ombra ricalcolati, nemmeno un <code>image_data_copy_set</code> in un’animazione. Si animano solo posizione, dimensione, opacità e <code>evas_map</code>.</li>
+      <li><strong>Trasparenza e render op sono gratis</strong>: carte traslucide impilate, ADD/MUL per gli accenti.</li>
+      <li><strong>Il budget sono gli oggetti, non gli effetti.</strong> Oltre ~200 oggetti vivi la CPU si avvicina a un frame pieno (300 rettangoli in movimento o 200 etichette: ~19 ms su 20).</li>
+      <li><strong>Vetro = tinta + bordo sottile + riflesso in alto</strong> davanti al video. Il blur di ciò che sta dietro non esiste per un client; si cuoce solo sui nostri sfondi.</li>
+      <li><strong>Niente <code>elm_toolbar</code></strong> (1,6 s per crearlo) né widget con temi pesanti: componenti disegnati da noi (12-48 ms per crearli, nulla per frame).</li>
+      <li><strong>Niente filtri sugli oggetti</strong> (<code>efl_gfx_filter_program_set</code>) finché non si indaga: hanno mandato in crash l’app. I filtri sul <em>testo</em> (ombra, alone, contorno) funzionano e sono il modo più leggero per rendere leggibile una scritta sul video.</li>
+      <li><strong>La cottura è lavoro di avvio o di riposo</strong> (40-150 ms per ombra o vetro), mai su un cambio di focus.</li>
+    </ol>
+    <p class="muted">CPU = millisecondi di processore per frame da 20 ms con 12 copie dell’elemento a schermo (circa un quarto dello schermo); costruzione = costo una tantum per crearne uno. Numeri completi in <code>report/REPORT.md</code>.</p><h3>Da usare: nessun costo visibile (50 fps, CPU 2-5 ms)</h3><table class="perf"><thead><tr><th>Elemento</th><th>Misura / nota</th></tr></thead><tbody><tr><td>Lastre e chip 9-slice già pronti (<code>dock_bg</code>, <code>solid</code>, <code>ring</code>, tinti col colore)</td><td>Base di ogni superficie. Si ridimensionano e sfumano liberamente.</td></tr><tr><td>Ombre cotte, raggio 8-64, doppio livello, alone colorato</td><td>CPU 2-3 ms; costruzione 38 / 50 / 73 / 147 ms (blur 8 / 16 / 32 / 64), 128 ms il doppio livello. Una volta per misura, poi si riusa.</td></tr><tr><td>Carta di vetro cotta: tinta + bordo sottile + riflesso in alto</td><td>CPU 4-5 ms; costruzione 112-150 ms. Il fondo nitido si vede attraverso: è l’aspetto voluto.</td></tr><tr><td>Carta “smerigliata” sul <strong>nostro</strong> sfondo: copia a bassa risoluzione riallargata con smoothing (<code>L10</code>)</td><td>L’unica sfocatura vista nei test. CPU 2,7 ms, costruzione 38 ms. Mai sul video dal vivo.</td></tr><tr><td>Opacità, colore, alpha di gruppo, dissolvenze, pannelli che scorrono</td><td>Gratis anche in movimento.</td></tr><tr><td><code>evas_map</code>: rotazione, zoom, 3D con prospettiva e luce, alpha per vertice, specchio UV</td><td>Carosello e carta che gira in movimento: CPU 4 ms. La mappa si imposta una volta, poi si sposta.</td></tr><tr><td>Render op ADD, SUB, MUL, TINT e il “buco” COPY</td><td>CPU 4-9 ms.</td></tr><tr><td>Gradienti statici (cotti)</td><td>CPU 2-3 ms. Controlla il banding sui neri negli scatti prima di scegliere i punti.</td></tr><tr><td>Testo semplice SamsungOneUI 200-700, 12-72 px, gerarchia per alpha</td><td>CPU 3-4 ms.</td></tr><tr><td>Filtri sul testo (<code>evas_object_text_filter_program_set</code>): ombra, alone, contorno</td><td>Rendono correttamente; CPU 2,2 ms. Il modo più economico per leggere una scritta sul video.</td></tr><tr><td>Livelli a schermo intero (immagine o alpha), JPEG 1080p</td><td>CPU 1-3 ms.</td></tr><tr><td>Widget Elementary: button, check, radio, slider, progressbar, label/entry, spinner, list, segment, diskselector, popup</td><td>Ok a regime.</td></tr></tbody></table><h3>Con cautela: costano qualcosa, spendili apposta</h3><table class="perf"><thead><tr><th>Elemento</th><th>Misura / nota</th></tr></thead><tbody><tr><td>Stili di testo classici (ombra, contorno, alone, ombra morbida)</td><td>CPU 10-16 ms per 12 copie di 4-8 etichette, contro ~3,5 ms del testo semplice. Poche scritte sul video, non un’intera lista.</td></tr><tr><td>Numero di oggetti</td><td>300 rettangoli in movimento, 200 etichette o tante piccole immagini: CPU 19-20 ms su 20. Budget ~200 oggetti vivi.</td></tr><tr><td>Rimpostare una <code>evas_map</code> a ogni frame</td><td>CPU 10,6 ms, contro 3-4 ms per una mappa impostata una volta e spostata.</td></tr><tr><td>Cottura (ogni voce da 40-150 ms sopra)</td><td>Solo all’avvio o a riposo, mai su un cambio di focus; mai 12 volte se una sola immagine si può condividere.</td></tr><tr><td>Componenti disegnati a mano (bottoni, righe, griglia)</td><td>12-48 ms per crearli, nulla per frame.</td></tr></tbody></table><h3>Da evitare: misurati come problema o non provati</h3><table class="perf"><thead><tr><th>Elemento</th><th>Misura / nota</th></tr></thead><tbody><tr><td>Qualsiasi lavoro sui pixel per frame: vetro riblurrato, ombra ricalcolata, gradiente riscritto</td><td>1 fps (114 ms a copia), 2 fps (40 ms), 3 fps (31 ms) a 12 copie.</td></tr><tr><td>Caricare un’immagine già pronta a ogni frame (<code>image_data_copy_set</code> in un’animazione)</td><td>21 fps a 12 copie (2,3 ms l’una).</td></tr><tr><td><code>elm_toolbar</code></td><td>1,6 s per crearlo, ~110 errori di tema.</td></tr><tr><td>Filtri sugli oggetti (<code>efl_gfx_filter_program_set</code>: blur, curve, grow, tint, ombre a filtro)</td><td>Hanno mandato in crash l’app in ogni prova.</td></tr><tr><td>Snapshot legacy e proxy + filtro come “blur di ciò che sta dietro”</td><td>Nessuna sfocatura vista; uno snapshot vede solo la nostra tela, mai il video.</td></tr><tr><td>Sfocare il video dal vivo</td><td>Nessuna API per un client (<code>elm_win_blur_set</code> non esiste). Non prometterlo.</td></tr><tr><td>Snapshot EO, webp, svg</td><td>Non verificati (un errore del test e caricatori da chiarire): per ora non contarci.</td></tr></tbody></table>
+    <p class="muted">Da tenere d’occhio: la guida ha circa 400 oggetti (140 riempimenti, 260 testi) ma è statica finché non ci si muove, quindi il rischio è nel movimento, non a riposo; non è mai stata misurata sulla TV. Il dock è molto più leggero (una lastra, 10 icone, due pulsanti).</p>
+  </section>
+  <section id="usage">
+    <h2>Uso</h2>
+    <pre><code>&lt;link rel="stylesheet" href="design-system/tokens.css"&gt;
+
+.panel {
+  background: var(--vetro-surface);
+  color: var(--vetro-text);
+  padding: var(--vetro-space-6);
+  border: 1px solid var(--vetro-border);
+  border-radius: var(--vetro-radius-surface);
+}
+
+/* Tema chiaro: data-vetro-theme="light" sul contenitore. */</code></pre>
+    <ul class="muted"><li>Circa l’80% della UI resta neutro; il blu identifica azioni e selezioni.</li><li>Usare testo chiaro sul Cobalto; riservare Luce a dettagli e gradienti.</li><li>Sui gradienti, collocare il testo in una superficie piena: il contrasto varia lungo il fondo.</li><li>Sulla TV ogni valore è un token <code>--vetro-tv-*</code>; il valore deciso va poi riportato nella costante C# indicata nel commento, e nulla viene ricalcolato per frame.</li><li>I colori di stato funzionali vanno definiti separatamente: il blu non significa successo o errore.</li></ul>
+  </section>
+</main>
+<script src="tv-common.js"></script>
+<script>
+(function () {
+  var root = document.documentElement;
+  var cs = getComputedStyle(root);
+  var tok = function (n) { return cs.getPropertyValue(n).trim(); };
+  var px = function (n) { return parseFloat(tok(n)); };
+
+  /* ---------- helpers: absolute pieces on a 1920x1080 canvas ---------- */
+  function mk(parent, cls, x, y, w, h, extra) {
+    var e = document.createElement('div');
+    e.className = cls;
+    e.style.left = x + 'px'; e.style.top = y + 'px';
+    if (w != null) e.style.width = w + 'px';
+    if (h != null) e.style.height = h + 'px';
+    if (extra) for (var k in extra) e.style.setProperty(k, extra[k]);
+    parent.appendChild(e);
+    return e;
+  }
+  function text(parent, s, x, y, size, kind, maxW, right) {
+    var e = mk(parent, 't' + (kind ? ' ' + kind : '') + (right ? ' r' : ''), right ? x - maxW : x, y, maxW, null, { 'font-size': size + 'px' });
+    e.textContent = s;
+    return e;
+  }
+  /* The guide's footer as the tuner draws it (tuner/src/Core/GuideScene.cs, Footer): the remote's keys as pictures (assets/tuner/key_*.png) and a word per group;
+     34 px keys, 2 px between two keys, 8 px key to word, 56 px between groups; word widths estimated at 12 px a letter, like the tuner does. */
+  function guideFooter(c, x, top, size, kind) {
+    [[['ok'], 'Watch'], [['left', 'right'], 'Time'], [['up', 'down'], 'Channel'], [['ch'], 'Page'], [['back'], 'Close']].forEach(function (g) {
+      g[0].forEach(function (k, i) {
+        var w = k === 'ch' ? Math.floor(34 * 96 / 62) : 34;
+        mk(c, 'keyimg', x, top - 2, w, 34, { 'background': 'url(assets/tuner/key_' + k + '.png) center / contain no-repeat', 'opacity': '.85' });
+        x += w + (i < g[0].length - 1 ? 2 : 8);
+      });
+      text(c, g[1], x, top, size, kind, g[1].length * 12 + 40);
+      x += g[1].length * 12 + 56;
+    });
+  }
+  function sheet(c, x, y, w, h) { return mk(c, 'sheet', x, y, w, h); }
+  function fill(c, x, y, w, h, a) { return mk(c, 'fill', x, y, w, h, a ? { '--a': a } : null); }
+  function ring(c, x, y, w, h) { return mk(c, 'ring', x, y, w, h); }
+
+  var screens = {};
+
+  /* A channel logo: Samsung's round picture (the TV's own file). Here a stand-in disc with the initials, so no Samsung or Gracenote artwork is kept in the design folder. */
+  function logo(c, name, x, y, size) {
+    var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    var e = mk(c, 'chlogo', x, y, size, size, { 'background': 'hsl(' + h + ' 55% 40%)', 'font-size': Math.round(size * .3) + 'px' });
+    e.textContent = name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
+    return e;
+  }
+
+  /* The screens draw with the shared materials (tv-material.css, tv-common.js: Tv.panel, Tv.cap, Tv.veil, Tv.progressRow). Values from tokens.css. */
+  function T(c, s, x, y, size, a, wt, maxW, right, cls) {   // a text: a = alpha of white, 'ink' = slate on the focus; cls 'v' = on the veil (line box = size, halo)
+    var e = text(c, s, x, y, size, (cls || '') + (wt && wt !== 500 ? ' w' + wt : ''), maxW || 900, right);
+    if (a !== 1) e.style.color = a === 'ink' ? 'var(--vetro-tv-focus-ink)' : 'rgba(255, 255, 255, ' + a + ')';
+    return e;
+  }
+  function pic(c, src, x, y, w, h, tint) {   // a picture; with tint, a white picture coloured through a mask (evas_object_color_set)
+    var e = mk(c, 'abs', x, y, w, h);
+    if (tint) { e.style.background = tint; e.style.webkitMaskBoxImage = 'url(' + src + ') 0 / 0 stretch'; }
+    else { e.style.background = 'url(' + src + ') 0 0 / 100% 100% no-repeat'; }
+    return e;
+  }
+  function tile(c, g, ch, x, y, s) { var e = mk(c, 'app', x, y, s, s, { 'background': 'linear-gradient(145deg, color-mix(in srgb, ' + g + ' 78%, #fff), ' + g + ' 55%, color-mix(in srgb, ' + g + ' 70%, #000))', '--c': g, 'font-size': Math.round(s * .36) + 'px', 'opacity': 1 }); e.textContent = ch; return e; }
+
+  /* ---------- Dock ---------- */
+  screens.dock = function (c) {
+    var icon = px('--vetro-tv-dock-icon'), foc = px('--vetro-tv-dock-icon-focus'), gap = px('--vetro-tv-dock-gap'),
+        padX = px('--vetro-tv-dock-pad-x'), padY = px('--vetro-tv-dock-pad-y'), gg = px('--vetro-tv-dock-group-gap'),
+        pw = px('--vetro-tv-dock-pill-w'), ph = px('--vetro-tv-dock-pill-h'), pg = px('--vetro-tv-dock-pill-gap');
+    var apps = [['TV', '#1674fb'], ['▶', '#c2364a'], ['♪', '#1fa971'], ['◎', '#8a52d6'], ['★', '#d98a1e'], ['▦', '#2a8fb8'], ['✦', '#b8478f'], ['☰', '#5f6f86'], ['◐', '#c26a2c'], ['⌂', '#3d7ad6']];
+    var focusIdx = 2, appsW = apps.length * icon + (apps.length - 1) * gap, w = padX * 2 + appsW + gg + pw, h = padY * 2 + foc;
+    var x0 = Math.round((1920 - w) / 2), y0 = 850;
+    Tv.panel(c, x0, y0, w, h, px('--vetro-tv-panel-radius'));
+    var cy = y0 + h / 2;
+    apps.forEach(function (a, i) {
+      var s = i === focusIdx ? foc : icon, x = x0 + padX + i * (icon + gap) - (s - icon) / 2;
+      var e = mk(c, 'app' + (i === focusIdx ? ' on' : ''), x, cy - s / 2, s, s, { 'background': 'linear-gradient(145deg, color-mix(in srgb, ' + a[1] + ' 78%, #fff), ' + a[1] + ' 55%, color-mix(in srgb, ' + a[1] + ' 70%, #000))', '--c': a[1], 'font-size': Math.round(s * .36) + 'px' });
+      e.textContent = a[0];
+    });
+    mk(c, 'rule', x0 + padX + appsW + gg / 2 - 1, cy - 36, 2, 72, { '--a': tok('--vetro-tv-dock-divider') });
+    var px0 = x0 + w - padX - pw, py = cy - (2 * ph + pg) / 2;
+    ['settings', 'samsunghome'].forEach(function (n, i) { pic(c, 'assets/dock/' + n + '.png', px0, py + i * (ph + pg), pw, ph, '#fff').style.opacity = tok('--vetro-tv-dock-pill-dim'); });
+    T(c, 'Source', 912, 810, 22, .9, 500, 120, false, 'l1'); pic(c, 'assets/dock/chev_up.png', 983, 810, 24, 24);
+    T(c, 'Task manager', 878, 1010, 22, .9, 500, 160, false, 'l1'); pic(c, 'assets/dock/chev_down.png', 1018, 1010, 24, 24);
+  };
+
+  /* ---------- Task manager ---------- */
+  screens.tasks = function (c) {
+    var rows = [['Samsung TV Plus', '#1674fb', '0.1%', '382 MB'], ['YouTube', '#c2364a', '5.7%', '239 MB'], ['Stremio', '#8a52d6', '4.1%', '170 MB'], ['NOW', '#1fa971', '2.3%', '95 MB'], ['Apple TV', '#5f6f86', '2.7%', '53 MB']];
+    var PX = 520, PW = px('--vetro-tv-tasks-w'), RH = px('--vetro-tv-tasks-row-h'), H = 18 + 70 + rows.length * RH + 54 + 10, PY = 994 - H, LT = PY + 88;
+    Tv.panel(c, PX, PY, PW, H, px('--vetro-tv-panel-radius'));
+    T(c, 'Running apps', PX + 34, PY + 26, 30, 1, 600);
+    T(c, '822 MB of memory free', PX + 233, PY + 33, 22, .6);
+    T(c, 'Sort by   ‹  Memory  ›', PX + PW - 38, PY + 29, 24, .9, 500, 400, true);
+    Tv.cap(c, PX + 16, LT + 4, PW - 32, RH - 8);
+    rows.forEach(function (r, i) {
+      var y = LT + i * RH, on = i === 0;
+      tile(c, r[1], r[0][0], PX + 34, y + 12, 52);
+      T(c, r[0], PX + 108, y + 22, 27, on ? 'ink' : .85, 600, 464);
+      T(c, r[2], PX + 692, y + 24, 24, on ? 'ink' : .59, 500, 120, true);
+      T(c, r[3], PX + 842, y + 24, 24, on ? 'ink' : .85, 500, 140, true);
+    });
+    var fy = LT + rows.length * RH + 14, x = 659;
+    [[['ok'], 'open', ''], [['ok'], 'close', 'Hold'], [['left', 'right'], 'sort', ''], [['up', 'back'], 'return', '']].forEach(function (g) {
+      if (g[2]) { T(c, g[2], x, fy + 5, 21, .55); x += Tv.textW(g[2], 21, 500) + 18; }
+      g[0].forEach(function (k, i) { pic(c, 'assets/dock/key_' + k + '.png', x, fy, 34, 34).style.opacity = .85; x += 34 + (i < g[0].length - 1 ? 2 : 8); });
+      T(c, g[1], x, fy + 5, 21, .55); x += Tv.textW(g[1], 21, 500) + 40;
+    });
+  };
+
+  /* ---------- Volume bar ---------- */
+  screens.volume = function (c) {
+    var X = 96, W = px('--vetro-tv-volume-thickness'), H = px('--vetro-tv-volume-long'), Y = 540 - H / 2, TX = X + 12, TY = Y + 56, TH = H - 56 - 76, lvl = Math.round(TH * .35);
+    Tv.panel(c, X, Y, W, H, W / 2);
+    var tr = mk(c, 'cap rest', TX, TY, 64, TH, { '--r': '32px', 'background': 'rgba(255, 255, 255, .16)' });
+    var clip = mk(c, 'abs', TX, TY + TH - lvl, 64, lvl); clip.style.overflow = 'hidden';
+    mk(clip, 'cap', 0, lvl - TH, 64, TH, { '--r': '32px', 'background': 'var(--vetro-tv-light)' });
+    T(c, '35', X + W / 2 - Tv.textW('35', 32, 500) / 2, Y + 13, 32, .95);
+    pic(c, 'assets/dock/vol_icon_1.png', X + 24, Y + 422, 40, 40);
+  };
+
+  /* ---------- osd 123 ---------- */
+  screens.pad123 = function (c) {
+    var X = 456, Y = 908, keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', 'bs', 'colors'];
+    Tv.panel(c, X, Y, 1008, 96, 48);
+    var cx = function (i) { return i < 11 ? X + 24 + i * 72 : X + 24 + i * 72 + 28; };
+    Tv.cap(c, cx(0), Y + 12, 72, 72);
+    keys.forEach(function (k, i) {
+      if (k.length === 1) T(c, k, cx(i) + 36 - Tv.textW(k, 36, 500) / 2, Y + 27, 36, i === 0 ? 'ink' : .92);
+      else { pic(c, 'assets/dock/pad_' + k + '.png', cx(i) + 16, Y + 28, 40, 40, 'rgba(255, 255, 255, .92)'); if (k === 'colors') pic(c, 'assets/dock/pad_colors_dots.png', cx(i) + 16, Y + 28, 40, 40); }
+    });
+    mk(c, 'donechip', 1348, 844, 116, 52, { '--r': '26px' });
+    T(c, 'Done', 1376, 855, 26, 1);
+    T(c, '42', 468, 824, 68, 1);
+  };
+
+  /* ---------- tuner: Banner and Info on the veil ---------- */
+  var X0 = px('--vetro-tv-banner-x0'), X1 = px('--vetro-tv-banner-x1');
+  screens.banner = function (c) {
+    Tv.setVeil(Tv.veil(c), 'banner');
+    var LG = px('--vetro-tv-logo-banner'), num = T(c, '7', X0, 798, 128, 1, 200, 300, false, 'v'), nx = X0 + Tv.textW('7', 128, 200) + 30;
+    logo(c, 'Cinema', X1 - LG, 818, LG);
+    T(c, 'Cinema', nx, 822, 56, 1, 600, X1 - LG - 24 - nx, false, 'v');
+    T(c, 'La notte del cacciatore', nx, 890, 32, 1, 500, X1 - nx, false, 'v title');
+    Tv.onBaseline(num, 128, 890, 32);
+    Tv.progressRow(c, X0, X1, 946, px('--vetro-tv-banner-line-y'), '21:20', '23:05', '1 h 13 min left', .31);
+  };
+  screens.info = function (c) {
+    Tv.setVeil(Tv.veil(c), 'info');
+    var R = px('--vetro-tv-info-right'), LG = px('--vetro-tv-logo-info'), num = T(c, '7', X0, 590, 64, 1, 200, 200, false, 'v'), nmx = X0 + Tv.textW('7', 64, 200) + 20;
+    logo(c, 'Cinema', R - LG, 584, LG);
+    T(c, 'Cinema', nmx, 606, 36, 1, 600, R - LG - 32 - nmx, false, 'v muted');
+    Tv.onBaseline(num, 64, 606, 36);
+    T(c, 'La notte del cacciatore', X0, 672, 72, 1, 600, R - X0, false, 'v');
+    Tv.progressRow(c, X0, X1, 780, 826, '21:20', '23:05', '1 h 13 min left', .31);
+    var d = T(c, 'A preacher with a past comes to a quiet river town, and two children hold the secret he wants. Before the night is over, everyone has to decide whom to trust.', X0, 860, 30, 1, 500, X1 - X0, false, 'v muted');
+    d.style.whiteSpace = 'normal'; d.style.lineHeight = '42px'; d.style.maxHeight = '126px';
+    T(c, '21:44', R + 4, 776, 88, 1, 200, 400, true, 'v');
+    T(c, 'Wednesday 11 November', R, 878, 26, 1, 500, 500, true, 'v muted');
+    T(c, 'Antenna', R, 918, 26, 1, 500, 500, true, 'v muted');
+    T(c, 'Audio: Italian', R, 958, 26, 1, 500, 500, true, 'v muted');
+  };
+
+  /* ---------- tuner: Channel list, Channel pad, Audio toast (the panel) ---------- */
+  var CH = ['Cinema', 'Sport 1', 'Sport 2', 'Doc', 'News 24', 'Kids', 'Music', 'Retro', 'Quiz', 'Cucina', 'Viaggi', 'Storia', 'Natura', 'Serie'];
+  screens.list = function (c) {
+    var X = px('--vetro-tv-list-x'), Y = px('--vetro-tv-list-y'), W = px('--vetro-tv-list-w'), pad = px('--vetro-tv-list-pad'), RH = px('--vetro-tv-list-row-h'), rows = 11, sel = 2, LL = px('--vetro-tv-logo-list');
+    Tv.panel(c, X, Y, W, rows * RH + 2 * pad, px('--vetro-tv-panel-radius'));
+    for (var r = 0; r < rows; r++) {
+      var y = Y + pad + r * RH, on = r === sel;
+      if (on) Tv.cap(c, X + 16, y + 2, W - 32, RH - 4);
+      T(c, String(1 + r), px('--vetro-tv-list-num-right'), y + 13, 32, on ? 'ink' : .70, 500, 90, true);
+      if (CH[r] !== 'News 24') logo(c, CH[r], X + 114, y + (RH - LL) / 2, LL);   // a channel with no logo keeps the column empty
+      T(c, CH[r], X + 172, y + 13, 32, on ? 'ink' : 1, 500, W - 172 - 40);
+    }
+  };
+  screens.pad = function (c) {
+    var X = px('--vetro-tv-list-x'), Y = px('--vetro-tv-pad-y'), W = px('--vetro-tv-list-w'), P = px('--vetro-tv-pad-pad'),
+        kw = px('--vetro-tv-pad-key-w'), kh = px('--vetro-tv-pad-key-h'), g = px('--vetro-tv-pad-gap'), gy = 232, H = gy + 4 * kh + 3 * g + 38, LP = px('--vetro-tv-logo-pad');
+    Tv.panel(c, X, Y, W, H, px('--vetro-tv-panel-radius'));
+    T(c, 'Channel number', X + P, Y + 30, 26, .70, 500, W - 2 * P);
+    T(c, '4', X + P, Y + 62, 76, 1, 500, W - 2 * P);
+    logo(c, 'Doc', X + P, Y + 158, LP);
+    T(c, 'Doc', X + P + LP + 8, Y + 166, 28, .70, 500, W - 2 * P - LP - 8);
+    var labels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Delete', '0', 'Go'], focus = 4;
+    labels.forEach(function (l, i) {
+      var col = i % 3, row = Math.floor(i / 3), x = X + P + col * (kw + g), y = Y + gy + row * (kh + g);
+      Tv.cap(c, x, y, kw, kh, i !== focus);
+      var k = mk(c, 'key' + (l.length > 1 ? ' w' : ''), x, y, kw, kh); k.textContent = l; if (i === focus) k.style.color = 'var(--vetro-tv-focus-ink)';
+    });
+  };
+  screens.toast = function (c) {
+    var pad = px('--vetro-tv-toast-pad'), H = px('--vetro-tv-toast-h'), right = 1920 - px('--vetro-tv-margin'), y = px('--vetro-tv-toast-y'), s = 'Audio: English · track 2', w = Tv.textW(s, 32, 500) + 2 * pad;
+    Tv.panel(c, right - w, y, w, H, H / 2);
+    T(c, s, right - w + pad + 1, y + 17, 32, 1, 500, w);
+  };
+
+  /* ---------- EPG: on the veil (.94), lanes of rounded cells, the ice focus ---------- */
+  var GUIDE = [
+    ['News 24', 1, [[-20, 50, 'Notizie della sera'], [30, 30, 'Meteo e traffico'], [60, 90, 'Il processo'], [150, 60, 'Speciale']]],
+    ['Sport 1', 2, [[-45, 75, 'Serie A: studio'], [30, 120, 'Serie A: la partita'], [150, 60, 'Dopo partita']]],
+    ['Cinema', 7, [[-20, 105, 'La notte del cacciatore'], [85, 95, 'Il sorpasso']]],
+    ['Doc', 8, [[-10, 40, 'Oceani'], [30, 45, 'Savana'], [75, 50, 'Alpi'], [125, 55, 'Isole']]],
+    ['Kids', 9, [[-30, 55, 'Cartoni della sera'], [25, 20, 'Nanna'], [45, 135, null]]],
+    ['Music', 10, [[-60, 120, 'Concerto dal vivo'], [60, 120, 'Top 50']]],
+    ['Retro', 11, [[-15, 30, 'Sit-com'], [15, 30, 'Sit-com'], [45, 45, 'Varietà'], [90, 90, 'Film western']]]
+  ];
+  function clock(min) { var t = 21 * 60 + min; return ('0' + Math.floor(t / 60) % 24).slice(-2) + ':' + ('0' + t % 60).slice(-2); }
+  screens.guide = function (c) {
+    Tv.setVeil(Tv.veil(c), 'epg');
+    var M = px('--vetro-tv-margin'), AX = px('--vetro-tv-epg-axis-y'), RY = px('--vetro-tv-epg-rows-y'), RH = px('--vetro-tv-guide-row-h'), CH_ = px('--vetro-tv-guide-cell-h'),
+        CX = px('--vetro-tv-epg-cells-x'), CW = px('--vetro-tv-epg-cells-w'), ppm = px('--vetro-tv-guide-px-per-min'), LX = px('--vetro-tv-epg-label-x'), LG = px('--vetro-tv-logo-epg'), WIN = 180, focusRow = 2, now = 22;
+    var fe = GUIDE[focusRow][2][0];
+    T(c, fe[2], M, 70, 64, 1, 600, 1360, false, 'l1');
+    T(c, '20:40 – 22:25   ·   1 h 45 min   ·   Cinema', M, 152, 30, .76, 500, 1500, false, 'l1');
+    var d = T(c, 'A preacher with a past comes to a quiet river town, and two children hold the secret he wants. Before the night is over, everyone has to decide whom to trust.', M, 195, 28, .70, 500, 1400, false, 'l1');
+    d.style.whiteSpace = 'normal'; d.style.lineHeight = '38px'; d.style.maxHeight = '76px';
+    T(c, 'Wed 11 Nov', 1920 - M, 84, 32, .76, 500, 300, true, 'l1');
+    for (var t = 0; t < WIN; t += 30) T(c, clock(t), CX + t * ppm, AX + 4, 26, t % 60 ? .76 : 1, t % 60 ? 500 : 600, 120, false, 'l1');
+    mk(c, 'rule', CX, AX + 46, CW, 2);
+    var nx = CX + now * ppm;
+    mk(c, 'rule', nx, RY, 2, 7 * RH, { 'background': 'var(--vetro-tv-light)', 'opacity': tok('--vetro-tv-now-alpha') });
+    GUIDE.forEach(function (row, r) {
+      var y = RY + r * RH, cy = y + 6, fr = r === focusRow;
+      if (row[0] !== 'News 24') logo(c, row[0], LX, y + 16, LG);
+      T(c, String(row[1]), LX + 70, y + 12, 24, fr ? 1 : .76, 500, 200, false, 'l1');
+      T(c, row[0], LX + 70, y + 44, 26, fr ? 1 : .76, fr ? 600 : 500, 206, false, 'l1');
+      row[2].forEach(function (p, i) {
+        var s0 = Math.max(0, p[0]), e0 = Math.min(WIN, p[0] + p[1]), x = CX + s0 * ppm + (p[0] > 0 ? 2 : 0), w = CX + e0 * ppm - (e0 < WIN ? 2 : 0) - x;
+        if (w < 4) return;
+        var onAir = p[0] <= now && now < p[0] + p[1], isF = fr && i === 0;
+        if (isF) {
+          mk(c, 'cell focus', x, cy, w, CH_);
+          T(c, p[2], x + 20, cy + 12, 28, 'ink', 600, w - 36, false, 'l1');
+          T(c, clock(p[0]) + ' – ' + clock(p[0] + p[1]), x + 20, cy + 47, 22, 'ink', 500, w - 36, false, 'l1');
+          return;
+        }
+        mk(c, 'cell', x, cy, w, CH_, { 'opacity': p[2] === null ? tok('--vetro-tv-cell-empty') : onAir ? tok('--vetro-tv-cell-onair') : tok('--vetro-tv-cell-rest') });
+        if (p[2] === null) { mk(c, 'hatch', x + 20, cy, w - 40, CH_); if (w >= 190) T(c, 'No information', x + 20, cy + 26, 24, .64, 500, w - 36, false, 'l1'); }
+        else if (w >= 90) T(c, p[2], x + 20, cy + 23, 28, onAir ? 1 : .9, 500, w - 36, false, 'l1');
+      });
+    });
+    mk(c, 'rule', nx - 1, AX + 34, 3, 16, { 'background': 'var(--vetro-tv-light)', 'opacity': 1 });
+    Tv.guideFooter(c, M, px('--vetro-tv-epg-footer-y'), 24, 'l1 muted', true);
+  };
+
+  /* ---------- render, scale ---------- */
+  function render() {
+    cs = getComputedStyle(root);
+    Object.keys(screens).forEach(function (k) { var c = document.getElementById('s-' + k); if (!c) return; c.innerHTML = ''; screens[k](c); });
+    fit();
+  }
+  function fit() {
+    document.querySelectorAll('.tv-stage').forEach(function (st) { var c = st.firstElementChild; c.style.transform = 'scale(' + (st.clientWidth / 1920) + ')'; });
+  }
+  window.addEventListener('resize', fit);
+
+  /* ---------- background switch ---------- */
+  var seg = document.getElementById('bdSeg');
+  root.setAttribute('data-bd', 'video');
+  seg.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    root.setAttribute('data-bd', b.dataset.bd);
+    seg.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+  });
+
+  /* ---------- live tuning of the sheet tokens ---------- */
+  var CTRL = [
+    ['--vetro-tv-veil-banner-alpha', 'Velo: Banner', 'range', 0, 1, 0.01, ''],
+    ['--vetro-tv-veil-info-alpha', 'Velo: Info', 'range', 0, 1, 0.01, ''],
+    ['--vetro-tv-veil-epg-alpha', 'Velo: EPG', 'range', 0, 1, 0.01, ''],
+    ['--vetro-tv-halo-alpha', 'Alone dei testi', 'range', 0, 1, 0.01, ''],
+    ['--vetro-tv-panel', 'Colore pannello', 'color'],
+    ['--vetro-tv-panel-alpha', 'Opacità pannello', 'range', 0.3, 1, 0.01, ''],
+    ['--vetro-tv-panel-radius', 'Raggio pannello', 'range', 0, 64, 1, 'px'],
+    ['--vetro-tv-panel-rim-alpha', 'Filo (opacità)', 'range', 0, 0.6, 0.01, ''],
+    ['--vetro-tv-focus-alpha', 'Fuoco ghiaccio', 'range', 0.3, 1, 0.01, ''],
+    ['--vetro-tv-key-rest', 'Tasto a riposo', 'range', 0, 0.4, 0.01, ''],
+    ['--vetro-tv-cell-rest', 'Cella EPG', 'range', 0, 0.3, 0.005, ''],
+    ['--vetro-tv-cell-onair', 'Cella EPG in onda', 'range', 0, 0.4, 0.005, ''],
+    ['--vetro-tv-veil-text-muted', 'Testo secondario (velo)', 'range', 0.3, 1, 0.01, ''],
+    ['--vetro-tv-dock-glow', 'Alone icona', 'range', 0, 1, 0.01, '']
+  ];
+  var base = {}, box = document.getElementById('tuning');
+  CTRL.forEach(function (c) {
+    var name = c[0]; base[name] = tok(name);
+    var lab = document.createElement('label'), out = document.createElement('output'), inp = document.createElement('input');
+    lab.appendChild(document.createTextNode(c[1] + ' '));
+    inp.type = c[2];
+    if (c[2] === 'range') { inp.min = c[3]; inp.max = c[4]; inp.step = c[5]; inp.value = parseFloat(base[name]); }
+    else inp.value = base[name];
+    out.textContent = base[name];
+    inp.addEventListener('input', function () {
+      var v = c[2] === 'range' ? inp.value + c[6] : inp.value;
+      root.style.setProperty(name, v); out.textContent = v; render();
+    });
+    inp._reset = function () { inp.value = c[2] === 'range' ? parseFloat(base[name]) : base[name]; out.textContent = base[name]; };
+    lab.appendChild(out); lab.appendChild(inp); box.appendChild(lab);
+  });
+  document.getElementById('resetTv').addEventListener('click', function () {
+    CTRL.forEach(function (c) { root.style.removeProperty(c[0]); });
+    box.querySelectorAll('input').forEach(function (i) { i._reset(); });
+    document.getElementById('copyNote').textContent = ''; render();
+  });
+  document.getElementById('copyTv').addEventListener('click', function () {
+    var lines = CTRL.map(function (c) { return root.style.getPropertyValue(c[0]) ? '  ' + c[0] + ': ' + root.style.getPropertyValue(c[0]) + ';' : null; }).filter(Boolean);
+    var note = document.getElementById('copyNote');
+    if (!lines.length) { note.textContent = 'Nessuna modifica.'; return; }
+    var css = ':root {\n' + lines.join('\n') + '\n}';
+    (navigator.clipboard ? navigator.clipboard.writeText(css) : Promise.reject()).then(function () { note.textContent = 'Copiato: ' + lines.length + ' token.'; }, function () { note.textContent = css; });
+  });
+
+  render();
+  Tv.ready(render);
+}());
+</script>
+</body>
+</html>

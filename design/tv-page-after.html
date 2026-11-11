@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Vetro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+<style>
+/* Values from design-system/tokens.css (dark), status colours from the dashboard. Static page: solid surfaces,
+   no blur, no animation. Flex without gap and ES5 only, so older TV runtimes draw it the same. */
+:root{--bg:#0d141f;--surface:#243448;--raised:#505d6d;--text:#f5f8ff;--muted:#bdc2c8;--border:#546170;--link:#f5f8ff;--ring:#e4f2ff;--light:#a5d8ff;
+--ok:rgb(127,203,160);--warn:rgb(226,184,103);--bad:rgb(239,138,128);
+--ok-soft:rgba(127,203,160,.12);--warn-soft:rgba(226,184,103,.12);--bad-soft:rgba(239,138,128,.12);
+--ok-line:rgba(127,203,160,.4);--warn-line:rgba(226,184,103,.4);--bad-line:rgba(239,138,128,.4)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:"SamsungOneUI","Samsung One UI Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+.safe{position:absolute;top:96px;left:96px;right:96px;bottom:96px}   /* the TV safe margin: 96 px on every side */
+.hero{display:flex;align-items:center}
+.hero img{width:176px;height:176px;border-radius:16px;display:block;flex:none;margin-right:48px}
+.hero h1{margin:0;font-size:84px;line-height:1.05;font-weight:500;letter-spacing:-.04em}
+.meta{margin-top:12px;font-size:28px;color:var(--muted)}
+.state{margin-top:20px;display:inline-flex;align-items:center;font-size:28px;font-weight:500;padding:8px 20px 8px 12px;border-radius:12px;border:2px solid var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.state svg{width:32px;height:32px;margin-right:12px;flex:none}
+.state.warn{border-color:var(--warn-line);background:var(--warn-soft);color:var(--warn)}
+.state.bad{border-color:var(--bad-line);background:var(--bad-soft);color:var(--bad)}
+.state.wait{border-color:var(--border);background:transparent;color:var(--muted)}
+/* The one moving thing: a slowly turning dashed ring while the checks run or a switch is working, so a quiet screen does not look stuck. */
+@keyframes spin{to{transform:rotate(360deg)}}
+.state.wait svg,.c.wait .ic{animation:spin 2.4s linear infinite}
+.dash{margin-left:auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;width:760px;padding:28px 36px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
+.dh{display:flex;align-items:baseline}
+.dh small{font-size:22px;letter-spacing:.12em;color:var(--muted)}
+/* The sign-in code: hidden, and the card does not move, until a browser asks to pair. */
+.pin{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
+.pin i{display:block;margin-top:4px;font-size:20px;font-style:normal;letter-spacing:0;text-align:right;color:var(--muted)}
+.pin b{margin-left:12px;font-family:monospace;font-size:30px;letter-spacing:.2em;color:var(--text)}
+.url{margin:10px 0 8px;font-family:monospace;font-size:44px;font-weight:500;color:var(--link);white-space:nowrap}
+.url.off{color:var(--muted)}
+.dash p{margin:0;font-size:24px;line-height:1.35;color:var(--muted)}
+.panel{position:absolute;left:0;right:0;bottom:0;padding:32px 36px 28px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
+.panel.bad{border-color:var(--bad-line)}.panel.warn{border-color:var(--warn-line)}
+.ph{display:flex;align-items:center;margin-bottom:24px}
+.ph h2{margin:0;font-size:36px;font-weight:500;letter-spacing:-.02em}
+.sum{margin-left:auto;font-size:26px;font-weight:500;color:var(--ok)}
+.sum.warn{color:var(--warn)}.sum.bad{color:var(--bad)}.sum.wait{color:var(--muted)}
+.grid{display:flex;flex-wrap:wrap}
+.c{display:flex;width:calc(33.333% - 11px);margin:0 16px 16px 0;padding:20px 22px;border-radius:12px;background:var(--raised);border:2px solid transparent;min-height:112px}
+.c:nth-child(3n){margin-right:0}
+.c.warn{background:var(--warn-soft);border-color:var(--warn-line)}
+.c.bad{background:var(--bad-soft);border-color:var(--bad-line)}
+.c.na{opacity:.6}
+.c.wait{background:transparent;border-color:var(--border)}.c.wait .v{color:var(--muted);font-weight:400}
+.ic{flex:none;width:40px;height:40px;margin-right:18px}
+.n{font-size:26px;line-height:1.2;color:var(--muted)}
+.v{margin-top:2px;font-size:30px;line-height:1.2;font-weight:500}
+.v span{font-weight:400;color:var(--muted);font-size:24px}
+.c.warn .v{color:var(--warn)}.c.bad .v{color:var(--bad)}
+.h{margin-top:8px;font-size:23px;line-height:1.35}
+.share{display:flex;align-items:center;margin-top:4px;padding-top:20px;border-top:2px solid var(--border)}
+.share .t{font-size:22px;color:var(--muted);flex:none;width:250px;margin-right:24px;line-height:1.3}
+.share code{font-family:monospace;font-size:22px;word-break:break-word;line-height:1.4}
+.share em{font-style:normal;color:var(--bad);font-weight:700}.share em.w{color:var(--warn)}
+.keys{display:flex;justify-content:flex-end;margin-top:18px;font-size:22px;color:var(--muted)}
+.keys span{margin-left:28px}
+.keys i{font-style:normal;display:inline-block;margin-right:10px;padding:2px 12px;border:2px solid var(--border);border-radius:12px;color:var(--text)}
+
+/* Quick controls (the main view): five tiles that do what one switch of the dashboard does, and a strip with the checks.
+   Same system as the rest of the page: system sans at 400 and 500 only, 16 px surfaces, 8 px controls, solid fills, a uniform border
+   everywhere (focus is a brighter border plus an outline, never a coloured edge). Scale for a TV at 1920 px: section title 40, card
+   title 32, text 25, labels 22 in capitals, values 26. One inset (28) for every card, so every text edge lines up. */
+/* The main view follows the Fumé mock-up (design-system/tv-system.html): the header is one sheet, the title strip is a sheet, the tiles are 452 high, the checks strip is 104 high: 872 px in the 888 px between the margins. */
+#screen.compact .hero{height:192px;padding:0 28px;background:var(--surface);border:2px solid var(--border);border-radius:16px}
+#screen.compact .hero img,#screen.compact .hero .logo{width:128px;height:128px;border-radius:16px;margin-right:32px}
+#screen.compact .hero h1{font-size:56px}
+#screen.compact .meta{margin-top:6px;font-size:26px}
+#screen.compact .state{margin-top:12px;font-size:26px;padding:4px 20px 4px 10px}
+#screen.compact .dash{width:640px;height:144px;align-self:center;padding:14px 24px;border-radius:12px;background:var(--raised);border:0}
+#screen.compact .url{margin:4px 0 4px;font-size:36px}
+#screen.compact .dash p{font-size:24px;line-height:1.3}
+.sec{display:flex;align-items:baseline;margin:44px 0 22px}
+#screen.compact .sec{align-items:center;height:64px;margin:16px 0 20px;padding:0 32px;background:var(--surface);border:2px solid var(--border);border-radius:16px}
+.sec h2{margin:0;font-size:32px;line-height:1.1;font-weight:500;letter-spacing:-.02em}
+.sec span{margin-left:auto;font-size:24px;color:var(--muted)}
+.tiles{display:flex}
+.tile{position:relative;flex:1;height:480px;margin-right:20px;padding:28px;border-radius:16px;background:var(--surface);border:2px solid var(--border);display:flex;flex-direction:column}
+.tile:last-child{margin-right:0}
+.tile.focus{background:var(--raised);border-color:var(--ring);outline:2px solid var(--ring);outline-offset:2px}
+.tile.na{opacity:.55}
+.tile .top{display:flex;align-items:center;margin-bottom:22px}
+.tile .glyph{width:64px;height:64px;border-radius:12px;background:var(--raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex:none}
+.tile.focus .glyph{background:#6a7583}
+#screen.compact .tile{height:452px}
+.tile .glyph svg{width:36px;height:36px}
+.tile .tag{margin-left:auto;font-size:22px;letter-spacing:.12em;color:var(--muted)}
+/* Two lines are always reserved for the title, so the text under it starts at the same height in every tile. */
+.tile h3{margin:0;min-height:2.3em;font-size:32px;line-height:1.15;font-weight:500;letter-spacing:-.01em}
+.tile p{margin:12px 0 0;font-size:25px;line-height:1.4;font-weight:400;color:var(--muted)}
+.tile .foot{margin-top:auto;display:flex;align-items:center;min-height:56px}
+.tile .val{font-size:26px;font-weight:500;margin-left:18px}
+.val.ok{color:var(--ok)}.val.warn{color:var(--warn)}.val.bad{color:var(--bad)}.val.mute{color:var(--muted)}
+.sw{flex:none;width:88px;height:48px;border-radius:999px;border:2px solid var(--border);background:transparent;position:relative}
+.sw i{position:absolute;top:5px;left:5px;width:34px;height:34px;border-radius:50%;background:var(--muted)}
+.sw.on{background:var(--light);border-color:var(--light)}
+.sw.on i{left:45px;background:var(--surface)}
+.sw.part{background:var(--warn-soft);border-color:var(--warn-line)}
+.sw.part i{left:25px;background:var(--warn)}
+.sw.busy i{left:25px;background:transparent;border:3px dashed var(--muted);animation:spin 2.4s linear infinite}
+.btn{flex:none;display:flex;align-items:center;height:56px;padding:0 28px;font-size:26px;font-weight:500;border-radius:12px;border:2px solid var(--border);color:var(--text);background:var(--raised)}
+.btn.go{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok)}
+.tile.focus .btn{background:var(--surface)}
+.tile.focus .btn.go{background:var(--ok-soft)}
+/* The strip: the label, the chips and the hint sit on the first row; when the chips wrap, the next row hangs under them. */
+.diag{position:relative;margin-top:24px;min-height:104px;border-radius:16px;background:var(--surface);border:2px solid var(--border);padding:20px 28px;display:flex;align-items:flex-start}
+.diag.warn{border-color:var(--warn-line)}.diag.bad{border-color:var(--bad-line);background:var(--bad-soft)}
+.diag.focus{border-color:var(--ring);outline:2px solid var(--ring);outline-offset:2px;background:var(--raised)}
+.diag h4{margin:0 28px 0 0;font-size:26px;line-height:34px;font-weight:500;flex:none}
+.chips{display:flex;flex:1;flex-wrap:wrap}
+.chip{display:flex;align-items:center;margin-right:26px;font-size:22px;line-height:34px;font-weight:400;color:var(--muted);white-space:nowrap}
+.chip b{font-weight:500;color:var(--text);margin-left:8px}
+.chip.warn b{color:var(--warn)}.chip.bad b{color:var(--bad)}
+.dot{width:16px;height:16px;border-radius:50%;margin-right:10px;flex:none;background:var(--ok)}
+.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.na,.dot.off{background:transparent;border:2px dashed var(--muted)}
+.more{margin-left:16px;flex:none;font-size:22px;line-height:34px;color:var(--muted);white-space:nowrap}
+/* The message sits in the free space above the strip, near what was pressed, and does not cover the title. */
+.toast{position:absolute;left:50%;bottom:150px;max-width:1500px;transform:translateX(-50%);padding:10px 28px;border-radius:16px;background:var(--raised);border:2px solid var(--border);font-size:24px;line-height:1.3;text-align:center}
+</style></head>
+<body>
+<div id="stage"><div class="safe" id="screen"></div></div>
+<script>
+var BASE = 'http://127.0.0.1:8099';
+var ICON = 'icon.png';
+var IDLE_MS = 300000;
+var report = {probe: {}, apps: [], packages: [], settings: {}};
+var delivered = false, running = false, idleTimer = null;
+// The whole check stops after TOTAL_MS even if a step is stuck (every step also has its own limit).
+var TOTAL_MS = 100000;
+var step = null, tick = null, posts = Promise.resolve(), lastScreen = null, packagesBusy = false, packagesAgain = false;
+// Dashboard sign-in: the service asks for a 6-digit code that only this screen shows (see service/auth.js).
+var pairing = null;
+// The service keeps running without this page; a resident page only holds memory.
+function leave() { try { tizen.application.getCurrentApplication().exit(); } catch (e) {} }
+// Every probe gets a time limit: a Tizen call whose callback never fires must not leave the screen on "Checking".
+function attempt(name, fn, limit) {
+  return new Promise(function (resolve) {
+    var done = false, timer = setTimeout(function () { finish({ok: false, error: 'no answer in ' + Math.round(limit / 1000) + ' s'}); }, limit || 8000);
+    function finish(r) { if (done) return; done = true; clearTimeout(timer); report.probe[name] = r; resolve(); }
+    try {
+      Promise.resolve(fn()).then(function (v) { finish({ok: true, value: v}); },
+        function (e) { finish({ok: false, error: String(e && e.message || e)}); });
+    } catch (e) { finish({ok: false, error: String(e && e.message || e)}); }
+  });
+}
+// A public-level certificate may not get the on-boot start honored, so the page starts the service itself.
+function launchService() {
+  return cb(function (ok, ko) {
+    function failed(e) { ko(new Error('launch failed (wrt:service: ' + (e && e.message || e) + ')')); }
+    if (typeof window.a2sService === 'function') {
+      try { Promise.resolve(new window.a2sService('vetrotvapp.svc').start()).then(ok, failed); }
+      catch (e) { failed(e); }
+      return;
+    }
+    tizen.application.launch('vetrotvapp.svc', ok, ko);
+  });
+}
+// Some TVs (The Frame 2025, Tizen 9) do not let apps reach a local service over loopback: 127.0.0.1 never answers (#122).
+// The service listens on every interface, so if loopback stays silent the TV's own LAN address is tried, and the first
+// one that answers becomes the base for everything else. Where loopback works nothing changes. The service accepts the
+// TV's own address like loopback, and nothing else. Idea and measurements: skjnldsv (#122, #123). Whether the runtime lets
+// the page call an address that config.xml does not list is not known yet.
+function answers(base) {
+  return new Promise(function (ok) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', base + '/status', true);
+    xhr.timeout = 3000;
+    // A refusal that can be read is kept (and shown on the screen) even while another address is still being tried.
+    xhr.onload = function () {
+      if (xhr.status !== 200) {
+        var d = null;
+        try { d = JSON.parse(xhr.responseText); } catch (e) {}
+        if (d && d.seen) refusal = refusedText(xhr.status, d);
+      }
+      ok(xhr.status === 200);
+    };
+    xhr.onerror = xhr.ontimeout = function () { ok(false); };
+    try { xhr.send(); } catch (e) { ok(false); }
+  });
+}
+function lanAddresses() {
+  if (typeof tizen === 'undefined' || !tizen.systeminfo) return Promise.resolve([]);
+  return Promise.all(['ETHERNET_NETWORK', 'WIFI_NETWORK'].map(function (prop) {
+    return new Promise(function (ok) {
+      var t = setTimeout(function () { ok(null); }, 3000);
+      try {
+        tizen.systeminfo.getPropertyValue(prop, function (v) { clearTimeout(t); ok(v && v.ipAddress || null); },
+          function () { clearTimeout(t); ok(null); });
+      } catch (e) { clearTimeout(t); ok(null); }
+    });
+  })).then(function (ips) { return ips.filter(function (ip) { return ip && ip !== '0.0.0.0' && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip); }); });
+}
+var baseChosen = null, lanKnown = null;
+// Resolves true when some address answered (and BASE is then that one), false when none did. A failure is not kept: the
+// service may simply not be up yet, and the next try looks again.
+function pickBase() {
+  if (baseChosen) return Promise.resolve(true);
+  var port = BASE.split(':').pop();
+  return answers(BASE).then(function (yes) {
+    if (yes) { baseChosen = BASE; return true; }
+    return (lanKnown || (lanKnown = lanAddresses())).then(function (ips) {
+      return ips.reduce(function (p, ip) {
+        return p.then(function (found) {
+          if (found) return found;
+          var base = 'http://' + ip + ':' + port;
+          return answers(base).then(function (y) { return y ? base : null; });
+        });
+      }, Promise.resolve(null));
+    }).then(function (found) { if (found) { BASE = found; baseChosen = found; } return !!found; });
+  });
+}
+function settleBase(tries) {
+  return pickBase().then(function (ok) {
+    if (ok || tries <= 1) return ok;
+    return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return settleBase(tries - 1); });
+  });
+}
+// The service sends a reason and what it saw (address, Origin) when it refuses this page. A refusal is final: no retry.
+var refusal = null;
+function refusedText(status, d) {
+  var seen = (d && d.seen) || {};
+  return 'HTTP ' + status + (seen.address ? ' from ' + String(seen.address).slice(0, 45) : '') + (seen.origin ? ' origin ' + String(seen.origin).slice(0, 60) : '');
+}
+function reach(tries) {
+  return fetch(BASE + '/status').then(function (r) {
+    if (r.status === 200) return r.status;
+    return r.json().then(null, function () { return null; }).then(function (d) {
+      refusal = refusedText(r.status, d);
+      throw new Error('refused: ' + refusal);
+    });
+  }, function (e) {
+    if (tries <= 1) throw e;
+    return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return reach(tries - 1); });
+  });
+}
+function cb(call) { return new Promise(function (ok, ko) { call(ok, ko); }); }
+function sendReport(body, ms) {
+  return new Promise(function (resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', BASE + '/probe', true);
+    xhr.timeout = ms || 10000;
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () {
+      var result;
+      try { result = JSON.parse(xhr.responseText); } catch (e) { return reject(new Error('Response is not JSON')); }
+      if (xhr.status !== 200 || result.ok !== true) return reject(new Error('Report rejected: HTTP ' + xhr.status));
+      resolve({status: xhr.status, persisted: result.persisted});
+    };
+    xhr.onerror = function () { reject(new Error('Report send failed')); };
+    xhr.ontimeout = function () { reject(new Error('Report send timeout')); };
+    xhr.send(body);
+  });
+}
+// What the TV screen shows: one small JSON read. The launcher check inside it can take a few seconds.
+function readScreen() {
+  return new Promise(function (resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', BASE + '/screen', true);
+    xhr.timeout = 12000;
+    xhr.onload = function () {
+      var d;
+      try { d = JSON.parse(xhr.responseText); } catch (e) { return reject(new Error('Response is not JSON')); }
+      if (xhr.status !== 200 || !d || d.error) {
+        if (xhr.status !== 200 && d && d.seen) refusal = refusedText(xhr.status, d);
+        return reject(new Error('HTTP ' + xhr.status));
+      }
+      resolve(d);
+    };
+    xhr.onerror = function () { reject(new Error('Service unreachable')); };
+    xhr.ontimeout = function () { reject(new Error('Service timeout')); };
+    xhr.send();
+  });
+}
+function tryConnect(port) {
+  return new Promise(function (resolve, reject) {
+    var ws = new WebSocket('ws://127.0.0.1:' + port + '/api/v2/channels/samsung.remote.control?name=' + btoa('Vetro'));
+    var t = setTimeout(function () { try { ws.close(); } catch (e) {} reject(new Error('timeout')); }, 4000);
+    ws.onopen = function () { clearTimeout(t); ws.close(); resolve('open'); };
+    ws.onerror = function () { clearTimeout(t); reject(new Error('refused')); };
+  });
+}
+// The steps run side by side, except that the service answer waits for the service start. The model and the service
+// answer open the reports: a first one goes out as soon as both are in, so a screen closed early still leaves the TV
+// named in the report (#101). From then on every step that ends sends what it has. The package list is the slow one (#83, #94, #104): it is read after the verdict, so it can no longer hold the screen on "Checking".
+// Each entry: name, call, time limit (ms), what the screen calls the step.
+var jobs = [
+  ['serviceLaunch', launchService, 8000, 'Starting the service'],
+  ['tizenObject', function () { return typeof tizen !== 'undefined'; }, 8000, 'Tizen API'],
+  ['webapisObject', function () { return typeof webapis !== 'undefined'; }, 8000, 'Samsung API'],
+  ['productinfo', function () {
+      ['getModel', 'getRealModel', 'getFirmware', 'getModelCode', 'getLocalSet', 'getSmartTVServerType'].forEach(function (m) {
+        var id = {getModel: 'model', getRealModel: 'realModel', getFirmware: 'firmware', getModelCode: 'modelCode',
+          getLocalSet: 'localSet', getSmartTVServerType: 'smartHubServer'}[m];
+        try { report.settings[id] = webapis.productinfo[m](); } catch (e) {}
+      });
+      // Tizen platform version ("6.5", "9.0", ...). Public API, no root needed; absent or refused on some firmware.
+      try {
+        var pv = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version');
+        if (typeof pv === 'string' && pv) report.settings.platformVersion = pv;
+      } catch (e) {}
+      return Object.keys(report.settings).length; }, 8000, 'Model and firmware'],
+  ['supportedKeys', function () { return tizen.tvinputdevice.getSupportedKeys().map(function (k) { return k.name; }); }, 8000, 'Remote keys'],
+  ['serviceReach', function () { return settleBase(3).then(function () { return reach(8); }); }, 40000, 'Service answer'],
+  ['remoteApi8001', function () { return tryConnect(8001); }, 8000, 'TV remote API'],
+  ['systeminfoBattery', function () { return cb(function (ok, ko) { tizen.systeminfo.getPropertyValue('BUILD', ok, ko); }); }, 8000, 'System info'],
+  ['apps', function () { return cb(function (ok, ko) { tizen.application.getAppsInfo(ok, ko); }).then(function (a) {
+      report.apps = a.map(function (x) { return {id: x.id, name: x.name, packageId: x.packageId, show: x.show}; });
+      return a.length; }); }, 8000, 'Installed apps']
+];
+var SERVICE_REACH = jobs.map(function (j) { return j[0]; }).indexOf('serviceReach');   // the one step that waits for another
+var later = ['packages', function () { return cb(function (ok, ko) { tizen.package.getPackagesInfo(ok, ko); }).then(function (p) {
+    report.packages = p.map(function (x) { return {id: x.id, version: x.version, totalSize: x.totalSize, author: x.author}; });
+    return p.length; }); }, 30000, 'Package list'];
+var LABELS = {};
+jobs.concat([later]).forEach(function (j) { LABELS[j[0]] = j[3]; });
+
+// ---- the screen -------------------------------------------------------------------------------------------
+var ICONS = {
+  ok: '<svg class="ic" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#7fcba0" stroke-width="3"/><path d="M11.5 20.5l6 6 11-12.5" fill="none" stroke="#7fcba0" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  warn: '<svg class="ic" viewBox="0 0 40 40"><path d="M20 4.5l17 29.5H3z" fill="none" stroke="#e2b867" stroke-width="3" stroke-linejoin="round"/><path d="M20 15v9" stroke="#e2b867" stroke-width="3.6" stroke-linecap="round"/><circle cx="20" cy="29" r="2.1" fill="#e2b867"/></svg>',
+  bad: '<svg class="ic" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#ef8a80" stroke-width="3"/><path d="M13.5 13.5l13 13M26.5 13.5l-13 13" stroke="#ef8a80" stroke-width="3.6" stroke-linecap="round"/></svg>',
+  na: '<svg class="ic" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#aab8d1" stroke-width="3" stroke-dasharray="5 5"/></svg>',
+  wait: '<svg class="ic" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#aab8d1" stroke-width="3" stroke-dasharray="5 5"/></svg>',
+  off: '<svg class="ic" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#aab8d1" stroke-width="3"/><path d="M12 20h16" stroke="#aab8d1" stroke-width="3.6" stroke-linecap="round"/></svg>'
+};
+function esc(v) { return String(v).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+function probeOk(name) { return !!(report.probe[name] && report.probe[name].ok); }
+// Steps that ran out of time, or were skipped because the whole check did. A slow service start does not count once the
+// service has answered: on some TVs the start call never reports back although the service runs.
+function slowSteps() {
+  return Object.keys(report.probe).filter(function (k) {
+    var p = report.probe[k];
+    if (k === 'serviceLaunch' && probeOk('serviceReach')) return false;
+    return p && !p.ok && /^(no answer|skipped)/.test(String(p.error || ''));
+  });
+}
+// Why the service is down, for the support line: what the start and the reach steps said (#2).
+function svcWhy() {
+  var why = [];
+  [['serviceLaunch', 'start'], ['serviceReach', 'reach']].forEach(function (s) {
+    var p = report.probe[s[0]];
+    if (p && !p.ok) why.push(s[1] + ': ' + String(p.error || 'failed').slice(0, 60));
+  });
+  return why.length ? ' (' + why.join('; ') + ')' : '';
+}
+function appVersion() { try { return tizen.application.getCurrentApplication().appInfo.version || null; } catch (e) { return null; } }
+
+// Root not connected: what the service saw decides what the screen asks for (#99, #91, #75). A cold start is what made
+// the agent connect on the TVs we heard from; reinstalling does not help a TV that cannot run it.
+var COLD = 'turn the TV off at the wall (or unplug it) for 30 seconds, then on again';
+function rootCheck(r) {
+  var code = r.code ? ' ' + r.code : '';
+  if (r.reason === 'unsupported') return ['warn', 'Root access', 'Not available on this TV', 'This TV\'s system is too old for the root helper. Vetro works here as an app only: features that need root are off. Reinstalling will not change this.', 'ROOT N/A old-tv', 'warn'];
+  if (r.reason === 'starting') return ['warn', 'Root access', 'Connecting', 'Root usually connects within a minute of the TV starting. Press OK to check again.', 'ROOT WAIT', 'warn'];
+  if (r.reason === 'sdb') return ['bad', 'Root access', 'Not connected', 'The TV refused the local developer connection root needs. Check that Developer Mode is on and Host PC IP is 127.0.0.1, then ' + COLD + '.', 'ROOT DOWN' + code, 'bad'];
+  if (r.reason === 'agent') return ['bad', 'Root access', 'Not connected', 'The root helper started but did not answer. Check that Host PC IP is 127.0.0.1, then ' + COLD + '. If it stays like this, reinstall the root package.', 'ROOT DOWN agent', 'bad'];
+  if (r.reason === 'prepare') return ['bad', 'Root access', 'Not connected', 'Vetro could not prepare the root helper. Reinstall the root package.', 'ROOT DOWN prepare', 'bad'];
+  return ['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad'];
+}
+// One check: [state, name, value, hint, token, tokenState]. state is ok | warn | bad | off | na. The token is the
+// short form for the support line; it is upper case (and coloured) when something is wrong.
+function checks(d) {
+  var out = [], root, api, apiMissing = [], slow, slowHint, mem, l, i;
+  if (!d && refusal) {
+    out.push(['bad', 'Service', 'Refused this screen', 'The service is running but did not accept this screen (' + esc(refusal) + '). Please report this on GitHub with a photo of this screen.',
+      'SVC REFUSED ' + refusal, 'bad']);
+  } else if (!d) {
+    out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +
+      (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
+  } else {
+    var av = appVersion(), mismatch = av && d.version && av !== d.version;
+    out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. Reinstall Vetro so both match.', 'SVC ' + d.version + '/APP ' + av, 'warn']
+      : ['ok', 'Service', 'Running', 'Port ' + esc(d.port), 'svc ok']);
+  }
+  if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
+  else if (d.root.connected) out.push(['ok', 'Root access', 'Connected', null, 'root ok']);
+  else if (d.root.mode === 'app-only') out.push(['warn', 'Root access', 'Not available', 'This is the app-only package. Features that need root are off.', 'ROOT NO', 'warn']);
+  else out.push(rootCheck(d.root));
+  root = !!(d && d.root.connected);
+  if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
+  else if (!d.input.enabled) out.push(['off', 'Remote input', 'Off', null, 'input off']);
+  else if (d.input.connected) out.push(['ok', 'Remote input', 'Filtering', null, 'input ok']);
+  else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remapper in the dashboard.', 'INPUT LOST', 'bad']);
+  l = d && d.launcher;
+  if (!d) out.push(['na', 'Launcher', 'Unknown', null, 'launcher ?']);
+  else if (!l.installed) out.push(['na', 'Launcher', 'Not included', null, 'launcher n/a']);
+  else if (!l.enabled) out.push(['off', 'Launcher', 'Off', null, 'launcher off']);
+  else if (l.running === true) out.push(['ok', 'Launcher', 'Running', null, 'launcher ok']);
+  else if (l.running === false) out.push(['bad', 'Launcher', l.failures ? 'Failed to start' : 'Not running',
+    (l.failures ? 'Tried ' + esc(l.failures) + ' times. ' : '') + 'Open the Launcher tab in the dashboard and read the error.', 'LAUNCHER FAIL' + (l.failures ? ' x' + l.failures : ''), 'bad']);
+  else out.push(['warn', 'Launcher', 'Cannot check', 'It needs root access to be checked.', 'LAUNCHER ?', 'warn']);
+  // The package list is read after the verdict: not read yet is not missing.
+  ['tizenObject', 'webapisObject', 'apps', 'packages'].forEach(function (k) { if (!probeOk(k) && (k !== 'packages' || report.probe.packages)) apiMissing.push(k.replace('Object', '')); });
+  slow = slowSteps();
+  slowHint = slow.length ? 'No answer in time: ' + esc(slow.map(function (k) { return LABELS[k] || k; }).join(', ')) + '.' : '';
+  if (apiMissing.length) api = ['warn', 'TV APIs', 'Limited', 'Not available: ' + esc(apiMissing.join(', ')) + '.' + (slowHint ? ' ' + slowHint : ''), 'API ' + apiMissing.join('/') + (slow.length ? ' SLOW ' + slow.join('/') : ''), 'warn'];
+  // A slow step whose answer Vetro does not need is named, without turning a healthy TV into a warning.
+  else if (slow.length) api = ['ok', 'TV APIs', 'Available', 'slow: ' + esc(slow.map(function (k) { return LABELS[k] || k; }).join(', ')), 'api ok, slow ' + slow.join('/')];
+  else api = ['ok', 'TV APIs', 'Available', report.probe.packages ? null : 'package list: reading', 'api ok'];
+  out.push(api);
+  mem = d && d.memory && d.memory.availableMb;
+  if (typeof mem !== 'number') out.push(['na', 'Memory', 'Unknown', null, 'mem ?']);
+  else if (mem < 200) out.push(['warn', 'Memory', mem + ' MB free', 'Low. The TV may feel slow.', 'MEM ' + mem + 'M', 'warn']);
+  else out.push(['ok', 'Memory', mem + ' MB free', null, 'mem ' + mem + 'M']);
+  return out;
+}
+
+function cell(c) {
+  var cls = c[0] === 'bad' || c[0] === 'warn' || c[0] === 'na' || c[0] === 'wait' ? ' ' + c[0] : '';
+  var value = esc(c[2]) + (c[3] && c[0] === 'ok' ? ' <span>&middot; ' + c[3] + '</span>' : '');
+  return '<div class="c' + cls + '">' + ICONS[c[0]] + '<div><div class="n">' + esc(c[1]) + '</div><div class="v">' + value + '</div>' +
+    (c[3] && c[0] !== 'ok' ? '<div class="h">' + c[3] + '</div>' : '') + '</div></div>';
+}
+
+var WAITING = [['Service', 'Starting'], ['Root access', 'Checking'], ['Remote input', 'Checking'], ['Launcher', 'Checking'], ['TV APIs', 'Checking'], ['Memory', 'Checking']];
+// ---- quick controls (the main view) -----------------------------------------------------------------------
+// Five tiles; each does what one switch of the dashboard does, through POST /screen/control. The state comes from one
+// GET /screen/controls when the screen opens and again after each action: nothing polls. Every call has a time limit.
+var view = 'main', focus = 0, lastTile = 0, controls = null, controlsSeq = 0, busy = {}, upd = {phase: 'idle', version: null}, toastText = '', toastTimer = null;
+var TILE_ICONS = {
+  launcher: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linejoin="round"><rect x="4" y="4" width="11" height="11" rx="3"/><rect x="21" y="4" width="11" height="11" rx="3"/><rect x="4" y="21" width="11" height="11" rx="3"/><rect x="21" y="21" width="11" height="11" rx="3"/></svg>',
+  ads: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18s5-9 15-9 15 9 15 9-5 9-15 9S3 18 3 18z"/><circle cx="18" cy="18" r="4.5"/><path d="M6 31L30 5"/></svg>',
+  voice: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="3" width="10" height="17" rx="5"/><path d="M7 16a11 11 0 0 0 22 0M18 27v6"/><path d="M5 31L31 5"/></svg>',
+  update: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="14"/><path d="M18 9v13M12 17l6 6 6-6"/></svg>',
+  tuner: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="30" height="20" rx="3"/><path d="M12 4l6 7 6-7"/></svg>'
+};
+// Tile order is the order on screen. "on"/"off" are the words for the switch; a switch is "on" when the feature is switched on
+// (the launcher, the tuner) or switched off for good (ads, voice: the dashboard's "Disable" switches).
+var TILES = [
+  {id: 'launcher', title: 'Vetro Launcher', tag: '', on: 'On', off: 'Off', desc: 'The Home key opens Vetro’s fast launcher instead of Samsung’s Home.', words: ['Launcher on', 'Launcher off']},
+  {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and the TV’s viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
+  {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google and voice search. The remote’s mic button stops working.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
+  {id: 'update', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.'},
+  {id: 'tuner', title: 'Vetro TV Tuner', tag: 'LIVE TV', on: 'On', off: 'Off', desc: 'Live TV drawn by Vetro over Samsung’s tuner, which is never changed.', words: ['Vetro TV Tuner on', 'Vetro TV Tuner off']}
+];
+// A call to the service with its own time limit, so a tile can never stay on "Working" for good. Resolves {status, data}.
+function call(method, path, body, ms) {
+  return new Promise(function (resolve, reject) {
+    var xhr = new XMLHttpRequest(), data = null;
+    xhr.open(method, BASE + path, true);
+    xhr.timeout = ms;
+    if (body !== null) xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function () {
+      try { data = JSON.parse(xhr.responseText); } catch (e) {}
+      resolve({status: xhr.status, data: data});
+    };
+    xhr.onerror = function () { reject(new Error('The service did not answer')); };
+    xhr.ontimeout = function () { reject(new Error('The TV took too long to answer')); };
+    xhr.send(body === null ? undefined : JSON.stringify(body));
+  });
+}
+function paintToast() {
+  var el = document.getElementById('toast');
+  if (!el || !el.style) return;
+  el.textContent = toastText;
+  el.style.display = toastText ? 'block' : 'none';
+}
+function toast(text) {
+  toastText = String(text).slice(0, 200);
+  paintToast();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { toastText = ''; paintToast(); }, 5000);
+}
+function failText(r) { return (r && r.data && r.data.error) ? String(r.data.error) : 'The TV refused the change (HTTP ' + (r && r.status) + ')'; }
+function loadControls() {
+  var mine = ++controlsSeq;
+  return call('GET', '/screen/controls', null, 15000).then(function (r) {
+    if (mine !== controlsSeq) return;
+    controls = r.status === 200 && r.data && r.data.tiles ? r.data : null;
+  }, function () { if (mine === controlsSeq) controls = null; }).then(function () {
+    if (mine !== controlsSeq) return;
+    loaded = true;
+    if (view === 'main' && lastScreen) render(lastScreen, false);
+  });
+}
+function rereadScreen() {
+  return readScreen().then(function (d) { lastScreen = d; if (view === 'main') render(d, false); }, function () {});
+}
+// What a tile shows: {sw: off|on|part|busy|none, val, cls, foot (a button instead of a switch), tag, desc, na}
+function tileView(t) {
+  var c = controls, s = c && c.tiles && c.tiles[t.id], l = lastScreen && lastScreen.launcher, o = {tag: t.tag, desc: t.desc, na: false};
+  if (t.id === 'update') return updateView(t, o);
+  if (busy[t.id]) { o.sw = 'busy'; o.val = 'Working…'; o.cls = 'mute'; return o; }
+  if (!c) { o.sw = 'off'; o.val = controls === null && !loaded ? 'Reading…' : 'Unavailable'; o.cls = 'mute'; o.na = true; return o; }
+  if (!c.canControl) o.na = true;
+  if (!s || s.state === 'na') { o.sw = 'off'; o.val = 'Unavailable'; o.cls = 'mute'; o.na = true; o.why = s && s.why; return o; }
+  if (t.id === 'launcher' && s.state === 'on' && l && l.running === false) {
+    o.sw = 'part'; o.val = 'Not running'; o.cls = 'bad'; o.tag = 'PROBLEM';
+    o.desc = (l.failures ? 'Failed to start (tried ' + l.failures + (l.failures === 1 ? ' time' : ' times') + '). ' : 'It is not running. ') + 'Press OK to try again.';
+    return o;
+  }
+  if (t.id === 'launcher' && s.custom) o.desc = 'A custom launcher app is set for the Home key. Press OK to put Samsung’s Home back.';
+  if (s.state === 'part') { o.sw = 'part'; o.val = (s.left || 'Some') + ' still on'; o.cls = 'warn'; return o; }
+  o.sw = s.state === 'on' ? 'on' : 'off';
+  o.val = s.state === 'on' ? t.on : t.off;
+  o.cls = s.state === 'on' ? 'ok' : 'mute';
+  return o;
+}
+function updateView(t, o) {
+  var c = controls, ok = c && c.canControl && c.update && c.update.configured;
+  o.tag = (c && c.update && c.update.version) || (lastScreen && lastScreen.version) || '';
+  o.na = !ok;
+  if (!c) { o.btn = 'Check for update'; return o; }
+  if (!c.update || !c.update.configured) { o.desc = 'This build has no update key, so it cannot be updated from here.'; o.btn = 'Check for update'; return o; }
+  var p = upd.phase;
+  if (p === 'checking') o.btn = 'Checking…';
+  else if (p === 'none') { o.desc = 'You have the newest version.'; o.note = 'Up to date'; o.cls = 'ok'; }
+  else if (p === 'found') { o.desc = 'Version ' + upd.version + ' is ready. The signed update is checked on the TV before it is installed.'; o.btn = 'Update to ' + upd.version; o.go = true; }
+  else if (p === 'confirm') { o.desc = 'Version ' + upd.version + ' is ready. The signed update is checked on the TV before it is installed.'; o.btn = 'OK again to confirm'; o.go = true; }
+  else if (p === 'reinstall') { o.desc = 'Version ' + upd.version + ' changes the package itself. Install it again with Apps2Samsung.'; o.btn = 'Check for update'; }
+  else if (p === 'run') { o.note = 'Updating… Vetro restarts'; o.cls = 'mute'; }
+  else if (p === 'error') { o.btn = 'Check for update'; o.desc = upd.error || 'The update did not work.'; }
+  else o.btn = 'Check for update';
+  return o;
+}
+var loaded = false;
+function tileHtml(i) {
+  var t = TILES[i], o = tileView(t), cls = 'tile' + (focus === i ? ' focus' : '') + (o.na ? ' na' : ''), foot;
+  if (t.id === 'update') foot = o.btn ? '<div class="btn' + (o.go ? ' go' : '') + '">' + esc(o.btn) + '</div>' : '<div class="val ' + (o.cls || 'mute') + '" style="margin-left:0">' + esc(o.note || '') + '</div>';
+  else foot = '<div class="sw ' + o.sw + '"><i></i></div><div class="val ' + o.cls + '">' + esc(o.val) + '</div>';
+  return '<div class="' + cls + '"><div class="top"><div class="glyph">' + TILE_ICONS[t.id] + '</div><div class="tag">' + esc(o.tag || '') + '</div></div>' +
+    '<h3>' + esc(t.title) + '</h3><p>' + esc(o.desc) + '</p><div class="foot">' + foot + '</div></div>';
+}
+var SHORT = {'Root access': 'Root', 'Remote input': 'Input'};
+function renderMain(d) {
+  var list = checks(d), bad = 0, warn = 0, state, label, chips = '', tiles = '', i, c, locked = controls && !controls.canControl;
+  list.forEach(function (x) { if (x[0] === 'bad') bad++; else if (x[0] === 'warn') warn++; });
+  if (bad) { state = 'bad'; label = 'Needs attention'; } else if (warn) { state = 'warn'; label = 'Running, with limits'; } else { state = 'ok'; label = 'Running in the background'; }
+  var device = report.settings, model = device.realModel || device.model, firmware = device.firmware ? String(device.firmware).split('-').pop() : null, version = d.version || appVersion();
+  var pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '', addr = d.address ? 'http://' + d.address + ':' + d.port : null;
+  for (i = 0; i < list.length; i++) {
+    c = list[i];
+    chips += '<div class="chip' + (c[0] === 'warn' || c[0] === 'bad' ? ' ' + c[0] : '') + '"><span class="dot ' + (c[0] === 'ok' ? '' : c[0]) + '"></span>' + esc(SHORT[c[1]] || c[1]) + '<b>' + esc(c[2]) + '</b></div>';
+  }
+  for (i = 0; i < TILES.length; i++) tiles += tileHtml(i);
+  var right = locked ? 'Switches are off here: this page is not recognised as the TV. Use the dashboard on a phone.' : focus < 5 ? 'Left / Right to choose · OK to switch' : '';
+  var el = document.getElementById('screen');
+  el.className = 'safe compact';
+  el.innerHTML =
+    '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
+    '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
+    '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
+    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : 'The address appears once the TV is on the network.') + '</p></div></div>' +
+    '<div class="sec"><h2>Quick controls</h2><span>' + esc(right) + '</span></div><div class="tiles">' + tiles + '</div>' +
+    '<div class="diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === 5 ? ' focus' : '') + '"><h4>Diagnostics</h4><div class="chips">' + chips + '</div><div class="more">' +
+    (focus === 5 ? '<b style="color:var(--text)">OK</b> Details' : 'Down for details') + '</div></div><div class="toast" id="toast" style="display:none"></div>';
+  paintToast();
+}
+function render(d, waiting) {
+  if (waiting || !d || view === 'details') return renderDetails(d, waiting);
+  renderMain(d);
+}
+function chosen() { return TILES[focus] && TILES[focus].id; }
+// One tile pressed. A switch asks the service for the opposite of what it shows; "part" (some members still on) finishes the job.
+function activate() {
+  var id = chosen(), s, want;
+  if (focus === 5) { view = 'details'; render(lastScreen, false); return; }
+  if (!controls) { toast('The controls did not load. Press Back and open Vetro again; the service may be starting.'); return; }
+  if (!controls.canControl) { toast('This TV page cannot change settings. Use the dashboard.'); return; }
+  if (id === 'update') return activateUpdate();
+  if (busy[id]) return;
+  s = controls.tiles[id];
+  if (!s || s.state === 'na') { toast(s && s.why ? 'Not available: ' + s.why : 'Not available on this TV'); return; }
+  want = s.state !== 'on' || (id === 'launcher' && lastScreen && lastScreen.launcher && lastScreen.launcher.running === false);
+  busy[id] = true; render(lastScreen, false);
+  call('POST', '/screen/control', {id: id, on: want}, 130000).then(function (r) {
+    busy[id] = false;
+    if (r.status === 200 && r.data && r.data.ok && r.data.tile) {
+      controls.tiles[id] = r.data.tile;
+      toast(TILES.filter(function (x) { return x.id === id; })[0].words[r.data.tile.state === 'on' || r.data.tile.state === 'part' ? 0 : 1]);
+    } else { toast(failText(r)); loadControls(); }
+    if (id === 'launcher') rereadScreen(); else render(lastScreen, false);
+  }, function (e) { busy[id] = false; toast(e.message); loadControls(); });
+}
+function updateStep(step, ms) { return call('POST', '/screen/control', {id: 'update', step: step}, ms); }
+function activateUpdate() {
+  var p = upd.phase;
+  if (p === 'checking' || p === 'run') return;
+  if (p === 'found') { upd.phase = 'confirm'; render(lastScreen, false); return; }
+  if (p === 'confirm') {
+    upd.phase = 'run'; render(lastScreen, false);
+    updateStep('apply', 130000).then(function (r) {
+      if (r.status === 200 && r.data && r.data.ok) { waitForVersion(upd.version, 0); return; }
+      upd.phase = 'error'; upd.error = failText(r); render(lastScreen, false); toast(upd.error);
+    }, function (e) { upd.phase = 'error'; upd.error = e.message; render(lastScreen, false); toast(e.message); });
+    return;
+  }
+  upd.phase = 'checking'; render(lastScreen, false);
+  updateStep('check', 70000).then(function (r) {
+    if (r.status === 200 && r.data && r.data.ok) { upd.phase = r.data.phase; upd.version = r.data.version; upd.error = null; }
+    else { upd.phase = 'error'; upd.error = failText(r); toast(upd.error); }
+    render(lastScreen, false);
+  }, function (e) { upd.phase = 'error'; upd.error = e.message; render(lastScreen, false); toast(e.message); });
+}
+// After an update the service restarts. Once it reports the new version this screen is reloaded to get the new page too.
+function waitForVersion(v, tries) {
+  call('GET', '/status', null, 4000).then(function (r) {
+    if (r.status === 200 && r.data && r.data.app && r.data.app.version === v) { try { location.reload(); } catch (e) {} return; }
+    throw new Error('old');
+  }).then(null, function () {
+    if (tries > 100) { upd.phase = 'error'; upd.error = 'Vetro did not come back with the new version yet. If it does not, it puts the old one back by itself.'; render(lastScreen, false); return; }
+    setTimeout(function () { waitForVersion(v, tries + 1); }, 3000);
+  });
+}
+// Moving off the update tile cancels a pending confirmation.
+function moveTo(n) {
+  if (n === focus) return;
+  if (upd.phase === 'confirm') upd.phase = 'found';
+  focus = n; if (n < 5) lastTile = n;
+  render(lastScreen, false);
+}
+function mainKey(k) {
+  if (k === 37 && focus > 0 && focus < 5) moveTo(focus - 1);
+  else if (k === 39 && focus < 4) moveTo(focus + 1);
+  else if (k === 40 && focus < 5) moveTo(5);
+  else if (k === 38 && focus === 5) moveTo(lastTile);
+  else if (k === 13) activate();
+  else if (k === 10009 || k === 27) leave();
+}
+function renderDetails(d, waiting) {
+  document.getElementById('screen').className = 'safe';
+  var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '';
+  list.forEach(function (c) { if (waiting) return; if (c[0] === 'bad') bad++; else if (c[0] === 'warn') warn++; });
+  if (waiting) { state = 'wait'; label = 'Checking'; sum = 'Checking'; }
+  else if (!d && refusal) { state = 'bad'; label = 'Refused'; sum = 'The service refused this screen'; }
+  else if (!d) { state = 'bad'; label = 'Not responding'; sum = 'The service is down'; }
+  else if (bad) { state = 'bad'; label = 'Needs attention'; sum = bad + (bad === 1 ? ' problem' : ' problems'); }
+  else if (warn) { state = 'warn'; label = 'Running, with limits'; sum = warn + (warn === 1 ? ' thing to check' : ' things to check'); }
+  else { state = 'ok'; label = 'Running in the background'; sum = 'All good. You can close this screen, Vetro keeps running without it.'; }
+  version = (d && d.version) || appVersion();
+  model = device.realModel || device.model;
+  firmware = device.firmware ? String(device.firmware).split('-').pop() : null;   // T-NKM2DEUC-2310.0 -> 2310.0
+  line = [esc('V' + (version || '?'))].concat(model ? [esc(model + (firmware ? ' ' + firmware : ''))] : []);
+  if (!waiting) list.forEach(function (c) { line.push(c[5] ? '<em' + (c[5] === 'warn' ? ' class="w"' : '') + '>' + esc(c[4]) + '</em>' : esc(c[4])); });
+  var addr = d && d.address ? 'http://' + d.address + ':' + d.port : null;
+  var cells = '';
+  list.forEach(function (c) { cells += cell(c); });
+  document.getElementById('screen').innerHTML =
+    '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' +
+    (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
+    '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
+    '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
+    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. This can take 1&ndash;2 minutes: please do not close this screen.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
+    '<div class="panel ' + (bad ? 'bad' : warn ? 'warn' : '') + '"><div class="ph"><h2>Diagnostics</h2><div class="sum ' + (state === 'ok' ? '' : state) + '" id="sum">' + esc(sum) + '</div></div>' +
+    '<div class="grid">' + cells + '</div>' +
+    '<div class="share"><div class="t">Asking for help? Read out or photograph this line.</div><code>' + (waiting ? 'Collecting the details&hellip;' : line.join(' &middot; ')) + '</code></div>' +
+    '<div class="keys">' + (waiting ? '' : '<span><i>OK</i>Check again</span>') + '<span><i>Back</i>Close</span></div></div>';
+}
+function fit() {
+  var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), s = document.getElementById('stage');
+  if (s && s.style) s.style.transform = 'scale(' + k + ')';
+}
+
+// ---- run ----------------------------------------------------------------------------------------------------
+// Asks the service every 2 s whether a browser is waiting to pair; only loopback may read the code.
+function pinLine() {
+  var left = Math.max(0, Math.ceil((pairing.until - Date.now()) / 1000));
+  return pairing.name + ' · ' + Math.floor(left / 60) + ':' + (left % 60 < 10 ? '0' : '') + left % 60;
+}
+// Set when a browser waits for a code but the service would not give it to this screen: said on screen, not left blank.
+var pairingBlocked = null;
+function paintPairing() {
+  var el = document.getElementById('pin');
+  if (pairing && pairing.until <= Date.now()) pairing = null;   // a lost answer must not leave a dead code on screen
+  if (!el) return;
+  if (!pairing && pairingBlocked) {
+    el.hidden = false;
+    el.innerHTML = 'PIN<b>&mdash;</b><i>' + esc(pairingBlocked) + '</i>';
+    return;
+  }
+  el.hidden = !pairing;
+  el.innerHTML = 'PIN<b>' + (pairing ? esc(pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3)) : '') + '</b><i>' + esc(pairing ? pinLine() : '') + '</i>';
+}
+// A soft two-partial "ding" when a new code appears, since the code itself is small to spot from the sofa. A sine with a
+// quick attack and a long exponential fade; no audio file, and any failure (no Web Audio, blocked) stays silent.
+function ding() {
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext, ctx, t, g, o, i, parts = [[880, 0.10], [1760, 0.025]];
+    if (!AC) return;
+    ctx = new AC();
+    if (ctx.resume) ctx.resume();
+    t = ctx.currentTime;
+    for (i = 0; i < parts.length; i++) {
+      o = ctx.createOscillator(); g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = parts[i][0];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(parts[i][1], t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 1.5);
+    }
+    setTimeout(function () { try { ctx.close(); } catch (e) {} }, 2000);
+  } catch (e) {}
+}
+function showPairing(p) {
+  var was = pairing && pairing.code;
+  pairing = p && p.code ? {code: String(p.code), name: String(p.name || 'Browser'), until: Date.now() + (+p.expiresIn || 120) * 1000} : null;
+  if (pairing) resetIdle();                       // the screen stays open while a code is waiting
+  if (!pairing && !was) return;
+  paintPairing();
+  if (pairing && pairing.code !== was) ding();
+}
+function checkPairing() {
+  if (document.hidden) return;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', BASE + '/auth/pending', true);
+  xhr.timeout = 3000;
+  xhr.onload = function () {
+    var d, was = pairingBlocked;
+    try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
+    if (xhr.status !== 200) {
+      pairingBlocked = d && d.pending ? 'The code cannot be shown on this screen (' + refusedText(xhr.status, d) + '). Please report this on GitHub with a photo of this screen.' : null;
+      if (pairingBlocked || was) paintPairing();
+      return;
+    }
+    pairingBlocked = null;
+    if (was) paintPairing();
+    showPairing(d);
+  };
+  xhr.send();
+}
+function resetIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(leave, IDLE_MS);
+}
+// Shows how far the checks are, so a slow TV reads as working and not as stuck: how many are done, which ones are
+// still open and the seconds since the checks began. Seconds that stop moving mean the page itself is blocked; a photo
+// of this line says where.
+var running_ = {}, doneCount_ = function () { return 0; };
+function paintProgress() {
+  var el = document.getElementById('sum'), open = Object.keys(running_).map(function (k) { return running_[k]; });
+  if (el && step) el.textContent = 'Checking ' + doneCount_() + ' of ' + jobs.length + ' done \u00b7 ' + (open.join(', ') || 'finishing') + ' \u00b7 ' + Math.floor((Date.now() - step.since) / 1000) + ' s';
+}
+// Reports go out one after the other, each as it was when queued, so a late answer cannot overwrite a newer one.
+function post(ms) {
+  var body = JSON.stringify(report), sent = posts.then(function () { return sendReport(body, ms); });
+  posts = sent.then(null, function () {});
+  return sent;
+}
+function run() {
+  if (running) return Promise.resolve();
+  running = true; delivered = false; refusal = null; controls = null; loaded = false; busy = {};
+  var started = Date.now(), closed = false, cap;
+  step = {since: started};
+  report = {probe: {}, apps: [], packages: [], settings: {}, progress: {partial: true, done: 0, of: jobs.length, next: jobs[0][0], elapsedMs: 0}};
+  render(null, true);
+  clearInterval(tick);
+  tick = setInterval(paintProgress, 1000);
+  // The steps run side by side; only the service answer waits for the service start. A stuck step now costs its own
+  // time limit once, not on top of every other step's.
+  var finished = {}, doneCount = 0;
+  function runStep(i) {
+    var j = jobs[i];
+    if (closed) return Promise.resolve();
+    running_[j[0]] = j[3];
+    paintProgress();
+    return attempt(j[0], j[1], j[2]).then(function () {
+      if (closed) return;
+      delete running_[j[0]];
+      finished[j[0]] = true; doneCount++;
+      var next = jobs.filter(function (x) { return !finished[x[0]]; })[0];
+      report.progress = {partial: true, done: doneCount, of: jobs.length, next: (next || later)[0], elapsedMs: Date.now() - started};
+      paintProgress();
+      // Once the model and the service answer are in, every further step sends what it has.
+      if (doneCount < jobs.length && finished.productinfo && finished.serviceReach && probeOk('serviceReach')) post(4000).then(null, function () {});
+    });
+  }
+  running_ = {}; doneCount_ = function () { return doneCount; };
+  var steps = Promise.all(jobs.map(function (j, i) {
+    if (j[0] === 'serviceReach') return null;
+    return runStep(i).then(function () { return j[0] === 'serviceLaunch' ? runStep(SERVICE_REACH) : null; });
+  }));
+  var limit = new Promise(function (resolve) { cap = setTimeout(function () { closed = true; resolve(); }, TOTAL_MS); });
+  return Promise.race([steps, limit])
+    .then(function () {
+      var done = 0;
+      closed = true; clearTimeout(cap); clearInterval(tick); step = null; running_ = {};
+      jobs.forEach(function (j) {
+        if (!report.probe[j[0]]) report.probe[j[0]] = {ok: false, error: 'skipped: the checks took over ' + TOTAL_MS / 1000 + ' s'};
+        if (!/^skipped/.test(String(report.probe[j[0]].error || ''))) done++;
+      });
+      report.progress = {partial: false, done: done, of: jobs.length, next: later[0], elapsedMs: Date.now() - started};
+      return post(10000).then(function () { delivered = true; }, function () {});
+    })
+    .then(function () { return readScreen().catch(function () { return null; }); })
+    .then(function (d) { lastScreen = d; render(d, false); if (d) loadControls(); }, function () { lastScreen = null; render(null, false); })
+    .then(function () { running = false; readPackages(); });
+}
+// The package list, after the verdict. When it arrives the report goes out again and the screen is drawn again.
+function readPackages() {
+  if (packagesBusy) { packagesAgain = true; return; }
+  packagesBusy = true;
+  var mine = report;
+  attempt(later[0], later[1], later[2]).then(function () {
+    packagesBusy = false;
+    if (packagesAgain) { packagesAgain = false; if (!running) return readPackages(); }
+    if (running || report !== mine) return;
+    report.progress.packagesDone = true;
+    post(10000).then(null, function () {});
+    render(lastScreen, false);
+  });
+}
+document.addEventListener('visibilitychange', function () { if (document.hidden && delivered) leave(); });
+document.addEventListener('keydown', function (e) {
+  var k = e && e.keyCode;
+  resetIdle();
+  // The main view (tiles) takes the keys once the checks are done; the details view and the waiting screen keep the old ones.
+  if (!running && lastScreen && view === 'main') mainKey(k);
+  else if (k === 10009 || k === 27) { if (!running && lastScreen && view === 'details') { view = 'main'; render(lastScreen, false); } else leave(); }
+  else if (k === 13) run();
+});
+window.addEventListener('resize', fit);
+fit();
+resetIdle();
+checkPairing();
+setInterval(checkPairing, 2000);
+setInterval(function () { if (pairing) paintPairing(); }, 1000);
+// Module scripts run after this classic script and before DOMContentLoaded.
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+
+/* demo data for the comparison page: the page believes the service answered */
+if(/[?&]demo/.test(location.search)||true){report.settings={realModel:'QE55Q80A',firmware:'T-NKM2DEUC-2310.0'};controls={canControl:true,update:{configured:true,version:'0.5.1'}};focus=1;view='main';
+var FAKE={version:'0.5.1',address:'192.168.1.40',port:8099,root:{connected:true},input:{enabled:true,connected:true},launcher:{enabled:true,running:true,installed:true},memory:{availableMb:900}};
+render=function(){renderMain(FAKE)};renderDetails=function(){renderMain(FAKE)};setInterval(function(){try{renderMain(FAKE)}catch(e){}},300);}
+</script>
+<script type="module">import { Service } from 'wrt:service'; window.a2sService = Service;</script>
+</body>
+</html>

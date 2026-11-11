@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vetro dock — as on the TV</title>
+<!--
+  The launcher as on the TV (approved look: design round opus6, DESIGN.md "TV material"). Every panel is the osd 123's material
+  (pill_rim white .22 2 px outside pill_bg slate .90, radius 40 or capsule, no drop shadow); the one focus is the ice capsule with slate text;
+  the dock icons keep their ice ring + glow. Bars centred on x 960.
+  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|tasks|volume|pad123; ?focus=N (dock item); ?bd=video|black|light|grid.
+  Keys: Left / Right move · Up: Sources · Down: Task manager · Esc: back · Enter: launch · + / - / M: Volume bar · N: osd 123 (digits, Left / Right, Enter) ·
+  R: replay the entrance · H: the toolbar.
+-->
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="tv-common.css">
+<link rel="stylesheet" href="tv-material.css">
+<style>
+  /* The dock draws pictures, not CSS effects: assets/dock/*.png are dock/res/*.png, the same files the C# loads. */
+  .tint { position: absolute; }   /* a white picture tinted (evas_object_color_set): the colour through the picture as a mask (-webkit-mask-box-image, slice 0) */
+  .pic { position: absolute; display: block; }
+  .glow { position: absolute; -webkit-mask-box-image: url(assets/dock/dock_glow.png) 0 / 0 stretch; }   /* mask-box-image: plain mask-image is refused on file:// pages */
+  .tile { position: absolute; display: grid; place-items: center; color: #fff; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, var(--vetro-tv-dock-icon-rim)); }
+  .hint { position: absolute; display: flex; align-items: center; gap: 4px; font-size: 22px; line-height: 1; opacity: .9; text-shadow: 0 1px 6px rgba(0, 0, 0, .55); }
+  .hint img { width: 24px; height: 24px; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="canvas"></div></div>
+<script src="tv-common.js"></script>
+<script>
+(function () {
+  var CV = document.getElementById('canvas');
+  function layer() { var d = document.createElement('div'); d.style.cssText = 'position:absolute;inset:0'; CV.appendChild(d); return d; }
+  var C = layer(), TL = layer(), VL = layer(), NL = layer();   // the dock window; the Task manager; the Volume bar; the osd 123 (their own windows on the TV)
+  var bar = Tv.toolbar('Left / Right move · Up: Sources · Down: Task manager · Esc: back · Enter: launch · + / - / M: volume · N: osd 123 · R: replay · H: this bar', [['EPG', 'epg.html'], ['Tuner', 'tuner.html'], ['Design system', 'index.html']]);
+  var STILL = /[?&]still/.test(location.search);
+
+  /* ---- geometry: dock/src/Core/Layout.cs and Design.cs ---- */
+  var ICON = 92, FOCUS = 112, GAP = 18, PADX = 26, PADTOP = 16, PADBOTTOM = 16, MARGIN = 40, HINTH = 46, CAPH = 36, GROUPGAP = 56,
+      PILLW = 232, PILLH = 48, PILLGAP = 8, DIVW = 2, DIVH = 72, HLPAD = 32, PILLGLOWPAD = 32, LIFT = 4, RINGW = 2, SLIDE = 48,
+      FOCUS_S = 0.30, ENTER_S = 0.30, STAGGER_S = 0.024, ICON_DIM = 0.94, PILL_DIM = 0.88, MAXPILL = 1808, RADIUS = 40;
+  var BAR_TOP = 850, BAR_TOP_RAISED = 804;   // the apps bar ends at y 994 (the Task manager's bottom line); Sources is raised 46
+  var SW = 1920, SH = 1080;
+
+  /* ---- the entries. The TV reads the real Home row; these are stand-ins with the same look (rounded 16%, rim, dim) ---- */
+  var APPS = [
+    { n: 'Live TV', img: 'livetv', glow: '#e2edff' },
+    { n: 'Samsung TV Plus', img: 'tvplus', glow: '#e2edff' },
+    { n: 'Video', g: '#c2364a', ch: '▶' }, { n: 'Music', g: '#1fa971', ch: '♪' }, { n: 'Web', g: '#2a8fb8', ch: '◎' },
+    { n: 'Photos', g: '#d98a1e', ch: '▦' }, { n: 'Games', g: '#8a52d6', ch: '✦' }, { n: 'Library', g: '#b8478f', ch: '☰' }, { n: 'Smart Things', g: '#3d7ad6', ch: '⌂' }
+  ];
+  var PAGES = {
+    apps: { items: APPS.concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length, raised: false, hint: 'Source', up: true, below: 'Task manager' },
+    inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, { n: 'HDMI 2', img: 'in-hdmi2', glow: '#e2edff' }, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, hint: 'Back', up: false }
+  };
+
+  function layout(p) {
+    var L = { count: p.items.length };
+    L.groupStart = p.groupStart > 0 && p.groupStart < L.count ? p.groupStart : -1;
+    L.appCount = L.groupStart < 0 ? L.count : L.groupStart;
+    L.pinned = L.count - L.appCount;
+    L.appsW = L.appCount * ICON + (L.appCount - 1) * GAP;
+    var fixedW = L.pinned ? GROUPGAP + PILLW : 0;
+    L.contentW = L.appsW + fixedW;
+    L.pillW = Math.min(L.contentW + 2 * PADX, Math.min(MAXPILL, SW - 2 * MARGIN - 24));
+    L.viewportW = L.pillW - 2 * PADX - fixedW;
+    L.pillH = PADTOP + FOCUS + PADBOTTOM;
+    L.scrolls = L.appsW > L.viewportW;
+    L.raised = p.raised;
+    return L;
+  }
+  var LA = layout(PAGES.apps), LI = layout(PAGES.inputs);
+  function barX(L) { return Math.round((SW - L.pillW) / 2); }   // every bar centred on x 960 (the code's Pages(): both pages share the window)
+
+  var page = 'apps', P = PAGES.apps, L = LA;
+  var pos = 0, target = 0, last = {}, scroll = 0, t0 = performance.now(), enter = 0;
+  var glowOf = {}, els = {};
+
+  function centerOf(i) { return ICON / 2 + i * (ICON + GAP); }
+  function scrollFor(fp) {
+    if (!L.scrolls) return 0;
+    var f = fp > L.appCount - 1 ? L.appCount - 1 : fp, s = centerOf(f) - L.viewportW / 2, max = L.appsW - L.viewportW;
+    return s < 0 ? 0 : s > max ? max : s;
+  }
+  function isPinned(i) { return L.groupStart >= 0 && i >= L.groupStart; }
+  function itemCenter(i, sc) { return isPinned(i) ? L.viewportW + GROUPGAP + PILLW / 2 : centerOf(i) - sc; }
+  function amount(fp, i) { var a = 1 - Math.abs(fp - i); return a < 0 ? 0 : a > 1 ? 1 : a; }
+  function top() { return L.raised ? BAR_TOP_RAISED : BAR_TOP; }
+  function rowCY() { return top() + PADTOP + FOCUS / 2; }
+  function pillTop(i) { var stackH = L.pinned * PILLH + (L.pinned - 1) * PILLGAP; return rowCY() - stackH / 2 + (i - L.groupStart) * (PILLH + PILLGAP); }
+
+  /* ---- build the objects once (the dock creates its objects once and only moves them) ---- */
+  function build() {
+    C.innerHTML = ''; els = { items: [], glows: [] };
+    els.bar = Tv.panel(C, 0, 0, 10, 10, RADIUS);
+    els.glow1 = Tv.mk(C, 'glow'); els.glow2 = Tv.mk(C, 'glow');
+    els.pcap = Tv.cap(C, 0, 0, PILLW, PILLH); els.pcap.style.display = 'none';   // the pinned pills' focus: the ice capsule
+    P.items.forEach(function (it, i) {
+      var e;
+      if (it.pill) { e = Tv.mk(C, 'tint'); e.style.webkitMaskBoxImage = 'url(assets/dock/' + it.pill + '.png) 0 / 0 stretch'; e.style.background = '#fff'; }
+      else if (it.img) { e = document.createElement('img'); e.className = 'pic'; e.src = 'assets/dock/' + it.img + '.png'; e.style.borderRadius = '16%'; C.appendChild(e); }
+      else { e = Tv.mk(C, 'tile'); e.style.background = 'linear-gradient(145deg, color-mix(in srgb, ' + it.g + ' 70%, #fff), ' + it.g + ' 55%, color-mix(in srgb, ' + it.g + ' 65%, #000))'; e.style.borderRadius = '16%'; e.textContent = it.ch; }
+      els.items.push(e);
+    });
+    els.div = L.groupStart >= 0 ? Tv.mk(C, 'rule', 0, 0, DIVW, DIVH, { '--a': Tv.tok('--vetro-tv-dock-divider') }) : null;
+    els.ring1 = document.createElement('img'); els.ring1.className = 'pic'; els.ring1.src = 'assets/dock/dock_ring.png'; C.appendChild(els.ring1);
+    els.ring2 = document.createElement('img'); els.ring2.className = 'pic'; els.ring2.src = 'assets/dock/dock_ring.png'; C.appendChild(els.ring2);
+    els.hint = Tv.mk(C, 'hint'); els.hint.innerHTML = '<span>' + P.hint + '</span><img src="assets/dock/' + (P.up ? 'chev_up' : 'chev_down') + '.png" alt="">';
+    els.below = P.below ? Tv.mk(C, 'hint') : null; if (els.below) els.below.innerHTML = '<span>' + P.below + '</span><img src="assets/dock/chev_down.png" alt="">';
+  }
+  function place(e, x, y, w, h) { e.style.left = x + 'px'; e.style.top = y + 'px'; e.style.width = w + 'px'; e.style.height = h + 'px'; }
+
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last.t) / 1000 || 0); last.t = now;
+    // linear motion: one item takes FOCUS_S seconds
+    if (pos !== target) { var step = dt / FOCUS_S; pos = Math.abs(target - pos) <= step ? target : pos + Math.sign(target - pos) * step; }
+    enter += dt;
+    var slideF = Math.min(1, enter / ENTER_S), slide = Math.round(SLIDE * (1 - slideF)), presence = slideF;
+    scroll = scrollFor(pos);
+    var X0 = barX(L), Y0 = 0;
+    // the bar: rim + slate body, radius 40, no shadow
+    els.bar.move(X0, Y0 + top() + slide, L.pillW, L.pillH); els.bar.rim.style.opacity = els.bar.body.style.opacity = presence;
+    // glow: lit on the item being left and the one being reached, cross-fading
+    var p = Math.max(0, Math.min(L.count - 1, pos)), f = Math.floor(p), s = f < L.count - 1 ? f + 1 : f, w2 = s === f ? 0 : p - f;
+    glow(els.glow1, f, 1 - w2, X0, Y0, slide, presence); glow(els.glow2, s, w2, X0, Y0, slide, presence);
+    // items
+    P.items.forEach(function (it, i) {
+      var e = els.items[i], cx = Math.round(X0 + PADX + itemCenter(i, scroll)), a = amount(pos, i);
+      var delay = Math.max(0, Math.min(1, (enter - i * STAGGER_S) / ENTER_S));
+      if (isPinned(i)) {
+        place(e, cx - PILLW / 2, Y0 + pillTop(i) + slide, PILLW, PILLH);
+        e.style.opacity = (PILL_DIM + (1 - PILL_DIM) * a) * delay;
+        e.style.background = a > 0.5 ? 'var(--vetro-tv-focus-ink)' : '#fff';           // on the ice capsule the pill's outline and word are slate
+        if (a > 0.5) { Tv.placeCap(els.pcap, cx - PILLW / 2, Y0 + pillTop(i) + slide, PILLW, PILLH); els.pcap.style.display = ''; els.pcap.style.opacity = presence; }
+      } else {
+        var size = ICON + 2 * Math.round((FOCUS - ICON) / 2 * a);
+        place(e, cx - size / 2, Y0 + rowCY() - size / 2 - Math.round(LIFT * a) + slide, size, size);
+        e.style.opacity = (ICON_DIM + (1 - ICON_DIM) * a) * delay;
+        if (e.className === 'tile') e.style.fontSize = Math.round(size * .38) + 'px';
+        var vis = cx + ICON / 2 > X0 + PADX - 1 && cx - ICON / 2 < X0 + PADX + L.viewportW + 1 || a > 0;
+        e.style.display = vis ? '' : 'none';
+      }
+    });
+    if (!isPinned(Math.round(pos))) els.pcap.style.display = 'none';
+    // rings hug the icon (never a pill)
+    ringFor(els.ring1, f, 1 - w2, X0, Y0, slide, presence); ringFor(els.ring2, s, w2, X0, Y0, slide, presence);
+    // divider
+    if (els.div) { els.div.style.left = (X0 + PADX + L.viewportW + (GROUPGAP - DIVW) / 2) + 'px'; els.div.style.top = (Y0 + rowCY() - DIVH / 2 + slide) + 'px'; els.div.style.opacity = presence; }
+    // hint capsule
+    var h = els.hint, hw = h.offsetWidth || 90;
+    h.style.left = Math.round(960 - hw / 2) + 'px';
+    h.style.top = (Y0 + (L.raised ? top() + L.pillH + 14 : top() - 42) + slide) + 'px';   // "Source ˄" 42 above the bar, "Back ˅" 14 below
+    h.style.opacity = presence * 0.9;
+    if (els.below) { var bw = els.below.offsetWidth || 160; els.below.style.left = Math.round(960 - bw / 2) + 'px'; els.below.style.top = (top() + L.pillH + 14 + slide) + 'px'; els.below.style.opacity = presence * 0.9; }
+    bar.say(P.items[Math.round(pos)].n);
+    requestAnimationFrame(frame);
+  }
+  function glow(e, i, weight, X0, Y0, slide, presence) {
+    var it = P.items[i], pill = isPinned(i), padg = pill ? PILLGLOWPAD : HLPAD, w = (pill ? PILLW : FOCUS) + 2 * padg, h = (pill ? PILLH : FOCUS) + 2 * padg;
+    if (pill) { e.style.opacity = 0; return; }   // the pills' grey glow (dock_glow_pill) is retired with the old sheet
+    var cx = Math.round(X0 + PADX + itemCenter(i, scroll));
+    place(e, cx - w / 2, Y0 + (pill ? pillTop(i) - padg : rowCY() - h / 2 - LIFT) + slide, w, h);
+    e.className = 'glow' + (pill ? ' pillg' : '');
+    e.style.background = it.glow || it.g;
+    e.style.opacity = weight * presence * (isPinned(i) ? 0.9 : 1);
+  }
+  function ringFor(e, i, weight, X0, Y0, slide, presence) {
+    if (isPinned(i) || weight <= 0.001) { e.style.display = 'none'; return; }   // a pinned pill's focus is the ice capsule, not a ring
+    var a = amount(pos, i), size = ICON + 2 * Math.round((FOCUS - ICON) / 2 * a), cx = Math.round(X0 + PADX + itemCenter(i, scroll)), r = RINGW;
+    e.style.display = '';
+    place(e, cx - size / 2 - r, Y0 + rowCY() - size / 2 - Math.round(LIFT * a) + slide - r, size + 2 * r, size + 2 * r);
+    e.style.opacity = weight * presence;
+  }
+
+  /* ---- pages and keys ---- */
+  function open(name, startIdx) {
+    page = name; P = PAGES[name]; L = name === 'apps' ? LA : LI;
+    pos = target = startIdx || 0; enter = STILL ? 99 : 0; build(); C.style.display = '';
+  }
+  function txt(par, s, x, y, size, a, wt, maxW, right) { var e = Tv.text(par, s, x, y, size, wt && wt !== 500 ? 'w' + wt : '', maxW || 600, right); if (a !== 1) e.style.color = a === 'ink' ? 'var(--vetro-tv-focus-ink)' : 'rgba(255, 255, 255, ' + a + ')'; return e; }
+  function stand(par, n, g, x, y, size) {   // a stand-in app icon (the TV draws the app's own)
+    var e = Tv.mk(par, 'tile', x, y, size, size); e.style.borderRadius = '16%'; e.style.fontSize = Math.round(size * .4) + 'px';
+    e.style.background = 'linear-gradient(145deg, color-mix(in srgb, ' + g + ' 70%, #fff), ' + g + ' 55%, color-mix(in srgb, ' + g + ' 65%, #000))'; e.textContent = n[0]; return e;
+  }
+
+  /* ---- Task manager (Down on the dock): TaskLayout / TaskPanel. 880 wide, centred, its bottom on the dock bar's line (994); radius 40,
+     no shadow; the selection is one ice capsule (inset 16 from the sides, 4 from the row) with the row's texts in slate ---- */
+  var TASKS = [['Samsung TV Plus', '#1674fb', 0.1, 382], ['YouTube', '#c2364a', 5.7, 239], ['Stremio', '#8a52d6', 4.1, 170], ['NOW', '#1fa971', 2.3, 95], ['Apple TV', '#5f6f86', 2.7, 53]];
+  var tsel = 0, tsort = 0, SORTS = ['Memory', 'CPU', 'Name'];
+  function drawTasks() {
+    TL.innerHTML = '';
+    var list = TASKS.slice().sort(function (a, b) { return tsort === 0 ? b[3] - a[3] : tsort === 1 ? b[2] - a[2] : a[0].localeCompare(b[0]); });
+    var n = list.length, PW = 880, PX = 520, RH = 76, H = 18 + 70 + n * RH + 54 + 10, PY = 994 - H, LT = PY + 18 + 70;
+    Tv.panel(TL, PX, PY, PW, H, RADIUS);
+    txt(TL, 'Running apps', PX + 34, PY + 26, 30, 1, 600);
+    txt(TL, '822 MB of memory free', PX + 233, PY + 33, 22, .6);
+    txt(TL, 'Sort by   ‹  ' + SORTS[tsort] + '  ›', PX + PW - 38, PY + 29, 24, .9, 500, 400, true);
+    Tv.cap(TL, PX + 16, LT + tsel * RH + 4, PW - 32, RH - 8);
+    list.forEach(function (t, i) {
+      var y = LT + i * RH, on = i === tsel;
+      stand(TL, t[0], t[1], PX + 34, y + 12, 52);
+      txt(TL, t[0], PX + 108, y + 22, 27, on ? 'ink' : .85, 600, 464);
+      txt(TL, t[2].toFixed(1) + '%', PX + 692, y + 24, 24, on ? 'ink' : .59, 500, 120, true);
+      txt(TL, t[3] + ' MB', PX + 842, y + 24, 24, on ? 'ink' : .85, 500, 140, true);
+    });
+    /* footer: the remote's keys as pictures, centred */
+    var fy = LT + n * RH + 14, parts = [], x = 0;
+    [[['ok'], 'open', ''], [['ok'], 'close', 'Hold'], [['left', 'right'], 'sort', ''], [['up', 'back'], 'return', '']].forEach(function (g) {
+      if (g[2]) { parts.push([g[2], x, 'w']); x += Tv.textW(g[2], 21, 500) + 18; }
+      g[0].forEach(function (k, i) { parts.push([k, x, 'k']); x += 34 + (i < g[0].length - 1 ? 2 : 8); });
+      parts.push([g[1], x, 'w']); x += Tv.textW(g[1], 21, 500) + 40;
+    });
+    var x0 = Math.round(960 - (x - 40) / 2);
+    parts.forEach(function (q) {
+      if (q[2] === 'k') Tv.mk(TL, 'keyimg', x0 + q[1], fy, 34, 34, { 'background': 'url(assets/dock/key_' + q[0] + '.png) center / contain no-repeat', 'opacity': '.85' });
+      else txt(TL, q[0], x0 + q[1], fy + 5, 21, .55, 500, 200);
+    });
+    TL.style.display = '';
+  }
+  function openTasks() { page = 'tasks'; C.style.display = 'none'; tsel = 0; drawTasks(); bar.say('Task manager'); }
+  function closeTasks() { TL.style.display = 'none'; open('apps', 2); }
+
+  /* ---- Volume bar (+ / - / M): VolumePlacement, vertical at the left edge (x 96), centred on y 540; vol_rim + vol_bg (slate .90), the
+     track vol_cap white .16 and the level in Luce, the number above and the speaker below. Same material, no shadow. Hides after 1.6 s ---- */
+  var vol = 31, muted = false, volTimer;
+  function drawVolume() {
+    VL.innerHTML = '';
+    var X = 96, Y = 300, W = 88, H = 480, TX = X + 12, TY = Y + 56, TW = 64, TH = 348, lvl = muted ? 0 : Math.round(TH * vol / 100);
+    Tv.panel(VL, X, Y, W, H, W / 2);
+    var tr = Tv.mk(VL, 'cap rest', TX, TY, TW, TH); tr.style.setProperty('--r', '32px'); tr.style.background = 'rgba(255, 255, 255, .16)';
+    var clip = Tv.mk(VL, 'clipbox', TX, TY + TH - lvl, TW, lvl); clip.style.overflow = 'hidden'; clip.style.position = 'absolute';
+    var lv = Tv.mk(clip, 'cap', 0, lvl - TH, TW, TH); lv.style.setProperty('--r', '32px'); lv.style.background = 'var(--vetro-tv-light)';
+    txt(VL, muted ? '' : String(vol), X + W / 2 - Tv.textW(String(vol), 32, 500) / 2, Y + 13, 32, .95);
+    var ic = document.createElement('img'); ic.className = 'pic'; ic.src = 'assets/dock/vol_icon_' + (muted ? 0 : vol < 50 ? 1 : 2) + '.png'; Tv.place(ic, X + 24, Y + 422, 40, 40); ic.style.opacity = .95; VL.appendChild(ic);
+    VL.style.display = '';
+    clearTimeout(volTimer); if (!STILL) volTimer = setTimeout(function () { VL.style.display = 'none'; }, 1600);
+  }
+
+  /* ---- osd 123 (N): NumberPad. A capsule 1008x96 (rim 2 px outside), cells 72 wide; the focus is the ice circle with its digit in slate;
+     the typed number (68) above at the left, the Done chip (pill_chip, slate .90) above at the right. Fades after 14 s ---- */
+  var P123 = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', 'bs', 'colors'], pf = 0, typed = '', padTimer;
+  function drawPad() {
+    NL.innerHTML = '';
+    var X = 456, Y = 908;
+    Tv.panel(NL, X, Y, 1008, 96, 48);
+    var cx = function (i) { return i < 11 ? X + 24 + i * 72 : X + 24 + i * 72 + 28; };      // the two icons sit a little apart
+    Tv.cap(NL, cx(pf), Y + 12, 72, 72);
+    P123.forEach(function (k, i) {
+      var on = i === pf;
+      if (k.length === 1) txt(NL, k, cx(i) + 36 - Tv.textW(k, 36, 500) / 2, Y + 27, 36, on ? 'ink' : .92);
+      else {
+        var e = Tv.mk(NL, 'tint', cx(i) + 16, Y + 28, 40, 40); e.style.webkitMaskBoxImage = 'url(assets/dock/pad_' + k + '.png) 0 / 0 stretch';
+        e.style.background = on ? 'var(--vetro-tv-focus-ink)' : 'rgba(255, 255, 255, .92)';
+        if (k === 'colors') { var d = document.createElement('img'); d.className = 'pic'; d.src = 'assets/dock/pad_colors_dots.png'; Tv.place(d, cx(i) + 16, Y + 28, 40, 40); NL.appendChild(d); }
+      }
+    });
+    var chip = Tv.mk(NL, 'donechip', 1348, 844, 116, 52); chip.style.setProperty('--r', '26px');
+    txt(NL, 'Done', 1376, 855, 26, 1);
+    if (typed) txt(NL, typed, 468, 824, 68, 1);
+    NL.style.display = '';
+    clearTimeout(padTimer); if (!STILL) padTimer = setTimeout(function () { NL.style.display = 'none'; }, 14000);
+  }
+  function padOpen() { return NL.style.display !== 'none' && NL.innerHTML !== ''; }
+
+  addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (k === 'h' || k === 'H') { document.getElementById('bar').classList.toggle('idle'); return; }
+    if (k === '+' || k === '=' || k === '-' || k === 'm' || k === 'M') { if (k === 'm' || k === 'M') muted = !muted; else { muted = false; vol = Math.max(0, Math.min(100, vol + (k === '-' ? -1 : 1))); } drawVolume(); e.preventDefault(); return; }
+    if (padOpen()) {
+      if (/^[0-9]$/.test(k)) { if (typed.length < 4) typed += k; }
+      else if (k === 'ArrowRight') pf = Math.min(P123.length - 1, pf + 1); else if (k === 'ArrowLeft') pf = Math.max(0, pf - 1);
+      else if (k === 'Enter') { var c = P123[pf]; if (c === 'bs') typed = typed.slice(0, -1); else if (c.length === 1 && typed.length < 4) typed += c; }
+      else if (k === 'Escape' || k === 'Backspace') { NL.style.display = 'none'; NL.innerHTML = ''; e.preventDefault(); return; }
+      else return;
+      drawPad(); e.preventDefault(); return;
+    }
+    if (k === 'n' || k === 'N') { pf = 0; typed = ''; drawPad(); e.preventDefault(); return; }
+    if (page === 'tasks') {
+      if (k === 'ArrowDown') tsel = Math.min(TASKS.length - 1, tsel + 1);
+      else if (k === 'ArrowUp') { if (tsel === 0) { closeTasks(); e.preventDefault(); return; } tsel--; }
+      else if (k === 'ArrowLeft') tsort = (tsort + 2) % 3; else if (k === 'ArrowRight') tsort = (tsort + 1) % 3;
+      else if (k === 'Escape' || k === 'Backspace') { closeTasks(); e.preventDefault(); return; }
+      else if (k === 'Enter') bar.say('open: ' + TASKS[tsel][0]);
+      else return;
+      drawTasks(); e.preventDefault(); return;
+    }
+    if (k === 'ArrowRight') target = Math.min(L.count - 1, Math.round(target) + 1);
+    else if (k === 'ArrowLeft') target = Math.max(0, Math.round(target) - 1);
+    else if (k === 'ArrowUp' && page === 'apps') open('inputs', 0);
+    else if (k === 'ArrowDown' && page === 'apps') openTasks();
+    else if (k === 'ArrowDown' || k === 'Escape' || k === 'Backspace') { if (page === 'inputs') open('apps', 0); }
+    else if (k === 'Enter') bar.say('launch: ' + P.items[Math.round(target)].n);
+    else if (k === 'r' || k === 'R') { enter = 0; }
+    else return;
+    e.preventDefault();
+  });
+  addEventListener('resize', Tv.fit);
+  Tv.fit();
+  Tv.ready(function () {
+    var qf = /[?&]focus=(\d+)/.exec(location.search), f0 = qf ? +qf[1] : 2, v = /[?&]view=(\w+)/.exec(location.search);
+    open('apps', f0); pos = target = f0; last.t = performance.now();
+    if (STILL) enter = 99;   // ?still: no entrance animation (for screenshots)
+    TL.style.display = VL.style.display = NL.style.display = 'none';
+    if (v && v[1] === 'sources') open('inputs', 0);
+    else if (v && v[1] === 'tasks') openTasks();
+    else if (v && v[1] === 'volume') { C.style.display = 'none'; drawVolume(); }
+    else if (v && v[1] === 'pad123') { C.style.display = 'none'; typed = '42'; drawPad(); }
+    requestAnimationFrame(frame);
+  });
+}());
+</script>
+</body>
+</html>
