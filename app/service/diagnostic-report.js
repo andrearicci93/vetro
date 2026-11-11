@@ -60,7 +60,7 @@ function screenProgress(d){var g=(d||{}).progress;if(!g||typeof g!=='object')ret
 function choice(v, allowed) { return allowed.indexOf(v) >= 0 ? v : null; }
 function rooting(d) {
     var r=d.rooting||{}, f=r.failure||{};
-    return {backend:choice(r.backend,['sdb-archive']),
+    return {backend:choice(r.backend,['sdb-archive','external-root']),
         phase:choice(r.phase,['stopped','unsupported','preparing','preflight','sdb-handshake','launch-command','agent-callback','connected','retrying']),
         failure:r.failure?{
             stage:choice(f.stage,['preparation','preflight','sdb-handshake','launch-command','agent-callback','agent-connection']),

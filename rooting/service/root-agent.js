@@ -42,12 +42,14 @@ RootAgentServer.prototype.note = function (what) {
 
 RootAgentServer.prototype.start = function (cb) {
     var self = this;
-    this._server = net.createServer(function (socket) {
+    var listener = net.createServer(function (socket) {
         self._handle(socket);
     });
-    this._server.on('error', function (e) { if (self.onClose) self.onClose(e); });
-    this._server.listen(this.port, this.bindHost, function () {
-        self._listeningPort = self._server.address().port;
+    this._server = listener;
+    listener.on('error', function (e) { if (self._server === listener && self.onClose) self.onClose(e); });
+    listener.listen(this.port, this.bindHost, function () {
+        if (self._server !== listener) { try { listener.close(); } catch (e) {} return; }
+        self._listeningPort = listener.address().port;
         if (cb) cb(self._listeningPort);
     });
     return this;
@@ -158,6 +160,7 @@ RootAgentServer.prototype.execute = function (command, timeoutMs) {
 };
 
 RootAgentServer.prototype.close = function () {
+    this._listeningPort = 0;
     if (this._conn) {
         this._conn._failPending(new Error('root agent server closed'));
         try { this._conn._socket.destroy(); } catch (e) {}

@@ -9,8 +9,18 @@
 // masked first, so prose and messages cannot trip the rules.
 const assert = require('assert').strict;
 
-const files = require('../build.cjs').collectIntegration()
-    .filter(function (file) { return decodeURIComponent(file.uri).startsWith('service/'); });
+const builder = require('../build.cjs');
+const archiveFiles = builder.collectIntegration();
+const priorMethod = process.env.VETRO_ROOT_METHOD;
+process.env.VETRO_ROOT_METHOD = 'external-root';
+let externalFiles;
+try { externalFiles = builder.collectIntegration(); }
+finally {
+    if (priorMethod === undefined) delete process.env.VETRO_ROOT_METHOD;
+    else process.env.VETRO_ROOT_METHOD = priorMethod;
+}
+const files = archiveFiles.concat(externalFiles.map(file => ({uri: encodeURIComponent('external/' + decodeURIComponent(file.uri)), data: file.data})))
+    .filter(function (file) { return /^(external\/)?service\/.*\.js$/.test(decodeURIComponent(file.uri)); });
 
 // Replaces comments and literals with spaces, keeping newlines, so match
 // offsets still point at the right line.
