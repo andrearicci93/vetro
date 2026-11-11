@@ -7,24 +7,23 @@ using Launcher.Native;
 namespace Launcher.Ui
 {
     /// <summary>
-    /// The evas objects of the task manager page, in the dock's own materials: the bar's glass and shadow for
-    /// the panel, the glass tile and focus ring for the selected row, and a glow in the colour of the selected
-    /// app's icon, as the dock does for its icons. One set of objects per running app, made when it appears
-    /// and deleted when it is gone.
+    /// The evas objects of the task manager page, in the material of the dock's bar (and of the 123 pad): a light rim
+    /// and the slate sheet for the panel, no drop shadow, and one ice capsule (pill_cap) under the selected row, whose
+    /// texts turn slate. One set of objects per running app, made when it appears and deleted when it is gone.
     /// </summary>
     internal sealed class TaskPanel
     {
-        private const string Font = "SamsungOneUI 500,Sans";
-        private const string FontBold = "SamsungOneUI 600,Sans";
+        private const string Font = "SamsungOneUI 500";
+        private const string FontBold = "SamsungOneUI 600";
 
         private sealed class Row
         {
             public RunningApp App;
             public IntPtr Icon, Initials, Name, Cpu, Mem;
-            public int Glow = Design.GlowColor;
             public string CpuText, MemText;
             public bool ShownClosing;
             public int Alpha = -1;
+            public bool Inked;   // drawn in slate on the ice capsule, without the soft shadow
             public int NameW, ValueH, NameH;
         }
 
@@ -35,14 +34,14 @@ namespace Launcher.Ui
         private readonly List<Row> _rows = new List<Row>();
         private readonly Dictionary<string, Row> _byId = new Dictionary<string, Row>(StringComparer.Ordinal);
 
-        private IntPtr _clip, _listClip, _shadow, _bg, _divider, _glow, _plate, _ring;
+        private IntPtr _clip, _listClip, _rim, _bg, _divider, _plate;
         private IntPtr _title, _sub, _sort, _empty;
         // The footer: pictures of the remote's keys (res/key_*.png, the dashboard's set) and short words, in one centred line.
         private const int FootKey = 34, FootInner = 8, FootGroup = 40;
         private IntPtr[] _foot;
         private bool[] _footKey;
         private int[] _footGap;   // space after each part
-        private int _alpha = -1, _glowAlpha = -1, _glowRgb = -1;
+        private int _alpha = -1, _plateAlpha = -1;
         private string _subText = "", _sortText = "";
         private bool _visible, _loaded;
 
@@ -65,13 +64,13 @@ namespace Launcher.Ui
             Efl.evas_object_clip_set(_listClip, _clip);
             Efl.evas_object_show(_listClip);   // a clipper only lets through what it covers while it is visible itself
 
-            _shadow = Slice("shadow", DockLayout.Margin + Design.ShellRadius, 1.0);
-            _bg = Slice("dock_bg", Design.ShellSlice, 1.0);
+            // The dock bar's material: rim 2 px outside, then the sheet, nine-sliced to the panel radius.
+            _rim = Slice("pill_rim", Design.RimSlice, (Design.PanelRadius + Design.ShellBorderW) / (double)Design.RimSlice);
+            _bg = Slice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
             _divider = Efl.evas_object_rectangle_add(_evas);
             Efl.evas_object_clip_set(_divider, _clip);
-            _glow = Slice("dock_glow_pill", 56, 1.0);
-            _plate = Slice("glass_tile", 48, 0.5);
-            _ring = Slice("dock_ring", 44, 0.5);
+            // The selection: the 123 pad's ice capsule, its ends fully round (border_scale = half the plate's height / border).
+            _plate = Slice("pill_cap", Design.CapSlice, (TaskLayout.RowH - 8) / 2.0 / Design.CapSlice);
 
             _title = Text(FontBold, 30);
             Efl.evas_object_text_text_set(_title, "Running apps");
@@ -101,7 +100,7 @@ namespace Launcher.Ui
 
         private IntPtr FootText(string word)
         {
-            IntPtr t = Text(Font, 21);
+            IntPtr t = Text(Font, 22);
             Efl.evas_object_text_text_set(t, word);
             return t;
         }
@@ -277,8 +276,6 @@ namespace Launcher.Ui
                 IntPtr data = Efl.evas_object_image_data_get(r.Icon, false);
                 if (data == IntPtr.Zero) return false;
                 uint[] src = Dock.ReadPixels(data, Efl.evas_object_image_stride_get(r.Icon), w, h);
-                int hue = IconPrep.DominantColor(src, w, h);
-                if (hue >= 0) r.Glow = hue;
                 uint[] done = IconPrep.Prepare(src, w, h);
                 int side = IconPrep.SideFor(w, h);
                 Efl.evas_object_image_alpha_set(r.Icon, true);
@@ -322,7 +319,7 @@ namespace Launcher.Ui
             Efl.evas_object_move(_clip, 0, 0);
             Efl.evas_object_resize(_clip, _layout.WinW, _layout.WinH);
             Place(_listClip, _layout.ListClip(n, slide));
-            Place(_shadow, _layout.Shadow(n, slide));
+            Place(_rim, _layout.Rim(n, slide));
             Place(_bg, _layout.Panel(n, slide));
 
             int headTop = _layout.HeaderTop(n, slide);
@@ -347,8 +344,8 @@ namespace Launcher.Ui
             if (a != _alpha)
             {
                 _alpha = a;
-                Tint(_shadow, a);
-                Tint(_bg, a);
+                TintRgb(_rim, (int)Math.Round(a * Design.ShellBorderAlpha), Design.ShellBorderColor);
+                TintRgb(_bg, (int)Math.Round(a * Design.VolumeAlpha), Design.ShellColor);
                 Tint(_divider, (int)(a * Design.DividerAlpha));
                 TintText(_title, a);
                 TintText(_sub, a * 6 / 10);
@@ -365,24 +362,14 @@ namespace Launcher.Ui
                 Efl.evas_object_move(_empty, lc.X + (lc.W - ew) / 2, lc.Y + (lc.H - eh) / 2);
             }
 
-            // Selection: glow in the app's colour, the glass plate, then the ring, all on the selected row.
+            // Selection: one ice capsule on the selected row (it slides between rows with the selection).
             float pos = c.SelPos, scroll = c.Scroll;
-            Box plate = _layout.Plate(pos, scroll, n, slide);
-            Box glow = plate; glow.X -= DockLayout.PillGlowPad; glow.Y -= DockLayout.PillGlowPad; glow.W += 2 * DockLayout.PillGlowPad; glow.H += 2 * DockLayout.PillGlowPad;
-            Box ring = plate; ring.X -= Design.RingW; ring.Y -= Design.RingW; ring.W += 2 * Design.RingW; ring.H += 2 * Design.RingW;
-            Place(_glow, glow);
-            Place(_plate, plate);
-            Place(_ring, ring);
-            int sel = c.Selected;
-            int rgb = n > 0 && Design.GlowFromIcon ? _rows[Math.Min(sel, n - 1)].Glow : Design.GlowColor;
-            int ga = n > 0 ? a * 8 / 10 : 0;
-            if (ga != _glowAlpha || rgb != _glowRgb)
-            {
-                _glowAlpha = ga; _glowRgb = rgb;
-                TintRgb(_glow, ga, rgb);
-                Tint(_plate, n > 0 ? a * 55 / 100 : 0);
-                TintRgb(_ring, n > 0 ? a : 0, Design.RingColor);
-            }
+            Place(_plate, _layout.Plate(pos, scroll, n, slide));
+            int pa = n > 0 ? (int)Math.Round(a * Design.FocusFillAlpha) : 0;
+            if (pa != _plateAlpha) { _plateAlpha = pa; TintRgb(_plate, pa, Design.RingColor); }
+            // The row the capsule is over gets the slate ink. Taken from where the capsule is, not from where it is going:
+            // switching at once would leave dark text on the dark sheet while the capsule is still on its way.
+            int sel = (int)Math.Round(pos);
 
             for (int i = 0; i < n; i++)
             {
@@ -401,8 +388,9 @@ namespace Launcher.Ui
                 Efl.evas_object_move(r.Cpu, _layout.CpuRight - Efl.evas_object_text_horiz_advance_get(r.Cpu), mid - r.ValueH / 2);
                 Efl.evas_object_move(r.Mem, _layout.MemRight - Efl.evas_object_text_horiz_advance_get(r.Mem), mid - r.ValueH / 2);
 
-                // The column the list is sorted by is the brighter one; a closing app fades.
-                bool focus = i == sel;
+                // The column the list is sorted by is the brighter one; a closing app fades. On the capsule every text
+                // is slate and plain (a shadow would smudge dark ink on a light ground); the icon keeps its own colours.
+                bool focus = i == sel && n > 0;
                 int ra = r.App.Closing ? a * 45 / 100 : (focus ? a : a * 85 / 100);
                 int key = ra * 4 + (focus ? 1 : 0) + (c.Sort == TaskSort.Cpu ? 2 : 0);
                 if (key != r.Alpha)
@@ -410,9 +398,26 @@ namespace Launcher.Ui
                     r.Alpha = key;
                     Tint(r.Icon, ra);
                     if (r.Initials != IntPtr.Zero) Tint(r.Initials, ra);
-                    TintText(r.Name, ra);
-                    TintText(r.Mem, c.Sort == TaskSort.Cpu ? ra * 7 / 10 : ra);
-                    TintText(r.Cpu, c.Sort == TaskSort.Cpu ? ra : ra * 7 / 10);
+                    if (focus != r.Inked)
+                    {
+                        r.Inked = focus;
+                        int style = focus ? Efl.EvasTextStylePlain : Efl.EvasTextStyleSoftShadow;
+                        Efl.evas_object_text_style_set(r.Name, style);
+                        Efl.evas_object_text_style_set(r.Cpu, style);
+                        Efl.evas_object_text_style_set(r.Mem, style);
+                    }
+                    if (focus)
+                    {
+                        TintRgb(r.Name, ra, Design.ShellColor);
+                        TintRgb(r.Cpu, ra, Design.ShellColor);
+                        TintRgb(r.Mem, ra, Design.ShellColor);
+                    }
+                    else
+                    {
+                        TintText(r.Name, ra);
+                        TintText(r.Mem, c.Sort == TaskSort.Cpu ? ra * 7 / 10 : ra);
+                        TintText(r.Cpu, c.Sort == TaskSort.Cpu ? ra : ra * 7 / 10);
+                    }
                 }
             }
         }

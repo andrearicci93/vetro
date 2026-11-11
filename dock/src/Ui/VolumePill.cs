@@ -16,7 +16,7 @@ namespace Launcher.Ui
     /// </summary>
     internal sealed class VolumePill
     {
-        private const string Font = "SamsungOneUI 500,Sans";
+        private const string Font = "SamsungOneUI 500";
         private const int NotificationLevelTop = 40, WindowLayer = 900;
         private const double HoldSeconds = 1.6, FadeInSeconds = 0.12, FadeOutSeconds = 0.22;
 

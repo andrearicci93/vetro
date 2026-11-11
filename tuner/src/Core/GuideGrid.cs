@@ -3,18 +3,23 @@ using System.Collections.Generic;
 
 namespace Tuner.Core
 {
-    /// <summary>The numbers of the guide's layout (1920x1080 screen), shared by the drawing code and the tests.</summary>
+    /// <summary>
+    /// The numbers of the guide's layout (1920x1080 screen), shared by the drawing code and the tests. The guide stands on the full veil
+    /// (design/challenge/opus6, "EPG: velo pieno"): no sheet. Text tops are the mock-up's line-box tops (line height = font size); the view puts
+    /// each text on the same baseline (Theme.TopOf).
+    /// </summary>
     internal static class GuideLayout
     {
-        public const int SheetX = 64, SheetY = 56, SheetW = 1792, SheetH = 968, Pad = 40;
-        public const int DetailY = SheetY + 30;                 // title of the focused programme
-        public const int AxisY = 268, AxisH = 44;                // the time labels
-        public const int RowsY = 316, RowH = 88, Rows = 7;       // channel rows
-        public const int LabelX = SheetX + Pad, LabelW = 246;    // channel number and name
-        public const int CellsX = LabelX + LabelW + 14;
+        public const int X0 = 96, Right = 1824;                  // the safe margins (5%)
+        public const int TitleTop = 70, MetaTop = 152, DateTop = 84, DescTop = 200, DescPitch = 38, DescW = 1400, TitleW = 1360, MetaW = 1500;
+        public const int AxisY = 286, AxisLineY = AxisY + 46;    // the time labels (line-box top AxisY + 4) and the 2 px line under them
+        public const int RowsY = 346, RowH = 88, Rows = 7;       // channel rows
+        public const int LabelX = 80, LabelW = 304;              // the label column: logo at +16, number over name at +86 (+16 without logos)
+        public const int CellsX = 400;
         public const int WindowMinutes = 180;
         public const int CellsW = 1440;                          // 8 px a minute
-        public const int CellGap = 4, CellH = 76, MinCellW = 4, MinTextW = 64;   // narrower than MinCellW: not drawn (unless focused); under MinTextW: a box with no text
+        public const int CellGap = 4, CellH = 76, CellDy = 6, MinCellW = 4, MinTextW = 90;   // narrower than MinCellW: not drawn (unless focused); under MinTextW: a box with no title
+        public const int FootTop = 984;                          // the footer's words (line-box top)
         public const double PxPerSecond = (double)CellsW / (WindowMinutes * 60);
     }
 
@@ -187,7 +192,10 @@ namespace Tuner.Core
 
         // ---- what to draw and what to read ----
 
-        /// <summary>The boxes of one on-screen row (0..Rows-1), clipped to the window; boxes too narrow to show anything are left out.</summary>
+        /// <summary>
+        /// The boxes of one on-screen row (0..Rows-1), clipped to the window; boxes too narrow to show anything are left out. Neighbours are
+        /// <see cref="GuideLayout.CellGap"/> apart; a box cut by the window's edge is flush with it (the grid's edges are straight).
+        /// </summary>
         public List<GuideCell> Cells(int row)
         {
             var cells = new List<GuideCell>();
@@ -198,12 +206,14 @@ namespace Tuner.Core
                 if (s.End <= WindowStart || s.Start >= WindowEnd) continue;
                 long a = Math.Max(s.Start, WindowStart), b = Math.Min(s.End, WindowEnd);
                 int x0 = (int)Math.Round((a - WindowStart) * GuideLayout.PxPerSecond), x1 = (int)Math.Round((b - WindowStart) * GuideLayout.PxPerSecond);
-                int w = x1 - x0 - GuideLayout.CellGap;
+                int half = GuideLayout.CellGap / 2;
+                int left = x0 + (x0 > 0 ? half : 0), right = x1 - (x1 < GuideLayout.CellsW ? half : 0);
+                int w = right - left;
                 bool focus = idx == FocusRow && s.Start <= FocusTime && FocusTime < s.End;
-                if (w < GuideLayout.MinCellW) { if (!focus) continue; w = GuideLayout.MinCellW; }   // the focus is always on screen
+                if (w < GuideLayout.MinCellW) { if (!focus) continue; w = GuideLayout.MinCellW; left = Math.Min(left, GuideLayout.CellsW - w); }   // the focus is always on screen
                 cells.Add(new GuideCell
                 {
-                    Row = row, X = GuideLayout.CellsX + x0 + GuideLayout.CellGap / 2, W = w, Start = s.Start, End = s.End, Event = s.Event, Loading = s.Loading,
+                    Row = row, X = GuideLayout.CellsX + left, W = w, Start = s.Start, End = s.End, Event = s.Event, Loading = s.Loading,
                     ClipLeft = s.Start < WindowStart, ClipRight = s.End > WindowEnd,
                     Focus = focus
                 });

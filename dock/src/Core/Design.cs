@@ -10,7 +10,20 @@ namespace Launcher.Core
     /// </summary>
     internal static class Design
     {
-        // ---- The bar (designer style "solid": opaque tint, thin light border, soft drop shadow) ----
+        // ---- The bar ----
+        // The bar (apps and Sources) and the Task manager panel are drawn in the material of the 123 pad and the volume pill:
+        // pill_rim (white at ShellBorderAlpha) ShellBorderW px outside the sheet, then pill_bg (ShellColor at VolumeAlpha),
+        // both nine-sliced to PanelRadius, and no drop shadow. The constants for dock_bg.png and shadow.png below are only read
+        // by tools/make-glass.cjs, which still renders those pictures.
+        /// <summary>Corner radius of the panels: the icons' radius (16% of 92 = 15) plus the bar's padding (26), so the corners are concentric.</summary>
+        public const int PanelRadius = 40;
+        /// <summary>Nine-slice border of pill_bg.png (96 x 96) and of pill_rim.png (100 x 100): half their side, so border_scale = radius / border.</summary>
+        public const int SheetSlice = 48;
+        public const int RimSlice = 50;
+        /// <summary>Nine-slice border of pill_cap.png (72 x 72), the ice capsule that marks the focus in the 123 pad and the Task manager.</summary>
+        public const int CapSlice = 36;
+        /// <summary>Opacity of the ice focus capsule (<see cref="RingColor"/>).</summary>
+        public const float FocusFillAlpha = 0.96f;
         public const int ShellRadius = 16;
         public const int ShellColor = 0x243448;
         public const float ShellAlpha = 1.0f;

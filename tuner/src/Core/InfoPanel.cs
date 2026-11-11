@@ -9,7 +9,7 @@ namespace Tuner.Core
     internal sealed class InfoData
     {
         public string Number = "", Name = "";
-        public string Title = "", Range = "", Left = "", Description = "";
+        public string Title = "", Start = "", End = "", Left = "", Description = "";   // Start and End: "21:00", "22:30" (the two ends of the progress line)
         public double? Fraction;           // how far the programme is, null when there is no programme on air
         public string Clock = "", Date = "";
         public string Source = "", Audio = "";

@@ -50,6 +50,14 @@ namespace Tuner.Native
         [DllImport(Evas)] public static extern void evas_object_text_text_set(IntPtr txt, string text);
         [DllImport(Evas)] public static extern int evas_object_text_horiz_advance_get(IntPtr txt);
         [DllImport(Evas)] public static extern void evas_object_clip_set(IntPtr obj, IntPtr clip);
+        // Read back by the transitions (Ui/Anim.cs): where an object is, its colour (premultiplied) and whether it is shown (Eina_Bool).
+        [DllImport(Evas)] public static extern void evas_object_geometry_get(IntPtr obj, out int x, out int y, out int w, out int h);
+        [DllImport(Evas)] public static extern void evas_object_color_get(IntPtr obj, out int r, out int g, out int b, out int a);
+        [DllImport(Evas)] public static extern byte evas_object_visible_get(IntPtr obj);
+        // The halo under the text of the Banner and Info (the dock's soft shadow): style, then the shadow's colour (premultiplied).
+        public const int EvasTextStyleSoftShadow = 8;
+        [DllImport(Evas)] public static extern void evas_object_text_style_set(IntPtr txt, int style);
+        [DllImport(Evas)] public static extern void evas_object_text_shadow_color_set(IntPtr txt, int r, int g, int b, int a);
 
         // --- evas: images (the glass pictures are 9-slice PNGs shared with the dock) ---
         public const int EvasLoadErrorNone = 0;
@@ -59,10 +67,26 @@ namespace Tuner.Native
         [DllImport(Evas)] public static extern int evas_object_image_load_error_get(IntPtr img);
         [DllImport(Evas)] public static extern void evas_object_image_filled_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool filled);
         [DllImport(Evas)] public static extern void evas_object_image_border_set(IntPtr img, int l, int r, int t, int b);
+        // Draws the border at scale x its size in the picture: one capsule PNG gives every radius (the dock's pill_* pictures).
+        [DllImport(Evas)] public static extern void evas_object_image_border_scale_set(IntPtr img, double scale);
         [DllImport(Evas)] public static extern void evas_object_image_border_center_fill_set(IntPtr img, int mode);
         [DllImport(Evas)] public static extern void evas_object_image_smooth_scale_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool smooth);
+        // With filled off, the picture is repeated at this size over the object (the guide's "no information" stripes).
+        [DllImport(Evas)] public static extern void evas_object_image_fill_set(IntPtr img, int x, int y, int w, int h);
 
-        // --- ecore: timers and file descriptors ---
+        // --- evas: maps (a uniform zoom of a text while it flies to a text of another size; DESIGN.md: zoom maps cost nothing visible) ---
+        // The map is populated from the object's own geometry (so its picture covers the whole object), then its four corners are moved.
+        [DllImport(Evas)] public static extern IntPtr evas_map_new(int count);
+        [DllImport(Evas)] public static extern void evas_map_free(IntPtr map);
+        [DllImport(Evas)] public static extern void evas_map_util_points_populate_from_geometry(IntPtr map, int x, int y, int w, int h, int z);
+        [DllImport(Evas)] public static extern void evas_map_point_coord_set(IntPtr map, int idx, int x, int y, int z);
+        [DllImport(Evas)] public static extern void evas_object_map_set(IntPtr obj, IntPtr map);
+        [DllImport(Evas)] public static extern void evas_object_map_enable_set(IntPtr obj, [MarshalAs(UnmanagedType.U1)] bool enabled);
+
+        // --- ecore: timers, the animator (one tick a frame) and file descriptors ---
+        [DllImport(Ecore)] public static extern double ecore_time_get();
+        [DllImport(Ecore)] public static extern IntPtr ecore_animator_add(TaskCb func, IntPtr data);
+        [DllImport(Ecore)] public static extern IntPtr ecore_animator_del(IntPtr animator);
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_add(double inSeconds, TaskCb func, IntPtr data);
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_del(IntPtr timer);
         [DllImport(Ecore)] public static extern IntPtr ecore_main_fd_handler_add(int fd, int flags, FdCb func, IntPtr data, IntPtr bufFunc, IntPtr bufData);

@@ -81,6 +81,7 @@ namespace Tuner
         private static readonly Dictionary<string, string> Details = new Dictionary<string, string>();   // long texts of programmes, read on demand (UI thread only)
 
         private static IntPtr _win;
+        private static Veil _veil;                    // the one veil under the Banner, Info and the guide
         private static BannerView _banner;
         private static InfoView _infoView;
         private static InfoData _info;
@@ -141,6 +142,9 @@ namespace Tuner
             if (takeover != null && AppIdPattern.IsMatch(takeover)) _takeoverApp = takeover;
             _ageAtMain = ProcessAgeMs();
             if (Flag(args, "--hold")) BannerSeconds = 3600;   // for screenshots
+            // --no-motion (Reduce motion, as the dock): every transition is immediate. "motion=0" in the features file does the same, live.
+            if (Flag(args, "--no-motion")) Anim.Enabled = false;
+            Anim.Switch = () => _features.On("motion");
             OpenLog();
             if (takeover != null && _takeoverApp == null) Log("takeover: bad app id ignored");
             WritePid();
@@ -230,6 +234,7 @@ namespace Tuner
         {
             CloseList(); ClosePad(); CloseGuide(); CloseInfo();
             _banner.Hide(); _toast.Hide();
+            Anim.FinishAll();                                           // the window goes: nothing is left half way
             if (hold) TakeoverState.Dismissed();
             if (!_resident) { Efl.elm_exit(); return; }
             _active = false;
@@ -282,11 +287,21 @@ namespace Tuner
         private static readonly Efl.FdCb OnWake = (d, h) =>
         {
             var drain = new byte[64];
-            while ((long)Libc.read(Wake[0], drain, (UIntPtr)drain.Length) > 0) { }
-            Action a;
-            while (UiQueue.TryDequeue(out a)) { try { a(); } catch (Exception ex) { Log("ui: " + ex); } }
+            while ((long)Libc.read(Wake[0], drain, (UIntPtr)drain.Length) > 0) { }   // always: the handler is level-triggered
+            // While a transition runs, the worker's results (a programme, a schedule, the info panel's texts) wait for its end: a redraw would
+            // move the objects that are flying. At most a third of a second.
+            if (Anim.Busy) { if (!_uiWaiting) { _uiWaiting = true; Anim.WhenIdle(DrainUi); } }
+            else DrainUi();
             return 1;
         };
+        private static bool _uiWaiting;
+
+        private static void DrainUi()
+        {
+            _uiWaiting = false;
+            Action a;
+            while (UiQueue.TryDequeue(out a)) { try { a(); } catch (Exception ex) { Log("ui: " + ex); } }
+        }
 
         // ---- tuning ----
 
@@ -391,7 +406,7 @@ namespace Tuner
             }
             if (!_active || !_banner.Visible) return;
             if (f == null) { _banner.SetNoProgram(); return; }
-            _banner.SetProgram(title, ProgramClock.Range(start, duration, _utcOffset), ProgramClock.Remaining(start, duration, now), f.Value);
+            _banner.SetProgram(title, ProgramClock.Clock(start, _utcOffset), ProgramClock.Clock(start + duration, _utcOffset), ProgramClock.Remaining(start, duration, now), f.Value);
             Restart(ref _bannerTimer, BannerSeconds, OnBannerTimeout);  // the owner gets the full time to read it, from when it appeared
         }
 
@@ -403,7 +418,7 @@ namespace Tuner
             if (a == null || !_banner.Visible) return false;
             double? f = ProgramClock.Fraction(a.Start, a.Duration, now);
             if (f == null) return false;
-            _banner.SetProgram(a.Title, ProgramClock.Range(a.Start, a.Duration, _utcOffset), ProgramClock.Remaining(a.Start, a.Duration, now), f.Value);
+            _banner.SetProgram(a.Title, ProgramClock.Clock(a.Start, _utcOffset), ProgramClock.Clock(a.Start + a.Duration, _utcOffset), ProgramClock.Remaining(a.Start, a.Duration, now), f.Value);
             return true;
         }
 
@@ -453,12 +468,14 @@ namespace Tuner
             if (_list == null || _list.Count == 0) { ShowToast("Channels not loaded yet"); return; }
             if (_guideView == null)
             {
-                _guideView = new GuideView(new Surface(Efl.evas_object_evas_get(_win), _assets, ScreenW, ScreenH));
+                _guideView = new GuideView(new Surface(Efl.evas_object_evas_get(_win), _assets, ScreenW, ScreenH), _veil);
                 _grid = new GuideGrid(_list, Store);
             }
+            Choreo.Shot from = _banner.Visible ? Choreo.Capture(_banner) : null;   // Banner -> guide: the number and the name fly to their row
             CloseList(); ClosePad(); _banner.Hide();
             _grid.Open(Math.Max(0, _list.CurrentIndex), DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             GuideChanged(true);
+            if (from != null) Choreo.Morph(from, _guideView, Choreo.BannerGuide, Motion.GuideOutSeconds, Motion.Linear);
         }
 
         private static void CloseGuide()
@@ -486,7 +503,7 @@ namespace Tuner
             GuideEvent fe = _grid.FocusEvent;
             string desc = "";
             if (fe != null) Details.TryGetValue(DetailKey(_grid.FocusChannel, fe), out desc);
-            _guideView.Draw(GuideScene.Build(_grid, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), _utcOffset, desc ?? "", LogosOn ? (Func<Channel, string>)LogoOf : null));
+            _guideView.Draw(GuideScene.Build(_grid, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), _utcOffset, desc ?? "", LogosOn ? (Func<Channel, string>)LogoOf : null, _guideView.Measure));
         }
 
         /// <summary>Starts a worker pass over the channels on screen and the pages around: each one not read yet (or stale) is read and the guide redrawn.</summary>
@@ -582,6 +599,7 @@ namespace Tuner
 
         private static void HoldStep()
         {
+            Anim.FinishAll();
             if (IsChannelKey(_holdCode))
             {
                 bool up = _holdCode == KeyChannelUp || _holdCode == KeyChannelUp2;
@@ -637,8 +655,10 @@ namespace Tuner
             if (code == KeyEnter)
             {
                 Channel c = _grid.FocusChannel;
+                Choreo.Shot from = Choreo.Capture(_guideView);                // guide -> Banner: the row's number and name fly back into the Banner
                 CloseGuide();
                 if (c != null && (_shown == null || _shown.Id != c.Id)) GoTo(c); else if (c != null) ShowBanner(c);
+                if (_banner.Visible) Choreo.Morph(from, _banner, Choreo.GuideBanner, Motion.GuideOutSeconds, Motion.Linear);
             }
         }
 
@@ -652,11 +672,13 @@ namespace Tuner
             if (!_features.On("info")) return;
             Channel c = _shown;
             if (c == null) { ShowToast("Channel not known yet"); return; }
+            Choreo.Shot from = _banner.Visible ? Choreo.Capture(_banner) : null;   // Banner -> Info: the shared parts fly, the veil grows
             CloseList(); ClosePad(); CloseGuide(); _banner.Hide(); _toast.Hide();
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             _info = new InfoData { Number = c.Major.ToString(), Name = c.Name, Clock = ProgramClock.Clock(now, _utcOffset), Date = InfoText.Date(now, _utcOffset), Logo = LogoOf(c), LogoRoom = LogosOn };
             ApplyInfoProgram(c, Store.Current(c.Id, now), now);
             _infoView.Draw(_info);
+            if (from != null) Choreo.Morph(from, _infoView, Choreo.BannerInfo, Motion.FadeSeconds, Motion.In);
             Restart(ref _infoTimer, InfoSeconds, OnInfoTimeout);
             int gen = Interlocked.Increment(ref _infoGen);
             Work.Add(() => InfoLookup(c, gen));
@@ -673,9 +695,10 @@ namespace Tuner
         private static void ApplyInfoProgram(Channel c, GuideEvent e, long now)
         {
             double? f = e == null ? null : ProgramClock.Fraction(e.Start, e.Duration, now);
-            if (e == null || f == null) { _info.NoProgram = true; _info.Fraction = null; _info.Title = ""; _info.Range = ""; _info.Left = ""; return; }
+            if (e == null || f == null) { _info.NoProgram = true; _info.Fraction = null; _info.Title = ""; _info.Start = ""; _info.End = ""; _info.Left = ""; return; }
             _info.NoProgram = false; _info.Title = e.Title; _info.Fraction = f;
-            _info.Range = ProgramClock.Range(e.Start, e.Duration, _utcOffset);
+            _info.Start = ProgramClock.Clock(e.Start, _utcOffset);
+            _info.End = ProgramClock.Clock(e.Start + e.Duration, _utcOffset);
             _info.Left = ProgramClock.Remaining(e.Start, e.Duration, now);
         }
 
@@ -704,6 +727,7 @@ namespace Tuner
         private static void OnKey(int code)
         {
             Log("key " + code);
+            Anim.FinishAll();                                           // a transition still running ends now: the key acts on the final screen
             if (!_active)
             {
                 if (!WakeOnKey(code)) return;                           // resident and hidden: keys are not ours, unless Samsung's app is up and this is a TV key
@@ -967,11 +991,12 @@ namespace Tuner
                     s3 = new Surface(evas, assets, ScreenW, ScreenH), s4 = new Surface(evas, assets, ScreenW, ScreenH);
             string bad = s1.AssetProblems();
             if (bad.Length > 0) Log("pictures not loaded from " + assets + ":" + bad);
-            _banner = new BannerView(s1);
+            _veil = new Veil(new Surface(evas, assets, ScreenW, ScreenH));     // first: it sits under the Banner, Info and the guide, its users
+            _banner = new BannerView(s1, _veil);
             _listView = new ListView(s2);
             _padView = new PadView(s3);
             _toast = new ToastView(s4);
-            _infoView = new InfoView(new Surface(evas, assets, ScreenW, ScreenH));
+            _infoView = new InfoView(new Surface(evas, assets, ScreenW, ScreenH), _veil);
         }
 
         // ---- control pipe (resident mode) ----
@@ -1013,6 +1038,7 @@ namespace Tuner
         private static void Command(string line)
         {
             Log("command " + line);
+            Anim.FinishAll();
             string[] p = line.Split(' ');
             switch (p[0])
             {
@@ -1053,7 +1079,7 @@ namespace Tuner
             if (got == 0) return;
             _presses.Clear(); _held.Clear(); _released.Clear();
             _readers[index].Feed(_buf, (int)got, _presses, _held, _released);
-            if (DockPadOpen()) { _presses.RemoveAll(c => !SystemKeys.Contains(c)); _held.Clear(); }   // the launcher's 123 pad has the keys: not ours
+            if (DockPadOpen()) { _presses.RemoveAll(c => !SystemKeys.Contains(c)); _held.Clear(); if (_banner.Visible) _banner.Hide(); }   // the launcher's 123 pad has the keys (not ours) and the screen: the Banner steps aside
             foreach (int code in _presses.ToArray()) { OnKey(code); BeginHold(code); }
             foreach (int code in _held.ToArray()) OnRepeat(code);
             foreach (int code in _released.ToArray()) EndHold(code);

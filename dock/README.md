@@ -32,7 +32,8 @@ make room the dock window has a second hint band at the bottom, so the bar sits 
 - `src/` the dock. `Core/` is pure logic (layout, catalog, input decoding) and has tests;
   `Native/` holds the P/Invoke surface; `Ui/` draws with EFL.
 - `tests/` desktop tests of `Core/`: `cd tests && dotnet run`.
-- `res/` the images (bar, shadow, glow, focus ring) and the generic Settings/HDMI icons.
+- `res/` the images (sheet and rim, glow, focus ring and capsule) and the generic Settings/HDMI icons. `dock_bg.png` and
+  `shadow.png` are still generated but no longer drawn.
 - `tools/` generators for those images (`make-glass.cjs`, `system_icons.py`).
 - `designer/` a standalone page to try looks; `designer/chosen.json` is the design the launcher currently draws.
 
@@ -44,6 +45,11 @@ code. `app/tests/dock-design.test.cjs` checks them against `designer/chosen.json
 
 One rule ties the shapes together: an icon's corner radius is a percentage of its side (`Design.IconRadiusPct`),
 and the focus ring and the glow are built from that same radius, at every size the icon takes while it grows.
+
+The bar (apps and Sources) and the Task manager panel use the material of the 123 pad and the volume pill: `pill_rim`
+(white at `ShellBorderAlpha`) 2 px outside the sheet, then `pill_bg` (`ShellColor` at `VolumeAlpha`), nine-sliced to
+`Design.PanelRadius` (40: the icons' 15 plus the bar's 26 of padding, so the corners are concentric), with no drop shadow.
+The Task manager marks its selected row with the 123 pad's ice capsule (`pill_cap`), and that row's texts turn slate.
 
 To change the look: edit `chosen.json` (or paste a new designer export there), update the matching constants in
 `Design.cs` / `Layout.cs`, then run `node tools/make-glass.cjs` and `python3 tools/system_icons.py`-based

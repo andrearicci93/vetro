@@ -10,7 +10,7 @@ namespace Launcher.Core
 
     /// <summary>
     /// Geometry of the dock. Pure arithmetic, no EFL: the window is only as large as the
-    /// glass pill plus a shadow margin, centred at the bottom of the screen, so the
+    /// glass pill plus a margin, centred at the bottom of the screen, so the
     /// compositor blends a few hundred thousand pixels instead of a full 1080p plane.
     ///
     /// Coordinates are window-relative unless noted. "Content space" is the unscrolled
@@ -28,7 +28,7 @@ namespace Launcher.Core
         public const int PadBottom = 16;
         /// <summary>Height of the name/clock row under the icons; none when the design shows neither.</summary>
         public static readonly int LabelRow = Design.ShowLabels || Design.ShowClock ? LabelGap + LabelH : 0;
-        public const int Margin = 40;          // room for the bar's shadow on every side (also: pill bottom to screen bottom)
+        public const int Margin = 40;          // room for the focus glow and the rim on every side (also: pill bottom to screen bottom)
         public const int BottomGap = 0;        // window bottom to screen bottom
         public const int ScreenSideGap = 12;   // pill never closer than this to the screen edge
         public const int MaxPillW = 1808;      // the bar is never wider than this
@@ -82,6 +82,22 @@ namespace Launcher.Core
         public readonly int GroupStart;
 
         public DockLayout(int count, int screenW, int screenH) : this(count, screenW, screenH, 0) { }
+
+        /// <summary>
+        /// The two pages of the launcher's one window, sized together: the apps (with their pinned system group from
+        /// <paramref name="groupStart"/>) and Sources (the inputs, raised). The window is as wide as the wider of the two pages
+        /// exactly as they are drawn, group included, and the other page's pill is centred in it, so both bars stand on the
+        /// screen's centre line. (Sizing the window from a page without its group made it narrower than the apps page, and
+        /// Sources, centred in that narrower width, came out half the difference left of centre.)
+        /// </summary>
+        public static void Pages(int apps, int groupStart, int inputs, int screenW, int screenH, bool belowBand,
+            out DockLayout appsPage, out DockLayout inputsPage)
+        {
+            int windowW = Math.Max(new DockLayout(apps, screenW, screenH, 0, false, groupStart, belowBand).WinW,
+                new DockLayout(inputs, screenW, screenH, 0, true, -1, belowBand).WinW);
+            appsPage = new DockLayout(apps, screenW, screenH, windowW, false, groupStart, belowBand);
+            inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand);
+        }
 
         public DockLayout(int count, int screenW, int screenH, int windowW) : this(count, screenW, screenH, windowW, false, -1) { }
 
@@ -247,10 +263,11 @@ namespace Launcher.Core
             Box b; b.X = Left; b.Y = Top + slide; b.W = PillW; b.H = PillH; return b;
         }
 
-        public Box ShadowBox(int slide)
+        /// <summary>The light rim: the pill grown by <see cref="Design.ShellBorderW"/> on every side, drawn under it (as in the 123 pad).</summary>
+        public Box RimBox(int slide)
         {
-            const int extra = Margin;   // the shadow image holds exactly the window margin around the bar
-            Box b; b.X = Left - extra; b.Y = Top - extra + Design.ShadowDy + slide; b.W = PillW + 2 * extra; b.H = PillH + 2 * extra; return b;
+            const int w = Design.ShellBorderW;
+            Box b; b.X = Left - w; b.Y = Top - w + slide; b.W = PillW + 2 * w; b.H = PillH + 2 * w; return b;
         }
 
         /// <summary>Window-relative x of the centre of item <paramref name="item"/>'s label (under its icon).</summary>

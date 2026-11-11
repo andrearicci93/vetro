@@ -72,11 +72,11 @@ internal static partial class Tests
         List<Prim> with = GuideScene.Build(g, now, TimeSpan.Zero, "", c => { asked.Add(c.Name); return c.Major == 1 ? "/x/rai1.png" : null; });
         Prim[] logos = with.Where(p => p.Kind == PrimKind.Logo).ToArray();
         Check(logos.Length == 1 && logos[0].Text == "/x/rai1.png" && logos[0].W == GuideScene.LogoSize && logos[0].H == GuideScene.LogoSize, "guide: a row whose channel has a logo gets one square logo");
-        Check(logos[0].X == GuideLayout.LabelX && logos[0].Y >= GuideLayout.RowsY && logos[0].Y + logos[0].H <= GuideLayout.RowsY + GuideLayout.RowH, "guide: the logo sits in the label column, inside its row");
+        Check(logos[0].X == GuideLayout.LabelX + 16 && logos[0].Y >= GuideLayout.RowsY && logos[0].Y + logos[0].H <= GuideLayout.RowsY + GuideLayout.RowH, "guide: the logo sits in the label column, inside its row");
         Check(asked.Count == Math.Min(GuideLayout.Rows, list.Count), "guide: the logo of each row on screen is asked once, no more");
         Prim name = with.First(p => p.Kind == PrimKind.Text && p.Text == "Channel 1" && p.Y >= GuideLayout.RowsY), plainName = plain.First(p => p.Kind == PrimKind.Text && p.Text == "Channel 1" && p.Y >= GuideLayout.RowsY);
         Check(name.X > logos[0].X + logos[0].W && name.X + name.MaxW <= GuideLayout.CellsX, "guide: with logos the name starts after the logo and stays inside the label column");
-        Check(plainName.X == GuideLayout.LabelX + 68, "guide: without logos the name is where it always was");
+        Check(plainName.X == GuideLayout.LabelX + 16 && name.X == GuideLayout.LabelX + 86, "guide: without logos the name starts at the column's left (96), with logos after the logo (166)");
         Check(with.Count(p => p.Kind == PrimKind.Logo) <= GuideScene.MaxLogos && with.Count(p => p.Kind == PrimKind.Text) <= GuideScene.MaxTexts, "guide: the scene fits the pooled objects");
     }
 }

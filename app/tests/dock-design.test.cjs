@@ -32,13 +32,14 @@ assert.equal(c['layout.position'], 'bottom'); assert.equal(c['layout.align'], 'c
 assert.equal(c['layout.fisheye'], 0, 'no lens effect: the neighbours do not grow');
 near('DividerAlpha', c['divider.opacity']); assert.equal(c['divider.show'], true);
 
-// the bar (solid: the designer ignores the glass-only gradient and highlight, and keeps at least 98% opacity)
+// the bar: since the opus6 look it is the 123 pad's material (pill_bg slate at VolumeAlpha + pill_rim), corners PanelRadius, no drop shadow.
+// The Shell*/Shadow* constants only describe the retired dock_bg.png / shadow.png that dock/tools still generate.
 assert.equal(c['shell.style'], 'solid');
-eq('ShellRadius', c['shell.radius']); eq('ShellColor', hex(c['shell.tint']));
-near('ShellAlpha', Math.max(c['shell.opacity'], 0.98));
+eq('PanelRadius', c['shell.radius']); eq('ShellColor', hex(c['shell.tint']));
+near('VolumeAlpha', c['shell.opacity']);
 eq('ShellBorderW', c['shell.borderW']); near('ShellBorderAlpha', c['shell.border']); eq('ShellBorderColor', hex(c['shell.borderColor']));
-near('ShadowAlpha', c['shell.shadow']); eq('ShadowBlur', c['shell.shadowBlur']);
-assert.ok(K.ShellSlice >= K.ShellRadius, 'the bar image keeps its corner curve inside the nine-slice border');
+assert.equal(c['shell.shadow'], 0, 'no drop shadow under the bar'); assert.equal(c['shell.shadowBlur'], 0);
+assert.ok(K.ShellSlice >= K.ShellRadius, 'the retired bar image keeps its corner curve inside the nine-slice border');
 
 // icons: one radius rule for icon, ring and glow
 eq('IconRadiusPct', c['icons.radius']); near('IconDim', c['icons.dim']);

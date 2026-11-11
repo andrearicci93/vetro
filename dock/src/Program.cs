@@ -499,6 +499,7 @@ namespace Launcher
         private static void ApplySnapshot(TaskSnapshot s)
         {
             if (!_tasksOn) return;
+            s.Apps = Tasks.UniqueById(s.Apps);   // one row per app id, or the panel counts a row it never draws
             RunningApp selected = _taskPanel.AppAt(_tasksCtl.Selected);
             if (s.Partial)
             {
@@ -1353,12 +1354,11 @@ namespace Launcher
                 _apps = LoadApps(Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv"));
                 _inputs = LoadList(Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv"), Catalog.BuiltInInputs);
                 // One window for both pages: as wide as the wider of the two, the other is centred in it.
-                int windowW = Math.Max(new DockLayout(_apps.Length, screenW, screenH).WinW, new DockLayout(_inputs.Length, screenW, screenH).WinW);
                 // With the task manager on, the apps page also shows a "Task manager" hint under the bar: both pages
                 // get the extra band so the shared window keeps one height, and the task panel ends where the bar does.
                 bool tasks = !Flag(args, "--no-tasks");
-                var layout = new DockLayout(_apps.Length, screenW, screenH, windowW, false, Catalog.GroupStart(_apps), tasks);
-                var inputsLayout = new DockLayout(_inputs.Length, screenW, screenH, windowW, true, -1, tasks);
+                DockLayout layout, inputsLayout;
+                DockLayout.Pages(_apps.Length, Catalog.GroupStart(_apps), _inputs.Length, screenW, screenH, tasks, out layout, out inputsLayout);
                 _appsCtl = new Controller(layout) { PanelEnabled = true, TasksEnabled = tasks };
                 _appsLayout = layout;
                 _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, tasks ? DockLayout.HintH : 0);

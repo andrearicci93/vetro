@@ -8,7 +8,7 @@ namespace Launcher.Ui
 {
     /// <summary>
     /// The 123 pad, after Samsung's two pages but as one slim glass capsule at the foot of the screen: the digits page
-    /// (1-9, 0, dash, backspace, a way to the colour page, a "Done" chip above and the typed number) and the colour page
+    /// (1-9, 0, dash, backspace, a way to the colour page, a "Done" chip above and the typed number in a chip at the other end) and the colour page
     /// (back, A B C D, teletext, timer, info, with the name of the focused key above it).
     /// It takes the keyboard focus while it is open (Left/Right/Up/Down/OK/Back), so the app underneath does not see
     /// those keys; "Done" or a function key closes it, gives the focus back and then sends the keys to that app.
@@ -18,8 +18,8 @@ namespace Launcher.Ui
     {
         private const int WinW = 1100, WinH = 200, EdgeGap = 64;
         private const int BodyY = 92, BodyH = 96, CellY = BodyY + 12, CellH = 72, ChipY = 28, ChipH = 52;
-        private const int NotificationLevelTop = 40, WindowLayer = 900;
-        private const string Font = "SamsungOneUI 500,Sans";
+        private const int NotificationLevelTop = 40, WindowLayer = 900, TypedSize = 36;
+        private const string Font = "SamsungOneUI 500";
         private const double FadeSeconds = 0.12, IdleSeconds = 14, SlideRate = 18;
         // While the pad is open this file exists (touched on every key). The tuner reads the remote straight from the input device, so it
         // sees the arrows and OK too; it ignores the keys while the file is fresh, or Left/Right would also cycle its audio and open its channel pad.
@@ -32,7 +32,7 @@ namespace Launcher.Ui
         private readonly Action<PadResult, string> _send;
         private readonly int _screenW, _screenH;
         private readonly NumberPadModel _model = new NumberPadModel();
-        private IntPtr _win, _rim, _body, _focus, _typed, _doneBg, _doneText, _tipBg, _tipText;
+        private IntPtr _win, _rim, _body, _focus, _typed, _typedBg, _doneBg, _doneText, _tipBg, _tipText;
         private readonly Slot[][] _slots = new Slot[2][];
         private IntPtr _animator, _idle;
         private readonly Efl.TaskCb _tick, _idleCb;
@@ -98,6 +98,9 @@ namespace Launcher.Ui
                 _body = Image(evas, "pill_bg", 48);
                 _focus = Image(evas, "pill_cap", 36);
                 _doneBg = Image(evas, "pill_chip", 26);
+                // The typed number sits in a slate chip, Done's twin at the other end: straight on the picture a white
+                // number vanishes on a bright scene (snow, a white studio), and a text shadow is too thin to hold it.
+                _typedBg = Image(evas, "pill_chip", 26);
                 _tipBg = Image(evas, "pill_chip", 26);
                 for (int p = 0; p < 2; p++)
                 {
@@ -116,7 +119,7 @@ namespace Launcher.Ui
                 }
                 _doneText = Text(evas, "Done", 26);
                 _tipText = Text(evas, "", 26);
-                _typed = Text(evas, "", 68);
+                _typed = Text(evas, "", TypedSize);
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, _keyCb, IntPtr.Zero);
                 _built = true;
                 _log("pad: ready");
@@ -199,12 +202,26 @@ namespace Launcher.Ui
                 }
                 x += c.Width;
             }
-            Efl.evas_object_move(_typed, _bodyX + 12, 8);
             _doneW = Efl.evas_object_text_horiz_advance_get(_doneText) + 56;
             _doneX = _bodyX + _bodyW - _doneW;
             Efl.evas_object_move(_doneBg, _doneX, ChipY); Efl.evas_object_resize(_doneBg, _doneW, ChipH);
             CenterText(_doneText, _doneX + _doneW / 2, ChipY + ChipH / 2);
             SetShown(_doneBg, page == NumberPadModel.DigitsPage); SetShown(_doneText, page == NumberPadModel.DigitsPage);
+        }
+
+        /// <summary>
+        /// The typed number's chip: from the capsule's left end, as wide as the number (padding as Done's), on the digits page
+        /// only (on the colour page the key names use that line, like Done) and only once something is typed.
+        /// </summary>
+        private void LayoutTyped()
+        {
+            string typed = _model.Typed;
+            bool on = typed.Length > 0 && _model.Page == NumberPadModel.DigitsPage;
+            SetShown(_typedBg, on); SetShown(_typed, on);
+            if (!on) return;
+            int w = Efl.evas_object_text_horiz_advance_get(_typed) + 56;
+            Efl.evas_object_move(_typedBg, _bodyX, ChipY); Efl.evas_object_resize(_typedBg, w, ChipH);
+            CenterText(_typed, _bodyX + w / 2, ChipY + ChipH / 2);
         }
 
         private static void SetShown(IntPtr obj, bool on) { if (on) Efl.evas_object_show(obj); else Efl.evas_object_hide(obj); }
@@ -214,6 +231,7 @@ namespace Launcher.Ui
         {
             LayoutPage(false);
             Efl.evas_object_text_text_set(_typed, _model.Typed);
+            LayoutTyped();
             PadCell c = _model.Current;
             if (c != null) Efl.evas_object_resize(_focus, c.Width, CellH);
             bool tip = c != null && c.Tip != null && _model.Page == NumberPadModel.ColorsPage;
@@ -245,6 +263,7 @@ namespace Launcher.Ui
             Tint(_body, Design.ShellColor, Design.VolumeAlpha * a);
             Tint(_focus, Design.RingColor, (onDone ? 0 : 0.96) * a);
             Efl.evas_object_move(_focus, (int)Math.Round(_focusX), CellY);
+            Tint(_typedBg, Design.ShellColor, Design.VolumeAlpha * a);   // always slate: it shows, it is never focused
             Tint(_typed, 0xFFFFFF, a);
             Tint(_doneBg, onDone ? Design.RingColor : Design.ShellColor, (onDone ? 0.96 : Design.VolumeAlpha) * a);
             Tint(_doneText, onDone ? Design.ShellColor : 0xFFFFFF, a);

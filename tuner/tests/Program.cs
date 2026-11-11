@@ -110,11 +110,14 @@ internal static partial class Tests
         Check(GuideText.Texts(cut).Length == 0, "a truncated reply gives no texts");
         TakeoverTests();
         InfoTests();
+        ProgressRowTests();
+        TextMetricsTests();
         LogoChecks();
         Check(Languages.Name("ITA") == "Italian" && Languages.Name("xyz") == "XYZ" && Languages.Name("") == "Original", "language names");
 
         GuideChecks();
         GuideGridChecks();
+        MotionChecks();
         Console.WriteLine(_failed == 0 ? "ok: " + _run + " checks" : _failed + " of " + _run + " checks FAILED");
         return _failed == 0 ? 0 : 1;
     }

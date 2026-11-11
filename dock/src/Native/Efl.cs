@@ -93,6 +93,8 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_text_ellipsis_set(IntPtr txt, double ellipsis);
         /// <summary>EVAS_TEXT_STYLE_SOFT_SHADOW: the ninth value of the enum (PLAIN, SHADOW, OUTLINE, SOFT_OUTLINE, GLOW, OUTLINE_SHADOW, FAR_SHADOW, OUTLINE_SOFT_SHADOW, SOFT_SHADOW).</summary>
         public const int EvasTextStyleSoftShadow = 8;
+        /// <summary>EVAS_TEXT_STYLE_PLAIN: no shadow (the first value of the same enum).</summary>
+        public const int EvasTextStylePlain = 0;
 
         // --- ecore ---
         [DllImport(Ecore)] public static extern double ecore_time_get();

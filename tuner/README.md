@@ -50,14 +50,33 @@ How Samsung's own Home asks for a channel: `app_control` to `org.tizen.tv-viewer
 
 ## Look
 
-The look is the dock's (`dock/designer/chosen.json`, `dock/src/Core/Design.cs`): a dark slate sheet (#2A3346) with a thin white border,
-soft drop shadow, 24 px corners, white text, a white 2 px ring on the selection. `res/dock_bg.png` and `res/shadow.png` are the dock's own
-pictures; `res/solid.png` and `res/ring.png` are plain white rounded rectangles (64 px, radius 16) drawn as 9-slice and tinted. `src/Ui/Surface.cs`
-holds the theme and the building blocks (one clipper per view, so a view is shown or hidden as one), `src/Ui/Views.cs` the four views.
+The Banner and Info have no card: they stand on a **veil**, one picture (`res/veil_corner.png`, a quarter ellipse centred on the bottom-left corner,
+stretched, not 9-slice) at alpha .58 for the Banner (0,480 1700x600) and .66 for Info (0,80 2500x1000), and every text has the EVAS soft shadow
+(black, alpha 140) as a halo, like the dock's labels. Fonts are SamsungOneUI 200 (big numbers, clock), 500 and 600; texts are placed by their
+baseline (the font's ascender 952 / descender 276 per 1024, in `Theme`), so the big number stands on the baseline of the line beside it. The
+progress row (start and end time, the line `res/bar.png`, the progress with its head `res/progress.png`, "N min left" over the head) is
+`ProgressView`; where the label goes, and which time gives way to it when it comes within 28 px, is `Core/ProgressRow.cs` (tested).
+The Channel pad, Channel list and Audio toast use the material of the launcher's osd 123: `res/pill_rim.png` (white .22, 2 px outside) and
+`res/pill_bg.png` (slate #243448 at .90), the dock's own pictures, radius 40 for panels and a capsule for the toast through the border scale; keys are
+`res/pill_cap.png` capsules (white .14) and the focus is the ice capsule with the text in slate. No shadow anywhere. Pad and list are centred on
+the screen's height. The EPG stands on the same veil grown past every edge of the screen (alpha .94, no sheet): cells are `res/pill.png` (64 px,
+radius 20, 9-slice 24) in white at .09 / .16 on air / .05 loading / .035 with `res/hatch.png` tiled for "no information"; the focus is the same pill in
+ice (#E4F2FF .96) with its title and time in slate, no ring and no shadow (radius 20 like the cells: a capsule on a 15-minute cell would be an oval).
+`src/Ui/Surface.cs` holds the theme and the building blocks (one clipper per view, so a view is shown or hidden as one), `src/Ui/Views.cs` the views.
+
+**Motion** (`Core/Motion.cs`, `Ui/Anim.cs`, the mock-up's choreography): only position, size, alpha and a uniform `evas_map` zoom move, driven by one
+ecore animator that exists only while something moves; an ease is three straight stretches ((0,0), (1/3,.6), (2/3,.9), (1,1)), a slow start for what
+leaves. The veil changes shape in 320 ms (Banner 1700x600 .58, Info 2500x1000 .66, guide 6400x3400 .94; it shrinks to the Banner's corner at alpha 0 when
+nothing uses it). A view comes in with a 200 ms fade of its clipper after 60 ms and leaves with a 200 ms fade. Banner -> Info: number, name and title
+fly with a zoom of the larger of the two (a text is never drawn enlarged), logo, line and progress move and resize, times and "N min left" move; the
+Info's own texts fade in. Banner -> guide: the name flies to its row label (zoom), the number too and swaps with the row's 500-weight number in the last
+80 ms (a text cannot change font in flight); the guide fades in as one. Guide -> Banner (OK) is the same flight backwards. Channel pad <-> Banner: the
+one fades out while the other comes in. A key, a command or a held arrow first puts any transition at its end; the worker's results wait for its end
+(at most 0.32 s). `--no-motion` (as the dock) or `motion=0` in the features file makes everything immediate.
 The guide's footer names the remote's keys with their pictures (`res/key_*.png`, made from `app/design-system/remote` by `tools/render-remote-keys.cjs`; `GuideScene.Footer` places them). Nothing is drawn with a coloured top border. Run with `--backdrop` for screenshots: the compositor shows the video plane as white and white text
 would vanish on it.
 
-* **Banner** (bottom left, 4 s): always the same card: channel number and name, then the programme on air (title, start-end times, time left, progress bar).
+* **Banner** (bottom left, 4 s): channel number and name (logo at the right end), then the programme on air (title, start and end times, time left, progress line).
   The rows are empty until the daemon has the programme (it has it once the channel's tables are in: ~2 s after a zap on a new multiplex), so the lookup
   starts 1.8 s after the zap and is repeated every 1.2 s, up to 6 times; the banner stays up while it looks. If there is none (a radio, a data service) the title row says
   "No programme information".
@@ -66,7 +85,7 @@ would vanish on it.
 * **Number pad** (Right): 4x3 grid 1-9, Delete, 0, Go; arrows move, OK presses; shows the typed number and the channel it would go to
   ("No such channel" otherwise). Once a number is typed, 2 s without a key take it and tune (any key starts the 2 s again; Go still works at once). A real digit key opens it too. Closes after 20 s.
 * **Audio** (Left): cycles the audio track and shows "Audio: Italian" for 2 s.
-* **Info panel** (Info key 358, or `info` on the control pipe): a card at the top, 1728 x 348 px, same slate look. Channel number in a badge, the programme on air (title, channel name, start-end, a bar and the time left), up to three lines of its description, and on the right the clock, the date, the tuner (`GetTvMode`: Antenna/Cable/Satellite) and the audio track. Built from the store (programme) at once, then the worker reads the description (`ReadPresentTexts`), the audio and the tuner (`Core/InfoPanel.cs` has the date, the audio text and the word wrapping, with tests; `Ui/InfoView.cs` draws it with pooled objects). Any key closes it, then does its usual job (Back and Info only close it); 10 s timeout. Not shown, because nothing reads it yet: resolution, audio format, subtitle and teletext badges, genre.
+* **Info panel** (Info key 358, or `info` on the control pipe): the Banner's corner grown up and to the right (block x 96..1296). Channel number and name, logo, the programme on air in large, its progress row, up to three lines of its description, and on the right the clock, the date, the tuner (`GetTvMode`: Antenna/Cable/Satellite) and the audio track. Built from the store (programme) at once, then the worker reads the description (`ReadPresentTexts`), the audio and the tuner (`Core/InfoPanel.cs` has the date, the audio text and the word wrapping, with tests; `Ui/InfoView.cs` draws it with pooled objects). Any key closes it, then does its usual job (Back and Info only close it); 10 s timeout. Not shown, because nothing reads it yet: resolution, audio format, subtitle and teletext badges, genre.
   The launcher's 123 pad sends its Info key as `input_keyevent XF86Info`, which the tuner never sees (it goes to `tv-viewer`). While the tuner is on screen the file `/tmp/vetro-tuner.ctl.shown` exists (the pipe alone only says a tuner is resident, and `info` would bring it up over any app). To open this panel from the pad, the pad does `sh -c '[ -e /tmp/vetro-tuner.ctl.shown ] && { exec 3<>/tmp/vetro-tuner.ctl; echo info >&3; }'` and sends `XF86Info` as before when that returns non-zero. The read-write `exec 3<>` never blocks, even if the tuner died and left the pipe behind (the TV has no `timeout`). Tried on the Q80A: hidden = no flag, shown = flag, the command opened the panel.
 
 ## Keys (Smart Control 2016 on the Q80A, read from evdev, verified 2026-11-07)
@@ -128,8 +147,8 @@ see the programmes of the multiplex the daemon was tuned to (`GetPresentProgram`
 
 * `Core/GuideReply.cs` parses a reply (never throws; wrong shape = false, "no data" = empty list). `Core/GuideStore.cs` keeps the schedule of each channel (re-read after 15 min, retried after 20 s on failure; `Nearest` orders neighbours first).
 * `Core/GuideGrid.cs` is the model: 180-minute window, 7 channel rows, focus (channel + time), moves (`MoveRow`, `MovePage`, `MoveTime` = previous/next programme, scrolling the window by 30 min when a gap or the edge is reached), horizon 72 h, gaps and not-yet-read rows become "Loading" cells.
-* `Core/GuideScene.cs` turns the model into a short list of primitives (sheet, fill, ring, text); `Ui/GuideView.cs` draws it with pooled EFL objects (140 fills, 260 texts, one ring: nothing is created while moving), and the offline preview script draws the **same** primitives, so `guide_open.png` is the real layout.
-* Look: the dock's slate sheet, "SamsungOneUI" text, 8 px per minute, 30-minute ticks, the "now" line, programmes on air slightly brighter, one white ring on the focus; no coloured borders. Header: title, `21:20 - 01:03 · 3 h 44 min · Channel`, the long text of the programme (read on demand 250 ms after the focus stops), the date.
+* `Core/GuideScene.cs` turns the model into a short list of primitives (line, cell, hatch, focus, text, key, logo); `Ui/GuideView.cs` draws it with pooled EFL objects (3 lines, 140 cells, 21 hatches, one focus, 260 texts of which the focused row's number and name and the header's title have their own object, 7 logos, 7 keys: about 440 made on the first open, about 110 on screen, nothing created while moving). The preview (`preview/`, the tuner tab) runs this code on a simulated EFL.
+* Look (design/challenge/opus6): the full veil, SamsungOneUI 500/600, 8 px per minute, the half hours on the axis (full hours 600 white) over a 2 px line, the "now" mark (light blue 3x16) and its trace (.30) through the rows, one cell per programme 4 px apart and flush with the grid's edges, the ice focus; no coloured borders. Header: title 600/64, `21:20 – 01:03 · 3 h 44 min · Channel`, the long text of the programme (two lines, read on demand 250 ms after the focus stops), the date at the right.
 * **Held arrows (tested on the Q80A with the owner, 2026-11-07):** the Smart Control sends ONE press per hold and then a release, no auto-repeat events. The repeat is made by the tuner: 0.4 s after an Up/Down/Left/Right press with no release, a timer steps every 0.12 s until the release, 1 step, then 2 after ~5, then 3 after ~14 (7 per step was too fast). It only starts once a release has been seen on the device (so the first key after a restart does not repeat) and never runs more than 12 s. The same applies to the channel list.
 * Keys while it is open: Up/Down channel, Left/Right programme, CH+/- page, OK watch (tunes the focused channel and closes), Back or the guide key closes; it closes itself after 60 s without keys.
 * Loading (`Program.cs`): when it opens, the rows on screen are read first (focus first), then the page below and above, in cancelable 100 ms slices on the worker; the grid is redrawn after each row. The long text is not kept in the store (saves memory): the focused programme's window is read again with the texts on (6 h from its start, the same call as the bulk read).
@@ -177,9 +196,8 @@ title, description, raw descriptor, source name, guidance. `Core/GuideText.cs` r
   matches a channel by its service id first, by its triplet second, **never by name**; a match is turned into the file name the daemon gave the
   picture (`LogoNames.CacheFile`). A channel with no match, or whose file is not saved, shows no logo and the layout stays as it was: the views
   reserve the logo's room only when the tables gave something. Nothing is downloaded and nothing is written.
-  Checked on the Q80A (2026-11-11): both tables open fine read-only, but **they are empty there** (the daemon has no lineup configured and the picture
-  folder has not grown since May), so on that TV the logos only appear once the daemon fills them; how Samsung's own tuner gets them then is open.
-  Not verified: that the service id equals the tvs channel id, and which tag carries the DVB service number (the probe's `logos` mode prints the triplet). The start log has a `logos:` line with
+  Not verified on the TV yet: that the tables are readable from the tuner's process and filled, that the service id equals the tvs channel id, and
+  which tag carries the DVB service number (the probe's `logos` mode prints the triplet for the first channels). The start log has a `logos:` line with
   the counts (channels, matched, with a file). Downloading the missing pictures is a separate step, not done.
 
 ## Open questions (in order)
@@ -223,7 +241,7 @@ Log: `/tmp/vetro-tuner.log`. Tests of the pure logic: `dotnet run` in `tests/` (
 
 ## Layout
 
-* `src/` the app: `Program.cs` (window, keys, worker thread, control pipe), `Ui/` (theme and views), `Tvs/TvsClient.cs` (Samsung client, the only file that loads it), `Core/` (pure logic with tests: channel list, number pad, programme clock, programme text, language names, guide reply / store / grid / scene), `Native/` (EFL, libc), `Input/Evdev.cs`, `res/` (pictures). Options: `--notif` (notification-level window, needed to be seen over an app), `--resident`, `--control PATH`, `--major N`, `--seconds N` (auto exit), `--hold` (banner stays), `--shm` (software engine), `--backdrop` (dark ground for screenshots).
+* `src/` the app: `Program.cs` (window, keys, worker thread, control pipe), `Ui/` (theme and views), `Tvs/TvsClient.cs` (Samsung client, the only file that loads it), `Core/` (pure logic with tests: channel list, number pad, programme clock, programme text, language names, guide reply / store / grid / scene), `Native/` (EFL, libc), `Input/Evdev.cs`, `res/` (pictures). Options: `--notif` (notification-level window, needed to be seen over an app), `--resident`, `--control PATH`, `--major N`, `--seconds N` (auto exit), `--hold` (banner stays), `--shm` (software engine), `--backdrop` (dark ground for screenshots), `--no-motion` (no transitions).
 * `tools/probe/` read-only probe of the TV service, plus `guide <major>` (read-only: present programme, texts, audio, caption mode), `rawpresent <major>` (read-only: hex of the reply), `tune <major>`, `bench <from> <to> <rounds>`, `signals <from> <to> <rounds>` `schedule MAJOR[:HOURS]` (read-only: GetProgramList, replies in /tmp/vtsched_*.bin), `logos` (read-only: the logo columns and the DVB triplet), and `nd <from> <to> <rounds>` (env `ND_CODE` picks the function code: 0, 1, 15, 21...) which **change the channel**; `listen <sec>` is read-only (prints the tvs signals while someone else zaps) (run them only when the
   TV is free). Build: `dotnet build -c Release -p:TvsDll=<path to Tizen.TV.Broadcast.TVService.dll from the firmware>`.
   The DLL is referenced at compile time only and is never copied or shipped.

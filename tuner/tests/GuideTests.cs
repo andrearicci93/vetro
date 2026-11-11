@@ -127,7 +127,15 @@ internal static partial class Tests
             }
         }
         GuideCell fc = FocusCell(g);
-        Check(fc != null && fc.ClipLeft && !fc.ClipRight && fc.X == GuideLayout.CellsX + GuideLayout.CellGap / 2, "the programme on air is cut at the left edge, where it began earlier");
+        Check(fc != null && fc.ClipLeft && !fc.ClipRight && fc.X == GuideLayout.CellsX, "the programme on air is cut at the left edge, where it began earlier, flush with the grid");
+        bool gaps = true;
+        for (int r = 0; r < GuideLayout.Rows; r++)
+        {
+            List<GuideCell> cs = g.Cells(r);
+            for (int i = 1; i < cs.Count; i++) if (cs[i].X - (cs[i - 1].X + cs[i - 1].W) != GuideLayout.CellGap) gaps = false;
+            if (cs.Count > 0 && cs[cs.Count - 1].ClipRight && cs[cs.Count - 1].X + cs[cs.Count - 1].W != GuideLayout.CellsX + GuideLayout.CellsW) gaps = false;
+        }
+        Check(gaps, "neighbouring cells are 4 px apart and a cell cut by the right edge reaches it");
         Check(Titles(g, 2).StartsWith("Tu si que vales|Tg5"), "Canale 5 row: its programmes in order");
         Check(Titles(g, 3) == "…" , "a channel not read yet is one 'loading' box");
         Check(g.Cells(5).Count == 1 && g.Cells(5)[0].Event == null && !g.Cells(5)[0].Loading, "a channel with no data is one 'no information' box (row of channel 8)");
@@ -175,7 +183,7 @@ internal static partial class Tests
         var order = g.RowsToRead();
         Check(order[0] == g.FocusRow && new HashSet<int>(order).Count == order.Count && order.Count == list.Count, "rows to read: focus first, each once, all of them in a 12-channel list");
 
-        // the scene: every state of the fuzz fits the object pools and the sheet
+        // the scene: every state of the fuzz fits the object pools and the screen, with one focus and the keyed texts once each
         g.Open(4, ProbeNow);
         var rnd0 = new Random(3);
         bool sceneOk = true; string sceneWhy = "";
@@ -183,18 +191,46 @@ internal static partial class Tests
         {
             switch (rnd0.Next(5)) { case 0: g.MoveTime(+1); break; case 1: g.MoveTime(-1); break; case 2: g.MoveRow(+1); break; case 3: g.MoveRow(-1); break; default: g.MovePage(rnd0.Next(2) == 0 ? 1 : -1); break; }
             List<Prim> scene = GuideScene.Build(g, ProbeNow, TimeSpan.FromHours(1), "A description.");
-            int fills = 0, texts = 0, rings = 0; var keyNames = new HashSet<string>();
+            int fills = 0, texts = 0, focus = 0, hatches = 0, lines = 0; var keyNames = new HashSet<string>(); var keyed = new Dictionary<string, int>();
             foreach (Prim p in scene)
             {
                 if (p.Kind == PrimKind.Key && (!keyNames.Add(p.Text) || Array.IndexOf(GuideScene.KeyNames, p.Text) < 0 || p.W != GuideScene.KeyWidth(p.Text) || p.H != GuideScene.KeyH)) { sceneOk = false; sceneWhy = "footer key " + p.Text; }
-                if (p.Kind == PrimKind.Fill) fills++; else if (p.Kind == PrimKind.Text) texts++; else if (p.Kind == PrimKind.Ring) rings++;
-                if (p.Kind != PrimKind.Text && (p.X < GuideLayout.SheetX || p.X + p.W > GuideLayout.SheetX + GuideLayout.SheetW || p.Y < GuideLayout.SheetY || p.Y + p.H > GuideLayout.SheetY + GuideLayout.SheetH)) { sceneOk = false; sceneWhy = "shape outside the sheet"; }
-                if (p.Kind == PrimKind.Text && (p.Text == null || p.MaxW <= 0 || p.X < GuideLayout.SheetX || p.X > GuideLayout.SheetX + GuideLayout.SheetW)) { sceneOk = false; sceneWhy = "text placement"; }
+                if (p.Kind == PrimKind.Fill) fills++; else if (p.Kind == PrimKind.Text) texts++; else if (p.Kind == PrimKind.Focus) focus++; else if (p.Kind == PrimKind.Hatch) hatches++; else if (p.Kind == PrimKind.Line) lines++;
+                if (p.Kind == PrimKind.Text && p.Key != null) { int n; keyed.TryGetValue(p.Key, out n); keyed[p.Key] = n + 1; }
+                if (p.Kind != PrimKind.Text && (p.X < 0 || p.X + p.W > 1920 || p.Y < 0 || p.Y + p.H > 1080)) { sceneOk = false; sceneWhy = "shape outside the screen"; }
+                if ((p.Kind == PrimKind.Fill || p.Kind == PrimKind.Focus || p.Kind == PrimKind.Hatch) && (p.X < GuideLayout.CellsX || p.X + p.W > GuideLayout.CellsX + GuideLayout.CellsW)) { sceneOk = false; sceneWhy = "cell outside the grid"; }
+                if (p.Kind == PrimKind.Text && (p.Text == null || p.MaxW <= 0 || p.X < GuideLayout.LabelX || p.X > GuideLayout.Right || p.Weight == 0)) { sceneOk = false; sceneWhy = "text placement"; }
             }
             if (keyNames.Count != GuideScene.KeyNames.Length) { sceneOk = false; sceneWhy = "footer shows " + keyNames.Count + " of " + GuideScene.KeyNames.Length + " keys"; }
-            if (fills > GuideScene.MaxFills || texts > GuideScene.MaxTexts || rings != 1) { sceneOk = false; sceneWhy = "pools: fills " + fills + " texts " + texts + " rings " + rings; }
+            if (fills > GuideScene.MaxFills || texts > GuideScene.MaxTexts || hatches > GuideScene.MaxHatches || lines > GuideScene.MaxLines || focus != 1) { sceneOk = false; sceneWhy = "pools: fills " + fills + " texts " + texts + " hatches " + hatches + " lines " + lines + " focus " + focus; }
+            foreach (var kv in keyed) if (kv.Value != 1 || Array.IndexOf(GuideScene.TextKeys, kv.Key) < 0) { sceneOk = false; sceneWhy = "keyed text " + kv.Key + " x" + kv.Value; }
+            if (!keyed.ContainsKey("num") || !keyed.ContainsKey("name")) { sceneOk = false; sceneWhy = "the focused row's number and name are not keyed"; }
         }
-        Check(sceneOk, "400 scenes fit the pools and the sheet, with one focus ring" + (sceneOk ? "" : " (" + sceneWhy + ")"));
+        Check(sceneOk, "400 scenes fit the pools and the screen, with one ice focus and each keyed text once" + (sceneOk ? "" : " (" + sceneWhy + ")"));
+
+        // the opened guide of the sample (a description read, logos for every row): about the mock-up's count of objects on screen (114 with the veil)
+        {
+            GuideStore st2; ChannelList l2;
+            GuideGrid g2 = SampleGrid(out st2, out l2);
+            g2.Open(4, ProbeNow);
+            List<Prim> open = GuideScene.Build(g2, ProbeNow, TimeSpan.FromHours(1), "Talenti, sfide ed emozioni con una giuria di quattro artisti.", c => "/logo.png");
+            int shown = 1;                                                       // the veil
+            foreach (Prim p in open) shown += p.Kind == PrimKind.Text && p.Lines > 1 ? p.Lines : 1;
+            Check(shown >= 60 && shown <= 140, "the opened guide shows about a hundred objects (" + shown + ")");
+            Prim f = open.Find(p => p.Kind == PrimKind.Focus);
+            Check(f.Alpha == GuideScene.FocusAlpha && f.H == GuideLayout.CellH && f.Y == GuideLayout.RowsY + 2 * GuideLayout.RowH + GuideLayout.CellDy, "the focus is the ice cell on the focused row");
+            Check(open.Exists(p => p.Kind == PrimKind.Text && p.Tint == GuideScene.Slate && p.Weight == 600 && p.Y == f.Y + 12) && !open.Exists(p => p.Kind == PrimKind.Fill && p.X == f.X && p.Y == f.Y), "the focused programme's title is slate on the focus, and the focus replaces its cell");
+            Prim title = open.Find(p => p.Key == "title");
+            Check(title.X == GuideLayout.X0 && title.Y == GuideLayout.TitleTop && title.Size == 64 && title.Weight == 600, "the header's title: 600/64 at 96, 70");
+            Prim date = open.Find(p => p.Kind == PrimKind.Text && p.Right);
+            Check(date.X == GuideLayout.Right && date.Y == GuideLayout.DateTop && date.Size == 32, "the date is right-aligned at 1824");
+            var axis = open.FindAll(p => p.Kind == PrimKind.Text && p.Y == GuideLayout.AxisY + 4);
+            Check(axis.Count == 6 && axis.FindAll(p => p.Weight == 600 && p.Alpha == 255).Count == 3, "six half hours on the axis, the three full hours in 600 white");
+            Check(open.Exists(p => p.Kind == PrimKind.Line && p.W == 3 && p.H == 16 && p.Tint == GuideScene.Light) && open.Exists(p => p.Kind == PrimKind.Line && p.W == 2 && p.Tint == GuideScene.Light && p.Alpha == GuideScene.NowAlpha), "now: a light mark on the axis and a trace through the rows");
+            Check(open.FindIndex(p => p.Kind == PrimKind.Line) < open.FindIndex(p => p.Kind == PrimKind.Fill), "the lines are drawn before (under) the cells");
+            Prim lastKey = open.FindLast(p => p.Kind == PrimKind.Key);
+            Check(open.Find(p => p.Kind == PrimKind.Key).X == GuideLayout.X0 && lastKey.Text == "key_back" && lastKey.Y == GuideLayout.FootTop - 2, "the footer starts at 96, its keys 2 px above the words");
+        }
         string dump = Environment.GetEnvironmentVariable("GUIDE_PREVIEW");
         if (dump != null)
         {

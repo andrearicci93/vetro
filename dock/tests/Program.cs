@@ -776,13 +776,18 @@ namespace Launcher.Tests
                 T.Eq(panel.WinH, apps.WinH, "both pages share the window height");
                 T.Eq(panel.WinY, apps.WinY, "and its position");
                 T.Eq(apps.Top - panel.Top, DockLayout.HintH, "the panel pill sits one hint band higher");
-                T.Eq(panel.Top, DockLayout.Margin, "raised pill starts right under the shadow margin");
+                T.Eq(panel.Top, DockLayout.Margin, "raised pill starts right under the margin");
                 T.Eq(apps.RowCenterY - panel.RowCenterY, DockLayout.HintH, "icon row follows the pill");
                 T.Eq(apps.LabelTop(0) - panel.LabelTop(0), DockLayout.HintH, "label follows the pill");
                 T.Eq(apps.PillBox(0).Y - panel.PillBox(0).Y, DockLayout.HintH, "pill box follows");
-                T.Eq(apps.ShadowBox(0).Y - panel.ShadowBox(0).Y, DockLayout.HintH, "shadow box follows");
-                T.True(apps.ShadowBox(0).Y >= 0 && panel.ShadowBox(0).Y >= 0, "shadow never starts above the window");
-                T.True(apps.ShadowBox(0).Y + apps.ShadowBox(0).H <= apps.WinH + Design.ShadowDy, "apps shadow stays in the window (bar its offset: that part is below the screen edge)");
+                T.Eq(apps.RimBox(0).Y - panel.RimBox(0).Y, DockLayout.HintH, "rim box follows");
+                foreach (DockLayout l in new[] { apps, panel })
+                {
+                    Box rim = l.RimBox(0), pill = l.PillBox(0);
+                    int w = Design.ShellBorderW;
+                    T.True(rim.X == pill.X - w && rim.Y == pill.Y - w && rim.W == pill.W + 2 * w && rim.H == pill.H + 2 * w, "rim is the pill grown by the border width");
+                    T.True(rim.X >= 0 && rim.Y >= 0 && rim.X + rim.W <= l.WinW && rim.Y + rim.H <= l.WinH, "rim inside the window");
+                }
             });
 
             T.Run("layout: hint capsule sits clear of the pill, inside the window, centred", () =>
@@ -1160,7 +1165,7 @@ namespace Launcher.Tests
                         int g1, g2; float gw;
                         layout.GlowAt(fp, out g1, out g2, out gw);
                         sink += layout.GlowBox(g2, sc, slide).X + (long)gw;
-                        sink += layout.PillBox(slide).X + layout.ShadowBox(slide).Y + layout.GlowBox((int)fp, sc, slide).X + layout.LabelCenterX((int)fp, sc) + layout.LabelTop(slide)
+                        sink += layout.PillBox(slide).X + layout.RimBox(slide).Y + layout.GlowBox((int)fp, sc, slide).X + layout.LabelCenterX((int)fp, sc) + layout.LabelTop(slide)
                             + layout.HintTop(slide) + layout.HintLeft(118) + layout.DividerBox(sc, slide).X;
                         for (int i = 0; i < layout.Count; i++) { sink += layout.IconBox(i, fp, sc, slide).W; sink += (long)DockLayout.Amount(fp, i); }
                     }
@@ -1180,6 +1185,11 @@ namespace Launcher.Tests
                 T.Eq(r[1].Key, "com.samsung.tv.cobalt-yt", "app id");
                 T.Eq(r[1].Value, 3299, "pid");
                 T.Eq(Tasks.ParseStatus(null).Count, 0, "null");
+                var dup = Tasks.ParseStatus("\t appId (PID)\n\t  a.one (10)\n\t  b.two (20)\n\t  a.one (30)\n\t  c.three (40)\n\t  b.two (50)\n");
+                T.Eq(dup.Count, 3, "a repeated app id is listed once");
+                T.Eq(dup[0].Key + "," + dup[1].Key + "," + dup[2].Key, "a.one,b.two,c.three", "order of first appearance kept");
+                T.Eq(dup[0].Value, 10, "first line wins (pid)");
+                T.Eq(dup[1].Value, 20, "first line wins (second id)");
 
                 var info = Tasks.ParseAppInfo("Appid: org.tizen.browser\nApptype: capp\ncomponent: uiapp\nLabel: Internet\nIcon: /usr/apps/org.tizen.browser/shared/res/browser.png\nNodisplay: 0\nPackage: org.tizen.browser\n");
                 T.Eq(info.Component, "uiapp", "component");
@@ -1187,6 +1197,24 @@ namespace Launcher.Tests
                 T.Eq(info.Icon, "/usr/apps/org.tizen.browser/shared/res/browser.png", "icon path with colons after the key");
                 T.True(!info.NoDisplay, "displayed");
                 T.True(Tasks.ParseAppInfo("garbage") == null, "no component -> null");
+            });
+
+            T.Run("tasks: the running-app list holds each app id once (one task manager row per id)", () =>
+            {
+                var tvPlus = new RunningApp { AppId = "org.tizen.tv-viewer", Pid = 11, Label = "Samsung TV Plus" };
+                var live = new RunningApp { AppId = "org.tizen.tv-viewer", Pid = 12, Label = "Live TV" };
+                var yt = new RunningApp { AppId = "com.samsung.tv.cobalt-yt", Pid = 13, Label = "YouTube" };
+                var web = new RunningApp { AppId = "org.tizen.browser", Pid = 14, Label = "Internet" };
+                var u = Tasks.UniqueById(new List<RunningApp> { tvPlus, yt, live, web, yt });
+                T.Eq(u.Count, 3, "two repeats dropped");
+                T.True(ReferenceEquals(u[0], tvPlus), "first occurrence kept (Samsung TV Plus, not Live TV)");
+                T.True(ReferenceEquals(u[1], yt) && ReferenceEquals(u[2], web), "order kept");
+                T.Eq(Tasks.UniqueById(new List<RunningApp>()).Count, 0, "empty");
+                T.Eq(Tasks.UniqueById(null).Count, 0, "null");
+                T.Eq(Tasks.UniqueById(new List<RunningApp> { null, new RunningApp { AppId = null }, web }).Count, 1, "null entries and ids skipped");
+                var same = new List<RunningApp> { yt, web };
+                var copy = Tasks.UniqueById(same);
+                T.True(!ReferenceEquals(copy, same) && copy.Count == 2, "a new list; the input is left as it is");
             });
 
             T.Run("tasks: only visible user apps are listed; the TV's own parts and Vetro are not", () =>
@@ -1383,6 +1411,64 @@ namespace Launcher.Tests
                 T.True(tl.WinY >= 0, "tallest panel still fits on a 1080p screen");
             });
 
+            T.Run("layout: apps and Sources pages are both centred on the screen (the window is sized from the grouped apps page)", () =>
+            {
+                // 11 apps + Settings and Samsung Home pinned after the divider, 5 inputs: the case that put Sources 34 px left.
+                foreach (int[] k in new[] { new[] { 13, 11, 5 }, new[] { 9, 7, 5 }, new[] { 22, 20, 5 }, new[] { 3, 1, 12 }, new[] { 13, -1, 5 } })
+                    foreach (bool band in new[] { false, true })
+                    {
+                        DockLayout apps, inputs;
+                        DockLayout.Pages(k[0], k[1], k[2], 1920, 1080, band, out apps, out inputs);
+                        string what = k[0] + " items grouped at " + k[1] + ", " + k[2] + " inputs, band " + band;
+                        T.Eq(inputs.WinW, apps.WinW, "one window width: " + what);
+                        T.Eq(inputs.WinH, apps.WinH, "one window height: " + what);
+                        T.Eq(inputs.WinX, apps.WinX, "one window position: " + what);
+                        T.True(Math.Abs(2 * (apps.WinX + apps.Left) + apps.PillW - 1920) <= 1, "apps bar centred on the screen: " + what);
+                        T.True(Math.Abs(2 * (inputs.WinX + inputs.Left) + inputs.PillW - 1920) <= 1, "Sources bar centred on the screen: " + what);
+                        T.Eq(apps.GroupStart, k[1] > 0 && k[1] < k[0] ? k[1] : -1, "apps page keeps its group: " + what);
+                        T.True(inputs.Raised && !apps.Raised, "Sources is the raised page: " + what);
+                    }
+                DockLayout a, s;
+                DockLayout.Pages(13, 11, 5, 1920, 1080, true, out a, out s);
+                T.Eq(s.WinX + s.RimBox(0).X, 666, "Sources bar (with its rim) starts at x 666 on a 1920 screen (it started at 632)");
+                T.Eq(s.WinX + s.RimBox(0).X + s.RimBox(0).W, 1254, "and ends at 1254");
+            });
+
+            T.Run("tasks: the selection plate covers row 0 and the rows follow it, one row height apart", () =>
+            {
+                var tl = new TaskLayout(1920, 1080, 1612, DockLayout.HintH);
+                foreach (int n in new[] { 1, 2, 5, 7, 10 })
+                    for (int slide = 0; slide <= 48; slide += 48)
+                    {
+                        Box panel = tl.Panel(n, slide), list = tl.ListClip(n, slide);
+                        int rows = TaskLayout.VisibleRows(n);
+                        T.Eq(list.Y, tl.ListTop(n, slide), "list clip starts at the list top, n=" + n);
+                        T.Eq(list.H, rows * TaskLayout.RowH, "list clip is as tall as the visible rows, n=" + n);
+                        T.Eq(panel.H, TaskLayout.PanelH(rows), "panel as tall as its visible rows, n=" + n);
+                        for (int i = 0; i < Math.Min(n, rows); i++)
+                        {
+                            Box plate = tl.Plate(i, 0, n, slide);
+                            int top = tl.RowTop(i, 0, n, slide);
+                            T.Eq(top, list.Y + i * TaskLayout.RowH, "row " + i + " top, n=" + n);
+                            T.Eq(plate.Y, top + 4, "plate on row " + i + ", n=" + n);
+                            T.Eq(plate.Y + plate.H, top + TaskLayout.RowH - 4, "plate ends 4 px above the next row, n=" + n);
+                            T.True(plate.Y >= list.Y && plate.Y + plate.H <= list.Y + list.H, "plate inside the list, row " + i + ", n=" + n);
+                        }
+                        Box p0 = tl.Plate(0, 0, n, slide);
+                        T.Eq(p0.X - panel.X, TaskLayout.PlateInset, "plate inset from the panel's left side");
+                        T.Eq(panel.X + panel.W - (p0.X + p0.W), TaskLayout.PlateInset, "and from its right side");
+                        Box rim = tl.Rim(n, slide);
+                        T.True(rim.X == panel.X - Design.ShellBorderW && rim.W == panel.W + 2 * Design.ShellBorderW && rim.Y == panel.Y - Design.ShellBorderW, "rim is the panel grown by the border width, n=" + n);
+                    }
+                T.Eq(tl.Plate(2.5f, 1, 7, 0).Y, tl.RowTop(1, 0, 7, 0) + TaskLayout.RowH / 2 + 4, "plate between two rows while it moves, scrolled by one");
+                T.True(TaskLayout.RowH - 8 <= 2 * Design.CapSlice, "plate no taller than the capsule picture: the ends stay fully round");
+            });
+
+            T.Run("design: one material for the panels", () =>
+            {
+                T.True(Design.PanelRadius <= Design.SheetSlice && Design.PanelRadius + Design.ShellBorderW <= Design.RimSlice, "border scales of at most 1: corners are never drawn from a stretched picture");
+                T.True(2 * Design.PanelRadius <= new DockLayout(5, 1920, 1080).PillH, "the bar's corners meet at most in the middle of its sides");
+            });
 
             Console.WriteLine();
             LauncherRegressionTests.Run();

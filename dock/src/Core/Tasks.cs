@@ -72,11 +72,13 @@ namespace Launcher.Core
 
         /// <summary>
         /// Parses `app_launcher -S`: a header line, then one "appId (pid)" per line, indented with tabs and spaces.
+        /// Each app id is listed once (the first line wins): the task manager keeps one row per id.
         /// </summary>
         public static List<KeyValuePair<string, int>> ParseStatus(string text)
         {
             var list = new List<KeyValuePair<string, int>>();
             if (string.IsNullOrEmpty(text)) return list;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (string raw in text.Replace("\r", "").Split('\n'))
             {
                 string line = raw.Trim();
@@ -85,8 +87,22 @@ namespace Launcher.Core
                 int pid;
                 if (!int.TryParse(line.Substring(open + 2, line.Length - open - 3), NumberStyles.None, CultureInfo.InvariantCulture, out pid) || pid <= 0) continue;
                 string id = line.Substring(0, open).Trim();
-                if (Catalog.ValidAppId(id)) list.Add(new KeyValuePair<string, int>(id, pid));
+                if (Catalog.ValidAppId(id) && seen.Add(id)) list.Add(new KeyValuePair<string, int>(id, pid));
             }
+            return list;
+        }
+
+        /// <summary>
+        /// The same apps with each app id once, in the same order (the first occurrence wins). The task manager keeps one
+        /// row per app id, so a list with a repeated id would count more rows than it draws and leave an empty one.
+        /// </summary>
+        public static List<RunningApp> UniqueById(List<RunningApp> apps)
+        {
+            var list = new List<RunningApp>(apps == null ? 0 : apps.Count);
+            if (apps == null) return list;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (RunningApp a in apps)
+                if (a != null && a.AppId != null && seen.Add(a.AppId)) list.Add(a);
             return list;
         }
 

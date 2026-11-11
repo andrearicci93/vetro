@@ -23,10 +23,12 @@ namespace Launcher.Core
         public const int PadBottom = 10;
         public const int IconSize = 52;
         public const int CpuColW = 110;        // right edge of the CPU column sits this far left of the memory column's
+        /// <summary>Space between the panel's sides and the selection plate.</summary>
+        public const int PlateInset = PadX - 8;
         public const int Margin = DockLayout.Margin;
 
         public readonly int WinW, WinH, WinX, WinY, ScreenW, ScreenH;
-        /// <summary>Empty space under the panel's shadow margin: the dock's hint band below the bar, so both end on one line.</summary>
+        /// <summary>Empty space under the panel's margin: the dock's hint band below the bar, so both end on one line.</summary>
         public readonly int BottomBand;
 
         public TaskLayout(int screenW, int screenH, int sharedWinW) : this(screenW, screenH, sharedWinW, 0) { }
@@ -55,10 +57,12 @@ namespace Launcher.Core
             return b;
         }
 
-        public Box Shadow(int count, int slide)
+        /// <summary>The light rim: the panel grown by <see cref="Design.ShellBorderW"/> on every side, drawn under it (no drop shadow).</summary>
+        public Box Rim(int count, int slide)
         {
+            const int w = Design.ShellBorderW;
             Box p = Panel(count, slide);
-            Box b; b.X = p.X - Margin; b.Y = p.Y - Margin + Design.ShadowDy; b.W = p.W + 2 * Margin; b.H = p.H + 2 * Margin;
+            Box b; b.X = p.X - w; b.Y = p.Y - w; b.W = p.W + 2 * w; b.H = p.H + 2 * w;
             return b;
         }
 
@@ -78,11 +82,14 @@ namespace Launcher.Core
             return b;
         }
 
-        /// <summary>The selection plate behind a row: a little inset, so neighbouring plates never touch.</summary>
+        /// <summary>
+        /// The selection plate behind a row: one ice capsule (pill_cap), inset <see cref="PlateInset"/> from the panel's
+        /// sides and 4 px from the row's top and bottom, so neighbouring plates never touch.
+        /// </summary>
         public Box Plate(float pos, float scroll, int count, int slide)
         {
             Box b;
-            b.X = PanelX + PadX - 8; b.W = PanelW - 2 * PadX + 16;
+            b.X = PanelX + PlateInset; b.W = PanelW - 2 * PlateInset;
             b.Y = ListTop(count, slide) + (int)Math.Round((pos - scroll) * RowH) + 4;
             b.H = RowH - 8;
             return b;

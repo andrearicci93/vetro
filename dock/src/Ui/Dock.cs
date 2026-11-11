@@ -7,14 +7,16 @@ namespace Launcher.Ui
 {
     /// <summary>
     /// The evas objects of the dock and the code that maps controller state onto them.
-    /// Object count is items + 8 (shadow, pill, clippers, two glows, two focus rings; two labels and the clock only when the design shows names), plus the divider
+    /// Object count is items + 8 (rim, pill, clippers, two glows, two focus rings; two labels and the clock only when the design shows names), plus the divider
     /// when the strip has a system group and two per navigation hint (word, chevron);
     /// icons are pre-sized PNGs, and <see cref="Apply"/> only calls into EFL for values that changed
     /// since the previous frame, so an animation frame costs a handful of native calls.
     /// </summary>
     internal sealed class Dock
     {
-        private const string Font = "SamsungOneUI 500,Sans";
+        // One family per font, no ",Sans" fallback list: Evas 1.25 gives the whole string to fontconfig as one family name, so with the
+        // list every weight fell back to SamsungOneUI 400 on the TV (Q80A, 2026-11-11). fontconfig falls back by itself.
+        private const string Font = "SamsungOneUI 500";
 
         private readonly IntPtr _win, _evas;
         private readonly DockLayout _layout;
@@ -22,7 +24,7 @@ namespace Launcher.Ui
         private readonly string _assets;
         private readonly Action<string> _log;
 
-        private IntPtr _shadow, _pill, _clip, _appsClip, _highlight, _highlight2, _ring, _ring2, _clock, _divider;
+        private IntPtr _rim, _pill, _clip, _appsClip, _highlight, _highlight2, _ring, _ring2, _clock, _divider;
         // Two name labels cross-fade (see LabelFader): the name under the icon being left and the one being reached.
         private readonly IntPtr[] _label = new IntPtr[2];
         private readonly LabelFader _fader = new LabelFader();
@@ -38,7 +40,7 @@ namespace Launcher.Ui
 
         private readonly Box[] _iconBox;
         private readonly int[] _iconAlpha;
-        private Box _shadowBox, _pillBox, _hlBox, _hlBox2, _ringBox, _ringBox2;
+        private Box _rimBox, _pillBox, _hlBox, _hlBox2, _ringBox, _ringBox2;
         private int _chromeAlpha = -1, _hlAlpha = -1, _hlAlpha2 = -1, _clockAlpha = -1, _ringAlpha = -1, _ringAlpha2 = -1;
         private int _hlRgb = -1, _hlRgb2 = -1;
         // Colour of each item's glow: the icon's dominant hue, or the design's own colour.
@@ -72,17 +74,18 @@ namespace Launcher.Ui
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
             for (int i = 0; i < items.Length; i++) { _iconBox[i].W = -1; _iconAlpha[i] = -1; _glowRgb[i] = Design.GlowColor; }
-            _shadowBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = -1;
+            _rimBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = -1;
         }
 
         public IntPtr Evas { get { return _evas; } }
 
         public void Build()
         {
-            // z-order is creation order: shadow < pill < highlight < icons < ring < label.
-            // The shadow image holds the window margin plus the bar's corner curve; the bar's own slice is a little wider than its corner.
-            _shadow = NineSlice("shadow", DockLayout.Margin + Design.ShellRadius);
-            _pill = NineSlice("dock_bg", Design.ShellSlice);
+            // z-order is creation order: rim < pill < highlight < icons < ring < label.
+            // The material of the 123 pad and the volume pill: a light rim 2 px outside the sheet, then the slate sheet, both
+            // nine-sliced to the panel radius (border_scale = radius / border), and no drop shadow.
+            _rim = NineSlice("pill_rim", Design.RimSlice, (Design.PanelRadius + Design.ShellBorderW) / (double)Design.RimSlice);
+            _pill = NineSlice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
             // The focused icon grows and a soft glow, drawn at its final size, sits behind it; a thin ring is drawn around it.
             _highlight = NineSlice("dock_glow", 0);
             _highlight2 = NineSlice("dock_glow", 0);
@@ -200,7 +203,7 @@ namespace Launcher.Ui
         /// </summary>
         public void SetVisible(bool visible)
         {
-            IntPtr[] top = { _shadow, _pill, _clip, _label[0], _label[1], _clock,
+            IntPtr[] top = { _rim, _pill, _clip, _label[0], _label[1], _clock,
                 _hint != null ? _hint.Chev : IntPtr.Zero, _hint != null ? _hint.Text : IntPtr.Zero,
                 _hintBelow != null ? _hintBelow.Chev : IntPtr.Zero, _hintBelow != null ? _hintBelow.Text : IntPtr.Zero };
             foreach (IntPtr o in top)
@@ -246,15 +249,17 @@ namespace Launcher.Ui
             return img;
         }
 
-        private IntPtr NineSlice(string name, int border) { return NineSlice(name, border, border, border, border); }
+        private IntPtr NineSlice(string name, int border) { return NineSlice(name, border, 1.0); }
 
-        private IntPtr NineSlice(string name, int l, int r, int t, int b)
+        /// <param name="scale">border_scale: the corners are drawn <paramref name="border"/> x scale pixels wide.</param>
+        private IntPtr NineSlice(string name, int border, double scale)
         {
             IntPtr img = Efl.evas_object_image_add(_evas);
             Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
             if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) _log("asset missing: " + name);
             Efl.evas_object_image_filled_set(img, true);
-            Efl.evas_object_image_border_set(img, l, r, t, b);
+            Efl.evas_object_image_border_set(img, border, border, border, border);
+            if (scale != 1.0) Efl.evas_object_image_border_scale_set(img, scale);
             Efl.evas_object_image_border_center_fill_set(img, 1);
             Efl.evas_object_image_smooth_scale_set(img, true);
             Efl.evas_object_show(img);
@@ -399,13 +404,13 @@ namespace Launcher.Ui
             float fp = c.FocusPos, scroll = c.Scroll;
 
             // Backdrop: moves only while the dock slides in or out.
-            Place(_shadow, ref _shadowBox, _layout.ShadowBox(slide));
+            Place(_rim, ref _rimBox, _layout.RimBox(slide));
             Place(_pill, ref _pillBox, _layout.PillBox(slide));
             if (presence != _chromeAlpha)
             {
                 _chromeAlpha = presence;
-                Tint(_shadow, presence);
-                Tint(_pill, presence);
+                TintRgb(_rim, (int)Math.Round(presence * Design.ShellBorderAlpha), Design.ShellBorderColor);
+                TintRgb(_pill, (int)Math.Round(presence * Design.VolumeAlpha), Design.ShellColor);
             }
 
             if (!_clipSet)
