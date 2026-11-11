@@ -191,7 +191,7 @@ namespace Tuner
 
             // From here on results of the worker may be applied.
             _wakeHandler = Efl.ecore_main_fd_handler_add(Wake[0], Efl.EcoreFdRead, OnWake, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (_resident) { MarkShown(false); OpenControl(); }          // a flag left by a tuner that was killed is stale
+            if (_resident) { MarkShown(false); _tvUpMarked = true; MarkTvUp(false); OpenControl(); }          // a flag left by a tuner that was killed is stale
             if (_resident && _takeoverApp != null)
             {
                 _takeoverTimer = Efl.ecore_timer_add(0.5, OnTakeoverPoll, IntPtr.Zero);
@@ -207,6 +207,7 @@ namespace Tuner
             if (_controlFd >= 0) { Libc.close(_controlFd); Libc.unlink(_controlPath); }
             RemovePid();
             MarkShown(false);
+            MarkTvUp(false);
             Efl.elm_shutdown();
             return 0;
         }
@@ -1198,9 +1199,37 @@ namespace Tuner
         {
             int status = ReadTargetStatus();
             if (_takeoverBroken) return;
-            if (!TakeoverState.Observe(status, _active)) return;
-            Log("takeover: " + _takeoverApp + " status " + status + ", showing the tuner");
-            Activate();
+            MarkTvUp(status >= 0 && Takeover.IsUp(status));
+            switch (TakeoverState.Poll(status, _active))
+            {
+                case Takeover.Step.Show:
+                    Log("takeover: " + _takeoverApp + " status " + status + ", showing the tuner");
+                    Activate();
+                    break;
+                case Takeover.Step.Hide:
+                    // Another app came in front (Netflix...): the tuner reads the remote itself, so it must go, or OK there opens its channel list.
+                    Log("takeover: " + _takeoverApp + " status " + status + ", another app is in front, hiding the tuner");
+                    Deactivate(false);
+                    break;
+            }
+        }
+
+        // ---- a flag for the launcher: is Samsung's live TV on screen? ----
+
+        private static bool _tvUpMarked;
+
+        /// <summary>
+        /// While Samsung's live TV app is in front the file "&lt;control pipe&gt;.tv" exists (kept by the takeover poll, only touched when it changes).
+        /// The launcher's 123 pad sends typed digits to the tuner (`tune N`) only when it exists: over Netflix or any other app the digits go to
+        /// that app as keys, and the pad still opens there (for the colour keys).
+        /// </summary>
+        private static void MarkTvUp(bool on)
+        {
+            if (!_resident || _controlPath == null || on == _tvUpMarked) return;
+            _tvUpMarked = on;
+            string flag = _controlPath + ".tv";
+            try { if (on) File.WriteAllText(flag, "1"); else File.Delete(flag); }
+            catch (Exception ex) { Log("tv flag: " + ex.Message); }
         }
 
         // ---- a flag for the launcher: is the tuner on screen? ----

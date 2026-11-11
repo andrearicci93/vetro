@@ -138,8 +138,8 @@ namespace Launcher.Core
         /// <summary>
         /// A digit key sent by name makes Samsung open its own TV app, and never reaches Vetro's Live TV (which reads the remote
         /// from the input device). So when Vetro's Live TV is running the number goes only to it, in one "tune" command on its
-        /// control pipe: it shows itself and goes to that channel at once, with no number pad and no wait. Otherwise the keys
-        /// are sent by name as before.
+        /// control pipe: it shows itself and goes to that channel at once, with no number pad and no wait. Otherwise (the tuner is not
+        /// running, or Samsung's live TV is not in front: Netflix, any other app) the keys are sent by name, so they reach the app on screen.
         /// </summary>
         public static string SendCommand(string typed, string keyTool)
         {
@@ -161,7 +161,7 @@ namespace Launcher.Core
             if (number.Length > 0) tuner.Append(" echo 'tune ").Append(number).Append("' > /tmp/vetro-tuner.ctl;");
             if (byName.Length == 0) return "(sleep 0.25) >/dev/null 2>&1 &";
             if (tuner.Length == 0) return "(sleep 0.25;" + byName.ToString().TrimEnd(';') + ") >/dev/null 2>&1 &";
-            return "(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ]; then" + tuner
+            return "(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ] && [ -e /tmp/vetro-tuner.ctl.tv ]; then" + tuner
                 + " else" + byName + " fi) >/dev/null 2>&1 &";
         }
 

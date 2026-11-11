@@ -13,6 +13,10 @@ namespace Tuner.Core
     ///    by the next poll; it may come back after the TV app has been away (another app in front, closed) and returned;
     ///  * a TV key (CH+/-, Info, Guide) while the tuner is hidden and the TV app is up brings it back at once, ahead of the poll and of the rule above
     ///    (<see cref="KeyWake"/>): Samsung's app must not be the one that answers CH+, Info or Guide;
+    ///  * the reverse holds as well: once the TV app has been seen up while the tuner was on screen, and then it is not up for two polls in a row
+    ///    (Netflix or any other app came in front: its status is 4), the tuner takes itself off the screen and stops reading the remote. It reads
+    ///    the remote's input devices itself, whatever is in front, so without this OK in Netflix's profile screen opened the channel list. A tuner
+    ///    shown by hand (the control pipe) while the TV app was never up is left alone until Back or Home: that was asked for;
     ///  * a reading that failed changes nothing, unless it keeps failing: four in a row (two seconds) count as "the app is not
     ///    running", because the service may answer an error rather than a status for an app that is not there.
     /// </summary>
@@ -20,9 +24,14 @@ namespace Tuner.Core
     {
         public const int Focus = 2, Visible = 3;
         public const int UnreadableLimit = 4;
+        public const int AwayLimit = 2;      // polls in a row (1 s) with the TV app not up before the shown tuner steps aside
+
+        public enum Step { None, Show, Hide }
 
         private bool _held;          // the tuner was sent away while the TV app was up: leave it away until the app has been gone
         private int _unreadable;     // consecutive failed readings
+        private bool _seenUp;        // the TV app has been up while the tuner was on screen (so the tuner is there because of it)
+        private int _away;          // consecutive polls with the tuner on screen and the TV app not up
 
         /// <summary>True when the status means the TV app is on screen.</summary>
         public static bool IsUp(int status) { return status == Focus || status == Visible; }
@@ -30,12 +39,15 @@ namespace Tuner.Core
         /// <param name="status">AUL status of the TV app; any negative number means the reading failed.</param>
         /// <param name="tunerShown">Whether the tuner window is on screen now.</param>
         /// <returns>True when the tuner should be shown now.</returns>
-        public bool Observe(int status, bool tunerShown)
+        public bool Observe(int status, bool tunerShown) { return Poll(status, tunerShown) == Step.Show; }
+
+        /// <summary>One poll: show the tuner, hide it (the TV app has been left while it was on screen) or leave it.</summary>
+        public Step Poll(int status, bool tunerShown)
         {
             bool up;
             if (status < 0)
             {
-                if (++_unreadable < UnreadableLimit) return false;       // a single failed reading is not an answer
+                if (++_unreadable < UnreadableLimit) return Step.None;       // a single failed reading is not an answer
                 up = false;
             }
             else
@@ -43,8 +55,18 @@ namespace Tuner.Core
                 _unreadable = 0;
                 up = IsUp(status);
             }
-            if (!up) { _held = false; return false; }
-            return !tunerShown && !_held;
+            if (!tunerShown) { _seenUp = false; _away = 0; }
+            if (!up)
+            {
+                _held = false;
+                if (!tunerShown || !_seenUp) return Step.None;
+                if (++_away < AwayLimit) return Step.None;
+                _seenUp = false; _away = 0;
+                return Step.Hide;
+            }
+            _away = 0;
+            if (tunerShown) { _seenUp = true; return Step.None; }
+            return _held ? Step.None : Step.Show;
         }
 
         /// <summary>The tuner was hidden (by a key, the control pipe or an app change). It stays hidden while the TV app stays up.</summary>

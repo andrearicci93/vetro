@@ -655,6 +655,7 @@ namespace Launcher.Tests
                 T.True(c16.StartsWith("(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid"), "the tuner is looked for first");
                 T.True(c16.Contains("then echo 'tune 16' > /tmp/vetro-tuner.ctl; else"), "tuner running: one tune command with the whole number");
                 T.True(c16.Contains("else /usr/bin/input_keyevent 1; /usr/bin/input_keyevent 6; fi)"), "no tuner: keys by name");
+                T.True(c16.Contains("[ -e /tmp/vetro-tuner.ctl.tv ]"), "digits go to the tuner only while Samsung's live TV is in front; over Netflix they are keys for that app");
                 int thenAt = c16.IndexOf("then"), elseAt = c16.IndexOf("else");
                 T.True(!c16.Substring(thenAt, elseAt - thenAt).Contains("input_keyevent"), "with the tuner running Samsung's TV app is never asked for");
                 T.True(NumberPadModel.SendCommand("0", "k ").Contains("echo 'tune 0'"), "a zero is passed on");

@@ -51,6 +51,30 @@ internal static partial class Tests
         k3.Observe(-1, false); k3.Observe(-1, false); k3.Observe(-1, false);
         Check(k3.KeyWake(2) && !k3.Observe(-1, false), "takeover: a key wake forgets the failed readings before it");
 
+        // Another app in front while the tuner is shown (Netflix: status 4): the tuner steps aside after two polls and does not hold itself away.
+        var nf = new Takeover();
+        Check(nf.Poll(2, false) == Takeover.Step.Show, "away: live TV in front shows the tuner");
+        Check(nf.Poll(2, true) == Takeover.Step.None && nf.Poll(3, true) == Takeover.Step.None, "away: nothing to do while the TV app is up");
+        Check(nf.Poll(4, true) == Takeover.Step.None, "away: one reading of another app in front does not hide the tuner (a flicker)");
+        Check(nf.Poll(2, true) == Takeover.Step.None && nf.Poll(4, true) == Takeover.Step.None, "away: a good reading in between starts the count again");
+        Check(nf.Poll(4, true) == Takeover.Step.Hide, "away: two polls in a row with another app in front hide the tuner");
+        Check(nf.Poll(4, false) == Takeover.Step.None && nf.Poll(4, false) == Takeover.Step.None, "away: hidden, it stays hidden while the other app is in front");
+        Check(nf.Poll(2, false) == Takeover.Step.Show, "away: not held, so back on live TV the tuner shows again");
+        var nf2 = new Takeover();
+        nf2.Poll(2, true);
+        Check(nf2.Poll(7, true) == Takeover.Step.None && nf2.Poll(7, true) == Takeover.Step.Hide, "away: the TV app closed hides it too");
+        var nf3 = new Takeover();
+        nf3.Poll(2, true); nf3.Poll(-1, true); nf3.Poll(-1, true); nf3.Poll(-1, true);
+        Check(nf3.Poll(-1, true) == Takeover.Step.None && nf3.Poll(-1, true) == Takeover.Step.Hide, "away: failed readings count only after four in a row");
+        // Shown by hand (control pipe) while the TV app was never up: left alone, that was asked for.
+        var hand = new Takeover();
+        Check(hand.Poll(4, true) == Takeover.Step.None && hand.Poll(4, true) == Takeover.Step.None && hand.Poll(4, true) == Takeover.Step.None, "away: a tuner shown by hand over another app is not taken away");
+        hand.Poll(2, true);
+        Check(hand.Poll(4, true) == Takeover.Step.None && hand.Poll(4, true) == Takeover.Step.Hide, "away: once the TV app has been up under it, leaving it hides it");
+        var again = new Takeover();
+        again.Poll(2, true); again.Poll(4, false);
+        Check(again.Poll(4, true) == Takeover.Step.None && again.Poll(4, true) == Takeover.Step.None, "away: a new show by hand after the tuner was hidden starts from scratch");
+
         // Version folders of Samsung's client.
         var names = ClientFolders.NewestFirst(new[] { "1.1.12", "1.0.3", "1.10.0", "latest", "", "a/b", "2.0" });
         Check(string.Join(",", names) == "2.0,1.10.0,1.1.12,1.0.3", "client folders: newest first, numeric not alphabetic, junk ignored: " + string.Join(",", names));
