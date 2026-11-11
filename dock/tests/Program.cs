@@ -646,6 +646,9 @@ namespace Launcher.Tests
                 T.Eq(NumberPadModel.SendCommand("-", "k "), "(sleep 0.25; k minus) >/dev/null 2>&1 &", "a lone dash has no tuner part");
                 T.Eq(NumberPadModel.SendCommand("", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "nothing typed, nothing sent");
                 T.Eq(NumberPadModel.SendKeyCommand("XF86Red", "k "), "(sleep 0.25; k XF86Red) >/dev/null 2>&1 &", "a function key");
+                string ci = NumberPadModel.SendKeyCommand("XF86Info", "k ");
+                T.True(ci.Contains("[ -e /tmp/vetro-tuner.ctl.shown ]") && ci.Contains("[ -p /tmp/vetro-tuner.ctl ]") && ci.Contains("then echo info > /tmp/vetro-tuner.ctl; else k XF86Info; fi)"), "Info goes to the tuner on screen and by name otherwise");
+                T.True(!NumberPadModel.SendKeyCommand("XF86Red", "k ").Contains("tuner"), "the other function keys never go to the tuner");
                 T.Eq(NumberPadModel.SendKeyCommand("x; rm -rf /", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "a bad key name sends nothing");
                 var b = new CommandBuffer(); var bytes = Encoding.ASCII.GetBytes("pad\n"); T.Eq(b.Feed(bytes, bytes.Length)[0], Command.Pad, "pad command");
             });

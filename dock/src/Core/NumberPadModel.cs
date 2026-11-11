@@ -164,6 +164,16 @@ namespace Launcher.Core
         }
 
         /// <summary>The same for one function key (colour, teletext, record...).</summary>
-        public static string SendKeyCommand(string key, string keyTool) { return Wrap(key != null && KeyName.IsMatch(key) ? key : "", keyTool, ""); }
+        public static string SendKeyCommand(string key, string keyTool)
+        {
+            string safe = key != null && KeyName.IsMatch(key) ? key : "";
+            // A key sent by name comes from the injector, not from the remote, so Vetro's Live TV (which reads the remote's input device) never sees it,
+            // and Samsung's app would answer Info with its own panel. With the tuner on screen the pad asks it for its own info panel instead.
+            // The tuner must be alive (pid), on screen (flag) and its pipe must be a pipe: a stale file would otherwise block or be created as a plain file.
+            if (safe == "XF86Info")
+                return "(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ] && [ -e /tmp/vetro-tuner.ctl.shown ] && [ -p /tmp/vetro-tuner.ctl ]; then echo info > /tmp/vetro-tuner.ctl; else "
+                    + keyTool + safe + "; fi) >/dev/null 2>&1 &";
+            return Wrap(safe, keyTool, "");
+        }
     }
 }
