@@ -38,6 +38,12 @@ namespace Launcher.Ui
         private IntPtr _title, _sub, _sort, _empty;
         // The footer: pictures of the remote's keys (res/key_*.png, the dashboard's set) and short words, in one centred line.
         private const int FootKey = 34, FootInner = 8, FootGroup = 40;
+        private const int HeaderBase = 35;            // the header's baseline, from the header's top
+        /// <summary>
+        /// How far under its top a text's baseline is. This binding has no ascent getter, so it is taken from the line height: ascent is 0.775 of
+        /// ascent + descent in the TV's font (1047 / 1351); for another font the three header texts would still share a baseline within half a pixel.
+        /// </summary>
+        private static int Ascent(IntPtr text) { return (int)Math.Round(Efl.evas_object_text_vert_advance_get(text) * 0.775); }
         private IntPtr[] _foot;
         private bool[] _footKey;
         private int[] _footGap;   // space after each part
@@ -322,13 +328,12 @@ namespace Launcher.Ui
             Place(_rim, _layout.Rim(n, slide));
             Place(_bg, _layout.Panel(n, slide));
 
-            int headTop = _layout.HeaderTop(n, slide);
-            int titleH = Efl.evas_object_text_vert_advance_get(_title);
-            Efl.evas_object_move(_title, _layout.ContentLeft, headTop + 8);
-            Efl.evas_object_move(_sub, _layout.ContentLeft + Efl.evas_object_text_horiz_advance_get(_title) + 18,
-                headTop + 8 + titleH - Efl.evas_object_text_vert_advance_get(_sub) - 3);
-            Efl.evas_object_move(_sort, _layout.ContentRight - Efl.evas_object_text_horiz_advance_get(_sort),
-                headTop + 8 + (titleH - Efl.evas_object_text_vert_advance_get(_sort)) / 2);
+            // The header's three texts stand on one baseline, HeaderBase under the header's top (they used to be placed by their boxes: bottoms
+            // 3 px apart for the free memory, middles for the sort, so the three baselines were 1 and 2 px apart).
+            int headTop = _layout.HeaderTop(n, slide), headBase = headTop + HeaderBase;
+            Efl.evas_object_move(_title, _layout.ContentLeft, headBase - Ascent(_title));
+            Efl.evas_object_move(_sub, _layout.ContentLeft + Efl.evas_object_text_horiz_advance_get(_title) + 18, headBase - Ascent(_sub));
+            Efl.evas_object_move(_sort, _layout.ContentRight - Efl.evas_object_text_horiz_advance_get(_sort), headBase - Ascent(_sort));
             Box div; div.X = _layout.PanelX + TaskLayout.PadX; div.W = TaskLayout.PanelW - 2 * TaskLayout.PadX; div.H = 1;
             div.Y = _layout.ListTop(n, slide) - 6;
             Place(_divider, div);

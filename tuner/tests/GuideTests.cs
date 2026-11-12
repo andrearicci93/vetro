@@ -67,6 +67,10 @@ internal static partial class Tests
         Check(store.NeedsRead(5, now + 60, now + 86400), "a reading for a shorter window is read again for a longer one");
         store.Put(9, new List<GuideEvent>(), now, now + 3600);
         Check(!store.NeedsRead(9, now + 5, now + 3600) && store.NeedsRead(9, now + GuideStore.RetrySeconds, now + 3600), "a channel with no data is retried, but not at once");
+        // a failed read: an unknown channel is recorded as empty (the guide stops saying "Loading…") and retried later; a known schedule is kept
+        Check(store.PutFailed(11, now, now + 3600) && store.Get(11) != null && store.Get(11).Events.Count == 0, "a failed first read leaves the channel known and empty");
+        Check(!store.NeedsRead(11, now + 5, now + 3600) && store.NeedsRead(11, now + GuideStore.RetrySeconds, now + 3600), "a channel whose read failed is retried, but not at once");
+        Check(!store.PutFailed(5, now + 30, now + 3600) && store.Current(5, now) != null, "a failed read does not throw away a schedule that is known");
         Check(string.Join(",", GuideStore.Nearest(6, 0)) == "1,5,2,4,3", "neighbours first, wrapping, current left out");
         Check(string.Join(",", GuideStore.Nearest(4, 2)) == "3,1,0", "neighbours of a middle channel");
         Check(GuideStore.Nearest(1, 0).Count == 0 && GuideStore.Nearest(5, -1).Count == 0, "nothing to read with no neighbours or no current");

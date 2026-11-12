@@ -730,7 +730,7 @@ function align(state, out) {
   });
   return out;
 }
-function L_(state) { var l = OLD[state]; if (/^tasks/.test(state) && !OSD_TODAY) { var m = tasksMut(l); l = l.map(m); } return refine(state, l); }
+function L_(state) { var l = OLD[state]; if (/^tasks/.test(state) && !OSD_TODAY) { var m = tasksMut(l); l = tasksToday(l.map(m)); } return refine(state, l); }
 
 /* cambio di stato: gli oggetti che restano (stesso id) vanno dal posto vecchio al nuovo in linea retta; i nuovi entrano in alpha */
 function swapOld(L, list, ms, mut, enter) {
@@ -796,6 +796,27 @@ function tasksMut(list) {
     return o;                                                                  // piè di pagina (sotto la lista)
   };
 }
+/* Il Task manager come lo disegna il codice di oggi (la registrazione è di prima): le tre scritte dell'intestazione sulla linea di base del titolo
+   (erano a 1 e 2 px l'una dall'altra) e le etichette dei tasti a 22 px (erano 21), ridisposte come fa TaskPanel: tasto 34, 8 dentro il gruppo,
+   40 tra i gruppi, 2 tra due tasti, il tutto centrato nel pannello. */
+var FOOT_GAPS = [8, 40, 8, 8, 40, 2, 8, 40, 2, 8, 0];
+function tasksToday(list) {
+  var title = list.filter(function (o) { return o.k === 't' && o.text === 'Running apps'; })[0];
+  var panel = list.filter(function (o) { return o.src === 'old/dock_bg.png'; })[0];
+  if (!title || !panel) return list;
+  var foot = list.filter(function (o) { return (o.k === 't' && o.size === 21) || /old\/key_/.test(o.src || ''); }).sort(function (a, b) { return a.x - b.x; });
+  var pos = {};
+  if (foot.length === FOOT_GAPS.length) {
+    var ws = foot.map(function (o) { return o.k === 't' ? Math.round(textW(o.text, 22, 500)) : o.w; });
+    var total = ws.reduce(function (a, w, i) { return a + w + FOOT_GAPS[i]; }, 0), x = panel.x + Math.floor((panel.w - total) / 2);
+    foot.forEach(function (o, i) { pos[o.id] = x; x += ws[i] + FOOT_GAPS[i]; });
+  }
+  return list.map(function (o) {
+    if (o.k === 't' && o !== title && o.y < title.y + 40 && (/memory free/.test(o.text) || /^Sort by/.test(o.text))) return Object.assign({}, o, { y: title.y + title.asc - o.asc });
+    if (pos[o.id] == null) return o;
+    return o.k === 't' ? Object.assign({}, o, { x: pos[o.id], size: 22 }) : Object.assign({}, o, { x: pos[o.id] });
+  });
+}
 function renderTasks(ms, enter) { swapOld(LT, L_(tasksState()), ms, null, enter); }
 function tasksKey(k) {
   finishAll();
@@ -832,12 +853,22 @@ function volKey(d, mute) {
 }
 function hideVolume() { if (!VOL.on) return; VOL.on = false; var o = tw(LV, { a: 1 }, { a: 0 }, 220, 0, LIN); LV.style.opacity = 0; after(o, function () { if (!VOL.on) { LV.classList.remove('on'); LV.style.opacity = ''; } }); countNow(); }
 
-/* ---- osd 123 (finestra sua): NumberPadModel; il numero digitato si scrive nel testo da 68 ---- */
+/* ---- osd 123 (finestra sua): NumberPadModel. Il numero digitato sta in una capsula come «Done», a sinistra sopra la barra (NumberPad.cs di oggi:
+   testo 36 px, 28 px di margine); la registrazione, di prima, lo aveva come testo libero da 68: qui quel testo diventa capsula + testo ---- */
 var p123 = { page: 'digits', f: 0, done: false, typed: '' };
 var P123D = '1234567890-'.split('').concat(['erase', 'colors']), P123C = ['back', 'A', 'B', 'C', 'D', 'ttx', 'timer', 'info'];
 function p123State() { return p123.page === 'colors' ? 'p123c-' + p123.f : p123.done ? 'p123-done' : p123.f === 0 ? 'p123-typed' : 'p123-' + p123.f; }
-function p123Mut(o) { return o.k === 't' && o.size === 68 ? Object.assign({}, o, { text: p123.typed }) : o; }
-function renderPad123(ms, enter) { swapOld(LP, L_(p123State()), ms, p123Mut, enter); }
+function p123Chip(list) {
+  var t = list.filter(function (o) { return o.k === 't' && o.size === 68; })[0]; if (!t) return list;
+  var out = list.filter(function (o) { return o !== t; }); if (!p123.typed) return out;
+  var ref = L_('p123-typed'), chip = ref.filter(function (o) { return o.src === 'old/pill_chip.png'; })[0], dt = ref.filter(function (o) { return o.k === 't' && o.text === 'Done'; })[0];
+  var bar = list.filter(function (o) { return o.src === 'old/pill_bg.png' && o.w > 400; })[0];
+  if (!chip || !dt || !bar) return list;
+  out.push(Object.assign({}, chip, { id: 'typedchip', x: bar.x, w: Math.round(textW(p123.typed, 36, 500)) + 56 }));
+  out.push(Object.assign({}, dt, { id: t.id, text: p123.typed, size: 36, x: bar.x + 28, y: chip.y, asc: Math.round(chip.h / 2 + 724 * 36 / 2048), lh: 0, w: 0, el: -1, c: t.c }));
+  return out;
+}
+function renderPad123(ms, enter) { swapOld(LP, p123Chip(L_(p123State())), ms, null, enter); }
 function pad123Key(k) {
   finishAll();
   var b = p123State(), t0 = p123.typed, row = p123.page === 'digits' ? P123D : P123C;

@@ -29,6 +29,20 @@ namespace Tuner.Core
             lock (_items) _items[id] = new ChannelSchedule { Events = events, ReadAt = readAt, AskedUntil = askedUntil };
         }
 
+        /// <summary>
+        /// The read of this channel failed: if nothing is known about it, it is recorded as having no programmes (the guide says "No information"
+        /// instead of "Loading…" for ever) and is read again after <see cref="RetrySeconds"/>. A schedule already known is kept. True when it was recorded.
+        /// </summary>
+        public bool PutFailed(ulong id, long readAt, long askedUntil)
+        {
+            lock (_items)
+            {
+                if (_items.ContainsKey(id)) return false;
+                _items[id] = new ChannelSchedule { Events = new List<GuideEvent>(), ReadAt = readAt, AskedUntil = askedUntil };
+                return true;
+            }
+        }
+
         public ChannelSchedule Get(ulong id) { lock (_items) { ChannelSchedule c; return _items.TryGetValue(id, out c) ? c : null; } }
         public int Count { get { lock (_items) return _items.Count; } }
 

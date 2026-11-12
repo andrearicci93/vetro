@@ -386,17 +386,22 @@ namespace Tuner
             Ui(() => ApplyProgram(c, ok, start, duration, title, attempt));
         }
 
-        /// <summary>Worker: reads a channel's schedule for the whole horizon into the store. False when the call failed (nothing stored).</summary>
+        /// <summary>
+        /// Worker: reads a channel's schedule for the whole horizon into the store. False when the call failed: a channel nothing was known about
+        /// is then recorded as empty (<see cref="GuideStore.PutFailed"/>), so the guide stops saying "Loading…"; it is asked again after 20 s.
+        /// </summary>
         private static bool ReadIntoStore(ulong id, long now)
         {
+            bool ok = false;
             try
             {
                 List<GuideEvent> events;
-                if (!Tvs.ReadSchedule(id, now, GuideGrid.HorizonSeconds, false, out events)) return false;
-                Store.Put(id, events, now, now + GuideGrid.HorizonSeconds);
-                return true;
+                ok = Tvs.ReadSchedule(id, now, GuideGrid.HorizonSeconds, false, out events);
+                if (ok) Store.Put(id, events, now, now + GuideGrid.HorizonSeconds);
             }
-            catch (Exception ex) { Log("schedule: " + ex.Message); return false; }
+            catch (Exception ex) { Log("schedule: " + ex.Message); }
+            if (!ok) Store.PutFailed(id, now, now + GuideGrid.HorizonSeconds);
+            return ok;
         }
 
         private const int ProgramAttempts = 6;
@@ -483,7 +488,7 @@ namespace Tuner
                 _grid = new GuideGrid(_list, Store);
             }
             Choreo.Shot from = _banner.Visible ? Choreo.Capture(_banner) : null;   // Banner -> guide: the number and the name fly to their row
-            CloseList(); ClosePad(); _banner.Hide();
+            CloseList(); ClosePad(); CloseInfo(); _banner.Hide();   // Info too: the "guide" command of the control pipe can arrive while it is open (a key closes it first)
             _grid.Open(Math.Max(0, _list.CurrentIndex), DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             GuideChanged(true);
             if (from != null) Choreo.Morph(from, _guideView, Choreo.BannerGuide, Motion.GuideOutSeconds, Motion.Linear);
@@ -535,7 +540,8 @@ namespace Tuner
                 ulong id = ids[pos++];
                 long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 if (!Store.NeedsRead(id, now, now + GuideGrid.HorizonSeconds)) continue;
-                if (ReadIntoStore(id, now)) Ui(() => { if (gen == Volatile.Read(ref _guideGen) && GuideOpen) DrawGuide(); });
+                bool known = Store.Get(id) != null;
+                if (ReadIntoStore(id, now) || !known) Ui(() => { if (gen == Volatile.Read(ref _guideGen) && GuideOpen) DrawGuide(); });   // also after a first failed read: the row stops saying "Loading…"
             }
             if (pos < ids.Count) Work.Add(() => GuideSlice(gen, ids, pos));
         }

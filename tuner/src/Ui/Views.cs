@@ -220,6 +220,9 @@ namespace Tuner.Ui
     internal sealed class PadView
     {
         private const int X = 1284, W = 540, Pad = 34, KeyW = 148, KeyH = 76, Gap = 14, GridY = 232, H = 232 + 4 * 76 + 3 * 14 + 38, Y = 540 - H / 2;
+        // Baselines of the three lines above the keys, from the panel's top (the mock-up's). Placed by baseline: Evas's ascent is taller than the
+        // font's own (see TextMetrics), so a plain y left the heading 3 px and the typed number 7 px lower than drawn.
+        private const int TitleBase = 54, TypedBase = 133, PreviewBase = 192;
         private readonly Surface _s;
         private readonly IntPtr _title, _typed, _preview;
         private readonly Logo _logo;
@@ -233,12 +236,12 @@ namespace Tuner.Ui
             s.Panel().SetRect(X, Y, W, H, 40);
             _title = s.Text(26, Theme.TextMuted);
             Efl.evas_object_text_text_set(_title, "Channel number");
-            Efl.evas_object_move(_title, X + Pad, Y + 30);
+            Efl.evas_object_move(_title, X + Pad, Theme.TopFor(Y + TitleBase, 26));
             _typed = s.Text(76, Theme.TextMain);
-            Efl.evas_object_move(_typed, X + Pad, Y + 62);
+            Efl.evas_object_move(_typed, X + Pad, Theme.TopFor(Y + TypedBase, 76));
             _preview = s.Text(28, Theme.TextMuted);
             _logo = s.Logo();
-            Efl.evas_object_move(_preview, X + Pad, Y + 166);
+            Efl.evas_object_move(_preview, X + Pad, Theme.TopFor(Y + PreviewBase, 28));
             for (int i = 0; i < _key.Length; i++)
             {
                 int r = i / NumberEntry.Cols, c = i % NumberEntry.Cols;
@@ -269,7 +272,7 @@ namespace Tuner.Ui
         {
             Efl.evas_object_text_text_set(_typed, e.Text.Length > 0 ? e.Text : "–");
             Surface.SetFitted(_preview, preview, W - 2 * Pad - (logo != null ? 52 : 0));
-            Efl.evas_object_move(_preview, X + Pad + (logo != null ? 52 : 0), Y + 166);
+            Efl.evas_object_move(_preview, X + Pad + (logo != null ? 52 : 0), Theme.TopFor(Y + PreviewBase, 28));
             if (logo != null) _logo.Show(logo, X + Pad, Y + 158, 44); else _logo.Hide();
             int focus = e.Row * NumberEntry.Cols + e.Col;
             for (int i = 0; i < _key.Length; i++)
