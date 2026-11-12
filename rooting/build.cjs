@@ -22,10 +22,33 @@ const AUTHOR_PW = process.env.AUTHOR_PW;
 const DISTRIBUTOR_PW = process.env.DIST_PW;
 
 function collectIntegration() {
+    const method = process.env.VETRO_ROOT_METHOD || 'archive';
+    if (!['archive', 'external-root'].includes(method)) throw new Error('Unknown VETRO_ROOT_METHOD');
+    const external = method === 'external-root';
     const files = require('../app/build.cjs').collectFiles().filter(file => decodeURIComponent(file.uri) !== 'service/platform.js');
-    ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js','sdb-tunnel.js','root-preflight.js','root-preflight-capture.js','retry-policy.js'].forEach(name => {
-        files.push({uri: encodeURIComponent('service/' + name), data: fs.readFileSync(path.join(__dirname,'service',name))});
+    const services = external
+        ? ['external-root-platform.js', 'root-agent.js', 'node-root-agent.js', 'shell-executor.js', 'shell-worker.sh',
+            'remote-pc-content.js', 'remote-pc-smack.js', 'remote-pc-deadline.js']
+        : ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js','sdb-tunnel.js','root-preflight.js','root-preflight-capture.js','retry-policy.js'];
+    services.forEach(name => {
+        const target = name === 'external-root-platform.js' ? 'platform.js' : name;
+        files.push({uri: encodeURIComponent('service/' + target), data: fs.readFileSync(path.join(__dirname,'service',name))});
     });
+    if (external) {
+        const info = files.find(file => decodeURIComponent(file.uri) === 'service/build-info.js');
+        const context = {module: {exports: {}}};
+        require('vm').runInNewContext(info.data.toString(), context);
+        const smack = process.env.VETRO_EXTERNAL_SMACK || 'none';
+        if (!['none', 'both-write'].includes(smack)) throw new Error('Unknown VETRO_EXTERNAL_SMACK');
+        if (process.env.VETRO_EXTERNAL_AUTO_RENEW && !['0', '1'].includes(process.env.VETRO_EXTERNAL_AUTO_RENEW)) {
+            throw new Error('VETRO_EXTERNAL_AUTO_RENEW must be 0 or 1');
+        }
+        const metadata = Object.assign({}, context.module.exports, {rootMethod: 'external-root',
+            externalRoot: {autoRenew: process.env.VETRO_EXTERNAL_AUTO_RENEW === '1', smack: smack}});
+        info.data = Buffer.from("'use strict';\nmodule.exports = " + JSON.stringify(metadata) + ';\n');
+        // No archive exploit or native root payloads in this first backend slice.
+        return files;
+    }
     function addPayloads(relative) {
         const directory = path.join(__dirname, relative);
         fs.readdirSync(directory).sort().forEach(name => {
