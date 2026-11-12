@@ -322,7 +322,55 @@ function fixture(options) {
     await assert.rejects(f.dock.writeCatalog(),/Cannot read launcher preferences/);
     assert.equal(fs.readFileSync(f.dock.stateFile,'utf8'),'broken existing state','migration never overwrites malformed state');
 
+    // The tile uses fresh app eligibility and retains the preference when unavailable.
+    f = fixture();
+    let eligible = true;
+    f.dock.shortcutCheck = async () => ({ok: eligible});
+    const shortcut = {appId: 'GlassHome1.Home', label: 'My Home'};
+    s = await f.dock.setHomeShortcut(shortcut);
+    assert.deepEqual(s.homeShortcut, shortcut);
+    assert.equal(s.enabled, false);
+    assert.ok(s.entries.some(e => e.slug === 'customhome' && e.label === shortcut.label));
+    await f.dock.enable();
+    await f.dock.setNoMotion(true);
+    assert.deepEqual(f.dock.readState().homeShortcut, shortcut);
+    eligible = false;
+    await f.dock.refresh();
+    assert.ok(f.dock.entries().some(e => e.slug === 'samsunghome'));
+    assert.deepEqual(f.dock.readState().homeShortcut, shortcut, 'unavailable app keeps saved preference');
+    await assert.rejects(f.dock.setHomeShortcut(shortcut), /installed, enabled/);
+    await assert.rejects(f.dock.setHomeShortcut({appId:'bad;id',label:'Home'}), /Choose/);
+    await assert.rejects(f.dock.setHomeShortcut({appId:shortcut.appId,label:'1234567890123'}), /1–12/);
+    await assert.rejects(f.dock.setHomeShortcut({appId:shortcut.appId,label:'bad\tlabel'}), /1–12/);
+    s = await f.dock.setHomeShortcut(null);
+    assert.equal(s.homeShortcut, null);
+    assert.equal(s.enabled, true);
+    eligible = true;
+    f.tv.homeData = 'unreadable';
+    await assert.rejects(f.dock.setHomeShortcut(shortcut), /empty or unreadable/);
+    assert.equal(f.dock.readState().homeShortcut, null, 'failed catalog write restores the choice');
+
+    f=fixture();f.dock.shortcutCheck=async()=>({ok:true});
+    assert.equal(f.dock.readState().doubleHome.enabled,false);
+    const doubleHome={enabled:true,mode:'app',appId:'GlassHome1.Home'};
+    await f.dock.setDoubleHome(doubleHome);
+    assert.deepEqual(f.dock.readState().doubleHome,doubleHome);
+    await f.dock.setHomeShortcut({appId:'another.Home',label:'Other'});
+    assert.deepEqual(f.dock.readState().doubleHome,doubleHome,'tile change preserves independent destination');
+    assert.match(f.dock.startScript(),/--double-home-app GlassHome1.Home/);
+    f.dock.patchState({customApp:'another.Home'});
+    assert.doesNotMatch(f.dock.startScript(),/--double-home-(app|shortcut)/,'inactive in custom mode');
+    f.dock.patchState({customApp:null});
+    await f.dock.setDoubleHome({enabled:true,mode:'shortcut',appId:null});
+    assert.match(f.dock.startScript(),/--double-home-shortcut/);
+    f.dock.shortcutCheck=async()=>({ok:false});
+    await assert.rejects(f.dock.setDoubleHome(doubleHome),/installed, enabled/);
+    assert.equal(f.dock.readState().doubleHome.mode,'shortcut');
+    await f.dock.setDoubleHome({enabled:false,mode:'shortcut',appId:null});
+    assert.doesNotMatch(f.dock.startScript(),/--double-home-(app|shortcut)/);
+
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
 { const local=new (require('../service/dock.js').Dock)({execute:()=>Promise.reject(Error('no TV'))}); for(const slug of ['settings','samsunghome']) { const icon=local.iconFile(slug); assert.ok(icon && icon.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'local preview system icon: '+slug); } }
+

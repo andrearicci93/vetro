@@ -45,37 +45,31 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
-        // The raw press (evdev) opens the dock at once. The system holds Home to tell a short press from a long one
-        // and only then delivers XF86Home to the focused window, which is now the dock: on 2025 firmware that echo
-        // comes about 0.6 s later, well past the debounce. An XF86Home this soon after the raw press is the same
-        // press, not a request to close.
-        private const double HomeEchoSeconds = 1.5;
-
+        private static readonly HomeKeyHandler HomeKeys = new HomeKeyHandler();
         // --kill-on-home APPID[,APPID...]: the system sends Home to Samsung's own home app as well (it is relaunched
         // by the key), so after each Home press the app is closed again, a few times because its start is slow.
         // 2025 (RSM/CoBA) firmware splits Home into csfs plus separate sidebar and media windows that stay on top of
         // the dock when only csfs is closed, so several ids may be given. Off by default; every id is checked as
         // plain id characters because it goes on a command line.
-        // One process: a single shell runs every sleep and every kill (at 0.15, 0.45, 0.9, 1.6 and 2.8 s after the
-        // press, as before), so the dock itself spawns once per Home press instead of five times from the loop.
+        // Track each close independently so explicit Home waits for its actual completion.
         private static string[] _guardApps;
-        // The kills are tied to a generation written to a file: each Home press arms a new one, and launching the guarded
-        // app on purpose (the Samsung Home pill) retires it. Without that, Samsung Home started 1-2 s after a Home press
-        // was closed again by the kills still pending, and the pill seemed to do nothing.
-        private static int _guardGen;
-        private static string _guardFile;
+        private static HomeCloseGuard CloseGuard;
+        private static readonly Efl.TaskCb GuardCb = OnGuard;
+        private static IntPtr _guardTimer;
+        private static readonly EcoreChildProcess GuardProcess = new EcoreChildProcess();
+        private static double _guardStarted;
+        private static bool _guardKillRequested;
         private static int _homeCode = -1;
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
-        private static AppEntry _homeLaunch;
+        private static AppEntry _homeLaunch, _doubleHome;
+        private static string _doubleHomeSettingsPath;
+        private static readonly HomeGesture DoubleHome = new HomeGesture();
 
         private static readonly NavigationInput Navigation = new NavigationInput();
-        private static double _lastRawHome = -100;
         private static AppEntry _pendingLaunch;
         private static bool _learn;
-        private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
         private static readonly List<int> _inputFds = new List<int>();
         private static readonly List<EvdevReader> _inputReaders = new List<EvdevReader>();
@@ -86,7 +80,7 @@ namespace Launcher
         private const double RescanSeconds = 3.0;
         private const int EAgain = 11;
         private static readonly byte[] InputBuf = new byte[16 * 32];
-        private static readonly List<int> InputPresses = new List<int>();
+        private static readonly List<InputKeyEvent> InputPresses = new List<InputKeyEvent>();
 
         // ------------------------------------------------------------------ logging
 
@@ -239,7 +233,7 @@ namespace Launcher
         {
             Libc.unlink(_fifoPath);
             if (Libc.mkfifo(_fifoPath, 438u) != 0) { Log("mkfifo failed: " + Marshal.GetLastWin32Error()); return; }
-            Libc.chmod(_fifoPath, 438u);   // 0666: it only accepts show/hide/toggle
+            Libc.chmod(_fifoPath, 438u);   // 0666: fixed commands; settings are read from the service-owned request file
             // O_RDWR keeps a writer open ourselves, so the descriptor never reports EOF when a client disconnects.
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
@@ -311,6 +305,7 @@ namespace Launcher
         /// <summary>A node that was unplugged (the remote went to sleep) stops being watched; it is opened again when it returns.</summary>
         private static void DropNode(int index)
         {
+            DoubleHome.Reset();
             if (_inputFds[index] < 0) return;
             Log("input: lost " + _inputPaths[index]);
             if (_inputHandlers[index] != IntPtr.Zero) Efl.ecore_main_fd_handler_del(_inputHandlers[index]);
@@ -593,6 +588,7 @@ namespace Launcher
 
         private static void HandleKey(string key)
         {
+            if (key != "XF86Home") { DoubleHome.Reset(); if (_pendingLaunch == _doubleHome) _pendingLaunch = null; if (CloseGuard != null) CloseGuard.CancelLaunch(); }
             try
             {
                 int index;
@@ -616,11 +612,10 @@ namespace Launcher
                         if (key == "XF86Home")
                         {
                             double now = Efl.ecore_time_get();
-                            if (now - _lastRawHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastRawHome) * 1000).ToString("0") + " ms after the press"); break; }
-                            _lastHome = now;
+                            if (HomeKeys.FromWindow(now, _ctl.IsActive) == HomeKeyAction.None) break;
                             HideDock();
                             // Home reached the dock through evas and not through evdev: the evdev path, which arms the guard,
-                            // will count this press as already handled (_lastHome), so it is armed here.
+                            // will count this press as already handled, so it is armed here.
                             ArmGuard();
                             break;
                         }
@@ -641,18 +636,38 @@ namespace Launcher
                     if (n <= 0) break;
                     foreach (Command c in Commands.Feed(ReadBuf, (int)n))
                     {
+                        DoubleHome.Reset();
                         Log("command " + c);
                         switch (c)
                         {
                             case Command.Show: _perfWhy = "fifo-show"; ShowDock(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
                             case Command.Toggle: _perfWhy = "fifo-toggle"; if (_ctl.IsActive) HideDock(); else ShowDock(); break;
+                            case Command.ReloadDoubleHome: ReloadDoubleHome(); break;
                         }
                     }
                 }
             }
             catch (Exception ex) { Log("fifo: " + ex); }
             return 1;
+        }
+
+        private static void ReloadDoubleHome()
+        {
+            if (_homeLaunch != null) return;
+            DoubleHomeSettings.ApplyFile(_doubleHomeSettingsPath, Libc.getpid(), _apps, target => {
+                DoubleHome.Reset();
+                if (_doubleHome != null && _pendingLaunch == _doubleHome)
+                {
+                    _pendingLaunch = null;
+                    if (CloseGuard != null) CloseGuard.CancelLaunch();
+                }
+                _doubleHome = target;
+            }, path => {
+                // The root-agent client reads this private acknowledgement.
+                if (Libc.chmod(path, 384u) != 0) throw new IOException("Cannot publish double-press acknowledgement");
+            });
+            Log("double Home setting applied");
         }
 
         private static byte OnInput(IntPtr data, IntPtr handler)
@@ -667,17 +682,30 @@ namespace Launcher
                     if (n < 0 && Marshal.GetLastWin32Error() != EAgain) { DropNode(index); break; }
                     if (n <= 0) break;
                     InputPresses.Clear();
-                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses);
+                    _inputReaders[index].FeedEvents(InputBuf, (int)n, e => InputPresses.Add(e));
                     for (int k = 0; k < InputPresses.Count; k++)
                     {
-                        int code = InputPresses[k];
-                        if (_learn) Log("key code " + code);
-                        if (code != _homeCode) { NavFromInput(code); continue; }
+                        InputKeyEvent ev = InputPresses[k];
+                        int code = ev.Code;
+                        if (_learn && ev.Value == 1) Log("key code " + code);
+                        if (code != _homeCode) { if (ev.Value != 0) { DoubleHome.Reset(); if (_pendingLaunch == _doubleHome) _pendingLaunch = null; if (CloseGuard != null) CloseGuard.CancelLaunch(); } if (ev.Value == 1) NavFromInput(code); continue; }
                         double now = Efl.ecore_time_get();
+                        if (_doubleHome != null && _homeLaunch == null)
+                        {
+                            HomeGestureAction gesture = DoubleHome.Feed(index, ev.Value, ev.Time);
+                            if (gesture == HomeGestureAction.Double)
+                            {
+                                HomeKeys.ObserveRaw(now);
+                                CancelGuard(); HideDock();
+                                if (_ctl.Phase == Phase.Hidden) LaunchApp(_doubleHome);
+                                else _pendingLaunch = _doubleHome;
+                                continue;
+                            }
+                            if (gesture != HomeGestureAction.Press) continue;
+                        }
+                        else if (ev.Value != 1) continue;
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
-                        if (now - _lastHome < HomeDebounceSeconds) continue;
-                        _lastHome = now;
-                        _lastRawHome = now;
+                        if (HomeKeys.FromEvdev(now, _ctl.IsActive) == HomeKeyAction.None) continue;
                         _perfWhy = "home";
                         if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); continue; }
                         if (_ctl.IsActive) HideDock(); else ShowDock();
@@ -691,28 +719,79 @@ namespace Launcher
 
         private static void ArmGuard()
         {
-            if (_guardApps == null) return;
-            try
-            {
-                NewGuardGeneration();
-                Libc.system(HomeGuard.Command(_guardApps, _guardFile, _guardGen));   // returns at once: the shell puts the whole chain in the background
-            }
-            catch (Exception ex) { Log("guard: " + ex.Message); }
+            if (CloseGuard == null) return;
+            CloseGuard.Arm(Efl.ecore_time_get());
+            ScheduleGuard();
         }
 
-        /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
         private static void CancelGuard()
         {
-            if (_guardApps == null) return;
-            try { NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
-            catch (Exception ex) { Log("guard cancel: " + ex.Message); }
+            if (CloseGuard == null) return;
+            CloseGuard.Release(null);
+            ScheduleGuard();
         }
 
-        private static void NewGuardGeneration()
+        private static void ScheduleGuard()
         {
-            _guardGen++;
-            File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (_guardTimer != IntPtr.Zero) { Efl.ecore_timer_del(_guardTimer); _guardTimer = IntPtr.Zero; }
+            double? delay = CloseGuard.NextDelay(Efl.ecore_time_get());
+            if (delay.HasValue) _guardTimer = Efl.ecore_timer_add(delay.Value, GuardCb, IntPtr.Zero);
         }
+
+        private static byte OnGuard(IntPtr data)
+        {
+            _guardTimer = IntPtr.Zero;
+            try
+            {
+                if (GuardProcess.IsRunning)
+                {
+                    if (!_guardKillRequested && Efl.ecore_time_get() - _guardStarted >= 5)
+                    {
+                        Log("guard: close timed out; stopping pid=" + GuardProcess.Pid);
+                        _guardKillRequested = true;
+                        GuardProcess.Kill();
+                    }
+                    ScheduleGuard();
+                    return 0;
+                }
+                ChildExit result;
+                if (GuardProcess.TryTakeExit(out result))
+                {
+                    Log("guard: close finished pid=" + result.Pid + " rc=" + result.Code + " signal=" + result.Signal);
+                    CloseGuard.CloseFinished();
+                }
+                if (CloseGuard.TryBeginClose(Efl.ecore_time_get()))
+                {
+                    try
+                    {
+                        // Ecore already owns child-exit delivery. A managed Process
+                        // can miss that delivery and remain HasExited=false forever.
+                        // exec keeps the tracked child identical to the close command.
+                        GuardProcess.Start("exec /usr/bin/app_launcher -k " + _guardApps[CloseGuard.TargetIndex] + " >/dev/null 2>&1");
+                        _guardStarted = Efl.ecore_time_get();
+                        _guardKillRequested = false;
+                        Log("guard: close started pid=" + GuardProcess.Pid);
+                    }
+                    catch
+                    {
+                        if (!GuardProcess.IsRunning) CloseGuard.CloseFinished();
+                        throw;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // If command supervision fails, stop the burst and drop any queued launch.
+                // Never dispatch it while a close command's completion is unknown.
+                CloseGuard.Release(null);
+                if (!GuardProcess.IsRunning) CloseGuard.CloseFinished();
+                Log("guard: " + ex.Message);
+            }
+            ScheduleGuard();
+            return 0;
+        }
+
+
 
         // ------------------------------------------------------------------ launching
 
@@ -731,12 +810,13 @@ namespace Launcher
         /// <summary>OK on an entry: open a page, switch input, or launch; everything but a page closes the dock.</summary>
         private static void Activate(AppEntry e)
         {
+            DoubleHome.Reset();
             if (e.Panel != null)
             {
                 if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
                 return;
             }
-            if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
+            CancelGuard();
             HideDock();
             _pendingLaunch = e;
         }
@@ -813,6 +893,17 @@ namespace Launcher
 
         private static void LaunchApp(AppEntry e)
         {
+            if (CloseGuard != null && (HomeGuard.ShouldCancel(_guardApps, e.AppId) || HomeGuard.ShouldCancel(_guardApps, e.FallbackAppId)))
+            {
+                CloseGuard.Release(() => LaunchAppNow(e));
+                ScheduleGuard();
+                return;
+            }
+            LaunchAppNow(e);
+        }
+
+        private static void LaunchAppNow(AppEntry e)
+        {
             try
             {
                 if (e.KillFirst != null && e.AppId != null)
@@ -823,7 +914,6 @@ namespace Launcher
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
-                if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
                 if (e.SystemApp || e.AppId == "com.samsung.tv.csfs")
                 {
                     // Samsung's Home ignores a plain app-control request from here (logged as launched, never shown);
@@ -899,6 +989,8 @@ namespace Launcher
 
         private static int Main(string[] args)
         {
+            if (Flag(args, "--apply-double-home"))
+                return DoubleHomeClient.Run(Arg(args, "--apply-double-home"), Arg(args, "--dir"), Arg(args, "--double-home-settings"));
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
@@ -979,7 +1071,7 @@ namespace Launcher
                 if (guard != null)
                 {
                     _guardApps = HomeGuard.Parse(guard);
-                    if (_guardApps != null) { _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
+                    if (_guardApps != null) { CloseGuard = new HomeCloseGuard(_guardApps.Length); Log("guard: tracking close completion for " + guard); }
                     else Log("guard: bad app id ignored");
                 }
                 string homeLaunch = Arg(args, "--home-launch");
@@ -988,6 +1080,12 @@ namespace Launcher
                     _homeLaunch = HomeLaunch.Parse(homeLaunch);
                     Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
+                if (_homeLaunch == null)
+                {
+                    string target = Arg(args, "--double-home-app");
+                    _doubleHome = DoubleHomeSettings.Resolve(Catalog.ValidAppId(target) ? "app" : Flag(args, "--double-home-shortcut") ? "shortcut" : "off", target, _apps);
+                }
+                _doubleHomeSettingsPath = Arg(args, "--double-home-settings");
                 SetupInput(args);
 
                 string fpsArg = Arg(args, "--vblank-fps");

@@ -1,4 +1,5 @@
 'use strict';
+var doubleHome = require('./home-double-press.js');
 // Runs the Vetro dock (dock/) on the TV and keeps it running while it is switched on.
 //
 // The dock is a .NET process that the TV's own `dotnet` runs from this package. It is not a
@@ -80,6 +81,7 @@ function Dock(options) {
     this.execute = options.execute;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
+    this.doubleHomeFile = path.join(RUN_DIR, 'tvlauncher-double-home.tsv');
     this.appsFile = options.appsFile || APPS_FILE;
     this.customAppsFile = options.customAppsFile || CUSTOM_APPS_FILE;
     // Custom mode needs two things from the shell: appCheck(appId) -> {ok, label|reason} for the chosen app (rejects
@@ -87,6 +89,7 @@ function Dock(options) {
     // of the mode had disabled it (state flag customHomeDisabled, never set by this version).
     this.home = options.home || null;
     this.appCheck = options.appCheck || null;
+    this.shortcutCheck = options.shortcutCheck || null;
     this.checkRound = 0;
     this.goneRounds = 0;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
@@ -111,14 +114,16 @@ Dock.prototype.installed = function () {
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
+        var doublePress; try { doublePress = doubleHome.normalize(s && s.doubleHome); } catch (ignored) { doublePress = doubleHome.normalize(null); }
+        var shortcut = null; try { shortcut = catalog.homeShortcut(s && s.homeShortcut); } catch (ignored) {}
+        return {doubleHome: doublePress, homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {doubleHome: doubleHome.normalize(null), homeShortcut: null, enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -217,7 +222,7 @@ Dock.prototype.status = function (options) {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
+    var base = {doubleHome: state.doubleHome, homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
@@ -243,6 +248,8 @@ Dock.prototype.startScript = function () {
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
+    if (!state.customApp && state.doubleHome.enabled) args += state.doubleHome.mode === 'shortcut' ? ' --double-home-shortcut' : ' --double-home-app ' + state.doubleHome.appId;
+    args += ' --double-home-settings ' + q(this.doubleHomeFile);
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -266,7 +273,11 @@ Dock.prototype.writeCatalog = function () {
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
+    var checked = state.homeShortcut && this.shortcutCheck ? this.shortcutCheck(state.homeShortcut.appId, true).catch(function () { return {ok: false}; }) : Promise.resolve({ok: false});
+    return checked.then(function (result) {
+        return catalog.load(self.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
+            homeShortcut: result.ok ? state.homeShortcut : null});
+    }).then(function (c) {
         try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -529,6 +540,88 @@ Dock.prototype.setSourceOption = function (key, on) {
     }).finally(function () { self.busy = false; });
 };
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
+// Save the overlay tile independently of the physical Home destination.
+// Launcher modes are the single saved assignment for the physical Home key.
+Dock.prototype.setDoubleHome = function (value) {
+    var self = this, setting;
+    try { setting = doubleHome.normalize(value); } catch (e) { return Promise.reject(e); }
+    if (this.busy || this.homeChanging) return Promise.reject(Error('Another launcher change is in progress'));
+    var previous = this.readState(), livePid = null, attempted = false, saved = false;
+    this.busy = true;
+    var needsCheck = setting.mode === 'app' && setting.appId !== HOME_APP;
+    var check = needsCheck && this.shortcutCheck ? this.shortcutCheck(setting.appId, true) : Promise.resolve({ok: !needsCheck});
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled app for double press');
+        if (!previous.enabled) return;
+        return self.probe().then(function (p) {
+            if (!p.running) throw Error('The launcher is not running. Wait for it to reconnect, then save again');
+            livePid = p.pid; attempted = true;
+            return self.applyDoubleHome(setting, livePid);
+        });
+    }).then(function () {
+        self.patchState({doubleHome: setting}); saved = true;
+        return self.status();
+    }).catch(function (error) {
+        if (saved) self.patchState({doubleHome: previous.doubleHome});
+        if (!attempted) throw error;
+        return self.applyDoubleHome(previous.doubleHome, livePid).then(function () { throw error; }, function (restore) {
+            throw Error(error.message + '; previous setting is saved, but the running launcher could not confirm recovery: ' + restore.message);
+        });
+    }).finally(function () { self.busy = false; });
+};
+
+Dock.prototype.applyDoubleHome = function (setting, pid) {
+    return doubleHome.apply(setting, {pid: pid, file: this.doubleHomeFile, runDir: RUN_DIR,
+        dll: path.join(this.dir, DLL), execute: this.execute});
+};
+
+Dock.prototype.setHomeAssignment = function (value) {
+    var self = this;
+    if (!value || ['samsung', 'vetro', 'custom'].indexOf(value.mode) < 0) return Promise.reject(Error('Choose a Home destination'));
+    if (this.homeChanging || this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    var before = this.readState(), changed = false;
+    this.homeChanging = true;
+    function off() {
+        var state = self.readState();
+        return state.customApp ? self.disableCustom() : state.enabled ? self.disable() : Promise.resolve();
+    }
+    function on(mode, appId) {
+        return mode === 'custom' ? self.enableCustom(appId) : mode === 'vetro' ? self.enable() : self.status();
+    }
+    var check = value.mode === 'custom' && this.appCheck ? this.appCheck(value.appId, true) : Promise.resolve({ok: value.mode !== 'custom'});
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled custom launcher app');
+        if ((value.mode === 'vetro' && before.enabled) || (value.mode === 'custom' && before.customApp === value.appId) || (value.mode === 'samsung' && !before.enabled && !before.customApp)) return self.status();
+        changed = true;
+        return off().then(function () { return on(value.mode, value.appId); });
+    }).catch(function (error) {
+        if (!changed) throw error;
+        return off().then(function () { return on(before.customApp ? 'custom' : before.enabled ? 'vetro' : 'samsung', before.customApp); })
+            .then(function () { throw error; }, function (restore) { throw Error(error.message + '; previous Home assignment could not be restored: ' + restore.message); });
+    }).finally(function () { self.homeChanging = false; });
+};
+
+Dock.prototype.setHomeShortcut = function (value) {
+    var self = this, shortcut;
+    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
+    var previous = this.readState(); this.busy = true;
+    var check = shortcut && this.shortcutCheck ? this.shortcutCheck(shortcut.appId, true) : Promise.resolve({ok: !shortcut});
+    var changed = false;
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled app with a visible launch entry');
+        self.patchState({homeShortcut: shortcut}); changed = true;
+        return previous.enabled ? self.launch() : self.writeCatalog();
+    }).then(function () { return self.status(); }).catch(function (error) {
+        if (!changed) throw error;
+        self.patchState({homeShortcut: previous.homeShortcut});
+        return (previous.enabled ? self.launch() : self.writeCatalog()).then(function () { throw error; }, function (recovery) {
+            throw Error(error.message + '; launcher recovery needs attention: ' + recovery.message);
+        });
+    }).finally(function () { self.busy = false; });
+};
+
 Dock.prototype.setFixTizenTube = function (on) {
     var self = this;
     if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
@@ -586,7 +679,7 @@ Dock.prototype.iconFile = function (slug) {
 // every few minutes and reports the reason.
 Dock.prototype.supervise = function (agentConnected) {
     var self = this, state = this.readState(), custom = !!state.customApp;
-    if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
+    if ((!state.enabled && !custom) || this.homeChanging || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
     return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {
@@ -629,3 +722,4 @@ Dock.prototype.checkCustomApp = function (appId) {
 
 module.exports = {Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck};
+
