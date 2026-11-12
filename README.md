@@ -100,15 +100,15 @@ Vetro is developed on a **Samsung Q80A**; everything else below comes from commu
 
 | Tizen (typical year) | Dashboard, app list, diagnostics | Root features (launcher, privacy switches, remapper) | Reports |
 | --- | --- | --- | --- |
-| **9 and 10** (2024–2025) | Reported working | Reported working on some TVs; some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), fallback in 0.5.0 not yet tried), and root problems are reported on others ([#91](https://github.com/andrearicci93/vetro/issues/91), [#99](https://github.com/andrearicci93/vetro/issues/99)) | S90D, GU75CU7179 |
+| **9 and 10** (2024–2025) | Reported working | Reported working on some TVs; some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), fallback in 0.5.0 not yet tried), and root problems are reported on others ([#91](https://github.com/andrearicci93/vetro/issues/91), [#99](https://github.com/andrearicci93/vetro/issues/99)) | S90D, GU75CU7179, DUE77, CU8070 |
 | **7 and 8** (2023–2024) | Reported working | Reported working | S90C, S95C, Q65D |
-| **6.5** (2022) | Reported working | Reported working (the launcher needs Vetro 0.3.1 or newer) | Q60B, Q67B, QN85B, S95B, BU8002, The Frame |
-| **6** (2021) | Reported working | Reported working; one TV needs the Host PC IP step to be confirmed ([#134](https://github.com/andrearicci93/vetro/issues/134)) | Q80A, Q70A, Q60A, QN85A, AU7000 |
+| **6.5** (2022) | Reported working | Reported working (the launcher needs Vetro 0.3.1 or newer) | Q60B, Q67B, QN85B, QN90B, S95B, BU8002, The Frame |
+| **6** (2021) | Reported working | Reported working; one TV needs the Host PC IP step to be confirmed ([#134](https://github.com/andrearicci93/vetro/issues/134)) | Q80A, Q70A, Q60A, QN85A, AU7000, AU7172 |
 | **5.5** (2020) | Reported working | Not available | TU7090, T4300 |
 | **5.0** (2019) | Not with the stock package | One Q80R works with a personal port ([#35](https://github.com/andrearicci93/vetro/issues/35)) | Q80R |
 | **4** (2018) | Reported working | Not available | NU7090 |
 
-Not tried with Vetro: the QN90B and QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. There is no confirmed range outside what is listed.
+Not tried with Vetro: the QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. There is no confirmed range outside what is listed.
 
 <details>
 <summary>Reports by model</summary>
@@ -119,16 +119,21 @@ Not tried with Vetro: the QN90B and QN90F, where the upstream root route has bee
 | Q70A QE55Q70AATXXC (2021) · [#8](https://github.com/andrearicci93/vetro/issues/8) | T-NKM2DEUC-2301.1 | Reported working |
 | Q60A QN70Q60AAVXZC (2021) · [#28](https://github.com/andrearicci93/vetro/issues/28) | T-NKLAAKUC-2310.0 | Reported working; the listen port was changed to avoid a clash with tizen-youtube |
 | QN85A GQ65QN85AATXZG (2021) | T-NKM2DEUC-2301.1 | Reported working, back after a reboot |
+| UE43AU7172UXXH (2021, Tizen 6.0) · [#182](https://github.com/andrearicci93/vetro/issues/182) | T-KSU2EDEUC-2301.1 | Vetro 0.5.0, diagnostic report only: root agent with UID 0, service running and loopback probe succeeded; start after a cold boot not checked |
 | Q67B QE43Q67BAUXXH (2022) | T-NKLBDEUC-1720.7 | Reported working |
 | Q60B QE43Q60BAUXXC (43", 2022, Tizen 6.5) | T-NKLBDEUC-1720.7 | Vetro 0.5.0: dashboard, UID-0 agent, dock and physical Home key verified; service, root and dock recovered automatically after a software restart (observed after about 100 s). Power-cut recovery not tested. |
 | UE65BU8002KXXH (2022) · [#22](https://github.com/andrearicci93/vetro/issues/22) | T-KSU2EBDEUC-1720.7 | Reported working; the Launcher needed the 0.3.1 fix for the Home cache folder |
 | QE75QN85BATXXU (2022) · [#25](https://github.com/andrearicci93/vetro/issues/25) | 1720.7 | Core functions reported working; the Launcher failed before 0.3.1 (Home cache folder) |
+| QN90B QE55QN90BATXXH (2022, Tizen 6.5) · [#158](https://github.com/andrearicci93/vetro/issues/158) | T-PTMDEUC-1720.7 | Reported working with Vetro 0.5.0 (Apps2Samsung): root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting; the physical Home key opens a custom launcher. Another cold boot not tested |
 | QN55S95B QN55S95BAFXZA (2022) · [#14](https://github.com/andrearicci93/vetro/issues/14) | T-PTMAKUC-1720.7 | Reported working |
 | Q65S95C (2023) · [#13](https://github.com/andrearicci93/vetro/issues/13) | T-PTMCDEUC-0090-2220.4 | Reported working |
 | GU75CU7179 (2023, Tizen 9.0) · [#17](https://github.com/andrearicci93/vetro/issues/17) | Tizen 9.0 (23_KSUE_UB_T09) | Reported working, installed with Apps2Samsung |
 | QN55Q65D QN55Q65DAGXZS (2024) · [#10](https://github.com/andrearicci93/vetro/issues/10) | T-NKLDUABC-0090-2123.9 | Reported working, installed with Apps2Samsung |
+| Q60D (2024) · Reddit | Not reported | Reported working in a Reddit comment; no model code, firmware, Tizen or Vetro version given |
 | S90C TQ65S90CATXXC (2023, Tizen 7.0) · [#16](https://github.com/andrearicci93/vetro/issues/16) | T-PTMCDEUC-2000.2 | Reported working |
 | S90D QA65S90DAULXL (2024, Tizen 9) · [#36](https://github.com/andrearicci93/vetro/issues/36) | T-PTMDUABC-0090-2130.0 | Reported working, with the root agent back after a full restart (the owner's account) |
+| UA55DUE77AKLXL (Crystal UHD DUE77, 2024, Tizen 9) · [#180](https://github.com/andrearicci93/vetro/issues/180) | T-KSU2EDUABC-0090-2130.0 | Reported working with Vetro 0.3.5: root agent with UID 0 after a full restart without opening Vetro; the bundled dock opens from the physical Home key |
+| UE43CU8070UXXN (2023, Tizen 9.0) · [#183](https://github.com/andrearicci93/vetro/issues/183) | 2220 | Reported working with Vetro 0.5.0 (Apps2Samsung): root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting; the physical Home key opens a custom launcher, with Samsung Home kept |
 | LS03B QN75LS03BAFXZA (The Frame, 2022) · [#39](https://github.com/andrearicci93/vetro/issues/39) | T-PTMAKUC-1720.7 | Reported working, the service started by itself after a cold boot; the Launcher was not tried |
 | Smart Monitor M8 LS32BM801UNXGO · [#15](https://github.com/andrearicci93/vetro/issues/15) | T-PTMWWC-1720.7 | Installed, service and root agent running; what works not reported yet |
 | Q80R QN65Q80RAFXZA (2019, Tizen 5.0) · [#35](https://github.com/andrearicci93/vetro/issues/35) | T-MSMAKUC-1500.5 | Works with **local changes**, not with the stock package: a personal port with its own launcher host, app registry paths and Node.js 16.20.2, not reviewed or merged |
