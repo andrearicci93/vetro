@@ -102,6 +102,18 @@ const ytStaleReg = catalog.build(Object.assign({}, ytGone, {registry: Object.ass
 assert.equal(ytStaleReg.entries[0].appId, 'com.samsung.tv.cobalt-yt', 'stale wrapper registry row still falls back to Cobalt YouTube');
 assert.equal(ytStaleReg.skipped.length, 0);
 
+// Fix TizenTube on a row that is not csfs: the registry fill-in does not add YouTube next to the TizenTube tile
+{
+    const media = Object.assign({}, tt, {rowFrom: 'media', order: ['d/webapp@tt'],
+        registry: Object.assign({}, tt.registry, {ytv: {title: 'YouTube TV', appId: 'PvWgqxV3Xa.YouTubeTV', hidden: false}})});
+    assert.deepEqual(catalog.build(media, {fixTizenTube: true}).entries.map(e => e.appId),
+        ['xvvl3S1TT1.TizenTubeStandalone', 'org.tizen.netflix-app', 'PvWgqxV3Xa.YouTubeTV'], 'on: YouTube is left out, YouTube TV is not');
+    assert.deepEqual(catalog.build(media, {}).entries.map(e => e.appId),
+        ['xvvl3S1TT1.TizenTubeStandalone', 'org.tizen.netflix-app', '9Ur5IzDKqV.TizenYouTube', 'PvWgqxV3Xa.YouTubeTV'], 'off: YouTube is appended');
+    assert.deepEqual(catalog.build(Object.assign({}, media, {order: []}), {fixTizenTube: true}).entries.map(e => e.appId),
+        ['org.tizen.netflix-app', 'xvvl3S1TT1.TizenTubeStandalone', '9Ur5IzDKqV.TizenYouTube', 'PvWgqxV3Xa.YouTubeTV'], 'no TizenTube in the row: YouTube is appended');
+}
+
 // load(): one read of the Home data, one check that the icon files exist; errors are explicit
 (async function () {
     const missing = '/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png';
