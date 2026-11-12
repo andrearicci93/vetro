@@ -122,10 +122,51 @@ namespace Launcher.Tests
                     File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\n[ \"$2\" != com.samsung.tv.coba.newhome ]\n");
                     Shell("chmod +x " + Q(tool)); Shell(command + " wait");
                     T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome,com.samsung.tv.csfs", "failed newhome tries csfs");
-                    File.Delete(log); File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\nexit 0\n");
+                    // A successful launch that is still running when it is checked (see the next test for one that quits).
+                    File.Delete(log); File.WriteAllText(tool, "#!/bin/sh\nif [ \"$1\" = -S ]; then printf '\\t  com.samsung.tv.coba.newhome (7)\\n'; exit 0; fi\necho \"$2\" >> " + Q(log) + "\nexit 0\n");
                     Shell(command + " wait"); T.Eq(File.ReadAllLines(log).Length, 1, "success does not start two Homes");
                 }
                 finally { Directory.Delete(dir, true); }
+            });
+
+            T.Run("CoBA system launch: a Home that starts and quits (Tizen 6.5) falls back, one that stays up does not", () =>
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                string settle = SystemLaunch.SettleSeconds;
+                SystemLaunch.SettleSeconds = "0.05";
+                try
+                {
+                    string tool = Path.Combine(dir, "launcher"), log = Path.Combine(dir, "calls"), running = Path.Combine(dir, "running");
+                    string[] guard = { "com.samsung.tv.csfs", "com.samsung.tv.home.sidebar", "com.samsung.tv.home.media" };
+                    string command = SystemLaunch.Command("com.samsung.tv.coba.newhome", "com.samsung.tv.csfs", guard).Replace("/usr/bin/app_launcher", Q(tool));
+                    // A fake app_launcher: -s logs the id and succeeds, -S prints the "running" file in the real format.
+                    File.WriteAllText(tool, "#!/bin/sh\nif [ \"$1\" = -S ]; then cat " + Q(running) + "; exit 0; fi\necho \"$2\" >> " + Q(log) + "\n");
+                    Shell("chmod +x " + Q(tool));
+
+                    // Tizen 6.5: newhome is gone again, only the csfs service runs. csfs must not count as shown.
+                    File.WriteAllText(running, "\t  com.samsung.tv.csfs (401)\n");
+                    Shell(command + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome,com.samsung.tv.csfs", "newhome that quit starts csfs");
+
+                    // 2025 firmware: newhome may have handed over to its windows; the sidebar being up is enough.
+                    File.Delete(log); File.WriteAllText(running, "\t  com.samsung.tv.csfs (401)\n\t  com.samsung.tv.home.sidebar (512)\n");
+                    Shell(command + " wait"); T.Eq(File.ReadAllLines(log).Length, 1, "Home windows up: no second Home");
+
+                    File.Delete(log); File.WriteAllText(running, "\t  com.samsung.tv.coba.newhome (23812)\n");
+                    Shell(command + " wait"); T.Eq(File.ReadAllLines(log).Length, 1, "newhome still up: no second Home");
+
+                    // A running app whose id only contains newhome's does not count.
+                    File.Delete(log); File.WriteAllText(running, "\t  com.samsung.tv.coba.newhome2 (9)\n");
+                    Shell(command + " wait"); T.Eq(File.ReadAllLines(log).Length, 2, "a longer id is not newhome");
+
+                    T.Eq(SystemLaunch.Command("org.tizen.menu", null, guard), "( /usr/bin/app_launcher -s org.tizen.menu ) >/dev/null 2>&1 &", "no fallback: launch only");
+                    bool refused = false;
+                    try { SystemLaunch.Command("com.samsung.tv.coba.newhome", "com.samsung.tv.csfs", new[] { "a;reboot" }); }
+                    catch (ArgumentException) { refused = true; }
+                    T.True(refused, "shownBy ids are checked");
+                }
+                finally { SystemLaunch.SettleSeconds = settle; Directory.Delete(dir, true); }
             });
         }
     }
