@@ -118,7 +118,8 @@ The process stays alive with its window hidden and is driven through a pipe (`--
 opened read-write so it never reports end-of-file). One command per line:
 
 ```
-show | hide | toggle | banner | list | pad | guide | info | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests)
+show | hide | toggle | banner | list | pad | guide | info | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests, and for a Remapper shortcut while the tuner is on screen)
+resume (the launcher closed without opening anything: back if live TV is on screen) | rescan (watch the remote bridge's new forwarding node now)
 ```
 
 A launcher (the dock, Vetro's root agent) only has to run `echo show > /tmp/vetro-tuner.ctl`. Showing is instant (in-process ~1 ms; a cold start is

@@ -665,12 +665,33 @@ namespace Launcher.Tests
                 T.True(cx.Contains("else k 1; fi)") && !cx.Contains("rm"), "only digits reach the shell");
                 T.Eq(NumberPadModel.SendCommand("-", "k "), "(sleep 0.25; k minus) >/dev/null 2>&1 &", "a lone dash has no tuner part");
                 T.Eq(NumberPadModel.SendCommand("", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "nothing typed, nothing sent");
-                T.Eq(NumberPadModel.SendKeyCommand("XF86Red", "k "), "(sleep 0.25; k XF86Red) >/dev/null 2>&1 &", "a function key");
+                string cr = NumberPadModel.SendKeyCommand("XF86Red", "k ");
+                T.True(cr.Contains("[ -e /tmp/vetro-tuner.ctl.shown ] && [ -p /tmp/vetro-tuner.ctl ]; then echo hide > /tmp/vetro-tuner.ctl; sleep 0.3; fi; k XF86Red)"),
+                    "a colour key: the tuner on screen steps aside first (its window would swallow the named key), then the key goes to Samsung's live TV app");
+                T.True(NumberPadModel.SendKeyCommand("XF86TTXMIX", "k ").Contains("echo hide > /tmp/vetro-tuner.ctl") && NumberPadModel.ForLiveTv("XF86Blue"), "teletext and every colour key do the same");
+                T.Eq(NumberPadModel.SendKeyCommand("XF86Sleep", "k "), "(sleep 0.25; k XF86Sleep) >/dev/null 2>&1 &", "the sleep timer is not live TV's: sent as it is");
                 string ci = NumberPadModel.SendKeyCommand("XF86Info", "k ");
                 T.True(ci.Contains("[ -e /tmp/vetro-tuner.ctl.shown ]") && ci.Contains("[ -p /tmp/vetro-tuner.ctl ]") && ci.Contains("then echo info > /tmp/vetro-tuner.ctl; else k XF86Info; fi)"), "Info goes to the tuner on screen and by name otherwise");
-                T.True(!NumberPadModel.SendKeyCommand("XF86Red", "k ").Contains("tuner"), "the other function keys never go to the tuner");
+                T.True(!NumberPadModel.SendKeyCommand("XF86Sleep", "k ").Contains("tuner") && !NumberPadModel.ForLiveTv("XF86Sleep") && !NumberPadModel.ForLiveTv("XF86Info"), "the other function keys never go to the tuner");
+                T.True(c16.Contains("[ -p /tmp/vetro-tuner.ctl ]"), "digits go to the tuner only through a real pipe (a stale plain file is never written)");
+                foreach (string cmd in new[] { c16, cr, ci, NumberPadModel.SendKeyCommand("XF86Sleep", "k "), NumberPadModel.SendCommand("12", "k ") })
+                {
+                    if (!System.IO.File.Exists("/bin/sh")) break;
+                    var psi = new System.Diagnostics.ProcessStartInfo("/bin/sh") { RedirectStandardError = true, UseShellExecute = false };
+                    psi.ArgumentList.Add("-n"); psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(cmd);
+                    using (var sh = System.Diagnostics.Process.Start(psi)) { string err = sh.StandardError.ReadToEnd(); sh.WaitForExit(); T.True(sh.ExitCode == 0, "the pad's shell line parses: " + cmd + " " + err); }
+                }
                 T.Eq(NumberPadModel.SendKeyCommand("x; rm -rf /", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "a bad key name sends nothing");
                 var b = new CommandBuffer(); var bytes = Encoding.ASCII.GetBytes("pad\n"); T.Eq(b.Feed(bytes, bytes.Length)[0], Command.Pad, "pad command");
+                var rb = Encoding.ASCII.GetBytes("rescan\n"); T.Eq(new CommandBuffer().Feed(rb, rb.Length)[0], Command.Rescan, "rescan command (the remote bridge made a new forwarding node)");
+                string flag = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vetro-flag-test-" + System.Diagnostics.Process.GetCurrentProcess().Id);
+                OverlayFlag.Mark(flag, true, null);
+                T.Eq(System.IO.File.ReadAllText(flag), System.Diagnostics.Process.GetCurrentProcess().Id.ToString(), "an overlay flag names the launcher's pid (the tuner ignores a flag whose launcher is dead)");
+                OverlayFlag.Mark(flag, false, null);
+                T.True(!System.IO.File.Exists(flag), "an overlay flag is removed when its window goes");
+                OverlayFlag.Mark("/nonexistent-dir/x/flag", true, null);   // never throws
+                T.Eq(OverlayFlag.DockPath, "/tmp/vetro-dock.open", "the Dock's flag path (tuner/src/Core/OverlayFlag.cs reads the same)");
+                T.Eq(OverlayFlag.PadPath, "/tmp/vetro-numpad.open", "the osd 123's flag path (tuner/src/Core/OverlayFlag.cs reads the same)");
             });
 
             T.Run("volume model: step, clamp, mute, picture, bar", () =>

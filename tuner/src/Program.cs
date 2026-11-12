@@ -33,6 +33,9 @@ namespace Tuner
         private const int KeyInfo = 358;
         // Keys that belong to the system: the tuner steps aside (hides, or exits) and the system handles the key as usual.
         private static readonly HashSet<int> SystemKeys = new HashSet<int> { 63, 172, 139, 116 };
+        // The remote's 123 key. Vetro's own osd 123 holds it back in the remote bridge, so when the tuner reads it the TV is opening Samsung's
+        // own 123 pad (Vetro's is off, or the key came on a part of the remote the bridge does not hold): the tuner's panels make room for it.
+        private const int Key123 = 140;
         private const int ScreenW = 1920, ScreenH = 1080;
         private const double DigitSeconds = 2.0, ToastSeconds = 2.2, PadSeconds = 20.0, ListSeconds = 8.0, ProgramDelaySeconds = 1.8, InfoSeconds = 10.0;
         private static double BannerSeconds = 4.0;
@@ -60,6 +63,9 @@ namespace Tuner
         private static bool _takeoverBroken;
         private static readonly Takeover TakeoverState = new Takeover();
         private static IntPtr _takeoverTimer;
+        // Whether a key read from the remote went to the tuner's window (see KeyGate); "focus=0" in the features file turns the check off.
+        private static readonly KeyGate Gate = new KeyGate();
+        private static int _ownPid;
         private static int _controlFd = -1;
         private static IntPtr _controlHandler;
         private static readonly StringBuilder ControlBuf = new StringBuilder();
@@ -148,7 +154,8 @@ namespace Tuner
             OpenLog();
             if (takeover != null && _takeoverApp == null) Log("takeover: bad app id ignored");
             WritePid();
-            Log("start pid=" + Libc.getpid() + (_resident ? " resident" : ""));
+            _ownPid = Libc.getpid();
+            Log("start pid=" + _ownPid + (_resident ? " resident" : ""));
 
             // The channel service starts now, on its own thread, while this thread builds the window: the two do not depend on each other.
             if (Libc.pipe(Wake) != 0) { Log("pipe failed"); return 5; }
@@ -195,7 +202,8 @@ namespace Tuner
             if (_resident && _takeoverApp != null)
             {
                 _takeoverTimer = Efl.ecore_timer_add(0.5, OnTakeoverPoll, IntPtr.Zero);
-                Log("takeover: shows itself when " + _takeoverApp + " is on screen");
+                Log("takeover: shows itself when " + _takeoverApp + " is on screen on the TV input");
+                new Thread(FrontMain) { IsBackground = true, Name = "front" }.Start();
             }
 
             WatchNodes();
@@ -223,6 +231,7 @@ namespace Tuner
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
             Efl.elm_win_raise(_win);
+            Gate.Shown(Efl.ecore_time_get());
             if (_shown != null) ShowBanner(_shown);
             StartPrefetch();                                            // schedules may have gone stale while hidden (the store ages them), and a zap may have happened from the pipe
             if (_list != null) { _resyncLeft = 1; ResyncNow(); }        // Samsung's app may have changed the channel while we were hidden
@@ -241,6 +250,7 @@ namespace Tuner
             _active = false;
             MarkShown(false);
             Efl.evas_object_hide(_win);
+            Gate.Hidden();
             Log("hidden");
         }
 
@@ -725,9 +735,11 @@ namespace Tuner
 
         // ---- keys ----
 
-        private static void OnKey(int code)
+        /// <param name="from">Where the key came from (the input node, or the control pipe), for the log: a key that comes on a part of the
+        /// remote the remote bridge does not hold (its infrared side) shows up here with that node.</param>
+        private static void OnKey(int code, string from = null)
         {
-            Log("key " + code);
+            Log("key " + code + (from != null ? " from " + from : ""));
             Anim.FinishAll();                                           // a transition still running ends now: the key acts on the final screen
             if (!_active)
             {
@@ -735,6 +747,13 @@ namespace Tuner
                 if (IsChannelKey(code)) { ResyncSoon(); return; }       // Samsung's app has the same key and changes the channel itself: ours would be a second step from a stale channel
             }
             if (SystemKeys.Contains(code)) { Deactivate(code != KeyPower); return; }    // Home, Menu, Power...: step aside, the system does the rest
+            if (code == Key123)
+            {
+                // Samsung's own 123 pad is opening and takes the keys (KeyGate then leaves them to it): nothing of ours stays open under it.
+                CloseList(); ClosePad(); CloseGuide(); CloseInfo();
+                _banner.Hide(); _toast.Hide();
+                return;
+            }
             bool back = code == KeyBack || code == KeyEsc || code == KeyExit;
             _repeats = 0;
             if (InfoOpen)
@@ -846,10 +865,33 @@ namespace Tuner
         {
             if (!_resident || _takeoverApp == null || _takeoverBroken || !IsTvKey(code)) return false;
             int status = ReadTargetStatus();
-            if (!TakeoverState.KeyWake(status)) return false;
-            Log("takeover: key " + code + " with " + _takeoverApp + " status " + status + ", showing the tuner");
+            FrontApp.Kind front = CurrentFront();
+            if (!TakeoverState.KeyWake(status, TvInput(), front)) return false;
+            Log("takeover: key " + code + " with " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
             Activate();
             return true;
+        }
+
+        /// <summary>
+        /// The launcher closed without opening anything, or switched to the TV input (it writes "resume" on the control pipe): the tuner that
+        /// stepped aside for it comes back when live TV is what is on screen. Without this, Home then Back left Samsung's own app answering
+        /// the remote (OK opened Samsung's channel list) until a CH key.
+        /// </summary>
+        private static void Resume()
+        {
+            if (_active || !_resident || _takeoverApp == null || _takeoverBroken) return;
+            if (LauncherOpen()) { Log("resume: a launcher window is still open"); return; }
+            int status = ReadTargetStatus();
+            FrontApp.Kind front = CurrentFront();
+            bool tv = TvInput();
+            if (!TakeoverState.Resume(status, tv, front))
+            {
+                Log(TakeoverState.Held ? "resume: not on live TV (status " + status + ", tv input " + tv + ")"
+                                       : "resume: another app has the keys for now (front " + front + "); the tuner comes back with live TV");
+                return;
+            }
+            Log("resume: back on live TV, showing the tuner");
+            Activate();
         }
 
         /// <summary>KEY_1..KEY_9 are 2..10, KEY_0 is 11.</summary>
@@ -1054,7 +1096,10 @@ namespace Tuner
                 case "info": Activate(); if (InfoOpen) CloseInfo(); else OpenInfo(); break;
                 case "guide": Activate(); if (GuideOpen) CloseGuide(); else OpenGuide(); break;
                 case "repeat": int rk; if (p.Length > 1 && int.TryParse(p[1], out rk)) OnRepeat(rk); break;
-                case "key": int k; if (p.Length > 1 && int.TryParse(p[1], out k)) OnKey(k); break;   // as if the remote had sent it (testing)
+                // As if the remote had sent it: for testing, and for a Remapper shortcut whose key would otherwise be injected into this window and lost.
+                case "key": int k; if (p.Length > 1 && int.TryParse(p[1], out k) && k > 0 && k < 768) OnKey(k, "pipe"); break;
+                case "resume": Resume(); break;                // the launcher closed without opening anything (see Resume)
+                case "rescan": WatchNodes(); break;            // the remote bridge has just made a new forwarding node: watch it now, not at the next 3 s scan
                 case "tune":
                     int n;
                     Channel c = p.Length > 1 && int.TryParse(p[1], out n) && _list != null ? _list.ByNumber(n) : null;
@@ -1080,21 +1125,45 @@ namespace Tuner
             if (got == 0) return;
             _presses.Clear(); _held.Clear(); _released.Clear();
             _readers[index].Feed(_buf, (int)got, _presses, _held, _released);
-            if (DockPadOpen()) { _presses.RemoveAll(c => !SystemKeys.Contains(c)); _held.Clear(); if (_banner.Visible) _banner.Hide(); }   // the launcher's 123 pad has the keys (not ours) and the screen: the Banner steps aside
-            foreach (int code in _presses.ToArray()) { OnKey(code); BeginHold(code); }
+            if (_presses.Count > 0 || _held.Count > 0)
+            {
+                string why = LauncherOpen() ? "a launcher window has them" : (_active && !KeysAreOurs()) ? "another window has the focus" : null;
+                if (why != null)
+                {
+                    // The key went to another window, which answers it: the tuner leaves it alone (Home, Power... still make it step aside),
+                    // does not wake up on it, and its Banner makes room for that window.
+                    foreach (int c in _presses) if (!SystemKeys.Contains(c)) Log("key " + c + " from " + Path.GetFileName(_paths[index]) + " left alone: " + why);
+                    _presses.RemoveAll(c => !SystemKeys.Contains(c));
+                    _held.Clear();
+                    if (_banner.Visible) _banner.Hide();
+                }
+            }
+            foreach (int code in _presses.ToArray()) { OnKey(code, Path.GetFileName(_paths[index])); BeginHold(code); }
             foreach (int code in _held.ToArray()) OnRepeat(code);
             foreach (int code in _released.ToArray()) EndHold(code);
         }
 
-        /// <summary>
-        /// The launcher's 123 pad is open: it keeps the file below fresh (touched on every key, gone when it closes). A file older than 20 s is
-        /// a leftover (the pad closes itself after 14 s without a key), so a crashed launcher cannot leave the tuner deaf.
-        /// </summary>
-        private const string DockPadFlag = "/tmp/vetro-numpad.open";
-        private static bool DockPadOpen()
+        /// <summary>The Dock, its Task manager or the osd 123 is on screen (OverlayFlag): the remote's keys are the launcher's.</summary>
+        private static bool LauncherOpen()
         {
-            try { return File.Exists(DockPadFlag) && (DateTime.UtcNow - File.GetLastWriteTimeUtc(DockPadFlag)).TotalSeconds < 20; }
-            catch (Exception) { return false; }
+            return OverlayFlag.Fresh(OverlayFlag.PadPath, OverlayFlag.PadSeconds) || OverlayFlag.Fresh(OverlayFlag.DockPath, OverlayFlag.DockSeconds);
+        }
+
+        /// <summary>With the tuner on screen: whether its window has the keyboard focus now, so that a key read from the remote is its own (KeyGate).</summary>
+        private static bool _focusBroken;
+        private static bool KeysAreOurs()
+        {
+            if (_focusBroken || !_features.On("focus")) return true;
+            bool focused;
+            try { focused = Efl.elm_win_focus_get(_win) != 0; }
+            catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+            {
+                _focusBroken = true;                                    // this TV has no such call: keys are not gated, as before
+                Log("focus: cannot be read (" + ex.GetType().Name + "), keys not gated");
+                return true;
+            }
+            if (Gate.Sample(focused)) Log(focused ? "focus: the tuner has the keys" : "focus: another window has the keys");
+            return Gate.Accepts(Efl.ecore_time_get());
         }
 
         private static void WatchNodes()
@@ -1199,19 +1268,117 @@ namespace Tuner
         {
             int status = ReadTargetStatus();
             if (_takeoverBroken) return;
-            MarkTvUp(status >= 0 && Takeover.IsUp(status));
-            switch (TakeoverState.Poll(status, _active))
+            bool tv = TvInput();
+            FrontApp.Kind front = CurrentFront();
+            bool launcher = LauncherOpen();
+            if (launcher) front = FrontApp.Kind.Unknown;                 // the launcher has the keys: who else might is beside the point (Takeover)
+            if (_active) KeysAreOurs();                                  // samples the focus, so the log shows when another window takes the keys
+            bool up = status >= 0 && Takeover.IsUp(status) && tv;
+            // Samsung's live TV is what is on screen: the osd 123 sends its digits to the tuner only then (over another app they are that app's keys).
+            // Not touched while a launcher window is open: it has the keys then, and what counts is what was in front when it opened (the osd 123
+            // opened over YouTube must not start sending its digits to the tuner).
+            if (!launcher) MarkTvUp(up && front != FrontApp.Kind.Other);
+            else if (!up) MarkTvUp(false);
+            switch (TakeoverState.Poll(status, _active, tv, front))
             {
                 case Takeover.Step.Show:
-                    Log("takeover: " + _takeoverApp + " status " + status + ", showing the tuner");
+                    if (launcher) break;                                 // the launcher is open over live TV: the tuner waits for it to close (Resume)
+                    Log("takeover: " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
                     Activate();
                     break;
                 case Takeover.Step.Hide:
-                    // Another app came in front (Netflix...): the tuner reads the remote itself, so it must go, or OK there opens its channel list.
-                    Log("takeover: " + _takeoverApp + " status " + status + ", another app is in front, hiding the tuner");
+                    // Another app came in front (Netflix...) or the input is no longer the TV tuner (HDMI): the tuner reads the remote itself, so it
+                    // must go, or OK there opens its channel list (and on HDMI the keys the TV passes to the device through HDMI-CEC would be lost).
+                    Log("takeover: " + _takeoverApp + " status " + status + (tv ? "" : ", input is not the TV tuner") + (front == FrontApp.Kind.Other ? ", another app has the keys" : "") + ", hiding the tuner");
                     Deactivate(false);
                     break;
+                case Takeover.Step.Reclaim:
+                    // On screen, but the window manager gives the keys to Samsung's app (a window that closed handed the focus back to it):
+                    // the tuner asks for them again, or Samsung's app would answer the remote under it while the tuner leaves the keys alone.
+                    if (launcher) break;
+                    Log("takeover: " + _takeoverApp + " has the keys while the tuner is on screen, asking for them back");
+                    Efl.elm_win_activate(_win);
+                    Efl.elm_win_raise(_win);
+                    break;
             }
+        }
+
+        // ---- the TV's input: the tuner covers the TV tuner only, never HDMI ----
+
+        private const string SourceKey = "memory/system/source_type";
+        private static bool _sourceBroken;
+        private static int _lastSource = int.MinValue;
+
+        /// <summary>True when the TV shows its own tuner (source type 0), or when that cannot be read (the tuner then behaves as before).</summary>
+        private static bool TvInput()
+        {
+            if (_sourceBroken) return true;
+            int source;
+            try
+            {
+                if (Efl.vconf_get_int(SourceKey, out source) != 0) return true;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+            {
+                _sourceBroken = true;
+                Log("input: " + SourceKey + " cannot be read (" + ex.GetType().Name + "), every input counts as the TV tuner");
+                return true;
+            }
+            if (source != _lastSource) { Log("input: source type " + (_lastSource == int.MinValue ? "first" : _lastSource.ToString()) + " -> " + source + (source == 0 ? " (TV)" : " (not the TV tuner)")); _lastSource = source; }
+            return source == 0;
+        }
+
+        // ---- who has the keys: read on a thread of its own, the call asks the window manager over D-Bus ----
+
+        private static readonly object FrontLock = new object();
+        private static bool _frontOk, _frontBroken;
+        private static int _frontPid;
+        private static string _frontAppId;
+        private static long _frontAt;                   // Environment.TickCount64 of the last reading; 0 = none yet
+        private static string _frontLogged;
+
+        private static void FrontMain()
+        {
+            var buf = new byte[256];
+            while (true)
+            {
+                Thread.Sleep(500);
+                bool ok = false; int pid = 0; string app = null;
+                try
+                {
+                    ok = Efl.aul_window_get_focused_pid(out pid) == 0 && pid > 0;
+                    if (ok)
+                    {
+                        Array.Clear(buf, 0, buf.Length);
+                        if (Efl.aul_app_get_appid_bypid(pid, buf, buf.Length) == 0)
+                        {
+                            int n = Array.IndexOf(buf, (byte)0);
+                            app = Encoding.ASCII.GetString(buf, 0, n < 0 ? buf.Length : n);
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+                {
+                    _frontBroken = true;
+                    Log("front: the window manager cannot be asked (" + ex.GetType().Name + "), the takeover goes by the app status only");
+                    return;
+                }
+                catch (Exception ex) { ok = false; Log("front: " + ex.Message); }
+                lock (FrontLock) { _frontOk = ok; _frontPid = pid; _frontAppId = app; _frontAt = Environment.TickCount64; }
+            }
+        }
+
+        /// <summary>Who has the keys now (FrontApp), from the last reading of the thread above. Logs every change.</summary>
+        private static FrontApp.Kind CurrentFront()
+        {
+            if (_frontBroken) return FrontApp.Kind.Unknown;
+            bool ok; int pid; string app; long at;
+            lock (FrontLock) { ok = _frontOk; pid = _frontPid; app = _frontAppId; at = _frontAt; }
+            if (at == 0) return FrontApp.Kind.Unknown;
+            FrontApp.Kind kind = FrontApp.Judge(ok, pid, app, (Environment.TickCount64 - at) / 1000.0, _ownPid, _takeoverApp);
+            string seen = kind + (app != null ? " " + app : ok ? " pid " + pid : "");
+            if (seen != _frontLogged) { Log("front: " + seen + (_active ? " (tuner shown)" : " (tuner hidden)")); _frontLogged = seen; }
+            return kind;
         }
 
         // ---- a flag for the launcher: is Samsung's live TV on screen? ----

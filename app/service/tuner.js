@@ -39,11 +39,12 @@ var FEATURES = [
     {id: 'banner', label: 'Channel banner', hint: 'The bar with the channel and programme when you change channel.'},
     {id: 'list', label: 'Channel list', hint: 'OK opens the list.'},
     {id: 'guide', label: 'TV guide', hint: 'Up, Guide or EPG opens the guide.'},
-    {id: 'pad', label: 'Number pad', hint: 'Left or a number key opens the pad.'},
+    {id: 'pad', label: 'Number pad', hint: 'Right or a number key opens the pad.'},
     {id: 'info', label: 'Info panel', hint: 'The Info key.'},
-    {id: 'audio', label: 'Audio language key', hint: 'Right cycles the audio track.'},
+    {id: 'audio', label: 'Audio language key', hint: 'Left cycles the audio track.'},
     {id: 'hold', label: 'Hold to repeat', hint: 'CH+, CH- and the arrows keep going while held.'},
-    {id: 'logos', label: 'Channel logos', hint: 'The TV\'s own channel pictures in the banner, list, pad, info and guide (only those it has saved).'}
+    {id: 'logos', label: 'Channel logos', hint: 'The TV\'s own channel pictures in the banner, list, pad, info and guide (only those it has saved).'},
+    {id: 'focus', label: 'Keys only when in front', hint: 'The tuner leaves the remote alone while another window has it: an app, Samsung\'s own 123 pad or panels. Switch off only if the tuner stops answering the remote.'}
 ];
 var FEATURE_IDS = FEATURES.map(function (f) { return f.id; });
 var DLL = 'vetro-tuner.dll';

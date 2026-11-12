@@ -252,6 +252,8 @@ namespace Launcher
                     File.Delete(_pidPath);
                     Libc.unlink(_fifoPath);
                 }
+                if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, false, null);
+                if (_pad != null && _pad.IsOnScreen) OverlayFlag.Mark(OverlayFlag.PadPath, false, null);
             }
             catch (Exception) { }
         }
@@ -365,6 +367,49 @@ namespace Launcher
         /// <summary>Whichever page is on screen is showing (or coming in).</summary>
         private static bool DockActive { get { return _tasksOn ? _tasksCtl.IsActive : _ctl.IsActive; } }
 
+        // The window is mapped for the Dock or the Task manager (not for the start-up pre-map): its flag (OverlayFlag) tells the tuner the keys
+        // are the launcher's. Set when the window is shown, cleared when the fade has ended and the window is hidden.
+        private static bool _dockMapped;
+
+        // The remote's 123 key as evdev reports it. Vetro's osd 123 holds it back in the remote bridge, so when it is read here Samsung's own
+        // 123 pad is opening (Vetro's is off, or the key came on a part of the remote the bridge does not hold).
+        private const int Raw123Code = 140;
+
+        private static void MarkDock(bool on)
+        {
+            _dockMapped = on;
+            OverlayFlag.Mark(OverlayFlag.DockPath, on, Log);
+        }
+
+        // ------------------------------------------------------------------ Vetro TV Tuner
+
+        private const string TunerPipe = "/tmp/vetro-tuner.ctl";
+        private static bool _padFromDock;   // the osd 123 was opened over the Dock: its close counts as the Dock's
+        private static bool _hideFor123;    // the Dock is going away for Samsung's own 123 pad: the tuner must not come back over it
+
+        /// <summary>
+        /// The launcher went away without opening anything (Back, Home, its idle time), or switched to the TV input. The Home key that opened it
+        /// also sent Vetro TV Tuner away; the tuner comes back now if live TV is what is on screen (it checks that itself: Takeover.Resume).
+        /// Without this, Home then Back left Samsung's own live TV app answering the remote until a CH key. Never sent while a window of ours
+        /// is still on screen. A plain non-blocking write: nothing happens when the tuner is not running.
+        /// </summary>
+        private static void ResumeTuner(string why)
+        {
+            if (_dockMapped || (_pad != null && _pad.IsOnScreen)) return;
+            int fd = Libc.open(TunerPipe, Libc.O_WRONLY | Libc.O_NONBLOCK);
+            if (fd < 0) return;
+            try
+            {
+                byte[] b = System.Text.Encoding.ASCII.GetBytes("resume\n");
+                Libc.write(fd, b, (UIntPtr)b.Length);
+                Log("tuner: resume (" + why + ")");
+            }
+            finally { Libc.close(fd); }
+        }
+
+        /// <summary>A launch that leaves the viewer on live TV: the TV input, or Samsung's live TV app itself.</summary>
+        private static bool StaysOnLiveTv(AppEntry e) { return e == null || e.SourceType == 0 || e.AppId == "org.tizen.tv-viewer"; }
+
         private static void ShowDock()
         {
             if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
@@ -382,6 +427,8 @@ namespace Launcher
             // The page may have been put away while its objects were still opaque (a swap to the inputs panel): draw its
             // state for presence 0 before the window is mapped, or one frame can show it whole before the entrance starts.
             _dock.Apply(_ctl);
+            _hideFor123 = false;
+            MarkDock(true);
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
             StartClock();
@@ -753,6 +800,7 @@ namespace Launcher
         {
             if (_idle == IntPtr.Zero) _idle = Efl.ecore_timer_add(Controller.IdleHideSeconds, IdleCb, IntPtr.Zero);
             else Efl.ecore_timer_reset(_idle);
+            if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, true, Log);   // touched on every key: the tuner trusts it for the idle time
         }
 
         private static void CancelIdle()
@@ -780,11 +828,14 @@ namespace Launcher
                     if (_tasksCtl.Phase == Phase.Hidden)
                     {
                         Efl.evas_object_hide(_win);
+                        MarkDock(false);
                         LeaveTasks(false);   // the next Home opens on the apps row, in the dock's own window size
                         more = false;
                         AppEntry chosen = _pendingLaunch;
                         _pendingLaunch = null;
                         if (chosen != null) Launch(chosen);
+                        if (_hideFor123) _hideFor123 = false;
+                        else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "task manager closed" : "opened " + chosen.AppId);
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     if (more) return 1;
@@ -793,14 +844,18 @@ namespace Launcher
                 }
                 more = _ctl.Tick(dt);
                 _dock.Apply(_ctl);
-                if (_ctl.Phase == Phase.Hidden)
+                if (_ctl.Phase == Phase.Hidden && _dockMapped)
                 {
                     Efl.evas_object_hide(_win);
+                    MarkDock(false);
                     // The fade has already rendered on earlier frames; a slow platform launch cannot freeze it.
                     AppEntry pending = _pendingLaunch;
                     _pendingLaunch = null;
                     if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
+                    if (_hideFor123) _hideFor123 = false;
+                    else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId);
                 }
+                else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
                 if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                 if (more) return 1;
             }
@@ -997,7 +1052,17 @@ namespace Launcher
                     {
                         string cmd = kind == PadResult.Send ? NumberPadModel.SendCommand(what, KeyTool) : NumberPadModel.SendKeyCommand(what, KeyTool);
                         Log("pad: sending " + what + " rc=" + Libc.system(cmd));
+                    },
+                    delegate (bool sent)
+                    {
+                        // Opened over the Dock, closed with nothing sent after the Dock had gone too: the launcher left without opening
+                        // anything, as when the Dock closes by itself. Opened over anything else (teletext, an app), the pad never brings the tuner.
+                        bool fromDock = _padFromDock;
+                        _padFromDock = false;
+                        if (fromDock && !sent) ResumeTuner("osd 123 closed after the dock");
                     });
+            bool opening = !_pad.IsShown;
+            if (opening) _padFromDock = _dockMapped;
             _pad.Toggle();
         }
 
@@ -1043,6 +1108,7 @@ namespace Launcher
                             case Command.Toggle: _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else ShowDock(); break;
                             case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
                             case Command.Pad: TogglePad(); break;
+                            case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
                         }
                     }
                 }
@@ -1069,7 +1135,22 @@ namespace Launcher
                     {
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
-                        if (code != _homeCode) { NavFromInput(code); continue; }
+                        if (code != _homeCode)
+                        {
+                            // The osd 123 has the keyboard focus and answers through its own window: the Dock or the Task manager under it
+                            // must not answer the same press (Right moved both, OK on Done also opened the focused tile).
+                            if (_pad != null && _pad.IsOnScreen) continue;
+                            if (code == Raw123Code && DockActive)
+                            {
+                                // Samsung's own 123 pad opens and takes the keys: two panels answering the arrows is worse than one.
+                                Log("123 reached the TV (Samsung's own pad opens): the dock steps aside");
+                                _hideFor123 = true;
+                                HideDock();
+                                continue;
+                            }
+                            NavFromInput(code);
+                            continue;
+                        }
                         if (_pad != null && _pad.IsShown) _pad.Close();
                         double now = Efl.ecore_time_get();
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.

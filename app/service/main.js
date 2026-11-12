@@ -760,7 +760,8 @@ function runActions(actions, direct, dispatchGuard) {
         // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
         if(a.type==='launch'&&!direct&&remap.ruleRisk(a.appId,packageOf)){skipped.push('launch:factory-app');return;}
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
-        else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
+        // A named key goes to the window with the focus; with Vetro TV Tuner on screen that is the tuner's, so its keys go to it (key-routing.js).
+        else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&keyRouting.keyCommand(key,control.injectCommand(key));if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
@@ -769,7 +770,12 @@ var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var volumeKeys=require('./volume-keys.js');
 // The glass volume pill is on when the dock (or the custom launcher) runs and the user switched it on.
 function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true};}
-var volumeRepeat=volumeKeys.repeater({reinject:function(key){return agentExecute(control.injectCommand(key),5000);}});
+var volumeRepeat=volumeKeys.repeater({reinject:function(key){var c=volumeKeys.reinjectCommand(key);return c?agentExecute(c,5000):Promise.resolve();}});
+var keyRouting=require('./key-routing.js');
+// Every stop of the bridge (asked for, or the helper went away on its own) ends a volume repeat: its release will never come.
+// Once a helper holds the remote, its forwarding node is new: the launcher and the tuner are told to watch it now, not at their next 3 s scan.
+var physicalHooks={onStop:function(){volumeRepeat.stop();},
+    onConnect:function(status){if(status&&status.policy&&status.policy.mode==='filter')agentExecute(keyRouting.rescanCommand(),5000).catch(function(){});}};
 var physical=new PhysicalInput(agentExecute,function(event){
     if(inputLifecycleActive&&volumeKeys.wants(event,keyFlags())){
         volumeRepeat.event(event);
@@ -782,7 +788,7 @@ var physical=new PhysicalInput(agentExecute,function(event){
     var generation=inputGeneration;
     function current(){return inputLifecycleActive&&generation===inputGeneration;}
     actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current())pauseInputFault(e.message);}).finally(function(){pendingActions--;});
-});
+},physicalHooks);
 var inputObservers=[], inputPaused=false, inputRestoring=false;
 // inputPaused is the user's own pause (listening mode) and lasts until they act. A fault is different: a rule's action failed
 // (broker down, TV busy, agent reconnecting), so the keys are given back to the TV at once, but only for a while. Without

@@ -31,10 +31,15 @@ function devices(text) {
         return d;
     });
 }
-function Bridge(execute, onEvent) {
+// hooks (optional): onConnect(status) once a helper is connected and holds the remote (the forwarding node now exists), and
+// onStop() whenever the bridge stops for any reason (asked, the helper disconnected, a bad frame), so a key that was held
+// down at that moment never keeps acting (the volume repeat waits for a release that will not come).
+function Bridge(execute, onEvent, hooks) {
     this.execute = execute; this.onEvent = onEvent; this.current = {mode:'off',connected:false};
     this.events = []; this.server = null; this.socket = null; this.generation = 0; this.lastError=null; this.cancel=null;
+    this.hooks = hooks || {};
 }
+function callHook(fn, arg){if(typeof fn==='function'){try{fn(arg);}catch(e){}}}
 Bridge.prototype.inventory = function () {
     return this.execute('cat /proc/bus/input/devices',10000).then(function(r){
         if (r.exit_code || r.timed_out) throw new Error('input inventory unavailable');
@@ -50,6 +55,7 @@ Bridge.prototype.stop = function () {
     if(cancel)cancel();
     if(socket)socket.destroy();
     if(server)server.close();
+    callHook(this.hooks.onStop);
 };
 Bridge.prototype.start = function (device, mode, tokens) {
     var self=this;
@@ -88,6 +94,7 @@ Bridge.prototype.start = function (device, mode, tokens) {
                         if(!authenticated){
                             if(fields.length!==9||fields[0]!=='AUTH'||fields[2]!=='0'||fields[3]!=='0'||Buffer.from(fields[4],'base64').toString()!==selected.name||Buffer.from(fields[5],'base64').toString()!==selected.node||fields[8]!==mode){fail(new Error('unexpected input helper identity'));return;}
                             authenticated=true;self.current.connected=true;clearTimeout(timer);settled=true;resolve(self.status());
+                            callHook(self.hooks.onConnect,self.status());
                         }else{
                             try{
                                 if(fields.length!==3||fields[0]!=='EVENT'||+fields[1]!==seq+1)throw new Error('invalid input sequence');

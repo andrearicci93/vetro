@@ -11,7 +11,8 @@ namespace Launcher.Ui
     /// (1-9, 0, dash, backspace, a way to the colour page, a "Done" chip above and the typed number in a chip at the other end) and the colour page
     /// (back, A B C D, teletext, timer, info, with the name of the focused key above it).
     /// It takes the keyboard focus while it is open (Left/Right/Up/Down/OK/Back), so the app underneath does not see
-    /// those keys; "Done" or a function key closes it, gives the focus back and then sends the keys to that app.
+    /// those keys; "Done" or a function key closes it, gives the focus back and then sends the keys to that app. They are sent once the
+    /// window is really gone (end of the fade), never while it still has the focus: a key injected into the pad itself would be lost.
     /// Same material as the dock and the volume pill (Fumé): dark smoked body, thin light edge, an ice-white focus capsule that slides.
     /// </summary>
     internal sealed class NumberPad
@@ -21,9 +22,9 @@ namespace Launcher.Ui
         private const int NotificationLevelTop = 40, WindowLayer = 900, TypedSize = 36;
         private const string Font = "SamsungOneUI 500";
         private const double FadeSeconds = 0.12, IdleSeconds = 14, SlideRate = 18;
-        // While the pad is open this file exists (touched on every key). The tuner reads the remote straight from the input device, so it
-        // sees the arrows and OK too; it ignores the keys while the file is fresh, or Left/Right would also cycle its audio and open its channel pad.
-        private const string OpenFlag = "/tmp/vetro-numpad.open";
+        // While the pad is open this file exists (touched on every key, OverlayFlag). The tuner reads the remote straight from the input device,
+        // so it sees the arrows and OK too; it ignores the keys while the file is fresh, or Left/Right would also cycle its audio and open its channel pad.
+        private const string OpenFlag = OverlayFlag.PadPath;
 
         private sealed class Slot { public IntPtr Text, Icon, Mark, Dot; public int X; }
 
@@ -41,19 +42,31 @@ namespace Launcher.Ui
         private double _fade, _lastFrame, _focusX;
         private int _bodyX, _bodyW, _doneX, _doneW, _shownPage = -1;
 
-        public NumberPad(string assets, Action<string> log, int screenW, int screenH, Action<PadResult, string> send)
+        private readonly Action<bool> _closed;
+
+        /// <param name="closed">Called once the window is gone, with true when Done or a function key sent something.</param>
+        public NumberPad(string assets, Action<string> log, int screenW, int screenH, Action<PadResult, string> send, Action<bool> closed = null)
         {
-            _assets = assets; _log = log; _screenW = screenW; _screenH = screenH; _send = send;
+            _assets = assets; _log = log; _screenW = screenW; _screenH = screenH; _send = send; _closed = closed;
             _tick = Tick; _idleCb = OnIdle; _keyCb = OnKey;
         }
 
         public bool IsShown { get { return _shown && !_closing; } }
 
+        /// <summary>The window is mapped (open, or fading out): it has the keyboard focus, so the remote's keys are its own.</summary>
+        public bool IsOnScreen { get { return _shown; } }
+
         public void Toggle() { if (IsShown) Close(); else Open(); }
+
+        // What Done or a function key asked to send: sent when the fade has ended and the window is hidden (see the class summary).
+        private PadResult _pendingKind;
+        private string _pendingWhat;
 
         public void Open()
         {
             if (!Build()) return;
+            // Opened again before the fade of the last close ended (Done, then 123 at once): what Done asked for would land in this pad.
+            if (_pendingWhat != null) { _log("pad: reopened before \"" + _pendingWhat + "\" was sent; dropped"); _pendingWhat = null; }
             _model.Reset();
             _closing = false;
             LayoutPage(true);
@@ -295,6 +308,7 @@ namespace Launcher.Ui
                     _fade = 0; Efl.evas_object_hide(_win);
                     _shown = false; _closing = false; _animator = IntPtr.Zero;
                     MarkOpen(false);
+                    SendPending();
                     return 0;
                 }
                 if (!_model.OnDone)
@@ -306,7 +320,18 @@ namespace Launcher.Ui
                 Apply();
                 return 1;
             }
-            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; Efl.evas_object_hide(_win); MarkOpen(false); return 0; }
+            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; Efl.evas_object_hide(_win); MarkOpen(false); SendPending(); return 0; }
+        }
+
+        /// <summary>The window is gone: what Done or a function key asked for goes out now (the shell still waits a moment for the focus to move).</summary>
+        private void SendPending()
+        {
+            string what = _pendingWhat;
+            _pendingWhat = null;
+            if (what != null)
+                try { _send(_pendingKind, what); } catch (Exception ex) { _log("pad send: " + ex.Message); }
+            if (_closed != null)
+                try { _closed(what != null); } catch (Exception ex) { _log("pad closed: " + ex.Message); }
         }
 
         private void OnKey(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo)
@@ -320,8 +345,8 @@ namespace Launcher.Ui
                 switch (r)
                 {
                     case PadResult.Close: Close(); break;
-                    case PadResult.Send: { string typed = _model.Typed; Close(); _send(r, typed); break; }
-                    case PadResult.SendKey: { string k = _model.PendingKey; Close(); _send(r, k); break; }
+                    case PadResult.Send: { string typed = _model.Typed; Close(); _pendingKind = r; _pendingWhat = typed; break; }
+                    case PadResult.SendKey: { string k = _model.PendingKey; Close(); _pendingKind = r; _pendingWhat = k; break; }
                     case PadResult.None: break;
                     default:
                         // A move onto the other page starts the focus capsule at the cell it lands on.
@@ -333,11 +358,7 @@ namespace Launcher.Ui
             catch (Exception ex) { _log("pad key: " + ex.Message); }
         }
 
-        private void MarkOpen(bool on)
-        {
-            try { if (on) File.WriteAllText(OpenFlag, "1"); else if (File.Exists(OpenFlag)) File.Delete(OpenFlag); }
-            catch (Exception ex) { _log("pad flag: " + ex.Message); }
-        }
+        private void MarkOpen(bool on) { OverlayFlag.Mark(OpenFlag, on, _log); }
 
         private void ArmIdle() { MarkOpen(true); DisarmIdle(); _idle = Efl.ecore_timer_add(IdleSeconds, _idleCb, IntPtr.Zero); }
         private void DisarmIdle() { if (_idle != IntPtr.Zero) { Efl.ecore_timer_del(_idle); _idle = IntPtr.Zero; } }

@@ -36,6 +36,10 @@ namespace Tuner.Native
         [DllImport(Elm)] public static extern int elm_win_aux_hint_add(IntPtr win, string hint, string val);
         [DllImport(Elm)] public static extern void elm_win_activate(IntPtr win);
         [DllImport(Elm)] public static extern void elm_win_raise(IntPtr win);
+        // Whether the window has the keyboard focus (Eina_Bool). The tuner reads the remote from evdev, whatever window the keys go to;
+        // this tells it whether a key went to its own window (KeyGate). Exported by the firmware's libelementary; how a notification
+        // window reports it on the TV is learned at run time (a window that never reports the focus is not gated).
+        [DllImport(Elm)] public static extern byte elm_win_focus_get(IntPtr win);
 
         // --- evas: objects and text ---
         [DllImport(Evas)] public static extern IntPtr evas_object_evas_get(IntPtr obj);
@@ -99,6 +103,15 @@ namespace Tuner.Native
 
         // The application manager's state of one app (libaul): 2 focus, 3 visible, 4 background, negative = not answered. Used by the takeover.
         [DllImport("libaul.so.0")] public static extern int aul_app_get_status(string appId);
+        // The process whose window has the keyboard focus (asks the window manager, 0 = AUL_R_OK) and the app id of a process
+        // (0 = found; a process that is not an app, such as the launcher or the tuner itself, is not found). Read on a thread of
+        // their own (FrontApp): the first is a D-Bus call to the window manager and must never hold up the screen.
+        [DllImport("libaul.so.0")] public static extern int aul_window_get_focused_pid(out int pid);
+        [DllImport("libaul.so.0")] public static extern int aul_app_get_appid_bypid(int pid, byte[] appId, int len);
+
+        // The TV's current input, memory/system/source_type (the key the launcher's input panel reads): 0 is the TV tuner, 13-16 are
+        // HDMI 1-4 (Samsung's Source enum). The call returns 0 when the key was read.
+        [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
 
         /// <summary>Name of the evas engine in use, or null when it cannot be read.</summary>
         public static string EngineName(IntPtr evas)

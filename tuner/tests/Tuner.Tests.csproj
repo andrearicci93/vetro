@@ -19,6 +19,9 @@
     <Compile Include="../src/Core/GuideGrid.cs" />
     <Compile Include="../src/Core/GuideScene.cs" />
     <Compile Include="../src/Core/Takeover.cs" />
+    <Compile Include="../src/Core/KeyGate.cs" />
+    <Compile Include="../src/Core/OverlayFlag.cs" />
+    <Compile Include="../src/Core/FrontApp.cs" />
     <Compile Include="../src/Core/ClientFolders.cs" />
     <Compile Include="../src/Core/InfoPanel.cs" />
     <Compile Include="../src/Core/ProgressRow.cs" />

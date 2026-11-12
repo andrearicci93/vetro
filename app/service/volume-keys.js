@@ -18,6 +18,12 @@ var TOKENS = GROUPS.volume.concat(GROUPS.pad);
 
 function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, String(code)); }
 
+// The key the remote sent, sent again by name when the dock cannot be reached: only the four names of the table above. control.js has no
+// XF86NumberPad (it is not offered to shortcuts), so going through its list left the 123 key dead whenever the dock was down.
+var NATIVE = {};
+Object.keys(KEYS).forEach(function (c) { NATIVE[KEYS[c].native] = true; });
+function reinjectCommand(native) { return NATIVE[native] === true ? '/usr/bin/input_keyevent ' + native : null; }
+
 // Tokens the bridge must hold back, beside the ones the shortcuts ask for (no duplicates).
 // flags: {volume: bool, pad: bool}
 function withTokens(tokens, flags) {
@@ -85,4 +91,4 @@ function repeater(opts) {
     };
 }
 
-module.exports = {enabled: enabled, repeater: repeater, KEYS: KEYS, TOKENS: TOKENS, FIFO: FIFO, isVolumeCode: isVolumeCode, withTokens: withTokens, wants: wants, handle: handle};
+module.exports = {enabled: enabled, repeater: repeater, KEYS: KEYS, TOKENS: TOKENS, FIFO: FIFO, isVolumeCode: isVolumeCode, withTokens: withTokens, wants: wants, handle: handle, reinjectCommand: reinjectCommand};

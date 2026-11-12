@@ -161,8 +161,22 @@ namespace Launcher.Core
             if (number.Length > 0) tuner.Append(" echo 'tune ").Append(number).Append("' > /tmp/vetro-tuner.ctl;");
             if (byName.Length == 0) return "(sleep 0.25) >/dev/null 2>&1 &";
             if (tuner.Length == 0) return "(sleep 0.25;" + byName.ToString().TrimEnd(';') + ") >/dev/null 2>&1 &";
-            return "(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ] && [ -e /tmp/vetro-tuner.ctl.tv ]; then" + tuner
+            return "(sleep 0.25; p=$(cat " + TunerPid + " 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ] && [ -e " + TunerPipe + ".tv ] && [ -p " + TunerPipe + " ]; then" + tuner
                 + " else" + byName + " fi) >/dev/null 2>&1 &";
+        }
+
+        private const string TunerPid = "/home/owner/vetro-tuner.pid", TunerPipe = "/tmp/vetro-tuner.ctl";
+        // The tuner is alive (pid), on screen (flag) and its pipe is a pipe: a stale file would otherwise block or be created as a plain file.
+        private const string TunerShown = "p=$(cat " + TunerPid + " 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ] && [ -e " + TunerPipe + ".shown ] && [ -p " + TunerPipe + " ]; then ";
+
+        /// <summary>
+        /// The keys whose screen belongs to Samsung's live TV app: the colour keys (HbbTV, the red button) and teletext. A key sent by name goes to
+        /// the window that has the keyboard focus, and with Vetro TV Tuner on screen that is the tuner's own window, which does not take named keys:
+        /// the key would be lost. So the tuner is asked to step aside first, and the key then reaches Samsung's app (CH+/CH- bring the tuner back).
+        /// </summary>
+        public static bool ForLiveTv(string key)
+        {
+            return key == "XF86Red" || key == "XF86Green" || key == "XF86Yellow" || key == "XF86Blue" || key == "XF86TTXMIX";
         }
 
         /// <summary>The same for one function key (colour, teletext, record...).</summary>
@@ -171,10 +185,10 @@ namespace Launcher.Core
             string safe = key != null && KeyName.IsMatch(key) ? key : "";
             // A key sent by name comes from the injector, not from the remote, so Vetro's Live TV (which reads the remote's input device) never sees it,
             // and Samsung's app would answer Info with its own panel. With the tuner on screen the pad asks it for its own info panel instead.
-            // The tuner must be alive (pid), on screen (flag) and its pipe must be a pipe: a stale file would otherwise block or be created as a plain file.
             if (safe == "XF86Info")
-                return "(sleep 0.25; p=$(cat /home/owner/vetro-tuner.pid 2>/dev/null); if [ -n \"$p\" ] && [ -d /proc/$p ] && [ -e /tmp/vetro-tuner.ctl.shown ] && [ -p /tmp/vetro-tuner.ctl ]; then echo info > /tmp/vetro-tuner.ctl; else "
-                    + keyTool + safe + "; fi) >/dev/null 2>&1 &";
+                return "(sleep 0.25; " + TunerShown + "echo info > " + TunerPipe + "; else " + keyTool + safe + "; fi) >/dev/null 2>&1 &";
+            if (safe.Length > 0 && ForLiveTv(safe))
+                return "(sleep 0.25; " + TunerShown + "echo hide > " + TunerPipe + "; sleep 0.3; fi; " + keyTool + safe + ") >/dev/null 2>&1 &";
             return Wrap(safe, keyTool, "");
         }
     }
