@@ -129,7 +129,7 @@ The root helper is started through the TV's own SDB service, so the TV has to ta
 
 - On the TV, open the Developer Mode screen again (**Apps**, then **12345**).
 - Set **Host PC IP** to `127.0.0.1` and restart the TV.
-- Wait up to 90 seconds and open the dashboard. It says *Root agent: connected* when it worked.
+- Allow time for startup and open the dashboard. It says *Root agent: connected* when it worked. Startup can exceed 90 seconds on some TVs; see [Check that it starts by itself](#check-that-it-starts-by-itself).
 
 Good to know:
 
@@ -138,7 +138,8 @@ Good to know:
 
 ### Check that it starts by itself
 
-- After a cold boot, startup and root can take **up to 90 seconds**. Wait before treating an unavailable dashboard or agent as a failure.
+- After a full restart, startup and root can take **more than a minute**. **90 seconds is not a universal deadline:** on a Q60B (QE43Q60BAUXXC, Tizen 6.5, T-NKLBDEUC-1720.7), Vetro 0.5.0's service, UID-0 agent and dock were observed recovered after about 100 seconds in a software-restart test. This is one measured recovery, not a maximum or a power-cut test.
+- The TV picture can already be on while Vetro is still starting. Check the service, root agent and launcher separately: a reachable `/status` does not mean the agent is connected, and a connected agent does not by itself prove the launcher is running. Home can still open Samsung's screen before the replacement is ready.
 - To test it: fully power off the TV, unplug it for 30 seconds, turn it on, and open `/status` and `/monitor?scope=summary` without opening Vetro. Check for a new boot, a running service and an authenticated UID-0 agent. Keep boot identifiers private. Standby is not a cold boot.
 - See the [release audit](RELEASE-AUDIT.md) for current results.
 
@@ -164,8 +165,26 @@ Open `http://TV_IP:8099/status` in a browser and read these fields:
 | --- | --- | --- |
 | `"mode": "app-only"` | The package on the TV is the app-only one, with no root integration. | Install the package with the root integration: Apps2Samsung (way 1), or build it with `node build.cjs` in `rooting/` (manual step 3). |
 | A message such as `<operation>: TV platform adapter unavailable`, together with `"mode": "app-only"` in the status output | The package on the TV was built without the integration builder, so it has no TV platform adapter. | Install the package with the root integration: Apps2Samsung (way 1), or build it with `node build.cjs` in `rooting/` (manual step 3; see [rooting/README.md](../../rooting/README.md)). |
-| `"mode": "tv-integration"` and `"agent": {"connected": false}` | The integration is there but the helper has not connected. | Check that Developer Mode is on and **Host PC IP** is `127.0.0.1` ([last steps](#let-the-tv-reach-its-own-sdb-service)), that you restarted the TV afterwards, and that you waited 90 seconds. |
-| The page does not load at all | The background service is not running. | Open **Vetro** on the TV once, wait 10 seconds and reload. If that does not help, see [Check that it starts by itself](#check-that-it-starts-by-itself). |
-| `"attempts"` lists launches that end without `agent-connected` | Root did not work on this firmware, or SDB refused the connection. | Download the report from **Diagnostics** and attach it to a new issue; it contains no addresses or serial numbers. |
+| `"mode": "tv-integration"` and `"agent": {"connected": false}` | The integration is there but the helper has not connected. | Check that Developer Mode is on and **Host PC IP** is `127.0.0.1` ([last steps](#let-the-tv-reach-its-own-sdb-service)). If this is just after a restart, allow for the TV's startup time and inspect the `rooting.phase` and `rooting.failure` fields rather than treating 90 seconds as a deadline. |
+| The page does not load at all | The background service is not answering yet; it may still be starting or may have failed. | Allow for startup first. Open **Vetro** once if it remains unavailable; when testing unattended startup, record that manual launch because it can no longer prove automatic recovery. See [Check that it starts by itself](#check-that-it-starts-by-itself). |
+| `"attempts"` lists launches that end without `agent-connected` | The observed attempts did not establish an authenticated root connection; startup may still be retrying. | Inspect the current `rooting.phase` and `rooting.failure`, then download the report from **Diagnostics** if it keeps failing. An earlier failed attempt alone does not establish firmware incompatibility. |
 
-Several sections of the diagnostic report say *unavailable: no root agent connected* until the helper is up. That is expected during those first 90 seconds, and it is the usual picture for a TV where the Host PC IP step was skipped.
+Several sections of the diagnostic report say *unavailable: no root agent connected* until the helper is up. That can be normal during startup; a skipped Host PC IP step is another possible cause.
+
+### A third-party home screen opens late or reports a startup error
+
+Separate Vetro's readiness from the replacement app's readiness. A third-party
+launcher can start before Samsung's app-list API answers, even though it works
+when opened later. That app needs its own retry and recovery handling; a root
+connection or a successful Home-key remap does not prove its UI finished loading.
+Preserve existing app-disable flags and privacy settings while diagnosing it.
+
+Vetro's Home-key routing and the TV's native startup Home assignment are also
+different mechanisms. In a Q60B third-party integration, the `home_appid` and
+startup preferences named the replacement while the native
+`http://tizen.org/appcontrol/operation/main` assignment still named Samsung Home.
+The native assignment can be queried through `app_operation_get_current_app` in
+`libcapi-appfw-app-operation-tv.so.0`; reading the preferences alone did not reveal
+the mismatch. This is a diagnostic observation, not a Vetro native-Home setup
+feature or a generic instruction to rewrite those values. Any future write path
+needs original-value capture, readback, rollback and separate restart/wake tests.
