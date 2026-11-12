@@ -13,7 +13,7 @@
   <a href="https://discord.gg/Pe9BmthUar">Discord</a>
 </p>
 
-Vetro runs on your Samsung TV and gives you a dashboard, open from any computer or phone on your network. Replace Samsung's Home with a minimal launcher, switch off what tracks you and wastes memory, and make the remote open the apps you want. It needs root access on the TV and works on **Tizen 6 or newer** (2021 TVs and later); older TVs get the dashboard and diagnostics only. See [Compatibility](#compatibility).
+Vetro runs on your Samsung TV and gives you a dashboard, open from any computer or phone on your network. Replace Samsung's Home with a minimal launcher, switch off what tracks you and wastes memory, and make the remote open the apps you want. It needs root access on the TV and works on **Tizen 6 to 9** (most 2021–2025 TVs). Older TVs get the dashboard and diagnostics only, and so does Tizen 10 for now, because its firmware blocks the way Vetro gets root. See [Compatibility](#compatibility).
 
 <p align="center">
   <img src="app/docs/images/quick-settings-0.5.jpg" alt="Vetro dashboard, Quick settings, Privacy and ads: viewing-data collection, advertising and tracking services and DNS blocking switches" width="1000">
@@ -98,9 +98,12 @@ The root comes from [Chris Ritsen's Samsung TV root research](https://github.com
 
 Vetro is developed on a **Samsung Q80A**; everything else below comes from community reports. Find your Tizen version under **Settings › Support › About this TV**. The model year only gives a hint, and a firmware update can change the result.
 
+**Tizen 10 has no root yet.** A firmware update that moves a TV to Tizen 10 removes root: the launcher, privacy switches and remapper stop working ([#181](https://github.com/andrearicci93/vetro/issues/181)).
+
 | Tizen (typical year) | Dashboard, app list, diagnostics | Root features (launcher, privacy switches, remapper) | Reports |
 | --- | --- | --- | --- |
-| **9 and 10** (2024–2025) | Reported working | Reported working on some TVs; some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), fallback in 0.5.0 not yet tried), and root problems are reported on others ([#91](https://github.com/andrearicci93/vetro/issues/91), [#99](https://github.com/andrearicci93/vetro/issues/99)) | S90D, GU75CU7179, DUE77, CU8070 |
+| **10** (2026; some 2025 TVs after an update) | Reported working | **Not available yet:** the firmware blocks the method Vetro uses to get root ([#91](https://github.com/andrearicci93/vetro/issues/91), [#140](https://github.com/andrearicci93/vetro/issues/140), [#177](https://github.com/andrearicci93/vetro/issues/177), [#178](https://github.com/andrearicci93/vetro/issues/178)); a QN80F lost root when a firmware update moved it to Tizen 10 ([#181](https://github.com/andrearicci93/vetro/issues/181)). Vetro will support it as soon as a root method for Tizen 10 exists | M70H, M73H, U8000H, QN80F |
+| **9** (2024–2025) | Reported working | Reported working on some TVs; some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), fallback in 0.5.0 not yet tried), and root problems are reported on others ([#99](https://github.com/andrearicci93/vetro/issues/99)) | S90D, GU75CU7179, DUE77, CU8070 |
 | **7 and 8** (2023–2024) | Reported working | Reported working | S90C, S95C, Q65D |
 | **6.5** (2022) | Reported working | Reported working (the launcher needs Vetro 0.3.1 or newer) | Q60B, Q67B, QN85B, QN90B, S95B, BU8002, The Frame |
 | **6** (2021) | Reported working | Reported working; one TV needs the Host PC IP step to be confirmed ([#134](https://github.com/andrearicci93/vetro/issues/134)) | Q80A, Q70A, Q60A, QN85A, AU7000, AU7172 |
