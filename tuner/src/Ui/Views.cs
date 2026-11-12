@@ -69,14 +69,14 @@ namespace Tuner.Ui
 
     /// <summary>
     /// The channel Banner, in the bottom-left corner on the veil (no card): the big number, the name beside it with the logo at the right end
-    /// of the block, under the name what is on air, then the progress row across the block (x 96..936). The number stands on the baseline of the
-    /// second line (the programme, or "No programme information"), or of the name while there is no second line. Until the programme arrives the
-    /// second line and the progress row are empty; if the daemon has none the second line says so quietly.
+    /// of the block, under the name what is on air, then the progress row across the block (x 96..936). The number always stands on the baseline of the
+    /// second line (the programme, or "No programme information"), also while that line is still empty: nothing moves when the programme arrives.
+    /// Until then the second line and the progress row are empty; if the daemon has none the second line says so quietly.
     /// </summary>
     internal sealed class BannerView : IStage
     {
         private const int X0 = 96, X1 = 936, LogoSize = 72, LogoGap = 24, LogoTop = 818, NumGap = 30;
-        private const int NumSize = 128, NameSize = 56, NameTop = 822, TitleSize = 32, TitleTop = 890, NoneSize = 30, NoneTop = 892;
+        private const int NumSize = 128, NameSize = 56, NameTop = 822, TitleSize = 32, TitleTop = 890, NoneSize = 30;
         private const int TimesTop = 946, LineY = 992;
         private readonly Surface _s;
         private readonly Veil _veil;
@@ -121,7 +121,7 @@ namespace Tuner.Ui
             _nameText = name;
             SetLogo(logo, room);
             Efl.evas_object_text_text_set(_title, "");
-            Efl.evas_object_hide(_none); _noneShown = false;
+            Efl.evas_object_hide(_none);
             _progress.Clear();
             PlaceNumber();
             _veil.SetBanner(true);
@@ -136,20 +136,12 @@ namespace Tuner.Ui
             if (logo != null) _logo.Show(logo, X1 - LogoSize, LogoTop, LogoSize); else _logo.Hide();
         }
 
-        /// <summary>The number on the baseline of the second line, or of the name when the second line is empty.</summary>
-        private void PlaceNumber()
-        {
-            bool title = Efl.evas_object_text_horiz_advance_get(_title) > 0, none = _noneShown;
-            double baseline = title ? Theme.Baseline(TitleTop, TitleSize) : none ? Theme.Baseline(NoneTop, NoneSize) : Theme.Baseline(NameTop, NameSize);
-            Theme.MoveHalo(_num, X0, Theme.TopFor(baseline, NumSize, Theme.HaloPad));
-        }
-
-        private bool _noneShown;
+        /// <summary>The number on the baseline of the second line, whether that line is filled or not: the block does not jump when the programme is read.</summary>
+        private void PlaceNumber() { Theme.MoveHalo(_num, X0, Theme.TopFor(Theme.Baseline(TitleTop, TitleSize), NumSize, Theme.HaloPad)); }
 
         /// <summary>Title (may be empty), start and end time, time left and progress (0..1) of the programme on air on this channel.</summary>
         public void SetProgram(string title, string start, string end, string left, double fraction)
         {
-            _noneShown = false;
             Efl.evas_object_hide(_none);
             Surface.SetFitted(_title, title ?? "", X1 - _nameX);
             Theme.MoveHalo(_title, _nameX, Theme.TopOf(TitleTop, TitleSize, Theme.HaloPad));
@@ -160,9 +152,8 @@ namespace Tuner.Ui
         public void SetNoProgram()
         {
             Efl.evas_object_text_text_set(_title, "");
-            _noneShown = true;
             Surface.SetFitted(_none, "No programme information", X1 - _nameX);
-            Theme.MoveHalo(_none, _nameX, Theme.TopOf(NoneTop, NoneSize, Theme.HaloPad));
+            Theme.MoveHalo(_none, _nameX, Theme.TopFor(Theme.Baseline(TitleTop, TitleSize), NoneSize, Theme.HaloPad));   // on the programme's baseline
             Efl.evas_object_show(_none);
             _progress.Clear();
             PlaceNumber();

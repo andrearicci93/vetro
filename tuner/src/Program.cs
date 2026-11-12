@@ -687,7 +687,7 @@ namespace Tuner
             CloseList(); ClosePad(); CloseGuide(); _banner.Hide(); _toast.Hide();
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             _info = new InfoData { Number = c.Major.ToString(), Name = c.Name, Clock = ProgramClock.Clock(now, _utcOffset), Date = InfoText.Date(now, _utcOffset), Logo = LogoOf(c), LogoRoom = LogosOn };
-            ApplyInfoProgram(c, Store.Current(c.Id, now), now);
+            ApplyInfoProgram(c, Store.Current(c.Id, now), now, false);   // not read yet is not "none": the title row stays empty until InfoLookup answers
             _infoView.Draw(_info);
             if (from != null) Choreo.Morph(from, _infoView, Choreo.BannerInfo, Motion.FadeSeconds, Motion.In);
             Restart(ref _infoTimer, InfoSeconds, OnInfoTimeout);
@@ -703,10 +703,11 @@ namespace Tuner
             _infoView.Hide();
         }
 
-        private static void ApplyInfoProgram(Channel c, GuideEvent e, long now)
+        /// <param name="asked">The daemon has answered: without a programme the title row says "No programme information". Before that it stays empty.</param>
+        private static void ApplyInfoProgram(Channel c, GuideEvent e, long now, bool asked)
         {
             double? f = e == null ? null : ProgramClock.Fraction(e.Start, e.Duration, now);
-            if (e == null || f == null) { _info.NoProgram = true; _info.Fraction = null; _info.Title = ""; _info.Start = ""; _info.End = ""; _info.Left = ""; return; }
+            if (e == null || f == null) { _info.NoProgram = asked; _info.Fraction = null; _info.Title = ""; _info.Start = ""; _info.End = ""; _info.Left = ""; return; }
             _info.NoProgram = false; _info.Title = e.Title; _info.Fraction = f;
             _info.Start = ProgramClock.Clock(e.Start, _utcOffset);
             _info.End = ProgramClock.Clock(e.Start + e.Duration, _utcOffset);
@@ -727,7 +728,7 @@ namespace Tuner
             Ui(() =>
             {
                 if (gen != Volatile.Read(ref _infoGen) || !InfoOpen || _shown == null || _shown.Id != c.Id) return;
-                ApplyInfoProgram(c, e, now);
+                ApplyInfoProgram(c, e, now, true);
                 _info.Description = desc; _info.Audio = audio; _info.Source = source;
                 _infoView.Draw(_info);
             });

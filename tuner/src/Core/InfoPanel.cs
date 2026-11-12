@@ -13,7 +13,7 @@ namespace Tuner.Core
         public double? Fraction;           // how far the programme is, null when there is no programme on air
         public string Clock = "", Date = "";
         public string Source = "", Audio = "";
-        public bool NoProgram;             // the daemon has none for this channel: the title row says so
+        public bool NoProgram;             // the daemon was asked and has none for this channel: the title row says so (while it is being asked the row is empty)
         public string Logo;                // file of the channel's logo, null when it has none
         public bool LogoRoom;              // the TV has logos: the text keeps its place for one whether or not this channel has it
     }

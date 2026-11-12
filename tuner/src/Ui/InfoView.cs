@@ -15,7 +15,7 @@ namespace Tuner.Ui
     {
         public const int DescriptionLines = 3;
         private const int X0 = 96, Right = 1296, Col = 936, LogoSize = 72, LogoX = Right - LogoSize, LogoY = 584, LogoGap = 32, NumGap = 20;
-        private const int NumSize = 64, NameSize = 36, NameTop = 606, TitleSize = 72, TitleTop = 672, NoneSize = 56, NoneTop = 684;
+        private const int NumSize = 64, NameSize = 36, NameTop = 606, TitleSize = 72, TitleTop = 672, NoneSize = 56;
         private const int TimesTop = 780, LineY = 826, DescSize = 30, DescTop = 866, LineH = 42;
         private const int ClockSize = 88, ClockTop = 776, ClockRight = Right + 4, SideSize = 26, DateTop = 878, SourceTop = 918, AudioTop = 958;
         private readonly Surface _s;
@@ -45,7 +45,7 @@ namespace Tuner.Ui
                 Theme.MoveHalo(_desc[i], X0, Theme.TopOf(DescTop + i * LineH, DescSize, Theme.HaloPad));
             }
             Theme.MoveHalo(_title, X0, Theme.TopOf(TitleTop, TitleSize, Theme.HaloPad));
-            Theme.MoveHalo(_none, X0, Theme.TopOf(NoneTop, NoneSize, Theme.HaloPad));
+            Theme.MoveHalo(_none, X0, Theme.TopFor(Theme.Baseline(TitleTop, TitleSize), NoneSize, Theme.HaloPad));   // on the title's baseline
             _parts["num"] = new Part(_num, NumSize, true); _parts["name"] = new Part(_name, NameSize, true);
             _parts["title"] = new Part(_title, TitleSize, true); _parts["none"] = new Part(_none, NoneSize, true);
             _parts["logo"] = new Part(_logo.Obj, 0, false);
