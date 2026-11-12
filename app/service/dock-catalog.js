@@ -303,12 +303,16 @@ function build(parsed, options) {
     });
     // Without a csfs row (the 2022 Home), the row above is at best the "recent" strip: every other visible
     // app of the registry follows, by title, so the dock shows the same apps as the Home's app list.
+    // With Fix TizenTube on and TizenTube in the row, the TizenTube tile stands in for Samsung's YouTube and
+    // already uses its icon, so YouTube itself is not appended.
     if (parsed.rowFrom !== 'csfs') {
         var present = {}, inOrder = {};
+        var standIn = options.fixTizenTube && entries.some(function (e) { return TIZENTUBE.test(e.appId); });
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });
         Object.keys(parsed.registry).filter(function (id) { return !inOrder[id]; }).map(function (id) { return {id: id, reg: parsed.registry[id]}; })
             .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !uninstalled(x.reg) && !offApps[x.reg.appId] && !present[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
+            .filter(function (x) { return !(standIn && YOUTUBE_ICON_RE.test(x.reg.title.trim()) && !TIZENTUBE.test(x.reg.appId)); })
             .sort(function (a, b) { return a.reg.title.localeCompare(b.reg.title); })
             .forEach(function (x) {
                 if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: x.reg.appId, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
