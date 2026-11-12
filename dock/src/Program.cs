@@ -65,6 +65,14 @@ namespace Launcher
         // was closed again by the kills still pending, and the pill seemed to do nothing.
         private static int _guardGen;
         private static string _guardFile;
+        // --grab-home MODE claims XF86Home at the compositor (Tizen keyrouter), so the key never reaches the process
+        // that starts Samsung's Home, and Samsung's Home doesn't appear before the dock. The dock still reads Home
+        // through evdev. If the compositor grants the claim, the dock doesn't arm the kill guard; if it refuses, the
+        // guard works as before. A Tizen 8 TV grants exclusive mode. The claim belongs to this process's Wayland
+        // connection and ends with it.
+        private static string _grabMode;
+        private static bool _homeClaimed;
+        private static readonly string[] GrabModes = { "shared", "topmost", "exclusive", "override" };
         private static int _homeCode = -1;
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
@@ -691,13 +699,43 @@ namespace Launcher
 
         private static void ArmGuard()
         {
-            if (_guardApps == null) return;
+            if (_guardApps == null || _homeClaimed) return;
             try
             {
                 NewGuardGeneration();
                 Libc.system(HomeGuard.Command(_guardApps, _guardFile, _guardGen));   // returns at once: the shell puts the whole chain in the background
             }
             catch (Exception ex) { Log("guard: " + ex.Message); }
+        }
+
+        /// <summary>
+        /// Asks the compositor for XF86Home in the --grab-home mode, logs the answer, and returns whether the
+        /// compositor granted it. Tries elementary first, and ecore_wl2 only if elementary refuses or lacks the
+        /// symbol, because the compositor refuses a second claim from the same window and the log then shows two
+        /// answers. Both enums follow GrabModes order (elementary's bit flags start at 1 &lt;&lt; 8, ecore_wl2's
+        /// at 1), as in the EFL headers. On a TV, only the elementary call in exclusive mode is known to work.
+        /// </summary>
+        private static bool GrabHome()
+        {
+            int mode = Array.IndexOf(GrabModes, _grabMode);
+            if (mode < 0) { Log("grab: unknown mode " + _grabMode + ", expected " + string.Join("|", GrabModes)); return false; }
+            try
+            {
+                bool ok = Efl.elm_win_keygrab_set(_win, "XF86Home", 0, 0, 0, 256 << mode);
+                Log("grab: elm_win_keygrab_set XF86Home " + _grabMode + " -> " + ok);
+                if (ok) return true;
+            }
+            catch (Exception ex) { Log("grab: elm_win_keygrab_set unavailable: " + ex.GetType().Name + " " + ex.Message); }
+            try
+            {
+                IntPtr wl = Efl.elm_win_wl_window_get(_win);
+                if (wl == IntPtr.Zero) { Log("grab: no Wayland window to grab on"); return false; }
+                bool ok = Efl.ecore_wl2_window_keygrab_set(wl, "XF86Home", 0, 0, 0, mode + 1);
+                Log("grab: ecore_wl2_window_keygrab_set XF86Home " + _grabMode + " -> " + ok);
+                return ok;
+            }
+            catch (Exception ex) { Log("grab: ecore_wl2_window_keygrab_set unavailable: " + ex.GetType().Name + " " + ex.Message); }
+            return false;
         }
 
         /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
@@ -1003,6 +1041,13 @@ namespace Launcher
                     Efl.evas_object_show(_win);
                     if (Flag(args, "--premap-activate")) Efl.elm_win_activate(_win);
                     _premapTimer = Efl.ecore_timer_add(0.5, PremapCb, IntPtr.Zero);
+                }
+                // The claim needs a mapped window, so the dock makes it after the earlier show.
+                _grabMode = Arg(args, "--grab-home");
+                if (_grabMode != null)
+                {
+                    _homeClaimed = GrabHome();
+                    if (_homeClaimed && _guardApps != null) Log("guard: not armed, Home is claimed");
                 }
 
                 GC.Collect();

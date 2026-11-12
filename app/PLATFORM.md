@@ -41,7 +41,7 @@ require the saved node to match. Editing rules releases the grab and then reappl
 the saved policy with the current enabled physical rules. Observe mode temporarily
 pauses interception for key capture; it is never restored at startup. Explicitly
 turning the switch off persists that choice. A new installation defaults to off. Native actions use `app_launcher` and the supported
-`input_keyevent` whitelist, without the LAN WebSocket client. Injected keys go
+`input_keyevent` whitelist, without the LAN WebSocket client. While the Vetro launcher is on, it holds the Home key, so `XF86Home` toggles the launcher through its command pipe instead; with no running launcher, it goes through `input_keyevent` as before. Injected keys go
 to the foreground application, not directly to arbitrary background apps.
 
 `GET /apps` enriches the public probe with read-only package-registry metadata

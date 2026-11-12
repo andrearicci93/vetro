@@ -61,7 +61,7 @@ function fixture(options) {
     assert.deepEqual(f.dock.inputEntries().map(e => e.source), [0, 13, 14, 15, 16], 'Sources preview uses the same ordered list');
     assert.equal(fs.readFileSync(path.join(f.tmp, 'apps.tsv'), 'utf8').split('\n')[1],
         'netflix\tNetflix\torg.tizen.netflix-app\t\t/opt/share/webappservice/apps_icon/all/aaa/224x224.png', 'the list the dock reads');
-    assert.ok(/tvlauncher-dotnet\.dll --apps '[^']+apps\.tsv' --inputs '[^']+inputs\.tsv' --hidden --home-code 63 --kill-on-home com\.samsung\.tv\.csfs,com\.samsung\.tv\.home\.sidebar,com\.samsung\.tv\.home\.media/.test(f.tv.started),
+    assert.ok(/tvlauncher-dotnet\.dll --apps '[^']+apps\.tsv' --inputs '[^']+inputs\.tsv' --hidden --grab-home exclusive --home-code 63 --kill-on-home com\.samsung\.tv\.csfs,com\.samsung\.tv\.home\.sidebar,com\.samsung\.tv\.home\.media/.test(f.tv.started),
         'the verified dock command line: ' + f.tv.started);
     assert.ok(f.tv.started.includes('TVLAUNCHER_DIR=/home/owner') && f.tv.started.includes('WAYLAND_DISPLAY=wayland-0') && f.tv.started.includes('setsid nohup /usr/bin/dotnet'));
     assert.ok(f.tv.started.indexOf('kill -9') < f.tv.started.indexOf('setsid'), 'a previous dock is stopped before the new one starts');
@@ -326,3 +326,20 @@ function fixture(options) {
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
 { const local=new (require('../service/dock.js').Dock)({execute:()=>Promise.reject(Error('no TV'))}); for(const slug of ['settings','samsunghome']) { const icon=local.iconFile(slug); assert.ok(icon && icon.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'local preview system icon: '+slug); } }
+
+{
+    // A software Home toggles the dock while the Vetro launcher holds the key, and falls back otherwise.
+    const send = '/usr/bin/input_keyevent XF86Home';
+    const f = fixture();
+    assert.equal(f.dock.homeKeyCommand(send), send, 'launcher off: the key is sent as before');
+    fs.writeFileSync(f.dock.stateFile, JSON.stringify({enabled: true}));
+    const cmd = f.dock.homeKeyCommand(send);
+    assert.ok(cmd.includes('echo toggle > /home/owner/tvlauncher.fifo'), 'Vetro mode: Home toggles the dock: ' + cmd);
+    assert.ok(/grep -q tvlauncher-dotnet\.dll \/proc\/\$p\/cmdline/.test(cmd) && cmd.includes('[ -p /home/owner/tvlauncher.fifo ]'),
+        'the pipe is written only while the dock is alive');
+    assert.ok(cmd.endsWith('else ' + send + '; fi'), 'with no live dock the key is sent as before');
+    assert.ok(!cmd.includes('\\'), 'no backslashes: the root agent doubles them');
+    fs.writeFileSync(f.dock.stateFile, JSON.stringify({enabled: false, customApp: 'com.example.launcher'}));
+    assert.equal(f.dock.homeKeyCommand(send), send, 'custom mode: the dock does not claim Home, so the key is sent as before');
+    console.log('PASS dock: software Home goes through the dock while the launcher holds the key');
+}

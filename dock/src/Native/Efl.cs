@@ -102,6 +102,14 @@ namespace Launcher.Native
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_ecore_evas_get(IntPtr evas);
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_engine_name_get(IntPtr ee);
 
+        // --- key grab (--grab-home only) ---
+        // Unlike the rest of this file, these signatures aren't checked against the firmware dump, so the caller
+        // catches a missing library or symbol and logs it. elm_win_keygrab_set works on a Tizen 8 TV; no TV has
+        // reached the other two yet. Evas_Modifier_Mask is an unsigned long long.
+        [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_set(IntPtr win, string key, ulong modifiers, ulong notModifiers, int priority, int grabMode);
+        [DllImport(Elm)] public static extern IntPtr elm_win_wl_window_get(IntPtr win);
+        [DllImport("libecore_wl2.so.1")] [return: MarshalAs(UnmanagedType.U1)] public static extern bool ecore_wl2_window_keygrab_set(IntPtr win, string key, int modifiers, int notModifiers, int priority, int grabMode);
+
         // --- platform ---
         [DllImport(EflUtil)] public static extern int efl_util_set_notification_window_level(IntPtr win, int level);
         [DllImport(AppControl)] public static extern int app_control_create(out IntPtr ac);

@@ -350,6 +350,12 @@ function handleExecStatus(res) {
 // One remote press per call: the key name is whitelisted (control.js) and
 // the command is built from the whitelist, never from request text.
 
+// Home goes through the dock while the Vetro launcher holds the key (Dock.homeKeyCommand).
+function keyCommand(key) {
+    var cmd = control.injectCommand(key);
+    return cmd && key === 'XF86Home' ? dock.homeKeyCommand(cmd) : cmd;
+}
+
 function handleControl(req, res) {
     if (req.method === 'GET') {
         return serveJson(res, { keys: control.KEYS });
@@ -359,7 +365,7 @@ function handleControl(req, res) {
         if (!key || typeof key !== 'string') {
             return serveJson(res, { error: 'missing "key" (see GET /control for names)' }, 400);
         }
-        var cmd = control.injectCommand(key);
+        var cmd = keyCommand(key);
         if (!cmd) {
             return serveJson(res, { error: 'unknown key ' + key, keys: control.KEYS }, 400);
         }
@@ -716,7 +722,7 @@ function runActions(actions, direct, dispatchGuard) {
         // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
         if(a.type==='launch'&&!direct&&remap.ruleRisk(a.appId,packageOf)){skipped.push('launch:factory-app');return;}
         if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
-        else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
+        else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&keyCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
