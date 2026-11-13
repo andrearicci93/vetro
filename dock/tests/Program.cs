@@ -584,12 +584,13 @@ namespace Launcher.Tests
                 T.True(c.Presence >= 0f, "negative dt tolerated");
             });
 
-            T.Run("commands: show hide toggle", () =>
+            T.Run("commands: show hide toggle inputs", () =>
             {
                 var b = new CommandBuffer();
-                var r = b.Feed(Encoding.ASCII.GetBytes("show\nhide\ntoggle\n"), 16 + 1);
-                T.Eq(r.Count, 3, "three commands");
-                T.Eq(r[0], Command.Show, "show"); T.Eq(r[1], Command.Hide, "hide"); T.Eq(r[2], Command.Toggle, "toggle");
+                var x = Encoding.ASCII.GetBytes("show\nhide\ntoggle\ninputs\n");
+                var r = b.Feed(x, x.Length);
+                T.Eq(r.Count, 4, "four commands");
+                T.Eq(r[0], Command.Show, "show"); T.Eq(r[1], Command.Hide, "hide"); T.Eq(r[2], Command.Toggle, "toggle"); T.Eq(r[3], Command.Inputs, "inputs");
             });
 
             T.Run("commands: partial lines wait, case and spaces tolerated", () =>

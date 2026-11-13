@@ -22,6 +22,7 @@ var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
 var atomicFile = require('./atomic-file.js');
+var sources = require('./dock-sources.js');
 // Regular expressions compiled once at module load, not on every call.
 var QUOTE_RE = /'/g;
 var AUTORUN_VALUE_RE = /value = (\d+)/;
@@ -60,6 +61,7 @@ var RETRY_MAX_MS = 300000;
 var CUSTOM_MAX_FAILURES = 6;
 var APP_CHECK_ROUNDS = 6;                              // the chosen app is looked up every 6th supervision round (about a minute)
 var APP_GONE_ROUNDS = 2;                               // and given up on when two lookups in a row say it is gone
+var DETECTION_CACHE_MS = 5000;                         // one save or status burst shares a single read of the TV's sources
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
@@ -70,7 +72,8 @@ function legacySourceUsage(file, images) {
         if (fs.statSync(file).size > 65536) return false;
         return fs.readFileSync(file, 'utf8').split('\n').some(function (line) {
             var fields = line.split('\t');
-            return /^source:(?:13|14|15|16)$/.test(fields[2] || '') && (!images || !!fields[4]);
+            // The Launcher's own generated list fills the icon column with packaged icons: only a path outside res/icons is Samsung's artwork.
+            return /^source:(?:13|14|15|16)$/.test(fields[2] || '') && (!images || (!!fields[4] && fields[4].indexOf('/res/icons/') < 0));
         });
     } catch (e) { return false; }
 }
@@ -89,7 +92,9 @@ function Dock(options) {
     this.appCheck = options.appCheck || null;
     this.checkRound = 0;
     this.goneRounds = 0;
+    this.sourcesFile = options.sourcesFile || path.join(path.dirname(this.appsFile), 'vetro-dock-sources.json');
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
+    this.detection = null;
     this.legacyHomeSources = legacySourceUsage(this.appsFile, false);
     this.legacySourceImages = legacySourceUsage(this.inputsFile, true);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -216,16 +221,22 @@ Dock.prototype.status = function (options) {
 };
 
 Dock.prototype.statusNow = function () {
-    var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
-        mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
-        customHomeDisabled: state.customHomeDisabled,
-        entries: this.entries(), inputs: this.inputEntries()};
-    return this.probe().then(function (p) {
-        return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
+    var self = this, state = this.readState(), list = this.sourceState();
+    // The Launcher tab shows what the TV reports about its sources now (a read is shared for a few seconds). It runs
+    // beside the probe, so a slow TV read does not add to the probe's wait.
+    var probe = this.probe().then(function (p) {
+        return {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log};
     }).catch(function (e) {
-        return Object.assign(base, {running: null, pid: null, samsungHome: null, log: '', probeError: e.message});
+        return {running: null, pid: null, samsungHome: null, log: '', probeError: e.message};
+    });
+    return Promise.all([this.readDetection(), probe]).then(function (both) {
+        var detection = both[0];
+        return Object.assign({installed: self.installed(), enabled: state.enabled, since: state.since, busy: self.busy,
+            error: self.lastError, failures: self.failures, apps: self.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+            mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
+            customHomeDisabled: state.customHomeDisabled,
+            entries: self.entries(), inputs: sources.rows(list, detection, {useSourceImages: state.useSourceImages}),
+            detection: {available: detection.available, error: detection.error}}, both[1]);
     });
 };
 
@@ -267,10 +278,11 @@ Dock.prototype.writeCatalog = function () {
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
     return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
-        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
+        try { atomicFile.write(fs, self.appsFile, c.tsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
-        return c;
+        // The inputs list is generated here too, so a changed source switch reaches the panel with the app list.
+        return self.writeInputsFile().then(function () { return c; });
     });
 };
 
@@ -292,7 +304,9 @@ Dock.prototype.waitRunning = function () {
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
 Dock.prototype.launch = function (quick) {
     var self = this, custom = this.readState().customApp, saved = !custom && quick && this.hasSavedApps();
-    return (custom ? this.writeCustomList(custom) : saved ? Promise.resolve() : this.writeCatalog()).then(function () {
+    // The inputs list is written before every start of the Vetro launcher (writeCatalog does it too): a failed write
+    // fails the start, so the dock never opens a stale list.
+    return (custom ? this.writeCustomList(custom) : saved ? this.writeInputsFile() : this.writeCatalog()).then(function () {
         return self.execute(wrap(self.startScript()), 10000);
     }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
         if (saved) self.refreshPending = true;
@@ -504,6 +518,114 @@ Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(this.inputListPath(), 'utf8')); } catch (e) { return []; }
 };
 
+// --- the saved source list and its generated inputs file --------------------
+// vetro-dock-sources.json is the source of truth: order, labels, hidden flags and icon choices.
+// vetro-dock-inputs.tsv is generated from it and from the TV's own source report before every start.
+
+var PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function readPng(file) {
+    try {
+        var data = fs.readFileSync(file);
+        if (data.length <= 1048576 && data.slice(0, 8).equals(PNG_MAGIC)) return data;
+    } catch (e) { /* no icon */ }
+    return null;
+}
+
+// The saved list, or the defaults when there is none or it cannot be used; the next save replaces it.
+Dock.prototype.sourceState = function () {
+    try { return sources.normalize(JSON.parse(fs.readFileSync(this.sourcesFile, 'utf8'))); }
+    catch (e) { return sources.defaults(); }
+};
+
+// What the TV reports about its sources, or unavailable. A read is reused for a few seconds, so a save (generate,
+// restart, status) or a burst of page polls runs the root script once.
+Dock.prototype.readDetection = function () {
+    if (this.detection && this.now() - this.detection.at < DETECTION_CACHE_MS) return this.detection.read;
+    var read = this.execute(wrap(sources.detectionScript()), 15000).then(function (r) {
+        return r && !r.timed_out ? sources.parseDetection(r.stdout) : sources.unavailable();
+    }).catch(function () { return sources.unavailable(); });
+    this.detection = {at: this.now(), read: read};
+    return read;
+};
+
+// Generate the dock's inputs file. Atomic: a failed write keeps the previous file and fails the start. Samsung's
+// artwork is only used when the file is there; a missing one falls back to the packaged icon.
+Dock.prototype.writeInputsFile = function () {
+    var self = this, list = this.sourceState(), state = this.readState();
+    return this.readDetection().then(function (detection) {
+        var rows = sources.rows(list, detection, {useSourceImages: state.useSourceImages});
+        var art = rows.filter(function (r) { return r.artwork; });
+        if (!art.length) return rows;
+        var probe = {entries: [], skipped: [], inputs: art.map(function (r) { return {slug: r.slug, icon: r.artwork}; })};
+        return catalog.existing(self.execute, probe).then(function () {
+            art.forEach(function (r, i) { r.artwork = probe.inputs[i].icon; });
+            return rows;
+        });
+    }).then(function (rows) {
+        try { atomicFile.write(fs, self.inputsFile, sources.tsv(rows, path.join(self.dir, 'res', 'icons'))); }
+        catch (e) { throw new Error('The inputs list could not be saved: ' + e.message); }
+    });
+};
+
+// Re-read the TV and regenerate the inputs file, after `save` if given. A running dock reads the file
+// only when it starts, so it is restarted.
+Dock.prototype.applySources = function (save) {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    this.busy = true; this.lastError = null; this.detection = null;
+    return Promise.resolve().then(save).then(function () {
+        return self.readState().enabled ? self.launch(true) : self.writeInputsFile();
+    }).then(function () { return self.status(); }).catch(function (e) {
+        self.lastError = e.message;
+        throw e;
+    }).finally(function () { self.busy = false; });
+};
+
+// Save the five rows (slug, label, hidden, icon) and apply them.
+Dock.prototype.saveSources = function (list) {
+    var self = this, state;
+    try { state = sources.normalize(list); } catch (e) { return Promise.reject(e); }
+    return this.applySources(function () {
+        try { atomicFile.write(fs, self.sourcesFile, JSON.stringify({sources: state}, null, 2) + '\n'); }
+        catch (e) { throw new Error('The source list could not be saved: ' + e.message); }
+    });
+};
+
+// Re-read the TV and rebuild the panel from the saved list; it does not save edits.
+Dock.prototype.refreshSources = function () {
+    return this.applySources();
+};
+
+// The packaged type icon the editor asks for by id, so a hidden row still shows its icon.
+Dock.prototype.sourceIcon = function (icon) {
+    if (sources.TYPE_ICONS.indexOf(String(icon)) < 0) return null;
+    return readPng(path.join(this.dir, 'res', 'icons', sources.iconFile(String(icon))));
+};
+
+// The dock's own `inputs` command shows the dock and opens the panel, wherever the apps page's focus was.
+Dock.prototype.openInputsScript = function () {
+    return '[ -p ' + FIFO + " ] || { echo no-fifo; exit 0; }\nprintf 'inputs\\n' > " + FIFO;
+};
+// Launcher off or stopped is a normal "nothing to open" answer, not a reason to stop the whole
+// physical remote: the caller keeps intercepting the other mapped keys.
+function skipped(message) {
+    var error = new Error(message);
+    error.nonFatal = true;
+    return error;
+}
+Dock.prototype.openInputs = function () {
+    var self = this;
+    if (!this.readState().enabled) return Promise.reject(skipped('The Vetro launcher is off; turn it on to use the inputs panel'));
+    return this.probe().then(function (p) {
+        if (!p.running) return Promise.reject(skipped('The Vetro launcher is not running'));
+        return self.execute(wrap(self.openInputsScript()), 8000).then(function (r) {
+            if (check(r, 'Open inputs').trim() === 'no-fifo') throw skipped('The Vetro launcher is not accepting commands');
+            return {ok: true, panel: 'inputs'};
+        });
+    });
+};
+
 // Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.
 Dock.prototype.setSourceOption = function (key, on) {
     var self = this;
@@ -572,10 +694,8 @@ Dock.prototype.iconFile = function (slug) {
     // Local app-only runs use source assets; WGTs carry the same files under native/dock/res.
     if (systemIcon) files.push(path.join(__dirname, '..', '..', 'dock', 'res', 'icons', slug + '.png'));
     for (var i = 0; i < files.length; i++) {
-        try {
-            var data = fs.readFileSync(files[i]);
-            if (data.length <= 1048576 && data.slice(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return data;
-        } catch (e) { /* next */ }
+        var data = readPng(files[i]);
+        if (data) return data;
     }
     return null;
 };

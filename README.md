@@ -33,6 +33,8 @@ A fast, minimal launcher on the Home key. It shows the same apps and icons as Sa
 
 Turn it on in the **Launcher** tab, which also previews the bar. Optional switches: **Reduce motion**, **Fix TizenTube** (YouTube icon on the TizenTube tile), **HDMI sources on Home** and **HDMI source images**. Prefer another app on the Home key? **Custom launcher** opens any installed app instead.
 
+Press Up on the launcher, or a remote key mapped to **Vetro · Inputs panel** in Remapper, for the inputs panel. The Launcher tab's **Sources** list sets what it shows: TV and HDMI 1–4, each with a name (the port and the TV's own name for the device, such as `HDMI 2 - Fire TV`, unless you type one of up to 24 characters), an icon (picked from the device's name, or Samsung's own image when **HDMI source images** is on, unless you choose one), a position and a switch to hide it. **HDMI sources on Home** only decides whether the HDMI tiles also appear in the apps row. **Save sources** stores the list and restarts a running launcher; **Refresh sources** reads the TV again without saving edits. If the TV's detection can't be read, the port names and saved names are used.
+
 <p align="center">
   <img src="app/docs/images/launcher-tab-0.5.jpg" alt="The Launcher tab of the dashboard: a preview of the bar and the launcher, HDMI and TizenTube switches" width="1000">
 </p>

@@ -9,19 +9,23 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|enableCustom|disableCustom, on, appId}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|showHomeSources|useSourceImages|saveSources|refreshSources|enableCustom|disableCustom, on, appId, sources}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
+//   GET  api/source-icon  ?icon=<type>  the PNG of a packaged source icon     (was GET /dock/source-icon)
 //
 // Plain ES5, like every module the TV loads.
 
-// ?slug=... read straight from the query string: the one parameter does not need a URL parser.
+// ?slug=... and ?icon=... read straight from the query string: one parameter does not need a URL parser.
 var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
+var ICON_QUERY_RE = /[?&]icon=([^&#]*)/;
 var PLUS_RE = /\+/g;
-function slugOf(rawUrl) {
-    var m = SLUG_QUERY_RE.exec(rawUrl || '');
+function queryValue(re, rawUrl) {
+    var m = re.exec(rawUrl || '');
     if (!m) return undefined;
     try { return decodeURIComponent(m[1].replace(PLUS_RE, ' ')); } catch (e) { return undefined; }
 }
+function slugOf(rawUrl) { return queryValue(SLUG_QUERY_RE, rawUrl); }
+function iconOf(rawUrl) { return queryValue(ICON_QUERY_RE, rawUrl); }
 
 var TICK_MS = 2000;          // how often the supervision looks at the root agent
 var ROUND_TICKS = 5;         // every 5th tick (10 s) the launcher is checked even if nothing changed
@@ -60,6 +64,8 @@ function definition(dock, options) {
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
+                if (p.action === 'saveSources') return dock.saveSources(p.sources);
+                if (p.action === 'refreshSources') return dock.refreshSources();
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();
                 return Promise.reject(new Error('Invalid dock action'));
@@ -95,8 +101,8 @@ function definition(dock, options) {
                         });
                         return true;
                     }
-                    if (sub === 'icon' && req.method === 'GET') {
-                        var png = dock.iconFile(slugOf(req.url));
+                    if ((sub === 'icon' || sub === 'source-icon') && req.method === 'GET') {
+                        var png = sub === 'icon' ? dock.iconFile(slugOf(req.url)) : dock.sourceIcon(iconOf(req.url));
                         if (!png) { vetro.json(res, { error: 'icon unavailable' }, 404); return true; }
                         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=60', 'X-Content-Type-Options': 'nosniff' });
                         res.end(png);
