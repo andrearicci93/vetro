@@ -59,6 +59,7 @@ function definition(dock, options) {
                 if (p.action === 'refresh') return dock.refresh();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
+                if (p.action === 'completeAppList') return dock.setCompleteAppList(p.on, p.expected);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();

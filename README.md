@@ -200,3 +200,13 @@ People who reported problems or shared results from their TVs are credited in th
 Vetro builds on [Chris Ritsen and contributors' Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root), including runtime detection and compatibility checks adapted from [v0.0.12](https://github.com/chris-ritsen/samsung-tv-root/releases/tag/v0.0.12) under the Unlicense. [Glasshouse](https://github.com/rorygallagher2024/glasshouse) inspired the TV-management concept and dashboard. [TizenBrew, TizenTube and tizen.js](https://github.com/reisxd) informed installation and runtime research; [Samsung's developer documentation](https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-device.html) documents the device workflow. The install-leftovers cleanup is ported from [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung), which is also the recommended way to install Vetro. See [third-party notices](THIRD_PARTY_NOTICES.md) for provenance and licenses.
 
 Original Vetro code is [MIT licensed](LICENSE); vendored code retains its own license. Independent, experimental software, provided as is and unaffiliated with Samsung or the projects above. Generative AI and coding agents assisted development; tests and device observations define what has been verified.
+
+### Additional launcher apps
+
+**Add apps missing from Samsung Home** is off by default: a readable Home row
+is reproduced without appending other registry apps, regardless of which Home
+component stores it. Turn it on to append other visible registry apps alphabetically
+after the native row, for example when a firmware exposes only a recent-app strip.
+With no readable row, the registry remains the fallback. The choice is saved on
+the TV and reverts if rebuilding the launcher fails. It does not install, hide or
+disable applications in Samsung Home.
