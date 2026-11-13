@@ -28,11 +28,14 @@ const services = {
         cb(p); }
 };
 const host = new PluginHost({ dir: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-launcher-')), 'p'), external: false, services, stableMs: 10 })
-    .register(launcher.definition(dock, { tickMs: 20 }));
+    .register(launcher.definition(dock, { tickMs: 20, runtime: {
+        snapshot: async () => ({components: [{appId: 'sample.ui', pid: 42}]}),
+        stop: async p => { if (p.pid !== 42) throw Error('The app restarted'); log.push('stop:' + p.appId); return {ok: true, verified: true}; }
+    } }));
 host.start();
 
 const get = (sub, url) => { const r = res(); host.dispatch('launcher', { method: 'GET', url: url || '/dock', headers: {} }, r, sub, json); return r; };
-const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'POST', url: '/dock', headers: {}, body }, r, 'action', json); return r; };
+const post = (body, sub) => { const r = res(); host.dispatch('launcher', { method: 'POST', url: '/dock', headers: {}, body }, r, sub || 'action', json); return r; };
 
 (async () => {
     assert.equal(host.status('launcher').state, 'running');
@@ -57,6 +60,16 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     r = res(); host.dispatch('launcher', { method: 'GET', url: '/dock', headers: {} }, r, 'action', json);
     assert.equal(r.code, 404, 'a route answers only the method it is for');
 
+    r = get('runtime'); await nextTick(1);
+    assert.deepEqual(r.body.components, [{appId: 'sample.ui', pid: 42}]);
+    r = post('{"appId":"sample.ui","pid":42}', 'stop'); await nextTick(1);
+    assert.deepEqual(r.body, {ok: true, verified: true});
+    assert.ok(log.includes('stop:sample.ui'));
+    r = post('{"appId":"sample.ui","pid":41}', 'stop'); await nextTick(1);
+    assert.equal(r.code, 409); assert.match(r.body.error, /restarted/);
+    assert.equal(get('stop').code, 404, 'stopping requires POST');
+    assert.equal(post('null', 'stop').code, 400);
+
     // supervision: at once when the agent connects, then on the fifth tick
     log.length = 0;
     connected = true;
@@ -72,5 +85,8 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     log.length = 0;
     await nextTick(80);
     assert.deepEqual(log, [], 'no supervision after stop');
+    r = post('{"appId":"sample.ui","pid":42}', 'stop'); await nextTick(1);
+    assert.notEqual(r.code, 200, 'disabled plugin cannot stop an app');
+    assert.deepEqual(log, [], 'no stop after the plugin is disabled');
     console.log('plugin-launcher: ok');
 })().catch(e => { console.error(e); process.exitCode = 1; });

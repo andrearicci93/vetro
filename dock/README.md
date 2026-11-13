@@ -14,6 +14,25 @@ When it is on, the Home key opens this launcher instead of Samsung's Home. The d
 the same apps, in the same order and with the same icons as Samsung's Home row, read
 from the TV at start-up, and ends with two outline pills, Settings and Samsung Home.
 
+Running apps have a green badge on their icon. A badge also appears when an app's
+background service is running. Status refreshes every two seconds while the apps
+row is visible; opening the row requests fresh status, and hiding it stops polling.
+
+Tap the centre/OK button to launch. Hold it for 0.75 seconds to open the selected
+app's running components. Choose an app or service to stop, or Cancel/Back to
+return. Releasing the original hold does not activate an option. Protected TV
+components remain read-only, and the backend checks the installed app and its
+current process identity before stopping it. Components that restart automatically
+remain marked as running. Stops do not change their saved startup flags.
+
+The launcher uses Vetro's local `/dock/runtime` and `/dock/stop` endpoints. The
+routes belong to the bundled launcher plugin and pass through Vetro's sign-in
+gate; they are also available as `/plugins/launcher/api/runtime` and
+`/plugins/launcher/api/stop`. The service passes its configured port through
+`--api http://127.0.0.1:PORT`; standalone
+runs default to port 8099. If status is unavailable, the launcher remains usable
+and its options report the problem instead of offering stale stop targets.
+
 ## Layout
 
 - `src/` the dock. `Core/` is pure logic (layout, catalog, input decoding) and has tests;

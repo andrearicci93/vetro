@@ -8,17 +8,23 @@ var FOREGROUND = {2: 1, 3: 2};
 var APP_ID = /^[A-Za-z0-9_.-]+$/;
 var APP_STATUS_RE = /pid:\s*(\d+)\s+appid:\s*(\S+)[^=]*?status:\s*(\d+)/g;   // stateful: reset lastIndex before each use
 
-function parse(text) {
-    var re = APP_STATUS_RE, m, best = null, running = 0;
+function applications(text) {
+    var re = APP_STATUS_RE, m, rows = [];
     re.lastIndex = 0;   // the regex is shared and global: always start from the beginning
     while ((m = re.exec(String(text || '')))) {
-        if (!APP_ID.test(m[2])) continue;
-        running++;
-        var rank = FOREGROUND[+m[3]];
-        if (rank && (!best || rank < best.rank)) best = {rank: rank, appId: m[2], pid: +m[1], status: +m[3]};
+        if (!APP_ID.test(m[2]) || +m[1] <= 0) continue;
+        rows.push({appId: m[2], pid: +m[1], status: +m[3]});
     }
-    if (!running) throw new Error('application status unreadable');
-    return {foreground: best ? {appId: best.appId, pid: best.pid, status: best.status} : null, running: running};
+    if (!rows.length) throw new Error('application status unreadable');
+    return rows;
+}
+function parse(text) {
+    var rows = applications(text), best = null;
+    rows.forEach(function (row) {
+        var rank = FOREGROUND[row.status];
+        if (rank && (!best || rank < best.rank)) best = Object.assign({rank: rank}, row);
+    });
+    return {foreground: best ? {appId: best.appId, pid: best.pid, status: best.status} : null, running: rows.length};
 }
 
 function Presence(execute) { this.execute = execute; this.pending = null; }
@@ -34,4 +40,4 @@ Presence.prototype.read = function () {
     return this.pending;
 };
 
-module.exports = {Presence: Presence, parse: parse, COMMAND: COMMAND};
+module.exports = {Presence: Presence, parse: parse, applications: applications, COMMAND: COMMAND};

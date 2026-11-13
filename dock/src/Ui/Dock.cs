@@ -36,6 +36,12 @@ namespace Launcher.Ui
         private int _dividerAlpha = -1;
         private readonly IntPtr[] _icon;
         private readonly IntPtr[] _initials;       // placeholder letters for icons that failed to load
+        private readonly IntPtr[] _badges;
+        private readonly Box[] _badgeBoxes;
+        private readonly int[] _badgeAlpha;
+        private bool[] _running;
+        private IntPtr _runningLegend, _holdHint;
+        private int _holdHintWidth, _runtimeHintY = int.MinValue, _runtimeHintAlpha = -1, _holdHintAlpha = -1;
 
         private readonly Box[] _iconBox;
         private readonly int[] _iconAlpha;
@@ -63,6 +69,8 @@ namespace Launcher.Ui
             _evas = Efl.evas_object_evas_get(win);
             _icon = new IntPtr[items.Length];
             _initials = new IntPtr[items.Length];
+            _badges = new IntPtr[items.Length]; _badgeBoxes = new Box[items.Length];
+            _badgeAlpha = new int[items.Length]; _running = new bool[items.Length];
             _iconBox = new Box[items.Length];
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
@@ -98,6 +106,12 @@ namespace Launcher.Ui
                 IntPtr clip = i < _layout.AppCount ? _appsClip : _clip;
                 Efl.evas_object_clip_set(_icon[i], clip);
                 if (_initials[i] != IntPtr.Zero) Efl.evas_object_clip_set(_initials[i], clip);
+                if (!_items[i].IsSystem && _items[i].AppId != null)
+                {
+                    _badges[i] = RunningBadge();
+                    _badgeBoxes[i].W = -1; _badgeAlpha[i] = -1;
+                    Efl.evas_object_clip_set(_badges[i], clip);
+                }
             }
             Efl.evas_object_clip_set(_highlight, _clip);
             Efl.evas_object_clip_set(_highlight2, _clip);
@@ -135,9 +149,42 @@ namespace Launcher.Ui
             }
 
             if (_hint != null) BuildHint();
+            if (!_layout.Raised && _layout.PillW >= 700)
+            {
+                _runningLegend = Efl.evas_object_text_add(_evas);
+                _holdHint = Efl.evas_object_text_add(_evas);
+                foreach (var text in new[] { _runningLegend, _holdHint })
+                { Efl.evas_object_text_font_set(text, Font, 20); SoftShadow(text); Efl.evas_object_show(text); }
+                Efl.evas_object_text_text_set(_runningLegend, "● Running");
+                Efl.evas_object_text_text_set(_holdHint, "Hold OK for options");
+                _holdHintWidth = Efl.evas_object_text_horiz_advance_get(_holdHint);
+            }
         }
 
         private const int HintChev = 24, HintGap = 4;
+
+        public void SetRunning(bool[] running) { _running = running; }
+
+        private IntPtr RunningBadge()
+        {
+            const int side = 32;
+            var pixels = new int[side * side];
+            for (int y = 0; y < side; y++) for (int x = 0; x < side; x++)
+            {
+                double distance = Math.Sqrt((x - 15.5) * (x - 15.5) + (y - 15.5) * (y - 15.5));
+                int alpha = (int)(255 * Math.Clamp(15.5 - distance, 0, 1));
+                bool inside = distance < 11.5;
+                int r = inside ? 100 : 18, g = inside ? 228 : 25, b = inside ? 153 : 30;
+                pixels[y * side + x] = (alpha << 24) | (r * alpha / 255 << 16) | (g * alpha / 255 << 8) | b * alpha / 255;
+            }
+            IntPtr image = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_image_size_set(image, side, side); Efl.evas_object_image_alpha_set(image, true);
+            IntPtr data = Efl.evas_object_image_data_get(image, true);
+            System.Runtime.InteropServices.Marshal.Copy(pixels, 0, data, pixels.Length);
+            Efl.evas_object_image_data_set(image, data); Efl.evas_object_image_data_update_add(image, 0, 0, side, side);
+            Efl.evas_object_image_filled_set(image, true); Efl.evas_object_image_smooth_scale_set(image, true);
+            Efl.evas_object_show(image); return image;
+        }
 
         private const int ShadowAlpha = 150;
 
@@ -187,7 +234,7 @@ namespace Launcher.Ui
         /// </summary>
         public void SetVisible(bool visible)
         {
-            IntPtr[] top = { _shadow, _pill, _clip, _label[0], _label[1], _clock, _hintChev, _hintText };
+            IntPtr[] top = { _shadow, _pill, _clip, _label[0], _label[1], _clock, _hintChev, _hintText, _runningLegend, _holdHint };
             foreach (IntPtr o in top)
             {
                 if (o == IntPtr.Zero) continue;
@@ -429,6 +476,12 @@ namespace Launcher.Ui
                 // Every item comes in on its own turn (the cascade); a pill stays a little dimmer than an icon until selected.
                 Box b = _layout.IconBox(i, fp, scroll, c.ItemSlide(i));
                 Place(_icon[i], ref _iconBox[i], b);
+                if (_badges[i] != IntPtr.Zero)
+                {
+                    Place(_badges[i], ref _badgeBoxes[i], new Box { X = b.X + b.W - 17, Y = b.Y + b.H - 17, W = 22, H = 22 });
+                    int alpha = i < _running.Length && _running[i] ? (int)Math.Round(255 * c.ItemPresence(i)) : 0;
+                    if (_badgeAlpha[i] != alpha) { _badgeAlpha[i] = alpha; Tint(_badges[i], alpha); }
+                }
 
                 float amount = DockLayout.Amount(fp, i);
                 float dim = _layout.IsPinned(i) ? Design.PillDim : Design.IconDim;
@@ -457,6 +510,19 @@ namespace Launcher.Ui
             if (Design.ShowLabels) ApplyLabels(c, slide, presence, scroll);
             if (Design.ShowClock) ApplyClock(slide, presence);
             if (_hintText != IntPtr.Zero) ApplyHint(slide, presence);
+            if (_runningLegend != IntPtr.Zero)
+            {
+                int y = _layout.HintTop(slide) + 6;
+                if (y != _runtimeHintY)
+                {
+                    _runtimeHintY = y;
+                    Efl.evas_object_move(_runningLegend, _layout.Left + DockLayout.PadX, y);
+                    Efl.evas_object_move(_holdHint, _layout.Left + _layout.PillW - DockLayout.PadX - _holdHintWidth, y);
+                }
+                if (_runtimeHintAlpha != presence) { _runtimeHintAlpha = presence; TintRgb(_runningLegend, presence, 0x64E499); }
+                int alpha = _items[c.FocusTarget].IsSystem ? 0 : presence;
+                if (_holdHintAlpha != alpha) { _holdHintAlpha = alpha; TintText(_holdHint, alpha); }
+            }
         }
 
         private void ApplyHint(int slide, int presence)

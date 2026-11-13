@@ -24,6 +24,8 @@ Vetro runs on your Samsung TV and gives you a dashboard, open from any computer 
 
 A fast, minimal launcher on the Home key. It shows the same apps and icons as Samsung's Home, in the same order, and comes back by itself after a restart or a standby. Samsung's Home is one press away (the **Samsung Home** button), and nothing is removed.
 
+A green badge marks apps with a running app or background service. Hold the centre/OK button on an app to see its running components and stop one; tap normally to launch. Protected TV components cannot be stopped from this menu.
+
 **It frees memory.** Samsung's Home is closed while the launcher is on. On a Q80A, available RAM went up by about 24% (533 MB to 662 MB); other TVs will differ. Method and numbers in the [performance evidence](app/docs/PERFORMANCE.md).
 
 <p align="center">

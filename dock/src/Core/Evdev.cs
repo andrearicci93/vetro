@@ -40,6 +40,17 @@ namespace Launcher.Core
         /// <summary>Allocation-free variant: appends the presses to a list the caller reuses.</summary>
         public void Feed(byte[] data, int count, List<int> presses)
         {
+            Feed(data, count, presses, false);
+        }
+
+        /// <summary>Ordered presses and releases (negative key codes), for hold gestures.</summary>
+        public void FeedTransitions(byte[] data, int count, List<int> transitions)
+        {
+            Feed(data, count, transitions, true);
+        }
+
+        private void Feed(byte[] data, int count, List<int> presses, bool releases)
+        {
             int i = 0;
             while (i < count)
             {
@@ -51,16 +62,17 @@ namespace Launcher.Core
                 i += take;
                 if (_carried < _record) break;
                 _carried = 0;
-                Decode(_carry, presses);
+                Decode(_carry, presses, releases);
             }
         }
 
-        private void Decode(byte[] rec, List<int> into)
+        private void Decode(byte[] rec, List<int> into, bool releases)
         {
             int type = rec[_typeOffset] | (rec[_typeOffset + 1] << 8);
             int code = rec[_typeOffset + 2] | (rec[_typeOffset + 3] << 8);
             int value = rec[_typeOffset + 4] | (rec[_typeOffset + 5] << 8) | (rec[_typeOffset + 6] << 16) | (rec[_typeOffset + 7] << 24);
             if (type == EvKey && value == 1) into.Add(code);
+            else if (releases && type == EvKey && value == 0 && code > 0) into.Add(-code);
         }
     }
 

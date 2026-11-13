@@ -78,6 +78,7 @@ function legacySourceUsage(file, images) {
 function Dock(options) {
     options = options || {};
     this.execute = options.execute;
+    this.port = Number.isInteger(options.port) && options.port >= 1024 && options.port <= 65535 ? options.port : 8099;
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
@@ -240,7 +241,7 @@ Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
-    var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
+    var args = DLL + ' --api http://127.0.0.1:' + this.port + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
     return [

@@ -53,7 +53,8 @@ var homeOrder = new (require('./home-order.js').Order)(agentExecute);
 // Custom launcher mode needs a look at the chosen app in the registry, and a way to put Samsung's Home back when an
 // earlier build of the mode had disabled it (the mode itself never disables it any more: the boot of the TV waits for it).
 var dockModule = require('./dock.js');
-var dock = new dockModule.Dock({execute: agentExecute,
+var dockRuntime = new (require('./dock-runtime.js').Runtime)({execute: agentExecute, inventory: inventory});
+var dock = new dockModule.Dock({execute: agentExecute, port: Number(process.env.VETRO_PORT) || buildInfo.port || 8099,
     home: {
         restore: function () { return applySamsungHome(false); }
     },
@@ -542,6 +543,13 @@ function applySamsungHome(off) {
     return quickSettings.apply('samsung-home',off,{execute:agentExecute,inventory:inventory,invalidate:function(){invalidateInventory();}})
         .then(function(d){debloatBusy=false;return d;},function(e){debloatBusy=false;throw e;});
 }
+function stopRunningApp(request) {
+    if (debloatBusy) return Promise.reject(new Error('App change already in progress'));
+    debloatBusy = true;
+    return Promise.resolve().then(function () { return dockRuntime.stop(request); })
+        .then(function (result) { debloatBusy = false; return result; },
+            function (error) { debloatBusy = false; throw error; });
+}
 function homeLockMessage() {
     var s=dock.readState();
     return s.customApp?'Turn off the custom launcher before changing Samsung Home':s.enabled?'Turn off the Vetro launcher before changing Samsung Home':null;
@@ -854,6 +862,7 @@ var server = http.createServer(function (req, res) {
         }
     }
     if (req.method === 'POST') {
+        if (url === '/dock/stop') return plugins.dispatch('launcher', req, res, 'stop', serveJson);
         if (url === '/input') return handleInput(req,res);
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
@@ -886,6 +895,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/dock/icon') return plugins.dispatch('launcher', req, res, 'icon', serveJson);
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
+    if (url === '/dock/runtime') return plugins.dispatch('launcher', req, res, 'runtime', serveJson);
     if (url === '/home-order') return homeOrder.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/restore') return handleRestore(req,res);
     if (url === '/pairing-mode') return handlePairingMode(req,res);
@@ -1004,7 +1014,9 @@ if (updateConfirmTimer.unref) updateConfirmTimer.unref();
 var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developerAllowed: function () { return platform.status().mode !== 'app-only'; }, dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
     registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/catalog/index.json',
     services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
-plugins.register(require('./plugin-launcher.js').definition(dock));
+plugins.register(require('./plugin-launcher.js').definition(dock, {runtime: {
+    snapshot: function () { return dockRuntime.snapshot(); }, stop: stopRunningApp
+}}));
 plugins.start();
 // A plugin's timer or socket callback throws outside every guard the host has. Without this the whole service ended with it
 // (and, past the first minute after a boot, came back with the plugin enabled and ended again). Plugin code is stopped and the

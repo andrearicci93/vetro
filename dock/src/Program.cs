@@ -17,7 +17,7 @@ using Launcher.Ui;
 //   * `show` / `hide` / `toggle` are read from a FIFO through an ecore fd handler.
 namespace Launcher
 {
-    internal static class Program
+    internal static partial class Program
     {
         private const int NotificationLevelTop = 40;
         private const int WindowLayer = 900;
@@ -358,11 +358,15 @@ namespace Launcher
             StartClock();
             StartAnimator();
             ResetIdle();
+            RefreshRunning();
         }
 
         private static void HideDock()
         {
             _pendingLaunch = null;
+            CancelCenter();
+            CloseOptions();
+            StopRunningTimer();
             CancelIdle();
             StopClock();
             if (_ctl.Hide()) StartAnimator();
@@ -383,11 +387,13 @@ namespace Launcher
         private static void SelectPage(Controller ctl, Dock dock)
         {
             if (ctl == _ctl) return;
+            CancelCenter(); CloseOptions();
             ctl.AdoptVisibility(_ctl, 0.55f);
             ActivatePage(ctl, dock);
             _dock.Apply(_ctl);
             StartAnimator();
             ResetIdle();
+            if (_ctl == _appsCtl) RefreshRunning(); else StopRunningTimer();
         }
 
         private static void OpenInputs()
@@ -595,6 +601,7 @@ namespace Launcher
         {
             try
             {
+                if (HandleOptionsKey(key)) return;
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -667,10 +674,11 @@ namespace Launcher
                     if (n < 0 && Marshal.GetLastWin32Error() != EAgain) { DropNode(index); break; }
                     if (n <= 0) break;
                     InputPresses.Clear();
-                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses);
+                    _inputReaders[index].FeedTransitions(InputBuf, (int)n, InputPresses);
                     for (int k = 0; k < InputPresses.Count; k++)
                     {
                         int code = InputPresses[k];
+                        if (code < 0) { if (code == -28) ReleaseCenter(); continue; }
                         if (_learn) Log("key code " + code);
                         if (code != _homeCode) { NavFromInput(code); continue; }
                         double now = Efl.ecore_time_get();
@@ -967,6 +975,7 @@ namespace Launcher
                 _inputsDock.Build();
                 _inputsDock.SetVisible(false);
                 _dock = _appsDock;
+                SetupRunning(args, layout, res);
                 if (!Flag(args, "--no-warmup")) WarmUp();
                 _appsDock.Apply(_appsCtl);
                 _inputsDock.Apply(_inputsCtl);
@@ -974,6 +983,7 @@ namespace Launcher
                     + (_appsDock.MissingIcons + _inputsDock.MissingIcons) + " icons missing");
 
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
+                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyUp, KeyUpCb, IntPtr.Zero);
                 SetupFifo();
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)

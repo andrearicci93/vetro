@@ -11,6 +11,8 @@
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
 //   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|enableCustom|disableCustom, on, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
+//   GET  api/runtime  registered running app/service components             (also GET /dock/runtime)
+//   POST api/stop     {appId, pid}, verified against current process state   (also POST /dock/stop)
 //
 // Plain ES5, like every module the TV loads.
 
@@ -32,10 +34,11 @@ var ROUND_TICKS = 5;         // every 5th tick (10 s) the launcher is checked ev
 //   readJson(req, res, cb)    reads and checks a JSON object body, answers 400/408/413 itself
 function definition(dock, options) {
     var tickMs = options && options.tickMs || TICK_MS;
+    var runtime = options && options.runtime;
     return {
         id: 'launcher',
         name: 'Launcher',
-        version: '1.1.0',
+        version: '1.2.0',
         apiVersion: 1,
         bundled: true,
         author: 'Vetro',
@@ -83,6 +86,20 @@ function definition(dock, options) {
                     return { enabled: !!state.enabled || !!state.customApp, installed: dock.installed() };
                 },
                 route: function (req, res, sub) {
+                    if (sub === 'runtime' && req.method === 'GET') {
+                        if (!runtime) { vetro.json(res, {error: 'Running apps unavailable'}, 503); return true; }
+                        runtime.snapshot().then(function (d) { vetro.json(res, d); })
+                            .catch(function (e) { vetro.json(res, {error: e.message}, 503); });
+                        return true;
+                    }
+                    if (sub === 'stop' && req.method === 'POST') {
+                        if (!runtime) { vetro.json(res, {error: 'App control unavailable'}, 503); return true; }
+                        vetro.readJson(req, res, function (p) {
+                            runtime.stop(p).then(function (d) { vetro.json(res, d); })
+                                .catch(function (e) { vetro.json(res, {ok: false, error: e.message}, 409); });
+                        });
+                        return true;
+                    }
                     if (sub === 'status' && req.method === 'GET') {
                         dock.status({ preview: true }).then(function (d) { vetro.json(res, d); })
                             .catch(function (e) { vetro.json(res, { error: e.message }, 503); });
