@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <AssemblyName>VetroVoiceTrial</AssemblyName>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+    <Compile Include="../../dock/src/Native/Efl.cs" Link="Native/Efl.cs" />
+    <None Update="res/start-cue.wav" CopyToOutputDirectory="PreserveNewest" TargetPath="start-cue.wav" />
+  </ItemGroup>
+</Project>
