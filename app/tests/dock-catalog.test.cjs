@@ -124,10 +124,21 @@ assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
     console.log('PASS dock catalog: Home row, registry and icons become the dock list');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
-// CoBA uses its Home launcher, keeping csfs as a fallback; older TVs keep their original pill.
-const coba = catalog.build(catalog.parse(OUTPUT + '\nH|com.samsung.tv.coba.newhome'));
+// Choose from the registered component roles, not the mere presence of a CoBA directory.
+const csfsUi = 'H|com.samsung.tv.csfs|uiapp|false';
+const cobaUi = 'H|com.samsung.tv.coba.newhome|uiapp|false';
+const coba = catalog.build(catalog.parse(OUTPUT + '\nH|com.samsung.tv.csfs|svcapp|true\n' + cobaUi));
 assert.ok(catalog.tsv(coba).includes('samsunghome\tSamsung Home\tsys:com.samsung.tv.coba.newhome\tcom.samsung.tv.csfs'));
-assert.equal(catalog.parse('H|bad;command').homeApp, null);
+for (const roles of [csfsUi + '\n' + cobaUi, cobaUi + '\n' + csfsUi]) {
+    const firstScreen = catalog.build(catalog.parse(OUTPUT + '\n' + roles));
+    assert.equal(firstScreen.homeApp, 'com.samsung.tv.csfs');
+    assert.ok(catalog.tsv(firstScreen).split('\n').includes('samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'));
+}
+assert.equal(catalog.parse(csfsUi).homeApp, 'com.samsung.tv.csfs');
+assert.equal(catalog.parse('H|com.samsung.tv.csfs|uiapp|true\n' + cobaUi).homeApp, 'com.samsung.tv.coba.newhome');
+for (const bad of ['H|bad;command|uiapp|false', 'H|com.samsung.tv.coba.newhome', 'H|com.samsung.tv.csfs|unknown|false', 'H|com.samsung.tv.csfs|uiapp|unknown']) {
+    assert.equal(catalog.parse(bad).homeApp, null);
+}
 
 // 2022 Home (S95B), PR #43 by arnaudaprahamian: csfs has no row, the Media hub's file is the "recent" strip;
 // the registry completes the list.
