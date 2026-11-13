@@ -23,5 +23,10 @@ function call(method, url, body) {
   assert.equal((await call('POST', '/update/rollback')).status, 409);
   // No published update list (GitHub 404) reads as such, not as a GitHub failure.
   assert.match(require('fs').readFileSync(require('path').join(__dirname, '../service/dashboard.js'), 'utf8'), /r\.status===404&&kind==='update list'\?'No update has been published yet\.'/);
+  // Windows local development and 8.3 short temp paths are accepted while relative and shell-unsafe paths are refused.
+  const {Updater} = require('../service/updater.js');
+  assert.ok(new Updater({installDir: 'C:\\Users\\MAURIC~1\\AppData\\Local\\Temp\\vetro', workDir: 'C:\\vetro-work'}).status());
+  assert.throws(() => new Updater({installDir: 'relative/path', workDir: '/opt/work'}), /Unsafe update folders/);
+  assert.throws(() => new Updater({installDir: '/opt/bad;rm', workDir: '/opt/work'}), /Unsafe update folders/);
   console.log('PASS update endpoints: status, refusal of an unsigned bundle, no rollback without a backup');
 })().catch(e => { console.error(e); process.exitCode = 1; });

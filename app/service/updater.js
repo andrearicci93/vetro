@@ -15,7 +15,8 @@ var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
 // Regular expressions compiled once at module load, not on every call.
-var SAFE_PATH_RE = /^[A-Za-z0-9_.\/-]+$/;
+var SAFE_PATH_RE = /^(?:[A-Za-z]:)?[A-Za-z0-9_.~\/\\-]+$/;
+var BACKSLASH_RE = /\\/g;
 var SHA256_RE = /^[0-9a-f]{64}$/;
 var BUILD_INFO_RE = /module\.exports = (\{[\s\S]*\});\s*$/;
 var DEFAULT_PORT_RE = /\b8099\b/g;
@@ -27,7 +28,7 @@ var MAX_BYTES = 12 * 1024 * 1024;
 var WAIT_SECONDS = 240;    // the watchdog waits this long for the new version to confirm itself
 // Only these paths can be replaced. config.xml, signatures and anything else of the package stay as installed.
 var ALLOWED = /^(?:service\/[A-Za-z0-9_.-]+\.js|native\/[A-Za-z0-9_.\/-]+|payload\/[A-Za-z0-9_.-]+|index\.html|icon\.png)$/;
-var DIR = /^\/[A-Za-z0-9_.\/-]+$/;
+var DIR = /^(?:\/|[A-Za-z]:[\/\\])[A-Za-z0-9_.~\/\\-]+$/;
 var VERSION = /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/;
 var SERVICE_ID = 'vetrotvapp.svc';
 
@@ -61,7 +62,7 @@ function writeJson(file, value) {
     fs.writeFileSync(temp, JSON.stringify(value) + '\n');
     fs.renameSync(temp, file);
 }
-function sq(v) { if (!SAFE_PATH_RE.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
+function sq(v) { if (!SAFE_PATH_RE.test(v)) throw fail('Unsafe path'); return "'" + v.replace(BACKSLASH_RE, '/') + "'"; }
 
 // The TV's UEP refuses to run a shell script FILE that is not signed ("the file is NOT signed"), but runs text given to
 // `sh -c`. So nothing is ever written to disk and executed: detached jobs are passed inline, as base64 to keep quoting simple.
