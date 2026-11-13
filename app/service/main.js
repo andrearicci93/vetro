@@ -50,6 +50,7 @@ var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
 var homeOrder = new (require('./home-order.js').Order)(agentExecute);
+var voice = new (require('./voice.js').Voice)({execute: agentExecute});
 // Custom launcher mode needs a look at the chosen app in the registry, and a way to put Samsung's Home back when an
 // earlier build of the mode had disabled it (the mode itself never disables it any more: the boot of the TV waits for it).
 var dockModule = require('./dock.js');
@@ -854,6 +855,7 @@ var server = http.createServer(function (req, res) {
         }
     }
     if (req.method === 'POST') {
+        if (url === '/voice') return readJsonBody(req,res,function(p){voice.change(p.enabled).then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});});
         if (url === '/input') return handleInput(req,res);
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
@@ -910,6 +912,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/control') return handleControl(req, res);
     if (url === '/probe') return handleProbe(req, res);
     if (url === '/input') return handleInput(req,res);
+    if (url === '/voice') return voice.status().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/apps/icon') return handleIcon(req,res);
     if (url === '/apps') return handleApps(req, res);
     if (url === '/blocklist') return handleBlocklist(req, res);
@@ -958,6 +961,7 @@ platform.start();
 // The launcher is started again after a boot or a crash while its switch is on: that supervision is the launcher plugin's (plugin-launcher.js).
 // Retry after boot and helper disconnects, including late adapter availability.
 var inputRestoreTimer=setInterval(restoreInput,5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
+var voiceTimer=setInterval(function(){voice.supervise(!!platform.status().agent.connected).catch(function(){});},10000);if(voiceTimer.unref)voiceTimer.unref();
 
 // MQTT bridge: publishes telemetry + Home Assistant discovery when a broker
 // is configured (persistent owner config, /tmp fallback). No-op without config.

@@ -46,6 +46,12 @@ __pycache__/
 /dock/**/bin/
 /dock/**/obj/
 
+# Voice helper build output and private setup files
+/rooting/voice-trial/**/bin/
+/rooting/voice-trial/**/obj/
+/rooting/voice-trial/config.json
+/app/native/voice/config.json
+
 # Design tooling and local firmware dumps
 .impeccable/
 /PRODUCT.md
