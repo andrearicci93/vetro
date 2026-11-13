@@ -818,8 +818,10 @@ namespace Launcher
                 if (e.KillFirst != null && e.AppId != null)
                 {
                     // Close the other app first, then start this one: one detached shell, so the dock does not wait.
+                    // The start follows the close with no pause: a Tizen 8 TV starts Samsung's YouTube engine again within
+                    // 0.4 s of a close, and TizenTube then reuses that engine without its own proxy settings.
                     // Both ids are plain Tizen ids (Catalog.ValidAppId), safe on a command line.
-                    int rc = Libc.system("( /usr/bin/app_launcher -k " + e.KillFirst + "; sleep 0.4; /usr/bin/app_launcher -s " + e.AppId + " ) >/dev/null 2>&1 &");
+                    int rc = Libc.system("( /usr/bin/app_launcher -k " + e.KillFirst + "; /usr/bin/app_launcher -s " + e.AppId + " ) >/dev/null 2>&1 &");
                     Log("launch " + e.AppId + " after closing " + e.KillFirst + " rc=" + rc);
                     return;
                 }
