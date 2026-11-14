@@ -27,7 +27,25 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
 
 (async () => {
   // Apps on the TV pass straight through; the LAN does not.
-  assert.equal((await call('POST', '/exec', tv)).handled, false);
+  assert.equal((await call('POST', '/exec', {ip: '127.0.0.1', headers: {host: '127.0.0.1:8099'}})).handled, false);
+  // An opaque Origin from the TV (the Vetro app, or any sandboxed web page in the TV browser) counts as the TV only on the routes the Vetro app calls.
+  assert.equal((await call('POST', '/exec', tv)).code, 401);
+  assert.equal((await call('GET', '/apps', tv)).code, 401);
+  assert.equal((await call('GET', '/status', tv)).handled, false);
+  assert.equal((await call('POST', '/probe', tv)).handled, false);
+  assert.equal((await call('GET', '/screen', tv)).handled, false);
+  // The TV browser with the dashboard open (#161): it sends its own Origin on every POST, and it is the TV itself.
+  const tvBrowser = {ip: '127.0.0.1', headers: {origin: 'http://127.0.0.1:8099', host: '127.0.0.1:8099'}};
+  assert.equal((await call('POST', '/exec', tvBrowser)).handled, false);
+  assert.equal((await call('POST', '/settings', {ip: '127.0.0.1', headers: {origin: 'http://localhost:8099', host: 'localhost:8099'}})).handled, false);
+  assert.equal((await call('POST', '/settings', {ip: '::1', headers: {origin: 'http://[::1]:8099', host: '[::1]:8099'}})).handled, false);
+  assert.equal(auth.trusted({socket: {remoteAddress: '127.0.0.1'}, headers: tvBrowser.headers}), true, 'the TV browser may turn pairing on');
+  assert.equal(auth.trusted({socket: {remoteAddress: '127.0.0.1'}, headers: tv.headers}), false, 'a sandboxed page may not');
+  // Its Origin must be the address it opened: another page on the TV (another port, another name) is not the dashboard.
+  assert.equal((await call('POST', '/exec', {ip: '127.0.0.1', headers: {origin: 'http://127.0.0.1:8080', host: '127.0.0.1:8099'}})).code, 401);
+  assert.equal((await call('POST', '/exec', {ip: '127.0.0.1', headers: {origin: 'http://localhost:8099', host: '127.0.0.1:8099'}})).code, 401);
+  assert.equal((await call('POST', '/exec', {ip: '127.0.0.1', headers: {origin: 'http://evil.example:8099', host: 'evil.example:8099'}})).code, 401, 'a rebound name on loopback still pairs');
+  assert.equal((await call('POST', '/exec', {headers: {origin: 'http://192.168.1.10:8099'}})).code, 401, 'the same Origin from another device still pairs');
   assert.equal((await call('GET', '/status', {ip: '127.0.0.1', headers: {host: '127.0.0.1:8099'}})).handled, false);
   assert.equal((await call('POST', '/exec')).code, 401);
   assert.equal((await call('POST', '/sdb-access')).code, 401);
@@ -44,8 +62,12 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   // A TV that blocks loopback (The Frame 2025, #122): its own LAN address counts as the TV, anyone else's does not.
   auth._ownAddresses(() => ({lo0: [{family: 'IPv4', internal: true, address: '127.0.0.1'}], eth0: [{family: 'IPv6', internal: false, address: 'fe80::1'}, {family: 'IPv4', internal: false, address: '192.168.1.10'}]}));
   const own = {ip: '192.168.1.10', headers: {origin: 'null', host: '192.168.1.10:8099'}};
-  assert.equal((await call('POST', '/exec', own)).handled, false);
-  assert.equal((await call('POST', '/exec', Object.assign({}, own, {ip: '::ffff:192.168.1.10'}))).handled, false);
+  const ownBrowser = {ip: '192.168.1.10', headers: {origin: 'http://192.168.1.10:8099', host: '192.168.1.10:8099'}};
+  assert.equal((await call('POST', '/exec', {ip: '192.168.1.10', headers: {host: '192.168.1.10:8099'}})).handled, false);
+  assert.equal((await call('POST', '/exec', ownBrowser)).handled, false, 'the TV browser on the TV address is the TV too (#161)');
+  assert.equal((await call('POST', '/exec', Object.assign({}, ownBrowser, {ip: '::ffff:192.168.1.10'}))).handled, false);
+  assert.equal((await call('POST', '/exec', own)).code, 401, 'an opaque Origin only on the Vetro app routes');
+  assert.equal((await call('GET', '/status', own)).handled, false);
   assert.equal((await call('GET', '/auth/pending', own)).code, 200);
   assert.equal((await call('POST', '/exec', {ip: '192.168.1.11', headers: own.headers})).code, 401);
   assert.equal((await call('GET', '/auth/pending', {ip: '192.168.1.11', headers: own.headers})).code, 403);
@@ -58,11 +80,11 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   assert.equal(auth.fromThisTv('192.168.1.20'), true); assert.equal(auth.fromThisTv('fe80::2'), false);
   // An unreadable interface list means nothing extra is trusted.
   auth._ownAddresses(() => { throw new Error('no interfaces'); });
-  assert.equal((await call('POST', '/exec', own)).code, 401);
+  assert.equal((await call('POST', '/exec', ownBrowser)).code, 401);
   auth._ownAddresses();
   // Every 127.x address is loopback, so a TV that does not use 127.0.0.1 itself still counts as the TV.
-  assert.equal((await call('POST', '/exec', {ip: '127.0.0.2', headers: tv.headers})).handled, false);
-  assert.equal((await call('POST', '/exec', {ip: '::ffff:127.10.0.1', headers: tv.headers})).handled, false);
+  assert.equal((await call('POST', '/exec', {ip: '127.0.0.2', headers: {host: '127.0.0.1:8099'}})).handled, false);
+  assert.equal((await call('POST', '/exec', {ip: '::ffff:127.10.0.1', headers: {host: '127.0.0.1:8099'}})).handled, false);
   assert.equal((await call('GET', '/auth/pending', {ip: '127.0.0.2', headers: tv.headers})).code, 200);
   assert.equal(auth.fromThisTv('127.255.255.254'), true); assert.equal(auth.fromThisTv('128.0.0.1'), false);
   assert.equal(auth.fromThisTv('::ffff:128.0.0.1'), false); assert.equal(auth.fromThisTv('10.127.0.0.1'), false);
@@ -158,7 +180,9 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   auth._reset();
   const p = await call('POST', '/auth/pair', {body: {}});
   const t = (await call('POST', '/auth/confirm', {body: {id: p.body.id, code: (await call('GET', '/auth/pending', tv)).body.code}})).body.token;
-  assert.equal((await call('POST', '/auth/signout-all', tv)).code, 200);
+  assert.equal((await call('POST', '/auth/signout-all', tv)).code, 401, 'not from a sandboxed page');
+  assert.equal((await call('GET', '/apps', {headers: {authorization: 'Bearer ' + t}})).handled, false);
+  assert.equal((await call('POST', '/auth/signout-all', {ip: '127.0.0.1', headers: {origin: 'http://127.0.0.1:8099', host: '127.0.0.1:8099'}})).code, 200);
   assert.equal((await call('GET', '/apps', {headers: {authorization: 'Bearer ' + t}})).code, 401);
   // At most 20 keys: the 21st pairing is refused with a reason (no key is dropped silently).
   auth._reset();
@@ -196,5 +220,5 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
     } finally { crypto.timingSafeEqual = real; }
   }
 
-  console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported, Node 4 fallback');
+  console.log('PASS auth: TV widget passes on its routes, TV browser passes (#161), opaque Origin refused on root routes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported, Node 4 fallback');
 })().catch(e => { console.error(e); process.exitCode = 1; });

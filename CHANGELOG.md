@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **The TV browser can save dashboard changes without pairing** ([#161](https://github.com/andrearicci93/vetro/issues/161), reported by **mmikle1970**). With pairing on, the TV's own web browser on `http://127.0.0.1:8099` (or the TV's address) showed the dashboard but asked for the pairing code to save a change. It now counts as the TV itself, like the Vetro app. Other web pages open in the TV browser still cannot use Vetro's root routes: the opaque origin the Vetro app sends is accepted only on the routes the app uses. Not yet tried on a TV.
+
 ## 0.5.0 — 2026-11-06
 
 > **Republished (7 Nov 2026, twice).** The first 0.5.0 build had pairing always on. On a Samsung Q8F (Tizen 9, firmware 1300.9) the Vetro app on the TV could not reach the service, so the pairing code never appeared and the dashboard could not be opened. This republished 0.5.0 makes pairing automatic (open until the TV app is seen), keeps readable refusals on the TV screen (**"Refused this screen"** with the address and Origin the service saw) and fixes the TV's address list on some Node versions. **If you installed 0.5.0 before this note, reinstall with Apps2Samsung**: in-place update does not offer it, because the version number is the same. The two builds differ only by their source revision in the diagnostics report. Not yet tried on a Q8F; reports welcome.

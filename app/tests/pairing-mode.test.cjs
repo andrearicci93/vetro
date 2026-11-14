@@ -27,6 +27,7 @@ function modeFile(text){if(text===null)unlink(auth.MODE_PATH);else fs.writeFileS
  // ...but an opaque Origin (sandboxed web page) is still refused everywhere else, and so are rebinding and cross-site.
  assert.equal((await call('POST','/exec',{},{headers:{origin:'null'}})).code,403);
  assert.equal((await call('GET','/apps',undefined,{headers:{origin:'null'}})).code,403);
+ assert.equal((await callAt('POST','/exec',{},{local:true,headers:{origin:'null',host:'127.0.0.1:8099'}})).code,403,'also from the TV itself: a web page in the TV browser is not the Vetro app');
  assert.equal((await call('GET','/status',undefined,{headers:{origin:'null',host:'rebound.example'}})).code,403);
  assert.equal((await call('GET','/status',undefined,{headers:{host:'rebound.example'}})).code,403);
  assert.equal((await call('POST','/pairing-mode',{enabled:true},{headers:{origin:'http://evil.example'}})).code,403);
@@ -51,6 +52,14 @@ function modeFile(text){if(text===null)unlink(auth.MODE_PATH);else fs.writeFileS
  const refused=await call('POST','/pairing-mode',{enabled:true});
  assert.equal(refused.code,409);assert.equal(refused.data.needPair,true);assert.equal(auth.pairingMode().enabled,false);
  assert.equal((await call('POST','/pairing-mode',{enabled:'yes'})).code,400);
+ // The TV browser (#161) is the TV itself: it may turn pairing on without a code, and back off.
+ const tvBrowser={local:true,headers:{origin:'http://127.0.0.1:8099',host:'127.0.0.1:8099'}};
+ assert.equal((await callAt('GET','/pairing-mode',undefined,tvBrowser)).data.paired,true);
+ assert.equal((await callAt('POST','/pairing-mode',{enabled:true},tvBrowser)).data.enabled,true,'the TV browser turns pairing on');
+ assert.equal((await callAt('POST','/pairing-mode',{enabled:true},tvBrowser)).code,200,'and still gets in with pairing on');
+ assert.equal((await callAt('POST','/pairing-mode',{enabled:false},{local:true,headers:{origin:'null',host:'127.0.0.1:8099'}})).code,401,'a sandboxed page on the TV cannot change it');
+ assert.equal((await callAt('POST','/pairing-mode',{enabled:false},tvBrowser)).data.enabled,false);
+ unlink(auth.MODE_PATH);reload();auth._forgetTv();assert.equal(auth.pairingMode().enabled,false);
  const start=await call('POST','/auth/pair',{name:'test'});
  const pending=await call('GET','/auth/pending',undefined,{local:true});
  const confirmed=await call('POST','/auth/confirm',{id:start.data.id,code:pending.data.code});
@@ -87,5 +96,5 @@ function modeFile(text){if(text===null)unlink(auth.MODE_PATH);else fs.writeFileS
  assert.equal(modeFile('broken'),true,'an unreadable choice stays on');
  assert.equal(modeFile('{}'),true,'a choice that is not understood stays on');
  modeFile(null);
- console.log('PASS pairing mode: automatic by default (open until the TV app is seen, then on), TV page answered from any address while open, opaque origins refused elsewhere, turning on needs a paired browser, persisted choice, 0.5.0 files migrated, paired keys kept');
+ console.log('PASS pairing mode: automatic by default (open until the TV app is seen, then on), TV page answered from any address while open, opaque origins refused elsewhere, turning on needs a paired browser or the TV browser (#161), persisted choice, 0.5.0 files migrated, paired keys kept');
 })().catch(e=>{console.error(e);process.exitCode=1;});

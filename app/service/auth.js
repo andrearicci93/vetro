@@ -174,6 +174,16 @@ function tvApp(req) {
     var o = (req.headers || {}).origin;
     return isLoopback(req) && (o === undefined || o === 'null');
 }
+// This TV itself, for the no-key bypass (#161). The TV browser with the dashboard open sends its own Origin (it matches
+// Host) on every POST, so it counts as the TV like a TV app with no Origin. An opaque Origin ("null": a sandboxed frame,
+// such as a web page's iframe or a Shard page opened in the TV browser) counts only on the routes the Vetro app calls, so
+// a web site open in the TV browser cannot post to the root routes. The Host must be an IP address or localhost
+// (no DNS rebinding); another site's Origin never matches.
+function selfTv(req, url) {
+    if (!isLoopback(req) || !hostOk(req)) return false;
+    var o = (req.headers || {}).origin;
+    return o === undefined || o === 'http://' + (req.headers || {}).host || (o === 'null' && !!WIDGET_ROUTES[url]);
+}
 function hostOk(req) {
     var host = String((req.headers || {}).host || '').replace(HOST_PORT_RE, '').replace(HOST_BRACKETS_RE, '');
     return host === '' || host === 'localhost' || IPV4_HOST_RE.test(host) || IPV6_HOST_RE.test(host);
@@ -295,7 +305,7 @@ function gate(req, res, url, options) {
     // App-only mode has no TV adapter and no TV to show a code; it keeps the host check.
     if (options.open) return hostOk(req) ? false : (json(res, 403, {error: 'Use an IP address or localhost'}), true);
     // The TV-app bypass needs an IP or localhost Host: a rebound hostname on loopback must still pair.
-    var local = tvApp(req) && hostOk(req);
+    var local = tvApp(req) && hostOk(req), self = selfTv(req, url);
     // Only the TV app sends the opaque Origin from the TV's own address; a program on the TV with no Origin does not count.
     if (local && WIDGET_ROUTES[url] && (req.headers || {}).origin === 'null') markTvSeen();
 
@@ -316,7 +326,7 @@ function gate(req, res, url, options) {
             {'Access-Control-Allow-Origin': 'null'}), true;
     }
 
-    if (local) {
+    if (self) {
         if (url === '/auth/signout-all' && req.method === 'POST') return signOut(res, true), true;
         return false;
     }
@@ -412,9 +422,9 @@ var LOGIN = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta na
 '</script></body></html>';
 
 // True for the TV itself and for a paired device: who may turn pairing on without locking themselves out.
-function trusted(req) { return (tvApp(req) && hostOk(req)) || !!sessionOf(req); }
+function trusted(req) { return selfTv(req, '') || !!sessionOf(req); }
 
-module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingEnabled: setPairingEnabled, trusted: trusted, pageOrigin: pageOrigin, MODE_PATH: MODE_PATH, TV_PATH: TV_PATH, gate: gate, decorate: decorate, tvApp: tvApp, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
+module.exports = {pendingLive: function () { return !!(pending && pending.expires > Date.now()); }, pairingMode: pairingMode, setPairingEnabled: setPairingEnabled, trusted: trusted, pageOrigin: pageOrigin, MODE_PATH: MODE_PATH, TV_PATH: TV_PATH, gate: gate, decorate: decorate, tvApp: tvApp, selfTv: selfTv, fromThisTv: fromThisTv, hostOk: hostOk, originOk: originOk, STORE_PATH: STORE_PATH,
     _reset: function () { sessions = []; pending = null; lastPairAt = 0; },
     _forgetTv: function () { tvSeen = false; },
     _ownAddresses: function (fn) { interfaces = fn || function () { return os.networkInterfaces(); }; ownCache = {at: 0, list: []}; },
