@@ -51,6 +51,8 @@ Bridge.prototype.stop = function () {
     if(socket)socket.destroy();
     if(server)server.close();
 };
+// A helper whose remote is gone: stop it and drop its last error, which no longer describes a remote.
+Bridge.prototype.retire = function () {this.stop(); this.lastError=null;};
 Bridge.prototype.start = function (device, mode, tokens) {
     var self=this;
     if (mode==='off') {self.stop(); return Promise.resolve(self.status());}
