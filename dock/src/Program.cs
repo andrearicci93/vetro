@@ -45,13 +45,7 @@ namespace Launcher
         private static readonly byte[] ReadBuf = new byte[128];
 
         // Remote-control input (read-only evdev, never grabbed): the Home key toggles the dock.
-        private const double HomeDebounceSeconds = 0.35;
-        // The raw press (evdev) opens the dock at once. The system holds Home to tell a short press from a long one
-        // and only then delivers XF86Home to the focused window, which is now the dock: on 2025 firmware that echo
-        // comes about 0.6 s later, well past the debounce. An XF86Home this soon after the raw press is the same
-        // press, not a request to close.
-        private const double HomeEchoSeconds = 1.5;
-
+        private static readonly HomeKeyHandler HomeKeys = new HomeKeyHandler();
         // --kill-on-home APPID[,APPID...]: the system sends Home to Samsung's own home app as well (it is relaunched
         // by the key), so after each Home press the app is closed again, a few times because its start is slow.
         // 2025 (RSM/CoBA) firmware splits Home into csfs plus separate sidebar and media windows that stay on top of
@@ -72,10 +66,8 @@ namespace Launcher
         private static AppEntry _homeLaunch;
 
         private static readonly NavigationInput Navigation = new NavigationInput();
-        private static double _lastRawHome = -100;
         private static AppEntry _pendingLaunch;
         private static bool _learn;
-        private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
         private static readonly List<int> _inputFds = new List<int>();
         private static readonly List<EvdevReader> _inputReaders = new List<EvdevReader>();
@@ -616,11 +608,10 @@ namespace Launcher
                         if (key == "XF86Home")
                         {
                             double now = Efl.ecore_time_get();
-                            if (now - _lastRawHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastRawHome) * 1000).ToString("0") + " ms after the press"); break; }
-                            _lastHome = now;
+                            if (HomeKeys.FromWindow(now, _ctl.IsActive) == HomeKeyAction.None) break;
                             HideDock();
                             // Home reached the dock through evas and not through evdev: the evdev path, which arms the guard,
-                            // will count this press as already handled (_lastHome), so it is armed here.
+                            // will count this press as already handled, so it is armed here.
                             ArmGuard();
                             break;
                         }
@@ -675,9 +666,7 @@ namespace Launcher
                         if (code != _homeCode) { NavFromInput(code); continue; }
                         double now = Efl.ecore_time_get();
                         // The focused dock also gets XF86Home through evas and hides itself: count it once.
-                        if (now - _lastHome < HomeDebounceSeconds) continue;
-                        _lastHome = now;
-                        _lastRawHome = now;
+                        if (HomeKeys.FromEvdev(now, _ctl.IsActive) == HomeKeyAction.None) continue;
                         _perfWhy = "home";
                         if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); continue; }
                         if (_ctl.IsActive) HideDock(); else ShowDock();
