@@ -15,6 +15,7 @@ const dock = {
     status: o => Promise.resolve({ enabled, preview: !!(o && o.preview) }),
     enable: () => { log.push('enable'); enabled = true; return Promise.resolve({ enabled }); },
     disable: () => { log.push('disable'); enabled = false; return Promise.resolve({ enabled }); },
+    setHomeShortcut: value => { log.push('shortcut:' + (value ? value.appId : 'default')); return Promise.resolve({homeShortcut:value}); },
     refresh: () => { log.push('refresh'); return Promise.resolve({ ok: true }); },
     setNoMotion: on => { log.push('motion:' + on); return Promise.resolve({ noMotion: on }); },
     setFixTizenTube: on => { log.push('fix:' + on); return Promise.resolve({ fix: on }); },
@@ -46,6 +47,9 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
         post(body); await nextTick(1);
         assert.equal(log[before], entry);
     }
+    let shortcut = post(JSON.stringify({action:'homeShortcut',appId:'GlassHome1.Home',label:'Glass'})); await nextTick(1);
+    assert.deepEqual(shortcut.body.homeShortcut,{appId:'GlassHome1.Home',label:'Glass'});
+    shortcut=post(JSON.stringify({action:'homeShortcut',appId:null}));await nextTick(1);assert.equal(shortcut.body.homeShortcut,null);
     let r = post('{"action":"format"}'); await nextTick(1);
     assert.equal(r.code, 409); assert.deepEqual(r.body, { ok: false, error: 'Invalid dock action' });
     assert.equal(post('null').code, 400);
