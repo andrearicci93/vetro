@@ -529,6 +529,32 @@ Dock.prototype.setSourceOption = function (key, on) {
     }).finally(function () { self.busy = false; });
 };
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
+Dock.prototype.setHomeAssignment = function (value) {
+    var self = this;
+    if (!value || ['samsung', 'vetro', 'custom'].indexOf(value.mode) < 0) return Promise.reject(Error('Choose a Home destination'));
+    if (this.homeChanging || this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    var before = this.readState(), changed = false;
+    this.homeChanging = true;
+    function off() {
+        var state = self.readState();
+        return state.customApp ? self.disableCustom() : state.enabled ? self.disable() : Promise.resolve();
+    }
+    function on(mode, appId) {
+        return mode === 'custom' ? self.enableCustom(appId) : mode === 'vetro' ? self.enable() : self.status();
+    }
+    var check = value.mode === 'custom' && this.appCheck ? this.appCheck(value.appId, true) : Promise.resolve({ok: value.mode !== 'custom'});
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled custom launcher app');
+        if ((value.mode === 'vetro' && before.enabled) || (value.mode === 'custom' && before.customApp === value.appId) || (value.mode === 'samsung' && !before.enabled && !before.customApp)) return self.status();
+        changed = true;
+        return off().then(function () { return on(value.mode, value.appId); });
+    }).catch(function (error) {
+        if (!changed) throw error;
+        return off().then(function () { return on(before.customApp ? 'custom' : before.enabled ? 'vetro' : 'samsung', before.customApp); })
+            .then(function () { throw error; }, function (restore) { throw Error(error.message + '; previous Home assignment could not be restored: ' + restore.message); });
+    }).finally(function () { self.homeChanging = false; });
+};
+
 Dock.prototype.setFixTizenTube = function (on) {
     var self = this;
     if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
@@ -586,7 +612,7 @@ Dock.prototype.iconFile = function (slug) {
 // every few minutes and reports the reason.
 Dock.prototype.supervise = function (agentConnected) {
     var self = this, state = this.readState(), custom = !!state.customApp;
-    if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
+    if ((!state.enabled && !custom) || this.homeChanging || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
     return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {

@@ -691,10 +691,12 @@ function handleSettings(req, res) {
 }
 
 function handleRemap(req, res) {
-    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token });
+    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token, homeOwner: 'launcher', homeRuleInactive: remapStore.rules.some(function(r){return r.enabled&&r.trigger.type==='physical'&&r.trigger.value==='63';}) });
     readJsonBody(req, res, function (parsed) {
         var rules;
-        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
+        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf);
+            if (rules.some(function (r) { return r.enabled && r.trigger.type === 'physical' && r.trigger.value === '63'; })) throw Error('Configure the Home key with Home destination in Launcher or Remapper');
+        }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
         stopInput(); inputPaused=false; inputFaultUntil=0;
         remapStore.rules = rules;
@@ -723,7 +725,7 @@ function runActions(actions, direct, dispatchGuard) {
 }
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var physical=new PhysicalInput(agentExecute,function(event){
-    if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
+    if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked'||event.code===63)return;
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
@@ -752,7 +754,7 @@ function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
-function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;});}
+function inputTokens(){return remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical'&&r.trigger.value!=='63';}).map(function(r){return r.trigger.value;});}
 function restoreInput(){
     if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput();inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;

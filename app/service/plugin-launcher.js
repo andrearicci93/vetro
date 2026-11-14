@@ -54,6 +54,8 @@ function definition(dock, options) {
             }
 
             function action(p) {
+                if (dock.homeChanging) return Promise.reject(new Error('Another Home assignment change is in progress'));
+                if (p.action === 'homeAssignment') return dock.setHomeAssignment({mode: p.mode, appId: p.appId});
                 if (p.action === 'enable') return dock.enable();
                 if (p.action === 'disable') return dock.disable();
                 if (p.action === 'refresh') return dock.refresh();
