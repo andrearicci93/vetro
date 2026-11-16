@@ -1493,7 +1493,7 @@ namespace Launcher.Tests
                 T.Eq(names(ControlCenter.Parse(null, false)), "Tasks", "no --cards: the Task manager alone, as before");
                 T.Eq(names(ControlCenter.Parse(null, true)), "", "--no-tasks: no card");
                 T.Eq(names(ControlCenter.Parse("audio,tasks", false)), "Audio,Tasks", "the order given");
-                T.Eq(names(ControlCenter.Parse(" tasks , picture,audio,tasks", true)), "Tasks,Audio", "unknown and repeated names skipped; --cards wins over --no-tasks");
+                T.Eq(names(ControlCenter.Parse(" tasks , radio,audio,tasks", true)), "Tasks,Audio", "unknown and repeated names skipped; --cards wins over --no-tasks");
                 T.Eq(names(ControlCenter.Parse("", false)), "", "an empty list: no card");
                 T.Eq(ControlCenter.HintText(new[] { CardKind.Tasks }), "Task manager", "one card: its own name under the bar");
                 T.Eq(ControlCenter.HintText(new[] { CardKind.Audio }), "Audio output", "the Audio output alone");
@@ -1568,6 +1568,36 @@ namespace Launcher.Tests
                 DockLayout a, i, all;
                 DockLayout.Pages(5, 3, 5, 30, 28, 1920, 1080, true, out a, out i, out all);
                 T.True(a.WinW == i.WinW && i.WinW == all.WinW && all.Raised && all.GroupStart == 28, "All apps shares the window, raised, with its pills");
+            });
+
+            T.Run("picture mode and sleep timer cards: what is read, what is offered, what is sent", () =>
+            {
+                T.Eq(string.Join(",", Array.ConvertAll(ControlCenter.Parse("sleep,picture,tasks,audio", false), k => k.ToString())), "Sleep,Picture,Tasks", "the two new cards, at most three");
+                T.Eq(ControlCenter.HintText(new[] { CardKind.Picture }), "Picture mode", "one card: its name");
+                // The answers as the Q80A gave them (read only, 2026-11-16): Movie now, five modes offered on that source.
+                var checks = new System.Text.StringBuilder();
+                foreach (int id in PictureModes.Candidates) checks.Append(id == 65536 || id == 65537 || id == 65542 || id == 65538 || id == 655360 ? "i 1\n" : "i 2\n");
+                ChoiceState p = PictureModes.Build("ii 65538 0\n", checks.ToString());
+                T.Eq(string.Join(",", p.Rows.ConvertAll(r => r.Label).ToArray()), "Dynamic,Standard,Natural,Movie,Filmmaker Mode", "Samsung's order, only what the TV offers");
+                T.True(p.Choosable && p.Rows[3].Active && !p.Rows[0].Active, "the current one ticked");
+                ChoiceState hdr = PictureModes.Build("ii 393217 0", checks.ToString().Replace("i 2\ni 1\ni 2\n", "i 2\ni 1\ni 1\n"));
+                T.True(hdr.Rows.Exists(r => r.Label == "Movie" && r.Active), "an HDR variant reads as its own name");
+                ChoiceState game = PictureModes.Build("ii 65547 0", checks.ToString());
+                T.True(!game.Choosable && game.Rows.Count == 1 && game.Rows[0].Label == "Game" && game.Note == "Change it in Samsung's menu", "Game mode locks the list, as on Samsung's menu");
+                T.True(!PictureModes.Build("", "").Choosable && PictureModes.Build("Failed to connect", checks.ToString()).Note == "Not available", "nothing read: not available");
+                T.Eq(PictureModes.SetCommand(655360), "busctl call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl SetPictureMode ii 655360 1", "set and saved, as Samsung's menu does");
+                T.True(PictureModes.SetCommand(65547) == null && PictureModes.SetCommand(-1) == null, "only a candidate can be set");
+                T.Eq(PictureModes.Numbers("ii 65538 0").Count, 2, "busctl's answer read"); T.Eq(PictureModes.Numbers("x 1").Count, 0, "not an answer");
+                string off = "memory/menu/system/time/sleeptimer/savetime, value = 0 (Int32)\ndb/menu/system/time/sleeptimer/time_t, value = 0 (String)\n";
+                ChoiceState s = SleepTimer.Build(off);
+                T.Eq(string.Join(",", s.Rows.ConvertAll(r => r.Label).ToArray()), "Off,30 min,60 min,120 min,180 min", "Samsung's five choices");
+                T.True(s.Rows[0].Active && s.Note == "", "off ticked, no line");
+                ChoiceState on = SleepTimer.Build("memory/menu/system/time/sleeptimer/savetime, value = 3 (Int32)\ndb/menu/system/time/sleeptimer/time_t, value = 97 (String)");
+                T.True(on.Rows[3].Active && on.Note == "The TV switches off in 97 min", "120 min chosen, 97 left");
+                T.True(!SleepTimer.Build("").Choosable && !SleepTimer.Build("memory/menu/system/time/sleeptimer/savetime, value = 9 (Int32)").Choosable, "unreadable or unknown: not available");
+                T.Eq(SleepTimer.SetCommand(2), "vconftool set -f -t int memory/menu/system/time/sleeptimer/savetime 2 && vconftool set -f -t string db/menu/system/time/sleeptimer/time_t 60", "the index first, then the minutes");
+                T.Eq(SleepTimer.SetCommand(0), "vconftool set -f -t int memory/menu/system/time/sleeptimer/savetime 0 && vconftool set -f -t string db/menu/system/time/sleeptimer/time_t 0", "off");
+                T.True(SleepTimer.SetCommand(5) == null && SleepTimer.SetCommand(-1) == null, "nothing outside Samsung's five");
             });
 
             T.Run("design: one material for the panels", () =>

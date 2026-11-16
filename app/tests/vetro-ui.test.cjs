@@ -52,7 +52,7 @@ new Function(ui.pageSource());
     fs.writeFileSync(file, JSON.stringify({enabled: true, taskManager: true}));
     assert.deepEqual(d.readState().cards, ['tasks'], 'the old switch is the Task manager card');
     assert.match(d.startScript(), / --cards tasks( |$)/);
-    fs.writeFileSync(file, JSON.stringify({enabled: true, taskManager: true, cards: ['audio', 'tasks', 'audio', 'picture']}));
+    fs.writeFileSync(file, JSON.stringify({enabled: true, taskManager: true, cards: ['audio', 'tasks', 'audio', 'radio']}));
     assert.deepEqual(d.readState().cards, ['audio', 'tasks'], 'cards win over the old switch; unknown and repeated ones are dropped');
     assert.equal(d.readState().taskManager, true);
     assert.match(d.startScript(), / --cards audio,tasks/);

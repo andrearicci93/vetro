@@ -8,7 +8,7 @@
   The launcher as on the TV (approved look: design round opus6, DESIGN.md "TV material"). Every panel is the osd 123's material
   (pill_rim white .22 2 px outside pill_bg slate .90, radius 40 or capsule, no drop shadow); the one focus is the ice capsule with slate text;
   the dock icons keep their ice ring + glow. Bars centred on x 960.
-  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|allapps|tasks|volume|pad123; ?cards=tasks,audio (the Control center's cards, default both); ?focus=N (dock item); ?bd=video|black|light|grid.
+  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|allapps|tasks|volume|pad123; ?cards=tasks,audio,picture,sleep (the Control center's cards, at most three, default tasks,audio); ?focus=N (dock item); ?bd=video|black|light|grid.
   Keys: Left / Right move · Up: Sources · Down: Control center (Left / Right between its cards) · Esc: back · Enter: launch · + / - / M: Volume bar · N: osd 123 (digits, Left / Right, Enter) ·
   R: replay the entrance · H: the toolbar.
 -->
@@ -193,6 +193,8 @@
      capsule (inset 16 from the sides, 4 from the row, the row's texts in slate) and a bright key hint (the others' hint at 40 / 30%) ---- */
   var TASKS = [['Samsung TV Plus', '#1674fb', 382], ['YouTube', '#c2364a', 239], ['Stremio', '#8a52d6', 170], ['NOW', '#1fa971', 95], ['Apple TV', '#5f6f86', 53]];
   var OUTS = [['TV speakers', 'out_tv', true], ['JBL Charge 5', 'out_bt', false], ['Sonos Beam', 'out_bt', false]];
+  var CHOICES = { picture: { title: 'Picture mode', rows: ['Dynamic', 'Standard', 'Natural', 'Movie', 'Filmmaker Mode'], on: 3, note: '' },
+    sleep: { title: 'Sleep timer', rows: ['Off', '30 min', '60 min', '120 min', '180 min'], on: 0, note: '' } };
   var CARDS = (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',');
   var tcard = 0, tsel = [0, 0, 0];
   function glyph(L, name, x, y, size, ink) {
@@ -214,13 +216,24 @@
   function drawTasks() {
     TL.innerHTML = '';
     var n = CARDS.length, PW = n === 1 ? 880 : 520, GAP = 32, total = n === 1 ? 880 : n * PW + (n - 1) * GAP, RH = 76;
-    var rows = Math.max.apply(null, CARDS.map(function (c) { return Math.max(2, Math.min(7, c === 'audio' ? OUTS.length : TASKS.length)); }));
+    var rows = Math.max.apply(null, CARDS.map(function (c) { return Math.max(2, Math.min(7, c === 'audio' ? OUTS.length : CHOICES[c] ? CHOICES[c].rows.length : TASKS.length)); }));
     var H = 18 + 70 + rows * RH + 54 + 10, PY = 994 - H, LT = PY + 18 + 70;
     CARDS.forEach(function (card, ci) {
       var PX = 960 - total / 2 + ci * (PW + GAP), focused = ci === tcard, sel = tsel[ci], memR = PX + PW - 38;
       Tv.panel(TL, PX, PY, PW, H, RADIUS);
       if (focused) Tv.cap(TL, PX + 16, LT + sel * RH + 4, PW - 32, RH - 8);
-      if (card === 'audio') {
+      if (CHOICES[card]) {
+        /* a choice card (ChoiceCard): plain rows from the content's left edge, the current one ticked, a line in the header */
+        var ch = CHOICES[card];
+        txt(TL, ch.title, PX + 34, PY + 26, 30, 1, 600);
+        if (ch.note) txt(TL, ch.note, PX + 34 + Tv.textW(ch.title, 30, 600) + 18, PY + 33, 22, .6);
+        ch.rows.forEach(function (r, i) {
+          var y = LT + i * RH, on = focused && i === sel;
+          txt(TL, r, PX + 44, y + 22, 27, on ? 'ink' : .85, 600, PW - 140);
+          if (i === ch.on) glyph(TL, 'out_check', memR - 40, y + 18, 40, on);
+        });
+        footer(TL, [[['ok'], 'choose', ''], [['up', 'back'], 'return', '']], PX + PW / 2, LT + rows * RH + 14, focused);
+      } else if (card === 'audio') {
         txt(TL, 'Audio output', PX + 34, PY + 26, 30, 1, 600);
         OUTS.forEach(function (o, i) {
           var y = LT + i * RH, on = focused && i === sel;
@@ -243,7 +256,7 @@
     });
     TL.style.display = '';
   }
-  function cardLen() { return CARDS[tcard] === 'audio' ? OUTS.length : TASKS.length; }
+  function cardLen() { var c = CARDS[tcard]; return c === 'audio' ? OUTS.length : CHOICES[c] ? CHOICES[c].rows.length : TASKS.length; }
   function openTasks() { page = 'tasks'; C.style.display = 'none'; tcard = 0; tsel = [0, 0, 0]; drawTasks(); bar.say(CARDS.length > 1 ? 'Control center' : 'Task manager'); }
   function closeTasks() { TL.style.display = 'none'; open('apps', 2); }
 
@@ -308,7 +321,7 @@
       else if (k === 'ArrowUp') { if (tsel[tcard] === 0) { closeTasks(); e.preventDefault(); return; } tsel[tcard]--; }
       else if (k === 'ArrowLeft') tcard = Math.max(0, tcard - 1); else if (k === 'ArrowRight') tcard = Math.min(CARDS.length - 1, tcard + 1);
       else if (k === 'Escape' || k === 'Backspace') { closeTasks(); e.preventDefault(); return; }
-      else if (k === 'Enter') { if (CARDS[tcard] === 'audio') { OUTS.forEach(function (o, i) { o[2] = i === tsel[tcard]; }); bar.say('sound on: ' + OUTS[tsel[tcard]][0]); } else bar.say('open: ' + TASKS[tsel[tcard]][0]); }
+      else if (k === 'Enter') { var cc = CHOICES[CARDS[tcard]]; if (cc) { cc.on = tsel[tcard]; cc.note = CARDS[tcard] === 'sleep' && cc.on > 0 ? 'The TV switches off in ' + cc.rows[cc.on] : ''; bar.say(cc.title + ': ' + cc.rows[cc.on]); } else if (CARDS[tcard] === 'audio') { OUTS.forEach(function (o, i) { o[2] = i === tsel[tcard]; }); bar.say('sound on: ' + OUTS[tsel[tcard]][0]); } else bar.say('open: ' + TASKS[tsel[tcard]][0]); }
       else return;
       drawTasks(); e.preventDefault(); return;
     }

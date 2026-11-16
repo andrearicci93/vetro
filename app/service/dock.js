@@ -121,7 +121,7 @@ Dock.prototype.installed = function () {
 
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the volume bar sits (the dock's --volume-edge)
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
-var CARDS = ['tasks', 'audio'], MAX_CARDS = 3;
+var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;
 function cleanCards(list) {
     var out = [];
     (Array.isArray(list) ? list : []).forEach(function (c) { if (CARDS.indexOf(c) >= 0 && out.indexOf(c) < 0 && out.length < MAX_CARDS) out.push(c); });

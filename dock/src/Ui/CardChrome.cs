@@ -191,7 +191,7 @@ namespace Launcher.Ui
         /// Draws the panel, the header, the divider, the footer and the capsule for a list of <paramref name="n"/> rows, and returns the
         /// opacity (0-255) the rows are drawn at. <paramref name="retint"/> comes back true when the rows have to be tinted again.
         /// </summary>
-        protected int ApplyChrome(TaskController c, int n, bool focused, out bool retint)
+        protected int ApplyChrome(TaskController c, int n, bool focused, out bool retint, bool capsule = true)
         {
             int slide = c.Slide;
             int a = (int)Math.Round(255f * c.Presence);
@@ -243,7 +243,7 @@ namespace Launcher.Ui
 
             // Selection: one ice capsule on the selected row of the focused card (it slides between rows with the selection).
             Place(_plate, _layout.Plate(c.SelPos, c.Scroll, n, slide));
-            int pa = n > 0 && focused ? (int)Math.Round(a * Design.FocusFillAlpha) : 0;
+            int pa = n > 0 && focused && capsule ? (int)Math.Round(a * Design.FocusFillAlpha) : 0;
             if (pa != _plateAlpha) { _plateAlpha = pa; TintRgb(_plate, pa, Design.RingColor); }
             return a;
         }

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Launcher.Core
 {
     /// <summary>The cards the Control center can hold. Each is switched on in Vetro's dashboard; the order there is the order on screen.</summary>
-    internal enum CardKind { Tasks, Audio }
+    internal enum CardKind { Tasks, Audio, Picture, Sleep }
 
     /// <summary>
     /// Which cards the Control center shows (Down on the apps row), from the dock's command line: <c>--cards tasks,audio</c>. At most
@@ -33,6 +33,8 @@ namespace Launcher.Core
             {
                 case "tasks": kind = CardKind.Tasks; return true;
                 case "audio": kind = CardKind.Audio; return true;
+                case "picture": kind = CardKind.Picture; return true;
+                case "sleep": kind = CardKind.Sleep; return true;
             }
             kind = CardKind.Tasks;
             return false;
@@ -43,7 +45,18 @@ namespace Launcher.Core
         {
             if (cards == null || cards.Length == 0) return null;
             if (cards.Length > 1) return "Control center";
-            return cards[0] == CardKind.Tasks ? Design.TasksHintText : "Audio output";
+            return Title(cards[0]);
+        }
+
+        public static string Title(CardKind card)
+        {
+            switch (card)
+            {
+                case CardKind.Audio: return "Audio output";
+                case CardKind.Picture: return "Picture mode";
+                case CardKind.Sleep: return "Sleep timer";
+                default: return Design.TasksHintText;
+            }
         }
 
         /// <summary>Left or Right from card <paramref name="focus"/> of <paramref name="count"/>: the card beside it, or the same one at the ends.</summary>
