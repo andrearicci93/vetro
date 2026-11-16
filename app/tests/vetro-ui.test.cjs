@@ -48,6 +48,17 @@ new Function(ui.pageSource());
     assert.doesNotMatch(d.startScript(), /--no-tasks/, 'switched on: the launcher starts with it');
     fs.writeFileSync(file, JSON.stringify({enabled: false, customApp: 'org.example.app', taskManager: true}));
     assert.match(d.startScript(), / --no-tasks/, 'custom mode draws nothing of the dock');
+    // The Control center: the old switch reads as the Task manager card alone; the cards go to the dock in their order.
+    fs.writeFileSync(file, JSON.stringify({enabled: true, taskManager: true}));
+    assert.deepEqual(d.readState().cards, ['tasks'], 'the old switch is the Task manager card');
+    assert.match(d.startScript(), / --cards tasks( |$)/);
+    fs.writeFileSync(file, JSON.stringify({enabled: true, taskManager: true, cards: ['audio', 'tasks', 'audio', 'picture']}));
+    assert.deepEqual(d.readState().cards, ['audio', 'tasks'], 'cards win over the old switch; unknown and repeated ones are dropped');
+    assert.equal(d.readState().taskManager, true);
+    assert.match(d.startScript(), / --cards audio,tasks/);
+    fs.writeFileSync(file, JSON.stringify({enabled: true, taskManager: true, cards: []}));
+    assert.equal(d.readState().taskManager, false, 'no card: no Task manager');
+    assert.match(d.startScript(), / --no-tasks/, 'no card: the dock as before');
 }
 // The switch: saved, and a running Vetro launcher is restarted with the new start line; a bad value is refused.
 (async () => {
@@ -67,6 +78,16 @@ new Function(ui.pageSource());
     d.refresh = async () => { throw new Error('restart failed'); };
     await assert.rejects(d.setTaskManager(true), /restart failed/);
     assert.equal(d.readState().taskManager, false, 'a failed restart puts the old value back');
+    d.refresh = async () => { refreshed++; return {}; };
+    await d.setCards(['audio']);
+    await d.setTaskManager(true);
+    assert.deepEqual(d.readState().cards, ['tasks', 'audio'], 'the Task manager switch adds its card first and keeps the others');
+    await d.setTaskManager(false);
+    assert.deepEqual(d.readState().cards, ['audio'], 'and takes only its own card away');
+    await assert.rejects(d.setCards(['audio', 'radio']), /Unknown card/);
+    await assert.rejects(d.setCards(['audio', 'audio']), /At most 3 cards, each once/);
+    await assert.rejects(d.setCards('audio'), /Unknown card/);
+    assert.deepEqual(d.readState().cards, ['audio'], 'a refused list changes nothing');
 })().catch(e => { console.error(e); process.exit(1); });
 // Any caller that turns the launcher on or off (the TV tile, Restore the TV, the supervision), not only the dashboard route, tells the
 // service, which restarts the bridge with the new keys; a failed call tells it too.

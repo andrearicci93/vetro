@@ -197,7 +197,9 @@
   --vetro-tv-dock-pill-border: .75;
   --vetro-tv-dock-pill-dim: .88;
   /* Task manager. TaskPage.cs TaskLayout */
-  --vetro-tv-tasks-w: 880px;
+  --vetro-tv-tasks-w: 880px;              /* one Control center card; two or three are --vetro-tv-card-narrow-w each */
+  --vetro-tv-card-narrow-w: 520px;
+  --vetro-tv-card-gap: 32px;
   --vetro-tv-tasks-pad-x: 24px;
   --vetro-tv-tasks-header-h: 70px;
   --vetro-tv-tasks-row-h: 76px;          /* plate: inset 16 from the sides, 4 from the row's top and bottom (68 high) */

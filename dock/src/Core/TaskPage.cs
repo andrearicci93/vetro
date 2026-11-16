@@ -2,17 +2,21 @@ using System;
 
 namespace Launcher.Core
 {
-    internal enum TaskAction { None, Moved, Open, Close, SortChanged, Back, Hide }
+    internal enum TaskAction { None, Moved, Open, Close, Left, Right, Back, Hide }
 
     /// <summary>
-    /// Geometry of the task manager page: a glass panel with a header, a list of rows and a key hint,
-    /// standing on the same bottom line as the dock's bar and centred in the same window width. The panel is
-    /// as tall as its rows (up to <see cref="MaxRows"/>); the window is sized once for the tallest panel, so
-    /// closing an app never resizes the window.
+    /// Geometry of one card of the Control center (the Task manager, the Audio output...): a glass panel with a header, a list of rows and a key
+    /// hint, standing on the same bottom line as the dock's bar. Up to <see cref="MaxCards"/> cards stand side by side, centred in one window;
+    /// a single card is <see cref="WideW"/> wide (the Task manager as it always was), two or three are <see cref="NarrowW"/> each. A card is as
+    /// tall as its rows (up to <see cref="MaxRows"/>), or as <see cref="ShowRows"/> when the host evens the cards out; the window is sized once
+    /// for the tallest panel, so closing an app never resizes the window.
     /// </summary>
     internal sealed class TaskLayout
     {
-        public const int PanelW = 880;
+        public const int WideW = 880;
+        public const int NarrowW = 520;
+        public const int CardGap = 32;
+        public const int MaxCards = 3;
         public const int PadX = 24;
         public const int PadTop = 18;
         public const int HeaderH = 70;
@@ -30,29 +34,48 @@ namespace Launcher.Core
         public readonly int WinW, WinH, WinX, WinY, ScreenW, ScreenH;
         /// <summary>Empty space under the panel's margin: the dock's hint band below the bar, so both end on one line.</summary>
         public readonly int BottomBand;
+        /// <summary>This card's width and its left edge in the window.</summary>
+        public readonly int PanelW, PanelX;
+        /// <summary>The card is narrow (two or three cards): the Task manager drops its CPU column.</summary>
+        public bool Narrow { get { return PanelW < WideW; } }
+        /// <summary>At least this many rows of room (0: as many as the card's own list needs). The host sets it so cards side by side are as tall as each other.</summary>
+        public int ShowRows;
 
         public TaskLayout(int screenW, int screenH, int sharedWinW) : this(screenW, screenH, sharedWinW, 0) { }
 
-        public TaskLayout(int screenW, int screenH, int sharedWinW, int bottomBand)
+        public TaskLayout(int screenW, int screenH, int sharedWinW, int bottomBand) : this(screenW, screenH, sharedWinW, bottomBand, 1, 0) { }
+
+        /// <param name="cards">How many cards stand side by side (1 to <see cref="MaxCards"/>).</param>
+        /// <param name="index">Which of them this one is, from the left.</param>
+        public TaskLayout(int screenW, int screenH, int sharedWinW, int bottomBand, int cards, int index)
         {
             ScreenW = screenW; ScreenH = screenH;
             BottomBand = bottomBand < 0 ? 0 : bottomBand;
-            WinW = Math.Max(sharedWinW, PanelW + 2 * Margin);
+            cards = cards < 1 ? 1 : (cards > MaxCards ? MaxCards : cards);
+            index = index < 0 ? 0 : (index >= cards ? cards - 1 : index);
+            PanelW = cards == 1 ? WideW : NarrowW;
+            int total = TotalW(cards);
+            WinW = Math.Max(sharedWinW, total + 2 * Margin);
             WinH = PanelH(MaxRows) + 2 * Margin + BottomBand;
             WinX = (screenW - WinW) / 2;
             WinY = screenH - WinH - DockLayout.BottomGap;
+            PanelX = (WinW - total) / 2 + index * (PanelW + CardGap);
         }
+
+        /// <summary>Width of <paramref name="cards"/> cards side by side, gaps included.</summary>
+        public static int TotalW(int cards) { return cards <= 1 ? WideW : cards * NarrowW + (cards - 1) * CardGap; }
 
         public static int VisibleRows(int count) { return count < MinRows ? MinRows : (count > MaxRows ? MaxRows : count); }
 
-        public static int PanelH(int rows) { return PadTop + HeaderH + rows * RowH + FooterH + PadBottom; }
+        /// <summary>Rows of room for a list of <paramref name="count"/>: its own, or <see cref="ShowRows"/> when that is more.</summary>
+        public int Rows(int count) { int r = VisibleRows(count); return ShowRows > r ? Math.Min(MaxRows, ShowRows) : r; }
 
-        public int PanelX { get { return (WinW - PanelW) / 2; } }
+        public static int PanelH(int rows) { return PadTop + HeaderH + rows * RowH + FooterH + PadBottom; }
 
         /// <summary>The panel's bottom stays on the line where the dock's bar ends (window bottom minus the margin and the hint band).</summary>
         public Box Panel(int count, int slide)
         {
-            int h = PanelH(VisibleRows(count));
+            int h = PanelH(Rows(count));
             Box b; b.X = PanelX; b.W = PanelW; b.H = h; b.Y = WinH - Margin - BottomBand - h + slide;
             return b;
         }
@@ -78,7 +101,7 @@ namespace Launcher.Core
 
         public Box ListClip(int count, int slide)
         {
-            Box b; b.X = PanelX; b.W = PanelW; b.Y = ListTop(count, slide); b.H = VisibleRows(count) * RowH;
+            Box b; b.X = PanelX; b.W = PanelW; b.Y = ListTop(count, slide); b.H = Rows(count) * RowH;
             return b;
         }
 
@@ -99,9 +122,11 @@ namespace Launcher.Core
         public int NameX { get { return IconX + IconSize + 22; } }
         public int MemRight { get { return PanelX + PanelW - PadX - 14; } }
         public int CpuRight { get { return MemRight - 150; } }
+        /// <summary>Where a row's name must end: before the CPU column, or before the memory figure on a narrow card that has no CPU column.</summary>
+        public int NameRight { get { return Narrow ? MemRight - 130 : CpuRight - 120; } }
         public int ContentLeft { get { return PanelX + PadX + 10; } }
         public int ContentRight { get { return MemRight; } }
-        public int FooterTop(int count, int slide) { return ListTop(count, slide) + VisibleRows(count) * RowH + 14; }
+        public int FooterTop(int count, int slide) { return ListTop(count, slide) + Rows(count) * RowH + 14; }
 
         /// <summary>Scroll (in rows) that keeps the selection on screen, clamped to the list.</summary>
         public static float ScrollFor(float pos, float scroll, int count)
@@ -114,7 +139,7 @@ namespace Launcher.Core
         }
     }
 
-    /// <summary>State of the task manager page: visibility, selection, scroll and sort. No EFL types.</summary>
+    /// <summary>State of one Control center card (the Task manager's list, the Audio output's rows): visibility, selection and scroll. No EFL types.</summary>
     internal sealed class TaskController
     {
         public const double MoveSeconds = 0.14;
@@ -125,11 +150,12 @@ namespace Launcher.Core
         public int Selected { get; private set; }
         public float SelPos { get; private set; }
         public float Scroll { get; private set; }
-        public TaskSort Sort { get; private set; }
+        /// <summary>The Task manager's order: the biggest app first (the sort keys are gone; Left and Right move between cards).</summary>
+        public TaskSort Sort { get { return TaskSort.Memory; } }
         private float _from;
         private double _runT;
 
-        public TaskController() { Phase = Phase.Hidden; Sort = TaskSort.Memory; }
+        public TaskController() { Phase = Phase.Hidden; }
 
         public bool IsActive { get { return Phase == Phase.Shown || Phase == Phase.Showing; } }
 
@@ -176,11 +202,9 @@ namespace Launcher.Core
                 case "Down":
                     return MoveTo(Selected + 1);
                 case "Left":
-                    Sort = Tasks.Next(Sort, -1);
-                    return TaskAction.SortChanged;
+                    return TaskAction.Left;    // the host moves to the card on the left, if there is one
                 case "Right":
-                    Sort = Tasks.Next(Sort, 1);
-                    return TaskAction.SortChanged;
+                    return TaskAction.Right;
                 case "Return":
                 case "KP_Enter":
                 case "Select":

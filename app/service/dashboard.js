@@ -241,6 +241,7 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .quick-group>.quick-callout{margin:var(--s2) 0}
 .quick-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s4);padding:var(--s4) 0}
 .quick-item+.quick-item{border-top:1px solid var(--border)}
+.quick-sub{padding-left:var(--s5)}
 .quick-edge{grid-column:1/-1;display:flex;align-items:center;gap:var(--s3);color:var(--text-muted)}
 .quick-item .notice{margin-top:var(--s2)}
 .quick-item p{font-size:var(--fs-s);line-height:1.6;color:var(--muted);margin-top:2px;max-width:60ch;text-wrap:pretty}
@@ -1147,17 +1148,21 @@ function previewTile(e,size,pill,sel,sourceImages){var art=/^source:/.test(e.app
 var sampleRow=[{slug:'sample-1',label:'Netflix'},{slug:'sample-2',label:'YouTube'},{slug:'sample-3',label:'Prime Video'},{slug:'sample-4',label:'Disney+'},{slug:'sample-5',label:'Plex'},{slug:'sample-6',label:'Sport'},{slug:'sample-7',label:'Music'},{slug:'settings',label:'Settings',system:true},{slug:'samsunghome',label:'Samsung Home',system:true}];
 // The launcher over the TV picture, at 1920 x 1080 scaled to its box (fitPreview). extra: more classes (lp-rise: the bar comes up
 // from the bottom, for the Overview's slideshow); id: the Launcher tab's own copy.
+// The Control center's cards. An older service has only the Task manager switch: it reads as that card alone.
+var CARD_INFO={tasks:{name:'Task manager',text:'The running apps with their memory, biggest first. OK switches to one, holding OK closes it. By zabique.'},audio:{name:'Audio output',text:'Where the sound goes: the TV speakers or a paired Bluetooth speaker or headphones. OK sends it there.'}};
+function dockCards(d){return d&&Array.isArray(d.cards)?d.cards:(d&&d.taskManager?['tasks']:[])}
+function cardsWith(d,card,on){var now=dockCards(d);return (d.cardChoices||['tasks','audio']).filter(function(c){return c===card?on:now.indexOf(c)>=0})}
 function lpMarkup(d,extra,id){
  var real=(d.entries||[]).length>0,all=real?d.entries:sampleRow,apps=all.filter(function(e){return !e.system}),sys=all.filter(function(e){return e.system});
  var row=apps.map(function(e,i){return previewTile(e,i===0&&!d.noMotion?112:92,false,i===0,d.useSourceImages)}).join('')+(sys.length?'<i class="lp-divider"></i>'+'<div class="lp-stack">'+sys.map(function(e){return previewTile(e,92,true,false,d.useSourceImages)}).join('')+'</div>':'');
- var tasks=!!d.taskManager;
- return '<div class="lp'+(d.noMotion?' lp-reduced':'')+(tasks?' lp-tasks':'')+(extra?' '+extra:'')+'"'+(id?' id="lp"':'')+' role="img" aria-label="Preview of the launcher over a TV picture"><div class="lp-stage"><div class="lp-scene"></div><div class="lp-bug"><i></i><b>12</b><span>Evening Light HD</span></div><div class="lp-hint">Source ˄</div><div class="lp-pill"><div class="lp-row">'+row+'</div></div>'+(tasks?'<div class="lp-hint lp-hint-below">Task manager ˅</div>':'')+'</div></div>';
+ var cards=dockCards(d),tasks=cards.length>0,hint=cards.length===1?(CARD_INFO[cards[0]]||{name:'Control center'}).name:'Control center';
+ return '<div class="lp'+(d.noMotion?' lp-reduced':'')+(tasks?' lp-tasks':'')+(extra?' '+extra:'')+'"'+(id?' id="lp"':'')+' role="img" aria-label="Preview of the launcher over a TV picture"><div class="lp-stage"><div class="lp-scene"></div><div class="lp-bug"><i></i><b>12</b><span>Evening Light HD</span></div><div class="lp-hint">Source ˄</div><div class="lp-pill"><div class="lp-row">'+row+'</div></div>'+(tasks?'<div class="lp-hint lp-hint-below">'+esc(hint)+' ˅</div>':'')+'</div></div>';
 }
 function previewMarkup(d){
  var real=(d.entries||[]).length>0;
  var note=real?(d.enabled?'This TV’s apps and icons, as the launcher shows them. The first app is selected.':'How the launcher will look with this TV’s apps. Turn it on to use it.'):'An example row. Your TV’s apps appear here once the list has been read.';
- var tasks=!!d.taskManager;
- var taskShot='<div class="tuner-shots"><figure class="tuner-shot">'+osdTasksPreview()+'<figcaption><strong>Task manager</strong><span class="tuner-opens">'+remoteKey('pad-down','Down')+' '+remoteKey('pad-ok','OK')+'</span><span>'+(tasks?'OK switches, hold OK closes.':'Shows once the switch is on.')+'</span></figcaption></figure></div>';
+ var tasks=dockCards(d).length>0;
+ var taskShot='<div class="tuner-shots"><figure class="tuner-shot">'+osdTasksPreview()+'<figcaption><strong>Control center</strong><span class="tuner-opens">'+remoteKey('pad-down','Down')+' '+remoteKey('pad-ok','OK')+'</span><span>'+(tasks?'Left and Right move between the cards.':'Shows once a card is on.')+'</span></figcaption></figure></div>';
  return '<div class="dock-left panel"><h3>Preview</h3><p class="section-note">'+note+'</p>'+lpMarkup(d,'',true)+taskShot+'</div>';
 }
 // Every launcher picture on screen (the Launcher tab's and the Overview's) is scaled to its box; one in a hidden slide waits.
@@ -1204,7 +1209,12 @@ function renderDock(){
  var navUsed=uiRules?uiConflicts(uiRules,UI_TASK_KEYS):[];
  var taskState=(d.taskManager?chip('On','on'):chip('Off'))+(d.taskManager&&d.mode==='custom'?chip('Only in the Vetro launcher: another app is the launcher now','partial'):d.taskManager&&d.mode==='off'?chip('Works when the Vetro launcher is on','partial'):'');
  var taskNote=navUsed.length?'<p class="quick-callout">'+(navUsed.length===1?'A shortcut of yours uses ':'Shortcuts of yours use ')+navUsed.map(function(x){return 'Key '+esc(x.label)+' ('+esc(x.code)+') opens '+esc(ruleName(x.rule))}).join('; ')+'. While the remote interception is on, the launcher never gets that key, so the task manager cannot be opened or used with it.</p>':'';
- var tasks='<div class="quick-item" data-quick-item="task-manager"><div><h3>Task manager</h3><p>Down on the apps row lists the running apps with their CPU and memory. OK switches to one, holding OK closes it. A “Task manager” hint appears under the bar, which sits a little higher to make room. By zabique.</p><div class="quick-state">'+taskState+'</div>'+taskNote+'</div>'+switchMarkup('data-dock-tasks',!!d.taskManager,dockBusy||!d.installed,'Task manager')+'</div>';
+ var cards=dockCards(d),maxCards=d.maxCards||3,cardNames=cards.map(function(c){return (CARD_INFO[c]||{name:c}).name});
+ var taskState=(cards.length?chip(cards.length===1?'1 card':cards.length+' cards','on'):chip('Off'))+(cards.length&&d.mode==='custom'?chip('Only in the Vetro launcher: another app is the launcher now','partial'):cards.length&&d.mode==='off'?chip('Works when the Vetro launcher is on','partial'):'');
+ var taskNote=navUsed.length?'<p class="quick-callout">'+(navUsed.length===1?'A shortcut of yours uses ':'Shortcuts of yours use ')+navUsed.map(function(x){return 'Key '+esc(x.label)+' ('+esc(x.code)+') opens '+esc(ruleName(x.rule))}).join('; ')+'. While the remote interception is on, the launcher never gets that key, so the Control center cannot be opened or used with it.</p>':'';
+ var tasks='<div class="quick-item" data-quick-item="control-center"><div><h3>Control center</h3><p>Down on the apps row opens up to '+maxCards+' cards side by side; Left and Right move between them, Up or Back returns. A “'+(cards.length===1?esc(cardNames[0]):'Control center')+'” hint appears under the bar, which sits a little higher to make room. Every card is off until you turn it on.</p><div class="quick-state">'+taskState+'</div>'+taskNote+'</div></div>'+
+  (d.cardChoices||['tasks','audio']).map(function(c){var info=CARD_INFO[c]||{name:c,text:''},on=cards.indexOf(c)>=0;
+   return '<div class="quick-item quick-sub" data-quick-item="card-'+esc(c)+'"><div><h3>'+esc(info.name)+'</h3><p>'+info.text+'</p><div class="quick-state">'+(on?chip('On','on'):chip('Off'))+'<span class="chip">Vetro</span></div></div>'+switchMarkup('data-dock-card="'+esc(c)+'"',on,dockBusy||!d.installed||(!on&&cards.length>=maxCards),info.name)+'</div>'}).join('');
  function sourceOption(key,label,description){
   return '<div class="quick-item" data-quick-item="'+key+'"><div><h3>'+label+'</h3><p>'+description+'</p><div class="quick-state">'+chip(d[key]?'On':'Off',d[key]?'on':'')+'</div></div>'+switchMarkup('data-dock-source-option="'+key+'"',!!d[key],dockBusy||!d.installed,label)+'</div>';
  }
@@ -1243,7 +1253,7 @@ function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;customConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;
-  var message=action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Samsung’s Home answers the Home key again.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='taskManager'?'Task manager '+(d.taskManager?'on':'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?'The volume bar moves to the '+(d.volumeEdge||'left')+' edge'+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Samsung’s Home answers the Home key again.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='taskManager'||action==='cards'?'Control center: '+(dockCards(d).length?dockCards(d).map(function(c){return (CARD_INFO[c]||{name:c}).name}).join(', '):'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?'The volume bar moves to the '+(d.volumeEdge||'left')+' edge'+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();renderUi();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
@@ -1352,7 +1362,7 @@ function overviewSlides(d){
   {title:'Live TV guide',keys:remoteKey('pad-up','Up'),text:'Up, while watching live TV.',svg:UI_GUIDE_SCENE,ms:8000},
   {title:'Volume bar',keys:remoteKey('rocker-vol-up','Vol +'),text:'On the '+edge+' edge.',svg:osdVolumePreview(edge,62)},
   {title:'Number pad',keys:remoteKey('color-123','123'),text:'Pick a channel by number.',svg:osdPadPreview()},
-  {title:'Task manager',keys:remoteKey('pad-down','Down'),text:'What’s running, from the apps row.',svg:osdTasksPreview()}
+  {title:'Control center',keys:remoteKey('pad-down','Down'),text:'Running apps and the sound output, from the apps row.',svg:osdTasksPreview()}
  ];
 }
 function renderOverview(){
@@ -1370,7 +1380,8 @@ function renderOverview(){
    switchMarkup('data-ui-tuner',!!t.enabled,tunerBusy||!t.installed||(unsup&&!t.enabled),'Live TV'),'tuner'));
  }
  if(d){
-  rows.push(uiRow('tasks','Task manager','Down on the apps row shows the running apps.',chip(d.taskManager?'On':'Off',d.taskManager?'on':'')+(d.taskManager&&uiLauncherMode(d)!=='vetro'?chip('Needs the Vetro launcher','partial'):''),switchMarkup('data-ui-tasks',!!d.taskManager,dockBusy||!d.installed,'Task manager'),'launcher'));
+  var cc=dockCards(d);
+  rows.push(uiRow('tasks','Control center','Down on the apps row shows up to three cards: '+(cc.length?cc.map(function(c){return (CARD_INFO[c]||{name:c}).name}).join(', '):'none on yet')+'.',chip(cc.length?'On':'Off',cc.length?'on':'')+(cc.length&&uiLauncherMode(d)!=='vetro'?chip('Needs the Vetro launcher','partial'):''),switchMarkup('data-ui-tasks',cc.length>0,dockBusy||!d.installed,'Control center'),'launcher'));
   rows.push(uiRow('volume','Volume bar','Vol and Mute show Vetro’s bar instead of Samsung’s.',chip(d.volumePill?'On':'Off',d.volumePill?'on':'')+(d.volumePill?uiNeedNotes('volume'):''),switchMarkup('data-ui-osd="volumePill"',!!d.volumePill,dockBusy||!d.installed,'Volume bar'),'osd'));
   rows.push(uiRow('pad','Number pad','123 opens Vetro’s pad instead of Samsung’s.',chip(d.numberPad?'On':'Off',d.numberPad?'on':'')+(d.numberPad?uiNeedNotes('pad'):''),switchMarkup('data-ui-osd="numberPad"',!!d.numberPad,dockBusy||!d.installed,'Number pad'),'osd'));
  }
@@ -1571,7 +1582,7 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.customApp!=null){customChoice=x.value;customConfirm=false;renderCustom();return}
  if(x.dataset.customSwitch!=null){if(x.checked){x.checked=false;customConfirm=true;renderCustom();var c=document.querySelector('[data-custom-confirm]');if(c)c.focus();return}return setDock('disableCustom','Turn off the custom launcher')}
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
- if(x.dataset.dockTasks!=null)return setDock('taskManager',x.checked?'Turn on the task manager':'Turn off the task manager',{on:!!x.checked});
+ if(x.dataset.dockCard!=null){var card=x.dataset.dockCard,name=(CARD_INFO[card]||{name:card}).name;return setDock('cards',(x.checked?'Turn on the ':'Turn off the ')+name+' card',{cards:cardsWith(dockData||{},card,!!x.checked)})}
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
  if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+(x.dataset.dockSourceOption==='showHomeSources'?'HDMI sources on Home':'HDMI source images'),{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
@@ -1614,7 +1625,7 @@ function uiChange(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.osd!=null){var name=x.dataset.osd,on=!!x.checked;if(on)x.checked=false;return osdToggle(name,on)}
  if(x.dataset.osdEdge!=null)return Promise.resolve(setDock('volumeEdge','Move the volume bar to the '+x.value,{edge:x.value}));
  if(x.dataset.uiOsd!=null){var n=x.dataset.uiOsd,o=!!x.checked;if(o)x.checked=false;return osdToggle(n,o)}
- if(x.dataset.uiTasks!=null)return setDock('taskManager',x.checked?'Turn on the task manager':'Turn off the task manager',{on:!!x.checked});
+ if(x.dataset.uiTasks!=null)return setDock('cards',x.checked?'Turn on the Control center':'Turn off the Control center',{cards:x.checked?['tasks']:[]});
  if(x.dataset.uiTuner!=null){if(x.checked){x.checked=false;tunerConfirm=true;showUiTab('tuner');renderTuner();var c=document.querySelector('[data-tuner-confirm]');if(c)c.focus();return}return setTuner('disable','Turn off Vetro TV Tuner')}
  if(x.dataset.uiLauncher!=null){
   if(!x.checked)return setDock('disable','Turn off the launcher');

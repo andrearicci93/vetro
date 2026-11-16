@@ -1,6 +1,6 @@
 'use strict';
 // Pictures of Vetro UI's on-screen displays for the dashboard: the volume bar on the chosen edge, the number pad and
-// the launcher's task manager.
+// the launcher's Control center.
 // Drawn at the launcher's screen size (1920 x 1080) with the numbers of dock/src/Core/VolumePlacement.cs and dock/src/Ui/NumberPad.cs,
 // so the bar moves when the Position menu changes. The functions are inlined into the page script (toString), so they are plain
 // ES5 with no template strings. Not screenshots: the TV picture behind them is the launcher preview's sunset (tuner-page.js DEFS).
@@ -64,43 +64,47 @@ function osdPadPreview() {
     return osdSvg('The number pad at the bottom of the screen: the digits 1 to 0, a dash, backspace and a palette key with four coloured dots in one row, Done above on the right, 12 typed so far, 3 selected.', parts);
 }
 
-// The launcher's task manager (Down from the apps row): the panel stands where the bar ends, 880 px wide, a 70 px header,
-// 76 px rows and a 54 px footer (dock/src/Core/TaskPage.cs), the first row selected. The apps and figures are examples.
+// The launcher's Control center (Down from the apps row): two of its cards side by side, the Task manager and the Audio output,
+// 520 px wide and 32 px apart, standing where the bar ends, with a 70 px header, 76 px rows and a 54 px footer (dock/src/Core/TaskPage.cs).
+// The Task manager has the focus: its first row is on the ice capsule. The apps, figures and speakers are examples.
 function osdTasksPreview() {
-    var apps = [['Netflix', '3.1%', '412 MB'], ['YouTube', '0.8%', '286 MB'], ['Samsung Home', '0.4%', '198 MB'], ['Plex', '0.2%', '121 MB']];
-    var w = 880, h = 18 + 70 + apps.length * 76 + 54 + 10, x = (1920 - w) / 2, y = 1080 - 40 - 46 - h, list = y + 18 + 70, parts = [];
-    var memRight = x + w - 24 - 14, cpuRight = memRight - 150, iconX = x + 24 + 10, nameX = iconX + 52 + 22;
-    parts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="24" fill="#2a3346" fill-opacity=".98" stroke="#fff" stroke-opacity=".22" stroke-width="2"/>');
-    parts.push('<text x="' + (x + 34) + '" y="' + (y + 18 + 34) + '" font-size="32" font-weight="600" fill="#fff">Running apps</text>');
-    parts.push('<text x="' + (x + 34) + '" y="' + (y + 18 + 62) + '" font-size="22" fill="#fff" fill-opacity=".7">612 MB of memory free</text>');
-    parts.push('<text x="' + memRight + '" y="' + (y + 18 + 34) + '" font-size="22" fill="#fff" fill-opacity=".7" text-anchor="end">Sort by   Memory</text>');
-    for (var i = 0; i < apps.length; i++) {
-        var top = list + i * 76;
-        if (i === 0) parts.push('<rect x="' + (x + 24 - 8) + '" y="' + (top + 4) + '" width="' + (w - 48 + 16) + '" height="68" rx="20" fill="#fff" fill-opacity=".16" stroke="#e4f2ff" stroke-width="3"/>');
-        parts.push('<rect x="' + iconX + '" y="' + (top + 12) + '" width="52" height="52" rx="12" fill="#fff" fill-opacity=".14"/>');
-        parts.push('<text x="' + (iconX + 26) + '" y="' + (top + 46) + '" font-size="22" fill="#fff" text-anchor="middle">' + apps[i][0].slice(0, 2) + '</text>');
-        parts.push('<text x="' + nameX + '" y="' + (top + 47) + '" font-size="28" fill="#fff">' + apps[i][0] + '</text>');
-        parts.push('<text x="' + cpuRight + '" y="' + (top + 47) + '" font-size="26" fill="#fff" fill-opacity=".75" text-anchor="end">' + apps[i][1] + '</text>');
-        parts.push('<text x="' + memRight + '" y="' + (top + 47) + '" font-size="26" fill="#fff" text-anchor="end">' + apps[i][2] + '</text>');
-    }
-    // The footer as the launcher draws it (TaskPanel.cs): the remote's keys as pictures (remote-icons.js, when the page has
-    // them) and short words, 34 px keys, 8 px inside a group, 40 px between groups. Word widths are estimated (21 px font).
-    var foot = [['k', 'pad-ok', 8], ['t', 'open', 40], ['t', 'Hold', 8], ['k', 'pad-ok', 8], ['t', 'close', 40], ['k', 'pad-left', 2], ['k', 'pad-right', 8],
-        ['t', 'sort', 40], ['k', 'pad-up', 2], ['k', 'back', 8], ['t', 'return', 0]], fw = 0, fy = list + apps.length * 76 + 14, j;
-    for (j = 0; j < foot.length; j++) fw += (foot[j][0] === 'k' ? 34 : Math.round(foot[j][1].length * 10.5)) + foot[j][2];
-    var fx = 960 - fw / 2;
-    for (j = 0; j < foot.length; j++) {
-        if (foot[j][0] === 'k') {
-            var pic = typeof REMOTE_ICONS !== 'undefined' && REMOTE_ICONS[foot[j][1]];
-            if (pic) parts.push(pic.replace('<svg ', '<svg x="' + fx + '" y="' + (fy - 4) + '" width="34" height="34" style="color:#fff" '));
-            fx += 34;
-        } else {
-            parts.push('<text x="' + fx + '" y="' + (fy + 20) + '" font-size="21" fill="#fff" fill-opacity=".6">' + foot[j][1] + '</text>');
-            fx += Math.round(foot[j][1].length * 10.5);
+    var parts = [], w = 520, gap = 32, rows = 4, h = 18 + 70 + rows * 76 + 54 + 10, x0 = (1920 - 2 * w - gap) / 2, y = 1080 - 40 - 46 - h, list = y + 18 + 70;
+    function card(x, title, sub, items, focused, foot) {
+        var memRight = x + w - 24 - 14, iconX = x + 24 + 10, nameX = iconX + 52 + 22, i, j;
+        parts.push('<rect x="' + (x - 2) + '" y="' + (y - 2) + '" width="' + (w + 4) + '" height="' + (h + 4) + '" rx="42" fill="#fff" fill-opacity=".22"/>');
+        parts.push('<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="40" fill="#243448" fill-opacity=".96"/>');
+        parts.push('<text x="' + (x + 34) + '" y="' + (y + 18 + 35) + '" font-size="30" font-weight="600" fill="#fff">' + title + '</text>');
+        parts.push('<text x="' + (x + 34 + title.length * 15 + 18) + '" y="' + (y + 18 + 35) + '" font-size="22" fill="#fff" fill-opacity=".6">' + sub + '</text>');
+        for (i = 0; i < items.length; i++) {
+            var top = list + i * 76, on = focused && i === 0, ink = on ? '#243448' : '#fff';
+            if (on) parts.push('<rect x="' + (x + 16) + '" y="' + (top + 4) + '" width="' + (w - 32) + '" height="68" rx="34" fill="#e4f2ff"/>');
+            parts.push('<rect x="' + iconX + '" y="' + (top + 12) + '" width="52" height="52" rx="12" fill="' + ink + '" fill-opacity=".14"/>');
+            parts.push('<text x="' + (iconX + 26) + '" y="' + (top + 46) + '" font-size="22" fill="' + ink + '" text-anchor="middle">' + items[i][0].slice(0, 2) + '</text>');
+            parts.push('<text x="' + nameX + '" y="' + (top + 47) + '" font-size="27" font-weight="600" fill="' + ink + '">' + items[i][0] + '</text>');
+            parts.push('<text x="' + memRight + '" y="' + (top + 47) + '" font-size="24" fill="' + ink + '" text-anchor="end">' + items[i][1] + '</text>');
         }
-        fx += foot[j][2];
+        // The footer as the launcher draws it (CardChrome.cs): the remote's keys as pictures (remote-icons.js, when the page has
+        // them) and short words, 34 px keys, 8 px inside a group, 40 px between groups. Word widths are estimated (21 px font).
+        var fw = 0, fy = list + rows * 76 + 14, fx;
+        for (j = 0; j < foot.length; j++) fw += (foot[j][0] === 'k' ? 34 : Math.round(foot[j][1].length * 10.5)) + foot[j][2];
+        fx = x + w / 2 - fw / 2;
+        for (j = 0; j < foot.length; j++) {
+            if (foot[j][0] === 'k') {
+                var pic = typeof REMOTE_ICONS !== 'undefined' && REMOTE_ICONS[foot[j][1]];
+                if (pic) parts.push(pic.replace('<svg ', '<svg x="' + fx + '" y="' + (fy - 4) + '" width="34" height="34" style="color:#fff;opacity:' + (focused ? '.85' : '.4') + '" '));
+                fx += 34;
+            } else {
+                parts.push('<text x="' + fx + '" y="' + (fy + 20) + '" font-size="21" fill="#fff" fill-opacity="' + (focused ? '.55' : '.3') + '">' + foot[j][1] + '</text>');
+                fx += Math.round(foot[j][1].length * 10.5);
+            }
+            fx += foot[j][2];
+        }
     }
-    return osdSvg('The launcher’s task manager: the running apps with their CPU and memory, sorted by memory, the first one selected. Example apps.', parts);
+    card(x0, 'Running apps', '612 MB free', [['Netflix', '412 MB'], ['YouTube', '286 MB'], ['Samsung Home', '198 MB'], ['Plex', '121 MB']], true,
+        [['k', 'pad-ok', 8], ['t', 'open', 40], ['t', 'Hold', 8], ['k', 'pad-ok', 8], ['t', 'close', 40], ['k', 'pad-up', 2], ['k', 'back', 8], ['t', 'return', 0]]);
+    card(x0 + w + gap, 'Audio output', '', [['TV speakers', '✓'], ['Soundbar', ''], ['Headphones', '']], false,
+        [['k', 'pad-ok', 8], ['t', 'play here', 40], ['k', 'pad-up', 2], ['k', 'back', 8], ['t', 'return', 0]]);
+    return osdSvg('The launcher’s Control center: two cards side by side, the running apps with their memory (the first one selected) and the sound outputs (the TV speakers ticked). Example apps and speakers.', parts);
 }
 
 var FUNCTIONS = [osdSvg, osdVolumePreview, osdSpeaker, osdPadPreview, osdTasksPreview];

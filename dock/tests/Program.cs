@@ -1320,8 +1320,9 @@ namespace Launcher.Tests
                 for (int i = 0; i < 60; i++) t.Tick(1 / 60.0);
                 T.Eq(t.Phase, Phase.Shown, "shown");
                 T.True(t.Scroll >= 9 - TaskLayout.MaxRows + 1 - 0.001f, "scrolled so the last row is visible");
-                T.Eq(t.Key("Right"), TaskAction.SortChanged, "Right changes the sort");
-                T.Eq(t.Sort, TaskSort.Cpu, "Memory -> CPU");
+                T.Eq(t.Key("Right"), TaskAction.Right, "Right asks for the card on the right (there is no sort any more)");
+                T.Eq(t.Key("Left"), TaskAction.Left, "Left for the card on the left");
+                T.Eq(t.Sort, TaskSort.Memory, "the list stays biggest first");
                 T.Eq(t.Key("Return"), TaskAction.Open, "OK opens (holding it closes: HoldKey)");
                 t.SetCount(3);
                 T.Eq(t.Selected, 2, "selection kept inside a shorter list");
@@ -1484,6 +1485,52 @@ namespace Launcher.Tests
                     }
                 T.Eq(tl.Plate(2.5f, 1, 7, 0).Y, tl.RowTop(1, 0, 7, 0) + TaskLayout.RowH / 2 + 4, "plate between two rows while it moves, scrolled by one");
                 T.True(TaskLayout.RowH - 8 <= 2 * Design.CapSlice, "plate no taller than the capsule picture: the ends stay fully round");
+            });
+
+            T.Run("control center: which cards, in which order, and Left/Right between them", () =>
+            {
+                Func<CardKind[], string> names = k => string.Join(",", Array.ConvertAll(k, x => x.ToString()));
+                T.Eq(names(ControlCenter.Parse(null, false)), "Tasks", "no --cards: the Task manager alone, as before");
+                T.Eq(names(ControlCenter.Parse(null, true)), "", "--no-tasks: no card");
+                T.Eq(names(ControlCenter.Parse("audio,tasks", false)), "Audio,Tasks", "the order given");
+                T.Eq(names(ControlCenter.Parse(" tasks , picture,audio,tasks", true)), "Tasks,Audio", "unknown and repeated names skipped; --cards wins over --no-tasks");
+                T.Eq(names(ControlCenter.Parse("", false)), "", "an empty list: no card");
+                T.Eq(ControlCenter.HintText(new[] { CardKind.Tasks }), "Task manager", "one card: its own name under the bar");
+                T.Eq(ControlCenter.HintText(new[] { CardKind.Audio }), "Audio output", "the Audio output alone");
+                T.Eq(ControlCenter.HintText(new[] { CardKind.Tasks, CardKind.Audio }), "Control center", "two or more: Control center");
+                T.True(ControlCenter.HintText(new CardKind[0]) == null, "no card: no hint");
+                T.Eq(ControlCenter.Move(0, 3, -1), 0, "Left on the first card stays");
+                T.Eq(ControlCenter.Move(0, 3, 1), 1, "Right moves");
+                T.Eq(ControlCenter.Move(2, 3, 1), 2, "Right on the last card stays");
+                T.Eq(ControlCenter.Move(0, 1, 1), 0, "one card: nowhere to go");
+            });
+
+            T.Run("control center: cards side by side, centred, on the dock's bottom line, as tall as each other", () =>
+            {
+                var apps = new DockLayout(13, 1920, 1080, 0, false, -1, true);
+                var one = new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH);
+                T.Eq(one.PanelW, TaskLayout.WideW, "one card keeps the Task manager's width");
+                T.True(!one.Narrow, "and its CPU column");
+                foreach (int n in new[] { 2, 3 })
+                {
+                    var cards = new TaskLayout[n];
+                    for (int i = 0; i < n; i++) cards[i] = new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, n, i);
+                    T.True(cards[0].Narrow && cards[0].PanelW == TaskLayout.NarrowW, n + " cards are narrow");
+                    T.Eq(cards[0].WinW, cards[n - 1].WinW, "one window for all of them, n=" + n);
+                    int left = cards[0].WinX + cards[0].PanelX, right = cards[n - 1].WinX + cards[n - 1].PanelX + cards[n - 1].PanelW;
+                    T.True(Math.Abs(left + right - 1920) <= 1, "the row of cards is centred on the screen, n=" + n);
+                    T.True(left >= 0 && right <= 1920, "and fits on it, n=" + n);
+                    for (int i = 1; i < n; i++) T.Eq(cards[i].PanelX - (cards[i - 1].PanelX + cards[i - 1].PanelW), TaskLayout.CardGap, "gap between cards, n=" + n);
+                    Box p = cards[0].Panel(3, 0), bar = apps.PillBox(0);
+                    T.Eq(cards[0].WinY + p.Y + p.H, apps.WinY + bar.Y + bar.H, "card bottom = bar bottom on screen, n=" + n);
+                    T.True(cards[0].WinY >= 0, "the tallest cards fit on a 1080p screen, n=" + n);
+                    cards[0].ShowRows = 5; cards[1].ShowRows = 5;
+                    T.Eq(cards[0].Panel(1, 0).H, cards[1].Panel(5, 0).H, "evened out: a short list is as tall as the longest beside it, n=" + n);
+                    T.Eq(cards[0].Rows(9), TaskLayout.MaxRows, "never more than the most rows, n=" + n);
+                    T.True(cards[0].NameRight > cards[0].NameX + 200 && cards[0].NameRight < cards[0].MemRight - 100, "a narrow row has room for the name before the memory figure, n=" + n);
+                }
+                var three = new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, 5, 9);
+                T.Eq(three.PanelX, new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, 3, 2).PanelX, "more than three cards or an index past the end are clamped");
             });
 
             T.Run("design: one material for the panels", () =>

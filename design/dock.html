@@ -8,8 +8,8 @@
   The launcher as on the TV (approved look: design round opus6, DESIGN.md "TV material"). Every panel is the osd 123's material
   (pill_rim white .22 2 px outside pill_bg slate .90, radius 40 or capsule, no drop shadow); the one focus is the ice capsule with slate text;
   the dock icons keep their ice ring + glow. Bars centred on x 960.
-  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|tasks|volume|pad123; ?focus=N (dock item); ?bd=video|black|light|grid.
-  Keys: Left / Right move · Up: Sources · Down: Task manager · Esc: back · Enter: launch · + / - / M: Volume bar · N: osd 123 (digits, Left / Right, Enter) ·
+  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|tasks|volume|pad123; ?cards=tasks,audio (the Control center's cards, default both); ?focus=N (dock item); ?bd=video|black|light|grid.
+  Keys: Left / Right move · Up: Sources · Down: Control center (Left / Right between its cards) · Esc: back · Enter: launch · + / - / M: Volume bar · N: osd 123 (digits, Left / Right, Enter) ·
   R: replay the entrance · H: the toolbar.
 -->
 <link rel="stylesheet" href="tokens.css">
@@ -33,7 +33,7 @@
   var CV = document.getElementById('canvas');
   function layer() { var d = document.createElement('div'); d.style.cssText = 'position:absolute;inset:0'; CV.appendChild(d); return d; }
   var C = layer(), TL = layer(), VL = layer(), NL = layer();   // the dock window; the Task manager; the Volume bar; the osd 123 (their own windows on the TV)
-  var bar = Tv.toolbar('Left / Right move · Up: Sources · Down: Task manager · Esc: back · Enter: launch · + / - / M: volume · N: osd 123 · R: replay · H: this bar', [['EPG', 'epg.html'], ['Tuner', 'tuner.html'], ['Design system', 'index.html']]);
+  var bar = Tv.toolbar('Left / Right move · Up: Sources · Down: Control center · Esc: back · Enter: launch · + / - / M: volume · N: osd 123 · R: replay · H: this bar', [['EPG', 'epg.html'], ['Tuner', 'tuner.html'], ['Design system', 'index.html']]);
   var STILL = /[?&]still/.test(location.search);
 
   /* ---- geometry: dock/src/Core/Layout.cs and Design.cs ---- */
@@ -51,7 +51,7 @@
     { n: 'Photos', g: '#d98a1e', ch: '▦' }, { n: 'Games', g: '#8a52d6', ch: '✦' }, { n: 'Library', g: '#b8478f', ch: '☰' }, { n: 'Smart Things', g: '#3d7ad6', ch: '⌂' }
   ];
   var PAGES = {
-    apps: { items: APPS.concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length, raised: false, hint: 'Source', up: true, below: 'Task manager' },
+    apps: { items: APPS.concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length, raised: false, hint: 'Source', up: true, below: (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',').length > 1 ? 'Control center' : 'Task manager' },
     inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, { n: 'HDMI 2', img: 'in-hdmi2', glow: '#e2edff' }, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, hint: 'Back', up: false }
   };
 
@@ -184,41 +184,64 @@
     e.style.background = 'linear-gradient(145deg, color-mix(in srgb, ' + g + ' 70%, #fff), ' + g + ' 55%, color-mix(in srgb, ' + g + ' 65%, #000))'; e.textContent = n[0]; return e;
   }
 
-  /* ---- Task manager (Down on the dock): TaskLayout / TaskPanel. 880 wide, centred, its bottom on the dock bar's line (994); radius 40,
-     no shadow; the selection is one ice capsule (inset 16 from the sides, 4 from the row) with the row's texts in slate ---- */
-  var TASKS = [['Samsung TV Plus', '#1674fb', 0.1, 382], ['YouTube', '#c2364a', 5.7, 239], ['Stremio', '#8a52d6', 4.1, 170], ['NOW', '#1fa971', 2.3, 95], ['Apple TV', '#5f6f86', 2.7, 53]];
-  var tsel = 0, tsort = 0, SORTS = ['Memory', 'CPU', 'Name'];
-  function drawTasks() {
-    TL.innerHTML = '';
-    var list = TASKS.slice().sort(function (a, b) { return tsort === 0 ? b[3] - a[3] : tsort === 1 ? b[2] - a[2] : a[0].localeCompare(b[0]); });
-    var n = list.length, PW = 880, PX = 520, RH = 76, H = 18 + 70 + n * RH + 54 + 10, PY = 994 - H, LT = PY + 18 + 70;
-    Tv.panel(TL, PX, PY, PW, H, RADIUS);
-    txt(TL, 'Running apps', PX + 34, PY + 26, 30, 1, 600);
-    txt(TL, '822 MB of memory free', PX + 233, PY + 33, 22, .6);
-    txt(TL, 'Sort by   ‹  ' + SORTS[tsort] + '  ›', PX + PW - 38, PY + 29, 24, .9, 500, 400, true);
-    Tv.cap(TL, PX + 16, LT + tsel * RH + 4, PW - 32, RH - 8);
-    list.forEach(function (t, i) {
-      var y = LT + i * RH, on = i === tsel;
-      stand(TL, t[0], t[1], PX + 34, y + 12, 52);
-      txt(TL, t[0], PX + 108, y + 22, 27, on ? 'ink' : .85, 600, 464);
-      txt(TL, t[2].toFixed(1) + '%', PX + 692, y + 24, 24, on ? 'ink' : .59, 500, 120, true);
-      txt(TL, t[3] + ' MB', PX + 842, y + 24, 24, on ? 'ink' : .85, 500, 140, true);
-    });
-    /* footer: the remote's keys as pictures, centred */
-    var fy = LT + n * RH + 14, parts = [], x = 0;
-    [[['ok'], 'open', ''], [['ok'], 'close', 'Hold'], [['left', 'right'], 'sort', ''], [['up', 'back'], 'return', '']].forEach(function (g) {
-      if (g[2]) { parts.push([g[2], x, 'w']); x += Tv.textW(g[2], 21, 500) + 18; }
+  /* ---- Control center (Down on the dock): TaskLayout / CardChrome, TaskPanel, AudioCard. Up to three cards side by side, centred, their
+     bottom on the dock bar's line (994): one card is 880 wide (the Task manager as before), two or three are 520 each, 32 apart; radius 40, no
+     shadow; cards beside each other are as tall as the longest list. Left / Right move between the cards; only the focused card shows its ice
+     capsule (inset 16 from the sides, 4 from the row, the row's texts in slate) and a bright key hint (the others' hint at 40 / 30%) ---- */
+  var TASKS = [['Samsung TV Plus', '#1674fb', 382], ['YouTube', '#c2364a', 239], ['Stremio', '#8a52d6', 170], ['NOW', '#1fa971', 95], ['Apple TV', '#5f6f86', 53]];
+  var OUTS = [['TV speakers', 'out_tv', true], ['JBL Charge 5', 'out_bt', false], ['Sonos Beam', 'out_bt', false]];
+  var CARDS = (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',');
+  var tcard = 0, tsel = [0, 0, 0];
+  function glyph(L, name, x, y, size, ink) {
+    Tv.mk(L, 'keyimg', x, y, size, size, { 'background': ink ? '#243448' : '#fff', '-webkit-mask-box-image': 'url(assets/dock/' + name + '.png)', 'opacity': ink ? '1' : '.85' });
+  }
+  function footer(L, groups, cx, fy, focused) {
+    var parts = [], x = 0;
+    groups.forEach(function (g) {
+      if (g[2]) { parts.push([g[2], x, 'w']); x += Tv.textW(g[2], 21, 500) + 8; }
       g[0].forEach(function (k, i) { parts.push([k, x, 'k']); x += 34 + (i < g[0].length - 1 ? 2 : 8); });
       parts.push([g[1], x, 'w']); x += Tv.textW(g[1], 21, 500) + 40;
     });
-    var x0 = Math.round(960 - (x - 40) / 2);
+    var x0 = Math.round(cx - (x - 40) / 2);
     parts.forEach(function (q) {
-      if (q[2] === 'k') Tv.mk(TL, 'keyimg', x0 + q[1], fy, 34, 34, { 'background': 'url(assets/dock/key_' + q[0] + '.png) center / contain no-repeat', 'opacity': '.85' });
-      else txt(TL, q[0], x0 + q[1], fy + 5, 21, .55, 500, 200);
+      if (q[2] === 'k') Tv.mk(L, 'keyimg', x0 + q[1], fy, 34, 34, { 'background': 'url(assets/dock/key_' + q[0] + '.png) center / contain no-repeat', 'opacity': focused ? '.85' : '.4' });
+      else txt(L, q[0], x0 + q[1], fy + 5, 21, focused ? .55 : .3, 500, 200);
+    });
+  }
+  function drawTasks() {
+    TL.innerHTML = '';
+    var n = CARDS.length, PW = n === 1 ? 880 : 520, GAP = 32, total = n === 1 ? 880 : n * PW + (n - 1) * GAP, RH = 76;
+    var rows = Math.max.apply(null, CARDS.map(function (c) { return Math.max(2, Math.min(7, c === 'audio' ? OUTS.length : TASKS.length)); }));
+    var H = 18 + 70 + rows * RH + 54 + 10, PY = 994 - H, LT = PY + 18 + 70;
+    CARDS.forEach(function (card, ci) {
+      var PX = 960 - total / 2 + ci * (PW + GAP), focused = ci === tcard, sel = tsel[ci], memR = PX + PW - 38;
+      Tv.panel(TL, PX, PY, PW, H, RADIUS);
+      if (focused) Tv.cap(TL, PX + 16, LT + sel * RH + 4, PW - 32, RH - 8);
+      if (card === 'audio') {
+        txt(TL, 'Audio output', PX + 34, PY + 26, 30, 1, 600);
+        OUTS.forEach(function (o, i) {
+          var y = LT + i * RH, on = focused && i === sel;
+          glyph(TL, o[1], PX + 40, y + 18, 40, on);
+          txt(TL, o[0], PX + 108, y + 22, 27, on ? 'ink' : .85, 600, PW - 200);
+          if (o[2]) glyph(TL, 'out_check', memR - 40, y + 18, 40, on);
+        });
+        footer(TL, [[['ok'], 'play here', ''], [['up', 'back'], 'return', '']], PX + PW / 2, LT + rows * RH + 14, focused);
+      } else {
+        txt(TL, 'Running apps', PX + 34, PY + 26, 30, 1, 600);
+        txt(TL, '822 MB of memory free', PX + 233, PY + 33, 22, .6);
+        TASKS.forEach(function (t, i) {
+          var y = LT + i * RH, on = focused && i === sel;
+          stand(TL, t[0], t[1], PX + 34, y + 12, 52);
+          txt(TL, t[0], PX + 108, y + 22, 27, on ? 'ink' : .85, 600, PW - 260);
+          txt(TL, t[2] + ' MB', memR, y + 24, 24, on ? 'ink' : .85, 500, 140, true);
+        });
+        footer(TL, [[['ok'], 'open', ''], [['ok'], 'close', 'Hold'], [['up', 'back'], 'return', '']], PX + PW / 2, LT + rows * RH + 14, focused);
+      }
     });
     TL.style.display = '';
   }
-  function openTasks() { page = 'tasks'; C.style.display = 'none'; tsel = 0; drawTasks(); bar.say('Task manager'); }
+  function cardLen() { return CARDS[tcard] === 'audio' ? OUTS.length : TASKS.length; }
+  function openTasks() { page = 'tasks'; C.style.display = 'none'; tcard = 0; tsel = [0, 0, 0]; drawTasks(); bar.say(CARDS.length > 1 ? 'Control center' : 'Task manager'); }
   function closeTasks() { TL.style.display = 'none'; open('apps', 2); }
 
   /* ---- Volume bar (+ / - / M): VolumePlacement, vertical at the left edge (x 96), centred on y 540; vol_rim + vol_bg (slate .90), the
@@ -278,11 +301,11 @@
     }
     if (k === 'n' || k === 'N') { pf = 0; typed = ''; drawPad(); e.preventDefault(); return; }
     if (page === 'tasks') {
-      if (k === 'ArrowDown') tsel = Math.min(TASKS.length - 1, tsel + 1);
-      else if (k === 'ArrowUp') { if (tsel === 0) { closeTasks(); e.preventDefault(); return; } tsel--; }
-      else if (k === 'ArrowLeft') tsort = (tsort + 2) % 3; else if (k === 'ArrowRight') tsort = (tsort + 1) % 3;
+      if (k === 'ArrowDown') tsel[tcard] = Math.min(cardLen() - 1, tsel[tcard] + 1);
+      else if (k === 'ArrowUp') { if (tsel[tcard] === 0) { closeTasks(); e.preventDefault(); return; } tsel[tcard]--; }
+      else if (k === 'ArrowLeft') tcard = Math.max(0, tcard - 1); else if (k === 'ArrowRight') tcard = Math.min(CARDS.length - 1, tcard + 1);
       else if (k === 'Escape' || k === 'Backspace') { closeTasks(); e.preventDefault(); return; }
-      else if (k === 'Enter') bar.say('open: ' + TASKS[tsel][0]);
+      else if (k === 'Enter') { if (CARDS[tcard] === 'audio') { OUTS.forEach(function (o, i) { o[2] = i === tsel[tcard]; }); bar.say('sound on: ' + OUTS[tsel[tcard]][0]); } else bar.say('open: ' + TASKS[tsel[tcard]][0]); }
       else return;
       drawTasks(); e.preventDefault(); return;
     }

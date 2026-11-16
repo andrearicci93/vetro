@@ -9,7 +9,7 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|taskManager|enableCustom|disableCustom, on, appId}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|taskManager|cards|enableCustom|disableCustom, on, cards, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //   POST api/open     ?slug=<tile>  start the app of a tile a plugin has taken over (the launcher calls this; answers 202 at once)
 //
@@ -78,6 +78,7 @@ function definition(dock, options) {
                 if (p.action === 'volumeEdge') return dock.setVolumeEdge(p.edge);
                 if (p.action === 'numberPad') return dock.setNumberPad(p.on);
                 if (p.action === 'taskManager') return dock.setTaskManager(p.on);
+                if (p.action === 'cards') return dock.setCards(p.cards);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();

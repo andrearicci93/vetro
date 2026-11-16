@@ -119,18 +119,27 @@ Dock.prototype.installed = function () {
 };
 
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the volume bar sits (the dock's --volume-edge)
+// The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
+var CARDS = ['tasks', 'audio'], MAX_CARDS = 3;
+function cleanCards(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (c) { if (CARDS.indexOf(c) >= 0 && out.indexOf(c) < 0 && out.length < MAX_CARDS) out.push(c); });
+    return out;
+}
+// Before the Control center there was one switch, the Task manager: it reads as that card alone.
+function stateCards(s) { return s && Array.isArray(s.cards) ? cleanCards(s.cards) : (s && s.taskManager === true ? ['tasks'] : []); }
 
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: s && s.taskManager === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -230,7 +239,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: state.cards, cardChoices: CARDS.slice(), maxCards: MAX_CARDS, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch};
@@ -255,8 +264,8 @@ Dock.prototype.startScript = function () {
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
-        // The task manager (Down from the apps row) is opt-in: without the switch the dock looks and acts as before.
-        (state.taskManager && !state.customApp ? '' : ' --no-tasks');
+        // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
+        (state.cards.length && !state.customApp ? ' --cards ' + state.cards.join(',') : ' --no-tasks');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -629,20 +638,30 @@ Dock.prototype.setNoMotion = function (on) {
     });
 };
 
-// The task manager: Down from the apps row lists the running apps (open one, or hold OK to close it). A start argument
-// (--no-tasks when off), so a running Vetro launcher is restarted.
-Dock.prototype.setTaskManager = function (on) {
+// The Control center: Down from the apps row shows up to three cards side by side (the Task manager, the Audio output). A start
+// argument (--cards, or --no-tasks when there is none), so a running Vetro launcher is restarted.
+Dock.prototype.setCards = function (list) {
     var self = this;
-    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    if (!Array.isArray(list) || list.some(function (c) { return CARDS.indexOf(c) < 0; })) return Promise.reject(new Error('Unknown card'));
+    var cards = cleanCards(list);
+    if (cards.length !== list.length) return Promise.reject(new Error('At most ' + MAX_CARDS + ' cards, each once'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     var state = this.readState();
-    try { this.patchState({taskManager: on}); }
+    try { this.patchState({cards: cards, taskManager: cards.indexOf('tasks') >= 0}); }
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.status();
     return this.refresh().catch(function (e) {
-        try { self.patchState({taskManager: state.taskManager}); } catch (e2) {}
+        try { self.patchState({cards: state.cards, taskManager: state.taskManager}); } catch (e2) {}
         throw e;
     });
+};
+
+// The older single switch: the Task manager card on (added after the others) or off.
+Dock.prototype.setTaskManager = function (on) {
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    var cards = this.readState().cards.filter(function (c) { return c !== 'tasks'; });
+    if (on) cards = ['tasks'].concat(cards).slice(0, MAX_CARDS);
+    return this.setCards(cards);
 };
 
 // The launcher's process draws Vetro UI's volume bar and number pad, so when it comes or goes (from the dashboard, the TV screen's tile,

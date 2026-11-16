@@ -23,9 +23,10 @@ var UI_RESERVED = [
 
 // The keys Vetro TV Tuner answers (evdev codes of the remote, tuner/src/Program.cs). The remote bridge does not pass on a key that a
 // shortcut of the user's holds, and the tuner reads the bridge's copy of the remote: such a key never reaches the tuner.
-// The keys the launcher's task manager needs (Down opens it from the apps row, OK opens or, held, closes an app). A shortcut of the
+// The keys the launcher's Control center needs (Down opens it from the apps row, Left / Right move between its cards, OK acts on a row:
+// on the Task manager it opens or, held, closes an app). A shortcut of the
 // user's on one of them is held back by the remote bridge, so the launcher never gets it.
-var UI_TASK_KEYS = [{code: '108', label: 'Down'}, {code: '28', label: 'OK'}];
+var UI_TASK_KEYS = [{code: '108', label: 'Down'}, {code: '28', label: 'OK'}, {code: '105', label: 'Left'}, {code: '106', label: 'Right'}];
 
 var UI_TUNER_KEYS = [
     {code: '88', label: 'CH +'}, {code: '87', label: 'CH \u2212'}, {code: '402', label: 'CH +'}, {code: '403', label: 'CH \u2212'},

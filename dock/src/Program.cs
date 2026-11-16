@@ -42,11 +42,16 @@ namespace Launcher
         private static IntPtr _clockTimer;
         private static readonly Efl.TaskCb ClockCb = OnClock;
 
-        // The task manager (Down from the apps row): its own page, drawn in a taller window while it is open.
+        // The Control center (Down from the apps row): up to three cards side by side (the Task manager, the Audio output), its own page,
+        // drawn in a taller window while it is open. _tasksOn: the Control center is the page on screen. Every card has its own controller
+        // (selection, scroll); they open, fade and close together. _cardFocus is the card Left and Right have moved to.
         private static DockLayout _appsLayout;
         private static TaskLayout _taskLayout;
-        private static TaskController _tasksCtl;
+        private static CardKind[] _cards = new CardKind[0];
+        private static int _cardFocus;
+        private static TaskController _tasksCtl, _audioCtl;
         private static TaskPanel _taskPanel;
+        private static AudioCard _audioCard;
         private static TaskSource _taskSource;
         private static bool _tasksOn;
         private static List<RunningApp> _taskApps = new List<RunningApp>();
@@ -365,7 +370,42 @@ namespace Launcher
         // ------------------------------------------------------------------ show / hide
 
         /// <summary>Whichever page is on screen is showing (or coming in).</summary>
-        private static bool DockActive { get { return _tasksOn ? _tasksCtl.IsActive : _ctl.IsActive; } }
+        private static bool DockActive { get { return _tasksOn ? CardsActive : _ctl.IsActive; } }
+
+        // ------------------------------------------------------------------ Control center cards
+
+        private static bool HasCard(CardKind k) { return Array.IndexOf(_cards, k) >= 0; }
+        private static CardKind FocusedCard { get { return _cards.Length == 0 ? CardKind.Tasks : _cards[_cardFocus]; } }
+        private static TaskController CardCtl(CardKind k) { return k == CardKind.Audio ? _audioCtl : _tasksCtl; }
+        /// <summary>The cards open, fade and close together: the first one stands for all of them.</summary>
+        private static TaskController LeadCtl { get { return CardCtl(_cards.Length == 0 ? CardKind.Tasks : _cards[0]); } }
+        private static bool CardsActive { get { return LeadCtl.IsActive; } }
+
+        private static void OpenCards(float pop) { foreach (CardKind k in _cards) CardCtl(k).Open(pop); }
+        private static bool HideCards() { bool any = false; foreach (CardKind k in _cards) any |= CardCtl(k).Hide(); return any; }
+        private static void DropCards() { foreach (CardKind k in _cards) CardCtl(k).Drop(); }
+        private static bool TickCards(double dt) { bool more = false; foreach (CardKind k in _cards) more |= CardCtl(k).Tick(dt); return more; }
+
+        private static void ShowCards(bool on)
+        {
+            if (HasCard(CardKind.Tasks)) _taskPanel.SetVisible(on);
+            if (HasCard(CardKind.Audio)) _audioCard.SetVisible(on);
+        }
+
+        /// <summary>Draws every card; side by side they are as tall as the tallest one, and only the focused one shows its capsule.</summary>
+        private static void ApplyCards()
+        {
+            if (_cards.Length > 1)
+            {
+                int rows = 0;
+                if (HasCard(CardKind.Tasks)) rows = Math.Max(rows, TaskLayout.VisibleRows(_taskPanel.Count));
+                if (HasCard(CardKind.Audio)) rows = Math.Max(rows, TaskLayout.VisibleRows(_audioCard.Count));
+                if (HasCard(CardKind.Tasks)) _taskPanel.Layout.ShowRows = rows;
+                if (HasCard(CardKind.Audio)) _audioCard.Layout.ShowRows = rows;
+            }
+            if (HasCard(CardKind.Tasks)) _taskPanel.Apply(_tasksCtl, FocusedCard == CardKind.Tasks);
+            if (HasCard(CardKind.Audio)) _audioCard.Apply(_audioCtl, FocusedCard == CardKind.Audio);
+        }
 
         // The window is mapped for the Dock or the Task manager (not for the start-up pre-map): its flag (OverlayFlag) tells the tuner the keys
         // are the launcher's. Set when the window is shown, cleared when the fade has ended and the window is hidden.
@@ -418,7 +458,7 @@ namespace Launcher
             CancelPendingKey();
             if (_tasksOn)
             {
-                if (_tasksCtl.IsActive) { ResetIdle(); return; }
+                if (CardsActive) { ResetIdle(); return; }
                 LeaveTasks(false);   // it was fading out: the dock comes back on the apps row
             }
             // A dock that was closed from the inputs panel opens on the apps again.
@@ -444,7 +484,7 @@ namespace Launcher
             if (_tasksOn)
             {
                 StopTaskTimers();
-                if (_tasksCtl.Hide()) StartAnimator();
+                if (HideCards()) StartAnimator();
                 return;
             }
             if (_ctl.Hide()) StartAnimator();
@@ -458,7 +498,7 @@ namespace Launcher
             Efl.evas_object_resize(_win, w, h);
         }
 
-        /// <summary>Down on the apps row: the panel rises where the bar was, in a window grown upwards for it.</summary>
+        /// <summary>Down on the apps row: the Control center's cards rise where the bar was, in a window grown upwards for them.</summary>
         private static void OpenTasks()
         {
             float pop = Math.Min(_ctl.Presence, 0.55f);
@@ -466,28 +506,33 @@ namespace Launcher
             _dock.SetVisible(false);
             MoveWindow(_taskLayout.WinX, _taskLayout.WinY, _taskLayout.WinW, _taskLayout.WinH);
             _tasksOn = true;
-            _tasksCtl.Open(pop);
-            _taskUserMoved = false;
-            _tasksCtl.SetCount(_taskPanel.Count);
-            _taskPanel.SetSort(_tasksCtl.Sort);
-            _taskPanel.SetVisible(true);
-            _taskPanel.Apply(_tasksCtl);
-            RefreshTasks(true);
-            if (_taskRefresh == IntPtr.Zero) _taskRefresh = Efl.ecore_timer_add(TaskRefreshSeconds, TaskRefreshCb, IntPtr.Zero);
+            _cardFocus = 0;
+            OpenCards(pop);
+            if (HasCard(CardKind.Tasks))
+            {
+                _taskUserMoved = false;
+                _tasksCtl.SetCount(_taskPanel.Count);
+                RefreshTasks(true);
+                if (_taskRefresh == IntPtr.Zero) _taskRefresh = Efl.ecore_timer_add(TaskRefreshSeconds, TaskRefreshCb, IntPtr.Zero);
+            }
+            if (HasCard(CardKind.Audio)) ReadOutputs(false);
+            ShowCards(true);
+            ApplyCards();
             StartAnimator();
             ResetIdle();
-            Log("tasks panel");
+            Log("control center: " + string.Join(",", Array.ConvertAll(_cards, k => k.ToString())));
         }
 
         /// <summary>Back to the apps row (<paramref name="rise"/>: it comes in at once), or put away while hidden.</summary>
         private static void LeaveTasks(bool rise)
         {
-            float pop = Math.Min(_tasksCtl.Presence, 0.55f);
+            float pop = Math.Min(LeadCtl.Presence, 0.55f);
             StopTaskTimers();
             CancelTaskOk();
+            CancelAudioReread();
             _tasksOn = false;
-            _tasksCtl.Drop();
-            _taskPanel.SetVisible(false);
+            DropCards();
+            ShowCards(false);
             MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
             _dock.SetVisible(true);
             if (rise)
@@ -585,33 +630,39 @@ namespace Launcher
             // after that it stays on the same app when it is still there, otherwise on the same row number.
             if (!_taskUserMoved) _tasksCtl.SelectFirst();
             else if (selected != null) for (int i = 0; i < list.Count; i++) if (list[i].AppId == selected.AppId) { _tasksCtl.Select(i); break; }
-            _taskPanel.Apply(_tasksCtl);
+            ApplyCards();
         }
 
+        /// <summary>A key on the Control center: the focused card's own, except Left and Right, which move between the cards.</summary>
         private static void OnTaskKey(string key)
         {
-            switch (_tasksCtl.Key(key))
+            CardKind card = FocusedCard;
+            TaskController ctl = CardCtl(card);
+            switch (ctl.Key(key))
             {
                 case TaskAction.Moved:
-                    _taskUserMoved = true;
+                    if (card == CardKind.Tasks) _taskUserMoved = true;
                     StartAnimator();
                     ResetIdle();
                     break;
-                case TaskAction.SortChanged:
-                    Tasks.Sort(_taskApps, _tasksCtl.Sort);
-                    _taskResort = !HasFigures(_taskApps, _tasksCtl.Sort);   // sort again once there is something to sort by
-                    _taskPanel.Reorder(_taskApps);
-                    _taskPanel.SetSort(_tasksCtl.Sort);
-                    _tasksCtl.SelectFirst();
-                    _taskPanel.Apply(_tasksCtl);
-                    StartAnimator();
+                case TaskAction.Left:
+                case TaskAction.Right:
+                    int next = ControlCenter.Move(_cardFocus, _cards.Length, key == "Left" ? -1 : 1);
+                    if (next != _cardFocus)
+                    {
+                        if (card == CardKind.Tasks) CancelTaskOk();
+                        _cardFocus = next;
+                        ApplyCards();
+                        StartAnimator();
+                    }
                     ResetIdle();
                     break;
                 case TaskAction.Open:
-                    OpenTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
+                    if (card == CardKind.Tasks) OpenTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
+                    else ChooseOutput();
                     break;
                 case TaskAction.Close:
-                    CloseTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
+                    if (card == CardKind.Tasks) CloseTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
                     break;
                 case TaskAction.Back:
                     LeaveTasks(true);
@@ -691,7 +742,7 @@ namespace Launcher
             {
                 _taskPanel.MarkClosing(app);
                 _taskSource.Close(app.AppId);
-                _taskPanel.Apply(_tasksCtl);
+                ApplyCards();
                 // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
                 Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
                 Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
@@ -783,7 +834,7 @@ namespace Launcher
             try
             {
                 if (_ctl.IsActive) { StartClock(); _dock.Apply(_ctl); }
-                else if (_tasksOn && _tasksCtl.IsActive) StartClock();
+                else if (_tasksOn && CardsActive) StartClock();
             }
             catch (Exception ex) { Log("clock: " + ex.Message); }
             return 0;
@@ -823,9 +874,9 @@ namespace Launcher
                 _lastFrame = now;
                 if (_tasksOn)
                 {
-                    more = _tasksCtl.Tick(dt);
-                    _taskPanel.Apply(_tasksCtl);
-                    if (_tasksCtl.Phase == Phase.Hidden)
+                    more = TickCards(dt);
+                    ApplyCards();
+                    if (LeadCtl.Phase == Phase.Hidden)
                     {
                         Efl.evas_object_hide(_win);
                         MarkDock(false);
@@ -835,7 +886,7 @@ namespace Launcher
                         _pendingLaunch = null;
                         if (chosen != null) Launch(chosen);
                         if (_hideFor123) _hideFor123 = false;
-                        else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "task manager closed" : "opened " + chosen.AppId);
+                        else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     if (more) return 1;
@@ -985,7 +1036,8 @@ namespace Launcher
             {
                 if (_tasksOn)
                 {
-                    if (IsOkKey(key)) TaskOkDown(); else OnTaskKey(key);
+                    // OK on the Task manager is a tap (open) or a hold (close): HoldKey decides on the key's release.
+                    if (IsOkKey(key) && FocusedCard == CardKind.Tasks) TaskOkDown(); else OnTaskKey(key);
                     return;
                 }
                 int index;
@@ -1064,6 +1116,98 @@ namespace Launcher
             bool opening = !_pad.IsShown;
             if (opening) _padFromDock = _dockMapped;
             _pad.Toggle();
+        }
+
+        // The Audio output card: the TV speakers and the paired Bluetooth audio devices, read when the Control center opens and again after a choice.
+        private static void ReadOutputs(bool keepSelection)
+        {
+            List<BondedDevice> paired;
+            bool listed = AudioOutputs.TryList(out paired);
+            if (!listed) Log("outputs: no Bluetooth list (" + AudioOutputs.LastError + ")");
+            int selection;
+            if (!Sound.TryGetSpeakerSelection(out selection)) selection = -1;
+            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection);
+            string note = !listed ? "Bluetooth is off" : entries.Count == 1 ? "No paired speakers" : "";
+            _audioCard.SetEntries(entries, note);
+            _audioCtl.SetCount(entries.Count);
+            if (!keepSelection) _audioCtl.Select(_audioCard.ActiveRow);
+            Log("outputs: speaker selection " + selection + ", " + entries.Count + " rows");
+        }
+
+        /// <summary>OK on the Audio output card: the sound goes to the selected row; the row says so until the list is read again.</summary>
+        private static void ChooseOutput()
+        {
+            ResetIdle();
+            if (_audioCard.Busy) return;
+            OutputEntry e = _audioCard.EntryAt(_audioCtl.Selected);
+            OutputAction what = OutputPickerModel.ActionFor(e);
+            if (what == OutputAction.None) return;
+            bool ok = false;
+            try { ok = OutputAction_(what, e); } catch (Exception ex) { Log("outputs: " + ex.Message); }
+            _audioCard.SetBusy(_audioCtl.Selected, ok ? (what == OutputAction.Connect ? "Connecting…" : "Switching…") : "Not available");
+            ApplyCards();
+            CancelAudioReread();
+            // A switch shows at once; a connection takes a few seconds more (the device is selected 2.5 s after it, see OnSelectBluetooth).
+            _audioReread = Efl.ecore_timer_add(what == OutputAction.Connect ? 4.5 : 1.2, AudioRereadCb, IntPtr.Zero);
+        }
+
+        private static readonly Efl.TaskCb AudioRereadCb = OnAudioReread;
+        private static IntPtr _audioReread;
+
+        private static byte OnAudioReread(IntPtr data)
+        {
+            _audioReread = IntPtr.Zero;
+            try { if (_tasksOn && HasCard(CardKind.Audio)) { ReadOutputs(true); ApplyCards(); } }
+            catch (Exception ex) { Log("outputs: " + ex.Message); }
+            return 0;
+        }
+
+        private static void CancelAudioReread()
+        {
+            if (_audioReread != IntPtr.Zero) { Efl.ecore_timer_del(_audioReread); _audioReread = IntPtr.Zero; }
+        }
+
+        // A device that was just connected is selected as the sound output a moment later: the connection takes a second or two.
+        private static readonly Efl.TaskCb SelectBtCb = OnSelectBluetooth;
+        private static IntPtr _selectBtTimer;
+        private static int _selectBtTries;
+        private const double SelectBtDelay = 2.5;
+
+        private static byte OnSelectBluetooth(IntPtr data)
+        {
+            _selectBtTimer = IntPtr.Zero;
+            try
+            {
+                bool ok = Sound.TrySetSpeakerSelection(Sound.SpeakerBluetooth);
+                Log("outputs: select Bluetooth after the connection " + (ok ? "ok" : "refused"));
+                if (!ok && ++_selectBtTries < 2) _selectBtTimer = Efl.ecore_timer_add(SelectBtDelay, SelectBtCb, IntPtr.Zero);
+            }
+            catch (Exception ex) { Log("outputs: select Bluetooth: " + ex.Message); }
+            return 0;
+        }
+
+        /// <summary>
+        /// A choice in the Audio output. TV speakers and a device that is already connected: the sound output is switched with the call Samsung's own
+        /// list makes (sound_manager_set_speaker_selection, 0 TV speaker, 5 Bluetooth). A paired device that is not connected is connected first
+        /// (bt_audio_connect) and selected 2.5 s later.
+        /// </summary>
+        private static bool OutputAction_(OutputAction what, OutputEntry e)
+        {
+            bool ok;
+            if (what == OutputAction.UseTv) ok = Sound.TrySetSpeakerSelection(Sound.SpeakerTv);
+            else if (what == OutputAction.UseBluetooth) ok = Sound.TrySetSpeakerSelection(Sound.SpeakerBluetooth);
+            else
+            {
+                ok = AudioOutputs.TryConnect(e.Address);
+                if (ok)
+                {
+                    if (_selectBtTimer != IntPtr.Zero) Efl.ecore_timer_del(_selectBtTimer);
+                    _selectBtTries = 0;
+                    _selectBtTimer = Efl.ecore_timer_add(SelectBtDelay, SelectBtCb, IntPtr.Zero);
+                }
+            }
+            Log("outputs: " + what + " " + (e.Address ?? e.Label) + (ok ? " ok" : " refused (" + AudioOutputs.LastError + ")"));
+            return ok;
         }
 
         private static int _levelBeforeMute;
@@ -1360,11 +1504,13 @@ namespace Launcher
                 WarmFrames(c, d, 14);
                 c.Reset();
             }
-            // The task page too, with an empty list (it is drawn hidden: the clipper is off).
-            _tasksCtl.Open(0f);
-            _taskPanel.SetSort(_tasksCtl.Sort);
-            for (int i = 0; i < 20; i++) { _tasksCtl.Tick(1.0 / 60.0); _taskPanel.Apply(_tasksCtl); }
-            _tasksCtl.Drop();
+            // The Control center's cards too, with empty lists (they are drawn hidden: the clippers are off).
+            if (_cards.Length > 0)
+            {
+                OpenCards(0f);
+                for (int i = 0; i < 20; i++) { TickCards(1.0 / 60.0); ApplyCards(); }
+                DropCards();
+            }
             Log("warm-up " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0") + " ms");
         }
 
@@ -1437,13 +1583,18 @@ namespace Launcher
                 // One window for both pages: as wide as the wider of the two, the other is centred in it.
                 // With the task manager on, the apps page also shows a "Task manager" hint under the bar: both pages
                 // get the extra band so the shared window keeps one height, and the task panel ends where the bar does.
-                bool tasks = !Flag(args, "--no-tasks");
+                // --cards tasks,audio: the Control center's cards, in that order (Vetro writes it from the dashboard); without it the older
+                // switch: the Task manager alone unless --no-tasks. No cards: Down does nothing and there is no hint under the bar.
+                _cards = ControlCenter.Parse(Arg(args, "--cards"), Flag(args, "--no-tasks"));
+                bool tasks = _cards.Length > 0;
                 DockLayout layout, inputsLayout;
                 DockLayout.Pages(_apps.Length, Catalog.GroupStart(_apps), _inputs.Length, screenW, screenH, tasks, out layout, out inputsLayout);
                 _appsCtl = new Controller(layout) { PanelEnabled = true, TasksEnabled = tasks };
                 _appsLayout = layout;
-                _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, tasks ? DockLayout.HintH : 0);
+                int band = tasks ? DockLayout.HintH : 0;
+                _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, band, Math.Max(1, _cards.Length), 0);
                 _tasksCtl = new TaskController();
+                _audioCtl = new TaskController();
                 _taskSource = new TaskSource(_apps, Log);
                 _inputsCtl = new Controller(inputsLayout, PageKind.Panel);
                 _ctl = _appsCtl;
@@ -1464,13 +1615,16 @@ namespace Launcher
                 string res = Path.Combine(AppContext.BaseDirectory, "res");
                 string dumpIcons = Arg(args, "--dump-icons");
                 if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
-                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true, tasks ? Design.TasksHintText : null);
+                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
                 _appsDock.Build();
                 _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false);
                 _inputsDock.Build();
                 _inputsDock.SetVisible(false);
-                _taskPanel = new TaskPanel(_win, _taskLayout, res, Log);
+                int cardsN = Math.Max(1, _cards.Length);
+                _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Tasks))), res, Log);
                 _taskPanel.Build();
+                _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Audio))), res, Log);
+                _audioCard.Build();
                 _dock = _appsDock;
                 if (!Flag(args, "--no-warmup")) WarmUp();
                 _appsDock.Apply(_appsCtl);

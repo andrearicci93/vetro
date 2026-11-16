@@ -125,25 +125,30 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     sandbox.remapTuner = true; sandbox.rules = sandbox.uiRules; sandbox.reservedKeys = [{code: '68', label: 'Vol +', owner: 'volume', name: 'Volume bar', live: false}]; sandbox.showRules();
     assert.match(el('rules').innerHTML, /Live TV does not get CH \+/);
     assert.doesNotMatch(el('rules').innerHTML, /Overridden by Vetro UI/, 'a held key that waits for a launcher does not override anything yet');
-    // The task manager: a switch on the Launcher tab and in the overview, the hint under the bar in the preview, the panel's preview,
-    // and a note when a shortcut of the user's holds Down or OK.
-    sandbox.dockData = Object.assign({}, dock, {enabled: true, mode: 'vetro', taskManager: false}); sandbox.renderDock();
+    // The Control center: one switch per card on the Launcher tab, one for the whole in the overview, the hint under the bar in the preview,
+    // the panel's preview, and a note when a shortcut of the user's holds Down or OK. An older service's Task manager switch reads as that card.
+    sandbox.dockData = Object.assign({}, dock, {enabled: true, mode: 'vetro', taskManager: false, cards: [], cardChoices: ['tasks', 'audio'], maxCards: 3}); sandbox.renderDock();
     let launcher = el('dockBody').innerHTML;
-    assert.match(launcher, /data-quick-item="task-manager"/); assert.match(launcher, /data-dock-tasks/); assert.match(launcher, /By zabique/);
+    assert.match(launcher, /data-quick-item="control-center"/); assert.match(launcher, /data-dock-card="tasks"/); assert.match(launcher, /data-dock-card="audio"/); assert.match(launcher, /By zabique/);
     assert.doesNotMatch(launcher, /lp-hint-below/, 'off: the bar has no hint under it');
-    assert.match(launcher, /aria-label="The launcher’s task manager/);
-    sandbox.dockData = Object.assign({}, sandbox.dockData, {taskManager: true}); sandbox.renderDock();
+    assert.match(launcher, /aria-label="The launcher’s Control center/);
+    sandbox.dockData = Object.assign({}, sandbox.dockData, {taskManager: true, cards: ['tasks']}); sandbox.renderDock();
     launcher = el('dockBody').innerHTML;
-    assert.match(launcher, /class="lp lp-tasks"/); assert.match(launcher, /Task manager ˅/);
+    assert.match(launcher, /class="lp lp-tasks"/); assert.match(launcher, /Task manager ˅/, 'one card: its own name under the bar');
+    sandbox.dockData = Object.assign({}, sandbox.dockData, {cards: ['tasks', 'audio']}); sandbox.renderDock();
+    assert.match(el('dockBody').innerHTML, /Control center ˅/, 'two cards: Control center under the bar');
+    assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['audio'], cardChoices: ['tasks', 'audio']}, 'tasks', true)), ['tasks', 'audio'], 'a card turned on takes its place in the list');
+    assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['tasks', 'audio'], cardChoices: ['tasks', 'audio']}, 'tasks', false)), ['audio'], 'and off leaves the others');
+    assert.deepEqual(Array.from(sandbox.dockCards({taskManager: true})), ['tasks'], 'an older service: the Task manager switch is that card');
     sandbox.uiRules = [{id: 'physical_108', enabled: true, trigger: {type: 'physical', value: '108'}, actions: [{type: 'launch', appId: 'org.example.down'}]}]; sandbox.renderDock();
     assert.match(el('dockBody').innerHTML, /A shortcut of yours uses Key Down \(108\) opens org\.example\.down\. While the remote interception is on, the launcher never gets that key/);
     sandbox.dockData = Object.assign({}, sandbox.dockData, {enabled: false, mode: 'custom', customApp: 'org.example.app'}); sandbox.renderDock();
     assert.match(el('dockBody').innerHTML, /Only in the Vetro launcher/);
-    sandbox.uiRules = []; sandbox.dockData = Object.assign({}, dock, {taskManager: false}); sandbox.renderUi();
+    sandbox.uiRules = []; sandbox.dockData = Object.assign({}, dock, {taskManager: false, cards: []}); sandbox.renderUi();
     assert.match(el('uiOverview').innerHTML, /data-ui-tasks/);
     const sent = calls.length;
     await el('uiOverview').onchange({target: {dataset: {uiTasks: ''}, checked: true}}); await tick(8);
-    assert.deepEqual(calls.slice(sent).find(c => c.url === '/dock' && c.body).body, {action: 'taskManager', on: true});
+    assert.deepEqual(calls.slice(sent).find(c => c.url === '/dock' && c.body).body, {action: 'cards', cards: ['tasks']});
     // A part switched off in Vetro Shards says so.
     sandbox.dockData = null; sandbox.dockError = 'Vetro Launcher is not running'; sandbox.renderUi();
     assert.match(el('uiOverview').innerHTML, /Vetro Launcher is switched off in Vetro Shards\. Turn it on there to use this part\./);

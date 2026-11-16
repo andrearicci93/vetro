@@ -10,7 +10,9 @@ const {Resvg} = require('@resvg/resvg-js');
 const SIZE = 96;
 const MAP = {
     pad_bs: 'backspace', pad_colors: 'palette', pad_back: 'caret-left', pad_ttx: 'article', pad_timer: 'clock', pad_info: 'info',
-    vol_icon_0: 'speaker-simple-slash', vol_icon_1: 'speaker-simple-low', vol_icon_2: 'speaker-simple-high'
+    vol_icon_0: 'speaker-simple-slash', vol_icon_1: 'speaker-simple-low', vol_icon_2: 'speaker-simple-high',
+    // The Audio output card's icons (Control center)
+    out_tv: 'television-simple', out_bt: 'bluetooth', out_check: 'check'
 };
 const out = path.join(__dirname, '..', 'res');
 // The palette key: the glyph's outline is white like the others (tinted at run time), its four dots are a second picture in the colours of

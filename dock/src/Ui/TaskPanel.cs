@@ -7,15 +7,12 @@ using Launcher.Native;
 namespace Launcher.Ui
 {
     /// <summary>
-    /// The evas objects of the task manager page, in the material of the dock's bar (and of the 123 pad): a light rim
-    /// and the slate sheet for the panel, no drop shadow, and one ice capsule (pill_cap) under the selected row, whose
-    /// texts turn slate. One set of objects per running app, made when it appears and deleted when it is gone.
+    /// The Task manager card of the Control center: one row per running app (its icon, name, CPU and memory; a narrow card, beside other
+    /// cards, drops the CPU column), the free memory in the header. One set of objects per running app, made when it appears and deleted
+    /// when it is gone. The panel, header, hint and capsule are <see cref="CardChrome"/>'s.
     /// </summary>
-    internal sealed class TaskPanel
+    internal sealed class TaskPanel : CardChrome
     {
-        private const string Font = "SamsungOneUI 500";
-        private const string FontBold = "SamsungOneUI 600";
-
         private sealed class Row
         {
             public RunningApp App;
@@ -27,35 +24,12 @@ namespace Launcher.Ui
             public int NameW, ValueH, NameH;
         }
 
-        private readonly IntPtr _win, _evas;
-        private readonly TaskLayout _layout;
-        private readonly string _assets;
-        private readonly Action<string> _log;
         private readonly List<Row> _rows = new List<Row>();
         private readonly Dictionary<string, Row> _byId = new Dictionary<string, Row>(StringComparer.Ordinal);
+        private string _subText = "";
+        private bool _loaded;
 
-        private IntPtr _clip, _listClip, _rim, _bg, _divider, _plate;
-        private IntPtr _title, _sub, _sort, _empty;
-        // The footer: pictures of the remote's keys (res/key_*.png, the dashboard's set) and short words, in one centred line.
-        private const int FootKey = 34, FootInner = 8, FootGroup = 40;
-        private const int HeaderBase = 35;            // the header's baseline, from the header's top
-        /// <summary>
-        /// How far under its top a text's baseline is. This binding has no ascent getter, so it is taken from the line height: ascent is 0.775 of
-        /// ascent + descent in the TV's font (1047 / 1351); for another font the three header texts would still share a baseline within half a pixel.
-        /// </summary>
-        private static int Ascent(IntPtr text) { return (int)Math.Round(Efl.evas_object_text_vert_advance_get(text) * 0.775); }
-        private IntPtr[] _foot;
-        private bool[] _footKey;
-        private int[] _footGap;   // space after each part
-        private int _alpha = -1, _plateAlpha = -1;
-        private string _subText = "", _sortText = "";
-        private bool _visible, _loaded;
-
-        public TaskPanel(IntPtr win, TaskLayout layout, string assets, Action<string> log)
-        {
-            _win = win; _layout = layout; _assets = assets; _log = log;
-            _evas = Efl.evas_object_evas_get(win);
-        }
+        public TaskPanel(IntPtr win, TaskLayout layout, string assets, Action<string> log) : base(win, layout, assets, log, "tasks") { }
 
         public int Count { get { return _rows.Count; } }
 
@@ -63,107 +37,13 @@ namespace Launcher.Ui
 
         public void Build()
         {
-            _clip = Efl.evas_object_rectangle_add(_evas);
-            Efl.evas_object_color_set(_clip, 255, 255, 255, 255);
-            _listClip = Efl.evas_object_rectangle_add(_evas);
-            Efl.evas_object_color_set(_listClip, 255, 255, 255, 255);
-            Efl.evas_object_clip_set(_listClip, _clip);
-            Efl.evas_object_show(_listClip);   // a clipper only lets through what it covers while it is visible itself
-
-            // The dock bar's material: rim 2 px outside, then the sheet, nine-sliced to the panel radius.
-            _rim = Slice("pill_rim", Design.RimSlice, (Design.PanelRadius + Design.ShellBorderW) / (double)Design.RimSlice);
-            _bg = Slice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
-            _divider = Efl.evas_object_rectangle_add(_evas);
-            Efl.evas_object_clip_set(_divider, _clip);
-            // The selection: the 123 pad's ice capsule, its ends fully round (border_scale = half the plate's height / border).
-            _plate = Slice("pill_cap", Design.CapSlice, (TaskLayout.RowH - 8) / 2.0 / Design.CapSlice);
-
-            _title = Text(FontBold, 30);
-            Efl.evas_object_text_text_set(_title, "Running apps");
-            _sub = Text(Font, 22);
-            _sort = Text(Font, 24);
-            BuildFooter();
-            _empty = Text(Font, 26);
+            BuildChrome("Running apps");
+            // OK open · Hold OK close · Up Back return
+            Foot("key_ok", true, FootInner); Foot("open", false, FootGroup);
+            Foot("Hold", false, FootInner); Foot("key_ok", true, FootInner); Foot("close", false, FootGroup);
+            Foot("key_up", true, 2); Foot("key_back", true, FootInner); Foot("return", false, 0);
             Efl.evas_object_text_text_set(_empty, "Looking for running apps…");
-            Efl.evas_object_clip_set(_empty, _listClip);
             SetVisible(false);
-        }
-
-        // OK open · Hold OK close · Left Right sort · Up Back return
-        private void BuildFooter()
-        {
-            var parts = new List<IntPtr>(); var keys = new List<bool>(); var gaps = new List<int>();
-            Action<string, bool, int> add = delegate (string what, bool key, int gap)
-            {
-                parts.Add(key ? FootIcon(what) : FootText(what)); keys.Add(key); gaps.Add(gap);
-            };
-            add("key_ok", true, FootInner); add("open", false, FootGroup);
-            add("Hold", false, FootInner); add("key_ok", true, FootInner); add("close", false, FootGroup);
-            add("key_left", true, 2); add("key_right", true, FootInner); add("sort", false, FootGroup);
-            add("key_up", true, 2); add("key_back", true, FootInner); add("return", false, 0);
-            _foot = parts.ToArray(); _footKey = keys.ToArray(); _footGap = gaps.ToArray();
-        }
-
-        private IntPtr FootText(string word)
-        {
-            IntPtr t = Text(Font, 22);
-            Efl.evas_object_text_text_set(t, word);
-            return t;
-        }
-
-        private IntPtr FootIcon(string name)
-        {
-            IntPtr img = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
-            if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) _log("tasks: asset missing: " + name);
-            Efl.evas_object_image_filled_set(img, true);
-            Efl.evas_object_image_smooth_scale_set(img, true);
-            Efl.evas_object_resize(img, FootKey, FootKey);
-            Efl.evas_object_clip_set(img, _clip);
-            Efl.evas_object_color_set(img, 0, 0, 0, 0);
-            Efl.evas_object_show(img);
-            return img;
-        }
-
-        /// <summary>Width of the footer line: keys, words and the spaces between them.</summary>
-        private int FooterWidth()
-        {
-            int w = 0;
-            for (int i = 0; i < _foot.Length; i++) w += (_footKey[i] ? FootKey : Efl.evas_object_text_horiz_advance_get(_foot[i])) + _footGap[i];
-            return w;
-        }
-
-        private IntPtr Slice(string name, int border, double scale)
-        {
-            IntPtr img = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
-            if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) _log("tasks: asset missing: " + name);
-            Efl.evas_object_image_filled_set(img, true);
-            Efl.evas_object_image_border_set(img, border, border, border, border);
-            if (scale != 1.0) Efl.evas_object_image_border_scale_set(img, scale);
-            Efl.evas_object_image_border_center_fill_set(img, 1);
-            Efl.evas_object_image_smooth_scale_set(img, true);
-            Efl.evas_object_clip_set(img, _clip);
-            Efl.evas_object_color_set(img, 0, 0, 0, 0);
-            Efl.evas_object_show(img);
-            return img;
-        }
-
-        private IntPtr Text(string font, int size)
-        {
-            IntPtr t = Efl.evas_object_text_add(_evas);
-            Efl.evas_object_text_font_set(t, font, size);
-            Efl.evas_object_text_style_set(t, Efl.EvasTextStyleSoftShadow);
-            Efl.evas_object_clip_set(t, _clip);
-            Efl.evas_object_color_set(t, 0, 0, 0, 0);
-            Efl.evas_object_show(t);
-            return t;
-        }
-
-        public void SetVisible(bool visible)
-        {
-            _visible = visible;
-            if (visible) Efl.evas_object_show(_clip); else Efl.evas_object_hide(_clip);
         }
 
         /// <summary>New list from the worker, in display order. Rows of apps that are still running are kept.</summary>
@@ -194,7 +74,7 @@ namespace Launcher.Ui
             if (availableKb >= 0) _subText = Tasks.FormatMemory(availableKb) + " of memory free";
             Efl.evas_object_text_text_set(_sub, _subText);
             if (!_loaded) { _loaded = true; Efl.evas_object_text_text_set(_empty, "No apps are running"); }
-            _alpha = -1;   // re-tint everything on the next frame
+            Retint();   // re-tint everything on the next frame
         }
 
         /// <summary>The same rows in a new order (after a sort), without touching their objects.</summary>
@@ -202,12 +82,6 @@ namespace Launcher.Ui
         {
             _rows.Clear();
             foreach (RunningApp a in apps) { Row r; if (_byId.TryGetValue(a.AppId, out r)) _rows.Add(r); }
-        }
-
-        public void SetSort(TaskSort sort)
-        {
-            _sortText = "‹  " + Tasks.SortName(sort) + "  ›";
-            Efl.evas_object_text_text_set(_sort, "Sort by   " + _sortText);
         }
 
         public void MarkClosing(RunningApp app)
@@ -244,16 +118,6 @@ namespace Launcher.Ui
             r.Cpu = RowText(Font, 24);
             r.Mem = RowText(Font, 24);
             return r;
-        }
-
-        private IntPtr RowText(string font, int size)
-        {
-            IntPtr t = Efl.evas_object_text_add(_evas);
-            Efl.evas_object_text_font_set(t, font, size);
-            Efl.evas_object_text_style_set(t, Efl.EvasTextStyleSoftShadow);
-            Efl.evas_object_clip_set(t, _listClip);
-            Efl.evas_object_show(t);
-            return t;
         }
 
         private void UpdateRowText(Row r)
@@ -302,76 +166,17 @@ namespace Launcher.Ui
                 if (o != IntPtr.Zero) Efl.evas_object_del(o);
         }
 
-        private static void Tint(IntPtr o, int a) { Efl.evas_object_color_set(o, a, a, a, a); }
+        public void Apply(TaskController c) { Apply(c, true); }
 
-        private static void TintText(IntPtr t, int a)
-        {
-            Tint(t, a);
-            Efl.evas_object_text_shadow_color_set(t, 0, 0, 0, 150 * a / 255);
-        }
-
-        private static void TintRgb(IntPtr o, int a, int rgb)
-        {
-            Efl.evas_object_color_set(o, ((rgb >> 16) & 0xFF) * a / 255, ((rgb >> 8) & 0xFF) * a / 255, (rgb & 0xFF) * a / 255, a);
-        }
-
-        private static void Place(IntPtr o, Box b) { Efl.evas_object_move(o, b.X, b.Y); Efl.evas_object_resize(o, b.W, b.H); }
-
-        public void Apply(TaskController c)
+        /// <param name="focused">This card has the focus: its selected row is on the ice capsule.</param>
+        public void Apply(TaskController c, bool focused)
         {
             int n = _rows.Count, slide = c.Slide;
-            int a = (int)Math.Round(255f * c.Presence);
-
-            Efl.evas_object_move(_clip, 0, 0);
-            Efl.evas_object_resize(_clip, _layout.WinW, _layout.WinH);
-            Place(_listClip, _layout.ListClip(n, slide));
-            Place(_rim, _layout.Rim(n, slide));
-            Place(_bg, _layout.Panel(n, slide));
-
-            // The header's three texts stand on one baseline, HeaderBase under the header's top (they used to be placed by their boxes: bottoms
-            // 3 px apart for the free memory, middles for the sort, so the three baselines were 1 and 2 px apart).
-            int headTop = _layout.HeaderTop(n, slide), headBase = headTop + HeaderBase;
-            Efl.evas_object_move(_title, _layout.ContentLeft, headBase - Ascent(_title));
-            Efl.evas_object_move(_sub, _layout.ContentLeft + Efl.evas_object_text_horiz_advance_get(_title) + 18, headBase - Ascent(_sub));
-            Efl.evas_object_move(_sort, _layout.ContentRight - Efl.evas_object_text_horiz_advance_get(_sort), headBase - Ascent(_sort));
-            Box div; div.X = _layout.PanelX + TaskLayout.PadX; div.W = TaskLayout.PanelW - 2 * TaskLayout.PadX; div.H = 1;
-            div.Y = _layout.ListTop(n, slide) - 6;
-            Place(_divider, div);
-            int fx = _layout.PanelX + (TaskLayout.PanelW - FooterWidth()) / 2, fmid = _layout.FooterTop(n, slide) + FootKey / 2 - 4;
-            for (int i = 0; i < _foot.Length; i++)
-            {
-                int w = _footKey[i] ? FootKey : Efl.evas_object_text_horiz_advance_get(_foot[i]);
-                int h = _footKey[i] ? FootKey : Efl.evas_object_text_vert_advance_get(_foot[i]);
-                Efl.evas_object_move(_foot[i], fx, fmid - h / 2);
-                fx += w + _footGap[i];
-            }
-
-            if (a != _alpha)
-            {
-                _alpha = a;
-                TintRgb(_rim, (int)Math.Round(a * Design.ShellBorderAlpha), Design.ShellBorderColor);
-                TintRgb(_bg, (int)Math.Round(a * Design.VolumeAlpha), Design.ShellColor);
-                Tint(_divider, (int)(a * Design.DividerAlpha));
-                TintText(_title, a);
-                TintText(_sub, a * 6 / 10);
-                TintText(_sort, a * 9 / 10);
-                for (int i = 0; i < _foot.Length; i++) { if (_footKey[i]) Tint(_foot[i], a * 85 / 100); else TintText(_foot[i], a * 55 / 100); }
-                TintText(_empty, n == 0 ? a * 6 / 10 : 0);
-                foreach (Row r in _rows) r.Alpha = -1;
-            }
-
-            if (n == 0)
-            {
-                Box lc = _layout.ListClip(0, slide);
-                int ew = Efl.evas_object_text_horiz_advance_get(_empty), eh = Efl.evas_object_text_vert_advance_get(_empty);
-                Efl.evas_object_move(_empty, lc.X + (lc.W - ew) / 2, lc.Y + (lc.H - eh) / 2);
-            }
-
-            // Selection: one ice capsule on the selected row (it slides between rows with the selection).
+            bool retint;
+            int a = ApplyChrome(c, n, focused, out retint);
+            if (retint) foreach (Row r in _rows) r.Alpha = -1;
             float pos = c.SelPos, scroll = c.Scroll;
-            Place(_plate, _layout.Plate(pos, scroll, n, slide));
-            int pa = n > 0 ? (int)Math.Round(a * Design.FocusFillAlpha) : 0;
-            if (pa != _plateAlpha) { _plateAlpha = pa; TintRgb(_plate, pa, Design.RingColor); }
+            bool narrow = _layout.Narrow;
             // The row the capsule is over gets the slate ink. Taken from where the capsule is, not from where it is going:
             // switching at once would leave dark text on the dark sheet while the capsule is still on its way.
             int sel = (int)Math.Round(pos);
@@ -387,17 +192,17 @@ namespace Launcher.Ui
                     int iw = Efl.evas_object_text_horiz_advance_get(r.Initials), ih = Efl.evas_object_text_vert_advance_get(r.Initials);
                     Efl.evas_object_move(r.Initials, _layout.IconX + (TaskLayout.IconSize - iw) / 2, mid - ih / 2);
                 }
-                int nameMax = _layout.CpuRight - 120 - _layout.NameX;
+                int nameMax = _layout.NameRight - _layout.NameX;
                 Efl.evas_object_resize(r.Name, nameMax, r.NameH);
                 Efl.evas_object_move(r.Name, _layout.NameX, mid - r.NameH / 2);
                 Efl.evas_object_move(r.Cpu, _layout.CpuRight - Efl.evas_object_text_horiz_advance_get(r.Cpu), mid - r.ValueH / 2);
                 Efl.evas_object_move(r.Mem, _layout.MemRight - Efl.evas_object_text_horiz_advance_get(r.Mem), mid - r.ValueH / 2);
 
-                // The column the list is sorted by is the brighter one; a closing app fades. On the capsule every text
+                // Memory, the column the list is sorted by, is the brighter one; a closing app fades. On the capsule every text
                 // is slate and plain (a shadow would smudge dark ink on a light ground); the icon keeps its own colours.
-                bool focus = i == sel && n > 0;
+                bool focus = focused && i == sel && n > 0;
                 int ra = r.App.Closing ? a * 45 / 100 : (focus ? a : a * 85 / 100);
-                int key = ra * 4 + (focus ? 1 : 0) + (c.Sort == TaskSort.Cpu ? 2 : 0);
+                int key = ra * 4 + (focus ? 1 : 0);
                 if (key != r.Alpha)
                 {
                     r.Alpha = key;
@@ -420,9 +225,10 @@ namespace Launcher.Ui
                     else
                     {
                         TintText(r.Name, ra);
-                        TintText(r.Mem, c.Sort == TaskSort.Cpu ? ra * 7 / 10 : ra);
-                        TintText(r.Cpu, c.Sort == TaskSort.Cpu ? ra : ra * 7 / 10);
+                        TintText(r.Mem, ra);
+                        TintText(r.Cpu, ra * 7 / 10);
                     }
+                    if (narrow) Tint(r.Cpu, 0);   // a narrow card has no CPU column
                 }
             }
         }

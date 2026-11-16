@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Launcher.Core;
@@ -173,6 +174,43 @@ namespace Launcher.Tests
                 }
                 T.True(left.TrackY + left.TrackH <= left.IconY, "icon sits below the vertical track"); T.True(left.NumberCenterY < left.TrackY, "number sits above the vertical track");
                 T.True(bottom.NumberRight > bottom.TrackX + bottom.TrackW, "number sits right of the horizontal track");
+            });
+
+            T.Run("audio output: TV speakers first, audio devices only, the connected one on top", () =>
+            {
+                var paired = new List<BondedDevice>
+                {
+                    new BondedDevice { Address = "A", Name = "zeta", Connected = false, MajorClass = 4 },
+                    new BondedDevice { Address = "B", Name = "Remote", Connected = true, MajorClass = 5 },      // a remote: not a sound device
+                    new BondedDevice { Address = "C", Name = "Beam", Connected = false, MajorClass = 4 },
+                    new BondedDevice { Address = "D", Name = "Unclassed", Connected = false, MajorClass = 0 },  // class not reported: kept
+                    new BondedDevice { Address = null, Name = "No address", MajorClass = 4 }
+                };
+                var none = OutputPickerModel.Build(paired);
+                T.Eq(string.Join(",", none.ConvertAll(r => r.Label).ToArray()), "TV speakers,Beam,Unclassed,zeta", "rows with nothing connected");
+                T.True(none[0].Active && !none[1].Active, "TV speakers play when no device is connected");
+                paired[0].Connected = true;
+                var one = OutputPickerModel.Build(paired, 5);
+                T.Eq(string.Join(",", one.ConvertAll(r => r.Label).ToArray()), "TV speakers,zeta,Beam,Unclassed", "the connected device comes first");
+                T.True(!one[0].Active && one[1].Active && one[1].Connected, "sound output on Bluetooth: the device plays, the TV speakers do not");
+                var onTv = OutputPickerModel.Build(paired, 0);
+                T.True(onTv[0].Active && !onTv[1].Active && onTv[1].Connected, "connected but the sound output is the TV speaker: the TV plays, the device is only connected");
+                T.True(OutputPickerModel.Build(paired, 6)[1].Active && OutputPickerModel.Build(paired, -1)[1].Active, "6 reads as Bluetooth; unknown with a connected device assumes it plays");
+                T.True(OutputPickerModel.Build(null, 5)[0].Active, "Bluetooth selected but nothing connected: the TV plays");
+                T.Eq(OutputPickerModel.Build(null).Count, 1, "no list: only the TV speakers");
+            });
+
+            T.Run("audio output: what a choice does", () =>
+            {
+                var rows = new List<OutputEntry> { new OutputEntry { Kind = OutputKind.TvSpeaker, Label = "TV", Active = true } };
+                for (int i = 0; i < 3; i++) rows.Add(new OutputEntry { Kind = OutputKind.Bluetooth, Label = "d" + i, Address = "a" + i });
+                T.Eq(OutputPickerModel.ActionFor(rows[0]), OutputAction.None, "the one that plays: nothing to do");
+                T.Eq(OutputPickerModel.ActionFor(rows[3]), OutputAction.Connect, "a device that is not connected is connected first");
+                rows[3].Connected = true;
+                T.Eq(OutputPickerModel.ActionFor(rows[3]), OutputAction.UseBluetooth, "a connected device that is not playing: select it");
+                rows[0].Active = false;
+                T.Eq(OutputPickerModel.ActionFor(rows[0]), OutputAction.UseTv, "the TV speakers: select them");
+                T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
             });
         }
     }
