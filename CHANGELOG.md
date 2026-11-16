@@ -26,7 +26,7 @@
 
 ### Fixes
 
-- **Play / pause on live TV opens the tuner's info panel.** The Smart Control has no Info key; Play, Pause and Play/Pause (Samsung's codes 200, 201, 520) now do what Info does, and Samsung's own Info code (188) works too. Not tried on a TV yet.
+- **Play / pause on live TV opens the tuner's info panel.** The Smart Control has no Info key; its play / pause key (code 244, Samsung's PlayBack), and the Play, Pause and Play/Pause codes of other remotes (200, 201, 520), now do what Info does, and Samsung's own Info code (188) works too.
 - **The launcher's Live TV tile switches to the TV input.** It only brought Samsung's TV app to the front, so after an app (Netflix, a film) the input stayed where the app had left it and Vetro TV Tuner, which covers the TV input only, did not come back. It now switches to the TV input, as the TV entry of the Sources page does. Seen on a Q80A.
 - **Samsung Home opens from the launcher on Tizen 9.** On a Samsung S95C and a Q70C (both Tizen 9) the Samsung Home tile closed the launcher and showed nothing: `app_launcher` starts the CoBA Home (`com.samsung.tv.coba.newhome`), reports success and shows no Home, so the second try with First Screen (`com.samsung.tv.csfs`), which only ran after an error, never ran. When the tile is the CoBA Home with First Screen behind it, the launcher now starts First Screen right after it. Other system tiles keep the error-only fallback. Thanks to pponce for the fix and the test on the S95C (issue #170, pull request #169); the Q70C report came with a diagnostic export. Not tried on a Q70C yet.
 
