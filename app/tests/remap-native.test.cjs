@@ -1,4 +1,5 @@
 'use strict';
+const {launchCommand}=require('../service/hbbtv-link.js');
 const assert=require('assert').strict,EventEmitter=require('events'),path=require('path');
 const platform=require('../service/platform.js');
 const commands=[];platform.execute=cmd=>{commands.push(cmd);return Promise.resolve({exit_code:0,stdout:''});};
@@ -9,7 +10,7 @@ function post(url,body){return new Promise(resolve=>{const req=new EventEmitter(
  assert.equal((await post('/remap',{rules:[rule]})).data.rules[0].trigger.value,'68');
  const result=await post('/remap/run',{type:'physical',value:'68'});
  assert.equal(result.data.transport,'native');assert.equal(result.data.sent,2);
- assert.deepEqual(commands,['/usr/bin/app_launcher -s app.selected','/usr/bin/input_keyevent Return']);
+ assert.deepEqual(commands,[launchCommand('app.selected'),'/usr/bin/input_keyevent Return']);
  assert.equal((await post('/remap',{rules:[{...rule,trigger:{type:'physical',value:'768'}}]})).status,400);
  console.log('PASS native remap: canonical physical codes, selected app and whitelisted native key');
 })().catch(e=>{console.error(e);process.exitCode=1});
