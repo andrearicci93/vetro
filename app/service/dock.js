@@ -97,6 +97,7 @@ function Dock(options) {
     this.checkRound = 0;
     this.goneRounds = 0;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
+    this.allAppsFile = options.allAppsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-allapps.tsv');
     this.legacyHomeSources = legacySourceUsage(this.appsFile, false);
     this.legacySourceImages = legacySourceUsage(this.inputsFile, true);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -126,20 +127,37 @@ function cleanCards(list) {
     (Array.isArray(list) ? list : []).forEach(function (c) { if (CARDS.indexOf(c) >= 0 && out.indexOf(c) < 0 && out.length < MAX_CARDS) out.push(c); });
     return out;
 }
+// The user's own row: Vetro's order of the tiles and the ones taken out of it, by row key (dock-catalog ROW_KEY), plus
+// custom names. Samsung's own Home row is never written; it stays the base the user's row is laid over.
+var MAX_ROW = 40;
+function cleanRow(r) {
+    if (!r || typeof r !== 'object') return null;
+    function keys(list) { var out = []; (Array.isArray(list) ? list : []).forEach(function (k) { if (typeof k === 'string' && catalog.ROW_KEY.test(k) && out.indexOf(k) < 0 && out.length < 120) out.push(k); }); return out; }
+    var labels = {};
+    if (r.labels && typeof r.labels === 'object') Object.keys(r.labels).forEach(function (k) { if (catalog.ROW_KEY.test(k) && typeof r.labels[k] === 'string') labels[k] = catalog.cleanLabel(r.labels[k], ''); });
+    return {order: keys(r.order).slice(0, MAX_ROW), hidden: keys(r.hidden), labels: labels};
+}
 // Before the Control center there was one switch, the Task manager: it reads as that card alone.
+// The row the user left (keys in order) over Samsung's row: their order, and every Samsung tile they left out as taken out.
+// A tile they put back is no longer taken out; custom names stay.
+function rowAfter(before, list, samsungKeys) {
+    var hidden = (before && before.hidden || []).filter(function (k) { return list.indexOf(k) < 0; });
+    samsungKeys.forEach(function (k) { if (k && list.indexOf(k) < 0 && hidden.indexOf(k) < 0) hidden.push(k); });
+    return cleanRow({order: list, hidden: hidden, labels: before && before.labels || {}});
+}
 function stateCards(s) { return s && Array.isArray(s.cards) ? cleanCards(s.cards) : (s && s.taskManager === true ? ['tasks'] : []); }
 
 Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -239,7 +257,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: state.cards, cardChoices: CARDS.slice(), maxCards: MAX_CARDS, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: state.cards, cardChoices: CARDS.slice(), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch};
@@ -262,6 +280,7 @@ Dock.prototype.startScript = function () {
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
+        (!state.customApp && fs.existsSync(this.allAppsFile) ? ' --all-apps ' + q(this.allAppsFile) : '') +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
@@ -291,8 +310,8 @@ Dock.prototype.writeCatalog = function () {
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
     return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
-        intercepted: this.shards ? this.shards.intercepted() : {}}).then(function (c) {
-        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
+        intercepted: this.shards ? this.shards.intercepted() : {}, row: state.row}).then(function (c) {
+        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); atomicFile.write(fs, self.allAppsFile, c.allAppsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
         return c;
@@ -569,7 +588,7 @@ Dock.prototype.giveUpCustom = function (reason) {
 function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
         var f = l.split('\t'), target = f[2] || '';
-        return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null, shard: f[6] === 'shard',
+        return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null, shard: f[6] === 'shard', key: f[7] || null,
             system: TARGET_SYSTEM_RE.test(target), panel: TARGET_PANEL_RE.test(target), source: TARGET_SOURCE_RE.test(target) ? +target.slice(7) : null};
     }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }
@@ -654,6 +673,37 @@ Dock.prototype.setCards = function (list) {
         try { self.patchState({cards: state.cards, taskManager: state.taskManager}); } catch (e2) {}
         throw e;
     });
+};
+
+// The launcher sends the row as the user left it (moved, a tile taken out or added from All apps): the order is saved, every
+// tile of Samsung's row that is not in it any more is remembered as taken out, and the lists are written again for the next
+// start. The running launcher already shows the change, so it is not restarted, and the Home row cleanup does not run.
+Dock.prototype.setRow = function (list) {
+    var self = this;
+    if (!Array.isArray(list) || !list.length || list.length > MAX_ROW || list.some(function (k) { return typeof k !== 'string' || !catalog.ROW_KEY.test(k); })) return Promise.reject(new Error('Invalid row'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    if (!state.enabled || state.customApp) return Promise.reject(new Error('The Vetro launcher is off'));
+    this.busy = true;
+    var before = state.row;
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
+        intercepted: this.shards ? this.shards.intercepted() : {}}).then(function (c) {
+        var row = rowAfter(before, list, c.samsungKeys || []);
+        self.patchState({row: row});
+        return self.writeCatalog();
+    }).then(function () { return self.status(); }).catch(function (e) {
+        try { self.patchState({row: before}); } catch (e2) {}
+        throw e;
+    }).finally(function () { self.busy = false; });
+};
+
+// Back to Samsung's row as it is (the dashboard's Reset), without restarting the launcher: the next start shows it.
+Dock.prototype.resetRow = function () {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    try { this.patchState({row: null}); } catch (e) { return Promise.reject(e); }
+    var state = this.readState();
+    return (state.enabled && !state.customApp ? this.refresh() : this.status());
 };
 
 // The older single switch: the Task manager card on (added after the others) or off.
@@ -792,5 +842,5 @@ Dock.prototype.checkCustomApp = function (appId) {
     }, function () { return null; });
 };
 
-module.exports = {Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
+module.exports = {rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck};

@@ -53,12 +53,12 @@ function fakeShards(opts) {
     const parsed = catalog.parse(HOME_DATA + '\nA|' + hex(YT) + '\nA|' + hex('org.tizen.netflix-app'));
     const plain = catalog.build(parsed, {});
     assert.ok(plain.entries.every(e => !e.viaShard), 'nothing claimed: nothing marked');
-    assert.ok(catalog.tsv(plain).split('\n').every(l => l.split('\t').length <= 5), 'and no seventh column');
+    assert.ok(catalog.tsv(plain).split('\n').every(l => !l.split('\t')[6]), 'and nothing in the seventh column');
     const claimed = catalog.build(parsed, {intercepted: {[YT]: {plugin: 'youtube', label: 'YouTube'}, 'org.tizen.tv-viewer': {plugin: 'x', label: 'Live TV'}}});
     assert.deepEqual(claimed.entries.map(e => [e.appId, !!e.viaShard]), [[YT, true], ['org.tizen.netflix-app', false], ['org.tizen.tv-viewer', false]], 'Live TV (the viewer) cannot be claimed');
     const lines = catalog.tsv(claimed).split('\n');
-    assert.equal(lines[1], 'youtube\tYouTube\t' + YT + '\t\t\t\tshard', 'the flag is the only thing a plugin adds to the list');
-    assert.equal(lines[2].split('\t').length, 3);
+    assert.equal(lines[1], 'youtube\tYouTube\t' + YT + '\t\t\t\tshard\tapp:' + YT, 'the flag is the only thing a plugin adds to the list (the eighth column is the row key)');
+    assert.equal(lines[2].split('\t')[6], '', 'an app nobody claims has no flag');
     assert.ok(!/__proto__|constructor/.test(JSON.stringify(catalog.build(parsed, {intercepted: {constructor: 1}}).entries)), 'prototype names are not claims');
 
     // 2. the Dock writes it, reads it back, and the page sees it
@@ -66,8 +66,8 @@ function fakeShards(opts) {
     let f = fixture(shards);
     await f.dock.enable();
     const written = fs.readFileSync(path.join(f.tmp, 'apps.tsv'), 'utf8');
-    assert.ok(written.split('\n').some(l => l === 'youtube\tYouTube\t' + YT + '\t\t\t\tshard'), written);
-    assert.deepEqual(f.dock.entries().map(e => [e.slug, e.shard]), [['youtube', true], ['netflix', false], ['livetv', false], ['settings', false], ['samsunghome', false]]);
+    assert.ok(written.split('\n').some(l => l === 'youtube\tYouTube\t' + YT + '\t\t\t\tshard\tapp:' + YT), written);
+    assert.deepEqual(f.dock.entries().map(e => [e.slug, e.shard]), [['youtube', true], ['netflix', false], ['livetv', false], ['allapps', false], ['samsunghome', false]]);
     assert.equal(f.dock.shardEntry('youtube').appId, YT);
     assert.equal(f.dock.shardEntry('netflix'), null);
     assert.equal(f.dock.shardEntry('../etc'), null);

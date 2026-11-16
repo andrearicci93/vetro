@@ -50,13 +50,22 @@ var LIVE = {
     RF: {slug: 'livetv', label: 'Live TV', iconPackage: null}
 };
 
-// Two pills close the row. Settings sends the System Menu key, which the TV routes to Samsung's own menu app
-// (org.tizen.menu, menu.json); starting csfs would only show Home. The second one goes back to Samsung's Home.
-// The input list is not here: it is one page up in the launcher.
+// Two pills close the row. All apps opens the launcher's page of every app (Settings and the App store are its last
+// two pills); the second one goes back to Samsung's Home. The input list is not here: it is one page up in the launcher.
 var SYSTEM_ROWS = [
-    'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu',
+    'allapps\tAll apps\tpanel:allapps',
     'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'
 ];
+// The All apps page ends with two pills: Settings sends the System Menu key, which the TV routes to Samsung's own menu
+// app (org.tizen.menu, menu.json; starting csfs would only show Home); the App store is Samsung's store app.
+var ALL_APPS_SYSTEM_ROWS = [
+    'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu',
+    'store\tApp store\tsys:com.samsung.tv.store'
+];
+var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'store'];
+// A row key: what the user's own order and hidden list refer to (app:<id>, live:<TVPLUS|RF>, source:<type>).
+var ROW_KEY = /^(?:app:[A-Za-z0-9_.-]{1,120}|live:[A-Z]{1,12}|source:\d{1,5})$/;
+var VETRO_APP = /^vetrotvapp(\.|$)/;
 // 2025 (CoBA) firmware: csfs is only the service; the Home that comes up on screen is started through this app,
 // which then spawns csfs, home.sidebar and home.media. When it is installed the pill starts it instead.
 var COBA_HOME = 'com.samsung.tv.coba.newhome';
@@ -71,7 +80,8 @@ function script() {
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
         'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
         '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
-        'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
+        // app_featured last: 1 downloaded, 2 Samsung's partners; what Samsung's own Apps screen lists, so All apps lists them too.
+        'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden||\'|\'||ifnull(app_featured,0) FROM widgetinfo;" 2>/dev/null',
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
@@ -105,8 +115,8 @@ function parse(text) {
             } else if (f[0] === 'S' && f.length === 2) {
                 var sources = JSON.parse(Buffer.from(f[1], 'base64').toString('utf8'));
                 if (sources && typeof sources === 'object' && !Array.isArray(sources)) out.sources = sources;
-            } else if (f[0] === 'R' && f.length === 5) {
-                out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1'};
+            } else if (f[0] === 'R' && (f.length === 5 || f.length === 6)) {
+                out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1', featured: f.length === 6 ? +f[5] || 0 : null};
             } else if (f[0] === 'I' && f.length === 3) {
                 if (iconOk(f[2])) out.icons[f[1]] = f[2];
             } else if (f[0] === 'P' && f.length === 3) {
@@ -163,12 +173,16 @@ function youtubeIcon(parsed) {
 function build(parsed, options) {
     options = options || {};
     var entries = [], skipped = [], slugs = {}, inputs = sourceEntries(parsed, options), seenPorts = {};
-    function add(slug, label, appId, icon) {
+    function make(slug, label, appId, icon, key) {
         var base = slug, n = 2;
-        while (slugs[slug] || slug === 'source' || slug === 'settings') slug = base.slice(0, 36) + '-' + n++;
+        while (slugs[slug] || RESERVED_SLUGS.indexOf(slug) >= 0) slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
-        entries.push({slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null});
-        return entries[entries.length - 1];
+        return {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null, key: key || (appId ? 'app:' + appId : null)};
+    }
+    function add(slug, label, appId, icon, key) {
+        var e = make(slug, label, appId, icon, key);
+        entries.push(e);
+        return e;
     }
     // A registry row without a package behind it is a leftover of an uninstall that did not go through Samsung's own path.
     // The package list is only trusted when it came back whole: a short answer must not empty the dock.
@@ -182,14 +196,14 @@ function build(parsed, options) {
             if (seenPorts[ident]) return;
             seenPorts[ident] = true;
             var source = inputs[+ident.slice(4)];
-            var tile = add(source.slug, source.label, source.appId, source.icon);
+            var tile = add(source.slug, source.label, source.appId, source.icon, 'source:' + source.appId.slice(7));
             if (source.altIcon) tile.altIcon = source.altIcon;
             return;
         }
         if (kind === 's/livetv') {
             var live = LIVE[ident];
             if (!live) { skipped.push({item: item, reason: 'Unknown live source'}); return; }
-            var liveEntry = add(live.slug, live.label, VIEWER, live.iconPackage && parsed.packageIcons[live.iconPackage]);
+            var liveEntry = add(live.slug, live.label, VIEWER, live.iconPackage && parsed.packageIcons[live.iconPackage], 'live:' + ident);
             if (live.altIcon) liveEntry.altIcon = live.altIcon;
             return;
         }
@@ -225,17 +239,53 @@ function build(parsed, options) {
                 add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]);
             });
     }
+    // Every app the user can put in the row (the All apps page): Samsung's row as it is, then each visible app of the registry
+    // that Samsung's own Apps screen would list (app_featured 1 or 2, installed, not hidden, not Vetro), one entry per key.
+    var samsungKeys = entries.map(function (e) { return e.key; });
+    var pool = {}, poolList = [];
+    entries.forEach(function (e) { if (e.key && !pool[e.key]) { pool[e.key] = e; poolList.push(e); } });
+    Object.keys(parsed.registry).forEach(function (id) {
+        var reg = parsed.registry[id], key = 'app:' + reg.appId;
+        if (reg.hidden || pool[key] || !APP_ID.test(reg.appId) || VETRO_APP.test(reg.appId) || uninstalled(reg)) return;
+        if (reg.featured !== null && reg.featured !== undefined && reg.featured !== 1 && reg.featured !== 2) return;
+        var e = make(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[id] || parsed.packageIcons[reg.appId], key);
+        pool[key] = e; poolList.push(e);
+    });
+    // The user's own row (Vetro's dock state, never Samsung's .appLayerCache): their order first, then whatever Samsung's row
+    // holds that they have not placed (a newly installed app arrives at the end), without the ones they took out; custom names.
+    var row = options.row && typeof options.row === 'object' ? options.row : null;
+    if (row) {
+        var hidden = {}, used = {}, out = [];
+        (Array.isArray(row.hidden) ? row.hidden : []).forEach(function (k) { hidden[k] = true; });
+        (Array.isArray(row.order) ? row.order : []).forEach(function (k) {
+            if (pool[k] && !hidden[k] && !used[k] && out.length < MAX_ENTRIES - SYSTEM_ROWS.length) { used[k] = true; out.push(pool[k]); }
+        });
+        entries.forEach(function (e) {
+            if (used[e.key] || hidden[e.key]) return;
+            if (out.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: e.slug, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
+            used[e.key] = true; out.push(e);
+        });
+        entries = out;
+    }
+    var labels = row && row.labels && typeof row.labels === 'object' ? row.labels : {};
+    poolList.forEach(function (e) { if (typeof labels[e.key] === 'string' && cleanLabel(labels[e.key], '')) e.label = cleanLabel(labels[e.key], e.label); });
     // A plugin that claims an app (manifest "intercepts") takes over its tile: the dock asks Vetro to start it instead of
     // starting it itself. Only the flag goes into the list, never anything the plugin wrote. The viewer is Live TV, not an app.
     var claimed = options.intercepted || {};
-    entries.forEach(function (e) {
+    poolList.forEach(function (e) {
         if (e.appId !== VIEWER && Object.prototype.hasOwnProperty.call(claimed, e.appId)) e.viaShard = true;
     });
-    return {entries: entries, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
+    var allApps = poolList.slice().sort(function (a, b) { return a.label.localeCompare(b.label); }).slice(0, MAX_ENTRIES - ALL_APPS_SYSTEM_ROWS.length);
+    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
 }
 
 // Seventh column: "shard" when a plugin has taken the tile over. An older dock ignores the column and starts the app itself.
-function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
+// Eighth: the row key the dock sends back when the user moves, removes or adds a tile (an older dock ignores it).
+function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : '', e.key && ROW_KEY.test(e.key) ? e.key : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
+function allAppsTsv(built) {
+    return ['# Every app the launcher\'s All apps page lists, by name; written by Vetro, rebuilt with the app list']
+        .concat((built.allApps || []).map(function (e) { return entryLine(e); })).concat(ALL_APPS_SYSTEM_ROWS).join('\n') + '\n';
+}
 function inputsTsv(built) {
     return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
 }
@@ -257,6 +307,7 @@ function tsv(built) {
 function existing(execute, built) {
     var paths = [];
     var all = built.entries.concat(built.inputs || []);
+    (built.allApps || []).forEach(function (e) { if (all.indexOf(e) < 0) all.push(e); });
     all.forEach(function (e) { [e.icon, e.altIcon].forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
     if (!paths.length) return Promise.resolve(built);
     var script = 'for p in ' + paths.map(function (p) { return "'" + p + "'"; }).join(' ') + '; do [ -f "$p" ] && echo "OK|$p"; done; true';
@@ -288,10 +339,10 @@ function load(execute, options) {
         var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return /^s\/source\.layer\.hdmi@HDMI[1-4]$/.test(entry); });
         if (!built.entries.length && !filteredSources) throw new Error('None of the Home row apps could be matched in the registry');
         return existing(execute, built).then(function (b) {
-            return {tsv: tsv(b), inputsTsv: inputsTsv(b), count: b.entries.length, skipped: b.skipped};
+            return {tsv: tsv(b), inputsTsv: inputsTsv(b), allAppsTsv: allAppsTsv(b), count: b.entries.length, skipped: b.skipped, samsungKeys: b.samsungKeys, rowKeys: b.entries.map(function (e) { return e.key; })};
         });
     });
 }
 
-module.exports = {sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {ROW_KEY: ROW_KEY, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
 

@@ -87,7 +87,7 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  assert.match(general,/id="updateVersion"/);assert.match(general,/id="quickRestore"/);assert.doesNotMatch(general,/id="quickPairing"|id="quickSdb"/);
  assert.match(developer,/id="quickPairing"/);assert.match(developer,/id="quickSdb"/);assert.doesNotMatch(developer,/id="quickStorage"|id="updateVersion"/);
  assert.doesNotMatch(html.slice(html.indexOf('<section id="diagnostics"'),html.indexOf('<section id="plugins"')),/id="updateVersion"/);
- assert.match(sandbox.previewMarkup({entries:[]}),/slug=settings/);assert.match(sandbox.previewMarkup({entries:[]}),/slug=samsunghome/);
+ assert.match(sandbox.previewMarkup({entries:[]}),/slug=allapps/);assert.match(sandbox.previewMarkup({entries:[]}),/slug=samsunghome/);
  assert.match(sandbox.previewMarkup({entries:[],noMotion:true}),/lp-reduced/);
  console.log('PASS dashboard states: disabled/running independence, startup mixtures, unknown and stale samples, package expansion');
 })().catch(e=>{console.error(e);process.exitCode=1});

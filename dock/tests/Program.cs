@@ -1533,6 +1533,43 @@ namespace Launcher.Tests
                 T.Eq(three.PanelX, new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, 3, 2).PanelX, "more than three cards or an index past the end are clamped");
             });
 
+            T.Run("row: keys read from the list, moving, taking out and adding tiles, what is sent to Vetro", () =>
+            {
+                var r = Catalog.Parse("a\tA\torg.a\t\t\t\t\tapp:org.a\nb\tB\torg.b\t\t\t\t\tapp:org.b\nlive\tLive TV\torg.tizen.tv-viewer\t\t\t\t\tlive:RF\n" +
+                    "bad\tBad\torg.bad\t\t\t\t\tapp:x;rm\nallapps\tAll apps\tpanel:allapps\nsamsunghome\tSamsung Home\tsys:com.samsung.tv.csfs");
+                AppEntry[] row = r.Entries;
+                T.Eq(row[0].RowKey, "app:org.a", "the eighth column is the row key");
+                T.Eq(row[2].RowKey, "live:RF", "a live entry's key");
+                T.True(row[3].RowKey == null, "a key that is not plain is dropped (the tile cannot be edited)");
+                T.True(!RowEdit.CanEdit(row), "one app without a key: the row cannot be edited");
+                row = new[] { row[0], row[1], row[2], row[4], row[5] };
+                T.True(RowEdit.CanEdit(row), "every app has a key");
+                T.Eq(RowEdit.AppsEnd(row), 3, "the apps end where the pills start");
+                T.True(!RowEdit.IsApp(row, 3), "a pill is not an app of the row");
+                T.Eq(RowEdit.Target(row, 0, -1), 0, "the first app does not go further left");
+                T.Eq(RowEdit.Target(row, 2, 1), 2, "nor the last one into the pills");
+                T.Eq(RowEdit.Target(row, 1, 1), 2, "one place right");
+                T.Eq(RowEdit.Target(row, 3, -1), 3, "a pill never moves");
+                AppEntry[] less = RowEdit.Remove(row, 1);
+                T.Eq(string.Join(",", Array.ConvertAll(less, e => e.Slug)), "a,live,allapps,samsunghome", "taken out");
+                T.True(RowEdit.Remove(RowEdit.Remove(less, 0), 0).Length == 3, "the last app stays: a row is never empty");
+                AppEntry[] more = RowEdit.Add(less, row[1]);
+                T.Eq(string.Join(",", Array.ConvertAll(more, e => e.Slug)), "a,live,b,allapps,samsunghome", "added after the last app, before the pills");
+                T.True(RowEdit.Add(more, row[1]) == more, "an app already in the row is not added twice");
+                T.True(RowEdit.Add(more, row[3]) == more, "a pill is never added");
+                T.Eq(RowEdit.IndexOf(more, "app:org.b"), 2, "found by its key");
+                T.Eq(RowEdit.Command(RowEdit.Keys(more), 8099),
+                    "( /usr/bin/curl -sf -m 15 -X POST -H 'Content-Type: application/json' -d '{\"row\":[\"app:org.a\",\"live:RF\",\"app:org.b\"]}' 'http://127.0.0.1:8099/plugins/launcher/api/row' >/dev/null 2>&1 ) &",
+                    "the row goes to Vetro as plain keys, in the background");
+                T.True(RowEdit.Command(new[] { "app:a'b" }, 8099) == null && RowEdit.Command(new string[0], 8099) == null, "nothing unchecked reaches the shell");
+                T.True(Catalog.ValidRowKey("source:13") && !Catalog.ValidRowKey("source:x") && !Catalog.ValidRowKey("live:rf") && !Catalog.ValidRowKey("app:"), "key shapes");
+                T.Eq(Catalog.BuiltInAllApps().Length, 2, "no All apps list: its two pills only");
+                T.Eq(Catalog.GroupStart(Catalog.Parse("x\tX\torg.x\n" + "settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu\nstore\tApp store\tsys:com.samsung.tv.store").Entries), 1, "All apps ends with Settings and the App store as pills");
+                DockLayout a, i, all;
+                DockLayout.Pages(5, 3, 5, 30, 28, 1920, 1080, true, out a, out i, out all);
+                T.True(a.WinW == i.WinW && i.WinW == all.WinW && all.Raised && all.GroupStart == 28, "All apps shares the window, raised, with its pills");
+            });
+
             T.Run("design: one material for the panels", () =>
             {
                 T.True(Design.PanelRadius <= Design.SheetSlice && Design.PanelRadius + Design.ShellBorderW <= Design.RimSlice, "border scales of at most 1: corners are never drawn from a stretched picture");

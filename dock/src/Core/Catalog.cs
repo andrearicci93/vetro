@@ -50,6 +50,12 @@ namespace Launcher.Core
         /// </summary>
         public readonly bool ViaShard;
 
+        /// <summary>
+        /// The key Vetro knows this tile by in the user's own row (eighth column: <c>app:id</c>, <c>live:RF</c>, <c>source:13</c>), sent back when
+        /// the user moves it, takes it out or adds it from All apps; null in a list written by an older Vetro (the row cannot be edited then).
+        /// </summary>
+        public readonly string RowKey;
+
         public AppEntry(string slug, string label, string appId, string fallbackAppId)
             : this(slug, label, appId, fallbackAppId, null) { }
 
@@ -69,9 +75,12 @@ namespace Launcher.Core
             : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, false) { }
 
         public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard)
+            : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, viaShard, null) { }
+
+        public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard, string rowKey)
         {
             Slug = slug; Label = label; AppId = appId; FallbackAppId = fallbackAppId; Key = key;
-            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard;
+            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard; RowKey = rowKey;
         }
     }
 
@@ -132,6 +141,25 @@ namespace Launcher.Core
             return false;
         }
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
+
+        /// <summary>
+        /// A row key as Vetro writes it: <c>app:</c> and an app id, <c>live:</c> and capitals, or <c>source:</c> and digits. It goes into a
+        /// command line (the row sent back to Vetro), so nothing else passes.
+        /// </summary>
+        public static bool ValidRowKey(string s)
+        {
+            if (s == null) return false;
+            if (s.StartsWith("app:", StringComparison.Ordinal)) return IsAppId(s.Substring(4));
+            if (s.StartsWith("live:", StringComparison.Ordinal))
+            {
+                string v = s.Substring(5);
+                if (v.Length == 0 || v.Length > 12) return false;
+                foreach (char c in v) if (c < 'A' || c > 'Z') return false;
+                return true;
+            }
+            int n;
+            return s.StartsWith("source:", StringComparison.Ordinal) && IsSourceType(s.Substring(7), out n);
+        }
         /// <summary>True for a plain Tizen app id (letters, digits, dot, dash, underscore): safe to put on a command line.</summary>
         public static bool ValidAppId(string s) { return s != null && IsAppId(s); }
         public static bool ValidSlug(string s) { return s != null && IsSlug(s); }
@@ -174,6 +202,7 @@ namespace Launcher.Core
                 string icon = f.Length > 4 ? f[4].Trim() : "";
                 string killFirst = f.Length > 5 ? f[5].Trim() : "";
                 string via = f.Length > 6 ? f[6].Trim() : "";     // "shard", or blank; anything else is a later version's word and is ignored
+                string rowKey = f.Length > 7 ? f[7].Trim() : "";  // the row key; a bad one only means this tile cannot be edited
                 string key = null, panel = null;
                 int sourceType = -1;
                 bool special = false, systemApp = false;
@@ -213,7 +242,8 @@ namespace Launcher.Core
                 if (!seen.Add(slug)) { problems.Add("line " + (n + 1) + ": duplicate slug " + slug); continue; }
                 if (entries.Count >= MaxEntries) { problems.Add("line " + (n + 1) + ": more than " + MaxEntries + " entries, ignored"); continue; }
                 bool viaShard = via == "shard" && !special && !systemApp && appId.Length > 0;   // a plain app tile only
-                entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null, viaShard));
+                entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null, viaShard,
+                    ValidRowKey(rowKey) ? rowKey : null));
             }
             return new CatalogResult(entries.ToArray(), problems.ToArray());
         }
@@ -239,6 +269,16 @@ namespace Launcher.Core
                 new AppEntry("in-hdmi2", "HDMI 2", null, null, null, 14, null),
                 new AppEntry("in-hdmi3", "HDMI 3", null, null, null, 15, null),
                 new AppEntry("in-hdmi4", "HDMI 4", null, null, null, 16, null),
+            };
+        }
+
+        /// <summary>The All apps page when Vetro wrote no list for it: only its two pills, Settings and the App store.</summary>
+        public static AppEntry[] BuiltInAllApps()
+        {
+            return new[]
+            {
+                new AppEntry("settings", "Settings", "org.tizen.menu", null, "XF86SysMenu", -1, null),
+                new AppEntry("store", "App store", "com.samsung.tv.store", null, null, -1, null, true),
             };
         }
 

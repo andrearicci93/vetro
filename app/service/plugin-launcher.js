@@ -9,9 +9,10 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|taskManager|cards|enableCustom|disableCustom, on, cards, appId}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|taskManager|cards|resetRow|enableCustom|disableCustom, on, cards, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //   POST api/open     ?slug=<tile>  start the app of a tile a plugin has taken over (the launcher calls this; answers 202 at once)
+//   POST api/row      {row: [key...]}  the launcher's row as the user left it (moved, taken out, added from All apps)
 //
 // Plain ES5, like every module the TV loads.
 
@@ -79,6 +80,7 @@ function definition(dock, options) {
                 if (p.action === 'numberPad') return dock.setNumberPad(p.on);
                 if (p.action === 'taskManager') return dock.setTaskManager(p.on);
                 if (p.action === 'cards') return dock.setCards(p.cards);
+                if (p.action === 'resetRow') return dock.resetRow();
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();
@@ -122,6 +124,14 @@ function definition(dock, options) {
                         if (!dock.shardEntry(slug)) { vetro.json(res, { ok: false, error: 'No plugin tile with that name' }, 404); return true; }
                         vetro.json(res, { ok: true }, 202);
                         dock.openEntry(slug).catch(function () { /* openEntry never rejects; belt and braces */ });
+                        return true;
+                    }
+                    // The launcher sends its row after the user moved a tile, took one out or added one from All apps (row keys in order).
+                    if (sub === 'row' && req.method === 'POST') {
+                        vetro.readJson(req, res, function (p) {
+                            dock.setRow(p && p.row).then(function () { vetro.json(res, { ok: true }); })
+                                .catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
+                        });
                         return true;
                     }
                     if (sub === 'icon' && req.method === 'GET') {

@@ -26,6 +26,9 @@ RIM_ALPHA = int(round(255 * layout_consts.design_num("IconRimAlpha")))
 SYSTEM = {
     "settings": ("Settings", "key:XF86SysMenu", "org.tizen.menu", (196, 204, 220)),
     "samsunghome": ("Samsung Home", "sys:com.samsung.tv.csfs", None, (196, 204, 220)),
+    # The apps row's first pill opens the All apps page; Samsung's store closes that page, after Settings.
+    "allapps": ("All apps", "panel:allapps", None, (196, 204, 220)),
+    "store": ("App store", "sys:com.samsung.tv.store", None, (196, 204, 220)),
 }
 
 
@@ -119,9 +122,23 @@ def _phosphor(name, box):
     return draw
 
 
+def _glyph_grid(d, c, acc):
+    # "all apps": four rounded squares, the heavy line of the back arrow
+    s = SS
+    for x, y in ((28, 28), (72, 28), (28, 72), (72, 72)):
+        d.rounded_rectangle((x * s, y * s, (x + 28) * s, (y + 28) * s), radius=7 * s, outline=c, width=9 * s)
+
+
+def _glyph_bag(d, c, acc):
+    # "app store": a shopping bag, its handle a half circle
+    s = SS
+    d.rounded_rectangle((26 * s, 46 * s, 102 * s, 106 * s), radius=10 * s, outline=c, width=9 * s)
+    _line(d, [(46, 62), (46, 46)] + _arc(64, 46, 18, 180, 360) + [(82, 62)], c, 9)
+
+
 # The line glyphs above stay as a fallback; the shipped look uses Phosphor bold so all three share one hand.
-GLYPH_HEIGHT = {"settings": 23, "samsunghome": 16}
-GLYPHS = {"settings": _phosphor("gear-six-bold", 62), "samsunghome": _glyph_back}
+GLYPH_HEIGHT = {"settings": 23, "samsunghome": 16, "allapps": 19, "store": 21}
+GLYPHS = {"settings": _phosphor("gear-six-bold", 62), "samsunghome": _glyph_back, "allapps": _glyph_grid, "store": _glyph_bag}
 
 
 # The inputs panel: slug -> (label, Samsung SourceType, accent). TV is 0, HDMI 1-4 are 13-16.

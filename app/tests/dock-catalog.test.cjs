@@ -41,9 +41,9 @@ assert.deepEqual(built.skipped.map(s => s.item + ':' + s.reason), [
 const text = catalog.tsv(built);
 const lines = text.trim().split('\n');
 assert.ok(lines[0].startsWith('#'));
-assert.equal(lines[1], 'tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png');
-assert.equal(lines[2], 'livetv\tLive TV\torg.tizen.tv-viewer', 'no icon: no trailing tabs');
-assert.deepEqual(lines.slice(-2), ['settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu', 'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'], 'two pills close the row: Settings (the System Menu key) and Samsung Home');
+assert.equal(lines[1], 'tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png\t\t\tlive:TVPLUS', 'the eighth column is the row key');
+assert.equal(lines[2], 'livetv\tLive TV\torg.tizen.tv-viewer\t\t\t\t\tlive:RF', 'no icon: empty columns up to the row key');
+assert.deepEqual(lines.slice(-2), ['allapps\tAll apps\tpanel:allapps', 'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'], 'two pills close the row: All apps (its page ends with Settings and the App store) and Samsung Home');
 lines.slice(1).forEach(l => assert.ok(l.split('\t').length >= 3, 'every line has slug, label and app id: ' + l));
 
 // Names that would break the file or the dock
@@ -76,8 +76,8 @@ assert.equal(fixed.entries[0].icon, '/opt/share/webappservice/apps_icon/all/yt/2
 assert.equal(fixed.entries[0].label, 'TizenTube', 'the name is left alone');
 assert.equal(fixed.entries[1].killFirst, null, 'other apps are untouched');
 assert.equal(fixed.entries[1].icon, plain.entries[1].icon);
-assert.equal(catalog.tsv(fixed).split('\n')[1], 'tizentube\tTizenTube\txvvl3S1TT1.TizenTubeStandalone\t\t/opt/share/webappservice/apps_icon/all/yt/224x224.png\tcom.samsung.tv.cobalt-yt');
-assert.equal(catalog.tsv(plain).split('\n')[1].split('\t').length, 5, 'no sixth column when off');
+assert.equal(catalog.tsv(fixed).split('\n')[1], 'tizentube\tTizenTube\txvvl3S1TT1.TizenTubeStandalone\t\t/opt/share/webappservice/apps_icon/all/yt/224x224.png\tcom.samsung.tv.cobalt-yt\t\tapp:xvvl3S1TT1.TizenTubeStandalone');
+assert.equal(catalog.tsv(plain).split('\n')[1].split('\t')[5], '', 'no app to close first when off');
 const noYt = catalog.build(Object.assign({}, tt, {icons: {tt: tt.icons.tt}}), {fixTizenTube: true});
 assert.equal(noYt.entries[0].killFirst, 'com.samsung.tv.cobalt-yt', 'still closes YouTube first');
 assert.equal(noYt.entries[0].icon, tt.icons.tt, 'without a YouTube icon the app keeps its own');
@@ -116,10 +116,10 @@ assert.equal(ytShort.entries.length, 1, 'a short package list is not trusted: th
     assert.ok(seen[0].includes('.webappservice.db') && seen[0].includes('-readonly'), 'reads only');
     assert.ok(!ok.tsv.includes(missing), 'an icon file that is gone is not listed');
     const alt = '/opt/usr/apps/com.samsung.tv.tvPlusDeeplinker/shared/res/TVPlus_app_icon.png';
-    assert.ok(ok.tsv.includes('tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t' + alt + '\n'), 'TV Plus: the stale package icon gives way to the deep-link package icon');
+    assert.ok(ok.tsv.includes('tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t' + alt + '\t\t\tlive:TVPLUS\n'), 'TV Plus: the stale package icon gives way to the deep-link package icon');
     assert.ok(!ok.skipped.some(x => x.item === 'tvplus'), 'nothing to report when the second icon exists');
     const bare = await catalog.load(run({exit_code: 0, stdout: OUTPUT}, p => p !== missing && p !== alt));
-    assert.ok(bare.tsv.includes('tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\n'), 'neither icon exists: TV Plus keeps a generic one');
+    assert.ok(bare.tsv.includes('tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t\t\t\tlive:TVPLUS\n'), 'neither icon exists: TV Plus keeps a generic one');
     assert.ok(bare.skipped.some(x => x.item === 'tvplus' && /Icon file missing/.test(x.reason)));
     assert.ok(ok.tsv.includes('/opt/share/webappservice/apps_icon/all/aaa/224x224.png'), 'icons that exist stay');
     // If the existence check itself fails, the paths stay (the dock copes with an unloadable file)

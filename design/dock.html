@@ -8,7 +8,7 @@
   The launcher as on the TV (approved look: design round opus6, DESIGN.md "TV material"). Every panel is the osd 123's material
   (pill_rim white .22 2 px outside pill_bg slate .90, radius 40 or capsule, no drop shadow); the one focus is the ice capsule with slate text;
   the dock icons keep their ice ring + glow. Bars centred on x 960.
-  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|tasks|volume|pad123; ?cards=tasks,audio (the Control center's cards, default both); ?focus=N (dock item); ?bd=video|black|light|grid.
+  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|allapps|tasks|volume|pad123; ?cards=tasks,audio (the Control center's cards, default both); ?focus=N (dock item); ?bd=video|black|light|grid.
   Keys: Left / Right move · Up: Sources · Down: Control center (Left / Right between its cards) · Esc: back · Enter: launch · + / - / M: Volume bar · N: osd 123 (digits, Left / Right, Enter) ·
   R: replay the entrance · H: the toolbar.
 -->
@@ -51,7 +51,10 @@
     { n: 'Photos', g: '#d98a1e', ch: '▦' }, { n: 'Games', g: '#8a52d6', ch: '✦' }, { n: 'Library', g: '#b8478f', ch: '☰' }, { n: 'Smart Things', g: '#3d7ad6', ch: '⌂' }
   ];
   var PAGES = {
-    apps: { items: APPS.concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length, raised: false, hint: 'Source', up: true, below: (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',').length > 1 ? 'Control center' : 'Task manager' },
+    apps: { items: APPS.concat([{ n: 'All apps', pill: 'allapps', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length, raised: false, hint: 'Source', up: true, below: (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',').length > 1 ? 'Control center' : 'Task manager' },
+    /* All apps (the pill): every app the user can put in the row, by name, then Settings and the App store as pills; hold OK adds or takes out */
+    allapps: { items: APPS.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).concat([{ n: 'Browser', g: '#2f6fd6', ch: '◍' }, { n: 'Gallery', g: '#e0567a', ch: '✿' }])
+      .concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'App store', pill: 'store', glow: '#e2edff' }]), groupStart: APPS.length + 2, raised: true, hint: 'Hold OK to add or take out  ·  Back', up: false },
     inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, { n: 'HDMI 2', img: 'in-hdmi2', glow: '#e2edff' }, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, hint: 'Back', up: false }
   };
 
@@ -70,7 +73,7 @@
     L.raised = p.raised;
     return L;
   }
-  var LA = layout(PAGES.apps), LI = layout(PAGES.inputs);
+  var LA = layout(PAGES.apps), LI = layout(PAGES.inputs), LALL = layout(PAGES.allapps);
   function barX(L) { return Math.round((SW - L.pillW) / 2); }   // every bar centred on x 960 (the code's Pages(): both pages share the window)
 
   var page = 'apps', P = PAGES.apps, L = LA;
@@ -175,7 +178,7 @@
 
   /* ---- pages and keys ---- */
   function open(name, startIdx) {
-    page = name; P = PAGES[name]; L = name === 'apps' ? LA : LI;
+    page = name; P = PAGES[name]; L = name === 'apps' ? LA : name === 'allapps' ? LALL : LI;
     pos = target = startIdx || 0; enter = STILL ? 99 : 0; build(); C.style.display = '';
   }
   function txt(par, s, x, y, size, a, wt, maxW, right) { var e = Tv.text(par, s, x, y, size, wt && wt !== 500 ? 'w' + wt : '', maxW || 600, right); if (a !== 1) e.style.color = a === 'ink' ? 'var(--vetro-tv-focus-ink)' : 'rgba(255, 255, 255, ' + a + ')'; return e; }
@@ -313,8 +316,8 @@
     else if (k === 'ArrowLeft') target = Math.max(0, Math.round(target) - 1);
     else if (k === 'ArrowUp' && page === 'apps') open('inputs', 0);
     else if (k === 'ArrowDown' && page === 'apps') openTasks();
-    else if (k === 'ArrowDown' || k === 'Escape' || k === 'Backspace') { if (page === 'inputs') open('apps', 0); }
-    else if (k === 'Enter') bar.say('launch: ' + P.items[Math.round(target)].n);
+    else if (k === 'ArrowDown' || k === 'Escape' || k === 'Backspace') { if (page === 'inputs' || page === 'allapps') open('apps', 0); }
+    else if (k === 'Enter') { var it = P.items[Math.round(target)]; if (it.pill === 'allapps') open('allapps', 0); else bar.say('launch: ' + it.n); }
     else if (k === 'r' || k === 'R') { enter = 0; }
     else return;
     e.preventDefault();
@@ -327,6 +330,7 @@
     if (STILL) enter = 99;   // ?still: no entrance animation (for screenshots)
     TL.style.display = VL.style.display = NL.style.display = 'none';
     if (v && v[1] === 'sources') open('inputs', 0);
+    else if (v && v[1] === 'allapps') open('allapps', 0);
     else if (v && v[1] === 'tasks') openTasks();
     else if (v && v[1] === 'volume') { C.style.display = 'none'; drawVolume(); }
     else if (v && v[1] === 'pad123') { C.style.display = 'none'; typed = '42'; drawPad(); }

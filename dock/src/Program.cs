@@ -34,11 +34,13 @@ namespace Launcher
         private static IntPtr _win, _anim, _idle, _fifoHandler;
         private static int _fifoFd = -1;
         private static double _lastFrame;
-        private static AppEntry[] _apps, _inputs;
-        // Two pages share one window: the apps row and the inputs panel. _ctl / _dock always
+        private static AppEntry[] _apps, _inputs, _allApps;
+        // Three pages share one window: the apps row, the inputs panel (Up) and All apps (its pill). _ctl / _dock always
         // point at the page on screen, so everything below works on "the dock" as before.
-        private static Controller _ctl, _appsCtl, _inputsCtl;
-        private static Dock _dock, _appsDock, _inputsDock;
+        private static Controller _ctl, _appsCtl, _inputsCtl, _allCtl;
+        private static Dock _dock, _appsDock, _inputsDock, _allDock;
+        private static string _res;
+        private static int _screenW = DefaultScreenW, _screenH = DefaultScreenH;
         private static IntPtr _clockTimer;
         private static readonly Efl.TaskCb ClockCb = OnClock;
 
@@ -478,6 +480,8 @@ namespace Launcher
 
         private static void HideDock()
         {
+            if (_moveIndex >= 0) FinishMove(true);   // leaving while a tile is being moved keeps where it is now
+            CancelRowOk();
             _pendingLaunch = null;
             CancelIdle();
             StopClock();
@@ -802,6 +806,240 @@ namespace Launcher
             SelectPage(_inputsCtl, _inputsDock);
         }
 
+        // ------------------------------------------------------------------ the three pages, and the user's own row
+
+        private static DockLayout _inputsLayout, _allLayout;
+        private const string AllAppsHint = "Hold OK to add or take out  \u00b7  Back";
+
+        /// <summary>The three pages' layouts for the current lists (one window, as wide as the widest page); the controllers start on them.</summary>
+        private static DockLayout PageLayouts()
+        {
+            bool band = _cards.Length > 0;
+            DockLayout apps;
+            DockLayout.Pages(_apps.Length, Catalog.GroupStart(_apps), _inputs.Length, _allApps.Length, Catalog.GroupStart(_allApps), _screenW, _screenH, band,
+                out apps, out _inputsLayout, out _allLayout);
+            _appsLayout = apps;
+            _appsCtl = new Controller(apps) { PanelEnabled = true, TasksEnabled = band };
+            _inputsCtl = new Controller(_inputsLayout, PageKind.Panel);
+            _allCtl = new Controller(_allLayout, PageKind.Panel);
+            _ctl = _appsCtl;
+            return apps;
+        }
+
+        /// <summary>The pages' objects (the apps row on screen, the other two hidden).</summary>
+        private static void BuildPages()
+        {
+            _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
+            _appsDock.Build();
+            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, "Back", false);
+            _inputsDock.Build();
+            _inputsDock.SetVisible(false);
+            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, AllAppsHint, false);
+            _allDock.Build();
+            _allDock.SetVisible(false);
+            _dock = _appsDock;
+        }
+
+        /// <summary>
+        /// A tile was taken out of the row or added to it: the three pages are made again for the new row (the window's width may change),
+        /// on screen at once, the focus on <paramref name="focus"/> of the apps row, or on the same tile of All apps when the change came from there.
+        /// </summary>
+        private static void RebuildPages(AppEntry[] apps, int focus)
+        {
+            bool onAll = _ctl == _allCtl;
+            int allFocus = _allCtl.FocusTarget;
+            _appsDock.Destroy(); _inputsDock.Destroy(); _allDock.Destroy();
+            _apps = apps;
+            PageLayouts();
+            BuildPages();
+            MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+            if (onAll) { ActivatePage(_allCtl, _allDock); _allCtl.SetFocus(allFocus); }
+            else _appsCtl.SetFocus(focus);
+            MarkInRow();
+            _ctl.Rise(1f);
+            _dock.Apply(_ctl);
+            StartClock();
+            StartAnimator();
+            ResetIdle();
+        }
+
+        /// <summary>All apps writes "in the row" under the apps that are in it.</summary>
+        private static void MarkInRow()
+        {
+            var marked = new HashSet<int>();
+            for (int i = 0; i < _allApps.Length; i++) if (RowEdit.IndexOf(_apps, _allApps[i].RowKey) >= 0) marked.Add(i);
+            _allDock.Marked = marked;
+        }
+
+        private static void OpenAllApps()
+        {
+            MarkInRow();
+            _allCtl.SetFocus(0);
+            Log("all apps page, " + _allApps.Length + " entries");
+            SelectPage(_allCtl, _allDock);
+        }
+
+        // OK on the apps row and on All apps: a tap opens the tile when the key comes up; held (0.8 s) it moves the tile (apps row)
+        // or adds the app to the row or takes it out (All apps). Inputs keep acting on the press.
+        private static readonly HoldKey RowOk = new HoldKey();
+        private static IntPtr _rowOkTimer;
+        private static readonly Efl.TaskCb RowOkHoldCb = OnRowOkHold;
+        private static Controller _rowOkPage;
+        private static int _rowOkIndex = -1;
+
+        private static void RowOkDown()
+        {
+            ResetIdle();
+            if (!RowOk.Press()) return;   // auto-repeat, or the window's copy of a press already handled
+            _rowOkPage = _ctl;
+            _rowOkIndex = _ctl.FocusTarget;
+            if (_rowOkTimer != IntPtr.Zero) Efl.ecore_timer_del(_rowOkTimer);
+            _rowOkTimer = Efl.ecore_timer_add(HoldKey.HoldSeconds, RowOkHoldCb, IntPtr.Zero);
+        }
+
+        private static void RowOkUp()
+        {
+            if (RowOk.Release() != HoldResult.Tap) return;
+            if (_rowOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_rowOkTimer); _rowOkTimer = IntPtr.Zero; }
+            if (_tasksOn || _ctl != _rowOkPage || !_ctl.IsActive || _moveIndex >= 0) return;
+            AppEntry[] list = _ctl == _allCtl ? _allApps : _apps;
+            if (_rowOkIndex >= 0 && _rowOkIndex < list.Length) Activate(list[_rowOkIndex]);
+        }
+
+        private static byte OnRowOkHold(IntPtr data)
+        {
+            _rowOkTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            try
+            {
+                if (RowOk.Fire() != HoldResult.Hold || _tasksOn || _ctl != _rowOkPage || !_ctl.IsActive) return 0;
+                if (_ctl == _appsCtl) StartMove(_rowOkIndex); else ToggleInRow(_rowOkIndex);
+            }
+            catch (Exception ex) { Log("row hold: " + ex); }
+            return 0;
+        }
+
+        private static void CancelRowOk()
+        {
+            RowOk.Cancel();
+            if (_rowOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_rowOkTimer); _rowOkTimer = IntPtr.Zero; }
+        }
+
+        // Moving a tile: Left / Right carry it, Down takes it out of the row, OK keeps it there, Back puts the row back as it was.
+        private const string MoveHint = "\u2039 \u203a move  \u00b7  Down take out  \u00b7  OK done";
+        private static int _moveIndex = -1;
+        private static AppEntry[] _moveBefore;
+
+        private static void StartMove(int index)
+        {
+            if (!RowEdit.IsApp(_apps, index)) return;   // the pills stay where they are
+            if (!RowEdit.CanEdit(_apps)) { Log("row: this list has no row keys (an older Vetro wrote it), so it cannot be edited"); return; }
+            _moveIndex = index;
+            _moveBefore = (AppEntry[])_apps.Clone();
+            _appsDock.MovingIndex = index;
+            _appsDock.SetHints(MoveHint, null, false);
+            Log("row: moving " + _apps[index].RowKey);
+            StartAnimator();
+            ResetIdle();
+        }
+
+        private static void MoveKey(string key)
+        {
+            ResetIdle();
+            int idx;
+            switch (key)
+            {
+                case "Left":
+                case "Right":
+                    int to = RowEdit.Target(_apps, _moveIndex, key == "Left" ? -1 : 1);
+                    if (to == _moveIndex) return;
+                    _appsDock.Swap(_moveIndex, to);   // the dock's items are this same array
+                    _moveIndex = to;
+                    _appsDock.MovingIndex = to;
+                    _appsCtl.Key(key, out idx);       // the focus goes with it
+                    StartAnimator();
+                    return;
+                case "Down":
+                    AppEntry[] fewer = RowEdit.Remove(_apps, _moveIndex);
+                    if (fewer == _apps) return;       // the last app stays
+                    Log("row: took out " + _apps[_moveIndex].RowKey);
+                    int at = Math.Min(_moveIndex, RowEdit.AppsEnd(fewer) - 1);
+                    FinishMove(false);
+                    RebuildPages(fewer, at);
+                    SendRow();
+                    return;
+                case "Return":
+                case "KP_Enter":
+                case "Select":
+                    FinishMove(true);
+                    return;
+                case "Escape":
+                case "XF86Back":
+                    AppEntry[] before = _moveBefore;
+                    int back = Array.IndexOf(before, _apps[_moveIndex]);
+                    bool moved = !SameOrder(before, _apps);
+                    FinishMove(false);
+                    if (moved) RebuildPages(before, back < 0 ? 0 : back);
+                    return;
+                case "XF86Home":
+                case "XF86Exit":
+                    HideDock();   // keeps the tile where it is now
+                    return;
+            }
+        }
+
+        /// <summary>Ends moving a tile; <paramref name="keep"/>: the row as it is now is sent to Vetro when it changed.</summary>
+        private static void FinishMove(bool keep)
+        {
+            bool changed = keep && _moveBefore != null && !SameOrder(_moveBefore, _apps);
+            _moveIndex = -1;
+            _moveBefore = null;
+            _appsDock.MovingIndex = -1;
+            _appsDock.SetHints(null, null, true);
+            StartAnimator();
+            if (changed) SendRow();
+        }
+
+        private static bool SameOrder(AppEntry[] a, AppEntry[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (!ReferenceEquals(a[i], b[i])) return false;
+            return true;
+        }
+
+        /// <summary>Held OK on an app of All apps: into the row (at its end) when it is not there, out of it when it is.</summary>
+        private static void ToggleInRow(int index)
+        {
+            if (index < 0 || index >= _allApps.Length) return;
+            AppEntry e = _allApps[index];
+            if (e.IsSystem || e.RowKey == null || !RowEdit.CanEdit(_apps)) return;
+            int at = RowEdit.IndexOf(_apps, e.RowKey);
+            AppEntry[] next = at >= 0 ? RowEdit.Remove(_apps, at) : RowEdit.Add(_apps, e);
+            if (next == _apps) return;   // the last app, or the row is full
+            Log("row: " + (at >= 0 ? "took out " : "added ") + e.RowKey + " from All apps");
+            RebuildPages(next, 0);
+            _allDock.SetHints(at >= 0 ? "Taken out of the row" : "Added to the row", null, false);
+            if (_hintTimer != IntPtr.Zero) Efl.ecore_timer_del(_hintTimer);
+            _hintTimer = Efl.ecore_timer_add(2.5, HintBackCb, IntPtr.Zero);
+            SendRow();
+        }
+
+        private static IntPtr _hintTimer;
+        private static readonly Efl.TaskCb HintBackCb = OnHintBack;
+        private static byte OnHintBack(IntPtr data)
+        {
+            _hintTimer = IntPtr.Zero;
+            try { _allDock.SetHints(null, null, true); if (_ctl == _allCtl) StartAnimator(); } catch (Exception ex) { Log("hint: " + ex.Message); }
+            return 0;
+        }
+
+        /// <summary>Tells Vetro the row as it is now (it saves it and writes the lists the next start reads). Returns at once.</summary>
+        private static void SendRow()
+        {
+            string cmd = RowEdit.Command(RowEdit.Keys(_apps), ShardLaunch.ServicePort);
+            if (cmd == null) { Log("row: not sent (a tile has no row key)"); return; }
+            Log("row: sent rc=" + Libc.system(cmd));
+        }
+
         // ------------------------------------------------------------------ clock
 
         private static string ClockText() { return DateTime.Now.ToString("HH:mm"); }
@@ -815,6 +1053,7 @@ namespace Launcher
             string t = ClockText();
             _appsDock.SetClock(t);
             _inputsDock.SetClock(t);
+            _allDock.SetClock(t);
             if (_clockTimer != IntPtr.Zero) Efl.ecore_timer_del(_clockTimer);
             DateTime now = DateTime.Now;
             double wait = 60.0 - now.Second - now.Millisecond / 1000.0 + 0.05;
@@ -1018,7 +1257,7 @@ namespace Launcher
             {
                 // Evas_Event_Key_Up starts with `const char *keyname` too.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
-                if (IsOkKey(key)) TaskOkUp();
+                if (IsOkKey(key)) { TaskOkUp(); RowOkUp(); }
             }
             catch (Exception ex) { Log("key up: " + ex); }
         }
@@ -1040,6 +1279,9 @@ namespace Launcher
                     if (IsOkKey(key) && FocusedCard == CardKind.Tasks) TaskOkDown(); else OnTaskKey(key);
                     return;
                 }
+                if (_moveIndex >= 0) { MoveKey(key); return; }
+                // OK on the apps row and on All apps acts when it comes up: holding it moves a tile or adds it to the row instead.
+                if (IsOkKey(key) && (_ctl == _appsCtl || _ctl == _allCtl) && _ctl.IsActive) { RowOkDown(); return; }
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -1049,7 +1291,7 @@ namespace Launcher
                         ResetIdle();
                         break;
                     case KeyAction.Launch:
-                        Activate((_ctl == _appsCtl ? _apps : _inputs)[index]);
+                        Activate((_ctl == _appsCtl ? _apps : _ctl == _allCtl ? _allApps : _inputs)[index]);
                         break;
                     case KeyAction.OpenPanel:
                         OpenInputs();
@@ -1121,6 +1363,8 @@ namespace Launcher
         // The Audio output card: the TV speakers and the paired Bluetooth audio devices, read when the Control center opens and again after a choice.
         private static void ReadOutputs(bool keepSelection)
         {
+            // Read on the main loop when the Control center opens: how long these calls take on a TV is not known yet, so it is logged.
+            long t0 = Stopwatch.GetTimestamp();
             List<BondedDevice> paired;
             bool listed = AudioOutputs.TryList(out paired);
             if (!listed) Log("outputs: no Bluetooth list (" + AudioOutputs.LastError + ")");
@@ -1131,7 +1375,8 @@ namespace Launcher
             _audioCard.SetEntries(entries, note);
             _audioCtl.SetCount(entries.Count);
             if (!keepSelection) _audioCtl.Select(_audioCard.ActiveRow);
-            Log("outputs: speaker selection " + selection + ", " + entries.Count + " rows");
+            Log("outputs: speaker selection " + selection + ", " + entries.Count + " rows, read in "
+                + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
         }
 
         /// <summary>OK on the Audio output card: the sound goes to the selected row; the row says so until the list is read again.</summary>
@@ -1307,7 +1552,7 @@ namespace Launcher
                         ArmGuard();
                     }
                     // The kernel always reports the release: it ends a held OK even when the window's key up is late.
-                    for (int k = 0; k < InputReleases.Count; k++) if (InputReleases[k] == RawOkCode) TaskOkUp();
+                    for (int k = 0; k < InputReleases.Count; k++) if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
                 }
             }
             catch (Exception ex) { Log("input: " + ex); }
@@ -1358,7 +1603,7 @@ namespace Launcher
         {
             if (e.Panel != null)
             {
-                if (e.Panel == "inputs") OpenInputs(); else Log("unknown panel " + e.Panel);
+                if (e.Panel == "inputs") OpenInputs(); else if (e.Panel == "allapps") OpenAllApps(); else Log("unknown panel " + e.Panel);
                 return;
             }
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
@@ -1488,8 +1733,8 @@ namespace Launcher
         private static void WarmUp()
         {
             long t0 = Stopwatch.GetTimestamp();
-            Controller[] ctls = { _appsCtl, _inputsCtl };
-            Dock[] docks = { _appsDock, _inputsDock };
+            Controller[] ctls = { _appsCtl, _inputsCtl, _allCtl };
+            Dock[] docks = { _appsDock, _inputsDock, _allDock };
             for (int p = 0; p < ctls.Length; p++)
             {
                 Controller c = ctls[p]; Dock d = docks[p];
@@ -1587,17 +1832,15 @@ namespace Launcher
                 // switch: the Task manager alone unless --no-tasks. No cards: Down does nothing and there is no hint under the bar.
                 _cards = ControlCenter.Parse(Arg(args, "--cards"), Flag(args, "--no-tasks"));
                 bool tasks = _cards.Length > 0;
-                DockLayout layout, inputsLayout;
-                DockLayout.Pages(_apps.Length, Catalog.GroupStart(_apps), _inputs.Length, screenW, screenH, tasks, out layout, out inputsLayout);
-                _appsCtl = new Controller(layout) { PanelEnabled = true, TasksEnabled = tasks };
-                _appsLayout = layout;
+                _allApps = LoadList(Arg(args, "--all-apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "allapps.tsv"), Catalog.BuiltInAllApps);
+                _screenW = screenW; _screenH = screenH;
+                _res = Path.Combine(AppContext.BaseDirectory, "res");
+                DockLayout layout = PageLayouts();
                 int band = tasks ? DockLayout.HintH : 0;
                 _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, band, Math.Max(1, _cards.Length), 0);
                 _tasksCtl = new TaskController();
                 _audioCtl = new TaskController();
                 _taskSource = new TaskSource(_apps, Log);
-                _inputsCtl = new Controller(inputsLayout, PageKind.Panel);
-                _ctl = _appsCtl;
 
                 Efl.elm_win_title_set(_win, "tvlauncher");
                 Efl.elm_win_alpha_set(_win, true);
@@ -1615,11 +1858,7 @@ namespace Launcher
                 string res = Path.Combine(AppContext.BaseDirectory, "res");
                 string dumpIcons = Arg(args, "--dump-icons");
                 if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
-                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
-                _appsDock.Build();
-                _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false);
-                _inputsDock.Build();
-                _inputsDock.SetVisible(false);
+                BuildPages();
                 int cardsN = Math.Max(1, _cards.Length);
                 _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Tasks))), res, Log);
                 _taskPanel.Build();
@@ -1629,8 +1868,9 @@ namespace Launcher
                 if (!Flag(args, "--no-warmup")) WarmUp();
                 _appsDock.Apply(_appsCtl);
                 _inputsDock.Apply(_inputsCtl);
-                Log("engine in use: " + (Efl.EngineName(_dock.Evas) ?? "unknown") + ", " + _apps.Length + " apps, " + _inputs.Length + " inputs, "
-                    + (_appsDock.MissingIcons + _inputsDock.MissingIcons) + " icons missing");
+                _allDock.Apply(_allCtl);
+                Log("engine in use: " + (Efl.EngineName(_dock.Evas) ?? "unknown") + ", " + _apps.Length + " apps, " + _inputs.Length + " inputs, " + _allApps.Length + " on All apps, "
+                    + (_appsDock.MissingIcons + _inputsDock.MissingIcons + _allDock.MissingIcons) + " icons missing" + (RowEdit.CanEdit(_apps) ? "" : "; the row cannot be edited (no row keys)"));
 
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyUp, KeyUpCb, IntPtr.Zero);

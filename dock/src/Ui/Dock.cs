@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Launcher.Core;
 using Launcher.Native;
@@ -37,6 +38,7 @@ namespace Launcher.Ui
         private int _dividerAlpha = -1;
         private readonly IntPtr[] _icon;
         private readonly IntPtr[] _initials;       // placeholder letters for icons that failed to load
+        private int _moving = -1;                  // the tile being moved (hold OK): its name reads "‹  Name  ›"
 
         private readonly Box[] _iconBox;
         private readonly int[] _iconAlpha;
@@ -155,6 +157,7 @@ namespace Launcher.Ui
             public readonly bool Up;
             public IntPtr Chev, Text;
             public int W, X, TextW, TextDy, Alpha = -1, Y = int.MinValue;
+            public bool ShowChev = true;
             public NavHint(string word, bool up) { Word = word; Up = up; }
         }
 
@@ -211,6 +214,91 @@ namespace Launcher.Ui
                 if (o == IntPtr.Zero) continue;
                 if (visible) Efl.evas_object_show(o); else Efl.evas_object_hide(o);
             }
+        }
+
+        /// <summary>
+        /// Says something else in the hints for a while (moving a tile: "Left / Right move · OK done" above the bar, "Remove from row" under it):
+        /// a null word puts the page's own word back. <paramref name="chevron"/> false hides the main hint's chevron (it points to no page then).
+        /// </summary>
+        public void SetHints(string main, string below, bool chevron)
+        {
+            SetHint(_hint, main, chevron);
+            SetHint(_hintBelow, below, true);
+        }
+
+        private void SetHint(NavHint h, string word, bool chevron)
+        {
+            if (h == null || h.Text == IntPtr.Zero) return;
+            Efl.evas_object_text_text_set(h.Text, word ?? h.Word);
+            h.TextW = Efl.evas_object_text_horiz_advance_get(h.Text);
+            h.ShowChev = word == null || chevron;
+            h.W = h.TextW + (h.ShowChev ? HintGap + HintChev : 0);
+            h.X = _layout.HintLeft(h.W);
+            h.Y = int.MinValue; h.Alpha = -1;   // placed and tinted again on the next frame
+        }
+
+        private HashSet<int> _marked;
+        // A tick on the icon's top right corner for the marked tiles (a slate disc and the white check): the dock draws no names, so this is how
+        // All apps shows which apps the row holds. Made the first time something is marked.
+        private IntPtr[] _badgeBg, _badge;
+        private int[] _badgeAlpha;
+        public const int BadgeSize = 32, BadgeInset = 8;
+
+        /// <summary>Tiles that carry a tick and whose name says "in the row" (All apps: the apps the user's row holds).</summary>
+        public HashSet<int> Marked
+        {
+            set
+            {
+                _marked = value;
+                _fader.Invalidate();
+                if (_badge != null || value == null || value.Count == 0) { if (_badgeAlpha != null) for (int i = 0; i < _badgeAlpha.Length; i++) _badgeAlpha[i] = -1; return; }
+                _badgeBg = new IntPtr[_items.Length]; _badge = new IntPtr[_items.Length]; _badgeAlpha = new int[_items.Length];
+                for (int i = 0; i < _items.Length; i++)
+                {
+                    IntPtr clip = i < _layout.AppCount ? _appsClip : _clip;
+                    _badgeBg[i] = NineSlice("pill_bg", Design.SheetSlice, BadgeSize / 2.0 / Design.SheetSlice);
+                    Efl.evas_object_resize(_badgeBg[i], BadgeSize, BadgeSize);
+                    Efl.evas_object_clip_set(_badgeBg[i], clip);
+                    _badge[i] = Efl.evas_object_image_add(_evas);
+                    Efl.evas_object_image_file_set(_badge[i], Path.Combine(_assets, "out_check.png"), null);
+                    Efl.evas_object_image_filled_set(_badge[i], true);
+                    Efl.evas_object_image_smooth_scale_set(_badge[i], true);
+                    Efl.evas_object_resize(_badge[i], BadgeSize - 10, BadgeSize - 10);
+                    Efl.evas_object_clip_set(_badge[i], clip);
+                    Efl.evas_object_show(_badge[i]);
+                    _badgeAlpha[i] = -1;
+                }
+            }
+        }
+
+        /// <summary>The tile being moved (its name is drawn between arrows), or -1.</summary>
+        public int MovingIndex
+        {
+            get { return _moving; }
+            set { if (value != _moving) { _moving = value; _fader.Invalidate(); } }
+        }
+
+        /// <summary>Two tiles change places (moving a tile in the row): the item list itself and everything drawn for each item.</summary>
+        public void Swap(int i, int j)
+        {
+            if (i == j || i < 0 || j < 0 || i >= _items.Length || j >= _items.Length) return;
+            AppEntry e = _items[i]; _items[i] = _items[j]; _items[j] = e;
+            IntPtr o = _icon[i]; _icon[i] = _icon[j]; _icon[j] = o;
+            o = _initials[i]; _initials[i] = _initials[j]; _initials[j] = o;
+            int g = _glowRgb[i]; _glowRgb[i] = _glowRgb[j]; _glowRgb[j] = g;
+            _iconBox[i].W = _iconBox[j].W = -1; _iconAlpha[i] = _iconAlpha[j] = -1;
+            _hlRgb = _hlRgb2 = -1;
+            _fader.Invalidate();
+        }
+
+        /// <summary>Deletes every object of the page (the row was rebuilt with other tiles); the page is not used again.</summary>
+        public void Destroy()
+        {
+            var all = new List<IntPtr> { _rim, _pill, _highlight, _highlight2, _ring, _ring2, _divider, _label[0], _label[1], _clock, _appsClip, _clip };
+            all.AddRange(_icon); all.AddRange(_initials);
+            if (_badge != null) { all.AddRange(_badge); all.AddRange(_badgeBg); }
+            foreach (NavHint h in new[] { _hint, _hintBelow }) if (h != null) { all.Add(h.Chev); all.Add(h.Text); }
+            foreach (IntPtr x in all) if (x != IntPtr.Zero) Efl.evas_object_del(x);
         }
 
         /// <summary>Item that is in use right now (the active input): its label says so. -1 for none.</summary>
@@ -465,6 +553,19 @@ namespace Launcher.Ui
                     int h = Efl.evas_object_text_vert_advance_get(_initials[i]);
                     Efl.evas_object_move(_initials[i], b.X + (b.W - w) / 2, b.Y + (b.H - h) / 2);
                 }
+                if (_badge != null)
+                {
+                    int bx = b.X + b.W - BadgeSize + BadgeInset, by = b.Y - BadgeInset;
+                    Efl.evas_object_move(_badgeBg[i], bx, by);
+                    Efl.evas_object_move(_badge[i], bx + 5, by + 5);
+                    int ba = _marked != null && _marked.Contains(i) ? (int)Math.Round(255f * c.ItemPresence(i)) : 0;
+                    if (ba != _badgeAlpha[i])
+                    {
+                        _badgeAlpha[i] = ba;
+                        TintRgb(_badgeBg[i], ba, Design.ShellColor);
+                        Tint(_badge[i], ba);
+                    }
+                }
             }
 
             if (_divider != IntPtr.Zero)
@@ -493,7 +594,7 @@ namespace Launcher.Ui
             {
                 h.Alpha = presence;
                 int a = presence * 9 / 10;
-                Tint(h.Chev, a);
+                Tint(h.Chev, h.ShowChev ? a : 0);
                 TintText(h.Text, a);
             }
         }
@@ -525,7 +626,7 @@ namespace Launcher.Ui
                 if ((_fader.Dirty & (1 << k)) != 0 && idx >= 0)
                 {
                     // A pill carries its own name; nothing is written under it.
-                    string text = _layout.IsPinned(idx) ? "" : idx == _current ? _items[idx].Label + "  \u00b7  current" : _items[idx].Label;
+                    string text = _layout.IsPinned(idx) ? "" : idx == _moving ? "\u2039  " + _items[idx].Label + "  \u203a" : idx == _current ? _items[idx].Label + "  \u00b7  current" : _marked != null && _marked.Contains(idx) ? _items[idx].Label + "  \u00b7  in the row" : _items[idx].Label;
                     Efl.evas_object_text_text_set(_label[k], text);
                     _labelW[k] = Efl.evas_object_text_horiz_advance_get(_label[k]);
                     _labelX[k] = int.MinValue;   // placed again below

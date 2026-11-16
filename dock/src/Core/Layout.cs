@@ -99,6 +99,20 @@ namespace Launcher.Core
             inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand);
         }
 
+        /// <summary>
+        /// The same with a third page, All apps (raised like Sources, with its own pills, Settings and the App store, from
+        /// <paramref name="allGroupStart"/>): the window is as wide as the widest of the three.
+        /// </summary>
+        public static void Pages(int apps, int groupStart, int inputs, int all, int allGroupStart, int screenW, int screenH, bool belowBand,
+            out DockLayout appsPage, out DockLayout inputsPage, out DockLayout allPage)
+        {
+            int windowW = Math.Max(Math.Max(new DockLayout(apps, screenW, screenH, 0, false, groupStart, belowBand).WinW,
+                new DockLayout(inputs, screenW, screenH, 0, true, -1, belowBand).WinW), new DockLayout(all, screenW, screenH, 0, true, allGroupStart, belowBand).WinW);
+            appsPage = new DockLayout(apps, screenW, screenH, windowW, false, groupStart, belowBand);
+            inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand);
+            allPage = new DockLayout(all, screenW, screenH, windowW, true, allGroupStart, belowBand);
+        }
+
         public DockLayout(int count, int screenW, int screenH, int windowW) : this(count, screenW, screenH, windowW, false, -1) { }
 
         /// <summary>
