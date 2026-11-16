@@ -40,7 +40,7 @@ var FEATURES = [
     {id: 'list', label: 'Channel list', hint: 'OK opens the list.'},
     {id: 'guide', label: 'TV guide', hint: 'Up, Guide or EPG opens the guide.'},
     {id: 'pad', label: 'Number pad', hint: 'Right or a number key opens the pad.'},
-    {id: 'info', label: 'Info panel', hint: 'The Info key.'},
+    {id: 'info', label: 'Info panel', hint: 'The Info key, or Play / pause.'},
     {id: 'audio', label: 'Audio language key', hint: 'Left cycles the audio track.'},
     {id: 'hold', label: 'Hold to repeat', hint: 'CH+, CH- and the arrows keep going while held.'},
     {id: 'logos', label: 'Channel logos', hint: 'The TV\'s own channel pictures in the banner, list, pad, info and guide (only those it has saved).'},

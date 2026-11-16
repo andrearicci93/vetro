@@ -29,8 +29,13 @@ namespace Tuner
         private const int KeyUp = 103, KeyDown = 108, KeyLeft = 105, KeyRight = 106, KeyEnter = 28, KeyPower = 116;
         // The guide opens on Up (nothing else uses it) and on the Guide / EPG keys of remotes that have one (KEY_EPG 365, KEY_GUIDE 362: not seen on the Smart Control).
         private const int KeyEpg = 365, KeyGuide = 362;
-        // The info panel opens on the Info key of remotes that have one (KEY_INFO 358) and on `info` from the control pipe: the dock's 123 pad sends that.
-        private const int KeyInfo = 358;
+        // The info panel opens on the Info key of remotes that have one (KEY_INFO 358; Samsung's own Info is 188 in the TV's key layout,
+        // /usr/share/X11/xkb/tizen_key_layout.txt.tv) and on `info` from the control pipe: the dock's 123 pad sends that.
+        private const int KeyInfo = 358, KeyInfoSamsung = 188;
+        // Play / pause on live TV shows the info panel too (the owner's choice: the Smart Control has no Info key). Samsung's codes from the
+        // same layout: XF86AudioPlay 200, XF86AudioPause 201, XF86AudioPlayPause 520 (which one the Smart Control sends is not seen yet).
+        private static readonly HashSet<int> PlayPauseKeys = new HashSet<int> { 200, 201, 520 };
+        private static bool IsInfoKey(int code) { return code == KeyInfo || code == KeyInfoSamsung || PlayPauseKeys.Contains(code); }
         // Keys that belong to the system: the tuner steps aside (hides, or exits) and the system handles the key as usual.
         private static readonly HashSet<int> SystemKeys = new HashSet<int> { 63, 172, 139, 116 };
         // The remote's 123 key. Vetro's own osd 123 holds it back in the remote bridge, so when the tuner reads it the TV is opening Samsung's
@@ -766,7 +771,7 @@ namespace Tuner
             if (InfoOpen)
             {
                 CloseInfo();                                            // any key closes the panel; Back and Info are all it does,
-                if (back || code == KeyInfo) return;                    // the others (CH+/-, arrows...) then do their usual job
+                if (back || IsInfoKey(code)) return;                    // the others (CH+/-, arrows...) then do their usual job
             }
             if (GuideOpen) { OnGuideKey(code, back); return; }
             if (_listView.Visible)
@@ -810,7 +815,7 @@ namespace Tuner
                 else if (_previous != null) GoTo(_previous);
                 return;
             }
-            if (code == KeyInfo) { OpenInfo(); return; }
+            if (IsInfoKey(code)) { OpenInfo(); return; }
             if (code == KeyUp || code == KeyEpg || code == KeyGuide) { OpenGuide(); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { if (_list != null) GoTo(_list.Step(+1)); return; }
             if (code == KeyChannelDown || code == KeyChannelDown2) { if (_list != null) GoTo(_list.Step(-1)); return; }
