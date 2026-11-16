@@ -1,4 +1,5 @@
 'use strict';
+const {launchCommand}=require('../service/dock-catalog.js').hbbtvLink;
 // #135: AgingApp (the factory colour test) opened from the Task manager left db/FactoryApp/Aging at 1; the TV then
 // started the test at every boot. Factory, hotel and shop apps are blocked or need a confirmation, and Vetro can put
 // the key back to 0, only when it reads exactly 1.
@@ -100,7 +101,7 @@ const WRITE = 'vconftool set -f -t int db/FactoryApp/Aging 0';
         sent.push(c);
         if (c === 'vconftool get db/FactoryApp/Aging 2>&1') return Promise.resolve({exit_code: 0, stdout: 'db/FactoryApp/Aging, value = ' + aging + ' (Int32)\n'});
         if (c === WRITE) { aging = 0; return Promise.resolve({exit_code: 0, stdout: ''}); }
-        if (c.indexOf('sqlite3') >= 0) return Promise.resolve({exit_code: 1, stdout: '', stderr: 'no registry in this test'});
+        if (c.indexOf('sqlite3') >= 0 && c.indexOf('app_launcher -s') < 0) return Promise.resolve({exit_code: 1, stdout: '', stderr: 'no registry in this test'});
         return Promise.resolve({exit_code: 0, stdout: ''});
     };
     const {context, router} = require('./service-harness.cjs')(path.resolve(__dirname, '..'));
@@ -120,13 +121,13 @@ const WRITE = 'vconftool set -f -t int db/FactoryApp/Aging 0';
     assert.equal(x.data.ok, true);
     x = await call('POST', '/apps/launch', {appId: 'org.tizen.netflix-app'});
     assert.equal(x.data.ok, true);
-    assert.deepEqual(launches(), ['/usr/bin/app_launcher -s org.tizen.cloning', '/usr/bin/app_launcher -s org.tizen.netflix-app']);
+    assert.deepEqual(launches(), [launchCommand('org.tizen.cloning'), launchCommand('org.tizen.netflix-app')]);
 
     x = await call('POST', '/remap', {rules: [rule('org.tizen.cloning')]});
     assert.equal(x.status, 400);assert.match(x.data.error, /rules cannot open it/);
     sent.length = 0;
     const old = await context.runActions([{type: 'launch', appId: 'org.tizen.AgingApp'}, {type: 'launch', appId: 'org.tizen.cloning'}, {type: 'launch', appId: 'org.tizen.netflix-app'}]);
-    assert.deepEqual(launches(), ['/usr/bin/app_launcher -s org.tizen.netflix-app'], 'a rule saved by 0.3.5 still runs, without the factory apps');
+    assert.deepEqual(launches(), [launchCommand('org.tizen.netflix-app')], 'a rule saved by 0.3.5 still runs, without the factory apps');
     assert.deepEqual(Array.from(old.skipped), ['launch:factory-app', 'launch:factory-app']);
 
     x = await call('GET', '/factory-test');

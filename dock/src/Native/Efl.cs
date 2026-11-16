@@ -111,6 +111,7 @@ namespace Launcher.Native
         [DllImport(EflUtil)] public static extern int efl_util_set_notification_window_level(IntPtr win, int level);
         [DllImport(AppControl)] public static extern int app_control_create(out IntPtr ac);
         [DllImport(AppControl)] public static extern int app_control_set_app_id(IntPtr ac, string appId);
+        [DllImport(AppControl)] public static extern int app_control_set_operation(IntPtr ac, string operation);
         [DllImport(AppControl)] public static extern int app_control_send_launch_request(IntPtr ac, IntPtr replyCb, IntPtr userData);
         [DllImport(AppControl)] public static extern int app_control_destroy(IntPtr ac);
         [DllImport(AppControl)] public static extern int app_control_add_extra_data(IntPtr ac, string key, string value);

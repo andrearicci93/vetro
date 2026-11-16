@@ -2091,6 +2091,28 @@ namespace Launcher
 
         // ------------------------------------------------------------------ launching
 
+        // #200: an app that is only an HbbTV link (SVT Play) is opened through the HbbTV app: started by its id, the widget
+        // only shows its loading wheel. Samsung's Home sends the link with tizenid, deeplink and caller_process as well;
+        // tizenid starts a deep-link session, and when it ends the HbbTV library opens Samsung's Home (m_HandleDeeplinkExit),
+        // so the operation and the link go alone (app/service/hbbtv-link.js has the details and the TV checks). The link
+        // was checked by Catalog.ValidHbbtvLink and goes to app_control as data, never through a shell.
+        private const string HbbtvApp = "org.tizen.hbbtv";
+        private const string OperationDefault = "http://tizen.org/appcontrol/operation/default";
+
+        private static bool SendHbbtvLaunch(string link)
+        {
+            IntPtr ac;
+            if (Efl.app_control_create(out ac) != 0) return false;
+            try
+            {
+                if (Efl.app_control_set_operation(ac, OperationDefault) != 0) return false;
+                if (Efl.app_control_set_app_id(ac, HbbtvApp) != 0) return false;
+                if (Efl.app_control_add_extra_data(ac, "hbbtv", link) != 0) return false;
+                return Efl.app_control_send_launch_request(ac, IntPtr.Zero, IntPtr.Zero) == 0;
+            }
+            finally { Efl.app_control_destroy(ac); }
+        }
+
         private static bool SendLaunch(string appId)
         {
             IntPtr ac;
@@ -2216,6 +2238,14 @@ namespace Launcher
                     // the platform's own launcher starts it. The same goes for the other system controls (sys: rows).
                     Log("launch " + e.AppId + " rc=" + Libc.system(SystemLaunch.Command(e.AppId, e.FallbackAppId)));
                     return;
+                }
+                if (e.HbbtvLink != null)
+                {
+                    long h0 = Stopwatch.GetTimestamp();
+                    bool opened = SendHbbtvLaunch(e.HbbtvLink);
+                    long hms = (Stopwatch.GetTimestamp() - h0) * 1000 / Stopwatch.Frequency;
+                    if (opened) { Log("launch " + e.AppId + " via HbbTV request " + hms + " ms"); return; }
+                    Log("launch via HbbTV failed: " + e.AppId);   // then by its id, as before
                 }
                 long t0 = Stopwatch.GetTimestamp();
                 bool sent = SendLaunch(e.AppId);

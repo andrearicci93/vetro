@@ -1,4 +1,5 @@
 'use strict';
+const {launchCommand}=require('../service/dock-catalog.js').hbbtvLink;
 // #100: parts of Samsung's Settings (com.samsung.tv.coba.setting*) are not apps: app_launcher returns 0 and nothing opens.
 const assert = require('assert').strict;
 const remap = require('../service/remap.js');
@@ -24,7 +25,7 @@ assert.equal(remap.checkLaunchable(remap.validateRules([rule('org.tizen.netflix-
     assert.equal(refused.status, 400);
     assert.match(refused.data.error, /not an app/);
     const old = await context.runActions([{type: 'launch', appId: 'com.samsung.tv.coba.setting.networksettings'}, {type: 'launch', appId: 'org.tizen.netflix-app'}]);
-    assert.deepEqual(commands, ['/usr/bin/app_launcher -s org.tizen.netflix-app'], 'only the real app is launched');
+    assert.deepEqual(commands, [launchCommand('org.tizen.netflix-app')], 'only the real app is launched');
     assert.deepEqual(Array.from(old.skipped), ['launch:not-an-app']);
     assert.equal(old.sent, 1);
     console.log('PASS not launchable: Settings components are refused in new rules and still load from old ones (#100)');

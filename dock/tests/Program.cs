@@ -102,6 +102,25 @@ namespace Launcher.Tests
                 T.Eq(ShardLaunch.Command(evil2, 8099), null, "an app id with shell characters is refused");
             });
 
+            T.Run("catalog: HbbTV link in the ninth field (#200, by genesai)", () =>
+            {
+                const string svt = "https://hbbtv.play.svt.se/v2/index.xhtml";
+                var r = Catalog.Parse("svt-play\tSVT Play\t5exPmCT0nz.svtplay\t\t\t\t\t\t" + svt + "\nur-play\tUR Play\t4rd98xReqr.URPlay\n");
+                T.Eq(r.Problems.Length, 0, "no problems");
+                T.Eq(r.Entries[0].HbbtvLink, svt, "link kept");
+                T.Eq(r.Entries[0].AppId, "5exPmCT0nz.svtplay", "app id kept");
+                T.Eq(r.Entries[1].HbbtvLink, null, "no link is null");
+                foreach (string bad in new[] { "ftp://x", "https://", "https://a b", "https://a'b", "https://a\"b", "https://a\\b", "javascript:x", "https://" + new string('a', 501) })
+                {
+                    var b = Catalog.Parse("x\tX\ta.b\t\t\t\t\t\t" + bad + "\n");
+                    T.Eq(b.Entries.Length, 0, "bad link refused: " + bad);
+                    T.Eq(b.Problems.Length, 1, "bad link reported: " + bad);
+                }
+                T.True(Catalog.ValidHbbtvLink("https://" + new string('a', 500)), "longest link the service also accepts");
+                T.Eq(Catalog.Parse("x\tX\tsys:a.b\t\t\t\t\t\t" + svt + "\n").Entries.Length, 0, "no link on a system row");
+                T.Eq(Catalog.Parse("x\tX\tkey:XF86Menu\ta.b\t\t\t\t\t" + svt + "\n").Entries.Length, 0, "no link on a key row");
+            });
+
             T.Run("catalog handles CRLF and empty input", () =>
             {
                 T.Eq(Catalog.Parse("a\tA\tx.y\r\nb\tB\tx.z\r\n").Entries.Length, 2, "crlf");

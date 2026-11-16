@@ -9,6 +9,48 @@ var LABEL_CONTROL_RE = /[\u0000-\u001f\u007f|]/g;
 var LABEL_SPACES_RE = /\s+/g;
 var YOUTUBE_ICON_RE = /^youtube$/i;
 var TRAILING_TABS_RE = /\t+$/;
+// --- HbbTV-link apps (#200), by genesai (PR #211); kept in this file because the update from 0.5.0 has no room for a new one ---
+var hbbtvLink = (function () {
+// Apps that are only a doorway to a broadcaster's HbbTV service (#200). SVT Play (5exPmCT0nz.svtplay) is one: its
+// package declares the metadata key below, and Samsung's own Home never starts the widget itself. Started by its id,
+// the widget only shows its loading wheel and goes away. Samsung's web app service (litewebappservice,
+// ICAul::AulLaunchTVViewer) sends the link to the HbbTV app instead: operation default, hbbtv=<link>, plus
+// tizenid=<app id>, deeplink=true and caller_process=org.tizen.litewebappservice.
+// Vetro sends the operation and the link only. tizenid starts a deep-link session, and when a deep-link app ends the
+// HbbTV library opens Samsung's Home (CDAEApplicationManager::m_HandleDeeplinkExit launches com.samsung.tv.csfs with
+// entry_point=exit_key), which is what Vetro's launcher stands in for. Checked on an LS03B (Tizen 6.5,
+// T-PTMDEUC-1720.7) on 2026-11-16: the link alone opened SVT Play from a TV channel, over Netflix and from an HDMI
+// input, and leaving it with Exit went back to each of them; Samsung's full request brought up Samsung Home on exit.
+// A bare start of org.tizen.hbbtv, without the link, shows nothing. The dock sends the same request natively
+// (dock/src/Program.cs, SendHbbtvLaunch).
+var HBBTV_METADATA_KEY = 'http://samsung.com/tv/metadata/hbbtv.link';
+var HBBTV_APP = 'org.tizen.hbbtv';
+var OPERATION_DEFAULT = 'http://tizen.org/appcontrol/operation/default';
+var PKGMGR_DB = '/opt/dbspace/.pkgmgr_parser.db';
+var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
+// http(s) only, no spaces, quotes, backslashes or control characters. The dock applies the same rule (Catalog.cs).
+var LINK_RE = /^https?:\/\/[A-Za-z0-9._~:\/?#\[\]@!$&()*+,;=%-]{1,500}$/;
+
+function validLink(link) { return typeof link === 'string' && LINK_RE.test(link); }
+
+// The request as app_launcher key/value arguments. __APP_SVC_OP_TYPE__ is the bundle key app_control_set_operation writes.
+function launchArgs(link) {
+    return ['__APP_SVC_OP_TYPE__', OPERATION_DEFAULT, 'hbbtv', link];
+}
+
+// One shell command for the root agent: an app with an HbbTV link is opened through the HbbTV app, any other
+// app is started by its id as before. The link is read on the TV at launch time, so a rule or the Task manager
+// needs no catalog of its own. It only ever reaches app_launcher as a quoted variable, never as shell text.
+function launchCommand(appId) {
+    if (!APP_ID_RE.test(String(appId || ''))) throw new Error('invalid appId');
+    return 'L=$(sqlite3 -readonly ' + PKGMGR_DB + ' "SELECT md_value FROM package_app_app_metadata WHERE app_id=\'' + appId +
+        '\' AND md_key=\'' + HBBTV_METADATA_KEY + '\' LIMIT 1;" 2>/dev/null | head -n 1); ' +
+        'case "$L" in http://*|https://*) /usr/bin/app_launcher -s ' + HBBTV_APP + ' ' + launchArgs('"$L"').join(' ') + ';; ' +
+        '*) /usr/bin/app_launcher -s ' + appId + ';; esac';
+}
+
+    return {METADATA_KEY: HBBTV_METADATA_KEY, HBBTV_APP: HBBTV_APP, validLink: validLink, launchArgs: launchArgs, launchCommand: launchCommand};
+})();
 // The dock's app list, built from what Samsung's own Home reads, so the two start out the same:
 //   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2); TVs with the new Home
 //                              (com.samsung.tv.home.media, 2022 and later) keep it in that package's data dir instead
@@ -16,7 +58,7 @@ var TRAILING_TABS_RE = /\t+$/;
 //   - the registry's icons     /opt/share/webappservice/apps_icon/all/<id>/
 //   - the package icons        /opt/dbspace/.pkgmgr_parser.db     (sideloaded apps, TV Plus)
 // Everything is read in one shell call. The result is a tab-separated list for the dock
-// (dock/src/Core/Catalog.cs): slug, label, app id, fallback, icon file. The dock rounds the
+// (dock/src/Core/Catalog.cs): slug, label, app id, fallback, icon file, kill-first app, HbbTV link. The dock rounds the
 // icons itself; this module never touches an image.
 
 var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
@@ -98,6 +140,8 @@ function script() {
         // The third field says whether the app is disabled (Quick settings → Disable, or Apps and processes): a disabled app
         // cannot start, so it gets no tile. An older reader of these lines (two fields) is not affected: it is this file.
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'A|\'||hex(app_id)||\'|\'||ifnull(app_disable,\'false\') FROM package_app_info;" 2>/dev/null',
+        // #200: apps that are only an HbbTV link (SVT Play) are opened by sending that link to the HbbTV app.
+        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'L|\'||hex(app_id)||\'|\'||hex(md_value) FROM package_app_app_metadata WHERE md_key=\'' + hbbtvLink.METADATA_KEY + '\';" 2>/dev/null',
         'true'
     ].join('\n');
 }
@@ -111,7 +155,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}, disabled: {}, installedCount: 0, sources: {}, homeApp: null, rowFrom: null};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}, disabled: {}, installedCount: 0, hbbtvLinks: {}, sources: {}, homeApp: null, rowFrom: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
         var f = line.split('|');
@@ -135,6 +179,9 @@ function parse(text) {
                 out.installed[unhex(f[1])] = true;
                 if (f[2] === 'true') out.disabled[unhex(f[1])] = true;
                 out.installedCount++;
+            } else if (f[0] === 'L' && f.length === 3) {
+                var link = unhex(f[2]).trim(), linkApp = unhex(f[1]);
+                if (APP_ID.test(linkApp) && hbbtvLink.validLink(link)) out.hbbtvLinks[linkApp] = link;
             }
         } catch (e) { /* skip the line */ }
     });
@@ -203,7 +250,9 @@ function build(parsed, options) {
         var base = slug, n = 2, input = typeof key === 'string' && key.indexOf('source:') === 0;
         while (slugs[slug] || RESERVED_SLUGS.indexOf(slug) >= 0 || (!input && inputSlugs[slug])) slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
-        return {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null, key: key || (appId ? 'app:' + appId : null)};
+        var made = {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null, key: key || (appId ? 'app:' + appId : null)};
+        if (appId && parsed.hbbtvLinks && parsed.hbbtvLinks[appId]) made.hbbtvLink = parsed.hbbtvLinks[appId];
+        return made;
     }
     function add(slug, label, appId, icon, key) {
         var e = make(slug, label, appId, icon, key);
@@ -324,7 +373,8 @@ function build(parsed, options) {
 
 // Seventh column: "shard" when a plugin has taken the tile over. An older dock ignores the column and starts the app itself.
 // Eighth: the row key the dock sends back when the user moves, removes or adds a tile (an older dock ignores it).
-function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : '', e.key && ROW_KEY.test(e.key) ? e.key : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
+// Ninth: the app's HbbTV link (#200), which the dock sends to the HbbTV app instead of starting the widget (an older dock ignores it).
+function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : '', e.key && ROW_KEY.test(e.key) ? e.key : '', e.hbbtvLink && hbbtvLink.validLink(e.hbbtvLink) ? e.hbbtvLink : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
 function allAppsTsv(built) {
     return ['# Every app the launcher\'s All apps page lists, by name; written by Vetro, rebuilt with the app list']
         .concat((built.allApps || []).map(function (e) { return entryLine(e); }))
@@ -389,5 +439,5 @@ function load(execute, options) {
     });
 }
 
-module.exports = {ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
 

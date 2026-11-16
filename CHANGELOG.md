@@ -88,6 +88,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Fixes
 
+- **SVT Play and other HbbTV-link apps open from Vetro** ([#200](https://github.com/andrearicci93/vetro/issues/200), [#211](https://github.com/andrearicci93/vetro/pull/211) by **genesai**). Some apps are only a doorway to a broadcaster's HbbTV service: their package declares a link, and Samsung's Home sends that link to the TV's HbbTV app instead of starting the app. Vetro now does the same from the launcher row, Remapper rules and Apps and processes → Open. Tried by genesai on an LS03B (Tizen 6.5).
 - **The Vetro launcher at power-on** on 2022 and later TVs ([#206](https://github.com/andrearicci93/vetro/issues/206)). With the launcher on, those TVs started in Live TV every time; Vetro now opens its launcher once at power-on. Read from the 2022 and 2024 firmware, not yet tried on those TVs.
 - **The Audio output card shows optical and HDMI receivers.** "TV speakers" was ticked while the sound went to an optical output or a receiver; that output now has its own ticked row, and Vol goes to Samsung while it plays, so the level that changes is the one you hear. Output numbers read from the firmware; not yet tried with an optical or HDMI output.
 - **Picture mode on Samsung's Home picture.** The mode some 2022 and later TVs report (327705) was read as Filmmaker Mode; the firmware names it Samsung's Home picture, so the card now ticks nothing and any mode can be chosen. Eco and Adaptive Picture are listed where the TV offers them. Not yet tried on those TVs.
