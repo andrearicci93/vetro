@@ -19,6 +19,7 @@ var buildInfo = require('./build-info.js');
 var apps = require('./apps.js');
 var probe = require('./probe.js');
 var remap = require('./remap.js');
+var hbbtvLink = require('./hbbtv-link.js');
 var settings = require('./settings.js');
 var TVSettings = require('./tv-settings.js').Store;
 var AppRegistry = require('./app-registry.js');
@@ -715,7 +716,8 @@ function runActions(actions, direct, dispatchGuard) {
         if(a.type==='launch'&&!remap.launchable(a.appId)){skipped.push('launch:not-an-app');return;}
         // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
         if(a.type==='launch'&&!direct&&remap.ruleRisk(a.appId,packageOf)){skipped.push('launch:factory-app');return;}
-        if(a.type==='launch')command='/usr/bin/app_launcher -s '+a.appId;
+        // #200: an app that is only an HbbTV link (SVT Play) opens the way Samsung's Home opens it; any other app by its id.
+        if(a.type==='launch')command=hbbtvLink.launchCommand(a.appId);
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&control.injectCommand(key);if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});

@@ -9,6 +9,7 @@ var LABEL_CONTROL_RE = /[\u0000-\u001f\u007f|]/g;
 var LABEL_SPACES_RE = /\s+/g;
 var YOUTUBE_ICON_RE = /^youtube$/i;
 var TRAILING_TABS_RE = /\t+$/;
+var hbbtvLink = require('./hbbtv-link.js');
 // The dock's app list, built from what Samsung's own Home reads, so the two start out the same:
 //   - the Home row order       .../apps_rw/com.samsung.tv.csfs/data/.appLayerCache.1 (or .2); TVs with the new Home
 //                              (com.samsung.tv.home.media, 2022 and later) keep it in that package's data dir instead
@@ -16,7 +17,7 @@ var TRAILING_TABS_RE = /\t+$/;
 //   - the registry's icons     /opt/share/webappservice/apps_icon/all/<id>/
 //   - the package icons        /opt/dbspace/.pkgmgr_parser.db     (sideloaded apps, TV Plus)
 // Everything is read in one shell call. The result is a tab-separated list for the dock
-// (dock/src/Core/Catalog.cs): slug, label, app id, fallback, icon file. The dock rounds the
+// (dock/src/Core/Catalog.cs): slug, label, app id, fallback, icon file, kill-first app, HbbTV link. The dock rounds the
 // icons itself; this module never touches an image.
 
 var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
@@ -70,6 +71,8 @@ function script() {
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
+        // #200: apps that are only an HbbTV link (SVT Play) are opened by sending that link to the HbbTV app.
+        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'L|\'||hex(app_id)||\'|\'||hex(md_value) FROM package_app_app_metadata WHERE md_key=\'' + hbbtvLink.METADATA_KEY + '\';" 2>/dev/null',
         '[ -d /usr/apps/' + COBA_HOME + ' ] || [ -d /opt/usr/apps/' + COBA_HOME + ' ] && echo "H|' + COBA_HOME + '"',
         'true'
     ].join('\n');
@@ -84,7 +87,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, sources: {}, homeApp: null, rowFrom: null};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, hbbtvLinks: {}, sources: {}, homeApp: null, rowFrom: null};
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
         var f = line.split('|');
@@ -104,6 +107,9 @@ function parse(text) {
             } else if (f[0] === 'P' && f.length === 3) {
                 var icon = unhex(f[2]), id = unhex(f[1]);
                 if (iconOk(icon) && !out.packageIcons[id]) out.packageIcons[id] = icon;
+            } else if (f[0] === 'L' && f.length === 3) {
+                var link = unhex(f[2]).trim(), linkApp = unhex(f[1]);
+                if (APP_ID.test(linkApp) && hbbtvLink.validLink(link)) out.hbbtvLinks[linkApp] = link;
             } else if (f[0] === 'H' && f.length === 2) {
                 if (f[1].trim() === COBA_HOME) out.homeApp = COBA_HOME;
             }
@@ -156,7 +162,9 @@ function build(parsed, options) {
         var base = slug, n = 2;
         while (slugs[slug] || slug === 'source' || slug === 'settings') slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
-        entries.push({slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null});
+        var entry = {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null};
+        if (parsed.hbbtvLinks && parsed.hbbtvLinks[appId]) entry.hbbtvLink = parsed.hbbtvLinks[appId];
+        entries.push(entry);
         return entries[entries.length - 1];
     }
     parsed.order.forEach(function (item) {
@@ -209,7 +217,7 @@ function build(parsed, options) {
     return {entries: entries, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
 }
 
-function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || ''].join('\t').replace(TRAILING_TABS_RE, ''); }
+function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.hbbtvLink || ''].join('\t').replace(TRAILING_TABS_RE, ''); }
 function inputsTsv(built) {
     return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
 }

@@ -44,6 +44,12 @@ namespace Launcher.Core
         /// </summary>
         public readonly string KillFirst;
 
+        /// <summary>
+        /// The app's HbbTV link (package metadata http://samsung.com/tv/metadata/hbbtv.link), or null. Such an app (SVT Play)
+        /// is only a doorway: Samsung's Home sends the link to the HbbTV app instead of starting the widget (#200).
+        /// </summary>
+        public readonly string HbbtvLink;
+
         public AppEntry(string slug, string label, string appId, string fallbackAppId)
             : this(slug, label, appId, fallbackAppId, null) { }
 
@@ -60,9 +66,12 @@ namespace Launcher.Core
             : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, null) { }
 
         public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst)
+            : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, null) { }
+
+        public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, string hbbtvLink)
         {
             Slug = slug; Label = label; AppId = appId; FallbackAppId = fallbackAppId; Key = key;
-            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst;
+            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; HbbtvLink = hbbtvLink;
         }
     }
 
@@ -75,7 +84,7 @@ namespace Launcher.Core
 
     /// <summary>
     /// Parses the app list written by tools/gen-apps.py. One tab-separated entry per line:
-    /// <c>slug TAB label TAB appId [TAB fallbackAppId [TAB iconPath [TAB killFirstAppId]]]</c>, where the third field may also be
+    /// <c>slug TAB label TAB appId [TAB fallbackAppId [TAB iconPath [TAB killFirstAppId [TAB hbbtvLink]]]]</c>, where the third field may also be
     /// <c>key:XF86Menu</c> (inject that remote key; the fourth field is then an app to open if the
     /// key tool is missing), <c>source:13</c> (switch to that input) or <c>panel:inputs</c> (open
     /// that dock page) or <c>sys:appId</c> (launch that app, drawn as a system control); blank lines and lines starting with '#' are ignored. Bad lines are skipped and reported, never fatal: a launcher
@@ -123,6 +132,24 @@ namespace Launcher.Core
             return false;
         }
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
+
+        /// <summary>
+        /// An http(s) link of plain URL characters: no spaces, quotes, backslashes or control characters. The dock only
+        /// passes it to app_control as data, never to a shell; the service applies the same rule (hbbtv-link.js).
+        /// </summary>
+        public static bool ValidHbbtvLink(string s)
+        {
+            if (s == null) return false;
+            int start = s.StartsWith("https://", StringComparison.Ordinal) ? 8 : s.StartsWith("http://", StringComparison.Ordinal) ? 7 : -1;
+            if (start < 0 || s.Length == start || s.Length - start > 500) return false;
+            for (int i = start; i < s.Length; i++)
+            {
+                char c = s[i];
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || "._~:/?#[]@!$&()*+,;=%-".IndexOf(c) >= 0;
+                if (!ok) return false;
+            }
+            return true;
+        }
         /// <summary>True for a plain Tizen app id (letters, digits, dot, dash, underscore): safe to put on a command line.</summary>
         public static bool ValidAppId(string s) { return s != null && IsAppId(s); }
         // Plain digits, at most five: it is only ever formatted back into a number string.
@@ -163,6 +190,7 @@ namespace Launcher.Core
                 string fallback = f.Length > 3 ? f[3].Trim() : "";
                 string icon = f.Length > 4 ? f[4].Trim() : "";
                 string killFirst = f.Length > 5 ? f[5].Trim() : "";
+                string hbbtvLink = f.Length > 6 ? f[6].Trim() : "";
                 string key = null, panel = null;
                 int sourceType = -1;
                 bool special = false, systemApp = false;
@@ -199,9 +227,10 @@ namespace Launcher.Core
                 if (fallback.Length > 0 && !IsAppId(fallback)) { problems.Add("line " + (n + 1) + ": bad fallback appId"); continue; }
                 if (icon.Length > 0 && !ValidIconPath(icon)) { problems.Add("line " + (n + 1) + ": bad icon path"); continue; }
                 if (killFirst.Length > 0 && !IsAppId(killFirst)) { problems.Add("line " + (n + 1) + ": bad kill-first app id"); continue; }
+                if (hbbtvLink.Length > 0 && (special || systemApp || !ValidHbbtvLink(hbbtvLink))) { problems.Add("line " + (n + 1) + ": bad HbbTV link"); continue; }
                 if (!seen.Add(slug)) { problems.Add("line " + (n + 1) + ": duplicate slug " + slug); continue; }
                 if (entries.Count >= MaxEntries) { problems.Add("line " + (n + 1) + ": more than " + MaxEntries + " entries, ignored"); continue; }
-                entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null));
+                entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null, hbbtvLink.Length > 0 ? hbbtvLink : null));
             }
             return new CatalogResult(entries.ToArray(), problems.ToArray());
         }

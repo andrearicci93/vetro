@@ -1,4 +1,5 @@
 'use strict';
+const {launchCommand}=require('../service/hbbtv-link.js');
 const assert=require('assert').strict, path=require('path'), EventEmitter=require('events');
 const load=require('./service-harness.cjs'), root=path.resolve(__dirname,'..');
 let disk=JSON.stringify({rules:[{id:'remote',enabled:true,trigger:{type:'physical',value:'67'},actions:[{type:'launch',appId:'example.app'}]}]}), ready=true, pending=null, node='/dev/input/event4', writesFail=false;
@@ -17,7 +18,7 @@ function post(service,body,url='/input'){return new Promise(resolve=>{const req=
  let result=await post(service,{device:node,mode:'filter'});assert.equal(result.ok,true);
  node='/dev/input/event7';ready=false;service=boot();await service.tick();assert.equal(starts.length,1);
  ready=true;await service.tick();assert.equal(starts.length,2,'saved interception must resume after restart when the adapter connects');assert.equal(service.context.physical.status().policy.mode,'filter');
- service.context.physical.onEvent({action:'down',decision:'blocked',code:67});await service.context.actionQueue;assert.ok(commands.includes('/usr/bin/app_launcher -s example.app'),'restored interception must execute the saved app shortcut');
+ service.context.physical.onEvent({action:'down',decision:'blocked',code:67});await service.context.actionQueue;assert.ok(commands.includes(launchCommand('example.app')),'restored interception must execute the saved app shortcut');
  service.context.physical.stop();await service.tick();assert.equal(starts.length,3,'helper disconnection must reconnect');
  await post(service,{device:node,mode:'observe'});await service.tick();assert.equal(starts.length,4,'listening pauses interception without clearing the preference');assert.equal(JSON.parse(disk).input.enabled,true);
  service=boot();await service.tick();assert.equal(starts.at(-1).mode,'filter','listening is not restored after boot');
