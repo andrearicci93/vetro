@@ -18,4 +18,5 @@ rooting/tools/upload-via-exec.py export-ignore
 .claude/** export-ignore
 
 app/experiments/** export-ignore
-app/tests/animations.test.cjs export-ignore
+app/tests/animations.test.cjs export-ignore 
+rooting/ports/tu7092/*.patch -whitespace

@@ -1,0 +1,150 @@
+diff --git a/app/service/dock.js b/app/service/dock.js
+index d110f63..239a2cc 100644
+--- a/app/service/dock.js
++++ b/app/service/dock.js
+@@ -37,7 +37,7 @@ var STATE_FILE = SHARE + '/vetro-dock.json';
+ var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
+ var CUSTOM_APPS_FILE = SHARE + '/vetro-dock-custom.tsv';      // the one-line list of the headless custom mode
+ var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
+-var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
++var RUN_DIR = !fs.existsSync('/usr/bin/dotnet') && fs.existsSync('/usr/bin/dotnet-launcher') ? '/run/vetro-dock-tu7092' : '/home/owner';                          // the dock's own pid, fifo and log
+ var PID_FILE = RUN_DIR + '/tvlauncher.pid';
+ var FIFO = RUN_DIR + '/tvlauncher.fifo';
+ var LOG_FILE = RUN_DIR + '/tvlauncher.log';
+@@ -243,6 +243,17 @@ Dock.prototype.startScript = function () {
+     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
+         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
+         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
++    // TU7092 has Samsung's standalone host; its CLR drops capabilities, so
++    // the shared-home group supplies traversal and /run holds writable state.
++    if (!fs.existsSync('/usr/bin/dotnet') && fs.existsSync('/usr/bin/dotnet-launcher')) {
++        args = q(path.join(this.dir, DLL)) + args.slice(DLL.length);
++        return [this.stopLines(), 'mkdir -p -m 700 ' + RUN_DIR,
++            'rm -f ' + FIFO, 'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1 || true',
++            'systemd-run --unit=' + UNIT + ' -p Group=system_share -p WorkingDirectory=' + q(this.dir) +
++            ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null /usr/bin/env ' + env +
++            ' APP_ID=vetrotvapp.svc AUL_APPID=vetrotvapp.svc /usr/bin/dotnet-launcher --standalone ' + args
++        ].join('\n');
++    }
+     return [
+         this.stopLines(),
+         'rm -f ' + FIFO,
+diff --git a/dock/Launcher.csproj b/dock/Launcher.csproj
+index 8fc5f32..00fdbd9 100644
+--- a/dock/Launcher.csproj
++++ b/dock/Launcher.csproj
+@@ -1,7 +1,7 @@
+ <Project Sdk="Microsoft.NET.Sdk">
+   <PropertyGroup>
+     <OutputType>Exe</OutputType>
+-    <TargetFramework>netcoreapp3.1</TargetFramework>
++    <TargetFramework>netcoreapp3.0</TargetFramework>
+     <AssemblyName>tvlauncher-dotnet</AssemblyName>
+     <RootNamespace>Launcher</RootNamespace>
+     <Nullable>disable</Nullable>
+diff --git a/dock/build.sh b/dock/build.sh
+index d432c3c..e040239 100755
+--- a/dock/build.sh
++++ b/dock/build.sh
+@@ -4,5 +4,5 @@
+ set -e
+ cd "$(dirname "$0")"
+ dotnet build -c Release Launcher.csproj
+-cp bin/Release/netcoreapp3.1/tvlauncher-dotnet.dll bin/Release/netcoreapp3.1/tvlauncher-dotnet.runtimeconfig.json ../app/native/dock/
++cp bin/Release/netcoreapp3.0/tvlauncher-dotnet.dll bin/Release/netcoreapp3.0/tvlauncher-dotnet.runtimeconfig.json ../app/native/dock/
+ echo "copied to app/native/dock/"
+diff --git a/rooting/build.cjs b/rooting/build.cjs
+index 6e9edf9..6d0c523 100644
+--- a/rooting/build.cjs
++++ b/rooting/build.cjs
+@@ -23,7 +23,7 @@ const DISTRIBUTOR_PW = process.env.DIST_PW;
+ 
+ function collectIntegration() {
+     const files = require('../app/build.cjs').collectFiles().filter(file => decodeURIComponent(file.uri) !== 'service/platform.js');
+-    ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js','sdb-tunnel.js','root-preflight.js','root-preflight-capture.js','retry-policy.js'].forEach(name => {
++    ['platform.js','adb.js','sdb.js','tar.js','root-agent.js','debloat-commands.js','external-agent.json','sdb-tunnel.js','root-preflight.js','root-preflight-capture.js','retry-policy.js'].forEach(name => {
+         files.push({uri: encodeURIComponent('service/' + name), data: fs.readFileSync(path.join(__dirname,'service',name))});
+     });
+     function addPayloads(relative) {
+diff --git a/rooting/service/platform.js b/rooting/service/platform.js
+index 50e668a..6b55457 100644
+--- a/rooting/service/platform.js
++++ b/rooting/service/platform.js
+@@ -28,6 +28,21 @@ var tunnelServer = null;
+ var SDB_ACCESS_FILE = '/opt/usr/home/owner/share/vetro-sdb-access.json';
+ var debloatCommands = require('./debloat-commands.js');
+ var STAGE = '/home/owner/share/tmp/sdk_tools';
++var EXTERNAL_AGENT = false;
++try { EXTERNAL_AGENT = JSON.parse(fs.readFileSync(path.join(__dirname, 'external-agent.json'), 'utf8')).enabled === true; } catch (ignored) {}
++var externalDir = null;
++function prepareExternalAgent(port) {
++    if (!externalDir) {
++        externalDir = STAGE + '/vetro-external-' + crypto.randomBytes(12).toString('hex');
++        fs.mkdirSync(externalDir, 448);
++    }
++    var config = path.join(externalDir, 'agent.json');
++    fs.writeFileSync(config, JSON.stringify({port: port, token: secretB64}) + '\n', {mode: 384});
++    fs.chmodSync(config, 384);
++    state.prepared = true;
++    state.rootMethod = 'manual-external-agent';
++    state.staging = {dir: externalDir, config: config};
++}
+ 
+ var state = {
+     when: new Date().toISOString(),
+@@ -139,6 +154,7 @@ function cleanStage(keep) {
+ }
+ 
+ function prepare(agentPort, runtime) {
++    if (EXTERNAL_AGENT) return prepareExternalAgent(agentPort);
+     // crypto.generateKeyPairSync and KeyObject.export need Node 10.12+. Tizen 4
+     // and 5.5 run Node 4.4, where the adapter must not touch the file system or
+     // keep retrying: report it once and leave the rest of the service running.
+@@ -275,6 +291,7 @@ function setSdbAccess(enabled) {
+ }
+ 
+ function startTunnel(cb) {
++    if (EXTERNAL_AGENT) { cb(); return; }
+     if (SDB_TUNNEL_PORT_ERROR) {
+         state.sdbTunnel = { listening: false, error: SDB_TUNNEL_PORT_ERROR };
+         cb();
+@@ -360,6 +377,12 @@ function scheduleRelaunch() {
+ }
+ 
+ function relaunch() {
++    if (EXTERNAL_AGENT) {
++        if (!state.running || agentConnected) return;
++        if (!state.prepared && state.agentPort) prepareForRuntime(state.agentPort);
++        scheduleRelaunch();
++        return;
++    }
+     if (launching || agentConnected || !agentServer || !state.running || state.unsupported) return;
+     launching = true;
+     rootPhase('preparing');
+diff --git a/rooting/service/root-agent.js b/rooting/service/root-agent.js
+index c457cb3..e1244ce 100644
+--- a/rooting/service/root-agent.js
++++ b/rooting/service/root-agent.js
+@@ -17,6 +17,13 @@
+ 
+ var net = require('net');
+ var crypto = require('crypto');
++function sameMac(a, b) {
++    if (a.length !== b.length) return false;
++    if (typeof crypto.timingSafeEqual === 'function') return crypto.timingSafeEqual(a, b);
++    var difference = 0;
++    for (var i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
++    return difference === 0;
++}
+ 
+ var PROTOCOL_VERSION = 'SAMSUNG-TV-ROOT/1';
+ var MAX_FRAME_BYTES = 8 * 1024 * 1024;
+@@ -146,7 +153,7 @@ RootAgentServer.prototype._verify = function (line, nonce) {
+     var expected = crypto.createHmac('sha256', this.secret)
+         .update(nonce).update('\x00').update(payload, 'utf8').digest('hex');
+     if (!/^[a-f0-9]{64}$/.test(observed)) throw new Error('invalid authenticator');
+-    if (!crypto.timingSafeEqual(Buffer.from(observed, 'hex'), Buffer.from(expected, 'hex'))) {
++    if (!sameMac(Buffer.from(observed, 'hex'), Buffer.from(expected, 'hex'))) {
+         throw new Error('auth failed');
+     }
+     return payload;
