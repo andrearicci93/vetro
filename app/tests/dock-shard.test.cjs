@@ -55,7 +55,7 @@ function fakeShards(opts) {
     assert.ok(plain.entries.every(e => !e.viaShard), 'nothing claimed: nothing marked');
     assert.ok(catalog.tsv(plain).split('\n').every(l => !l.split('\t')[6]), 'and nothing in the seventh column');
     const claimed = catalog.build(parsed, {intercepted: {[YT]: {plugin: 'youtube', label: 'YouTube'}, 'org.tizen.tv-viewer': {plugin: 'x', label: 'Live TV'}}});
-    assert.deepEqual(claimed.entries.map(e => [e.appId, !!e.viaShard]), [[YT, true], ['org.tizen.netflix-app', false], ['org.tizen.tv-viewer', false]], 'Live TV (the viewer) cannot be claimed');
+    assert.deepEqual(claimed.entries.map(e => [e.appId, !!e.viaShard]), [[YT, true], ['org.tizen.netflix-app', false], ['source:0', false]], 'Live TV (the viewer) cannot be claimed');
     const lines = catalog.tsv(claimed).split('\n');
     assert.equal(lines[1], 'youtube\tYouTube\t' + YT + '\t\t\t\tshard\tapp:' + YT, 'the flag is the only thing a plugin adds to the list (the eighth column is the row key)');
     assert.equal(lines[2].split('\t')[6], '', 'an app nobody claims has no flag');

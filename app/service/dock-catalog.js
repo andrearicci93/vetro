@@ -47,7 +47,9 @@ function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexO
 var LIVE = {
     // The package's own icon path is stale on some firmware; the TV Plus deep-link package ships the real icon.
     TVPLUS: {slug: 'tvplus', label: 'Samsung TV Plus', iconPackage: 'com.samsung.tv.tvplus', altIcon: '/opt/usr/apps/com.samsung.tv.tvPlusDeeplinker/shared/res/TVPlus_app_icon.png'},
-    RF: {slug: 'livetv', label: 'Live TV', iconPackage: null}
+    // Live TV switches to the TV input, as the TV entry of the Sources page does: only bringing tv-viewer to the front (its app id)
+    // left the input where an app had put it (source type -1), and Vetro TV Tuner, which covers the TV input only, stayed hidden.
+    RF: {slug: 'livetv', label: 'Live TV', iconPackage: null, target: 'source:0'}
 };
 
 // Two pills close the row. All apps opens the launcher's page of every app (Settings and the App store are its last
@@ -203,7 +205,7 @@ function build(parsed, options) {
         if (kind === 's/livetv') {
             var live = LIVE[ident];
             if (!live) { skipped.push({item: item, reason: 'Unknown live source'}); return; }
-            var liveEntry = add(live.slug, live.label, VIEWER, live.iconPackage && parsed.packageIcons[live.iconPackage], 'live:' + ident);
+            var liveEntry = add(live.slug, live.label, live.target || VIEWER, live.iconPackage && parsed.packageIcons[live.iconPackage], 'live:' + ident);
             if (live.altIcon) liveEntry.altIcon = live.altIcon;
             return;
         }

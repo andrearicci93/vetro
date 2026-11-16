@@ -42,7 +42,7 @@ const text = catalog.tsv(built);
 const lines = text.trim().split('\n');
 assert.ok(lines[0].startsWith('#'));
 assert.equal(lines[1], 'tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t/opt/usr/apps/com.samsung.tv.tvplus/shared/res/tvplus.png\t\t\tlive:TVPLUS', 'the eighth column is the row key');
-assert.equal(lines[2], 'livetv\tLive TV\torg.tizen.tv-viewer\t\t\t\t\tlive:RF', 'no icon: empty columns up to the row key');
+assert.equal(lines[2], 'livetv\tLive TV\tsource:0\t\t\t\t\tlive:RF', 'Live TV switches to the TV input (the tuner covers that input only); no icon: empty columns up to the row key');
 assert.deepEqual(lines.slice(-2), ['allapps\tAll apps\tpanel:allapps', 'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'], 'two pills close the row: All apps (its page ends with Settings and the App store) and Samsung Home');
 lines.slice(1).forEach(l => assert.ok(l.split('\t').length >= 3, 'every line has slug, label and app id: ' + l));
 

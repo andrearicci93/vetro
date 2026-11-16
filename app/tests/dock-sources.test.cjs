@@ -6,9 +6,9 @@ const raw = ['O|d/webapp@yt', 'O|s/source.layer.hdmi@HDMI2', 'O|s/livetv@RF',
     'R|' + ['yt', 'YouTube', 'youtube.app'].map(s => Buffer.from(s).toString('hex')).join('|') + '|0'].join('\n');
 const parsed = catalog.parse(raw);
 const enabled = catalog.build(parsed, {showHomeSources: true});
-assert.deepEqual(enabled.entries.map(e => e.appId), ['youtube.app', 'source:14', 'org.tizen.tv-viewer', 'source:13']);
+assert.deepEqual(enabled.entries.map(e => e.appId), ['youtube.app', 'source:14', 'source:0', 'source:13']);
 const disabled = catalog.build(parsed, {showHomeSources: false});
-assert.deepEqual(disabled.entries.map(e => e.appId), ['youtube.app', 'org.tizen.tv-viewer'], 'upstream Live TV is preserved');
+assert.deepEqual(disabled.entries.map(e => e.appId), ['youtube.app', 'source:0'], 'upstream Live TV is preserved');
 assert.deepEqual(catalog.build(parsed).entries, disabled.entries, 'fresh default filters HDMI sources');
 assert.deepEqual(disabled.inputs.map(e => e.appId), ['source:0','source:13','source:14','source:15','source:16']);
 assert.deepEqual(enabled.inputs, disabled.inputs, 'filter never changes the Sources page');
