@@ -6,7 +6,7 @@ none of this implementation.
 
 - `service/`: adapter, transport, authenticated root-agent protocol and staging.
 - `payload/`: active runtime components used by the integration builder.
-- `tools/samsung-tv-root-master/`: upstream research/source with its original Unlicense.
+- `tools/samsung-tv-root-master/`: only the C# payload sources Vetro builds from (`payloads/common`) and the upstream Unlicense, trimmed from [chris-ritsen/samsung-tv-root](https://github.com/chris-ritsen/samsung-tv-root).
 - `tests/`: isolated lifecycle, authentication, injection validation and detached-launch tests.
 - `on-boot-probe/package*.json`: signing dependency manifests. Historical prototypes
   and device material are local-only; they are not release dependencies.
