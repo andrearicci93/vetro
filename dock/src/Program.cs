@@ -865,6 +865,7 @@ namespace Launcher
         /// </summary>
         private static void RebuildPages(AppEntry[] apps, int focus)
         {
+            long t0 = Stopwatch.GetTimestamp();   // how long a rebuild takes on a TV (the icons are prepared again) is not known yet
             bool onAll = _ctl == _allCtl;
             int allFocus = _allCtl.FocusTarget;
             _appsDock.Destroy(); _inputsDock.Destroy(); _allDock.Destroy();
@@ -877,6 +878,7 @@ namespace Launcher
             MarkInRow();
             _ctl.Rise(1f);
             _dock.Apply(_ctl);
+            Log("row: pages rebuilt for " + _apps.Length + " tiles in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
             StartClock();
             StartAnimator();
             ResetIdle();
@@ -955,7 +957,7 @@ namespace Launcher
             _moveIndex = index;
             _moveBefore = (AppEntry[])_apps.Clone();
             _appsDock.MovingIndex = index;
-            _appsDock.SetHints(MoveHint, null, false);
+            _appsDock.SetHints(MoveHint, "Take out", false);   // Down takes the tile out now, not to the Control center
             Log("row: moving " + _apps[index].RowKey);
             StartAnimator();
             ResetIdle();

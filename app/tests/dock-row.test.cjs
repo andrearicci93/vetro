@@ -66,7 +66,7 @@ assert.equal(cleanRow('x'), null);
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: HOME};
         return {exit_code: 0, stdout: ''};
     };
-    const d = new Dock({execute, stateFile: path.join(tmp, 's.json'), dir: tmp, appsFile: path.join(tmp, 'apps.tsv')});
+    const d = new Dock({execute, stateFile: path.join(tmp, 's.json'), dir: tmp, appsFile: path.join(tmp, 'apps.tsv'), rowRetryMs: 10});
     d.refresh = async () => { restarts++; return {}; };
     d.status = async () => ({});
     await assert.rejects(d.setRow(['app:org.example.rai']), /launcher is off/);
@@ -81,6 +81,19 @@ assert.equal(cleanRow('x'), null);
     assert.ok(fs.existsSync(d.allAppsFile), 'and the All apps list');
     assert.equal(restarts, 0, 'the running launcher already shows it: no restart');
     assert.match(d.startScript(), / --all-apps '[^']+allapps\.tsv'/);
+    // Two holds in a row on All apps: the second row arrives while the first is being saved, and is the one that stays.
+    const first = d.setRow(['app:org.example.rai']);
+    const second = await d.setRow(['app:org.example.netflix', 'app:org.example.rai']);
+    assert.deepEqual(second, {queued: true}, 'the second waits');
+    await first;
+    assert.deepEqual(d.readState().row.order, ['app:org.example.netflix', 'app:org.example.rai'], 'and is saved once the first is done');
+    assert.ok(fs.readFileSync(path.join(tmp, 'apps.tsv'), 'utf8').includes('netflix\tNetflix'), 'in the list too');
+    // A row sent while another launcher change runs (a refresh): applied when it ends.
+    d.busy = true;
+    assert.deepEqual(await d.setRow(['app:org.example.stremio']), {queued: true});
+    d.busy = false;
+    await new Promise(r => setTimeout(r, 80));
+    assert.deepEqual(d.readState().row.order, ['app:org.example.stremio'], 'applied after the other change');
     await d.resetRow();
     assert.equal(d.readState().row, null, 'reset: Samsung\'s row again');
     assert.equal(restarts, 1, 'the reset restarts the launcher so it shows Samsung\'s row');

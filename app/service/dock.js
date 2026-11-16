@@ -101,6 +101,8 @@ function Dock(options) {
     this.legacyHomeSources = legacySourceUsage(this.appsFile, false);
     this.legacySourceImages = legacySourceUsage(this.inputsFile, true);
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+    this.pendingRow = null; this.rowRunning = false; this.rowRetry = null;
+    this.rowRetryMs = options.rowRetryMs || 1000;
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
     this.busy = false;
@@ -675,26 +677,53 @@ Dock.prototype.setCards = function (list) {
     });
 };
 
-// The launcher sends the row as the user left it (moved, a tile taken out or added from All apps): the order is saved, every
-// tile of Samsung's row that is not in it any more is remembered as taken out, and the lists are written again for the next
-// start. The running launcher already shows the change, so it is not restarted, and the Home row cleanup does not run.
+// The launcher sends the row as the user left it (moved, a tile taken out or added from All apps), always whole, and does not wait for
+// the answer. Only the newest row matters, so a row that arrives while another change is under way waits as "pending" and replaces any
+// older pending one; it is applied as soon as the launcher is free (a quick second hold on All apps is not lost). One read of the Home
+// data gives both the lists to write and Samsung's row, from which the tiles left out are remembered as taken out. The running launcher
+// already shows the row, so it is not restarted, and the Home row cleanup does not run.
 Dock.prototype.setRow = function (list) {
-    var self = this;
     if (!Array.isArray(list) || !list.length || list.length > MAX_ROW || list.some(function (k) { return typeof k !== 'string' || !catalog.ROW_KEY.test(k); })) return Promise.reject(new Error('Invalid row'));
-    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     var state = this.readState();
     if (!state.enabled || state.customApp) return Promise.reject(new Error('The Vetro launcher is off'));
-    this.busy = true;
-    var before = state.row;
+    this.pendingRow = list.slice();
+    if (this.rowRunning) return Promise.resolve({queued: true});
+    return this.drainRows();
+};
+
+Dock.prototype.drainRows = function () {
+    var self = this;
+    if (!this.pendingRow) return Promise.resolve({ok: true});
+    if (this.busy) {
+        // Another launcher change (enable, refresh, a card switch) is running: try again shortly, for up to a minute.
+        if (!this.rowRetry) {
+            var tries = 0;
+            this.rowRetry = setInterval(function () {
+                if (self.busy && ++tries < 60000 / self.rowRetryMs) return;
+                clearInterval(self.rowRetry); self.rowRetry = null;
+                if (!self.busy) self.drainRows().catch(function (e) { self.lastError = 'The launcher row was not saved: ' + e.message; });
+            }, this.rowRetryMs);
+            if (this.rowRetry.unref) this.rowRetry.unref();
+        }
+        return Promise.resolve({queued: true});
+    }
+    var list = this.pendingRow, state = this.readState(), before = state.row;
+    this.pendingRow = null;
+    this.rowRunning = true; this.busy = true;
     return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
-        intercepted: this.shards ? this.shards.intercepted() : {}}).then(function (c) {
-        var row = rowAfter(before, list, c.samsungKeys || []);
-        self.patchState({row: row});
-        return self.writeCatalog();
-    }).then(function () { return self.status(); }).catch(function (e) {
-        try { self.patchState({row: before}); } catch (e2) {}
+        intercepted: this.shards ? this.shards.intercepted() : {}, row: {order: list, hidden: [], exact: true, labels: before && before.labels || {}}}).then(function (c) {
+        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); atomicFile.write(fs, self.allAppsFile, c.allAppsTsv); }
+        catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
+        self.patchState({row: rowAfter(before, list, c.samsungKeys || [])});
+        self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
+    }).finally(function () {
+        self.busy = false; self.rowRunning = false;
+    }).then(function () {
+        return self.pendingRow ? self.drainRows() : {ok: true};
+    }, function (e) {
+        if (self.pendingRow) return self.drainRows();
         throw e;
-    }).finally(function () { self.busy = false; });
+    });
 };
 
 // Back to Samsung's row as it is (the dashboard's Reset), without restarting the launcher: the next start shows it.

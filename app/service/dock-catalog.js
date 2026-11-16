@@ -257,6 +257,8 @@ function build(parsed, options) {
     if (row) {
         var hidden = {}, used = {}, out = [];
         (Array.isArray(row.hidden) ? row.hidden : []).forEach(function (k) { hidden[k] = true; });
+        // exact: the row is the order and nothing else (the launcher sent it whole); every other tile of Samsung's row is taken out.
+        if (row.exact) entries.forEach(function (e) { if ((row.order || []).indexOf(e.key) < 0) hidden[e.key] = true; });
         (Array.isArray(row.order) ? row.order : []).forEach(function (k) {
             if (pool[k] && !hidden[k] && !used[k] && out.length < MAX_ENTRIES - SYSTEM_ROWS.length) { used[k] = true; out.push(pool[k]); }
         });
