@@ -4,7 +4,7 @@ const html = require('../service/dashboard.js')();
 const nodes = {};
 const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textContent: '', innerHTML: '', disabled: false, focus() {}});
 const calls = [];
-let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false,
+let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false, showAllApps: true,
     entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}]};
 const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
     fetch: async (url, opts) => {
@@ -15,7 +15,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         else if (url === '/dock') {
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
-            if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
+            if (body.action === 'showHomeSources' || body.action === 'useSourceImages' || body.action === 'showAllApps') dock=Object.assign({},dock,{[body.action]:body.on});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
             if (body.action === 'disableCustom') dock = Object.assign({}, dock, {mode: 'off', customApp: null, running: false});
@@ -140,14 +140,19 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.match(el('dockBody').innerHTML,/HDMI sources on Home/);
     assert.doesNotMatch(el('dockBody').innerHTML,/Restore original choice|data-dock-source-restore/);
     assert.match(el('dockBody').innerHTML,/HDMI source images/);
-    await el('dock').onchange({target:{dataset:{dockSourceOption:'showHomeSources'},checked:true}}); await tick();
+    await el('dock').onchange({target:{dataset:{dockListOption:'showHomeSources'},checked:true}}); await tick();
     assert.deepEqual(calls.filter(c=>c.body).pop().body,{action:'showHomeSources',on:true});
-    await el('dock').onchange({target:{dataset:{dockSourceOption:'useSourceImages'},checked:true}}); await tick();
+    await el('dock').onchange({target:{dataset:{dockListOption:'useSourceImages'},checked:true}}); await tick();
     assert.deepEqual(calls.filter(c=>c.body).pop().body,{action:'useSourceImages',on:true});
     assert.equal(sandbox.dockData.showHomeSources,true);
-    await el('dock').onchange({target:{dataset:{dockSourceOption:'showHomeSources'},checked:false}}); await tick();
+    await el('dock').onchange({target:{dataset:{dockListOption:'showHomeSources'},checked:false}}); await tick();
     assert.equal(sandbox.dockData.showHomeSources,false);
     assert.equal(sandbox.dockData.useSourceImages,true,'turning the source filter off leaves artwork choice intact');
+    assert.match(el('dockBody').innerHTML,/Show all apps/);
+    await el('dock').onchange({target:{dataset:{dockListOption:'showAllApps'},checked:false}}); await tick();
+    assert.deepEqual(calls.filter(c=>c.body).pop().body,{action:'showAllApps',on:false});
+    assert.equal(sandbox.dockData.showAllApps,false,'the app-list switch follows the service state');
+    assert.equal(sandbox.dockData.showHomeSources,false,'and leaves the other list switches alone');
     const source={slug:'in-hdmi1',label:'HDMI 1',appId:'source:13'};
     assert.match(sandbox.previewMarkup({entries:[source],useSourceImages:false}),/slug=in-hdmi1&images=0/);
     assert.match(sandbox.previewMarkup({entries:[source],useSourceImages:true}),/slug=in-hdmi1&images=1/,'source artwork choice invalidates the preview image cache');

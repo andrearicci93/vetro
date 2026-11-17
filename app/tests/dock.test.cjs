@@ -267,11 +267,16 @@ function fixture(options) {
     assert.equal(f.dock.readState().showHomeSources,false);
     await f.dock.writeCatalog();
     assert.equal(JSON.parse(fs.readFileSync(f.dock.stateFile)).showHomeSources,false,'fresh defaults persist before creating generated lists');
-    await assert.rejects(f.dock.setSourceOption('other',true),/Invalid source option/);
-    await assert.rejects(f.dock.setSourceOption('showHomeSources','yes'),/Invalid source option/);
-    await f.dock.setSourceOption('showHomeSources',true);
-    await f.dock.setSourceOption('showHomeSources',false);
+    await assert.rejects(f.dock.setListOption('other',true),/Invalid launcher list option/);
+    await assert.rejects(f.dock.setListOption('showHomeSources','yes'),/Invalid launcher list option/);
+    await f.dock.setListOption('showHomeSources',true);
+    await f.dock.setListOption('showHomeSources',false);
     assert.equal(f.dock.readState().showHomeSources,false);
+    assert.equal(f.dock.readState().showAllApps,true,'all apps are shown by default, as before this switch');
+    await f.dock.setListOption('showAllApps',false);
+    assert.equal(f.dock.readState().showAllApps,false);
+    await f.dock.setListOption('showAllApps',true);
+    assert.equal(f.dock.readState().showAllApps,true);
     await f.dock.enable();
     const previousCatalog=fs.readFileSync(f.dock.appsFile,'utf8'), exec=f.dock.execute;
     let failOnce=true;
@@ -281,7 +286,7 @@ function fixture(options) {
         }
         return exec(cmd);
     };
-    await assert.rejects(f.dock.setSourceOption('showHomeSources',true),/read failed/);
+    await assert.rejects(f.dock.setListOption('showHomeSources',true),/read failed/);
     assert.equal(f.dock.readState().showHomeSources,false,'failed changes restore persisted state');
     assert.equal(fs.readFileSync(f.dock.appsFile,'utf8'),previousCatalog,'failed changes restore the generated catalog');
     assert.equal(f.tv.running,true,'previous launcher relaunched after failed change');
@@ -295,12 +300,12 @@ function fixture(options) {
     // Both choices are independent and remain explicit across restarts.
     f=fixture();
     assert.equal(f.dock.readState().useSourceImages,false);
-    await f.dock.setSourceOption('useSourceImages',true);
+    await f.dock.setListOption('useSourceImages',true);
     assert.equal(f.dock.readState().showHomeSources,false);
-    await f.dock.setSourceOption('showHomeSources',true);
-    await f.dock.setSourceOption('useSourceImages',false);
+    await f.dock.setListOption('showHomeSources',true);
+    await f.dock.setListOption('useSourceImages',false);
     assert.equal(f.dock.readState().showHomeSources,true);
-    await f.dock.setSourceOption('showHomeSources',false);
+    await f.dock.setListOption('showHomeSources',false);
     const reloaded=new Dock({execute:f.dock.execute,dir:f.dock.dir,stateFile:f.dock.stateFile,appsFile:f.dock.appsFile});
     assert.equal(reloaded.readState().showHomeSources,false);
     assert.equal(reloaded.readState().useSourceImages,false);
@@ -313,12 +318,12 @@ function fixture(options) {
     assert.equal(JSON.parse(fs.readFileSync(legacyArt.stateFile)).useSourceImages,true);
 
     f=fixture(); fs.writeFileSync(f.dock.stateFile,JSON.stringify({showHomeSources:false,sourceOptionOriginal:{showHomeSources:true}}));
-    await f.dock.setSourceOption('showHomeSources',true);
+    await f.dock.setListOption('showHomeSources',true);
     assert.equal(f.dock.readState().showHomeSources,true);
     assert.ok(!('sourceOptionOriginal' in JSON.parse(fs.readFileSync(f.dock.stateFile))),'obsolete original-choice metadata is removed when settings are saved');
 
     f=fixture(); fs.writeFileSync(f.dock.stateFile,'broken existing state');
-    await assert.rejects(f.dock.setSourceOption('showHomeSources',true),/Cannot read launcher preferences/);
+    await assert.rejects(f.dock.setListOption('showHomeSources',true),/Cannot read launcher preferences/);
     await assert.rejects(f.dock.writeCatalog(),/Cannot read launcher preferences/);
     assert.equal(fs.readFileSync(f.dock.stateFile,'utf8'),'broken existing state','migration never overwrites malformed state');
 

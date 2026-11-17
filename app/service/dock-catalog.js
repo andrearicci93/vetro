@@ -192,8 +192,10 @@ function build(parsed, options) {
         }
     });
     // Without a csfs row (the 2022 Home), the row above is at best the "recent" strip: every other visible
-    // app of the registry follows, by title, so the dock shows the same apps as the Home's app list.
-    if (parsed.rowFrom !== 'csfs') {
+    // app of the registry follows, by title, so the dock shows the same apps as the Home's app list. Some TVs
+    // put a full row there instead, so the launcher switch (showAllApps, default on) can turn this off and
+    // show the row alone. With no row at all the registry is the only list, so it is always used.
+    if (parsed.rowFrom !== 'csfs' && (options.showAllApps !== false || parsed.rowFrom === null)) {
         var present = {}, inOrder = {};
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });

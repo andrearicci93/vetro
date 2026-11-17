@@ -149,6 +149,9 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
         'the recent strip comes first, then the other visible apps by title; hidden apps and Vetro stay out');
     assert.equal(b.entries[2].icon, '/opt/share/webappservice/apps_icon/all/yt/224x224.png', 'completed apps keep their registry icon');
     assert.ok(b.skipped.some(s => s.item === 's/livetv@HDMI3'), 'an unknown live source is reported, not fatal');
+    const rowOnly = catalog.build(p, {showAllApps: false});
+    assert.deepEqual(rowOnly.entries.map(e => e.appId), ['kupCeIdDkX.HueSync'],
+        'with "Show all apps" off the launcher keeps only the Home row, even on the 2022 Home');
 }
 // A csfs row keeps today's behaviour: nothing is appended from the registry.
 {
@@ -162,6 +165,8 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
     const p = catalog.parse(['R|' + hex('bbb') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0'].join('\n'));
     assert.equal(p.rowFrom, null);
     assert.deepEqual(catalog.build(p, {}).entries.map(e => e.appId), ['org.tizen.browser']);
+    assert.deepEqual(catalog.build(p, {showAllApps: false}).entries.map(e => e.appId), ['org.tizen.browser'],
+        'with no Home row the registry is the only list, even with the switch off');
 }
 // The script reports which Home the row came from.
 assert.match(catalog.script(), /echo "F\|\$F"/);

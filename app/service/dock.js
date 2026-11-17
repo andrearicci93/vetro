@@ -64,7 +64,7 @@ var APP_GONE_ROUNDS = 2;                               // and given up on when t
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
 
-var SOURCE_OPTION_KEYS = ['showHomeSources', 'useSourceImages'];
+var LIST_OPTION_KEYS = ['showHomeSources', 'useSourceImages', 'showAllApps'];
 function legacySourceUsage(file, images) {
     try {
         if (fs.statSync(file).size > 65536) return false;
@@ -117,13 +117,14 @@ Dock.prototype.readState = function () {
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
-            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
+            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages,
+            showAllApps: s && typeof s.showAllApps === 'boolean' ? s.showAllApps : true};
     } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
-        showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
+        showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages, showAllApps: true}; }
 };
 
-// Source-option migration must never overwrite an unreadable or malformed existing state.
-Dock.prototype.validateSourcePreferenceState = function () {
+// List-option migration must never overwrite an unreadable or malformed existing state.
+Dock.prototype.validateListOptionState = function () {
     try {
         var state = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Invalid launcher state');
@@ -218,7 +219,7 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, showAllApps: state.showAllApps, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
@@ -265,8 +266,8 @@ Dock.prototype.writeCatalog = function () {
     var self = this;
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
-    try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}).then(function (c) {
+    try { this.validateListOptionState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, showAllApps: state.showAllApps}); } catch (e) { return Promise.reject(e); }
+    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, showAllApps: state.showAllApps}).then(function (c) {
         try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); }
         catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
         self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
@@ -504,12 +505,12 @@ Dock.prototype.inputEntries = function () {
     try { return parseTsv(fs.readFileSync(this.inputListPath(), 'utf8')); } catch (e) { return []; }
 };
 
-// Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.
-Dock.prototype.setSourceOption = function (key, on) {
+// Like Fix TizenTube, list switches save a boolean and rebuild the launcher list.
+Dock.prototype.setListOption = function (key, on) {
     var self = this;
-    if (SOURCE_OPTION_KEYS.indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid source option'));
+    if (LIST_OPTION_KEYS.indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid launcher list option'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
-    try { this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
+    try { this.validateListOptionState(); } catch (e) { return Promise.reject(e); }
     var before = this.readState();
     if (before[key] === on) return this.status();
     var patch = {};
@@ -518,7 +519,7 @@ Dock.prototype.setSourceOption = function (key, on) {
     this.busy = true; this.lastError = null;
     function rebuild() { return before.enabled ? self.launch() : self.writeCatalog(); }
     return Promise.resolve().then(rebuild).then(function () {
-        if (self.readState()[key] !== on) throw new Error('Source option readback failed');
+        if (self.readState()[key] !== on) throw new Error('Launcher list option readback failed');
         return self.status();
     }).catch(function (error) {
         try { self.writeState(before); } catch (restoreError) { throw new Error(error.message + '; settings restore failed: ' + restoreError.message); }
