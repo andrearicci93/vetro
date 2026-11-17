@@ -1183,13 +1183,12 @@ function renderDock(){
  var captionsState=d.captions||'off';
  var captions='<div class="quick-item" data-quick-item="captions"><div><h3>Captions</h3><p>Names the focused tile in a capsule above the bar. Off leaves the bar as it is.</p><div class="quick-state">'+chip(CAPTION_LABELS[captionsState],captionsState==='off'?'':'on')+'</div></div><select data-dock-captions aria-label="Captions"'+(dockBusy||!d.installed?' disabled':'')+'>'+
   CAPTION_MODES.map(function(m){return '<option value="'+m+'"'+(captionsState===m?' selected':'')+'>'+CAPTION_LABELS[m]+'</option>'}).join('')+'</select></div>';
- var mark='<div class="quick-item" data-quick-item="mark-current"><div><h3>Mark the input in use</h3><p>A short bar under the source the TV is showing on the Sources page. It is left out while an app is in front.</p><div class="quick-state">'+(d.markCurrent?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-mark',!!d.markCurrent,dockBusy||!d.installed,'Mark the input in use')+'</div>';
  function sourceOption(key,label,description){
   return '<div class="quick-item" data-quick-item="'+key+'"><div><h3>'+label+'</h3><p>'+description+'</p><div class="quick-state">'+chip(d[key]?'On':'Off',d[key]?'on':'')+'</div></div>'+switchMarkup('data-dock-source-option="'+key+'"',!!d[key],dockBusy||!d.installed,label)+'</div>';
  }
  var sourceOptions=sourceOption('showHomeSources','HDMI sources on Home','Shows the HDMI tiles already in Samsung’s Home row, in the same positions. Turn off to hide them. The Sources page is unchanged.');
  sourceOptions+=sourceOption('useSourceImages','HDMI source images','Use Samsung source images on Home and Sources. Turn off for the generic source icon. Names and source order stay the same.');
- box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+sourceOptions+fix+still+captions+mark+'</div></div>';
+ box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+sourceOptions+fix+still+captions+'</div></div>';
  setTimeout(fitPreview,0);
  renderCustom();
 }
@@ -1222,7 +1221,7 @@ function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;customConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;
-  var message=action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Samsung’s Home answers the Home key again.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='captions'?'Captions: '+CAPTION_LABELS[d.captions].toLowerCase()+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='markCurrent'?'Marking the input in use '+(d.markCurrent?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Samsung’s Home answers the Home key again.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='captions'?'Captions: '+CAPTION_LABELS[d.captions].toLowerCase()+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
@@ -1357,7 +1356,6 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
  if(x.dataset.dockCaptions!=null)return setDock('captions',x.value==='off'?'Turn captions off':'Captions: '+CAPTION_LABELS[x.value].toLowerCase(),{value:x.value});
- if(x.dataset.dockMark!=null)return setDock('markCurrent',x.checked?'Mark the input in use':'Stop marking the input in use',{on:!!x.checked});
  if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+(x.dataset.dockSourceOption==='showHomeSources'?'HDMI sources on Home':'HDMI source images'),{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}

@@ -79,6 +79,5 @@ assert.deepEqual(size('dock_ring.png'), [2 * (K.FocusIcon + 2 * K.RingW), 2 * (K
 assert.deepEqual(size('icons/settings.png'), [K.PillItemW, K.PillItemH], 'a pill image is the pill size');
 assert.deepEqual(size('icons/in-hdmi1.png'), [K.FocusIcon, K.FocusIcon], 'the dock\'s own icons are made at the selected size');
 assert.deepEqual(size('caption.png'), [2 * K.CaptionH, K.CaptionH], 'name capsule: two round ends of CaptionH');
-assert.deepEqual(size('current_mark.png'), [K.CurrentMarkW, K.CurrentMarkH], 'marker of the input in use, at its size');
 
 console.log('PASS dock design: the native look matches the chosen designer JSON');

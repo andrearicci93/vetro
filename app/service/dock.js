@@ -116,13 +116,13 @@ Dock.prototype.readState = function () {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             noMotion: s && s.noMotion === true, captions: s && CAPTION_MODES.indexOf(s.captions) >= 0 ? s.captions : 'off',
-            markCurrent: s && s.markCurrent === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, captions: 'off', markCurrent: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, captions: 'off', autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -223,7 +223,7 @@ Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion,
-        captions: state.captions, markCurrent: state.markCurrent,
+        captions: state.captions,
         showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
@@ -249,7 +249,7 @@ Dock.prototype.startScript = function () {
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') +
-        (state.customApp || state.captions === 'off' ? '' : ' --captions ' + state.captions) + (state.markCurrent && !state.customApp ? ' --mark-current' : '');
+        (state.customApp || state.captions === 'off' ? '' : ' --captions ' + state.captions);
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -550,8 +550,8 @@ Dock.prototype.setFixTizenTube = function (on) {
     });
 };
 
-// Still selection (--no-motion), Captions (--captions) and the marker of the input in use (--mark-current) are
-// start arguments, so a running dock is restarted. A restart that fails leaves the previous value in place.
+// Still selection (--no-motion) and Captions (--captions) are start arguments, so a running dock is restarted.
+// A restart that fails leaves the previous value in place.
 Dock.prototype.setStartOption = function (key, value) {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
@@ -575,11 +575,6 @@ Dock.prototype.setNoMotion = function (on) {
 // Captions: which page names the focused item above the bar ('off', 'apps', 'sources' or 'both').
 Dock.prototype.setCaptions = function (mode) {
     return CAPTION_MODES.indexOf(mode) >= 0 ? this.setStartOption('captions', mode) : Promise.reject(new Error('Invalid value'));
-};
-
-// The marker of the input in use under its tile on the Sources page.
-Dock.prototype.setMarkCurrent = function (on) {
-    return typeof on === 'boolean' ? this.setStartOption('markCurrent', on) : Promise.reject(new Error('Invalid value'));
 };
 
 // The file behind one tile of the preview: the app's own icon when the list names one that is a

@@ -55,8 +55,6 @@ namespace Launcher.Core
         /// <summary>Smallest space kept between the name and the hint; with less, the hint steps aside.</summary>
         public const int HintClearance = 16;
         /// <summary>The input in use: a short white bar under its tile, in the middle of the bottom padding.</summary>
-        public const int CurrentMarkW = 32;
-        public const int CurrentMarkH = 6;
         public const int DividerW = 2;
         public const int DividerH = 72;
 
@@ -284,15 +282,6 @@ namespace Launcher.Core
         }
 
         /// <summary>The marker of the input in use: centred under its item, in the middle of the bottom padding.</summary>
-        public Box CurrentMarkBox(int item, float scroll, int slide)
-        {
-            Box b;
-            b.W = CurrentMarkW; b.H = CurrentMarkH;
-            b.X = ItemCenterX(item, scroll) - CurrentMarkW / 2;
-            b.Y = Top + PillH - PadBottom / 2 - CurrentMarkH / 2 + slide;
-            return b;
-        }
-
         /// <summary>The hairline between the apps and the pinned system entries, centred in the group gap. It never scrolls.</summary>
         public Box DividerBox(float scroll, int slide)
         {

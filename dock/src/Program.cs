@@ -70,9 +70,8 @@ namespace Launcher
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
         private static AppEntry _homeLaunch;
-        // --captions off|apps|sources|both and --mark-current: the Launcher's look settings, off unless asked for there.
+        // --captions off|apps|sources|both: the Launcher's Captions setting, off unless asked for there.
         private static string _captionsMode = "off";
-        private static bool _markCurrent;
 
         private static readonly NavigationInput Navigation = new NavigationInput();
         private static double _lastRawHome = -100;
@@ -397,43 +396,9 @@ namespace Launcher
         {
             int type;
             string front;
-            int current = CurrentInput(out type, out front);
-            _inputsDock.CurrentIndex = _markCurrent ? current : -1;
-            _inputsCtl.SetFocus(current >= 0 ? current : 0);
-            Log("inputs panel, source_type=" + type + " front=" + (front ?? "(none)") + " current=" + current);
+            _inputsCtl.SetFocus(0);
+            Log("inputs panel");
             SelectPage(_inputsCtl, _inputsDock);
-        }
-
-        /// <summary>
-        /// Index of the input the TV is showing, or -1 when it is showing none. The firmware keeps the last input
-        /// in <c>memory/system/source_type</c>, and some keep it while an app is on screen (reported on Tizen 9),
-        /// so there is no input in use when the app in front is one this dock launches: the TV is showing that
-        /// app, not the input the value still names.
-        /// </summary>
-        private static int CurrentInput(out int type, out string front)
-        {
-            front = FrontAppId();
-            type = -1;
-            if (Efl.vconf_get_int("memory/system/source_type", out type) != 0 || type < 0) return -1;
-            if (Catalog.ShowsApp(_apps, front)) return -1;
-            for (int i = 0; i < _inputs.Length; i++) if (_inputs[i].SourceType == type) return i;
-            return -1;
-        }
-
-        /// <summary>
-        /// The app the TV has fullscreen (<c>memory/appfw/current_fullscreen_appid</c>), or null when it cannot be
-        /// read. The dock's own window does not become it: measured on a QN90B with YouTube fullscreen.
-        /// </summary>
-        private static string FrontAppId()
-        {
-            IntPtr p = IntPtr.Zero;
-            try
-            {
-                p = Efl.vconf_get_str("memory/appfw/current_fullscreen_appid");
-                return p == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(p);
-            }
-            catch (Exception) { return null; }
-            finally { if (p != IntPtr.Zero) Libc.free(p); }
         }
 
         // ------------------------------------------------------------------ clock
@@ -940,8 +905,6 @@ namespace Launcher
             // --captions off|apps|sources|both (the Launcher's Captions setting): name the focused item above the bar.
             // Off unless asked for, so the bar looks as it did before the name moved up there.
             _captionsMode = Arg(args, "--captions") ?? "off";
-            // --mark-current (the Launcher's setting): a short bar under the input in use. Off unless asked for.
-            _markCurrent = Flag(args, "--mark-current");
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
@@ -1004,11 +967,11 @@ namespace Launcher
                 bool captionsInputs = _captionsMode == "sources" || _captionsMode == "both";
                 _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true, captionsApps);
                 _appsDock.Build();
-                _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false, captionsInputs, _markCurrent);
+                _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false, captionsInputs);
                 _inputsDock.Build();
                 _inputsDock.SetVisible(false);
                 _dock = _appsDock;
-                Log("look: captions=" + _captionsMode + " mark-current=" + _markCurrent);
+                Log("look: captions=" + _captionsMode);
                 if (!Flag(args, "--no-warmup")) WarmUp();
                 _appsDock.Apply(_appsCtl);
                 _inputsDock.Apply(_inputsCtl);

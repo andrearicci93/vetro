@@ -130,14 +130,6 @@ namespace Launcher.Core
         /// True when <paramref name="appId"/> is one of the apps this dock launches, or one an entry closes first
         /// (YouTube behind TizenTube). The TV is then showing an app, so the input in use is not what is on screen.
         /// </summary>
-        public static bool ShowsApp(AppEntry[] entries, string appId)
-        {
-            if (string.IsNullOrEmpty(appId)) return false;
-            foreach (AppEntry e in entries)
-                if (e.AppId == appId || e.KillFirst == appId) return true;
-            return false;
-        }
-
         // Plain digits, at most five: it is only ever formatted back into a number string.
         private static bool IsSourceType(string s, out int value)
         {

@@ -87,21 +87,15 @@ function fixture(options) {
     await assert.rejects(f.dock.setNoMotion(true), /did not start/);
     assert.equal(f.dock.readState().noMotion, false, 'failed restart restores the selection preference');
 
-    // Captions and the marker of the input in use are start arguments too, and off until asked for.
+    // Captions is a start argument too, and off until asked for.
     f.tv.neverStarts = false;
     assert.equal(f.dock.readState().captions, 'off');
-    assert.equal(f.dock.readState().markCurrent, false);
-    assert.ok(!f.tv.started.includes(' --captions') && !f.tv.started.includes(' --mark-current'), 'the bar looks as it did before either was added');
+    assert.ok(!f.tv.started.includes(' --captions'), 'the bar looks as it did before captions were added');
     assert.equal((await f.dock.setCaptions('apps')).captions, 'apps');
     assert.ok(f.tv.started.includes(' --captions apps'));
     assert.equal((await f.dock.setCaptions('both')).captions, 'both');
     assert.ok(f.tv.started.includes(' --captions both'));
-    assert.equal((await f.dock.setMarkCurrent(true)).markCurrent, true);
-    assert.ok(f.tv.started.includes(' --mark-current'));
-    assert.equal((await f.dock.setMarkCurrent(false)).markCurrent, false);
-    assert.ok(!f.tv.started.includes(' --mark-current'));
     await assert.rejects(f.dock.setCaptions('sometimes'), /Invalid value/);
-    await assert.rejects(f.dock.setMarkCurrent('yes'), /Invalid value/);
     f.tv.neverStarts = true;
     await assert.rejects(f.dock.setCaptions('sources'), /did not start/);
     assert.equal(f.dock.readState().captions, 'both', 'a failed restart keeps the previous choice');

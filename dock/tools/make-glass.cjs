@@ -29,7 +29,7 @@ const K = (() => {
 const need = (...names) => names.forEach(n => { if (!(n in K)) throw new Error('constant missing in the C# sources: ' + n); });
 need('FocusIcon', 'HighlightPad', 'PillGlowPad', 'PillItemW', 'PillItemH', 'Margin', 'ShellRadius', 'ShellColor', 'ShellAlpha', 'ShellBorderW',
     'ShellBorderColor', 'ShellBorderAlpha', 'ShadowBlur', 'ShadowAlpha', 'IconRadiusPct', 'GlowStrength', 'GlowSpread', 'RingW', 'RingColor',
-    'CaptionH', 'CaptionAlpha', 'CurrentMarkW', 'CurrentMarkH');
+    'CaptionH', 'CaptionAlpha');
 const rgb = v => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 
 // Gaussian tail of a CSS blur: Gaussian of sigma = blur / 2 (Abramowitz-Stegun erf).
@@ -235,12 +235,6 @@ function caption() {
     };
 }
 
-// The marker of the input in use: a white capsule, drawn at its size. The dock sets its opacity.
-function currentMark() {
-    const W = K.CurrentMarkW, H = K.CurrentMarkH, r = H / 2;
-    return (px, py) => inside(px, py, W, H, r, r, r, r) ? [255, 255, 255, 1] : null;
-}
-
 // Chevron stroke after the hint word: two segments with round caps, white, with a soft dark halo so it reads
 // over bright video without a backing shape. 24x24 cell. dir -1 points up, +1 down.
 function chevron(dir) {
@@ -278,4 +272,3 @@ renderPng('shadow', S, S, [0, 0, 0, 0], shadow());
 }
 renderPng('dock_bg', S, S, [0, 0, 0, 0], dock());
 renderPng('caption', 2 * K.CaptionH, K.CaptionH, [0, 0, 0, 0], caption());
-renderPng('current_mark', K.CurrentMarkW, K.CurrentMarkH, [0, 0, 0, 0], currentMark());

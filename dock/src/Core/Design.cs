@@ -50,7 +50,6 @@ namespace Launcher.Core
         public static readonly bool ShowClock = false;
         public const string HintText = "Source";
         /// <summary>Opacity of the white marker under the input in use.</summary>
-        public const float CurrentAlpha = 0.92f;
 
         // ---- The two pills ----
         public const float PillBorderAlpha = 0.75f;

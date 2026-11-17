@@ -32,11 +32,6 @@ namespace Launcher.Ui
         private readonly LabelFader _fader = new LabelFader();
         private readonly int[] _labelX = { int.MinValue, int.MinValue }, _labelW = new int[2], _labelAlpha = { -1, -1 };
         private int _labelY = int.MinValue, _labelTextDy;
-        // The input in use: a short bar under its tile, there whatever has the focus (when the setting is on).
-        private readonly bool _markCurrent;
-        private IntPtr _mark;
-        private Box _markBox;
-        private int _markAlpha = -1;
         private IntPtr _hintCap, _hintChev, _hintText;
         private readonly string _hint;
         private readonly bool _hintUp;
@@ -62,12 +57,11 @@ namespace Launcher.Ui
         /// <param name="hint">Word of the navigation hint ("Input", "Back"), or null for none.</param>
         /// <param name="hintUp">True: chevron up, capsule above the pill; false: chevron down, below it.</param>
         /// <param name="captions">True: name the focused item above the bar (the Launcher's Captions setting for this page).</param>
-        /// <param name="markCurrent">True: mark the input in use under its tile (the Launcher's setting).</param>
         public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log,
-            string hint = null, bool hintUp = false, bool captions = false, bool markCurrent = false)
+            string hint = null, bool hintUp = false, bool captions = false)
         {
             _win = win; _layout = layout; _items = items; _assets = assetsDir; _log = log;
-            _hint = hint; _hintUp = hintUp; _captions = captions; _markCurrent = markCurrent;
+            _hint = hint; _hintUp = hintUp; _captions = captions;
             _evas = Efl.evas_object_evas_get(win);
             _icon = new IntPtr[items.Length];
             _initials = new IntPtr[items.Length];
@@ -75,7 +69,7 @@ namespace Launcher.Ui
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
             for (int i = 0; i < items.Length; i++) { _iconBox[i].W = -1; _iconAlpha[i] = -1; _glowRgb[i] = Design.GlowColor; }
-            _shadowBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = _markBox.W = -1;
+            _shadowBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = -1;
         }
 
         public IntPtr Evas { get { return _evas; } }
@@ -120,14 +114,6 @@ namespace Launcher.Ui
                 Efl.evas_object_clip_set(_divider, _clip);
                 Efl.evas_object_show(_divider);
                 _dividerBox.W = -1;
-            }
-
-            // Clipped with the apps, so it scrolls out of view with its tile.
-            if (_markCurrent)
-            {
-                _mark = NineSlice("current_mark", 0);
-                Efl.evas_object_color_set(_mark, 0, 0, 0, 0);
-                Efl.evas_object_clip_set(_mark, _appsClip);
             }
 
             if (_captions)
@@ -217,9 +203,6 @@ namespace Launcher.Ui
                 if (visible) Efl.evas_object_show(o); else Efl.evas_object_hide(o);
             }
         }
-
-        /// <summary>Item that is in use right now (the active input): a marker sits under it. -1 for none.</summary>
-        public int CurrentIndex { get; set; } = -1;
 
         public void SetClock(string text)
         {
@@ -473,21 +456,9 @@ namespace Launcher.Ui
                 if (da != _dividerAlpha) { _dividerAlpha = da; Tint(_divider, da); }
             }
 
-            ApplyMark(c, scroll);
             if (_captions) ApplyLabels(c, slide, presence, scroll);
             if (Design.ShowClock) ApplyClock(slide, presence);
             if (_hintText != IntPtr.Zero) ApplyHint(slide, presence);
-        }
-
-        /// <summary>The input in use keeps its marker whatever has the focus; it comes in with its tile.</summary>
-        private void ApplyMark(Controller c, float scroll)
-        {
-            if (_mark == IntPtr.Zero) return;   // the setting is off on this page
-            int cur = CurrentIndex;
-            bool on = cur >= 0 && cur < _items.Length;
-            if (on) Place(_mark, ref _markBox, _layout.CurrentMarkBox(cur, scroll, c.ItemSlide(cur)));
-            int a = on ? (int)Math.Round(255f * Design.CurrentAlpha * c.ItemPresence(cur)) : 0;
-            if (a != _markAlpha) { _markAlpha = a; Tint(_mark, a); }
         }
 
         private void ApplyHint(int slide, int presence)

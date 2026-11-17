@@ -9,7 +9,7 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|captions|markCurrent|showHomeSources|useSourceImages|enableCustom|disableCustom, on, value, appId}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|captions|showHomeSources|useSourceImages|enableCustom|disableCustom, on, value, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //
 // Plain ES5, like every module the TV loads.
@@ -60,7 +60,6 @@ function definition(dock, options) {
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
                 if (p.action === 'captions') return dock.setCaptions(p.value);
-                if (p.action === 'markCurrent') return dock.setMarkCurrent(p.on);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();

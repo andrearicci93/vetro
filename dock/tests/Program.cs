@@ -127,21 +127,6 @@ namespace Launcher.Tests
                 T.True(ins[0].SourceType == 0 && ins[1].SourceType == 13 && ins[4].SourceType == 16, "built-in numbers follow Samsung's SourceType");
             });
 
-            T.Run("catalog: the app in front decides whether an input is in use", () =>
-            {
-                var entries = new[]
-                {
-                    new AppEntry("yt", "YouTube", "com.samsung.tv.cobalt-yt", null),
-                    new AppEntry("tt", "TizenTube", "xvvl3S1TT1.TizenTubeStandalone", null, null, -1, null, false, null, "com.samsung.tv.cobalt-yt"),
-                    new AppEntry("hdmi1", "HDMI 1", null, null, null, 13, null),
-                };
-                T.True(Catalog.ShowsApp(entries, "com.samsung.tv.cobalt-yt"), "YouTube in front: an app runs, so no input is marked");
-                T.True(Catalog.ShowsApp(entries, "xvvl3S1TT1.TizenTubeStandalone"), "TizenTube in front");
-                T.True(!Catalog.ShowsApp(entries, "org.tizen.tv-viewer"), "the firmware's input player is no app of the dock: the input is marked");
-                T.True(!Catalog.ShowsApp(entries, null), "nothing readable in front leaves the input marked");
-                T.True(!Catalog.ShowsApp(entries, ""), "an empty id leaves the input marked");
-            });
-
             T.Run("layout: a narrower page is centred in the shared window", () =>
             {
                 var wide = new DockLayout(13, 1920, 1080);
@@ -253,20 +238,6 @@ namespace Launcher.Tests
                 T.True(!DockLayout.HintClear(apps.CaptionLeft(10, 0f, 480), 480, hx), "last app's long name: hint hidden");
                 T.True(DockLayout.HintClear(hx - 140 - DockLayout.HintClearance, 140, hx), "hint shown at exactly the clearance");
                 T.True(!DockLayout.HintClear(hx - 140 - DockLayout.HintClearance + 1, 140, hx), "hint hidden a pixel closer");
-            });
-
-            T.Run("layout: the input in use is marked under its tile, inside the bar", () =>
-            {
-                var l = new DockLayout(3, 1920, 1080, 0, true, -1);
-                for (int cur = 0; cur < 3; cur++)
-                    foreach (float fp in new[] { 0f, 1f, 2f, 1.5f })
-                    {
-                        var m = l.CurrentMarkBox(cur, 0f, 0);
-                        var ib = l.IconBox(cur, fp, 0f, 0);
-                        T.True(Math.Abs((m.X + m.W / 2) - (ib.X + ib.W / 2)) <= 1, "marker centred under its tile cur=" + cur + " fp=" + fp);
-                        T.True(m.Y > ib.Y + ib.H, "marker below its tile, even focused cur=" + cur + " fp=" + fp);
-                        T.True(m.Y + m.H < l.Top + l.PillH - Design.ShellBorderW, "marker inside the bar's border cur=" + cur);
-                    }
             });
 
             T.Run("controller: panel page keys", () =>

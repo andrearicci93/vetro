@@ -98,7 +98,6 @@ var RAW = (window.DESIGNER_APPS&&window.DESIGNER_APPS.length)?window.DESIGNER_AP
 var APPS = RAW.map(function(a){return {slug:a.slug,label:a.label||NAMES[a.slug]||a.slug,sub:a.sub||SUB[a.slug]||'App',src:a.icon,url:a.icon,loose:false,wide:false,color:[200,210,230]}});
 /* The inputs panel (Up on the launcher): three sources with the dock's own icons; HDMI 2 is the input in use. */
 var SOURCES = [['TV','in-tv'],['HDMI 1','in-hdmi1'],['HDMI 2','in-hdmi2']].map(function(s){var u='../res/icons/'+s[1]+'.png';return {slug:s[1],label:s[0],sub:'Source',src:u,url:u,loose:false,wide:false,color:[200,210,230]}});
-var CURRENT_SOURCE = 2;
 
 /* The same preparation the native launcher applies: banners get a blurred fill, loose logos may go on a tile. */
 function prepare(app){return new Promise(function(done){var im=new Image();im.onload=function(){
@@ -249,7 +248,7 @@ function glyph(kind,px){var p=kind==='gear'?'<path d="'+GEAR+'" fill="currentCol
 /* ---------- geometry (the same arithmetic as the native layout) ---------- */
 /* The focused name sits in a capsule CAP.h tall, CAP.gap above the bar; that band (BAND) also holds the hint, and is
    the height by which the inputs panel is raised over the apps bar. */
-var CAP={h:40,gap:10,padX:18},BAND=CAP.gap+CAP.h,CUR={w:32,h:6};
+var CAP={h:40,gap:10,padX:18},BAND=CAP.gap+CAP.h;
 function geo(c,list,page){
  var n=list.length,icon=num(c,'layout.icon'),fic=num(c,'layout.focusIcon'),gap=num(c,'layout.gap'),padX=num(c,'layout.padX'),pm=c['pills.mode'];
  var pw=num(c,'pills.w'),ph=num(c,'pills.h'),pg=num(c,'pills.gap'),m=(pm==='off'||page==='sources')?0:2;
@@ -282,7 +281,7 @@ Stage.prototype.build=function(){
  this.icons=L.map(function(a,i){var d=el('ico t',me.clip);d.innerHTML='<img alt="" src="'+a.url+'">';if(a.wide)d.classList.add('wide');if(a.loose)d.classList.add('loose');d.style.setProperty('--bg','url('+a.url+')');d.onclick=function(){if(me.interactive){me.focus=i;me.apply()}};return d});
  this.pins=[];
  if(g.m){[['gear','pills.label1'],['back','pills.label2']].forEach(function(p,k){var d=el('pin t');d.dataset.glyph=p[0];d.dataset.key=p[1];d.onclick=function(){if(me.interactive){me.focus=L.length+k;me.apply()}};me.pins.push(d)})}
- this.divider=el('a t');this.dot=el('a t');
+ this.divider=el('a t');
  this.lab=el('lab t');this.labs=L.map(function(a){var l=el('lab t',me.clip);return l});
  this.clock=el('lab');this.hint=el('lab t');
  this.apply(true);this.fit();
@@ -343,9 +342,6 @@ Stage.prototype.apply=function(first){
  ge.style.cssText='left:'+fx+'px;top:'+fy+'px;width:'+fw+'px;height:'+fh+'px;border-radius:'+fr+';background:'+rgba(gc,gs*0.55)+';box-shadow:0 0 '+Math.round(sp*1.6)+'px '+Math.round(sp*0.35)+'px '+rgba(gc,gs)+';opacity:'+(c['glow.show']&&(fw>0)?1:0);
  /* divider */
  this.divider.style.cssText=(g.m&&c['divider.show'])?'left:'+(g.px+g.padX+g.view+(num(c,'layout.groupGap')-2)/2)+'px;top:'+(g.rowCY-num(c,'divider.height')/2)+'px;width:2px;height:'+num(c,'divider.height')+'px;background:'+rgba(c['label.color'],num(c,'divider.opacity')):'display:none';
- /* the input in use: a short bar under its tile, whatever has the focus (CUR: its size) */
- var cur=g.page==='sources'?CURRENT_SOURCE:-1;
- this.dot.style.cssText=cur>=0?'left:'+(g.px+g.padX+g.icon/2+cur*(g.icon+g.gap)-scroll-CUR.w/2)+'px;top:'+(g.py+g.pillH-num(c,'layout.padBottom')/2-CUR.h/2)+'px;width:'+CUR.w+'px;height:'+CUR.h+'px;border-radius:'+CUR.h/2+'px;background:'+c['label.color']+';opacity:.92':'display:none';
  /* labels */
  var ls=num(c,'label.size'),fam=FONT[c['label.font']]||FONT.system,txt=function(s){return c['label.case']==='upper'?String(s).toUpperCase():s};
  var lcss='font-size:'+ls+'px;font-weight:'+c['label.weight']+';color:'+c['label.color']+';font-family:'+fam+';letter-spacing:'+num(c,'label.spacing')+'px;text-shadow:0 2px 6px rgba(0,0,0,'+num(c,'label.shadow')+');line-height:34px;';
@@ -389,12 +385,12 @@ function pillStyle(c,light){
 Stage.prototype.play=function(){
  var c=this.get(),kind=c['motion.enter'],dur=num(c,'motion.duration'),stg=num(c,'motion.stagger'),root=this.root,me=this;
  var ease=EASE[c['motion.ease']]||EASE.out,up=c['layout.position']==='top'?-48:48;
- var all=[this.shell,this.glowEl,this.divider,this.dot,this.lab,this.clock,this.hint].concat(this.pins,[this.clip]);
+ var all=[this.shell,this.glowEl,this.divider,this.lab,this.clock,this.hint].concat(this.pins,[this.clip]);
  function anim(e,kf,delay){if(e&&e.animate)e.animate(kf,{duration:dur,easing:ease,delay:delay||0,fill:'backwards'})}
  if(kind==='slide')all.forEach(function(e){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}])});
  else if(kind==='fade')all.forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
  else if(kind==='scale')all.forEach(function(e){anim(e,[{transform:'scale(.92)',opacity:0},{transform:'none',opacity:1}])});
- else{[this.shell,this.glowEl,this.divider,this.dot,this.lab,this.clock,this.hint].forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
+ else{[this.shell,this.glowEl,this.divider,this.lab,this.clock,this.hint].forEach(function(e){anim(e,[{opacity:0},{opacity:1}])});
   this.icons.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],i*stg)});
   this.pins.forEach(function(e,i){anim(e,[{transform:'translateY('+up+'px)',opacity:0},{transform:'none',opacity:1}],(me.list().length+i)*stg)})}
 };
@@ -472,7 +468,7 @@ function buildGallery(){
  });
 }
 /* Switches the main preview between the apps bar and the inputs panel; the panel opens on the input in use, as on the TV. */
-function setPage(p){main.page=p;main.focus=p==='sources'?CURRENT_SOURCE:0;$('page').value=p;main.build()}
+function setPage(p){main.page=p;main.focus=0;$('page').value=p;main.build()}
 function init(){
  var sc=$('scene');Object.keys(SCENES).forEach(function(k){var o=document.createElement('option');o.textContent=k;sc.appendChild(o)});
  sc.onchange=function(){cfg.scene=sc.value;sync(false)};
