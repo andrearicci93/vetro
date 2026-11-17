@@ -127,6 +127,21 @@ namespace Launcher.Tests
                 T.True(ins[0].SourceType == 0 && ins[1].SourceType == 13 && ins[4].SourceType == 16, "built-in numbers follow Samsung's SourceType");
             });
 
+            T.Run("catalog: the app in front decides whether an input is in use", () =>
+            {
+                var entries = new[]
+                {
+                    new AppEntry("yt", "YouTube", "com.samsung.tv.cobalt-yt", null),
+                    new AppEntry("tt", "TizenTube", "xvvl3S1TT1.TizenTubeStandalone", null, null, -1, null, false, null, "com.samsung.tv.cobalt-yt"),
+                    new AppEntry("hdmi1", "HDMI 1", null, null, null, 13, null),
+                };
+                T.True(Catalog.ShowsApp(entries, "com.samsung.tv.cobalt-yt"), "YouTube in front: an app runs, so no input is marked");
+                T.True(Catalog.ShowsApp(entries, "xvvl3S1TT1.TizenTubeStandalone"), "TizenTube in front");
+                T.True(!Catalog.ShowsApp(entries, "org.tizen.tv-viewer"), "the firmware's input player is no app of the dock: the input is marked");
+                T.True(!Catalog.ShowsApp(entries, null), "nothing readable in front leaves the input marked");
+                T.True(!Catalog.ShowsApp(entries, ""), "an empty id leaves the input marked");
+            });
+
             T.Run("layout: a narrower page is centred in the shared window", () =>
             {
                 var wide = new DockLayout(13, 1920, 1080);

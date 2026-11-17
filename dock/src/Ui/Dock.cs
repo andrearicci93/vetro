@@ -7,10 +7,12 @@ namespace Launcher.Ui
 {
     /// <summary>
     /// The evas objects of the dock and the code that maps controller state onto them.
-    /// Object count is items + 13 (shadow, pill, clippers, two glows, two focus rings, two name capsules with their texts, the in-use marker; the clock only when the design shows one), plus the divider
-    /// when the strip has a system group and three for the navigation hint (capsule, word, chevron);
-    /// icons are pre-sized PNGs, and <see cref="Apply"/> only calls into EFL for values that changed
-    /// since the previous frame, so an animation frame costs a handful of native calls.
+    /// Object count is items + 8 (shadow, pill, two clippers, two glows and two focus rings; two name capsules
+    /// with their texts and the in-use marker only when the Launcher's settings ask for them, the clock only
+    /// when the design shows one), plus the divider when the strip has a system group and three for the
+    /// navigation hint (capsule, word, chevron); icons are pre-sized PNGs, and <see cref="Apply"/> only calls
+    /// into EFL for values that changed since the previous frame, so an animation frame costs a handful of
+    /// native calls.
     /// </summary>
     internal sealed class Dock
     {
@@ -23,12 +25,15 @@ namespace Launcher.Ui
         private readonly Action<string> _log;
 
         private IntPtr _shadow, _pill, _clip, _appsClip, _highlight, _highlight2, _ring, _ring2, _clock, _divider;
-        // The focused item's name, in a capsule above the bar. Two cross-fade (see LabelFader): the item being left and the one being reached.
+        // The focused item's name, in a capsule above the bar, when this page shows captions. Two cross-fade
+        // (see LabelFader): the item being left and the one being reached.
+        private readonly bool _captions;
         private readonly IntPtr[] _label = new IntPtr[2], _caption = new IntPtr[2];
         private readonly LabelFader _fader = new LabelFader();
         private readonly int[] _labelX = { int.MinValue, int.MinValue }, _labelW = new int[2], _labelAlpha = { -1, -1 };
         private int _labelY = int.MinValue, _labelTextDy;
-        // The input in use: a short bar under its tile, there whatever has the focus.
+        // The input in use: a short bar under its tile, there whatever has the focus (when the setting is on).
+        private readonly bool _markCurrent;
         private IntPtr _mark;
         private Box _markBox;
         private int _markAlpha = -1;
@@ -54,15 +59,15 @@ namespace Launcher.Ui
 
         public int MissingIcons { get; private set; }
 
-        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log)
-            : this(win, layout, items, assetsDir, log, null, false) { }
-
         /// <param name="hint">Word of the navigation hint ("Input", "Back"), or null for none.</param>
         /// <param name="hintUp">True: chevron up, capsule above the pill; false: chevron down, below it.</param>
-        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp)
+        /// <param name="captions">True: name the focused item above the bar (the Launcher's Captions setting for this page).</param>
+        /// <param name="markCurrent">True: mark the input in use under its tile (the Launcher's setting).</param>
+        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log,
+            string hint = null, bool hintUp = false, bool captions = false, bool markCurrent = false)
         {
             _win = win; _layout = layout; _items = items; _assets = assetsDir; _log = log;
-            _hint = hint; _hintUp = hintUp;
+            _hint = hint; _hintUp = hintUp; _captions = captions; _markCurrent = markCurrent;
             _evas = Efl.evas_object_evas_get(win);
             _icon = new IntPtr[items.Length];
             _initials = new IntPtr[items.Length];
@@ -118,22 +123,26 @@ namespace Launcher.Ui
             }
 
             // Clipped with the apps, so it scrolls out of view with its tile.
-            _mark = NineSlice("current_mark", 0);
-            Efl.evas_object_color_set(_mark, 0, 0, 0, 0);
-            Efl.evas_object_clip_set(_mark, _appsClip);
-
-            for (int k = 0; k < 2; k++)
+            if (_markCurrent)
             {
-                // A capsule of the bar's own material: its ends are half its height, so only the middle stretches.
-                _caption[k] = NineSlice("caption", DockLayout.CaptionH / 2, DockLayout.CaptionH / 2, 0, 0);
-                Efl.evas_object_color_set(_caption[k], 0, 0, 0, 0);
-                _label[k] = Efl.evas_object_text_add(_evas);
-                Efl.evas_object_text_font_set(_label[k], Font, Design.LabelTextSize);
-                Efl.evas_object_text_text_set(_label[k], "Ag");
-                _labelTextDy = (DockLayout.CaptionH - Efl.evas_object_text_vert_advance_get(_label[k])) / 2 - 1;
-                Tint(_label[k], 0);
-                Efl.evas_object_show(_label[k]);
+                _mark = NineSlice("current_mark", 0);
+                Efl.evas_object_color_set(_mark, 0, 0, 0, 0);
+                Efl.evas_object_clip_set(_mark, _appsClip);
             }
+
+            if (_captions)
+                for (int k = 0; k < 2; k++)
+                {
+                    // A capsule of the bar's own material: its ends are half its height, so only the middle stretches.
+                    _caption[k] = NineSlice("caption", DockLayout.CaptionH / 2, DockLayout.CaptionH / 2, 0, 0);
+                    Efl.evas_object_color_set(_caption[k], 0, 0, 0, 0);
+                    _label[k] = Efl.evas_object_text_add(_evas);
+                    Efl.evas_object_text_font_set(_label[k], Font, Design.LabelTextSize);
+                    Efl.evas_object_text_text_set(_label[k], "Ag");
+                    _labelTextDy = (DockLayout.CaptionH - Efl.evas_object_text_vert_advance_get(_label[k])) / 2 - 1;
+                    Tint(_label[k], 0);
+                    Efl.evas_object_show(_label[k]);
+                }
 
             if (Design.ShowClock)
             {
@@ -465,7 +474,7 @@ namespace Launcher.Ui
             }
 
             ApplyMark(c, scroll);
-            ApplyLabels(c, slide, presence, scroll);
+            if (_captions) ApplyLabels(c, slide, presence, scroll);
             if (Design.ShowClock) ApplyClock(slide, presence);
             if (_hintText != IntPtr.Zero) ApplyHint(slide, presence);
         }
@@ -473,6 +482,7 @@ namespace Launcher.Ui
         /// <summary>The input in use keeps its marker whatever has the focus; it comes in with its tile.</summary>
         private void ApplyMark(Controller c, float scroll)
         {
+            if (_mark == IntPtr.Zero) return;   // the setting is off on this page
             int cur = CurrentIndex;
             bool on = cur >= 0 && cur < _items.Length;
             if (on) Place(_mark, ref _markBox, _layout.CurrentMarkBox(cur, scroll, c.ItemSlide(cur)));

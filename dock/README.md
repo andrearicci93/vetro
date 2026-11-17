@@ -41,6 +41,13 @@ brightness boost on a selected pill, and the desaturation of unselected icons. T
 the system font, in a capsule above the bar (`res/caption.png`, shared with the hint); the input in use is marked
 by `res/current_mark.png` under its tile. There is no clock in the chosen design.
 
+Both are runtime settings of the Launcher tab, off by default: `--captions off|apps|sources|both` picks the page
+that names its focused item, and `--mark-current` draws the marker. The layout keeps the band for the name either
+way, because the hint shares it. The marker is left out while an app is in front: the firmware keeps the last
+input in `memory/system/source_type` on some TVs, so the dock also reads
+`memory/appfw/current_fullscreen_appid` (the root agent reads the same key) and says no input is in use when that
+app is one it launches.
+
 The designer previews both pages: pick **sorgenti (Su)** or press Up. Serve `dock/` over http (for example
 `python3 -m http.server` in `dock/`) and open `designer/index.html?chosen` to start from `chosen.json`.
 

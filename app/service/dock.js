@@ -31,6 +31,9 @@ var TARGET_SYSTEM_RE = /^(?:sys|key|panel):/;
 var TARGET_PANEL_RE = /^panel:/;
 var TARGET_SOURCE_RE = /^source:/;
 var SLUG_RE = /^[a-z0-9_-]{1,40}$/;
+// The Launcher's Captions setting: which page names the focused item above the bar. Off by default, like the
+// marker of the input in use, so the bar looks as it did before either was added.
+var CAPTION_MODES = ['off', 'apps', 'sources', 'both'];
 
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
@@ -112,13 +115,14 @@ Dock.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, captions: s && CAPTION_MODES.indexOf(s.captions) >= 0 ? s.captions : 'off',
+            markCurrent: s && s.markCurrent === true, autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, captions: 'off', markCurrent: false, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
 };
 
@@ -218,7 +222,9 @@ Dock.prototype.status = function (options) {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion,
+        captions: state.captions, markCurrent: state.markCurrent,
+        showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries()};
@@ -242,7 +248,8 @@ Dock.prototype.startScript = function () {
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
-        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '');
+        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') +
+        (state.customApp || state.captions === 'off' ? '' : ' --captions ' + state.captions) + (state.markCurrent && !state.customApp ? ' --mark-current' : '');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -543,20 +550,36 @@ Dock.prototype.setFixTizenTube = function (on) {
     });
 };
 
-// Still selection: the focus jumps between tiles and the icons keep their size (the dock's --no-motion).
-// It is a start argument, so a running dock is restarted.
-Dock.prototype.setNoMotion = function (on) {
+// Still selection (--no-motion), Captions (--captions) and the marker of the input in use (--mark-current) are
+// start arguments, so a running dock is restarted. A restart that fails leaves the previous value in place.
+Dock.prototype.setStartOption = function (key, value) {
     var self = this;
-    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
-    var state = this.readState();
-    try { this.patchState({noMotion: on}); }
+    var before = this.readState(), patch = {}, undo = {};
+    patch[key] = value;
+    undo[key] = before[key];
+    try { this.patchState(patch); }
     catch (e) { return Promise.reject(e); }
-    if (!state.enabled) return this.status();
+    if (!before.enabled) return this.status();
     return this.refresh().catch(function (e) {
-        try { self.patchState({noMotion: state.noMotion}); } catch (e2) {}
+        try { self.patchState(undo); } catch (e2) {}
         throw e;
     });
+};
+
+// Still selection: the focus jumps between tiles and the icons keep their size.
+Dock.prototype.setNoMotion = function (on) {
+    return typeof on === 'boolean' ? this.setStartOption('noMotion', on) : Promise.reject(new Error('Invalid value'));
+};
+
+// Captions: which page names the focused item above the bar ('off', 'apps', 'sources' or 'both').
+Dock.prototype.setCaptions = function (mode) {
+    return CAPTION_MODES.indexOf(mode) >= 0 ? this.setStartOption('captions', mode) : Promise.reject(new Error('Invalid value'));
+};
+
+// The marker of the input in use under its tile on the Sources page.
+Dock.prototype.setMarkCurrent = function (on) {
+    return typeof on === 'boolean' ? this.setStartOption('markCurrent', on) : Promise.reject(new Error('Invalid value'));
 };
 
 // The file behind one tile of the preview: the app's own icon when the list names one that is a
