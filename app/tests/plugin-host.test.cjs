@@ -162,7 +162,21 @@ h3.start();
     const s3 = new PluginHost({ dir: sdir }).register(good);
     s3.start();
     assert.equal(s3.safeMode, true, 'stays suspended until the user resumes');
-    assert.equal(s3.resume().restartRequired, true);
+    assert.equal(s3.resume().restartRequired, false, 'resume starts the plugins at once (#190)');
+    assert.equal(s3.safeMode, false);
+    assert.equal(s3.list()[0].state, 'running', 'the paused plugin runs again without a restart of Vetro');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(sdir, 'starting'), 'utf8')).missed, 1, 'the resumed start still has to prove itself');
+    s3.stableTimer && clearTimeout(s3.stableTimer);
+    // the TV turned off once right after a resume is not enough to pause them again...
+    const s3b = new PluginHost({ dir: sdir, stableMs: 60000 }).register(good);
+    assert.equal(s3b.start()[0].state, 'running');
+    s3b.stableTimer && clearTimeout(s3b.stableTimer);
+    // ...a second interrupted start is
+    const s3c = new PluginHost({ dir: sdir, stableMs: 60000 }).register(good);
+    s3c.start();
+    assert.equal(s3c.safeMode, true, 'two interrupted starts after a resume pause the plugins again');
+    assert.equal(s3c.resume().restartRequired, false);
+    s3c.stop();
     const s4 = new PluginHost({ dir: sdir, stableMs: 10 }).register(good);
     assert.equal(s4.start()[0].state, 'running');
     s4.stop();

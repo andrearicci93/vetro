@@ -1,11 +1,11 @@
 'use strict';
-// The quick controls of the TV screen (index.html): five tiles that do what one switch of the dashboard does.
+// The quick controls of the TV screen (index.html): five tiles; four do what one switch of the dashboard does, Vetro UI what four do.
 //
 //   GET  /screen/controls   what each tile shows, and whether this page may change anything
-//   POST /screen/control    {id: launcher|ads|voice|tuner, on: boolean}   or   {id: 'update', step: 'check'|'apply'}
+//   POST /screen/control    {id: launcher|ui|ads|voice, on: boolean}   or   {id: 'update', step: 'check'|'apply'}
 //
 // Nothing here is new behaviour: a tile calls the same internals as the dashboard's switch (the launcher's enable/disable,
-// the "tracking-all" and "voice-all" quick settings, the tuner's enable/disable, the updater), so the same locks and
+// the "tracking-all" and "voice-all" quick settings, the updater), so the same locks and
 // guards apply. The update is the one exception in where it runs: the TV page may only talk to the service
 // (config.xml allows no other address), so the service itself fetches the update list and the signed bundle; the signature
 // and the file hashes are still checked by the updater, as for an update sent from the dashboard.
@@ -16,7 +16,7 @@ var https = require('https');
 var urlModule = require('url');
 var quickSettings = require('./quick-settings.js');
 
-var IDS = ['launcher', 'ads', 'voice', 'tuner'];
+var IDS = ['launcher', 'ui', 'ads', 'voice'];
 var QUICK = {ads: 'tracking-all', voice: 'voice-all'};      // the tile and the quick-settings group behind it
 var INDEX_MAX = 64 * 1024;
 var BUNDLE_MAX = 8 * 1024 * 1024;
@@ -89,6 +89,48 @@ function fetchText(source, name, max) {
     });
 }
 
+// The Vetro UI tile is everything Vetro draws on the TV besides the launcher's bar: the live TV screen (Vetro TV Tuner), the
+// volume bar, the number pad and the Control center. One switch for the four, each through the call its own dashboard switch
+// makes. A part this TV cannot have is left out (the tuner's files missing, its plugin stopped, a TV its checks refuse; the
+// launcher's files missing or its plugin stopped for the other three). The bar, the pad and the Control center are drawn by
+// the launcher's process, so they show while the launcher (or a custom launcher) is on; their switches are saved either way.
+function uiParts(d) {
+    var parts = [], launcher = d.dock.readState();
+    if (d.dock.installed() && d.pluginRunning('launcher')) {
+        parts.push({name: 'keys', on: launcher.volumePill && launcher.numberPad});
+        parts.push({name: 'cards', on: launcher.cards.length > 0});
+    }
+    if (d.tuner.installed() && d.pluginRunning('tuner') && !d.tuner.unsupported) parts.push({name: 'tuner', on: d.tuner.readState().enabled});
+    return parts;
+}
+
+function uiTile(d, agent) {
+    var parts = uiParts(d), on = parts.filter(function (p) { return p.on; }).length;
+    if (!parts.length) return {state: 'na', why: !d.dock.installed() && !d.tuner.installed() ? 'Not in this Vetro package' : STOPPED};
+    if (!agent) return {state: 'na', why: 'Needs root access'};
+    return on === parts.length ? {state: 'on'} : on === 0 ? {state: 'off'} : {state: 'part', left: parts.length - on, of: parts.length};
+}
+
+// Every part is tried, in turn (the launcher and the tuner each allow one change at a time); the first refusal is reported
+// after the others have had their turn, and the tile then says how many parts are still off.
+function setUi(d, on) {
+    var parts = uiParts(d), failed = null, chain = Promise.resolve();
+    function step(run) { chain = chain.then(run).then(null, function (e) { if (!failed) failed = e; }); }
+    parts.forEach(function (p) {
+        if (p.name === 'keys') step(function () { return d.dock.setKeys(on); });
+        if (p.name === 'cards') step(function () {
+            var s = d.dock.readState();
+            if (on === (s.cards.length > 0)) return null;
+            return d.dock.setCards(on ? (s.lastCards.length ? s.lastCards : ['tasks']) : []);
+        });
+        if (p.name === 'tuner') step(function () {
+            if (on === d.tuner.readState().enabled) return null;
+            return on ? d.tuner.enable() : d.tuner.disable();
+        });
+    });
+    return chain.then(function () { if (failed) throw failed; });
+}
+
 // deps: dock, tuner, updater, inventory(refresh) -> Promise of {apps}, applyQuick(id, off) -> Promise, agentConnected() -> boolean,
 // pluginRunning(id) -> boolean. The launcher and the tuner are bundled plugins: the dashboard's routes answer 503 while the plugin is
 // switched off or was stopped, so a tile must not change them either (nothing would supervise them, and the dashboard could not undo it).
@@ -113,7 +155,7 @@ Controls.prototype.lookUp = function () {
 };
 
 Controls.prototype.read = function (canControl) {
-    var d = this.deps, agent = !!d.agentConnected(), launcher = d.dock.readState(), tunerState = d.tuner.readState(), status = d.updater.status();
+    var d = this.deps, agent = !!d.agentConnected(), launcher = d.dock.readState(), status = d.updater.status();
     var groups = {ads: quickSettings.find(QUICK.ads), voice: quickSettings.find(QUICK.voice)};
     var inventory = agent ? d.inventory(false).then(function (r) { return r && !r.registryError && Array.isArray(r.apps) ? r.apps : null; }, function () { return null; }) : Promise.resolve(null);
     return inventory.then(function (apps) {
@@ -122,8 +164,7 @@ Controls.prototype.read = function (canControl) {
                 : !agent ? {state: 'na', why: 'Needs root access'} : {state: launcher.enabled || launcher.customApp ? 'on' : 'off', custom: !!launcher.customApp},
             ads: groupTile(groups.ads, apps),
             voice: groupTile(groups.voice, apps),
-            tuner: !d.tuner.installed() ? {state: 'na', why: 'Not in this Vetro package'} : !d.pluginRunning('tuner') ? {state: 'na', why: STOPPED}
-                : !agent ? {state: 'na', why: 'Needs root access'} : {state: tunerState.enabled ? 'on' : 'off'}
+            ui: uiTile(d, agent)
         };
         return {canControl: !!canControl, tiles: tiles, update: {configured: status.configured, version: status.version, busy: !!status.busy,
             pending: !!status.pending}};
@@ -150,13 +191,14 @@ Controls.prototype.act = function (p) {
     if (typeof p.on !== 'boolean') return Promise.reject(problem('Invalid state', 400));
     on = p.on;
     if (!d.agentConnected()) return Promise.reject(problem('Needs root access, which is not connected'));
-    if ((id === 'launcher' || id === 'tuner') && !d.pluginRunning(id)) return Promise.reject(problem(STOPPED + ': turn it on there first'));
+    if (id === 'launcher' && !d.pluginRunning(id)) return Promise.reject(problem(STOPPED + ': turn it on there first'));
+    if (id === 'ui' && !uiParts(d).length) return Promise.reject(problem(STOPPED + ': turn it on there first'));
     var task;
     if (id === 'launcher') {
         var state = d.dock.readState();
         task = on ? d.dock.enable() : state.customApp ? d.dock.disableCustom() : d.dock.disable();
-    } else if (id === 'tuner') {
-        task = on ? d.tuner.enable() : d.tuner.disable();
+    } else if (id === 'ui') {
+        task = setUi(d, on);
     } else {
         task = d.applyQuick(QUICK[id], on);          // "on" here means disabled, as for the dashboard's switch
     }

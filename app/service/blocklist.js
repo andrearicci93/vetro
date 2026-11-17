@@ -25,14 +25,14 @@ var GROUPS = [
             {host: 'lcprd1.samsungcloudsolution.net', by: 'data-service-collector'}
         ]},
     {id: 'logs', label: 'Diagnostic logs and monitoring', evidence: 'firmware',
-        note: 'Referenced by the emergency log transmitter and the health and robustness monitors. The purpose is inferred from component names, so the effect on support features is unknown.',
+        note: 'Used by the emergency log transmitter and the health monitors. Inferred from component names; the effect on support features is unknown.',
         hosts: [
             {host: 'fc.samsungcloud.tv', by: 'emergency log transmitter, HSMClient, RobustnessMonitor, targetLogClient'},
             {host: 'www.samsungrm.net', by: 'emergency log transmitter, HSMClient, RobustnessMonitor, targetLogClient'},
             {host: 'devicelog.samsungcloudsolution.net', by: 'smarthub-connection-test'}
         ]},
     {id: 'qbe', label: 'Samsung QBE services', evidence: 'firmware',
-        note: 'Three hosts found in the firmware image. Which feature uses each one is not known, and no traffic to them has been seen yet. Check with Observe requests before relying on them.',
+        note: 'Three hosts from the firmware image. What uses them is unknown and no traffic to them has been seen. Check with Observe requests first.',
         hosts: [{host: 'osb.samsungqbe.com'}, {host: 'rm.samsungqbe.com'}, {host: 'scs.samsungqbe.com'}]},
     {id: 'reported', label: 'Viewing data (ACR) and ads · reported', evidence: 'reported',
         note: 'Names from public reports; none appears in the firmware. Use Observe requests to see which ones your TV really asks for.',
@@ -42,13 +42,13 @@ var GROUPS = [
             {host: 'acr0.samsungcloudsolution.com'}
         ]},
     {id: 'probable', label: 'Probable ACR starting point · unverified', evidence: 'unverified',
-        note: 'Likely where the viewing-data service learns its servers. It is not in the firmware and nobody has confirmed it, so treat it as a guess and watch what the TV asks for.',
+        note: 'Probably where the viewing-data service learns its servers. Not in the firmware and unconfirmed: watch what the TV asks for.',
         hosts: [{host: 'gpm.samsungqbe.com'}]},
     // #79: on one The Frame (LS03B, T-PTMAKUC-1720.7) the Home ads stopped only after this host was blocked AND the
     // pictures already downloaded were moved out of Home's cache. Blocking alone leaves the cached ads on screen. Seen on
     // one TV only, so it is offered on its own and stays out of the exported lists (optional).
     {id: 'home-images', label: 'Home screen ad pictures · reported once', evidence: 'reported', optional: true,
-        note: 'The picture server of the ads in Samsung\u2019s Home row, reported on one TV (#79). Blocking it stops new ad pictures; ads already downloaded stay until Home\u2019s picture cache is cleared. It may also hide other Home pictures.',
+        note: 'The picture server of the ads in Samsung\u2019s Home row, seen on one TV (#79). Blocks new ad pictures; cached ones stay until Home\u2019s cache is cleared. May hide other Home pictures.',
         hosts: [{host: 'cdn-stv.adgrx.com'}]}
 ];
 // Names the TV needs to work. The local filter refuses them and exports never include them.

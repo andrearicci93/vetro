@@ -200,6 +200,27 @@ var relaunchTimer = null;
 var launchGen = 0;        // invalidates stale retry timers
 var launchFailures = 0;   // consecutive failed launches since the agent last connected: drives the retry delay
 
+// Wake. The TV stops sdbd at standby, which ends the agent; it starts sdbd again at wake. After the loss of an agent that had
+// been connected for a while, a refused SDB handshake is tried again every FAST_RETRY_MS (instead of the backoff below) for
+// FAST_WINDOW_MS of time the TV is awake, so at wake the agent is launched as soon as sdbd answers, not when a backoff timer
+// armed before the TV suspended happens to fire. Awake time is the monotonic clock (process.hrtime): like libuv's timers it
+// stops while the TV is suspended. Only refused handshakes are retried this fast: they are local socket calls and start no
+// process on the TV. These retries do not grow launchFailures, and a repeat of the same failure is not written to the log.
+var FAST_RETRY_MS = 2000, FAST_WINDOW_MS = 120000, STABLE_MS = 30000;
+var lossHr = null;          // process.hrtime() when a stable agent was lost; null when there is nothing to recover fast
+var lastFailure = null;     // 'stage:code' of the last failed attempt, for the log de-duplication in the fast window
+var agentListeners = [];    // onAgent(fn): fn(true) once the agent is connected, fn(false) when it is lost
+// In memory only (never in `state`, which is written to flash at every connect and loss), merged in status():
+// firstConnect: the first connect of this run; reconnect: the last recovery after a loss. Times in ms. awakeMs is on the
+// monotonic clock (without the time the TV was suspended), wallMs on the wall clock (with it); stages is the attempt that
+// connected: handshakeMs (SDB connect), preflightMs, prepareMs, dispatchMs (the launch command), callbackMs (launch command
+// sent to agent connected).
+var timing = {firstConnect: null, reconnect: null, losses: 0};
+var startHr = null, loss = null, attemptTimes = null;
+function hrMs(since) { var d = process.hrtime(since); return Math.round(d[0] * 1000 + d[1] / 1e6); }
+function notifyAgent(up) { agentListeners.slice().forEach(function (fn) { try { fn(up); } catch (e) { /* a listener never breaks the adapter */ } }); }
+function fastRetry() { return lossHr !== null && hrMs(lossHr) < FAST_WINDOW_MS && /^sdb-handshake:/.test(lastFailure || ''); }
+
 function pushAttempt(entry) {
     state.attempts.push(entry);
     if (state.attempts.length > 40) state.attempts.shift();
@@ -312,6 +333,10 @@ function startAgent() {
             // block every later relaunch), and the next outage starts again from the short retry delay.
             launching = false;
             launchFailures = 0;
+            var stages = attemptTimes ? Object.assign({}, attemptTimes.ms, attemptTimes.dispatchHr ? {callbackMs: hrMs(attemptTimes.dispatchHr)} : {}) : null;
+            if (loss) timing.reconnect = {lostAt: loss.at, connectedFor: loss.connectedFor, awakeMs: hrMs(loss.hr), wallMs: Date.now() - loss.at, attempts: loss.attempts, stages: stages};
+            else if (!timing.firstConnect && startHr) timing.firstConnect = {ms: hrMs(startHr), stages: stages};
+            loss = null; lossHr = null; lastFailure = null; attemptTimes = null;
             rootPhase('connected');
             state.rooting.failure = null;
             state.agent = {
@@ -327,14 +352,22 @@ function startAgent() {
             persist();
             // The agent has detached; release any remaining launch connection.
             if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
+            notifyAgent(true);
         },
         onClose: function () {
             if (!state.running) return;
+            var connectedFor = state.agent && state.agent.at ? Date.now() - state.agent.at : 0;
             agentConnected = false;
             state.agent = { connected: false };
+            timing.losses++;
+            loss = {at: Date.now(), hr: process.hrtime(), connectedFor: connectedFor, attempts: 0};
+            // Only an agent that had been up for a while is recovered fast: one that dies right after connecting keeps the backoff.
+            lossHr = connectedFor >= STABLE_MS ? loss.hr : null;
+            lastFailure = lossHr ? 'sdb-handshake:loss' : null;
             rootFailure('agent-connection', 'agent-disconnected');
             if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
             persist();
+            notifyAgent(false);
             scheduleRelaunch();
         }
     });
@@ -343,6 +376,7 @@ function startAgent() {
         if (!state.running || !agentServer) return;
         agentServer.start(function (port) {
             if (!state.running) return;
+            if (!startHr) startHr = process.hrtime();
             state.agentPort = port;
             if (typeof crypto.generateKeyPairSync !== 'function') prepareForRuntime(port);
             relaunch();
@@ -356,7 +390,7 @@ function scheduleRelaunch() {
     relaunchTimer = setTimeout(function () {
         relaunchTimer = null;
         relaunch();
-    }, retryPolicy.relaunchDelay(launchFailures));
+    }, fastRetry() ? FAST_RETRY_MS : retryPolicy.relaunchDelay(launchFailures));
 }
 
 function relaunch() {
@@ -375,6 +409,10 @@ function relaunch() {
     state.preflight = null;
     var entry = { t: Date.now(), phase: 'launch' };
     pushAttempt(entry);
+    if (loss) loss.attempts++;
+    // How long each stage of this attempt took (shown in status().timing once it connects).
+    var times = attemptTimes = {ms: {}, hr: process.hrtime()};
+    function lap(name) { times.ms[name] = hrMs(times.hr); times.hr = process.hrtime(); }
     Promise.resolve().then(function () {
         if (!state.running || gen !== launchGen || agentConnected) return;
         return sdb.connect(sdbTarget());
@@ -382,11 +420,13 @@ function relaunch() {
         if (!state.running || gen !== launchGen || agentConnected) { if (client) sdb.close(client); return; }
         launchClient = client;
         entry.connect = 'ok';
+        lap('handshakeMs');
         stage = 'preflight';
         rootPhase('preflight');
         return checkTarget({run: createPreflightRunner(client, buildInjection)});
     }).then(function (assessment) {
         if (!state.running || gen !== launchGen || agentConnected) return;
+        lap('preflightMs');
         state.preflight = assessment;
         stage = 'preparation';
         rootPhase('preparing');
@@ -399,6 +439,7 @@ function relaunch() {
             }
         }
         delete state.prepareError;
+        lap('prepareMs');
         try {
             fs.writeFileSync(STAGE + '/' + pkg + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
         } catch (e) {
@@ -425,6 +466,7 @@ function relaunch() {
                 return sdb.exec(client, 'shell:0 appinstall tpk ' + injection, { timeout: 60000 });
             }).then(function (out) {
                 entry.output = out;
+                if (gen === launchGen) { lap('dispatchMs'); times.dispatchHr = times.hr; }
                 if (state.running && gen === launchGen && !agentConnected) rootPhase('agent-callback');
             }).catch(function (e) {
                 entry.err = String(e.message || e);
@@ -451,13 +493,17 @@ function relaunch() {
             // meanwhile would make every relaunch after a later disconnect return at once.
             if (gen === launchGen) launching = false;
             if (!state.running || gen !== launchGen || agentConnected) return;
-            launchFailures++;
             if (launchClient) sdb.close(launchClient);
             launchClient = null;
             entry.connect = 'fail:' + (e.code || 'error');
             entry.err = String(e.message || e);
-            rootFailure(stage, stage === 'sdb-handshake' ? transportCode(e) : e.code || 'preflight-failed');
-            persist();
+            var code = stage === 'sdb-handshake' ? transportCode(e) : e.code || 'preflight-failed';
+            rootFailure(stage, code);
+            // Inside the fast window (see FAST_RETRY_MS) a refused handshake is not counted, and the same failure again is not logged again.
+            var failure = stage + ':' + code, repeat = fastRetry() && failure === lastFailure;
+            lastFailure = failure;
+            if (!fastRetry()) launchFailures++;
+            if (!repeat) persist();
             scheduleRelaunch();
         });
 }
@@ -479,8 +525,11 @@ function agentExecute(cmd, timeoutMs) {
 }
 
 function status() {
-    return Object.assign({}, state, { mode: 'tv-integration', agentLog: agentServer ? agentServer.log : [] });
+    return Object.assign({}, state, { mode: 'tv-integration', agentLog: agentServer ? agentServer.log : [],
+        timing: {firstConnect: timing.firstConnect, reconnect: timing.reconnect, losses: timing.losses} });
 }
+// fn(true) when the agent connects, fn(false) when it is lost. The service uses it to restore the remote bridge at once.
+function onAgent(fn) { if (typeof fn === 'function') agentListeners.push(fn); }
 function stop() {
     state.running = false;
     rootPhase('stopped');
@@ -497,6 +546,7 @@ function stop() {
     state.sdbTunnel = { listening: false };
     launching = false;
     launchFailures = 0;
+    lossHr = null; lastFailure = null; loss = null; attemptTimes = null;
     state.agent = {connected: false};
 }
 function install(packageId, wgtPath) {
@@ -519,5 +569,5 @@ function setApplicationsEnabled(appIds, enabled) {
         return agentExecute(command, 60000);
     } catch (error) { return Promise.reject(error); }
 }
-module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute,
+module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute, onAgent: onAgent,
     sdbAccess: sdbAccess, setSdbAccess: setSdbAccess, install: install, setApplicationsEnabled: setApplicationsEnabled};

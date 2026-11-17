@@ -12,8 +12,8 @@ apps.push({appId:'com.samsung.tv.acr-service-app',packageId:'com.samsung.tv.acr-
 // Quick settings are split in horizontal tabs, one panel each, with the usual tab semantics
 assert.match(html,/<div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings">/);
 const qtabs=[...html.matchAll(/data-quick-tab="(\w+)" aria-controls="quickPanel-(\w+)" aria-selected="(true|false)" tabindex="(0|-1)"/g)];
-assert.deepEqual(qtabs.map(m=>m[1]),['general','privacy','voice','memory','developer']);assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
-assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1'],'roving tabindex');
+assert.deepEqual(qtabs.map(m=>m[1]),['general','privacy','voice','memory','uninstall','developer'],'Uninstall comes right after Disable');assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
+assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1','-1'],'roving tabindex');
 ['quickTracking','quickVoice','quickMemory','quickKeep','quickStorage','quickControl'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
 assert.ok(!html.includes('qtab-home')&&!html.includes('quickPanel-home')&&!html.includes('id="quickHome"'),'Quick settings has no Home tab any more');
 let restoreDone=false;
@@ -22,6 +22,7 @@ const restoreState=()=>({ok:true,pending:restoreDone?0:2,notes:['Packages remove
  {id:'groups',label:'Quick settings groups',detail:'Switches on the components of the groups.',state:restoreDone?'clean':'changed',count:3},
  {id:'hbbtv',label:'HbbTV',detail:'x',state:'clean'}]});
 let keepPost=null;const calls=[];
+let uninstallItems=[],uninstallFail=false,uninstallGetError=null;
 const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},console,setTimeout(fn){return 1},clearTimeout(){},setInterval(){},
  fetch:async(url,opts)=>{const body=opts&&opts.body?JSON.parse(opts.body):null;calls.push({url,body});let data={};
   if(url.startsWith('/apps'))data={apps,summary:{total:apps.length},source:'package registry + public probe'};
@@ -40,11 +41,16 @@ const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector
   else if(url==='/restore'&&body.action==='run'){restoreDone=true;data={ok:true,complete:true,steps:[{id:'launcher',label:'Launcher',status:'done',message:'Launcher off; Samsung’s Home is back.'},{id:'dns',label:'DNS blocking',status:'skipped',message:'Nothing to put back.'}],remaining:[],notes:[]};}
   else if(url==='/restore'&&body.action==='erase')data={ok:true,left:0};
   else if(url==='/input')data={devices:[],status:{policy:{mode:'off'},events:[]}};else if(url==='/remap')data={rules:[]};
+  else if(url==='/quick/uninstall'&&!body)data=uninstallGetError?{items:[],error:uninstallGetError}:{items:uninstallItems};
+  else if(url==='/quick/uninstall'&&uninstallFail){data={ok:false,id:body.id,label:'x',removed:['com.samsung.tv.tvplus'],error:'Could not remove w2VwCK465D.OTApp.',items:uninstallItems};return {ok:false,status:500,json:async()=>data};}
+  else if(url==='/quick/uninstall'){uninstallItems=uninstallItems.filter(i=>i.id!==body.id);data={ok:true,id:body.id,label:'x',removed:['p'],error:null,items:uninstallItems};}
   return {ok:true,json:async()=>data};}};
 vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
 const tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{await tick();await tick();
  assert.equal(sandbox.currentPanel,'quick','Quick settings is the first panel');
+ // Each tab reads what it shows when it opens (General at start); the checks below look at every tab, so they are opened first
+ for(const t of ['privacy','memory','developer','general']){sandbox.showQuickTab(t);await tick();await tick();}
  assert.ok(!calls.some(c=>c.url.startsWith('/monitor')),'no live sampling at start');
  assert.equal(el('appVersion').textContent,'Vetro 9.9.9','the sidebar footer shows the version the service reports');assert.ok(!html.includes('id="count"')&&!html.includes('>TV manager<'),'no app count in the footer and no TV manager tagline');assert.equal(el('connection').textContent,'Connected','the corner under the logo says Connected or Not connected');
  const voice=el('quickVoice').innerHTML;
@@ -55,7 +61,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(memory,/<h3>Stop Ambient<\/h3>/);assert.doesNotMatch(memory,/partial block/,'Ambient is no longer sold as a partial block');assert.match(memory,/Vetro stops screend, ends the app and starts screend again/,'the detail says how it is kept off');
  assert.match(memory,/Partly done · Samsung started it again/,'chosen but running again is shown as partly done');assert.doesNotMatch(memory,/data-win-switch="ambient" checked/);
  const tracking=el('quickTracking').innerHTML;
- assert.match(tracking,/<h3>Stop viewing-data collection<\/h3>/);assert.match(tracking,/data-win-switch="telemetry" checked/,'collection services stopped: the switch is on');assert.match(tracking,/Done · recognition and logging stopped; data-service may still run/);
+ assert.match(tracking,/<h3>Stop viewing-data collection<\/h3>/);assert.match(tracking,/data-win-switch="telemetry" checked/,'collection services stopped: the switch is on');assert.match(tracking,/Done · data-service may still run/);
  assert.match(tracking,/Uploads can resume · turn on Enable DNS blocking/,'the DNS entry is not applied: the state says so');assert.match(tracking,/lcprd1\.samsungcloudsolution\.net/);
  assert.match(tracking,/Disable advertising and tracking services/);assert.match(tracking,/Partly done · 2 of 3 components still enabled/,'the Smart Hub ad agent (role keep) is not a member');
  assert.doesNotMatch(tracking,/coba\.adagent/);
@@ -83,7 +89,14 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(html,/id="qtab-memory"[^>]*>Disable</);assert.doesNotMatch(html,/>Free memory</);assert.match(html,/Disable what you don’t use/);
  assert.match(el('quickMemory').innerHTML,/<h3>Disable AirPlay<\/h3>/);assert.match(el('quickMemory').innerHTML,/data-win-switch="airplay"(?! checked)/,'AirPlay running: its switch is off');
  assert.match(el('quickMemory').innerHTML,/Casting from an Apple device to this TV does not work while this is on/);
- assert.doesNotMatch(el('quickMemory').innerHTML,/Keep removed apps removed/,'it is a General setting, not in the Disable tab');assert.match(el('quickKeep').innerHTML,/<h3>Keep removed apps removed<\/h3>/);assert.match(el('quickKeep').innerHTML,/data-keep-switch[^>]*checked/);assert.match(el('quickKeep').innerHTML,/On · 2 apps on the list/);
+ // Apps you don't use: an app on the TV is drawn with its switch; one that is not on the TV is left out, and with none the group goes
+ sandbox.quickGroups.push({id:'test-app-on',label:'Netflix',section:'apps',ids:['org.tizen.netflix-app'],description:''},{id:'test-app-off',label:'Gallery',section:'apps',ids:['com.samsung.tv.gallery-absent'],description:''});
+ sandbox.inventory.push({appId:'org.tizen.netflix-app',packageId:'org.tizen.netflix-app',name:'Netflix',disabled:false,area:'other',role:'optional'});sandbox.renderQuick();
+ assert.match(el('quickApps').innerHTML,/<h3>Netflix<\/h3>[\s\S]*data-quick-toggle="test-app-on"/,'an app group on the TV is drawn with its switch');assert.equal(el('quickAppsGroup').hidden,false);
+ assert.doesNotMatch(el('quickApps').innerHTML,/test-app-off/,'an app group that is not on the TV is not drawn');
+ sandbox.quickGroups.splice(-2,2);sandbox.inventory.pop();sandbox.renderQuick();assert.equal(el('quickAppsGroup').hidden,true,'no app on the TV, no group');
+ await sandbox.loadKeep();   // read by the Uninstall tab, which the checks further down open on their own
+ assert.doesNotMatch(el('quickMemory').innerHTML,/Keep removed apps removed/,'it sits in the Uninstall tab, not in the Disable tab');assert.match(el('quickKeep').innerHTML,/<h3>Keep removed apps removed<\/h3>/);assert.match(el('quickKeep').innerHTML,/data-keep-switch[^>]*checked/);assert.match(el('quickKeep').innerHTML,/On · 2 apps on the list/);
  assert.match(el('quickKeep').innerHTML,/data-keep-allow="MCmYXNxgcu"/);assert.match(el('quickKeep').innerHTML,/select Allow again first/);
  const kp={dataset:{keepSwitch:''},checked:false};await el('quick').onchange({target:kp});await tick();await tick();
  assert.deepEqual(keepPost,{action:'disable'},'the global switch posts enable or disable');
@@ -126,5 +139,33 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(el('quickRemove').innerHTML,/Delete Vetro’s saved data on the TV\?/);assert.ok(!calls.some(c=>c.url==='/restore'&&c.body&&c.body.action==='erase'),'erasing needs confirmation');
  await el('quick').onclick({target:{closest:()=>({dataset:{eraseConfirm:''}})}});await tick();await tick();
  assert.ok(calls.some(c=>c.url==='/restore'&&c.body&&c.body.action==='erase'));assert.match(el('quickRemove').innerHTML,/saved data was removed/);
+ // Uninstall: its own tab after Disable, read when it opens; the rows are the items the service sends and nothing else
+ assert.match(html,/data-quick-tab="memory"[^>]*>Disable<\/button><button[^>]*data-quick-tab="uninstall"[^>]*>Uninstall<\/button>/,'Uninstall sits right after Disable');
+ for(const [id,other] of [['quickPanel-memory','uninstall'],['quickPanel-uninstall','memory']]){const panel=new RegExp('id="'+id+'"[\\s\\S]*?</div>\\n').exec(html)[0];
+  assert.match(panel,/Disable<\/(strong|button)>: switched off, still on the TV\. One switch brings it back\./,id+' says what Disable does');assert.match(panel,/Uninstall<\/(strong|button)>: deleted from the TV\. Frees space\. Not undone from here\./,id+' says what Uninstall does');
+  assert.match(panel,new RegExp('data-quick-goto="'+other+'"'),'the other tab is a link');}
+ assert.match(html,/id="quickPanel-uninstall"[\s\S]*?id="quickKeep"/,'Keep removed apps removed sits with Uninstall');
+ assert.ok(!calls.some(c=>c.url==='/quick/uninstall'),'nothing is read before the tab opens');
+ uninstallItems=[{id:'netflix',label:'Netflix',appId:'org.tizen.netflix-app',size:87031808,disabled:true,packages:[{packageId:'org.tizen.netflix-app'}]},
+  {id:'tvplus',label:'Samsung TV Plus',appId:'com.samsung.tv.tvplus',size:null,disabled:false,note:'Its background services stay.',packages:[{packageId:'a'},{packageId:'b'},{packageId:'c'}]}];
+ el('quickTabs').onclick({target:{closest:()=>({dataset:{quickTab:'uninstall'}})}});await tick();await tick();
+ let un=el('quickUninstall').innerHTML;
+ assert.equal((un.match(/data-uninstall-ask=/g)||[]).length,2,'one row per item the service sends');assert.doesNotMatch(un,/Prime Video|Gallery/,'the page adds nothing');
+ assert.match(un,/<h3>Netflix <small>83 MB<\/small><\/h3>/);assert.match(un,/class="chip">Disabled</);assert.match(un,/<h3>Samsung TV Plus<\/h3>/,'no size when the service has none');assert.match(un,/Its background services stay\./);
+ el('quick').onclick({target:{closest:()=>({dataset:{uninstallAsk:'netflix'}})}});
+ assert.ok(!calls.some(c=>c.url==='/quick/uninstall'&&c.body),'the first press sends nothing');
+ assert.match(el('quickUninstall').innerHTML,/Uninstall Netflix\?<\/strong> It is deleted from the TV, freeing 83 MB\. To have it again, install it from Samsung’s Apps\./);assert.match(el('quickUninstall').innerHTML,/data-uninstall-confirm="netflix">Uninstall Netflix</);
+ await el('quick').onclick({target:{closest:()=>({dataset:{uninstallConfirm:'netflix'}})}});await tick();await tick();await tick();
+ assert.deepEqual(calls.find(c=>c.url==='/quick/uninstall'&&c.body).body,{id:'netflix'},'the confirmation sends the id');
+ assert.doesNotMatch(el('quickUninstall').innerHTML,/data-uninstall-ask="netflix"/,'drawn from the answer: the row is gone');assert.match(el('quickUninstall').innerHTML,/Netflix uninstalled\./);
+ assert.equal(sandbox.operationEntries[0].label,'Uninstall Netflix');
+ uninstallFail=true;el('quick').onclick({target:{closest:()=>({dataset:{uninstallAsk:'tvplus'}})}});
+ await el('quick').onclick({target:{closest:()=>({dataset:{uninstallConfirm:'tvplus'}})}});await tick();await tick();await tick();
+ un=el('quickUninstall').innerHTML;
+ assert.match(un,/data-uninstall-ask="tvplus"/,'a failed answer keeps the row');assert.match(un,/row-error[^>]*>Could not remove w2VwCK465D\.OTApp\. Part of it was removed \(1 of 3\)\./,'with the error and what was removed');
+ uninstallItems=[];await sandbox.loadUninstall();
+ assert.match(el('quickUninstall').innerHTML,/Nothing on this TV to uninstall from here\. <button[^>]*data-quick-open="apps"[^>]*>Apps and processes<\/button> lists every app\./,'empty list');
+ uninstallGetError='The app list could not be read';await sandbox.loadUninstall();un=el('quickUninstall').innerHTML;
+ assert.match(un,/alert-row[\s\S]*The app list could not be read[\s\S]*data-uninstall-retry/,'an error is the only thing in the list, with Retry');assert.doesNotMatch(un,/Nothing on this TV|data-uninstall-ask/);
  console.log('PASS quick UI: wins read as done or not, partial states, new switches, microphone confirmation, shared inventory, cleanup confirmation');
 })().catch(e=>{console.error(e);process.exitCode=1});

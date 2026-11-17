@@ -128,10 +128,11 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     // The Control center: one switch per card on the Launcher tab, one for the whole in the overview, the hint under the bar in the preview,
     // the panel's preview, and a note when a shortcut of the user's holds Down or OK. An older service's Task manager switch reads as that card.
     sandbox.dockData = Object.assign({}, dock, {enabled: true, mode: 'vetro', taskManager: false, cards: [], cardChoices: ['tasks', 'audio'], maxCards: 3}); sandbox.renderDock();
-    let launcher = el('dockBody').innerHTML;
-    assert.match(launcher, /data-quick-item="control-center"/); assert.match(launcher, /data-dock-card="tasks"/); assert.match(launcher, /data-dock-card="audio"/); assert.match(launcher, /By zabique/);
+    let launcher = el('dockBody').innerHTML, cards = el('dockCards').innerHTML;
+    assert.match(cards, /data-quick-item="control-center"/); assert.match(cards, /data-dock-card="tasks"/); assert.match(cards, /data-dock-card="audio"/); assert.match(cards, /By zabique/);
+    assert.doesNotMatch(launcher, /data-dock-card|data-quick-item="control-center"/, 'the Control center has its own sub-tab, apart from the customization');
     assert.doesNotMatch(launcher, /lp-hint-below/, 'off: the bar has no hint under it');
-    assert.match(launcher, /aria-label="The launcher’s Control center/);
+    assert.match(cards, /aria-label="The launcher’s Control center/);
     sandbox.dockData = Object.assign({}, sandbox.dockData, {taskManager: true, cards: ['tasks']}); sandbox.renderDock();
     launcher = el('dockBody').innerHTML;
     assert.match(launcher, /class="lp lp-tasks"/); assert.match(launcher, /Task manager ˅/, 'one card: its own name under the bar');
@@ -141,14 +142,18 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['tasks', 'audio'], cardChoices: ['tasks', 'audio']}, 'tasks', false)), ['audio'], 'and off leaves the others');
     assert.deepEqual(Array.from(sandbox.dockCards({taskManager: true})), ['tasks'], 'an older service: the Task manager switch is that card');
     sandbox.uiRules = [{id: 'physical_108', enabled: true, trigger: {type: 'physical', value: '108'}, actions: [{type: 'launch', appId: 'org.example.down'}]}]; sandbox.renderDock();
-    assert.match(el('dockBody').innerHTML, /A shortcut of yours uses Key Down \(108\) opens org\.example\.down\. While the remote interception is on, the launcher never gets that key/);
+    assert.match(el('dockCards').innerHTML, /A shortcut of yours uses Key Down \(108\) opens org\.example\.down\. While the remote interception is on, the launcher never gets that key/);
     sandbox.dockData = Object.assign({}, sandbox.dockData, {enabled: false, mode: 'custom', customApp: 'org.example.app'}); sandbox.renderDock();
-    assert.match(el('dockBody').innerHTML, /Only in the Vetro launcher/);
+    assert.match(el('dockCards').innerHTML, /Only in the Vetro launcher/);
     sandbox.uiRules = []; sandbox.dockData = Object.assign({}, dock, {taskManager: false, cards: []}); sandbox.renderUi();
     assert.match(el('uiOverview').innerHTML, /data-ui-tasks/);
     const sent = calls.length;
     await el('uiOverview').onchange({target: {dataset: {uiTasks: ''}, checked: true}}); await tick(8);
-    assert.deepEqual(calls.slice(sent).find(c => c.url === '/dock' && c.body).body, {action: 'cards', cards: ['tasks']});
+    assert.deepEqual(calls.slice(sent).find(c => c.url === '/dock' && c.body).body, {action: 'cards', cards: Array.from(sandbox.rememberedCards())}, 'on brings back the cards that were chosen');
+    sandbox.dockCards({cards: ['audio', 'tasks']});
+    assert.deepEqual(Array.from(sandbox.rememberedCards()), ['audio', 'tasks'], 'the last choice is remembered, in its order');
+    sandbox.dockCards({cards: []});
+    assert.deepEqual(Array.from(sandbox.rememberedCards()), ['audio', 'tasks'], 'switching the Control center off does not forget it');
     // A part switched off in Vetro Shards says so.
     sandbox.dockData = null; sandbox.dockError = 'Vetro Launcher is not running'; sandbox.renderUi();
     assert.match(el('uiOverview').innerHTML, /Vetro Launcher is switched off in Vetro Shards\. Turn it on there to use this part\./);

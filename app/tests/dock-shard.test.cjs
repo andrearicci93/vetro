@@ -25,7 +25,7 @@ function fixture(shards, extra) {
         tv.scripts.push(cmd);
         if (/^app_launcher -s /.test(cmd)) { tv.launched.push(cmd.slice(16)); return {exit_code: 0, stdout: ''}; }
         if (/^app_launcher -k /.test(cmd)) return {exit_code: 0, stdout: ''};
-        const script = Buffer.from(cmd.split(' ')[1], 'base64').toString();
+        const script = /^echo \S+ \| base64 -d \| sh$/.test(cmd) ? Buffer.from(cmd.split(' ')[1], 'base64').toString() : cmd;   // the running check goes unwrapped
         if (script.includes('vconftool get')) return {exit_code: 0, stdout: 'x, value = 0 (Int32)\n'};
         if (script.includes('vconftool set')) return {exit_code: 0, stdout: ''};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: HOME_DATA};

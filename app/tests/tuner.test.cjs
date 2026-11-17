@@ -13,14 +13,14 @@ function fixture(options) {
     if (options.installed !== false) {
         fs.mkdirSync(path.join(dir, 'res'), {recursive: true});
         fs.writeFileSync(path.join(dir, 'vetro-tuner.dll'), 'x');
-        fs.writeFileSync(path.join(dir, 'res', 'dock_bg.png'), 'x');
+        fs.writeFileSync(path.join(dir, 'res', 'veil_corner.png'), 'x');
     }
     const tv = {running: options.running === true, scripts: [], neverStarts: options.neverStarts === true, clock: 1000000, log: options.log || '',
         client: options.client !== false, tvs: options.tvs !== false, dotnet: options.dotnet !== false, viewer: options.viewer !== false, pipe: options.pipe !== false, sent: [], starts: 0, stops: 0,
         failProbe: options.failProbe === true};
     const execute = async function (cmd) {
         tv.scripts.push(cmd);
-        const script = Buffer.from(cmd.split(' ')[1], 'base64').toString();
+        const script = /^echo \S+ \| base64 -d \| sh$/.test(cmd) ? Buffer.from(cmd.split(' ')[1], 'base64').toString() : cmd;   // the running check goes unwrapped
         if (script.includes('systemd-run')) { tv.starts++; tv.started = script; tv.running = !tv.neverStarts; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('echo "tuner=')) {
             if (tv.failProbe) throw new Error('agent gone');
@@ -29,7 +29,8 @@ function fixture(options) {
         }
         if (script.includes('kill -9')) { tv.running = false; tv.stops++; return {exit_code: 0, stdout: ''}; }
         if (script.includes('[ -p ' + CONTROL + ' ]')) {
-            const word = /echo (\w+) > /.exec(script)[1];
+            const word = /echo (\w+) >&3/.exec(script)[1];
+            assert.ok(script.includes('[ -d /proc/$p ]') && script.includes('exec 3<>' + CONTROL), 'the word goes only to a live tuner, through a write that cannot wait');
             if (tv.pipe && tv.running) { tv.sent.push(word); return {exit_code: 0, stdout: 'sent\n'}; }
             return {exit_code: 0, stdout: 'none\n'};
         }
@@ -111,7 +112,7 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // Samsung's app is never closed: an old saved closeSamsung option is ignored and adds nothing to the launch line.
     f = fixture();
     fs.writeFileSync(path.join(f.tmp, 'state.json'), JSON.stringify({enabled: true, since: 1, closeSamsung: true}));
-    assert.deepEqual(f.tuner.readState(), {enabled: true, since: 1, off: []});
+    assert.deepEqual(f.tuner.readState(), {enabled: true, since: 1});
     assert.ok(!f.tuner.startScript().includes('--close-target'));
     assert.equal(typeof f.tuner.setCloseSamsung, 'undefined');
 
@@ -169,19 +170,58 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // A state file that is garbage reads as off.
     f = fixture();
     fs.writeFileSync(path.join(f.tmp, 'state.json'), '{nope');
-    assert.deepEqual(f.tuner.readState(), {enabled: false, since: null, off: []});
-    // Test switches: saved in the state, written as name=0 lines for the tuner, handed to it at start, unknown names refused.
+    assert.deepEqual(f.tuner.readState(), {enabled: false, since: null});
+    // The tuner has no per-part switches: on, it has all its parts. A list of parts left off by an older state is not read,
+    // and the switches file it is started with holds nothing of the kind.
     f = fixture();
-    await assert.rejects(f.tuner.setFeature('nope', false), /Unknown tuner part/);
-    let st = await f.tuner.setFeature('banner', false);
-    st = await f.tuner.setFeature('hold', false);
-    assert.deepEqual(f.tuner.readState().off, ['banner', 'hold']);
-    assert.equal(fs.readFileSync(path.join(f.tmp, 'features'), 'utf8'), 'banner=0\nhold=0\n');
-    assert.equal(st.features.filter(x => !x.on).map(x => x.id).join(), 'banner,hold');
-    assert.ok(f.tuner.startScript().includes(' --features ' + "'" + path.join(f.tmp, 'features') + "'"));
-    await f.tuner.setFeature('banner', true);
-    assert.equal(fs.readFileSync(path.join(f.tmp, 'features'), 'utf8'), 'hold=0\n');
-    await f.tuner.setFeature('hold', true);
+    fs.writeFileSync(path.join(f.tmp, 'state.json'), JSON.stringify({enabled: true, since: 1, off: ['banner', 'hold']}));
+    assert.deepEqual(f.tuner.readState(), {enabled: true, since: 1});
+    f.tuner.writeFeatures();
     assert.equal(fs.readFileSync(path.join(f.tmp, 'features'), 'utf8'), '');
+    assert.equal(typeof f.tuner.setFeature, 'undefined');
+    assert.ok(!('features' in (await f.tuner.status())), 'the status lists no parts');
+    assert.ok(f.tuner.startScript().includes(' --features ' + "'" + path.join(f.tmp, 'features') + "'"));
+    // Reduce motion is the launcher's setting: the tuner's switches file carries it, and it is not one of the tuner's own switches.
+    f = fixture();
+    let still = false;
+    f.tuner.noMotion = () => still;
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), '');
+    still = true;
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), 'motion=0\n');
+    f.tuner.noMotion = () => { throw new Error('launcher state unreadable'); };
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), '', 'an unreadable launcher state leaves motion on');
+
+    // A start script that outlives its wait is not a failed start when the tuner comes up from it (#179, as the launcher);
+    // a warning left by a failed round clears once the tuner is seen running.
+    f = fixture();
+    await f.tuner.enable();
+    f.tv.running = false; f.tuner.nextTry = 0;
+    const exec = f.tuner.execute;
+    f.tuner.execute = async (cmd, ms) => { const r = await exec(cmd, ms); return Buffer.from(cmd.split(' ')[1], 'base64').toString().includes('systemd-run') ? {exit_code: null, timed_out: true, stdout: ''} : r; };
+    assert.equal(await f.tuner.supervise(true), 'started');
+    assert.equal(f.tuner.lastError, null);
+    f.tuner.execute = exec;
+    f.tv.running = false; f.tv.neverStarts = true; f.tuner.nextTry = 0;
+    assert.equal(await f.tuner.supervise(true), 'failed');
+    assert.ok(f.tuner.lastError);
+    f.tv.running = true; f.tuner.nextTry = 0;
+    assert.equal(await f.tuner.supervise(true), 'running');
+    assert.equal(f.tuner.lastError, null, 'the earlier warning clears once the tuner is seen running');
+
+    // A tuner started by another build of Vetro is restarted once (the package installed again over a running one).
+    f = fixture();
+    await f.tuner.enable();
+    const before = f.tv.starts;
+    f.tuner.build = '0.5.1+abc'; f.tuner.startedHere = false;
+    assert.equal(await f.tuner.supervise(true), 'started');
+    assert.equal(f.tv.starts, before + 1);
+    assert.equal(f.tuner.readState().build, '0.5.1+abc');
+    assert.equal(await f.tuner.supervise(true), 'running');
+    await f.tuner.restartAfterUpdate();
+    assert.equal(f.tv.starts, before + 1, 'not started twice for the same build');
+
     console.log('tuner: ok');
 })().catch(e => { console.error(e); process.exit(1); });

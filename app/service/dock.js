@@ -59,16 +59,35 @@ var START_WAIT_MS = 15000;
 var BOOT_WAIT_MS = 75000;                             // a start in the first minutes after a TV boot is slow
 var BOOT_WINDOW_S = 300;
 var RETRY_FIRST_MS = 30000;
+var RETRY_BOOT_MS = 10000;                            // first retry inside the boot window: the TV is still busy, not broken
+var BOOT_GATE_MS = 60000;                             // other boot tasks wait for the dock at most this long after the agent connects
 var RETRY_MAX_MS = 300000;
 // Nothing opens the chosen app but the headless process, so one that keeps failing to start must not leave the Home
 // key dead: after this many failed tries (about 12 minutes of back-off) the service turns the mode off and Samsung's
 // Home answers the key again. A start the agent could not attempt does not count.
 var CUSTOM_MAX_FAILURES = 6;
-var APP_CHECK_ROUNDS = 6;                              // the chosen app is looked up every 6th supervision round (about a minute)
+var APP_CHECK_MS = 60000;                              // the chosen app is looked up about once a minute (by time: the supervision slows down)
 var APP_GONE_ROUNDS = 2;                               // and given up on when two lookups in a row say it is gone
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
+
+// The cheap "is it running" check: the pid file, then the command line of that pid, read with shell builtins only (no
+// pipe, no other program), sent as one line without the base64 wrapper, so the root agent starts one shell and nothing
+// else (the full probe below starts about ten processes). Same meaning as the probe: the pid is alive AND its command
+// line holds our dll. The command line is NUL-separated and bash 3.2 (the TV's sh) keeps only its first field with a
+// plain read, so each field is read on its own (read -d ''). A pid that is alive but did not match is reported as
+// other=<pid>: the caller then asks the full probe, so a shell that cannot read the fields only costs the full probe.
+function runningCheck(pidFile, dll, tag) {
+    return 'p=; [ -r ' + pidFile + ' ] && read -r p < ' + pidFile + '; f=; a=; case "$p" in \'\'|*[!0-9]*) p= ;; *) ' +
+        '[ -r /proc/$p/cmdline ] && while IFS= read -r -d \'\' a || [ -n "$a" ]; do case "$a" in *' + dll + '*) f=1; break ;; esac; a=; done < /proc/$p/cmdline ;; esac; ' +
+        'if [ -n "$f" ]; then echo "' + tag + '=$p"; else echo "' + tag + '="; [ -n "$p" ] && [ -d /proc/$p ] && echo "other=$p"; fi; true';
+}
+var CHECK_OTHER_RE = /^other=(\d+)$/m;
+function parseCheck(out, re) {
+    var pid = re.exec(out), other = CHECK_OTHER_RE.exec(out);
+    return {running: !!pid, pid: pid ? +pid[1] : null, other: other ? +other[1] : null, cheap: true};
+}
 
 var SOURCE_OPTION_KEYS = ['showHomeSources', 'useSourceImages'];
 function legacySourceUsage(file, images) {
@@ -94,12 +113,18 @@ function Dock(options) {
     this.home = options.home || null;
     this.appCheck = options.appCheck || null;
     this.onVolumeChange = options.onVolumeChange || null;
-    this.checkRound = 0;
+    this.port = options.port || null;                         // the service's port (a number or a function), for the launcher's own calls to Vetro
+    this.build = options.build || null;                       // this Vetro build: a launcher started by another one is restarted (supervise)
+    this.onMotionChange = options.onMotionChange || null;     // Reduce motion changed: the tuner follows the same setting
+    this.appCheckedAt = null;     // this.now() of the last lookup of the custom launcher's app
     this.goneRounds = 0;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
     this.allAppsFile = options.allAppsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-allapps.tsv');
-    this.legacyHomeSources = legacySourceUsage(this.appsFile, false);
-    this.legacySourceImages = legacySourceUsage(this.inputsFile, true);
+    // The one-time migration of the two source options reads both lists; it is read once, and only when a state lacks them.
+    this.legacySources = null;
+    this.stateCache = null;       // the parsed state file and the stat it was read at (readState)
+    this.cheapBroken = false;     // the cheap check said "not ours" for a pid the full probe found running: probe in full from then on
+    this.changes = 0;             // counts starts and stops: the supervision goes back to its short interval when it moves
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.pendingRow = null; this.rowRunning = false; this.rowRetry = null;
     this.rowRetryMs = options.rowRetryMs || 1000;
@@ -108,6 +133,12 @@ function Dock(options) {
     this.busy = false;
     this.failures = 0;
     this.nextTry = 0;
+    // Seconds since the TV booted at which this service process began: says whether this run of the service is the one
+    // that came up with the TV (boot tasks, closing Samsung's idle Home) or a later restart (an update, a crash).
+    this.serviceStart = options.serviceStart !== undefined ? options.serviceStart : Math.round((this.uptime() - process.uptime()) * 10) / 10;
+    this.timeline = {serviceStart: this.serviceStart};   // seconds since the TV booted, per step of the first start (see mark())
+    this.agentSeenAt = null;     // this.now() when supervise first saw the root agent
+    this.upAt = null;            // this.now() when the dock was first seen running
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
@@ -149,18 +180,38 @@ function rowAfter(before, list, samsungKeys) {
 }
 function stateCards(s) { return s && Array.isArray(s.cards) ? cleanCards(s.cards) : (s && s.taskManager === true ? ['tasks'] : []); }
 
+// Read on every remote key the bridge forwards (volume, 123) and by most routes, so the parsed file is kept and read again
+// only when the file changed: a write through writeState drops it, and a write by anyone else changes the file's inode
+// (atomic writes rename a new file), its size or its modification time. A missing file is read again each time.
+Dock.prototype.readStateFile = function () {
+    var st = fs.statSync(this.stateFile);
+    var key = st.ino + ':' + st.size + ':' + (st.mtimeMs !== undefined ? st.mtimeMs : +st.mtime);
+    if (this.stateCache && this.stateCache.key === key) return this.stateCache.value;
+    var value = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+    this.stateCache = {key: key, value: value};
+    return value;
+};
+
+Dock.prototype.legacy = function (which) {
+    if (!this.legacySources) this.legacySources = {home: legacySourceUsage(this.appsFile, false), images: legacySourceUsage(this.inputsFile, true)};
+    return this.legacySources[which];
+};
+
 Dock.prototype.readState = function () {
     try {
-        var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+        var s = this.readStateFile();
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
-            showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacyHomeSources,
-            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacySourceImages};
+            build: s && typeof s.build === 'string' ? s.build : null,
+            // The cards the Control center had when it was last on: switching it off and on again (the TV screen's Vetro UI tile) brings them back.
+            lastCards: s && Array.isArray(s.lastCards) ? cleanCards(s.lastCards) : [],
+            showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacy('home'),
+            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images')};
     } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
-        showHomeSources: this.legacyHomeSources, useSourceImages: this.legacySourceImages}; }
+        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images')}; }
 };
 
 // Source-option migration must never overwrite an unreadable or malformed existing state.
@@ -214,6 +265,7 @@ Dock.prototype.restoreAutorun = function () {
 // The file also holds `autorunWas`, the only record that Samsung's Autorun Smart Hub was switched off by Vetro: a truncated
 // write would lose it and leave that TV setting off for good. Written whole or not at all, and no temporary file is left behind.
 Dock.prototype.writeState = function (state) {
+    this.stateCache = null;
     try { atomicFile.write(fs, this.stateFile, JSON.stringify(state)); }
     catch (e) { throw new Error('The dock setting could not be saved: ' + e.message); }
 };
@@ -241,6 +293,35 @@ Dock.prototype.probe = function () {
     });
 };
 
+// Only "is it running": {running, pid, other, cheap: true}. See runningCheck().
+Dock.prototype.check = function () {
+    return this.execute(runningCheck(PID_FILE, DLL, 'dock'), 6000).then(function (r) { return parseCheck(check(r, 'Status'), PROBE_DOCK_RE); });
+};
+
+// What the supervision and the start wait use: the cheap check, and the full probe when the check cannot tell (a live pid
+// that did not match). When the full probe then finds that very pid running, the cheap check does not work on this TV and
+// the full probe is used from then on.
+Dock.prototype.runningNow = function () {
+    var self = this;
+    if (this.cheapBroken) return this.probe();
+    return this.check().then(function (c) {
+        self.cheapFails = 0;
+        if (c.running || !c.other) return c;
+        return self.probe().then(function (p) {
+            if (p.running && p.pid === c.other) self.cheapBroken = true;
+            return p;
+        });
+    }, function () {
+        // The check itself failed (a shell that refuses the line, a timeout). The full probe answers instead; when it
+        // works twice in a row where the check did not, the check is given up for this run of the service.
+        return self.probe().then(function (p) {
+            self.cheapFails = (self.cheapFails || 0) + 1;
+            if (self.cheapFails >= 2) self.cheapBroken = true;
+            return p;
+        });
+    });
+};
+
 // The page shows a preview before the launcher has ever been turned on, so the list is read from Samsung's
 // Home once (the same read a start does) when there is none yet. Only the page asks for it; a failed read is
 // not an error here and the page shows an example row instead.
@@ -256,19 +337,44 @@ Dock.prototype.status = function (options) {
     return (options && options.preview ? this.previewList() : Promise.resolve()).then(function () { return self.statusNow(); });
 };
 
+// Boot timeline: seconds since the TV booted at which each step of the first start happened. Kept in memory and shown
+// with the status, so one reboot is enough to see where the time goes. Each step is recorded once.
+Dock.prototype.up = function () { if (this.upAt === null) { this.upAt = this.now(); this.mark('running'); } };
+
+Dock.prototype.mark = function (step, value) {
+    if (this.timeline[step] === undefined) this.timeline[step] = value === undefined ? Math.round(this.uptime() * 10) / 10 : value;
+};
+
+// True when other boot tasks may use the (serial) root agent: the launcher is off or already up, or it has had
+// BOOT_GATE_MS since the agent connected. Their long commands would otherwise queue in front of the dock's start.
+Dock.prototype.bootSettled = function () {
+    try {
+        var state = this.readState();
+        if ((!state.enabled && !state.customApp) || !this.installed()) return true;
+        if (this.upAt !== null) return true;
+        return this.agentSeenAt !== null && this.now() - this.agentSeenAt > BOOT_GATE_MS;
+    } catch (e) { return true; }      // it runs inside timers: never throw, never hold the other boot tasks back by mistake
+};
+
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: state.cards, cardChoices: CARDS.slice(), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
-        entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch};
+        entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
+        runningCheck: this.cheapBroken ? 'full' : 'cheap'};   // which check the supervision uses (see runningNow)
     return this.probe().then(function (p) {
         return Object.assign(base, {running: p.running, pid: p.pid, samsungHome: p.samsungHome, log: p.log});
     }).catch(function (e) {
         return Object.assign(base, {running: null, pid: null, samsungHome: null, log: '', probeError: e.message});
     });
 };
+
+function servicePort(port) {
+    var n = typeof port === 'function' ? port() : port;
+    return typeof n === 'number' && n % 1 === 0 && n >= 1024 && n <= 65535 ? n : null;
+}
 
 // The launch line. Paths are fixed constants or come from this package's own folder, and are quoted.
 //
@@ -284,6 +390,8 @@ Dock.prototype.startScript = function () {
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         (!state.customApp && fs.existsSync(this.allAppsFile) ? ' --all-apps ' + q(this.allAppsFile) : '') +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
+        // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
+        (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
         (state.cards.length && !state.customApp ? ' --cards ' + state.cards.join(',') : ' --no-tasks');
@@ -324,11 +432,20 @@ Dock.prototype.writeCatalog = function () {
 // alive is not a failure: it gets a long wait, and the next supervision tick finds it by its pid.
 Dock.prototype.waitRunning = function () {
     var self = this, deadline = this.now() + (this.uptime() < BOOT_WINDOW_S ? BOOT_WAIT_MS : START_WAIT_MS);
+    // One probe that fails (the agent reconnecting, a probe out of time while the TV is busy) is not the dock failing to
+    // start: it counts as "not seen yet". The wait between probes grows (1, 2, 3 s): each probe is a handful of processes
+    // on a TV that is already busy starting.
+    // Each poll is the cheap check (one shell); the full probe comes last, for its log lines and as the last word.
+    var round = 0;
+    function full(p) { return p.cheap ? self.probe().catch(function () { return {running: false, log: ''}; }) : Promise.resolve(p); }
     function poll() {
-        return self.probe().then(function (p) {
+        return self.runningNow().catch(function () { return {running: false, log: ''}; }).then(function (p) {
             if (p.running) return p;
-            if (self.now() > deadline) throw new Error('The dock did not start. ' + (p.log ? 'Last log lines: ' + p.log.split('\n').slice(-2).join(' | ') : 'It wrote no log.'));
-            return self.sleep(1000).then(poll);
+            if (self.now() > deadline) return full(p).then(function (f) {
+                if (f.running) return f;
+                throw new Error('The dock did not start. ' + (f.log ? 'Last log lines: ' + f.log.split('\n').slice(-2).join(' | ') : 'It wrote no log.'));
+            });
+            return self.sleep(Math.min(3000, 1000 * ++round)).then(poll);
         });
     }
     return this.sleep(1500).then(poll);
@@ -338,10 +455,25 @@ Dock.prototype.waitRunning = function () {
 // slow Home read does not sit in front of the dock, and the list is refreshed once the dock is up.
 Dock.prototype.launch = function (quick) {
     var self = this, custom = this.readState().customApp, saved = !custom && quick && this.hasSavedApps();
+    this.changes++;
     return (custom ? this.writeCustomList(custom) : saved ? Promise.resolve() : this.writeCatalog()).then(function () {
-        return self.execute(wrap(self.startScript()), 10000);
-    }).then(function (r) { check(r, 'Start'); return self.waitRunning(); }).then(function (p) {
+        // Right after a boot systemd answers slowly, so the start script gets the long wait; a start that still runs
+        // out of time is not a failure either (the dock usually comes up from that same attempt): waitRunning() decides.
+        self.mark('startIssued');
+        var boot = self.uptime() < BOOT_WINDOW_S, t0 = self.now();
+        return self.execute(wrap(self.startScript()), boot ? BOOT_WAIT_MS : 10000).then(function (r) {
+            self.mark('startCallMs', self.now() - t0);
+            return r;
+        });
+    }).then(function (r) {
+        if (r && r.timed_out) self.mark('startTimedOut', true); else check(r, 'Start');
+        return self.waitRunning();
+    }).then(function (p) {
         if (saved) self.refreshPending = true;
+        // Which build of Vetro started this process (see supervise): never a reason to fail a start that worked.
+        // Kept in memory too: if the state cannot be saved, the launcher must still be restarted only once per run.
+        self.startedHere = true;
+        if (self.build) { try { if (self.readState().build !== self.build) self.patchState({build: self.build}); } catch (e) {} }
         return p;
     });
 };
@@ -369,10 +501,29 @@ Dock.prototype.setShards = function (host) {
         self.shardTimer = setTimeout(function () {
             self.shardTimer = null;
             if (self.busy) { self.refreshPending = true; return; }
-            self.refresh().catch(function () { /* the next change or the page's rebuild button tries again */ });
+            // Plugins start with the service, so this runs at every service start: when the row already shows what
+            // the plugins claim, there is nothing to rebuild and the launcher must not be restarted for it.
+            if (self.claimsShown()) return;
+            // A rebuild that fails here (the root agent not connected yet, right after a service restart) is tried again
+            // by the supervision once the launcher is seen running; it is not an error to show on the Launcher page.
+            self.refresh().catch(function () { self.refreshPending = true; self.lastError = null; });
         }, 1500);
         if (self.shardTimer.unref) self.shardTimer.unref();
     });
+};
+
+// True when the saved row marks as taken exactly the apps that running plugins claim now.
+Dock.prototype.claimsShown = function () {
+    var claimed;
+    try { claimed = this.shards.intercepted() || {}; } catch (e) { return false; }
+    var entries = this.entries();
+    if (!entries.length) return false;
+    for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        if (e.system || e.panel || e.source !== null) continue;
+        if (e.shard !== Object.prototype.hasOwnProperty.call(claimed, e.appId)) return false;
+    }
+    return true;
 };
 
 // The tile of this slug when a plugin has taken it over, else null.
@@ -434,6 +585,7 @@ Dock.prototype.enable = function () {
 
 Dock.prototype.stopDock = function () {
     var self = this;
+    this.changes++;
     return this.execute(wrap(this.stopLines()), 8000).then(function (r) { check(r, 'Stop'); }).then(function () {
         // Best effort: Samsung's Home needs its preview updater back once the dock no longer covers it.
         return self.execute(wrap(PREVIEW_ON), 8000).catch(function () {});
@@ -463,6 +615,29 @@ Dock.prototype.refresh = function () {
     return this.launch().then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message; throw e;
     }).finally(function () { self.busy = false; });
+};
+
+// For a setting that restarts the launcher. When the restart is not seen in time, the setting is put back (undo) only if
+// the launcher really is not running: one that came up late was started with the NEW setting, and putting the old one
+// back would leave the saved setting and the running process disagreeing, under an error that nothing clears.
+Dock.prototype.refreshOr = function (undo) {
+    var self = this;
+    return this.refresh().catch(function (e) {
+        return self.runningNow().then(function (p) { return !!p.running; }, function () { return false; }).then(function (running) {
+            if (running) { self.lastError = null; return self.status(); }
+            try { undo(); } catch (e2) {}
+            throw e;
+        });
+    });
+};
+
+// After a self-update: the launcher is started again with the new files, unless the supervision has already done it
+// (it restarts a launcher that another build started).
+Dock.prototype.restartAfterUpdate = function () {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    if (!this.build || (this.readState().build !== this.build && !this.startedHere)) return this.refresh();
+    return this.runningNow().then(function (p) { return p.running ? self.status() : self.refresh(); });
 };
 
 // ---- Custom launcher: the user's own app on the Home key --------------------------------------------------------
@@ -577,13 +752,15 @@ Dock.prototype.leaveCustom = function (options) {
 // The chosen app is gone (uninstalled or disabled) or the process cannot be started: the Home key goes back to Samsung.
 Dock.prototype.giveUpCustom = function (reason) {
     var self = this;
+    // The mode ends here without enable/disable being called: the remote bridge must be told too, or it keeps holding
+    // back the volume and 123 keys for a launcher that is no longer there to answer them.
     return this.leaveCustom().then(function () {
         self.lastError = 'The custom launcher was turned off and Samsung’s Home answers the Home key again: ' + reason;
         return 'reverted';
     }, function (e) {
         self.lastError = reason + ' Samsung’s Home could not be put back: ' + e.message;
         return 'failed';
-    });
+    }).then(function (result) { return self.keysChanged().then(function () { return result; }); });
 };
 
 // The list the dock was last given, as the page's preview shows it. Icons are served by iconFile().
@@ -637,10 +814,7 @@ Dock.prototype.setFixTizenTube = function (on) {
     try { this.patchState({fixTizenTube: on}); }
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });   // the preview follows the choice
-    return this.refresh().catch(function (e) {
-        try { self.patchState({fixTizenTube: state.fixTizenTube}); } catch (e2) {}
-        throw e;
-    });
+    return this.refreshOr(function () { self.patchState({fixTizenTube: state.fixTizenTube}); });
 };
 
 // Still selection: the focus jumps between tiles and the icons keep their size (the dock's --no-motion).
@@ -650,13 +824,12 @@ Dock.prototype.setNoMotion = function (on) {
     if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     var state = this.readState();
+    function tell() { if (self.onMotionChange) { try { self.onMotionChange(); } catch (e) {} } }
     try { this.patchState({noMotion: on}); }
     catch (e) { return Promise.reject(e); }
+    tell();
     if (!state.enabled) return this.status();
-    return this.refresh().catch(function (e) {
-        try { self.patchState({noMotion: state.noMotion}); } catch (e2) {}
-        throw e;
-    });
+    return this.refreshOr(function () { self.patchState({noMotion: state.noMotion}); tell(); });
 };
 
 // The Control center: Down from the apps row shows up to three cards side by side (the Task manager, the Audio output). A start
@@ -668,13 +841,11 @@ Dock.prototype.setCards = function (list) {
     if (cards.length !== list.length) return Promise.reject(new Error('At most ' + MAX_CARDS + ' cards, each once'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     var state = this.readState();
-    try { this.patchState({cards: cards, taskManager: cards.indexOf('tasks') >= 0}); }
+    var last = cards.length ? cards : state.cards.length ? state.cards : state.lastCards;
+    try { this.patchState({cards: cards, taskManager: cards.indexOf('tasks') >= 0, lastCards: last}); }
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.status();
-    return this.refresh().catch(function (e) {
-        try { self.patchState({cards: state.cards, taskManager: state.taskManager}); } catch (e2) {}
-        throw e;
-    });
+    return this.refreshOr(function () { self.patchState({cards: state.cards, taskManager: state.taskManager, lastCards: state.lastCards}); });
 };
 
 // The launcher sends the row as the user left it (moved, a tile taken out or added from All apps), always whole, and does not wait for
@@ -735,14 +906,6 @@ Dock.prototype.resetRow = function () {
     return (state.enabled && !state.customApp ? this.refresh() : this.status());
 };
 
-// The older single switch: the Task manager card on (added after the others) or off.
-Dock.prototype.setTaskManager = function (on) {
-    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
-    var cards = this.readState().cards.filter(function (c) { return c !== 'tasks'; });
-    if (on) cards = ['tasks'].concat(cards).slice(0, MAX_CARDS);
-    return this.setCards(cards);
-};
-
 // The launcher's process draws Vetro UI's volume bar and number pad, so when it comes or goes (from the dashboard, the TV screen's tile,
 // Restore the TV or the supervision) the keys the remote bridge holds back change too: the service is told, and the answer waits for it.
 Dock.prototype.keysChanged = function () {
@@ -774,10 +937,7 @@ Dock.prototype.setVolumeEdge = function (edge) {
     try { this.patchState({volumeEdge: edge}); }
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.status();
-    return this.refresh().catch(function (e) {
-        try { self.patchState({volumeEdge: state.volumeEdge}); } catch (e2) {}
-        throw e;
-    });
+    return this.refreshOr(function () { self.patchState({volumeEdge: state.volumeEdge}); });
 };
 // The same for the number pad that replaces Samsung's 123 pad.
 Dock.prototype.setNumberPad = function (on) { return this.setKeyOption('numberPad', on); };
@@ -789,6 +949,16 @@ Dock.prototype.setKeyOption = function (name, on) {
     var self = this, follow = null;
     if (this.onVolumeChange) { try { follow = this.onVolumeChange(on); } catch (e) {} }
     // The service may turn the remote interception on for these keys: the answer waits for that, so the page reads the result.
+    return Promise.resolve(follow).catch(function () {}).then(function () { return self.status(); });
+};
+
+// The volume bar and the number pad together (the TV screen's Vetro UI tile): one save, and the remote bridge is told once.
+Dock.prototype.setKeys = function (on) {
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    try { this.patchState({volumePill: on, numberPad: on}); }
+    catch (e) { return Promise.reject(e); }
+    var self = this, follow = null;
+    if (this.onVolumeChange) { try { follow = this.onVolumeChange(on); } catch (e) {} }
     return Promise.resolve(follow).catch(function () {}).then(function () { return self.status(); });
 };
 
@@ -819,7 +989,9 @@ Dock.prototype.iconFile = function (slug) {
 Dock.prototype.closeHomeOnce = function (samsungHome) {
     if (this.homeClosed || this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
     this.homeClosed = true;
-    if (!samsungHome) return Promise.resolve();
+    // Only the run of the service that came up with the TV does it: after a later restart (an update, a crash) a Samsung
+    // Home on screen is one the user opened from the launcher, and closing it would take it away from them.
+    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) return Promise.resolve();
     return this.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
 };
 
@@ -832,15 +1004,28 @@ Dock.prototype.supervise = function (agentConnected) {
     if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
-    return this.healHome(state).then(function () { return self.probe(); }).then(function (p) {
+    if (this.agentSeenAt === null) { this.agentSeenAt = this.now(); this.mark('agentSeen'); }
+    return this.healHome(state).then(function () { return self.runningNow(); }).then(function (c) {
+        // The cheap check is enough while the launcher runs. "Not running" is confirmed by the full probe before anything is
+        // started, and once after the boot window the full probe says whether Samsung's idle Home is up (closeHomeOnce).
+        if (!c.cheap) return c;
+        if (!c.running || (!self.homeClosed && self.uptime() >= BOOT_WINDOW_S && self.serviceStart < BOOT_WINDOW_S)) return self.probe();
+        return c;
+    }).then(function (p) {
         // A warning left by an earlier failed supervision round is stale once the dock is seen running.
-        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
-        return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.refreshCatalogLater(); return 'started'; });
+        // The launcher lives in its own unit, so it survives the service: after the package was installed again over a
+        // running Vetro (an upgrade through the installer, not through self-update) the process found here is the OLD
+        // build, which knows neither the new start options nor the new command words. It is started again, once.
+        var stale = p.running && !!self.build && state.build !== self.build && !self.startedHere;
+        if (stale) return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
+        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
+        return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;
     }).catch(function (e) {
         self.failures++; self.superviseFailed = true;
-        self.nextTry = self.now() + Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * Math.pow(2, Math.min(self.failures, 8) - 1));
+        var first = self.uptime() < BOOT_WINDOW_S ? RETRY_BOOT_MS : RETRY_FIRST_MS;
+        self.nextTry = self.now() + Math.min(RETRY_MAX_MS, first * Math.pow(2, Math.min(self.failures, 8) - 1));
         if (custom && self.failures >= CUSTOM_MAX_FAILURES) return self.giveUpCustom('the launcher process did not start after ' + self.failures + ' tries. ' + e.message);
         self.lastError = (self.failures >= 4 ? 'The dock has not started after ' + self.failures + ' tries; Vetro keeps trying. ' : '') + e.message;
         return 'failed';
@@ -860,10 +1045,14 @@ Dock.prototype.healHome = function (state) {
 
 // Custom mode only: about once a minute the chosen app is looked up. Two lookups in a row that say it is gone
 // (uninstalled, disabled) end the mode, since the Home key would open nothing. A lookup that fails is not an answer.
+// The minute is counted from the first supervision round of this run, by the clock: the rounds slow down while the
+// launcher keeps running (plugin-launcher.js), and a count of rounds would stretch the minute with them.
 Dock.prototype.checkCustomApp = function (appId) {
-    var self = this;
-    if (!this.appCheck || ++this.checkRound < APP_CHECK_ROUNDS) return Promise.resolve(null);
-    this.checkRound = 0;
+    var self = this, now = this.now();
+    if (!this.appCheck) return Promise.resolve(null);
+    if (this.appCheckedAt === null) { this.appCheckedAt = now; return Promise.resolve(null); }
+    if (now - this.appCheckedAt < APP_CHECK_MS) return Promise.resolve(null);
+    this.appCheckedAt = now;
     return this.appCheck(appId).then(function (c) {
         if (c && c.ok === true) { self.goneRounds = 0; return null; }
         if (++self.goneRounds < APP_GONE_ROUNDS) return null;
@@ -871,5 +1060,5 @@ Dock.prototype.checkCustomApp = function (appId) {
     }, function () { return null; });
 };
 
-module.exports = {rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
+module.exports = {rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck};

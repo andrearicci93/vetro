@@ -9,14 +9,14 @@ assert.match(html, /<button type="button" role="tab" id="utab-tuner" data-ui-tab
 assert.match(html, /<section id="vetroui" hidden>[\s\S]*<div id="uiPanel-tuner"[^>]*hidden><div id="tuner" class="stack">/);
 assert.equal(page.KEYS.length, 5, 'the five main keys: CH, OK, Up, Left, Right');
 page.KEYS.forEach(function (k) { assert.ok(html.indexOf(k[1]) >= 0, 'key help on the page: ' + k[1].slice(0, 30)); });
-assert.match(page.KEYS[3][1], /^Next audio track/, 'Left switches the audio');
-assert.match(page.KEYS[4][1], /^Number pad/, 'Right opens the pad');
+assert.match(page.KEYS[3][1], /^Audio track; then Down for subtitles/, 'Left switches the audio and opens the toast where Down switches subtitles');
+assert.match(page.KEYS[4][1], /^Channel pad/, 'Right opens the Channel pad');
 const slides = page.slides(), previews = slides.map(s => s.svg).join('');
 assert.equal((previews.match(/<svg class="tuner-screen"/g) || []).length, 6, 'six screens: banner, guide, channel list, number pad, info panel, audio');
 assert.equal((previews.match(/<svg class="tuner-screen"[^>]*role="img" aria-label="[^"]{20,}/g) || []).length, 6, 'each preview has a text alternative');
 assert.doesNotMatch(previews, /<script|onload=|href="http/, 'previews are inert, self-contained pictures');
 assert.ok(html.indexOf('var TUNER_SLIDES=' + JSON.stringify(slides)) >= 0, 'the slides are in the page script');
-assert.match(page.guide(true), /<svg x="0" y="316" width="1920" height="616" overflow="hidden"><g class="tg-scroll">/, 'the slideshow guide scrolls inside a window of seven rows');
+assert.match(page.guide(true), /<svg x="0" y="346" width="1920" height="616" overflow="hidden"><g class="tg-scroll">/, 'the slideshow guide scrolls inside a window of seven rows');
 assert.doesNotMatch(page.guide(true), / id="/, 'no ids: the same guide is on the page twice');
 // The guide's footer shows the remote's keys as pictures, like the task manager's (GuideScene.Footer in the tuner): no key named in words.
 ['Watch', 'Time', 'Channel', 'Page', 'Close'].forEach(w => assert.ok(page.guide(true).indexOf('>' + w + '</text>') >= 0, 'guide footer word: ' + w));

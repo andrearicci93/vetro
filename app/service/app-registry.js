@@ -34,7 +34,28 @@ function load(execute,probe){
         return {apps:rows,summary:apps.summarize(rows),source:'package registry + public probe',dependenciesAvailable:data[1]!==null,collectedAt:new Date().toISOString()};
     });
 }
+// One app's row, for a caller that needs a few fields of one app and not the whole inventory: Vetro's own startup flags at
+// boot, the custom launcher's lookup about once a minute. The fields mean what load() gives for that app: disabled with the
+// owner's override from both registries (the user registry is optional, as in load()), show from app_nodisplay. Resolves
+// null when the app is not registered. options.user === false skips the user registry (one sqlite3 instead of two).
+var ONE_USER_MARK='__VETRO_USER__';
+function one(execute,appId,options){
+    if(typeof appId!=='string'||!REGISTERED_ID_RE.test(appId)||appId.length>180)return Promise.reject(new Error('invalid app ID'));
+    var ownerUid=typeof process.getuid==='function'?process.getuid():5001,withUser=!(options&&options.user===false);
+    var main=command("SELECT hex(a.app_id),hex(a.package),hex(COALESCE((SELECT is_disabled FROM package_app_info_for_uid u WHERE u.app_id=a.app_id AND u.uid="+ownerUid+"),a.app_disable)),hex(a.app_removable),hex(p.package_system),hex(p.package_preload),hex(a.app_onboot),hex(a.app_autorestart),hex(a.app_nodisplay),hex((SELECT app_label FROM package_app_localized_info l WHERE l.app_id=a.app_id AND app_label != '' ORDER BY CASE WHEN app_locale='en_US' THEN 0 ELSE 1 END LIMIT 1)) FROM package_app_info a LEFT JOIN package_info p ON p.package=a.package WHERE a.app_id='"+appId+"';");
+    // One shell for both reads; the exit status is the main registry's, the user registry may be missing (as in load()).
+    var line=withUser?main+'; r=$?; echo '+ONE_USER_MARK+'; sqlite3 -readonly /opt/dbspace/user/'+ownerUid+'/.pkgmgr_parser.db "SELECT hex(app_id),hex(is_disabled) FROM package_app_info_for_uid WHERE uid='+ownerUid+" AND app_id='"+appId+"';\" 2>/dev/null; exit $r":main;
+    return execute(line,15000).then(function(r){
+        if(r.exit_code||r.timed_out)throw new Error('registry query failed');
+        var parts=String(r.stdout||'').split(ONE_USER_MARK),f=fields(parts[0]).filter(function(x){return x[0]===appId;})[0];
+        if(!f)return null;
+        var row={appId:f[0],packageId:f[1],disabled:f[2]==='true',removable:f[3]==='true',system:f[4]==='true',preload:f[5]==='true',onboot:f[6]==='true',autorestart:f[7]==='true',show:f[8]==='false',name:f[9]||null};
+        var user=[];try{user=fields(parts[1]||'');}catch(e){user=[];}
+        user.forEach(function(u){if(u[0]===appId)row.disabled=u[1]==='true';});
+        return row;
+    });
+}
 function iconCommand(row){var p=row&&row.iconPath;if(typeof p!=='string'||!ICON_COMMAND_RE.test(p)||p.split('/').indexOf('..')!==-1)return null;
     return 'if [ -f "'+p+'" ] && [ "$(stat -c %s "'+p+'")" -le 262144 ]; then base64 "'+p+'"; else exit 1; fi';
 }
-module.exports={load:load,fields:fields,iconCommand:iconCommand};
+module.exports={load:load,one:one,fields:fields,iconCommand:iconCommand};

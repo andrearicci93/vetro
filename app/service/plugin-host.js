@@ -627,12 +627,28 @@ PluginHost.prototype.setEnabled = function (id, on) {
     return this.status(id);
 };
 
-// Leaves safe mode; plugins start again on the next boot.
+// Leaves safe mode and starts the paused plugins now (#190: it used to only clear the flag and wait for a restart of
+// Vetro that no screen offers). This start has to prove itself like any other: the marker says one start short of safe
+// mode, so a plugin that takes Vetro down twice more is paused again, while the TV turned off once is not enough.
 PluginHost.prototype.resume = function () {
     var state = this._readState();
     state.suspended = false;
     this._writeState(state);
-    return { ok: true, restartRequired: this.safeMode };
+    if (!this.safeMode || !this.started) return { ok: true, restartRequired: false };
+    this.safeMode = false;
+    try { fs.writeFileSync(this._file('starting'), JSON.stringify({ missed: Math.max(1, this.safeAfter - 1), at: Date.now() })); } catch (e) { /* no marker, no safe mode */ }
+    for (var i = 0; i < this.order.length; i++) {
+        var entry = this.entries[this.order[i]];
+        if (entry.def.bundled || entry.state !== 'suspended') continue;
+        var flag = state.enabled[entry.def.id];
+        if (flag == null ? entry.defaultEnabled : flag) { entry.errors = 0; this._startEntry(entry); }
+        else entry.state = 'stopped';
+    }
+    var host = this;
+    if (this.stableTimer) clearTimeout(this.stableTimer);
+    this.stableTimer = setTimeout(function () { host.markStable(); }, this.stableMs);
+    if (this.stableTimer.unref) this.stableTimer.unref();
+    return { ok: true, restartRequired: false };
 };
 
 PluginHost.prototype.get = function (id) {
@@ -732,16 +748,22 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
             if (p.on && !self.developerAllowed()) {
                 return json(res, { ok: false, error: 'Developer mode is not available in this build: it has no sign-in, so anyone on the network could use it to run code.' }, 403);
             }
-            var state = self._readState();
-            state.developer = p.on;
-            self._writeState(state);
+            try {
+                var state = self._readState();
+                state.developer = p.on;
+                self._writeState(state);
+            } catch (e) { return json(res, { ok: false, error: 'The setting could not be saved: ' + e.message }, 500); }
             json(res, { ok: true, developer: p.on });
         });
         return true;
     }
     if (id === 'resume') {
         if (req.method !== 'POST') json(res, { error: 'Method not allowed' }, 405);
-        else json(res, this.resume());
+        else {
+            var resumed;
+            try { resumed = this.resume(); } catch (e) { json(res, { ok: false, error: 'Plugins could not be resumed: ' + e.message }, 500); return true; }
+            json(res, resumed);
+        }
         return true;
     }
     var entry = this.entries[id];

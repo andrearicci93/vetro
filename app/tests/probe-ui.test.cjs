@@ -314,7 +314,7 @@ async function openDetails(r) {
   noCode.intervals.find(i => i.ms === 2000).f(); await noCode.settle();
   assert.ok(!noCode.screen.innerHTML.includes('The code cannot be shown'));
   // ---- the quick controls (tiles) ---------------------------------------------------------------------------------
-  const CONTROLS = {canControl: true, tiles: {launcher: {state: 'on', custom: false}, ads: {state: 'on'}, voice: {state: 'part', left: 3}, tuner: {state: 'off'}},
+  const CONTROLS = {canControl: true, tiles: {launcher: {state: 'on', custom: false}, ads: {state: 'on'}, voice: {state: 'part', left: 3}, ui: {state: 'off'}},
     update: {configured: true, version: '0.5.1', busy: false, pending: false}};
   const clone = o => JSON.parse(JSON.stringify(o));
   const tilesOf = async options => run(Object.assign({details: false, controls: clone(CONTROLS)}, options || {}));
@@ -322,7 +322,7 @@ async function openDetails(r) {
   let t = await tilesOf();
   assert.ok(/class="tiles"/.test(t.screen.innerHTML), 'the tiles are the first thing shown once the checks are done');
   assert.ok(t.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/screen/controls'), 'one read of the tile states');
-  for (const title of ['Vetro Launcher', 'Disable ads and viewing data', 'Disable all voice assistants', 'Update Vetro', 'Vetro TV Tuner']) assert.ok(t.screen.innerHTML.includes(title), title);
+  for (const title of ['Vetro Launcher', 'Disable ads and viewing data', 'Disable all voice assistants', 'Update Vetro', 'Vetro UI']) assert.ok(t.screen.innerHTML.includes(title), title);
   assert.ok(t.screen.innerHTML.includes('class="sw on"') && t.screen.innerHTML.includes('class="sw part"') && t.screen.innerHTML.includes('class="sw off"'), 'on, partly and off');
   assert.ok(t.screen.innerHTML.includes('3 still on'), 'the voice tile says how many members still run');
   assert.ok(t.screen.innerHTML.includes('Check for update'));
@@ -339,20 +339,28 @@ async function openDetails(r) {
   await t.settle();
   assert.ok(t.screen.innerHTML.includes('class="sw off"') && !t.screen.innerHTML.includes('Working'), 'the answer is drawn');
   assert.equal(t.context.toastText, 'Launcher off');
-  // Moving: right to ads and voice, Down to Diagnostics, Up goes back to the tile it came from.
-  key(t, 39); key(t, 39); key(t, 40); key(t, 38);
+  // Moving: right over Vetro UI and ads to voice, Down to Diagnostics, Up goes back to the tile it came from.
+  key(t, 39); key(t, 39); key(t, 39); key(t, 40); key(t, 38);
   key(t, 13);
   await t.settle();
   assert.deepEqual(posted(t).slice(1), [{id: 'voice', on: true}], 'a partly done switch is finished, not turned back');
+  // Vetro UI is the second tile, right after the launcher; part way it says how many of its parts are still off, and OK finishes.
+  assert.ok(t.screen.innerHTML.indexOf('Vetro Launcher') < t.screen.innerHTML.indexOf('Vetro UI') && t.screen.innerHTML.indexOf('Vetro UI') < t.screen.innerHTML.indexOf('Disable ads'), 'Vetro UI comes after the launcher');
+  const partUi = clone(CONTROLS); partUi.tiles.ui = {state: 'part', left: 2, of: 3};
+  t = await tilesOf({controls: partUi, controlReply: () => ({status: 200, data: {ok: true, tile: {state: 'on'}}})});
+  assert.ok(t.screen.innerHTML.includes('2 of 3 off'));
+  key(t, 39); key(t, 13); await t.settle();
+  assert.deepEqual(posted(t), [{id: 'ui', on: true}]);
+  assert.equal(t.context.toastText, 'Vetro UI on');
   // The update tile: one press looks, the next arms it, the third installs. Moving away disarms.
   t = await tilesOf({controlReply: b => b.step === 'check' ? {status: 200, data: {ok: true, phase: 'found', version: '0.5.2'}} : {status: 200, data: {ok: true, phase: 'run', version: '0.5.2'}}});
-  key(t, 39); key(t, 39); key(t, 39);
+  key(t, 39); key(t, 39); key(t, 39); key(t, 39);
   key(t, 13); assert.ok(t.screen.innerHTML.includes('Checking'), 'looking is shown while it asks');
   await t.settle();
   assert.deepEqual(posted(t), [{id: 'update', step: 'check'}]);
   assert.ok(t.screen.innerHTML.includes('Update to 0.5.2') && t.screen.innerHTML.includes('Version 0.5.2 is ready'));
   key(t, 13); assert.ok(t.screen.innerHTML.includes('OK again to confirm'));
-  key(t, 39); key(t, 37); assert.ok(t.screen.innerHTML.includes('Update to 0.5.2') && !t.screen.innerHTML.includes('OK again to confirm'), 'moving away takes the confirmation back');
+  key(t, 37); key(t, 39); assert.ok(t.screen.innerHTML.includes('Update to 0.5.2') && !t.screen.innerHTML.includes('OK again to confirm'), 'moving away takes the confirmation back');
   assert.equal(posted(t).length, 1, 'nothing installed');
   key(t, 13); key(t, 13); await t.settle();
   assert.deepEqual(posted(t).map(b => b.step), ['check', 'apply']);
@@ -360,10 +368,10 @@ async function openDetails(r) {
   assert.ok(t.timers.some(x => x.ms === 3000), 'and waits for the new version before reloading');
   // Nothing newer, a refusal and a timeout.
   t = await tilesOf({controlReply: () => ({status: 200, data: {ok: true, phase: 'none', version: '0.5.1'}})});
-  key(t, 39); key(t, 39); key(t, 39); key(t, 13); await t.settle();
+  key(t, 39); key(t, 39); key(t, 39); key(t, 39); key(t, 13); await t.settle();
   assert.ok(t.screen.innerHTML.includes('You have the newest version') && t.screen.innerHTML.includes('Up to date'));
   t = await tilesOf({controlReply: () => ({status: 502, data: {ok: false, error: 'Could not reach GitHub: ENOTFOUND'}})});
-  key(t, 39); key(t, 39); key(t, 39); key(t, 13); await t.settle();
+  key(t, 39); key(t, 39); key(t, 39); key(t, 39); key(t, 13); await t.settle();
   assert.equal(t.context.toastText, 'Could not reach GitHub: ENOTFOUND');
   assert.ok(t.screen.innerHTML.includes('Check for update'), 'the button is back so it can be tried again');
   t = await tilesOf({controlReply: () => 'timeout'});
@@ -386,9 +394,9 @@ async function openDetails(r) {
   assert.ok(t.screen.innerHTML.includes('Unavailable') && t.screen.innerHTML.includes('Running in the background'));
   key(t, 13); assert.equal(posted(t).length, 0); assert.match(t.context.toastText, /did not load/);
   // A tile the TV cannot use says why.
-  const na = clone(CONTROLS); na.tiles.tuner = {state: 'na', why: 'Needs root access'};
+  const na = clone(CONTROLS); na.tiles.ui = {state: 'na', why: 'Needs root access'};
   t = await tilesOf({controls: na});
-  key(t, 39); key(t, 39); key(t, 39); key(t, 39); key(t, 13);
+  key(t, 39); key(t, 13);
   assert.equal(posted(t).length, 0); assert.equal(t.context.toastText, 'Not available: Needs root access');
   // A launcher that is on but not running is a problem tile, and OK tries again instead of turning it off.
   t = await tilesOf({screen: Object.assign({}, GOOD, {launcher: {installed: true, enabled: true, running: false, failures: 3, hasError: true}})});

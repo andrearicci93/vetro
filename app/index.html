@@ -38,6 +38,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .dash p{margin:0;font-size:24px;line-height:1.35;color:var(--muted)}
 .panel{position:absolute;left:0;right:0;bottom:0;padding:32px 36px 28px;border-radius:16px;background:var(--surface);border:2px solid var(--border)}
 .panel.bad{border-color:var(--bad-line)}.panel.warn{border-color:var(--warn-line)}
+.panel.dense{padding:22px 36px 18px}.panel.dense .ph{margin-bottom:14px}.panel.dense .c{min-height:0;margin-bottom:12px;padding:14px 20px}.panel.dense .h{margin-top:6px;font-size:21px;line-height:1.3}.panel.dense .share{padding-top:14px}
 .ph{display:flex;align-items:center;margin-bottom:24px}
 .ph h2{margin:0;font-size:36px;font-weight:500;letter-spacing:-.02em}
 .sum{margin-left:auto;font-size:26px;font-weight:500;color:var(--ok)}
@@ -69,7 +70,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
    title 32, text 25, labels 22 in capitals, values 26. One inset (28) for every card, so every text edge lines up. */
 /* The main view follows the Fumé mock-up (design-system/tv-system.html): the header is one sheet, the title strip is a sheet, the tiles are 452 high, the checks strip is 104 high: 872 px in the 888 px between the margins. */
 #screen.compact .hero{height:192px;padding:0 28px;background:var(--surface);border:2px solid var(--border);border-radius:16px}
-#screen.compact .hero img,#screen.compact .hero .logo{width:128px;height:128px;border-radius:16px;margin-right:32px}
+#screen.compact .hero img{width:128px;height:128px;border-radius:16px;margin-right:32px}
 #screen.compact .hero h1{font-size:56px}
 #screen.compact .meta{margin-top:6px;font-size:26px}
 #screen.compact .state{margin-top:12px;font-size:26px;padding:4px 20px 4px 10px}
@@ -380,7 +381,7 @@ function checks(d) {
       (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
   } else {
     var av = appVersion(), mismatch = av && d.version && av !== d.version;
-    out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. Reinstall Vetro so both match.', 'SVC ' + d.version + '/APP ' + av, 'warn']
+    out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. An older service is still running after the update. Restart the TV (unplug it for 30 seconds); if it still differs, reinstall Vetro.', 'SVC ' + d.version + '/APP ' + av, 'warn']
       : ['ok', 'Service', 'Running', 'Port ' + esc(d.port), 'svc ok']);
   }
   if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
@@ -425,7 +426,7 @@ function cell(c) {
 
 var WAITING = [['Service', 'Starting'], ['Root access', 'Checking'], ['Remote input', 'Checking'], ['Launcher', 'Checking'], ['TV APIs', 'Checking'], ['Memory', 'Checking']];
 // ---- quick controls (the main view) -----------------------------------------------------------------------
-// Five tiles; each does what one switch of the dashboard does, through POST /screen/control. The state comes from one
+// Five tiles through POST /screen/control; each does what one switch of the dashboard does, Vetro UI what four do. The state comes from one
 // GET /screen/controls when the screen opens and again after each action: nothing polls. Every call has a time limit.
 var view = 'main', focus = 0, lastTile = 0, controls = null, controlsSeq = 0, busy = {}, upd = {phase: 'idle', version: null}, toastText = '', toastTimer = null;
 var TILE_ICONS = {
@@ -433,16 +434,16 @@ var TILE_ICONS = {
   ads: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18s5-9 15-9 15 9 15 9-5 9-15 9S3 18 3 18z"/><circle cx="18" cy="18" r="4.5"/><path d="M6 31L30 5"/></svg>',
   voice: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="3" width="10" height="17" rx="5"/><path d="M7 16a11 11 0 0 0 22 0M18 27v6"/><path d="M5 31L31 5"/></svg>',
   update: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="14"/><path d="M18 9v13M12 17l6 6 6-6"/></svg>',
-  tuner: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="30" height="20" rx="3"/><path d="M12 4l6 7 6-7"/></svg>'
+  ui: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="30" height="21" rx="3"/><path d="M9 19h9M11 32h14"/></svg>'
 };
 // Tile order is the order on screen. "on"/"off" are the words for the switch; a switch is "on" when the feature is switched on
-// (the launcher, the tuner) or switched off for good (ads, voice: the dashboard's "Disable" switches).
+// (the launcher, Vetro UI) or switched off for good (ads, voice: the dashboard's "Disable" switches).
 var TILES = [
-  {id: 'launcher', title: 'Vetro Launcher', tag: '', on: 'On', off: 'Off', desc: 'The Home key opens Vetro’s fast launcher instead of Samsung’s Home.', words: ['Launcher on', 'Launcher off']},
-  {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and the TV’s viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
-  {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google and voice search. The remote’s mic button stops working.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
-  {id: 'update', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.'},
-  {id: 'tuner', title: 'Vetro TV Tuner', tag: 'LIVE TV', on: 'On', off: 'Off', desc: 'Live TV drawn by Vetro over Samsung’s tuner, which is never changed.', words: ['Vetro TV Tuner on', 'Vetro TV Tuner off']}
+  {id: 'launcher', title: 'Vetro Launcher', tag: '', on: 'On', off: 'Off', desc: 'Home opens Vetro’s launcher instead of Samsung’s Home.', words: ['Launcher on', 'Launcher off']},
+  {id: 'ui', title: 'Vetro UI', tag: '', on: 'On', off: 'Off', desc: 'Vetro’s live TV, volume bar, number pad and Control center.', words: ['Vetro UI on', 'Vetro UI off']},
+  {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
+  {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google and voice search. The mic button stops working.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
+  {id: 'update', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.'}
 ];
 // A call to the service with its own time limit, so a tile can never stay on "Working" for good. Resolves {status, data}.
 function call(method, path, body, ms) {
@@ -485,7 +486,8 @@ function loadControls() {
   });
 }
 function rereadScreen() {
-  return readScreen().then(function (d) { lastScreen = d; if (view === 'main') render(d, false); }, function () {});
+  // A read that fails still redraws: the tile that started it must not stay on "Working…".
+  return readScreen().then(function (d) { lastScreen = d; if (view === 'main') render(d, false); }, function () { if (view === 'main' && lastScreen) render(lastScreen, false); });
 }
 // What a tile shows: {sw: off|on|part|busy|none, val, cls, foot (a button instead of a switch), tag, desc, na}
 function tileView(t) {
@@ -494,14 +496,15 @@ function tileView(t) {
   if (busy[t.id]) { o.sw = 'busy'; o.val = 'Working…'; o.cls = 'mute'; return o; }
   if (!c) { o.sw = 'off'; o.val = controls === null && !loaded ? 'Reading…' : 'Unavailable'; o.cls = 'mute'; o.na = true; return o; }
   if (!c.canControl) o.na = true;
-  if (!s || s.state === 'na') { o.sw = 'off'; o.val = 'Unavailable'; o.cls = 'mute'; o.na = true; o.why = s && s.why; return o; }
+  if (!s || s.state === 'na') { o.sw = 'off'; o.val = 'Unavailable'; o.cls = 'mute'; o.na = true; return o; }
   if (t.id === 'launcher' && s.state === 'on' && l && l.running === false) {
     o.sw = 'part'; o.val = 'Not running'; o.cls = 'bad'; o.tag = 'PROBLEM';
     o.desc = (l.failures ? 'Failed to start (tried ' + l.failures + (l.failures === 1 ? ' time' : ' times') + '). ' : 'It is not running. ') + 'Press OK to try again.';
     return o;
   }
   if (t.id === 'launcher' && s.custom) o.desc = 'A custom launcher app is set for the Home key. Press OK to put Samsung’s Home back.';
-  if (s.state === 'part') { o.sw = 'part'; o.val = (s.left || 'Some') + ' still on'; o.cls = 'warn'; return o; }
+  // Part way: for ads and voice some members still run; for Vetro UI some of its parts are still off. OK finishes the job.
+  if (s.state === 'part') { o.sw = 'part'; o.val = t.id === 'ui' ? (s.left || 'Some') + (s.of ? ' of ' + s.of : '') + ' off' : (s.left || 'Some') + ' still on'; o.cls = 'warn'; return o; }
   o.sw = s.state === 'on' ? 'on' : 'off';
   o.val = s.state === 'on' ? t.on : t.off;
   o.cls = s.state === 'on' ? 'ok' : 'mute';
@@ -525,13 +528,19 @@ function updateView(t, o) {
   return o;
 }
 var loaded = false;
-function tileHtml(i) {
+// A tile as its class and its content, so a focus move changes two classes and rebuilds nothing.
+function tileParts(i) {
   var t = TILES[i], o = tileView(t), cls = 'tile' + (focus === i ? ' focus' : '') + (o.na ? ' na' : ''), foot;
   if (t.id === 'update') foot = o.btn ? '<div class="btn' + (o.go ? ' go' : '') + '">' + esc(o.btn) + '</div>' : '<div class="val ' + (o.cls || 'mute') + '" style="margin-left:0">' + esc(o.note || '') + '</div>';
   else foot = '<div class="sw ' + o.sw + '"><i></i></div><div class="val ' + o.cls + '">' + esc(o.val) + '</div>';
-  return '<div class="' + cls + '"><div class="top"><div class="glyph">' + TILE_ICONS[t.id] + '</div><div class="tag">' + esc(o.tag || '') + '</div></div>' +
-    '<h3>' + esc(t.title) + '</h3><p>' + esc(o.desc) + '</p><div class="foot">' + foot + '</div></div>';
+  return [cls, '<div class="top"><div class="glyph">' + TILE_ICONS[t.id] + '</div><div class="tag">' + esc(o.tag || '') + '</div></div>' +
+    '<h3>' + esc(t.title) + '</h3><p>' + esc(o.desc) + '</p><div class="foot">' + foot + '</div>'];
 }
+function tileHtml(i) { var t = tileParts(i); return '<div class="' + t[0] + '">' + t[1] + '</div>'; }
+// What the main view last wrote, part by part (null when another view or the waiting screen holds #screen). A redraw then
+// touches only the parts that differ: an arrow key changes the class of two tiles and, at the ends, the key hints.
+var mainDrawn = null;
+function pinInner(pin) { return 'PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i>'; }
 var SHORT = {'Root access': 'Root', 'Remote input': 'Input'};
 function renderMain(d) {
   var list = checks(d), bad = 0, warn = 0, state, label, chips = '', tiles = '', i, c, locked = controls && !controls.canControl;
@@ -543,24 +552,57 @@ function renderMain(d) {
     c = list[i];
     chips += '<div class="chip' + (c[0] === 'warn' || c[0] === 'bad' ? ' ' + c[0] : '') + '"><span class="dot ' + (c[0] === 'ok' ? '' : c[0]) + '"></span>' + esc(SHORT[c[1]] || c[1]) + '<b>' + esc(c[2]) + '</b></div>';
   }
-  for (i = 0; i < TILES.length; i++) tiles += tileHtml(i);
+  var parts = [];
+  for (i = 0; i < TILES.length; i++) { parts.push(tileParts(i)); tiles += '<div class="' + parts[i][0] + '">' + parts[i][1] + '</div>'; }
   var right = locked ? esc('Switches are off here: this page is not recognised as the TV. Use the dashboard on a phone.') : focus < 5 ? keyIcon('pad-left', 'Left') + keyIcon('pad-right', 'Right') + 'to choose &middot; ' + keyIcon('pad-ok', 'OK') + 'to switch' : '';
   var el = document.getElementById('screen');
-  el.className = 'safe compact';
-  el.innerHTML =
-    '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
+  // The hero without the PIN slot, which paintPairing redraws on its own every second.
+  var heroA = '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
     '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
-    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small>',
+    heroB = '</div>' +
     '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
-    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : 'The address appears once the TV is on the network.') + '</p></div></div>' +
-    '<div class="sec"><h2>Quick controls</h2><span>' + right + '</span></div><div class="tiles">' + tiles + '</div>' +
-    '<div class="diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === 5 ? ' focus' : '') + '"><h4>Diagnostics</h4><div class="chips">' + chips + '</div><div class="more">' +
-    (focus === 5 ? '<b style="color:var(--text)">' + keyIcon('pad-ok', 'OK') + '</b>Details' : keyIcon('pad-down', 'Down') + 'for details') + '</div></div><div class="toast" id="toast" style="display:none"></div>';
+    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : 'The address appears once the TV is on the network.') + '</p></div></div>',
+    pinHtml = pinInner(pin),
+    diagCls = 'diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === 5 ? ' focus' : ''),
+    more = focus === 5 ? '<b style="color:var(--text)">' + keyIcon('pad-ok', 'OK') + '</b>Details' : keyIcon('pad-down', 'Down') + 'for details',
+    m = mainDrawn, kids = el.children;
+  if (m && el.firstChild === m.first && kids && kids.length === 5) {
+    var hero = kids[0], pinEl = document.getElementById('pin'), tileEls = kids[2].children, diag = kids[3];
+    if (m.hero !== heroA + heroB) { hero.outerHTML = heroA + '<div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>' + pinHtml + '</div>' + heroB; m.hero = heroA + heroB; m.first = el.firstChild; }
+    else if (pinEl) { if (pinEl.hidden !== !pin) pinEl.hidden = !pin; if (pinEl.innerHTML !== pinHtml) pinEl.innerHTML = pinHtml; }
+    if (m.right !== right) { kids[1].lastChild.innerHTML = right; m.right = right; }
+    for (i = 0; i < parts.length; i++) {
+      if (m.tiles[i][0] !== parts[i][0]) tileEls[i].className = parts[i][0];
+      if (m.tiles[i][1] !== parts[i][1]) tileEls[i].innerHTML = parts[i][1];
+    }
+    m.tiles = parts;
+    if (m.diagCls !== diagCls) { diag.className = diagCls; m.diagCls = diagCls; }
+    if (m.chips !== chips) { diag.children[1].innerHTML = chips; m.chips = chips; }
+    if (m.more !== more) { diag.children[2].innerHTML = more; m.more = more; }
+  } else {
+    el.className = 'safe compact';
+    el.innerHTML = heroA + '<div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>' + pinHtml + '</div>' + heroB +
+      '<div class="sec"><h2>Quick controls</h2><span>' + right + '</span></div><div class="tiles">' + tiles + '</div>' +
+      '<div class="' + diagCls + '"><h4>Diagnostics</h4><div class="chips">' + chips + '</div><div class="more">' + more + '</div></div><div class="toast" id="toast" style="display:none"></div>';
+    mainDrawn = {first: el.firstChild, hero: heroA + heroB, right: right, tiles: parts, diagCls: diagCls, chips: chips, more: more};
+  }
   paintToast();
 }
 function render(d, waiting) {
-  if (waiting || !d || view === 'details') return renderDetails(d, waiting);
-  renderMain(d);
+  if (waiting || !d || view === 'details') renderDetails(d, waiting);
+  else renderMain(d);
+  fitPanel();
+  if (pairingBlocked && !pairing) paintPairing();   // a redraw writes the PIN slot hidden: the reason it cannot be shown must come back at once, not at the next poll
+}
+// The checks panel stands on the bottom margin and grows upwards with its texts. With several long explanations (a refused
+// screen, a failed start) it reached over the header: it then gets its tighter spacing, and nothing is cut.
+function fitPanel() {
+  var scr = document.getElementById('screen');
+  if (!scr || !scr.querySelector) return;
+  var p = scr.querySelector('.panel'), h = scr.querySelector('.hero');
+  if (!p || !h) return;
+  if (p.className.indexOf(' dense') < 0 && p.offsetTop < h.offsetTop + h.offsetHeight + 16) p.className += ' dense';
 }
 function chosen() { return TILES[focus] && TILES[focus].id; }
 // One tile pressed. A switch asks the service for the opposite of what it shows; "part" (some members still on) finishes the job.
@@ -578,11 +620,11 @@ function activate() {
   call('POST', '/screen/control', {id: id, on: want}, 130000).then(function (r) {
     busy[id] = false;
     if (r.status === 200 && r.data && r.data.ok && r.data.tile) {
-      controls.tiles[id] = r.data.tile;
+      if (controls && controls.tiles) controls.tiles[id] = r.data.tile;   // the controls may have been read again (and failed) meanwhile
       toast(TILES.filter(function (x) { return x.id === id; })[0].words[r.data.tile.state === 'on' || r.data.tile.state === 'part' ? 0 : 1]);
     } else { toast(failText(r)); loadControls(); }
     if (id === 'launcher') rereadScreen(); else render(lastScreen, false);
-  }, function (e) { busy[id] = false; toast(e.message); loadControls(); });
+  }, function (e) { busy[id] = false; toast(e.message); loadControls(); if (view === 'main' && lastScreen) render(lastScreen, false); });
 }
 function updateStep(step, ms) { return call('POST', '/screen/control', {id: 'update', step: step}, ms); }
 function activateUpdate() {
@@ -630,6 +672,7 @@ function mainKey(k) {
   else if (k === 10009 || k === 27) leave();
 }
 function renderDetails(d, waiting) {
+  mainDrawn = null;
   document.getElementById('screen').className = 'safe';
   var list = waiting ? WAITING.map(function (w) { return ['wait', w[0], w[1], null, '']; }) : checks(d), bad = 0, warn = 0, state, label, sum, device = report.settings, model, firmware, line, version, pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '';
   list.forEach(function (c) { if (waiting) return; if (c[0] === 'bad') bad++; else if (c[0] === 'warn') warn++; });
@@ -676,13 +719,9 @@ function paintPairing() {
   var el = document.getElementById('pin');
   if (pairing && pairing.until <= Date.now()) pairing = null;   // a lost answer must not leave a dead code on screen
   if (!el) return;
-  if (!pairing && pairingBlocked) {
-    el.hidden = false;
-    el.innerHTML = 'PIN<b>&mdash;</b><i>' + esc(pairingBlocked) + '</i>';
-    return;
-  }
-  el.hidden = !pairing;
-  el.innerHTML = 'PIN<b>' + (pairing ? esc(pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3)) : '') + '</b><i>' + esc(pairing ? pinLine() : '') + '</i>';
+  var html = !pairing && pairingBlocked ? 'PIN<b>&mdash;</b><i>' + esc(pairingBlocked) + '</i>' : pinInner(pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '');
+  if (el.hidden !== (!pairing && !pairingBlocked)) el.hidden = !pairing && !pairingBlocked;
+  if (el.innerHTML !== html) el.innerHTML = html;   // the same text is not written again (the slot is a few nodes: reading it back is cheap)
 }
 // A soft two-partial "ding" when a new code appears, since the code itself is small to spot from the sofa. A sine with a
 // quick attack and a long exponential fade; no audio file, and any failure (no Web Audio, blocked) stays silent.
@@ -817,6 +856,8 @@ document.addEventListener('visibilitychange', function () { if (document.hidden 
 document.addEventListener('keydown', function (e) {
   var k = e && e.keyCode;
   resetIdle();
+  // OK held down repeats: one press is one step, or holding it on the Update tile would find, confirm and install in a row.
+  if (k === 13 && e.repeat) return;
   // The main view (tiles) takes the keys once the checks are done; the details view and the waiting screen keep the old ones.
   if (!running && lastScreen && view === 'main') mainKey(k);
   else if (k === 10009 || k === 27) { if (!running && lastScreen && view === 'details') { view = 'main'; render(lastScreen, false); } else leave(); }
@@ -827,7 +868,7 @@ fit();
 resetIdle();
 checkPairing();
 setInterval(checkPairing, 2000);
-setInterval(function () { if (pairing) paintPairing(); }, 1000);
+setInterval(function () { if (pairing && !document.hidden) paintPairing(); }, 1000);   // the countdown; nothing while the screen is hidden
 // Module scripts run after this classic script and before DOMContentLoaded.
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
 </script>

@@ -27,9 +27,13 @@ function encode(command, arg0, arg1, payload) {
 function fakeSdbd(state) {
   return net.createServer((socket) => {
     state.connections++;
-    // Mirror the Q80A: sdbd accepts exactly one host connection and closes any
-    // second one before CNXN. The tunnel must never open a second upstream.
-    if (state.connections > 1) { socket.destroy(); return; }
+    // Mirror the Q80A: sdbd accepts exactly one host connection at a time and
+    // closes any second one before CNXN. The tunnel must never open a second
+    // upstream while the first is open; once it is closed, a new one is fine.
+    state.open = state.open || 0;
+    if (state.open > 0) { state.refused = (state.refused || 0) + 1; socket.destroy(); return; }
+    state.open++;
+    socket.on('close', () => { state.open--; });
     let buffer = Buffer.alloc(0);
     let nextRemote = 1000;
     const streams = new Map();
@@ -235,6 +239,85 @@ async function main() {
       (await echo(healthy, 'after-invalid')).close();
       assert.equal(state.connections, 1);
     } finally { sdb.close(healthy); tunnel.close(); fake.close(); }
+  });
+
+  await check('releases sdbd after the last client leaves and reopens on the next CNXN', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort, {idleMs: 120});
+    try {
+      const first = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      await echo(first, 'one');
+      assert.equal(state.open, 1, 'upstream is held while a client is connected');
+      sdb.close(first);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      assert.equal(state.open, 1, 'the grace period keeps the upstream for a quick follow-up');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      assert.equal(state.open, 0, 'sdbd is free once the tunnel is idle');
+
+      // Another app can now take sdbd directly, as TV-Store does.
+      await new Promise((resolve, reject) => {
+        const other = net.connect(sdbPort, '127.0.0.1');
+        other.on('error', reject);
+        other.on('connect', () => other.write(encode('CNXN', 0x01000000, 4096, 'host::')));
+        other.on('data', () => { other.destroy(); resolve(); });
+        other.on('close', () => reject(new Error('direct sdbd connection was refused')));
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(state.open, 0);
+
+      const second = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      await echo(second, 'two');
+      assert.equal(state.open, 1, 'the next client reopens the upstream');
+      assert.deepEqual(state.services, ['shell', 'shell']);
+      sdb.close(second);
+    } finally { tunnel.close(); fake.close(); }
+  });
+
+  await check('a client that returns inside the grace period reuses the same upstream', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort, {idleMs: 250});
+    try {
+      const first = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      await echo(first, 'a');
+      sdb.close(first);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const second = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      await echo(second, 'b');
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.equal(state.connections, 1, 'no reconnect to sdbd inside the grace period');
+      assert.equal(state.open, 1, 'still held: a client is connected');
+      sdb.close(second);
+    } finally { tunnel.close(); fake.close(); }
+  });
+
+  await check('keeps sdbd while any client stays connected', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort, {idleMs: 80});
+    const stay = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+    try {
+      const leave = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      await echo(leave, 'x');
+      sdb.close(leave);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.equal(state.open, 1, 'one client is still connected');
+      (await echo(stay, 'still-works')).close();
+    } finally { sdb.close(stay); tunnel.close(); fake.close(); }
+  });
+
+  await check('close() cancels a pending idle release', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort, {idleMs: 80});
+    try {
+      const first = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      sdb.close(first);
+      tunnel.close();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      assert.equal(state.open, 0, 'close() leaves nothing open and no timer fires afterwards');
+    } finally { tunnel.close(); fake.close(); }
   });
 
   await check('rejects an out-of-range listening port before listen()', async () => {

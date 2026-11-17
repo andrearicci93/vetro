@@ -34,7 +34,7 @@ var ID = /^[A-Za-z0-9_.-]{1,180}$/;
 var BOOL = /^(true|false)$/;
 
 var NOTES = [
-    'Packages removed from the Task manager cannot be brought back from here. Install them again from the Samsung app store or from their original package.',
+    'Packages removed in Apps and processes cannot be brought back from here. Install them again from the Samsung app store or from their original package.',
     'Values written in the TV settings pages (network and TV menu) keep no record of what they were. Check them in the TV’s own menu.',
     'Changes that a third-party plugin made itself are not known to Vetro and are not undone.'
 ];
@@ -163,7 +163,7 @@ Restore.prototype.plan = function () {
         if (!apps.error) flag(it, groupIds.length > 0, groupIds.length);
 
         var compIds = apps.error ? [] : provenComponents(apps.value, led.error ? [] : led.value).filter(function (id) { return groupIds.indexOf(id) < 0; });
-        it = add('components', 'Components disabled in the Task manager', 'Switches on again the components Vetro disabled one by one (its own list), the verified viewing-data set and apps you installed. Components the firmware ships disabled are left alone.', apps.error ? apps : led);
+        it = add('components', 'Components disabled in Apps and processes', 'Switches on again the components Vetro disabled one by one (its own list), the verified viewing-data set and apps you installed. Components the firmware ships disabled are left alone.', apps.error ? apps : led);
         if (!apps.error) flag(it, compIds.length > 0, compIds.length);
 
         var w = wins.error ? null : wins.value.wins;
@@ -211,7 +211,7 @@ Restore.prototype.plan = function () {
         if (!factory.error) flag(it, factory.value.active === true);
 
         var changedFlags = flags.error ? [] : flags.value.filter(function (r) { return r.current !== r.backup; });
-        it = add('startup-flags', 'Start at boot and restart', 'Puts back the start-at-boot and restart values you changed in the Task manager.', flags);
+        it = add('startup-flags', 'Start at boot and restart', 'Puts back the start-at-boot and restart values you changed in Apps and processes.', flags);
         if (!flags.error) flag(it, changedFlags.length > 0, changedFlags.length);
 
         return {ok: true, ts: Date.now(), items: items, notes: NOTES.slice(),
@@ -386,7 +386,7 @@ Restore.prototype.runFlags = function (rows) {
 var ERASE_SCRIPT = [
     'find ' + SHARE + ' -maxdepth 1 -name \'vetro-*\' ! -name \'vetro-auth.json\' -exec rm -rf {} + 2>/dev/null',
     'rm -rf /home/owner/share/vetro',
-    'rm -f /home/owner/tvlauncher.pid /home/owner/tvlauncher.fifo /home/owner/tvlauncher.log',
+    'rm -f /home/owner/tvlauncher.pid /home/owner/tvlauncher.fifo /home/owner/tvlauncher.log /home/owner/vetro-tuner.pid /home/owner/vetro-tuner.log /home/owner/vetro-tuner.log.prev',
     'for c in ' + homeOrder.BASE + ' ' + homeOrder.BASE_NEW_HOME + '; do rm -f "$c"/.appLayerCache.[12].vetro-bak "$c"/.appLayerCache.[12].vetro-txn "$c"/.appLayerCache.[12].vetro-missing "$c"/.appLayerCache.[12].vetro-tmp; done',
     'echo left=$(find ' + SHARE + ' -maxdepth 1 -name \'vetro-*\' ! -name \'vetro-auth.json\' | wc -l)',
     'true'

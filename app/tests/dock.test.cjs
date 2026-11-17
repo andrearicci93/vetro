@@ -26,7 +26,7 @@ function fixture(options) {
     const execute = async function (cmd) {
         tv.scripts.push(cmd);
         if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
-        const script = Buffer.from(cmd.split(' ')[1], 'base64').toString();
+        const script = /^echo \S+ \| base64 -d \| sh$/.test(cmd) ? Buffer.from(cmd.split(' ')[1], 'base64').toString() : cmd;   // the running check goes unwrapped
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
@@ -338,6 +338,7 @@ function fixture(options) {
     // Samsung's Home started by the TV at boot: closed once when the dock is up, never in the boot window, never twice.
     f = fixture({running: true});
     f.dock.patchState({enabled: true});
+    f.dock.serviceStart = 95;                           // this run of the service came up with the TV
     f.dock.uptime = () => 100;
     assert.equal(await f.dock.supervise(true), 'running');
     assert.equal(f.tv.csfs, true, 'boot window: Samsung Home left alone');
@@ -347,6 +348,131 @@ function fixture(options) {
     f.tv.csfs = true;                                   // opened again on purpose from the dock
     assert.equal(await f.dock.supervise(true), 'running');
     assert.equal(f.tv.csfs, true, 'closed only once per service run');
+
+
+    // A service that restarts long after the boot (an update, a crash) leaves a Samsung Home on screen alone: the user opened it.
+    f = fixture({running: true});
+    f.dock.patchState({enabled: true});
+    f.dock.serviceStart = 5000;
+    f.dock.uptime = () => 5010;
+    assert.equal(await f.dock.supervise(true), 'running');
+    assert.equal(f.tv.csfs, true, 'service restarted after the boot: Samsung Home is not closed');
+
+    // One probe that fails while the dock is starting is "not seen yet", not a failed start.
+    {
+        const t = fixture();
+        fs.writeFileSync(t.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        const probe = t.dock.probe.bind(t.dock); let failed = 0;
+        t.dock.probe = function () { if (failed++ === 1) return Promise.reject(new Error('root agent reconnecting')); return probe(); };
+        assert.equal(await t.dock.supervise(true), 'started', 'a rejected probe during the wait does not fail the start');
+        assert.equal(t.dock.lastError, null);
+    }
+
+    // Boot start (#179): a start script that outlives its wait is not a failure when the dock comes up from it, the retry inside the
+    // boot window is short, a stale warning clears once the dock is seen running, and the status records where the time went.
+    {
+        const t = fixture();
+        t.dock.uptime = () => 40;
+        fs.writeFileSync(t.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        const exec = t.dock.execute, waits = [];
+        t.dock.execute = async (cmd, ms) => {
+            const r = await exec(cmd, ms);
+            if (cmd.startsWith('echo ') && Buffer.from(cmd.split(' ')[1], 'base64').toString().includes('setsid nohup')) { waits.push(ms); return {exit_code: null, timed_out: true, stdout: ''}; }
+            return r;
+        };
+        assert.equal(t.dock.bootSettled(), false, 'launcher on and not up yet: other boot tasks wait');
+        assert.equal(await t.dock.supervise(true), 'started', 'a timed-out start script is not a failure when the dock is up');
+        assert.equal(waits[0], 75000, 'inside the boot window the start script gets the long wait');
+        assert.equal(t.dock.failures, 0);
+        assert.equal(t.dock.lastError, null);
+        const tl = (await t.dock.status()).bootTimeline;
+        assert.equal(tl.agentSeen, 40); assert.equal(tl.startIssued, 40); assert.equal(tl.running, 40); assert.equal(tl.startTimedOut, true);
+        assert.equal(typeof tl.startCallMs, 'number');
+        assert.equal(t.dock.bootSettled(), true, 'dock is up: other boot tasks may run');
+
+        const late = fixture();
+        late.dock.uptime = () => 4000;
+        fs.writeFileSync(late.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        const lateExec = late.dock.execute, lateWaits = [];
+        late.dock.execute = async (cmd, ms) => { if (cmd.startsWith('echo ') && Buffer.from(cmd.split(' ')[1], 'base64').toString().includes('setsid nohup')) lateWaits.push(ms); return lateExec(cmd, ms); };
+        assert.equal(await late.dock.supervise(true), 'started');
+        assert.equal(lateWaits[0], 10000, 'outside the boot window the wait stays short');
+
+        const stuck = fixture({neverStarts: true});
+        stuck.dock.uptime = () => 40;
+        fs.writeFileSync(stuck.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        assert.equal(await stuck.dock.supervise(true), 'failed');
+        assert.equal(stuck.dock.nextTry - stuck.tv.clock, 10000, 'first retry inside the boot window is 10 s');
+        assert.equal(stuck.dock.bootSettled(), true, 'a launcher that does not come up (75 s wait spent) cannot hold the other boot tasks for ever');
+        const gated = fixture();
+        fs.writeFileSync(gated.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        gated.dock.agentSeenAt = gated.tv.clock - 30000;
+        assert.equal(gated.dock.bootSettled(), false, '30 s after the agent connected the gate is still closed');
+        gated.tv.clock += 31000;
+        assert.equal(gated.dock.bootSettled(), true, 'and it opens after 60 s');
+        stuck.tv.running = true; stuck.dock.nextTry = 0;
+        assert.equal(await stuck.dock.supervise(true), 'running');
+        assert.equal(stuck.dock.lastError, null, 'the earlier "failed" warning clears once the dock is seen running');
+
+        const off = fixture();
+        assert.equal(off.dock.bootSettled(), true, 'launcher off: nothing to wait for');
+    }
+
+    // A launcher started by another build of Vetro (the package installed again over a running one) is restarted once.
+    {
+        const t = fixture({running: true});
+        fs.writeFileSync(t.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        t.dock.build = '0.5.1+abc';
+        const starts = () => t.tv.scripts.filter(c => /^echo /.test(c) && Buffer.from(c.split(' ')[1], 'base64').toString().includes('setsid nohup')).length;
+        assert.equal(await t.dock.supervise(true), 'started', 'running, but started by an unknown build: started again');
+        assert.equal(starts(), 1);
+        assert.equal(t.dock.readState().build, '0.5.1+abc', 'the build that started it is remembered');
+        assert.equal(await t.dock.supervise(true), 'running');
+        assert.equal(starts(), 1, 'and only once');
+        const again = new Dock({execute: t.dock.execute, dir: t.dock.dir, stateFile: t.dock.stateFile, appsFile: t.dock.appsFile, build: '0.5.1+abc', sleep: t.dock.sleep, now: t.dock.now});
+        assert.equal(await again.supervise(true), 'running', 'a restart of the same build leaves the launcher alone');
+        assert.equal(starts(), 1);
+        await again.restartAfterUpdate();
+        assert.equal(starts(), 1, 'after an update the launcher this build already started is not started twice');
+        const next = new Dock({execute: t.dock.execute, dir: t.dock.dir, stateFile: t.dock.stateFile, appsFile: t.dock.appsFile, build: '0.5.2+def', sleep: t.dock.sleep, now: t.dock.now});
+        await next.restartAfterUpdate();
+        assert.equal(starts(), 2, 'a new build restarts it after its update');
+        // A state that cannot be saved must not turn into a restart at every round.
+        const ro = fixture({running: true});
+        fs.writeFileSync(ro.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        ro.dock.build = 'x';
+        const patch = ro.dock.patchState.bind(ro.dock);
+        ro.dock.patchState = function (p) { if (p && p.build) throw new Error('read-only'); return patch(p); };
+        assert.equal(await ro.dock.supervise(true), 'started');
+        assert.equal(await ro.dock.supervise(true), 'running', 'restarted once per run even when the build cannot be saved');
+        // Without a build id (tests, older callers) nothing changes.
+        const plain = fixture({running: true});
+        fs.writeFileSync(plain.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        assert.equal(await plain.dock.supervise(true), 'running');
+    }
+
+    // The launcher's own calls to Vetro go to the port this build answers on.
+    {
+        const t = fixture();
+        assert.ok(!/--service-port/.test(t.dock.startScript()), 'no port given: the launcher keeps its default');
+        t.dock.port = () => 9000;
+        assert.ok(/ --service-port 9000 /.test(t.dock.startScript()));
+        t.dock.port = '9000; reboot';
+        assert.ok(!/--service-port/.test(t.dock.startScript()), 'only a number in range reaches the command line');
+    }
+
+    // The custom launcher given up by the supervision: the remote bridge is told, as when the mode is switched off by hand.
+    {
+        const t = fixture();
+        let told = 0;
+        t.dock.onVolumeChange = () => { told++; };
+        t.dock.leaveCustom = async () => {};
+        assert.equal(await t.dock.giveUpCustom('the app is gone.'), 'reverted');
+        assert.equal(told, 1, 'giveUpCustom tells the bridge that the keys changed');
+        t.dock.leaveCustom = async () => { throw new Error('no agent'); };
+        assert.equal(await t.dock.giveUpCustom('the app is gone.'), 'failed');
+        assert.equal(told, 2);
+    }
 
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });

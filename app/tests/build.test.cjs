@@ -14,7 +14,8 @@ assert.ok(dockRes.includes('native/dock/res/inputs.tsv'));
 assert.ok(dockRes.every(name => /\.(png|tsv)$/.test(name)), 'only images and the inputs list are packaged from dock/res');
 // The tuner ships its own glass pictures and the two files of the build, never Samsung's TV client DLL.
 const tunerRes = names.filter(name => name.startsWith('native/tuner/res/'));
-['dock_bg', 'ring', 'shadow', 'solid'].forEach(base => assert.ok(tunerRes.includes('native/tuner/res/' + base + '.png'), 'tuner image packaged: ' + base));
+['veil_corner', 'pill_bg', 'pill_rim', 'pill_cap', 'progress', 'bar', 'hatch'].forEach(base => assert.ok(tunerRes.includes('native/tuner/res/' + base + '.png'), 'tuner image packaged: ' + base));
+['dock_bg', 'ring', 'shadow', 'solid'].forEach(base => assert.ok(!tunerRes.includes('native/tuner/res/' + base + '.png'), 'the old card material is no longer packaged: ' + base));
 assert.ok(tunerRes.every(name => /\.png$/.test(name)), 'only images are packaged from tuner/res');
 assert.ok(!names.some(name => /Tizen\.TV\.Broadcast\.TVService/i.test(name)), "Samsung's TV client is never packaged");
 assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/') && !name.startsWith('native/tuner/res/')).sort(), [
@@ -28,8 +29,8 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/') && !n
     'service/plugin-host.js',
     'service/plugin-launcher.js', 'service/disabled-ledger.js', 'service/restore.js',
     'service/updater.js', 'service/update-key.js', 'service/plugin-key.js',
-    'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-wins.js', 'service/keep-removed.js', 'service/leftovers.js', 'service/remap.js', 'service/remote-icons.js',
-    'service/samsung-remote.js', 'service/screen-controls.js', 'service/screen-status.js', 'service/settings.js', 'service/system-monitor.js','service/tv-settings.js'
+    'service/privacy.js', 'service/probe.js', 'service/quick-settings.js', 'service/quick-uninstall.js', 'service/quick-wins.js', 'service/keep-removed.js', 'service/leftovers.js', 'service/remap.js', 'service/remote-icons.js',
+    'service/samsung-remote.js', 'service/screen-controls.js', 'service/screen-status.js', 'service/settings.js', 'service/stale-service.js', 'service/system-monitor.js','service/tv-settings.js'
 ].sort());
 // A service file that requires a sibling the package does not carry crashes the whole service on the TV at start.
 files.filter(file => /^service\/[^/]+\.js$/.test(decodeURIComponent(file.uri))).forEach(file => {

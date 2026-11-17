@@ -4,6 +4,7 @@ const html = require('../service/dashboard.js')();
 const nodes = {};
 const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textContent: '', innerHTML: '', disabled: false, focus() {}});
 const calls = [];
+let tvApps = [];
 let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false,
     entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}]};
 const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
@@ -20,7 +21,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
             if (body.action === 'disableCustom') dock = Object.assign({}, dock, {mode: 'off', customApp: null, running: false});
             data = dock;
-        } else if (url.startsWith('/apps')) data = {apps: [], summary: {total: 0}, source: 'package registry + public probe'};
+        } else if (url.startsWith('/apps')) data = {apps: tvApps, summary: {total: tvApps.length}, source: 'package registry + public probe'};
         else if (url === '/hbbtv') data = {value: 19, off: true, canRestore: true, restoreValue: 20};
         else if (url === '/dns') data = {enabled: false, applied: false, domains: [], resolvers: []};
         else if (url === '/leftovers') data = {files: [], packageBytes: 0, storageBefore: {availableBytes: 1}, errors: []};
@@ -33,7 +34,7 @@ const tick = () => new Promise(r => setImmediate(r));
 
 (async () => {
     await tick(); await tick();
-    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards<\/button><\/nav>/, 'Quick settings, Vetro UI (launcher, live TV, on-screen displays), Remapper and Vetro Shards');
+    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards<\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><\/nav>/, 'Quick settings, Vetro UI (launcher, live TV, on-screen displays), Vetro Shards and Remapper');
     assert.doesNotMatch(html, /data-tab="dock"|data-tab="tuner"/, 'the launcher and the tuner are tabs of Vetro UI, not sidebar entries');
     assert.ok(!calls.some(c => c.url === '/dock'), 'the dock is not read until its tab is opened');
     sandbox.switchPanel('dock'); await tick(); await tick();
@@ -158,13 +159,14 @@ const tick = () => new Promise(r => setImmediate(r));
     const reload = async () => { await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick(); };
     dock = Object.assign({}, dock, {installed: true, enabled: false, error: null, mode: 'off', customApp: null, running: false});
     await reload();
-    sandbox.inventory = [
+    // The TV lists the same apps when the page reads them again (it does after the launcher changes, and redraws the Launcher tab).
+    sandbox.inventory = tvApps = [
         {appId: 'org.example.launcher', name: 'My Launcher', system: false, removable: true, show: true, disabled: false},
         {appId: 'com.samsung.tv.csfs', name: 'Samsung Home', system: true, removable: false, show: true, disabled: false},
         {appId: 'org.example.hidden', name: 'Hidden Tool', system: false, removable: true, show: false, disabled: false},
         {appId: 'org.example.off', name: 'Switched Off', system: false, removable: true, show: true, disabled: true}];
     sandbox.renderDock();
-    assert.match(html, /role="tab" id="dtab-vetro" data-dock-tab="vetro"[^>]*>Vetro launcher<\/button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom"[^>]*>Another app \(custom launcher\)<\/button>/, 'two choices on the Launcher tab: the Vetro launcher or another app');
+    assert.match(html, /role="tab" id="dtab-vetro" data-dock-tab="vetro"[^>]*>Vetro launcher<\/button><button type="button" role="tab" id="dtab-cards" data-dock-tab="cards"[^>]*>Control center<\/button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom"[^>]*>Custom launcher<\/button>/, 'three sub-tabs on the Launcher tab: the Vetro launcher, its Control center, or another app');
     assert.equal(el('dockCustom').hidden, true, 'the Vetro launcher tab is the one open first');
     el('dock').onclick({target: {closest: () => ({dataset: {dockTab: 'custom'}})}});
     assert.equal(el('dockCustom').hidden, false); assert.equal(el('dockBody').hidden, true);

@@ -42,14 +42,28 @@ function install(env) {
     }
 
     if (!acceptsString(BufferRef)) {
-        // Here Buffer.from is the inherited TypedArray.from, which rejects
-        // strings. The inherited property is not writable, so define an own one.
+        // Here Buffer.from is the inherited TypedArray.from. On Node 4.4 (V8 4.5) it
+        // refuses to build a Buffer at all ("this is not a typed array": Buffer's
+        // prototype has no BYTES_PER_ELEMENT of its own), for strings and for arrays
+        // alike, so both are built here. The MQTT client makes every packet with
+        // Buffer.from([...]): left to the inherited function it ended the service as
+        // soon as a broker was configured (#77). The inherited property is not
+        // writable, so define an own one.
         var typedArrayFrom = BufferRef.from;
         Object.defineProperty(BufferRef, 'from', {
             configurable: true,
             writable: true,
             value: function (value, encoding) {
-                if (typeof value !== 'string') return typedArrayFrom.apply(BufferRef, arguments);
+                if (typeof value !== 'string') {
+                    // Arrays, Buffers and typed arrays: a copy, byte by byte.
+                    if (value && typeof value.length === 'number' && !(value instanceof ArrayBuffer)) {
+                        var count = value.length >>> 0;
+                        var copy = typeof BufferRef.allocUnsafe === 'function' ? BufferRef.allocUnsafe(count) : new BufferRef(count);
+                        for (var i = 0; i < count; i++) copy[i] = value[i] & 255;
+                        return copy;
+                    }
+                    return typedArrayFrom.apply(BufferRef, arguments);
+                }
                 // Not `new Buffer(value)`: on a modern runtime that constructor
                 // delegates back to Buffer.from and would recurse.
                 var size = BufferRef.byteLength(value, encoding);

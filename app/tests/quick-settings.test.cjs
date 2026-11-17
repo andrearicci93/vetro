@@ -113,6 +113,19 @@ function harness(opts){
  assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:true,onboot:false,autorestart:false}]).status,'off');
  assert.equal(quick.state(g,[{appId:'com.samsung.tv.csfs',disabled:false}]).status,'on');}
 
+// Apps that come with the TV: one switch each in a section of their own, plain groups (no microphone, no confirmation,
+// no services), with ids nobody protects; an app that is not on the TV reads "unavailable" (the page then hides it).
+{const apps=quick.GROUPS.filter(g=>g.section==='apps');
+ assert.deepEqual(apps.map(g=>g.id),['app-netflix','app-primevideo','app-youtube','app-appletv','app-browser','app-gallery']);
+ const debloat=require('../service/debloat.js');
+ apps.forEach(g=>{assert.ok(g.ids.length&&!g.microphone&&!g.confirm&&!g.services&&g.description==='',g.id);
+  g.ids.forEach(id=>{assert.ok(quick.ALLOWED_IDS.includes(id),id);assert.ok(!debloat.isProtected(id),id+' is not protected');});});
+ const netflix=quick.find('app-netflix');
+ assert.equal(quick.state(netflix,[{appId:'org.tizen.netflix-app',disabled:false}]).status,'on');
+ assert.equal(quick.state(netflix,[{appId:'org.tizen.netflix-app',disabled:true,onboot:false,autorestart:false}]).status,'off');
+ assert.equal(quick.state(netflix,[{appId:'some.other.app',disabled:false}]).status,'unavailable','not on this TV');
+ assert.equal(quick.state(quick.find('app-primevideo'),[{appId:'org.tizen.primevideo',disabled:true,onboot:false,autorestart:false},{appId:'org.tizen.primevideo-dummy',disabled:false}]).status,'partial');}
+
 {const g=quick.find('tvplus');
  assert.equal(g.section,'memory');assert.ok(!g.microphone&&!g.confirm);
  assert.deepEqual(g.ids,['com.samsung.tv.tvplus','com.samsung.tv.tvPlusDeeplinker','w2VwCK465D.OTApp','com.samsung.tv.slive-daemon','org.tizen.bms-service']);

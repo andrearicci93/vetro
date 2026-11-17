@@ -10,7 +10,8 @@
 //     "username": null, "password": null, "topicPrefix": "vetro" }
 
 var fs = require('fs');
-var MqttClient = require('./mqtt.js').MqttClient;
+// The client is loaded with the first connection: without a broker configured it is never needed.
+function MqttClient(options) { var Client = require('./mqtt.js').MqttClient; return new Client(options); }
 // Regular expressions compiled once at module load, not on every call.
 var LEGACY_IDENTITY_RE = /^[a-f0-9]{32}$/i;
 var LEGACY_IDENTITY_RE_2 = /^vetro-[a-f0-9]{16,32}$/;

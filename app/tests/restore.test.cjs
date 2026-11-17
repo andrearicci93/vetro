@@ -98,7 +98,7 @@ function tv(start) {
   assert.equal(plan.items.find(i => i.id === 'components').count, 3, 'verified + ledger + user app, nothing else');
   assert.equal(plan.items.find(i => i.id === 'startup-flags').count, 1, 'a backup equal to the current value is not a change');
   assert.equal(plan.items.find(i => i.id === 'plugins').count, 1, 'bundled plugins are not touched');
-  assert.ok(plan.notes.length >= 2 && plan.notes.some(n => /uninstalled|removed from the Task manager/i.test(n)));
+  assert.ok(plan.notes.length >= 2 && plan.notes.some(n => /uninstalled|removed in Apps and processes/i.test(n)));
   assert.equal(t.s.order.length, 0, 'planning changes nothing');
   assert.ok(!t.s.calls.some(c => /pkgcmd -A|UPDATE|rm -rf/.test(c)));
 

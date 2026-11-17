@@ -33,20 +33,7 @@ var RUN_DIR = '/home/owner';                          // the tuner's own pid and
 var PID_FILE = RUN_DIR + '/vetro-tuner.pid';
 var LOG_FILE = RUN_DIR + '/vetro-tuner.log';
 var CONTROL = '/tmp/vetro-tuner.ctl';                 // the pipe a resident tuner listens on (created by the tuner, mode 0666)
-var FEATURES_FILE = SHARE + '/vetro-tuner-features';  // "name=0" lines for the parts switched off; the tuner re-reads it, no restart
-// The parts of the tuner that can be switched off one by one, to test them separately. The ids are the ones tuner/src/Core/Features.cs knows.
-var FEATURES = [
-    {id: 'banner', label: 'Channel banner', hint: 'The bar with the channel and programme when you change channel.'},
-    {id: 'list', label: 'Channel list', hint: 'OK opens the list.'},
-    {id: 'guide', label: 'TV guide', hint: 'Up, Guide or EPG opens the guide.'},
-    {id: 'pad', label: 'Number pad', hint: 'Right or a number key opens the pad.'},
-    {id: 'info', label: 'Info panel', hint: 'The Info key, or Play / pause.'},
-    {id: 'audio', label: 'Audio language key', hint: 'Left cycles the audio track.'},
-    {id: 'hold', label: 'Hold to repeat', hint: 'CH+, CH- and the arrows keep going while held.'},
-    {id: 'logos', label: 'Channel logos', hint: 'The TV\'s own channel pictures in the banner, list, pad, info and guide (only those it has saved).'},
-    {id: 'focus', label: 'Keys only when in front', hint: 'The tuner leaves the remote alone while another window has it: an app, Samsung\'s own 123 pad or panels. Switch off only if the tuner stops answering the remote.'}
-];
-var FEATURE_IDS = FEATURES.map(function (f) { return f.id; });
+var FEATURES_FILE = SHARE + '/vetro-tuner-features';  // "name=0" lines the tuner re-reads without a restart; today only "motion=0" (Reduce motion)
 var DLL = 'vetro-tuner.dll';
 var UNIT = 'vetro-tuner';                             // the tuner's own systemd unit
 var TARGET_APP = 'org.tizen.tv-viewer';               // Samsung's live TV app
@@ -63,6 +50,10 @@ var COMMANDS = {show: 'show', hide: 'hide', toggle: 'toggle', guide: 'guide'};
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function q(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
+
+// The cheap "is it running" check, the same one-line, builtins-only check as the launcher's (dock.js runningCheck): one shell
+// on the TV instead of the dozen processes of the full probe, which also reads the prerequisites and the log.
+var dockShell = require('./dock.js');
 
 function check(r, what) {
     if (!r || r.exit_code || r.timed_out) throw new Error((r && (r.stderr || r.stdout)) || what + ' failed');
@@ -82,20 +73,35 @@ function Tuner(options) {
     this.failures = 0;
     this.nextTry = 0;
     this.lastError = null;
+    this.build = options.build || null;         // this Vetro build: a tuner started by another one is restarted (supervise)
+    this.noMotion = options.noMotion || null;   // the launcher's Reduce motion setting: the tuner follows it
+    this.cheapBroken = false;                   // as for the launcher: the full probe found running a pid the cheap check did not
+    this.changes = 0;                           // counts starts and stops: the supervision goes back to its short interval when it moves
+    // First start of this service run, in seconds since the TV booted (as the launcher's bootTimeline): serviceStart, agentSeen,
+    // startIssued, startCallMs (how long the start script took), startTimedOut, running. Kept in memory, shown with the status.
+    this.serviceStart = options.serviceStart !== undefined ? options.serviceStart : Math.round((this.uptime() - process.uptime()) * 10) / 10;
+    this.timeline = {serviceStart: this.serviceStart};
 }
 
-// The files the TV runs and draws with: the assembly and the glass pictures that sit next to it.
+Tuner.prototype.mark = function (step, value) {
+    if (this.timeline[step] === undefined) this.timeline[step] = value === undefined ? Math.round(this.uptime() * 10) / 10 : value;
+};
+
+// The files the TV runs and draws with: the assembly and the pictures that sit next to it (the veil stands for them all).
 Tuner.prototype.installed = function () {
-    try { return fs.existsSync(path.join(this.dir, DLL)) && fs.existsSync(path.join(this.dir, 'res', 'dock_bg.png')); }
+    try { return fs.existsSync(path.join(this.dir, DLL)) && fs.existsSync(path.join(this.dir, 'res', 'veil_corner.png')); }
     catch (e) { return false; }
 };
 
 Tuner.prototype.readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        var off = s && Array.isArray(s.off) ? s.off.filter(function (n) { return FEATURE_IDS.indexOf(n) >= 0; }) : [];
-        return {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null, off: off};
-    } catch (e) { return {enabled: false, since: null, off: []}; }
+        // A state saved by a test build may still list parts switched off one by one ("off"): those switches are gone, and
+        // the tuner is whole again (the list is not read, and the next save drops it).
+        var state = {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null};
+        if (s && typeof s.build === 'string') state.build = s.build;   // the Vetro build that last started the tuner
+        return state;
+    } catch (e) { return {enabled: false, since: null}; }
 };
 
 Tuner.prototype.writeState = function (state) {
@@ -108,20 +114,16 @@ Tuner.prototype.patchState = function (patch) {
     this.writeState(Object.assign({}, this.readState(), patch));
 };
 
-// The file the tuner reads: one "name=0" line per part that is off. Written whenever a switch changes and before every start.
-Tuner.prototype.writeFeatures = function (off) {
-    var lines = (off || this.readState().off).map(function (n) { return n + '=0'; });
+// The file the tuner reads while it runs. The tuner is one thing: on, it has all its parts (the per-part test switches are
+// gone). What is left in the file is Reduce motion, one setting for every Vetro screen on the TV: it follows the launcher's.
+// Written when that setting changes and before every start.
+Tuner.prototype.writeFeatures = function () {
+    var lines = [];
+    var still = false;
+    try { still = !!(this.noMotion && this.noMotion()); } catch (e) { /* unreadable launcher state: motion stays on */ }
+    if (still) lines.push('motion=0');
     try { atomicFile.write(fs, this.featuresFile, lines.join('\n') + (lines.length ? '\n' : '')); }
     catch (e) { throw new Error('The tuner switches could not be saved: ' + e.message); }
-};
-
-// Switch one part of the tuner on or off. It takes effect on the running tuner within a second.
-Tuner.prototype.setFeature = function (name, on) {
-    if (FEATURE_IDS.indexOf(name) < 0) return Promise.reject(new Error('Unknown tuner part'));
-    var off = this.readState().off.filter(function (n) { return n !== name; });
-    if (on === false) off.push(name);
-    try { this.patchState({off: off}); this.writeFeatures(off); } catch (e) { return Promise.reject(e); }
-    return this.status();
 };
 
 // What is running, and whether this TV can run the tuner at all, in one read. Only the tuner's own pid counts, and only if
@@ -155,6 +157,33 @@ Tuner.prototype.probe = function () {
     });
 };
 
+// Only "is it running": {running, pid, other, cheap: true}.
+Tuner.prototype.check = function () {
+    return this.execute(dockShell.runningCheck(PID_FILE, DLL, 'tuner'), 6000).then(function (r) { return dockShell.parseCheck(check(r, 'Status'), PROBE_TUNER_RE); });
+};
+
+// The cheap check, and the full probe when it cannot tell (see Dock.runningNow).
+Tuner.prototype.runningNow = function () {
+    var self = this;
+    if (this.cheapBroken) return this.probe();
+    return this.check().then(function (c) {
+        self.cheapFails = 0;
+        if (c.running || !c.other) return c;
+        return self.probe().then(function (p) {
+            if (p.running && p.pid === c.other) self.cheapBroken = true;
+            return p;
+        });
+    }, function () {
+        // The check itself failed (a shell that refuses the line, a timeout). The full probe answers instead; when it
+        // works twice in a row where the check did not, the check is given up for this run of the service.
+        return self.probe().then(function (p) {
+            self.cheapFails = (self.cheapFails || 0) + 1;
+            if (self.cheapFails >= 2) self.cheapBroken = true;
+            return p;
+        });
+    });
+};
+
 // The reason this TV cannot run the tuner, or null when it can.
 function unsupportedReason(p) {
     if (!p.dotnet) return 'This TV has no .NET runtime for Vetro to use.';
@@ -166,10 +195,11 @@ function unsupportedReason(p) {
 Tuner.prototype.status = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, target: TARGET_APP,
-        features: FEATURES.map(function (f) { return {id: f.id, label: f.label, hint: f.hint, on: state.off.indexOf(f.id) < 0}; })};
+        error: this.lastError, failures: this.failures, target: TARGET_APP, bootTimeline: this.timeline,
+        runningCheck: this.cheapBroken ? 'full' : 'cheap'};
     return this.probe().then(function (p) {
         var reason = unsupportedReason(p);
+        self.unsupported = reason;
         return Object.assign(base, {running: p.running, pid: p.pid, supported: reason === null, unsupportedReason: reason,
             samsungTunerFound: p.viewer, prerequisites: {dotnet: p.dotnet, client: p.client, tvs: p.tvs, viewer: p.viewer},
             clientVersions: p.clientVersions, log: p.log});
@@ -211,11 +241,18 @@ Tuner.prototype.stopLines = function () {
 // gets a long wait, and the next supervision tick finds it by its pid.
 Tuner.prototype.waitRunning = function () {
     var self = this, deadline = this.now() + (this.uptime() < BOOT_WINDOW_S ? BOOT_WAIT_MS : START_WAIT_MS);
+    // A probe that fails is "not seen yet", and the wait between probes grows (1, 2, 3 s), as for the launcher (dock.js).
+    // Each poll is the cheap check; the full probe comes last, for its log lines and as the last word.
+    var round = 0;
+    function full(p) { return p.cheap ? self.probe().catch(function () { return {running: false, log: ''}; }) : Promise.resolve(p); }
     function poll() {
-        return self.probe().then(function (p) {
+        return self.runningNow().catch(function () { return {running: false, log: ''}; }).then(function (p) {
             if (p.running) return p;
-            if (self.now() > deadline) throw new Error('The tuner did not start. ' + (p.log ? 'Last log lines: ' + p.log.split('\n').slice(-2).join(' | ') : 'It wrote no log.'));
-            return self.sleep(1000).then(poll);
+            if (self.now() > deadline) return full(p).then(function (f) {
+                if (f.running) return f;
+                throw new Error('The tuner did not start. ' + (f.log ? 'Last log lines: ' + f.log.split('\n').slice(-2).join(' | ') : 'It wrote no log.'));
+            });
+            return self.sleep(Math.min(3000, 1000 * ++round)).then(poll);
         });
     }
     return this.sleep(1500).then(poll);
@@ -224,10 +261,26 @@ Tuner.prototype.waitRunning = function () {
 Tuner.prototype.launch = function () {
     var self = this;
     try { this.writeFeatures(); } catch (e) { return Promise.reject(e); }
-    return this.execute(wrap(this.startScript()), 10000).then(function (r) { check(r, 'Start'); return self.waitRunning(); });
+    this.changes++;
+    this.mark('startIssued');
+    // As for the launcher: right after a boot the start script gets the long wait, and one that still runs out of time
+    // is not a failure (the tuner usually comes up from that same attempt): waitRunning() decides.
+    var t0 = this.now();
+    return this.execute(wrap(this.startScript()), this.uptime() < BOOT_WINDOW_S ? BOOT_WAIT_MS : 10000).then(function (r) {
+        self.mark('startCallMs', self.now() - t0);
+        if (r && r.timed_out) self.mark('startTimedOut', true);
+        if (!r || !r.timed_out) check(r, 'Start');
+        return self.waitRunning();
+    }).then(function (p) {
+        self.mark('running');
+        self.startedHere = true;   // in memory too: a state that cannot be saved must not restart the tuner at every round
+        if (self.build) { try { if (self.readState().build !== self.build) self.patchState({build: self.build}); } catch (e) {} }
+        return p;
+    });
 };
 
 Tuner.prototype.stopTuner = function () {
+    this.changes++;
     return this.execute(wrap(this.stopLines()), 8000).then(function (r) { check(r, 'Stop'); });
 };
 
@@ -240,6 +293,7 @@ Tuner.prototype.enable = function () {
     this.busy = true; this.lastError = null;
     return this.probe().then(function (p) {
         var reason = unsupportedReason(p);
+        self.unsupported = reason;   // remembered for the TV screen's tile, which must not count a tuner this TV cannot run
         if (reason) throw new Error(reason + ' Samsung’s tuner stays as it is.');
         return self.launch();
     }).then(function () {
@@ -269,7 +323,9 @@ Tuner.prototype.command = function (name) {
     var word = Object.prototype.hasOwnProperty.call(COMMANDS, name) ? COMMANDS[name] : null;
     if (!word) return Promise.reject(new Error('Invalid tuner command'));
     if (!this.readState().enabled) return Promise.reject(new Error('Turn the tuner on first'));
-    return this.execute(wrap('if [ -p ' + CONTROL + ' ]; then echo ' + word + ' > ' + CONTROL + '; echo sent; else echo none; fi'), 6000).then(function (r) {
+    // Only to a tuner that is alive: a pipe left by one that died has no reader, and a plain write to it would wait
+    // (holding the root agent's queue) until the command ran out of time. Opened read-write, the write never waits.
+    return this.execute(wrap('p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + CONTROL + ' ]; then ( exec 3<>' + CONTROL + ' && echo ' + word + ' >&3 ) && echo sent; else echo none; fi'), 6000).then(function (r) {
         if (check(r, 'Command').trim() !== 'sent') throw new Error('The tuner is not running yet');
         return {ok: true, command: word};
     });
@@ -283,11 +339,18 @@ Tuner.prototype.supervise = function (agentConnected) {
     if (!this.readState().enabled || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
-    return this.probe().then(function (p) {
-        if (p.running) { self.failures = 0; return 'running'; }
-        return self.launch().then(function () { self.failures = 0; self.lastError = null; return 'started'; });
+    this.mark('agentSeen');
+    var started = this.readState().build;
+    // The cheap check while the tuner runs; "not running" is confirmed by the full probe before anything is started.
+    return this.runningNow().then(function (c) { return c.cheap && !c.running ? self.probe() : c; }).then(function (p) {
+        // A tuner started by another build of Vetro (the package was installed again over a running one) is the old
+        // binary in its own unit: it is started again, once. See the launcher's supervise (dock.js).
+        if (p.running && self.build && started !== self.build && !self.startedHere) return self.launch().then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
+        // A warning left by an earlier failed round is stale once the tuner is seen running.
+        if (p.running) { self.failures = 0; self.mark('running'); if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } return 'running'; }
+        return self.launch().then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
     }).catch(function (e) {
-        self.failures++;
+        self.failures++; self.superviseFailed = true;
         self.nextTry = self.now() + Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * Math.pow(2, Math.min(self.failures, 8) - 1));
         self.lastError = (self.failures >= 4 ? 'The tuner has not started after ' + self.failures + ' tries; Vetro keeps trying. ' : '') + e.message;
         return 'failed';
@@ -305,4 +368,12 @@ Tuner.prototype.restart = function () {
         .finally(function () { self.busy = false; });
 };
 
-module.exports = {Tuner: Tuner, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS, FEATURES: FEATURES};
+// After a self-update: the tuner is started again with the new files, unless the supervision has already done it.
+Tuner.prototype.restartAfterUpdate = function () {
+    var self = this;
+    if (this.busy) return Promise.reject(new Error('Another tuner change is in progress'));
+    if (!this.build || (this.readState().build !== this.build && !this.startedHere)) return this.restart();
+    return this.runningNow().then(function (p) { return p.running ? self.status() : self.restart(); });
+};
+
+module.exports = {Tuner: Tuner, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS};

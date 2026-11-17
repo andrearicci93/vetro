@@ -64,7 +64,7 @@ function handle(event, opts) {
 var DELAY_MS = 380, INTERVAL_MS = 90, MAX_MS = 8000;
 
 function repeater(opts) {
-    var timer = null, started = 0;
+    var timer = null, started = 0, pending = false;
     function stop() { if (timer) { clearTimeout(timer); clearInterval(timer); timer = null; } }
     function send(event) { return handle(event, opts).catch(function () {}); }
     return {
@@ -78,7 +78,11 @@ function repeater(opts) {
                 timer = setTimeout(function () {
                     timer = setInterval(function () {
                         if (Date.now() - started > MAX_MS) { stop(); return; }
-                        send(event);
+                        // One step at a time: with the launcher down each step is a command for the root agent, and steps
+                        // queued faster than they finish would fill its queue and keep everything else out.
+                        if (pending) return;
+                        pending = true;
+                        send(event).then(function () { pending = false; });
                     }, INTERVAL_MS);
                     if (timer.unref) timer.unref();
                 }, DELAY_MS);

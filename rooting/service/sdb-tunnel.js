@@ -14,6 +14,13 @@
 // arg1 on device->client packets). CNXN is answered locally, so sdbd sees one
 // handshake no matter how many clients are connected.
 //
+// sdbd is a shared resource: while this server holds its one host connection,
+// no other app on the TV (TV-Store, for one) can reach it. The upstream is
+// therefore opened on the first client CNXN and released again once the last
+// client is gone and a short grace period has passed (IDLE_RELEASE_MS), so a
+// burst of Vetro operations does not reconnect every time. The next CNXN opens
+// it again. A client that stays connected keeps the upstream held.
+//
 // SDB clients do not carry Vetro's HTTP pairing token. Keep the listener on
 // loopback by default. The integration binds one shared listener with remote
 // admission off until its persisted dashboard toggle is enabled; off revokes
@@ -40,6 +47,7 @@ var MAX_PAYLOAD = 4096;
 var MAX_FRAME_BYTES = 1024 * 1024;
 var VERSION = 0x01000000;
 var FIRST_STREAM_ID = 0x40000000;
+var IDLE_RELEASE_MS = 3000;
 
 function alloc(length) {
     return Buffer.alloc ? Buffer.alloc(length) : new Buffer(length);
@@ -125,10 +133,12 @@ Client.prototype.drain = function () {
     }
 };
 
-function Pool(host, port, log) {
+function Pool(host, port, log, idleMs) {
     this.host = host;
     this.port = port;
     this.log = log;
+    this.idleMs = idleMs;
+    this.idleTimer = null;
     this.socket = null;
     this.ready = false;
     this.buffer = alloc(0);
@@ -163,6 +173,7 @@ Pool.prototype.startUpstream = function (payload) {
 };
 
 Pool.prototype.reset = function () {
+    this.cancelIdle();
     var socket = this.socket;
     this.socket = null;
     this.ready = false;
@@ -179,7 +190,27 @@ Pool.prototype.reset = function () {
     if (socket) { try { socket.destroy(); } catch (e) {} }
 };
 
+Pool.prototype.cancelIdle = function () {
+    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+};
+
+// Give sdbd back once nobody is connected. reset() also drops the cached banner
+// and any half-open handshake, so the next CNXN starts from a clean upstream.
+Pool.prototype.scheduleIdle = function () {
+    var self = this;
+    this.cancelIdle();
+    if (!this.socket || this.clients.size > 0) return;
+    this.idleTimer = setTimeout(function () {
+        self.idleTimer = null;
+        if (self.clients.size > 0 || !self.socket) return;
+        self.log('sdb tunnel idle, releasing sdbd');
+        self.reset();
+    }, this.idleMs);
+    if (this.idleTimer && typeof this.idleTimer.unref === 'function') this.idleTimer.unref();
+};
+
 Pool.prototype.addClient = function (socket) {
+    this.cancelIdle();
     var client = new Client(socket, this);
     this.clients.add(client);
     return client;
@@ -210,6 +241,7 @@ Pool.prototype.removeClient = function (client) {
         }
     });
     client.streams.clear();
+    this.scheduleIdle();
 };
 
 Pool.prototype.sendUpstream = function (packet) {
@@ -326,6 +358,7 @@ Pool.prototype.onClientPacket = function (client, packet) {
 };
 
 Pool.prototype.close = function () {
+    this.cancelIdle();
     var clients = this.clients;
     this.clients = new Set();
     clients.forEach(function (client) { client.streams.clear(); client.socket.destroy(); });
@@ -344,6 +377,7 @@ function TunnelServer(opts) {
     this.sdbHost = opts.sdbHost || '127.0.0.1';
     this.sdbPort = opts.sdbPort || SDB_PORT;
     this.log = opts.log || function () {};
+    this.idleMs = opts.idleMs === undefined ? IDLE_RELEASE_MS : opts.idleMs;
     this._server = null;
     this._pool = null;
 }
@@ -385,7 +419,7 @@ TunnelServer.prototype.start = function (cb) {
         return this;
     }
 
-    this._pool = new Pool(this.sdbHost, this.sdbPort, this.log);
+    this._pool = new Pool(this.sdbHost, this.sdbPort, this.log, this.idleMs);
     this._server = net.createServer(function (client) {
         // One multiplexed upstream for every client: sdbd sees a single host
         // connection, while each client keeps its own CNXN and stream ids.

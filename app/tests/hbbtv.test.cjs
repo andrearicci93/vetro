@@ -9,6 +9,7 @@ function tv(start){
   if(s.fail&&s.fail(sh))return {exit_code:1,stdout:'',stderr:'boom'};
   const set=/vconftool set -f -t int \S+ (-?\d+)/.exec(sh);if(set)s.value=Number(set[1]);
   if(sh.includes('touch '+FLAG))s.flag=true;if(/rm -f /.test(sh)&&sh.includes(FLAG))s.flag=false;
+  let failed=false;
   // order inside the script matters: stop the service first, then the app
   sh.split('\n').forEach(line=>{
    if(line.startsWith('if ! sqlite3')&&line.includes('pkgcmd -D')&&!s.absent&&!s.noDisable){s.disabled=true;s.service=false;s.pkgcmdRuns=(s.pkgcmdRuns||0)+1;}
@@ -17,9 +18,13 @@ function tv(start){
    // QN85A: a service with auto-restart is started again right after a plain stop unless it is disabled
    if(line.startsWith('if app_launcher -S')&&line.includes('org\\.tizen\\.hbbtv-service')&&line.includes('-t org.tizen.hbbtv-service')){s.service=false;if(s.autoRestart&&!s.disabled){s.service=true;s.svcRestarts=(s.svcRestarts||0)+1;}}
    if(line.startsWith('if app_launcher -S')&&line.includes('-t org.tizen.hbbtv ')){s.running=false;if(s.service)s.running=true;/* the service starts it again */}
+   // A TV without the service app refuses to start it, and the script runs under set -e: an unguarded start fails it all (#212).
+   if(line.startsWith('app_launcher -s '+SERVICE)&&s.absent)failed=true;
+   if(line.startsWith('if ! sqlite3')&&line.includes('then app_launcher -s '+SERVICE)&&!s.absent&&!s.service){s.service=true;s.svcStarts++;}
    if(line.startsWith('app_launcher -s '+SERVICE)||(line.startsWith('if ! app_launcher -S')&&line.includes('then app_launcher -s '+SERVICE))&&!s.service){s.service=true;s.svcStarts++;}
    if(line==='app_launcher -s org.tizen.hbbtv'){s.running=true;s.appStarts++;}
   });
+  if(failed)return {exit_code:1,stdout:'',stderr:'... Fail to launch application'};
   return {exit_code:0,stdout:''};};
  return {s,scripts,execute};
 }
@@ -71,6 +76,7 @@ function tv(start){
  t=tv({value:20,flag:false,running:true,service:false,absent:true});backup=null;c=new Control(t.execute,io);
  r=await c.change(true,20);assert.equal(r.off,true);assert.equal(r.serviceAbsent,true);assert.equal(r.serviceDisabled,true);assert.equal(t.s.pkgcmdRuns||0,0,'no service app: nothing to disable');assert.equal(t.s.running,false);
  assert.equal((await c.enforce()).stopped,false,'and enforce sees it already off');
- r=await c.change(false,19);assert.equal(r.off,false);assert.equal(t.s.appStarts,1);
+ r=await c.change(false,19);assert.equal(r.off,false);assert.equal(t.s.appStarts,1);assert.equal(t.s.svcStarts,0,'no service app: On does not try to start it (#212)');
+ assert.equal((await c.change(false,r.value)).changed,false,'already on where there is no service app');
  console.log('PASS HbbTV: Off = value, brake file, service stopped first, app stopped; never starts anything; exact restore; boot enforcement');
 })().catch(e=>{console.error(e);process.exitCode=1});

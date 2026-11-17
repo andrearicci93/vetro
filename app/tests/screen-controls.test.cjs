@@ -67,7 +67,7 @@ async function router() {
     assert.equal(read.headers['access-control-allow-origin'], 'null');
     const d = JSON.parse(read.text);
     assert.equal(d.canControl, true, 'a request from the TV itself may change things');
-    assert.deepEqual(Object.keys(d.tiles).sort(), ['ads', 'launcher', 'tuner', 'voice']);
+    assert.deepEqual(Object.keys(d.tiles).sort(), ['ads', 'launcher', 'ui', 'voice']);
     assert.equal(d.tiles.ads.state, 'na', 'no root connection in this harness');
     assert.equal((await request('GET', '/screen/control')).status, 404, 'the change route is POST only');
     assert.equal((await request('POST', '/screen/controls', {})).status, 405, 'the read route takes no POST');
@@ -80,15 +80,17 @@ async function router() {
 function fakes(over) {
   over = over || {};
   const calls = [];
-  const dockState = Object.assign({enabled: false, customApp: null}, over.dock);
+  const dockState = Object.assign({enabled: false, customApp: null, volumePill: false, numberPad: false, cards: [], lastCards: []}, over.dock);
   const tunerState = Object.assign({enabled: false}, over.tuner);
   const d = {
     calls,
     dock: {installed: () => over.dockInstalled !== false, readState: () => dockState,
       enable: () => { calls.push('dock.enable'); dockState.enabled = true; return Promise.resolve({}); },
       disable: () => { calls.push('dock.disable'); dockState.enabled = false; return Promise.resolve({}); },
-      disableCustom: () => { calls.push('dock.disableCustom'); dockState.customApp = null; return Promise.resolve({}); }},
-    tuner: {installed: () => true, readState: () => tunerState,
+      disableCustom: () => { calls.push('dock.disableCustom'); dockState.customApp = null; return Promise.resolve({}); },
+      setKeys: on => { calls.push('dock.setKeys ' + on); if (over.keysRefuse) return Promise.reject(new Error(over.keysRefuse)); dockState.volumePill = dockState.numberPad = on; return Promise.resolve({}); },
+      setCards: list => { calls.push('dock.setCards ' + list.join('+')); if (list.length) dockState.lastCards = list; dockState.cards = list; return Promise.resolve({}); }},
+    tuner: {installed: () => over.tunerInstalled !== false, unsupported: over.tunerUnsupported || null, readState: () => tunerState,
       enable: () => { calls.push('tuner.enable'); if (over.tunerRefuses) return Promise.reject(new Error(over.tunerRefuses)); tunerState.enabled = true; return Promise.resolve({}); },
       disable: () => { calls.push('tuner.disable'); tunerState.enabled = false; return Promise.resolve({}); }},
     updater: {status: () => Object.assign({configured: true, source: over.source || 'http://127.0.0.1:1/', version: '0.5.1', shell: 1, busy: false, pending: null}, over.updaterStatus),
@@ -112,27 +114,61 @@ async function tiles() {
   assert.equal(r.tiles.ads.state, 'on', 'every member disabled: the switch is on');
   assert.equal(r.tiles.voice.state, 'part');
   assert.equal(r.tiles.voice.left, 2, 'two voice members still run');
-  assert.equal(r.tiles.tuner.state, 'off');
+  assert.equal(r.tiles.ui.state, 'off');
   assert.equal((await c.read(false)).canControl, false, 'a page that is not the TV is told so up front');
   // The custom launcher counts as the launcher being on, as on the old screen.
   d = fakes({dock: {customApp: 'x.y'}}); r = await new Controls(d).read(true);
   assert.deepEqual(r.tiles.launcher, {state: 'on', custom: true});
   // No root: the tiles that need it say so; the registry unreadable is not "enabled".
   d = fakes({agent: false}); r = await new Controls(d).read(true);
-  assert.ok(['launcher', 'ads', 'voice', 'tuner'].every(k => r.tiles[k].state === 'na' && /root/i.test(r.tiles[k].why)));
+  assert.ok(['launcher', 'ads', 'voice', 'ui'].every(k => r.tiles[k].state === 'na' && /root/i.test(r.tiles[k].why)));
   d = fakes({registryError: true}); r = await new Controls(d).read(true);
   assert.equal(r.tiles.ads.state, 'na');
   r = await new Controls(fakes({dockInstalled: false})).read(true);
   assert.equal(r.tiles.launcher.state, 'na');
   // The launcher and the tuner are plugins: while one is switched off or stopped the dashboard refuses to change it, so a tile does too.
   d = fakes({stopped: ['launcher', 'tuner'], apps: tracking}); r = await new Controls(d).read(true);
-  assert.deepEqual([r.tiles.launcher, r.tiles.tuner], [{state: 'na', why: 'Switched off in Vetro Shards'}, {state: 'na', why: 'Switched off in Vetro Shards'}]);
+  assert.deepEqual([r.tiles.launcher, r.tiles.ui], [{state: 'na', why: 'Switched off in Vetro Shards'}, {state: 'na', why: 'Switched off in Vetro Shards'}]);
   assert.equal(r.tiles.ads.state, 'on', 'the quick-settings tiles do not depend on a plugin');
-  for (const id of ['launcher', 'tuner']) {
-    d = fakes({stopped: [id]});
-    await assert.rejects(new Controls(d).act({id, on: true}), e => e.statusCode === 409 && /Vetro Shards/.test(e.message));
-    assert.deepEqual(d.calls, [], 'nothing was started behind the plugin\'s back');
-  }
+  d = fakes({stopped: ['launcher']});
+  await assert.rejects(new Controls(d).act({id: 'launcher', on: true}), e => e.statusCode === 409 && /Vetro Shards/.test(e.message));
+  assert.deepEqual(d.calls, [], 'nothing was started behind the plugin\'s back');
+  d = fakes({stopped: ['launcher', 'tuner']});
+  await assert.rejects(new Controls(d).act({id: 'ui', on: true}), e => e.statusCode === 409 && /Vetro Shards/.test(e.message));
+  assert.deepEqual(d.calls, []);
+
+  // Vetro UI: one tile for the tuner, the volume bar, the number pad and the Control center.
+  d = fakes(); c = new Controls(d);
+  assert.deepEqual((await c.read(true)).tiles.ui, {state: 'off'});
+  r = await c.act({id: 'ui', on: true});
+  assert.deepEqual(d.calls, ['dock.setKeys true', 'dock.setCards tasks', 'tuner.enable'], 'each part through its own switch; no card chosen yet: the Task manager');
+  assert.deepEqual(r.tile, {state: 'on'});
+  d.calls.length = 0;
+  await c.act({id: 'ui', on: true});
+  assert.deepEqual(d.calls, ['dock.setKeys true'], 'parts already on are left alone (no launcher restart for the cards, no tuner restart)');
+  d.calls.length = 0;
+  r = await c.act({id: 'ui', on: false});
+  assert.deepEqual(d.calls, ['dock.setKeys false', 'dock.setCards ', 'tuner.disable']);
+  assert.deepEqual(r.tile, {state: 'off'});
+  // The cards chosen in the dashboard come back, not only the Task manager.
+  d = fakes({dock: {lastCards: ['audio', 'tasks']}}); await new Controls(d).act({id: 'ui', on: true});
+  assert.ok(d.calls.includes('dock.setCards audio+tasks'));
+  // Some parts on: the tile says how many are still off, and OK finishes the job.
+  d = fakes({tuner: {enabled: true}}); r = await new Controls(d).read(true);
+  assert.deepEqual(r.tiles.ui, {state: 'part', left: 2, of: 3});
+  // A part this TV cannot have is not counted and not touched: the tuner's plugin stopped, a TV the tuner's checks refuse, no launcher files.
+  d = fakes({stopped: ['tuner']}); c = new Controls(d); await c.act({id: 'ui', on: true});
+  assert.deepEqual(d.calls, ['dock.setKeys true', 'dock.setCards tasks']);
+  assert.deepEqual((await c.read(true)).tiles.ui, {state: 'on'});
+  d = fakes({tunerUnsupported: 'This TV has no tuner service.'}); c = new Controls(d); await c.act({id: 'ui', on: true});
+  assert.ok(!d.calls.includes('tuner.enable'));
+  d = fakes({dockInstalled: false}); c = new Controls(d); await c.act({id: 'ui', on: true});
+  assert.deepEqual(d.calls, ['tuner.enable']);
+  // One part refuses: the others are still switched, the refusal is reported, the tile shows what is left.
+  d = fakes({tunerRefuses: 'The TV’s tuner service (tvs-daemon) is not running.'}); c = new Controls(d);
+  await assert.rejects(c.act({id: 'ui', on: true}), e => e.statusCode === 409 && /tvs-daemon/.test(e.message));
+  assert.deepEqual(d.calls, ['dock.setKeys true', 'dock.setCards tasks', 'tuner.enable']);
+  assert.deepEqual((await c.read(true)).tiles.ui, {state: 'part', left: 1, of: 3});
   // A group the TV does not have.
   assert.equal(groupTile(quick.find('tracking-all'), []).state, 'na');
   assert.equal(groupTile(quick.find('tracking-all'), app([['x', 'optional-area', false]])).state, 'na', 'members of another area are not part of the group');
@@ -141,10 +177,9 @@ async function tiles() {
   // Actions go to the same internals as the dashboard.
   d = fakes(); c = new Controls(d);
   await c.act({id: 'launcher', on: true}); await c.act({id: 'launcher', on: false});
-  await c.act({id: 'tuner', on: true}); await c.act({id: 'tuner', on: false});
   await c.act({id: 'ads', on: true}); await c.act({id: 'ads', on: false});
   await c.act({id: 'voice', on: true});
-  assert.deepEqual(d.calls, ['dock.enable', 'dock.disable', 'tuner.enable', 'tuner.disable', 'quick tracking-all true', 'quick tracking-all false', 'quick voice-all true']);
+  assert.deepEqual(d.calls, ['dock.enable', 'dock.disable', 'quick tracking-all true', 'quick tracking-all false', 'quick voice-all true']);
   d = fakes({dock: {customApp: 'x.y'}}); await new Controls(d).act({id: 'launcher', on: false});
   assert.deepEqual(d.calls, ['dock.disableCustom'], 'off on a custom launcher puts Samsung\'s Home back the way the dashboard does');
   // Refusals keep their reason and status, and change nothing.
@@ -156,7 +191,7 @@ async function tiles() {
   assert.deepEqual(await refuse({id: 'nope', on: true}, {}, 400, /Unknown control/), []);
   assert.deepEqual(await refuse({id: 'ads', on: 'yes'}, {}, 400, /Invalid state/), []);
   assert.deepEqual(await refuse({id: 'ads', on: true}, {agent: false}, 409, /root/i), []);
-  assert.deepEqual(await refuse({id: 'tuner', on: true}, {tunerRefuses: 'The TV’s tuner service (tvs-daemon) is not running.'}, 409, /tvs-daemon/), ['tuner.enable']);
+  assert.deepEqual(await refuse({id: 'tuner', on: true}, {}, 400, /Unknown control/), [], 'the tuner has no tile of its own any more');
 }
 
 // ---- the update the service fetches itself -------------------------------------------------------------------------

@@ -168,6 +168,56 @@ function settle() { return new Promise(r => setImmediate(r)); }
         console.log('PASS the agent is relaunched after a disconnect that followed a failing handshake');
     }
 
+    // --- wake: the loss of an agent that had been up for a while --------------------------------------------
+    // The TV stops sdbd at standby (the agent ends with it) and starts it again at wake. While the handshake is refused it is
+    // tried every 2 s, without growing the backoff and without writing the same failure to the log again; the first connect
+    // after it records how long the recovery took (awake time, attempts, stages), in memory only.
+    {
+        const t = load();
+        let refuse = false, connects = 0;
+        let answer = false;
+        Object.assign(t.sdb, {connect: () => { connects++; if (refuse) { const e = new Error('refused'); e.code = 'sdbRefused'; return Promise.reject(e); } return answer ? Promise.resolve({}) : new Promise(() => {}); }});
+        const events = [];
+        t.provider.onAgent(up => events.push(up));
+        t.provider.start();
+        await settle();
+        const identity = {identity: {pid: 1, uid: 0, gid: 0, cap_eff: '0', smack: ''}, _socket: {destroy() {}}};
+        t.agentOptions().onConnect(identity);
+        assert.ok(t.provider.status().timing.firstConnect, 'the first connect of the run is timed');
+        t.context.state.agent.at = Date.now() - 60000;          // connected a minute ago
+        refuse = true;
+        t.agentOptions().onClose();
+        const log = () => (t.files['/tmp/vetro.jsonl'] || '').split('\n').filter(Boolean).length;
+        const delays = [];
+        let lines = null;
+        for (let i = 0; i < 6; i++) {
+            const timer = t.timers.filter(x => !x.cleared && !x.fired && x.ms < 30000).pop();
+            assert(timer, 'a relaunch is armed');
+            delays.push(timer.ms);
+            timer.fired = true; timer.cleared = true; timer.fn();
+            await settle(); await settle();
+            if (i === 1) lines = log();
+        }
+        assert.deepEqual(delays, [2000, 2000, 2000, 2000, 2000, 2000], 'refused handshakes after a stable loss are retried every 2 s: ' + delays);
+        assert.equal(t.context.launchFailures, 0, 'and do not grow the backoff');
+        assert.equal(log(), lines, 'the same refusal is not written again and again');
+        refuse = false; answer = true;
+        const timer = t.timers.filter(x => !x.cleared && !x.fired && x.ms === 2000).pop();
+        timer.fired = true; timer.cleared = true; timer.fn();
+        for (let i = 0; i < 6; i++) await settle();
+        t.agentOptions().onConnect(identity);
+        const reconnect = t.provider.status().timing.reconnect;
+        assert.equal(typeof reconnect.awakeMs, 'number'); assert.ok(reconnect.attempts >= 7, 'attempts counted: ' + reconnect.attempts);
+        assert.ok(reconnect.connectedFor >= 60000, 'how long the lost agent had been up: ' + reconnect.connectedFor); assert.equal(typeof reconnect.stages.handshakeMs, 'number', 'stages of the attempt that connected: ' + JSON.stringify(reconnect.stages));
+        assert.deepEqual(events, [true, false, true], 'the service is told when the agent comes and goes');
+        assert.equal(JSON.parse(t.files['/tmp/vetro.jsonl'].trim().split('\n').pop()).timing, undefined, 'the timing never goes to the log files');
+        // An agent that dies right after connecting keeps the normal backoff (no fast loop).
+        t.context.state.agent.at = Date.now();
+        t.agentOptions().onClose();
+        assert(t.timers.filter(x => !x.cleared && !x.fired).some(x => x.ms === 8000), 'a short-lived agent is relaunched after the usual 8 s');
+        console.log('PASS wake: after a stable agent is lost, refused handshakes are retried every 2 s, uncounted and logged once; the recovery is timed in memory');
+    }
+
     // --- callback timeouts back off, and the counter resets on connect and on stop ------------------------
     {
         const t = load();

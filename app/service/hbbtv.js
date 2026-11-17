@@ -39,6 +39,9 @@ var ABSENT='sqlite3 -readonly '+DB+' "SELECT count(*) FROM package_app_info WHER
 // Disabling also ends a running service. read() checks the result afterwards, so the tool's exit code is not trusted.
 var DISABLE_SVC='if ! '+ABSENT+'; then pkgcmd -D -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true; fi';
 var ENABLE_SVC='if '+DISABLED+'; then pkgcmd -A -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true; fi';
+// Where the service app does not exist there is nothing to start either: app_launcher fails on the unknown id, and under
+// set -e that failed the whole On, rolled it back, and kept "Remove Vetro's data" from finishing (#212).
+var START_SVC='if ! '+ABSENT+'; then app_launcher -s '+SERVICE+'; sleep 1; fi';
 function listed(id){return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*'+id.replace(DOT_RE,'\\.')+'[[:space:]]"';}
 // -t may exit non-zero when the app is already gone (the scripts run under set -e), and the process can take a
 // moment to leave the list: wait up to 5 s.
@@ -58,7 +61,7 @@ Control.prototype.read=function(){var self=this;
 Control.prototype.change=function(off,expected){var self=this;if(typeof off!=='boolean'||!Number.isInteger(expected))return Promise.reject(Error('Invalid HbbTV state'));if(this.busy)return Promise.reject(Error('HbbTV change already in progress'));this.busy=true;var previous;
  function apply(script){return self.execute(wrap('set -e\n'+script+'\nsleep 1'),25000).then(check);}
  function disable(){return apply('vconftool set -f -t int '+KEY+' 19\ntouch '+FLAG+'\n'+STOP);}
- function enable(value){return apply('vconftool set -f -t int '+KEY+' '+value+'\nrm -f '+FLAG+' '+RUNFLAG+'\n'+ENABLE_SVC+'\napp_launcher -s '+SERVICE+'\nsleep 1\napp_launcher -s '+APP);}
+ function enable(value){return apply('vconftool set -f -t int '+KEY+' '+value+'\nrm -f '+FLAG+' '+RUNFLAG+'\n'+ENABLE_SVC+'\n'+START_SVC+'\napp_launcher -s '+APP);}
  // Back to what was there: the menu value, the brake file as it was, the service started again if it was running.
  function putBack(s){return apply('vconftool set -f -t int '+KEY+' '+s.value+'\n'+(s.flag?'touch '+FLAG:'rm -f '+FLAG)+'\n'+(s.serviceDisabled?DISABLE_SVC:ENABLE_SVC)+(s.serviceRunning?'\nif ! '+listed(SERVICE)+'; then app_launcher -s '+SERVICE+'; fi':''));}
  function why(a){return a.running?'the app is still running':a.serviceRunning?(a.serviceDisabled?'its service is still running':'its service is still running and could not be disabled'):!a.serviceDisabled?'its service could not be disabled':a.flag?'the menu value was not kept':'the brake file was not kept';}
@@ -69,7 +72,7 @@ Control.prototype.change=function(off,expected){var self=this;if(typeof off!=='b
     .catch(function(e){return putBack(previous).then(function(){return self.read();}).then(function(restored){throw Error(e.message+' · '+(restored.value===previous.value?'previous state restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});}
   var target=s.restoreValue;
   if(s.valueOff&&target===null)throw Error('Previous value not saved; restore unavailable');
-  if(!s.valueOff&&!s.flag&&s.serviceRunning)return Object.assign(s,{changed:false});
+  if(!s.valueOff&&!s.flag&&(s.serviceRunning||s.serviceAbsent))return Object.assign(s,{changed:false});
   if(target===null)target=s.value;
   return enable(target).then(function(){return self.read();}).then(function(after){if(after.value!==target||after.flag)throw Error('HbbTV write not confirmed');return Object.assign(after,{changed:true});})
    .catch(function(e){return putBack(previous).then(function(){return self.read();}).then(function(restored){throw Error(e.message+' · '+(restored.value===previous.value?'previous state restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});

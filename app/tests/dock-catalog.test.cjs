@@ -196,6 +196,18 @@ console.log('dock-catalog 2022 Home: ok');
     assert.deepEqual(short.entries.map(e => e.appId).sort(), ['pkg.app1', 'pkg.removed'], 'a short package list is not trusted');
     const none = catalog.build(catalog.parse(base.join('\n')));
     assert.equal(none.entries.length, 2, 'no package list at all (the query failed): nothing is filtered');
-    assert.ok(catalog.script().includes("hex(app_id) FROM package_app_info;"), 'the script asks for the package list');
+    assert.ok(catalog.script().includes("hex(app_id)||'|'||ifnull(app_disable,'false') FROM package_app_info;"), 'the script asks for the package list, with the disabled flag');
+    // An app disabled in Quick settings or in Apps and processes cannot start: it gets no tile, on the row or on All apps,
+    // and the page can say why. Enabled again, it is back. Lines of the older form (no third field) still read as installed.
+    const flagged = pkgs.map(l => l + '|false').concat('A|' + hex('pkg.off') + '|true');
+    const withOff = ['F|csfs', 'O|d/webapp@live', 'O|d/webapp@off',
+        'R|' + hex('live') + '|' + hex('Live App') + '|' + hex('pkg.app1') + '|0|1',
+        'R|' + hex('off') + '|' + hex('Switched Off') + '|' + hex('pkg.off') + '|0|1'];
+    const off = catalog.build(catalog.parse(withOff.concat(flagged).join('\n')));
+    assert.deepEqual(off.entries.map(e => e.appId), ['pkg.app1'], 'a disabled app gets no tile');
+    assert.ok(off.skipped.some(s => s.item === 'd/webapp@off' && s.reason === 'Disabled'));
+    assert.ok(!/pkg\.off/.test(off.allAppsTsv), 'and it is not on All apps either');
+    const on = catalog.build(catalog.parse(withOff.concat(pkgs.map(l => l + '|false'), 'A|' + hex('pkg.off') + '|false').join('\n')));
+    assert.deepEqual(on.entries.map(e => e.appId), ['pkg.app1', 'pkg.off'], 'enabled again, it is back');
 }
 console.log('PASS dock catalog skips registry rows whose package is gone');

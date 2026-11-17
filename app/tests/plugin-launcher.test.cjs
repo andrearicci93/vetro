@@ -51,6 +51,10 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     assert.equal(post('null').code, 400);
     r = get('icon', '/dock/icon?slug=known');
     assert.equal(r.code, 200); assert.equal(r.head['content-type'], 'image/png'); assert.equal(r.body.toString(), 'PNG');
+    // An ETag: asked again with it, an unchanged picture is a 304 without the image.
+    assert.match(r.head.etag, /^"[0-9a-f]{20}"$/);
+    const again = res(); host.dispatch('launcher', { method: 'GET', url: '/dock/icon?slug=known', headers: { 'if-none-match': r.head.etag } }, again, 'icon', json);
+    assert.equal(again.code, 304); assert.ok(!again.body || !again.body.length);
     assert.equal(get('icon', '/dock/icon?slug=..%2Fx').code, 404);
     assert.equal(get('icon', '/dock/icon').code, 404);
     assert.equal(get('nope').code, 404);

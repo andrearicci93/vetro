@@ -57,14 +57,15 @@ Bridge.prototype.stop = function () {
     if(server)server.close();
     callHook(this.hooks.onStop);
 };
-Bridge.prototype.start = function (device, mode, tokens) {
+// list (optional): the device list the caller has just read (restoreInput, Vetro UI), so it is not read a second time.
+Bridge.prototype.start = function (device, mode, tokens, list) {
     var self=this;
     if (mode==='off') {self.stop(); return Promise.resolve(self.status());}
     if (mode!=='observe' && mode!=='filter') return Promise.reject(new Error('invalid input mode'));
     if (!Array.isArray(tokens) || tokens.some(function(t){return !KEY_CODE_RE.test(t) || +t>767;})) return Promise.reject(new Error('invalid input codes'));
     if (mode==='filter' && !tokens.length) return Promise.reject(new Error('save a physical rule before enabling interception'));
     var requestGeneration=self.generation;
-    return self.inventory().then(function(list){
+    return (Array.isArray(list) ? Promise.resolve(list) : self.inventory()).then(function(list){
         if(requestGeneration!==self.generation)throw new Error('input request cancelled');
         var selected=list.find(function(d){return (d.node===device || d.unique && d.name===device) && d.selectable;});
         if (!selected) throw new Error('select a unique physical remote device');

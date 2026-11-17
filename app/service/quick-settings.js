@@ -13,10 +13,10 @@ var RESTORE_FLAGS_FOR_RE = /^(\S+) (\d+|none)$/;
 // except the ones that role "keep" or the protection rules cover (Smart Hub's ad agent, Vetro itself).
 var GROUPS = [
     {id: 'tracking-all', label: 'All advertising and tracking', section: 'tracking', area: 'tracking',
-        description: 'Every component the Task manager lists under Advertising and tracking: viewing data, ad players, analytics, personalised content and the privacy screens. Smart Hub’s ad agent stays on because Home loads part of it.',
+        description: 'Viewing data, ad players, analytics, personalised content and the privacy screens. Smart Hub’s ad agent stays on: Home loads part of it.',
         ids: []},
     {id: 'voice-all', label: 'All voice assistants', section: 'voice', area: 'voice', microphone: true, everything: true,
-        description: 'Every component the Task manager lists under Voice assistants: Alexa, Bixby, Google Assistant, the assistant hub, always-on voice, speech and text-to-speech, voice actions and search suggestions.',
+        description: 'Alexa, Bixby, Google Assistant, the assistant hub, always-on voice, speech, voice actions and search suggestions.',
         ids: []},
     {id: 'alexa', label: 'Alexa', section: 'voice', microphone: true,
         description: 'Alexa client, its full-screen view, launcher and wake-word engine.',
@@ -39,13 +39,24 @@ var GROUPS = [
     // Samsung's own units skip the start when a file exists in /opt/usr/share/systemd/system, which `services` lists.
     // These packages are not system packages, so Components can also uninstall them (pkgcmd -u).
     {id: 'tvplus', label: 'Samsung TV Plus', section: 'memory',
-        description: 'Turns off Samsung TV Plus: the app, its deep-link and update helpers, the channel service (slive) and the streaming player with its ad beacons (bms). Frees about 25 MB of memory (measured on a Q80A). These packages can also be uninstalled in Components; this switch is the reversible way.',
+        description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Frees about 25 MB (measured on a Q80A). Reversible; Components can uninstall them instead.',
         ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
         services: ['slive-provider-daemon', 'bms']},
+    // Apps that come with the TV and that Samsung's own Apps screen does not let you delete. One switch each (section
+    // "apps", the second group of the Disable tab): the app is disabled like any member of a group, and the same switch,
+    // or Restore the TV, enables it again. The ids are the Q80A's; a TV without the app does not show its switch. The row
+    // has no description: the group's one sentence says what a disabled app means.
+    {id: 'app-netflix', label: 'Netflix', section: 'apps', description: '', ids: ['org.tizen.netflix-app']},
+    {id: 'app-primevideo', label: 'Prime Video', section: 'apps', description: '',
+        ids: ['org.tizen.primevideo', 'org.tizen.primevideo-dummy', 'org.tizen.primevideo_companionapp']},
+    {id: 'app-youtube', label: 'YouTube', section: 'apps', description: '', ids: ['9Ur5IzDKqV.TizenYouTube']},
+    {id: 'app-appletv', label: 'Apple TV', section: 'apps', description: '', ids: ['com.samsung.tv.aria-video', 'com.samsung.tv.aria-dummy']},
+    {id: 'app-browser', label: 'Internet browser', section: 'apps', description: '', ids: ['org.tizen.browser']},
+    {id: 'app-gallery', label: 'Gallery', section: 'apps', description: '', ids: ['com.samsung.tv.gallery']},
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
     // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
     {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,
-        description: 'The Home key stops opening Samsung’s Home (com.samsung.tv.csfs). Risky: on a Q80A the TV may not finish starting while it is off, and only a factory reset fixes that. Turn it back on before you restart the TV. To use another app safely, pick it in Vetro UI → Launcher instead.',
+        description: 'The Home key stops opening Samsung’s Home. Risky: on a Q80A the TV may not finish starting while it is off, and only a factory reset fixes that. Turn it back on before a restart. For another launcher, use Vetro UI → Launcher.',
         ids: ['com.samsung.tv.csfs']}
 ];
 var ALLOWED_IDS = GROUPS.reduce(function (all, g) { return all.concat(g.ids); }, []);

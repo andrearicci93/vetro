@@ -8,7 +8,6 @@
 // Clean sessions; retained flag exposed to callers, no session persistence.
 
 var net = require('net');
-var tls = require('tls');
 // Regular expressions compiled once at module load, not on every call.
 var WILDCARD_RE = /[+#]/;
 
@@ -77,7 +76,7 @@ MqttClient.prototype.connect = function () {
     this._buffer = Buffer.alloc(0);
     var options={host:this.host,port:this.port};
     if(this.tls){options.rejectUnauthorized=true;options.ca=this.ca;if(!net.isIP(this.host))options.servername=this.host;}
-    var socket;try{socket = this.tls ? tls.connect(options) : net.connect(options);}catch(e){this._emit('error',e);this._emit('close',{});return this;}
+    var socket;try{socket = this.tls ? require('tls').connect(options) : net.connect(options);}catch(e){this._emit('error',e);this._emit('close',{});return this;}
     this._socket = socket;
 
     socket.setNoDelay(true);

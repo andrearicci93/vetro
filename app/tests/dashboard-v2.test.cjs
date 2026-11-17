@@ -18,11 +18,11 @@ assert.ok(squash(html).includes(squash('--vetro-duration-fast:0ms')), 'reduced m
 
 // Navigation: the three entries at the top, then the rest
 const nav = /<nav aria-label="Main">([\s\S]*?)<\/nav>/.exec(html)[1];
-assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'vetroui', 'remote', 'plugins']);
+assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'vetroui', 'plugins', 'remote']);
 assert.match(nav, /Vetro UI<\/button>/);
 assert.doesNotMatch(nav, /chip beta/);
 assert.match(nav, /Remapper<\/button>/);
-assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Task manager<\/button>/);
+assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Apps and processes<\/button>/);
 const visible = html.replace(/<style>[\s\S]*?<\/style>/, '').replace(/<script>[\s\S]*?<\/script>/, '');
 assert.doesNotMatch(visible, /Debloater/, 'no panel is still called Debloater');
 assert.match(html, /remote:\['Remapper'/);
@@ -35,9 +35,13 @@ assert.match(html, /id="quickPanel-developer"[\s\S]*id="downloadDiagnostics"/, '
 // Session history is at the bottom of the menu, quiet, with About Vetro under it
 assert.match(html, /<div class="side-low"><button type="button" data-tab="actions" class="quiet"[\s\S]*?<button type="button" id="aboutBtn"/);
 assert.match(html, /<dialog id="aboutDialog"[\s\S]*https:\/\/discord\.gg\/Pe9BmthUar[\s\S]*https:\/\/github\.com\/andrearicci93\/vetro"/);
-assert.match(html, /<img class="about-photo" src="data:image\/jpeg;base64,/);
+// The photo is set when About opens (an inline JPEG decoded with every page load otherwise), with its size fixed beforehand.
+assert.match(html, /<img class="about-photo" alt="Andrea Ricci" width="88" height="88">/);assert.doesNotMatch(html, /<img[^>]*src="data:image\/jpeg/, 'no inline photo in the markup');
+assert.match(html, /var ABOUT_PHOTO="data:image\/jpeg;base64,/);assert.match(html, /ph\.setAttribute\('src',ABOUT_PHOTO\)/);
 assert.match(html, /dns:\['DNS blocking'/);assert.doesNotMatch(html, /Domain blocking|domain blocking/);
-assert.match(html, /apps:\['Task manager'/);
+assert.match(html, /apps:\['Apps and processes'/);
+// The Control center's card keeps the name Task manager: the page of apps and processes must not share it.
+assert.match(html, /tasks:\{name:'Task manager'/);
 assert.doesNotMatch(html, /betaTag/);
 
 // The icon: in the brand block, as the page icon, and served by the service

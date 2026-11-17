@@ -65,8 +65,10 @@ function wgt(xml) {
   // Node 4.4's Buffer.from is the inherited TypedArray.from, which rejects
   // strings with "this is not a typed array". Modern V8 accepts strings there,
   // so the old behaviour is reproduced explicitly.
+  // On V8 4.5 it refuses arrays just the same (the check is on Buffer itself, not on the argument), which is what
+  // ended the service when the MQTT client built its first packet (#77).
   Buffer.from = function (value) {
-    if (typeof value === 'string') throw new TypeError('this is not a typed array');
+    if (typeof value === 'string' || Array.isArray(value) || ArrayBuffer.isView(value)) throw new TypeError('this is not a typed array');
     return realFrom.apply(Buffer, arguments);
   };
   try {
@@ -74,7 +76,10 @@ function wgt(xml) {
     compat.install();
     assert.equal(Buffer.from('abc').toString(), 'abc', 'utf8 strings');
     assert.equal(Buffer.from('e9', 'hex').length, 1, 'explicit encodings');
-    assert.deepEqual(Array.from(Buffer.from([1, 2, 3])), [1, 2, 3], 'arrays still work');
+    assert.deepEqual(Array.from(Buffer.from([1, 2, 300])), [1, 2, 44], 'arrays work, bytes wrap as in Buffer');
+    assert.ok(Buffer.isBuffer(Buffer.from([1, 2, 3])), 'an array gives a Buffer');
+    assert.equal(Buffer.from(realFrom.call(Buffer, 'abc')).toString(), 'abc', 'a Buffer is copied');
+    assert.equal(Buffer.from([]).length, 0);
   } finally {
     Object.defineProperty(Buffer, 'from', { value: realFrom, configurable: true, writable: true });
   }
