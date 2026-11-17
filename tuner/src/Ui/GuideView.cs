@@ -10,7 +10,9 @@ namespace Tuner.Ui
     /// primitives <see cref="GuideScene"/> builds onto a fixed set of objects made once: <see cref="GuideScene.MaxLines"/> rectangles, the cells
     /// (pill.png, <see cref="GuideScene.MaxFills"/>), the hatches, the ice focus, the logos, the texts and the footer's key pictures. The texts with
     /// a key (the focused row's number and name, the header's title) have an object each, so a transition can hold them while the rest is redrawn.
-    /// Created the first time the guide is opened, not at start-up: the guide has about 440 objects (about 115 on screen) and most runs never open it.
+    /// Not made at start-up (the guide has about 440 objects, about 115 on screen): a few seconds after the channel list has arrived, while the tuner
+    /// is idle (Program.MakeGuideWhenIdle, Core/IdleWork.cs), or by the first opening if that comes first. The objects then stay for the life of the
+    /// process, also in a resident tuner that never opens the guide.
     /// </summary>
     internal sealed class GuideView : IStage
     {
@@ -35,6 +37,7 @@ namespace Tuner.Ui
         public GuideView(Surface s, Veil veil)
         {
             _s = s; _veil = veil;
+            _measureNative = MeasureNative;
             for (int i = 0; i < _lines.Length; i++) _lines[i] = s.Rect();
             for (int i = 0; i < _fills.Length; i++) _fills[i] = s.Pill();
             for (int i = 0; i < _hatches.Length; i++) _hatches[i] = s.Tile("hatch", 16);
@@ -59,12 +62,16 @@ namespace Tuner.Ui
         public bool Visible { get { return _s.Visible; } }
         public void Hide() { _s.Hide(); _veil.SetGuide(false); }
 
-        /// <summary>The width of a text in the guide's font (for the footer's words).</summary>
-        public int Measure(string text, int size, int weight)
+        /// <summary>The width of a text in the guide's font (the footer's words, a paragraph's lines): measured once on the hidden probe, then remembered.</summary>
+        public int Measure(string text, int size, int weight) { return _widths.Get(text, size, weight, _measureNative); }
+
+        private readonly WidthCache _widths = new WidthCache();
+        private readonly Func<string, int, int, int> _measureNative;
+        private int MeasureNative(string text, int size, int weight)
         {
-            Efl.evas_object_text_font_set(_probe, Font(weight), size);
-            Efl.evas_object_text_text_set(_probe, text);
-            return Efl.evas_object_text_horiz_advance_get(_probe);
+            Texts.Font(_probe, Font(weight), size);
+            Texts.Set(_probe, text);
+            return Texts.Advance(_probe);
         }
 
         private static string Font(int weight) { return weight >= 600 ? Theme.Font600 : weight > 0 && weight <= 200 ? Theme.Font200 : Theme.Font500; }
@@ -157,10 +164,10 @@ namespace Tuner.Ui
         {
             IntPtr t = sl.T;
             string font = Font(p.Weight);
-            if (sl.Size != p.Size || sl.Font != font) { Efl.evas_object_text_font_set(t, font, p.Size); sl.Size = p.Size; sl.Font = font; sl.Text = null; }
+            if (sl.Size != p.Size || sl.Font != font) { Texts.Font(t, font, p.Size); sl.Size = p.Size; sl.Font = font; sl.Text = null; }
             if (p.Tint != 0) Theme.TintText(t, p.Tint, 255); else Efl.evas_object_color_set(t, p.Alpha, p.Alpha, p.Alpha, p.Alpha);
             if (sl.Text != text || sl.MaxW != p.MaxW) { Surface.SetFitted(t, text, p.MaxW); sl.Text = text; sl.MaxW = p.MaxW; }
-            int left = p.Right ? p.X - Efl.evas_object_text_horiz_advance_get(t) : p.X;
+            int left = p.Right ? p.X - Texts.Advance(t) : p.X;
             Efl.evas_object_move(t, left, Theme.TopOf(top, p.Size));
             Efl.evas_object_show(t);
         }

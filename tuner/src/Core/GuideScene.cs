@@ -54,11 +54,12 @@ namespace Tuner.Core
         /// <param name="logo">The logo file of a channel (null for none). Passing it at all (even if every answer is null) keeps a column for the logos
         /// in the channel label; without it the number and the name start at the column's left.</param>
         /// <param name="measure">The width of a text (text, size, weight) in pixels, for the footer's words; an estimate (half an em a letter) without it.</param>
-        public static List<Prim> Build(GuideGrid g, long now, TimeSpan offset, string description, Func<Channel, string> logo = null, Func<string, int, int, int> measure = null)
+        /// <param name="into">The list to fill (cleared first) instead of a new one: the view keeps one, so a key does not allocate the scene again.</param>
+        public static List<Prim> Build(GuideGrid g, long now, TimeSpan offset, string description, Func<Channel, string> logo = null, Func<string, int, int, int> measure = null, List<Prim> into = null)
         {
             measure = measure ?? ((s, size, weight) => s.Length * size / 2);
-            var lines = new List<Prim>(); var fills = new List<Prim>(); var hatches = new List<Prim>(); var focus = new List<Prim>();
-            var texts = new List<Prim>(); var keys = new List<Prim>(); var logos = new List<Prim>();
+            // The layers are gathered in lists kept from one build to the next (UI thread only; only "all" leaves this method).
+            List<Prim> lines = Clear(_lines), fills = Clear(_fills), hatches = Clear(_hatches), focus = Clear(_focus), texts = Clear(_texts), keys = Clear(_keys), logos = Clear(_logos);
             int X0 = GuideLayout.X0;
 
             // ---- header: the focused programme ----
@@ -67,7 +68,8 @@ namespace Tuner.Core
             if (fe != null)
             {
                 texts.Add(Key(T(X0, GuideLayout.TitleTop, 64, 600, Main, fe.Title, GuideLayout.TitleW), "title"));
-                string line = ProgramClock.Clock(fe.Start, offset) + " – " + ProgramClock.Clock(fe.End, offset) + "   ·   " + Minutes(fe.Duration) + (fc != null ? "   ·   " + fc.Name : "");
+                // The channel's name comes first: it is there before the programme is read, and nothing in a panel moves when the data arrives.
+                string line = (fc != null ? fc.Name + "   ·   " : "") + ProgramClock.Clock(fe.Start, offset) + " – " + ProgramClock.Clock(fe.End, offset) + "   ·   " + Minutes(fe.Duration);
                 texts.Add(T(X0, GuideLayout.MetaTop, 30, 500, Muted, line, GuideLayout.MetaW));
                 if (!string.IsNullOrEmpty(description))
                 {
@@ -78,7 +80,8 @@ namespace Tuner.Core
             }
             else
             {
-                texts.Add(T(X0, GuideLayout.TitleTop, 64, 600, Faint, "No information", GuideLayout.TitleW));
+                // Not read yet is not "nothing known": the header says the same as the focused cell.
+                texts.Add(T(X0, GuideLayout.TitleTop, 64, 600, Faint, g.FocusLoading ? "Loading…" : "No information", GuideLayout.TitleW));
                 if (fc != null) texts.Add(T(X0, GuideLayout.MetaTop, 30, 500, Muted, fc.Name, GuideLayout.MetaW));
             }
             var date = T(GuideLayout.Right, GuideLayout.DateTop, 32, 500, Muted, DateTimeOffset.FromUnixTimeSeconds(g.FocusTime).ToOffset(offset).ToString("ddd d MMM", System.Globalization.CultureInfo.InvariantCulture), 400);
@@ -163,25 +166,34 @@ namespace Tuner.Core
             // ---- footer: the remote's keys as pictures, each group a key (or two) and a word ----
             Footer(keys, texts, X0, GuideLayout.FootTop, measure);
 
-            var all = new List<Prim>(lines.Count + fills.Count + hatches.Count + 1 + logos.Count + texts.Count + keys.Count);
+            int total = lines.Count + fills.Count + hatches.Count + focus.Count + logos.Count + texts.Count + keys.Count;
+            List<Prim> all = into ?? new List<Prim>(total);
+            all.Clear();
+            if (all.Capacity < total) all.Capacity = total;
             all.AddRange(lines); all.AddRange(fills); all.AddRange(hatches); all.AddRange(focus); all.AddRange(logos); all.AddRange(texts); all.AddRange(keys);
+            Clear(_lines); Clear(_fills); Clear(_hatches); Clear(_focus); Clear(_texts); Clear(_keys); Clear(_logos);   // no strings held between builds
             return all;
         }
+
+        private static readonly List<Prim> _lines = new List<Prim>(), _fills = new List<Prim>(), _hatches = new List<Prim>(), _focus = new List<Prim>(),
+            _texts = new List<Prim>(), _keys = new List<Prim>(), _logos = new List<Prim>();
+        private static List<Prim> Clear(List<Prim> l) { l.Clear(); return l; }
 
         private static Prim Cell(GuideCell cell, int y, int alpha) { return new Prim { Kind = PrimKind.Fill, X = cell.X, Y = y, W = cell.W, H = GuideLayout.CellH, Alpha = alpha }; }
 
         /// <summary>OK Watch · Left Right Time · Up Down Channel · CH Page · Back Close, left to right from <paramref name="x"/>.</summary>
+        private static readonly KeyValuePair<string[], string>[] FooterGroups =
+        {
+            new KeyValuePair<string[], string>(new[] { "key_ok" }, "Watch"),
+            new KeyValuePair<string[], string>(new[] { "key_left", "key_right" }, "Time"),
+            new KeyValuePair<string[], string>(new[] { "key_up", "key_down" }, "Channel"),
+            new KeyValuePair<string[], string>(new[] { "key_ch" }, "Page"),
+            new KeyValuePair<string[], string>(new[] { "key_back" }, "Close")
+        };
+
         private static void Footer(List<Prim> keys, List<Prim> texts, int x, int top, Func<string, int, int, int> measure)
         {
-            var groups = new[]
-            {
-                new KeyValuePair<string[], string>(new[] { "key_ok" }, "Watch"),
-                new KeyValuePair<string[], string>(new[] { "key_left", "key_right" }, "Time"),
-                new KeyValuePair<string[], string>(new[] { "key_up", "key_down" }, "Channel"),
-                new KeyValuePair<string[], string>(new[] { "key_ch" }, "Page"),
-                new KeyValuePair<string[], string>(new[] { "key_back" }, "Close")
-            };
-            foreach (var g in groups)
+            foreach (var g in FooterGroups)
             {
                 for (int i = 0; i < g.Key.Length; i++)
                 {

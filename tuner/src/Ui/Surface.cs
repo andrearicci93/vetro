@@ -18,17 +18,13 @@ namespace Tuner.Ui
     internal static class Theme
     {
         public const string Font = TextMetrics.Font500;
-        public const int Margin = 40;        // the shadow picture holds this much around the sheet
-        public const int Radius = 16;
-        public const int ShellSlice = 32;
-        public const int ChipSlice = 20;
         public const int BarSlice = 3;       // bar.png is drawn at its real size (16 x 6, radius 3): the ends are never scaled
 
         /// <summary>Text colours are premultiplied white: alpha 255 for the main text, ~70% for the secondary one.</summary>
-        public const int TextMain = 255, TextMuted = 178, TextFaint = 140;
+        public const int TextMain = 255, TextMuted = 178;
 
-        /// <summary>The focus ring (ice) and the colour of progress and indicators (light blue).</summary>
-        public const int Ice = 0xE4F2FF, Light = 0xA5D8FF;
+        /// <summary>The focus capsule (ice).</summary>
+        public const int Ice = 0xE4F2FF;
 
         // ---- the veil and the refined material (design/challenge/opus6) ----
 
@@ -47,8 +43,6 @@ namespace Tuner.Ui
 
         /// <summary>Text placement with the metrics Evas really uses on the TV: see Core/TextMetrics.cs.</summary>
         public const int HaloPad = TextMetrics.HaloPad;
-        public static int Ascent(int size) { return TextMetrics.Ascent(size); }
-        public static int LineHeight(int size) { return TextMetrics.LineHeight(size); }
         public static double Baseline(int top, int size) { return TextMetrics.Baseline(top, size); }
         public static int TopFor(double baseline, int size, int padTop = 0) { return TextMetrics.TopFor(baseline, size, padTop); }
         public static int TopOf(int top, int size, int padTop = 0) { return TextMetrics.TopOf(top, size, padTop); }
@@ -152,7 +146,7 @@ namespace Tuner.Ui
         public IntPtr Text(int size, int alpha, string font)
         {
             IntPtr t = Efl.evas_object_text_add(_evas);
-            Efl.evas_object_text_font_set(t, font, size);
+            Texts.Created(t, font, size);
             Efl.evas_object_color_set(t, alpha, alpha, alpha, alpha);
             return Clipped(t);
         }
@@ -161,7 +155,7 @@ namespace Tuner.Ui
         public IntPtr HaloText(int size, int alpha, string font)
         {
             IntPtr t = Text(size, alpha, font);
-            Efl.evas_object_text_style_set(t, Efl.EvasTextStyleSoftShadow);
+            Texts.Style(t, Efl.EvasTextStyleSoftShadow);
             Theme.TintHalo(t, alpha);
             return t;
         }
@@ -204,28 +198,26 @@ namespace Tuner.Ui
             return new Logo(img);
         }
 
-        /// <summary>Empty when the pictures load; otherwise which ones did not, with the EFL error number.</summary>
+        /// <summary>
+        /// Empty when the pictures load; otherwise which ones did not, with the EFL error number. One probe object reads each file's header in
+        /// turn and is deleted at the end (it used to be one object a picture, kept for the life of the process).
+        /// </summary>
         public string AssetProblems()
         {
             string problems = "";
-            var names = new System.Collections.Generic.List<string>(new[] { "dock_bg", "shadow", "solid", "ring", "bar", "veil_corner", "progress", "pill_bg", "pill_rim", "pill_cap", "pill", "hatch" });
+            var names = new System.Collections.Generic.List<string>(new[] { "bar", "veil_corner", "progress", "pill_bg", "pill_rim", "pill_cap", "pill", "hatch" });
             names.AddRange(Tuner.Core.GuideScene.KeyNames);
+            IntPtr img = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_hide(img);
             foreach (string n in names)
             {
-                IntPtr img = Efl.evas_object_image_add(_evas);
                 Efl.evas_object_image_file_set(img, Path.Combine(_assets, n + ".png"), null);
                 int err = Efl.evas_object_image_load_error_get(img);
                 if (err != Efl.EvasLoadErrorNone) problems += " " + n + "=" + err;
-                Efl.evas_object_hide(img);
             }
+            Efl.evas_object_del(img);
             return problems;
         }
-
-        /// <summary>The dock's sheet (shadow underneath), at the given rectangle. Create cards first so they sit behind their contents.</summary>
-        public Card Card() { return new Card(Slice("shadow", Theme.Margin + Theme.Radius), Slice("dock_bg", Theme.ShellSlice)); }
-
-        /// <summary>A tinted rounded rectangle: the selection fill (white at ~16%), a track, a progress bar.</summary>
-        public Chip Chip() { return new Chip(Slice("solid", Theme.ChipSlice)); }
 
         /// <summary>
         /// A 6 px progress bar (track or fill) with round ends. It must be drawn exactly 6 px tall: its picture is a capsule of that size cut with a
@@ -278,37 +270,12 @@ namespace Tuner.Ui
             return img;
         }
 
-        /// <summary>The 2 px white outline of the selection (the dock's focus ring).</summary>
-        public Chip Ring() { var c = new Chip(Slice("ring", Theme.ChipSlice)); c.Ice = true; return c; }
-
-        /// <summary>Cuts the text with an ellipsis until it fits <paramref name="maxW"/> pixels.</summary>
-        public static void SetFitted(IntPtr text, string s, int maxW)
-        {
-            Efl.evas_object_text_text_set(text, s);
-            int guard = 80;
-            while (s.Length > 1 && Efl.evas_object_text_horiz_advance_get(text) > maxW && guard-- > 0)
-            {
-                s = s.Substring(0, s.Length - 1);
-                Efl.evas_object_text_text_set(text, s.TrimEnd() + "…");
-            }
-        }
-    }
-
-    internal sealed class Card
-    {
-        private readonly IntPtr _shadow, _sheet;
-        internal Card(IntPtr shadow, IntPtr sheet) { _shadow = shadow; _sheet = sheet; }
-
-        /// <summary>The sheet's opacity (0..255, premultiplied): the guide lets a little of the picture through.</summary>
-        public void SetOpacity(int a) { Efl.evas_object_color_set(_sheet, a, a, a, a); }
-
-        public void SetRect(int x, int y, int w, int h)
-        {
-            Efl.evas_object_move(_shadow, x - Theme.Margin, y - Theme.Margin);
-            Efl.evas_object_resize(_shadow, w + 2 * Theme.Margin, h + 2 * Theme.Margin);
-            Efl.evas_object_move(_sheet, x, y);
-            Efl.evas_object_resize(_sheet, w, h);
-        }
+        /// <summary>
+        /// Cuts the text with an ellipsis until it fits <paramref name="maxW"/> pixels: the longest beginning that fits, found by halving (a long
+        /// description, the guide's last line, used to be cut one letter per measurement and given up after 80, so it ran off the screen).
+        /// A cut already made for that font, text and width is not measured again, and a text already on the object is not set again (<see cref="Texts"/>).
+        /// </summary>
+        public static void SetFitted(IntPtr text, string s, int maxW) { Texts.Fit(text, s, maxW); }
     }
 
     /// <summary>A channel logo drawn as a square of the given size. The file is only set again when the path changes; a file that does not load leaves it hidden.</summary>
@@ -452,11 +419,8 @@ namespace Tuner.Ui
         public void SetRadius(int radius) { if (_border > 0) Efl.evas_object_image_border_scale_set(_img, (double)radius / _border); }
 
         /// <summary>White at the given opacity (0..255); 0 hides it. Evas colours are premultiplied.</summary>
-        public bool Ice;
-
         public void SetWhite(int alpha)
         {
-            if (Ice) { SetTint(Theme.Ice, alpha); return; }
             Efl.evas_object_color_set(_img, alpha, alpha, alpha, alpha);
             if (alpha <= 0) Efl.evas_object_hide(_img); else Efl.evas_object_show(_img);
         }

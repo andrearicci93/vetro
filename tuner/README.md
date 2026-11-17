@@ -57,7 +57,7 @@ baseline (the font's ascender 952 / descender 276 per 1024, in `Theme`), so the 
 progress row (start and end time, the line `res/bar.png`, the progress with its head `res/progress.png`, "N min left" over the head) is
 `ProgressView`; where the label goes, and which time gives way to it when it comes within 28 px, is `Core/ProgressRow.cs` (tested).
 The Channel pad, Channel list and Audio toast use the material of the launcher's osd 123: `res/pill_rim.png` (white .22, 2 px outside) and
-`res/pill_bg.png` (slate #243448 at .90), the dock's own pictures, radius 40 for panels and a capsule for the toast through the border scale; keys are
+`res/pill_bg.png` (slate #243448 at .90), the dock's own pictures, radius 40 for panels (the Audio toast too) and a capsule for the one-line messages through the border scale; keys are
 `res/pill_cap.png` capsules (white .14) and the focus is the ice capsule with the text in slate. No shadow anywhere. Pad and list are centred on
 the screen's height. The EPG stands on the same veil grown past every edge of the screen (alpha .94, no sheet): cells are `res/pill.png` (64 px,
 radius 20, 9-slice 24) in white at .09 / .16 on air / .05 loading / .035 with `res/hatch.png` tiled for "no information"; the focus is the same pill in
@@ -78,14 +78,28 @@ would vanish on it.
 
 * **Banner** (bottom left, 4 s): channel number and name (logo at the right end), then the programme on air (title, start and end times, time left, progress line).
   The rows are empty until the daemon has the programme (it has it once the channel's tables are in: ~2 s after a zap on a new multiplex), so the lookup
-  starts 1.8 s after the zap and is repeated every 1.2 s, up to 6 times; the banner stays up while it looks. If there is none (a radio, a data service) the title row says
+  starts with the zap and is repeated every 1.2 s, up to 6 times; the banner stays up while it looks. If there is none (a radio, a data service) the title row says
   "No programme information". The big number stands on that second row's baseline from the start (also while the row is empty), so nothing moves when the programme arrives.
 * **Channel list** (OK): right side, 11 rows around the selection. Up/Down move (wrapping); held down they run on and speed up (1, 3, then 8 rows a step, if the remote auto-repeats); Left/Right jump a page. OK tunes, Back closes, it closes itself after 8 s.
 * **TV guide** (Up, or the Guide/EPG key): see "TV guide" below.
 * **Number pad** (Right): 4x3 grid 1-9, Delete, 0, Go; arrows move, OK presses; shows the typed number and the channel it would go to
   ("No such channel" otherwise). Once a number is typed, 2 s without a key take it and tune (any key starts the 2 s again; Go still works at once). A real digit key opens it too. Closes after 20 s.
-* **Audio** (Left): cycles the audio track and shows "Audio: Italian" for 2 s.
-* **Info panel** (Info key 358, or `info` on the control pipe): the Banner's corner grown up and to the right (block x 96..1296). Channel number and name, logo, the programme on air in large, its progress row, up to three lines of its description, and on the right the clock, the date, the tuner (`GetTvMode`: Antenna/Cable/Satellite) and the audio track. Built from the store (programme) at once (a programme not read yet leaves the title row empty: "No programme information" only appears once the worker has asked and there is none, on the title's baseline), then the worker reads the description (`ReadPresentTexts`), the audio and the tuner (`Core/InfoPanel.cs` has the date, the audio text and the word wrapping, with tests; `Ui/InfoView.cs` draws it with pooled objects). Any key closes it, then does its usual job (Back and Info only close it); 10 s timeout. Not shown, because nothing reads it yet: resolution, audio format, subtitle and teletext badges, genre.
+* **Audio toast** (Left; Down while it is up): Left cycles the audio track and opens the toast, a two-line panel at the top right (x 1176..1824,
+  y 96..248, radius 40, 2.2 s, `Ui/Views.cs` `AudioToastView`): one row for Audio and one for Subtitles, each with the picture of the key that
+  changes it (`res/key_left.png`, `res/key_down.png`), the label at .76 and the value in white (600). The row just changed is at full strength, the
+  other quieter. Size and columns are fixed (the value column fits "Italian (hard of hearing)", longer is cut), so nothing moves when a value changes.
+  **Down, only while the toast is up**, steps the subtitles Off -> track 1 -> track 2 -> ... -> Off and keeps the toast up for its full time again;
+  with no toast Down does nothing, as before. The tracks are listed with Samsung's client (`TvsClient.ReadSubtitles`: `IServiceDataAux.SizeOfHybridSBT`
+  and `GetHybridSBT` for the channel on screen, on the worker, when the toast opens and after every tune, the result dropped if the channel changed
+  meanwhile); on/off and the track are the TV's own two settings, the vconf keys `db/menu/subtitle/subtitle` (0 = off) and
+  `db/menu/subtitle/subtitlelanguage` (the index into that list), read with the list and written on Down, the index first, then on/off
+  (`Tvs/SubtitleSettings.cs`). Samsung's live TV app draws the subtitles and follows those keys; the tuner never asks the daemon to change the track.
+  The line says the language ("Italian", "English", "Italian (hard of hearing)" only when the client reports that mode; `qaa` is "Original",
+  an unknown code is shown in capitals), "Off", "None on this channel" (nothing is written) or "Not available" when the list or the settings cannot be
+  read (nothing is written). The names, the cycle and what is written are `Core/Subtitles.cs`, with tests. The switch `audio` turns the whole toast off.
+  Other messages ("No channel 12", "Channels not loaded yet") keep the one-line capsule in the same corner. **Subtitles are written from an analysis
+  of the firmware and have not been tried on a TV yet.**
+* **Info panel** (Info key 358, or `info` on the control pipe): the Banner's corner grown up and to the right (block x 96..1296). Channel number and name, logo, the programme on air in large, its progress row, up to two lines of its description, and on the right the clock, the date, the tuner (`GetTvMode`: Antenna/Cable/Satellite) and the audio track. Built from the store (programme) at once (a programme not read yet leaves the title row empty: "No programme information" only appears once the worker has asked and there is none, on the title's baseline), then the worker reads the description (`ReadPresentTexts`), the audio and the tuner (`Core/InfoPanel.cs` has the date, the audio text and the word wrapping, with tests; `Ui/InfoView.cs` draws it with pooled objects). Under the description, on the baseline a third line would have, the Next line shows "Next", the start and the title of the programme after the one on air (`GuideStore.Next`: the first that starts when it ends), from the schedule already in the store or the one the worker reads for the panel, never an extra call; it is empty while that schedule is not known and when there is no next programme. Any key closes it, then does its usual job (Back and Info only close it); 10 s timeout. Not shown, because nothing reads it yet: resolution, audio format, subtitle and teletext badges, genre.
   The launcher's 123 pad sends its Info key as `input_keyevent XF86Info`, which the tuner never sees (it goes to `tv-viewer`). While the tuner is on screen the file `/tmp/vetro-tuner.ctl.shown` exists (the pipe alone only says a tuner is resident, and `info` would bring it up over any app). To open this panel from the pad, the pad does `sh -c '[ -e /tmp/vetro-tuner.ctl.shown ] && { exec 3<>/tmp/vetro-tuner.ctl; echo info >&3; }'` and sends `XF86Info` as before when that returns non-zero. The read-write `exec 3<>` never blocks, even if the tuner died and left the pipe behind (the TV has no `timeout`). Tried on the Q80A: hidden = no flag, shown = flag, the command opened the panel.
 
 ## Keys (Smart Control 2016 on the Q80A, read from evdev, verified 2026-11-07)
@@ -94,7 +108,7 @@ would vanish on it.
 | --- | --- | --- |
 | CH+ / CH- | 88 / 87 | next / previous channel |
 | OK | 28 | opens the channel list; in the list tunes the selection; on the pad presses the key |
-| Up / Down / Left / Right | 103 / 108 / 105 / 106 | list, pad and guide movement; with nothing open: Up opens the guide, Right our pad, Left switches audio |
+| Up / Down / Left / Right | 103 / 108 / 105 / 106 | list, pad and guide movement; with nothing open: Up opens the guide, Right our pad, Left switches audio (Audio toast); Down switches subtitles only while the Audio toast is up |
 | Guide / EPG | 362 / 365 | opens (and closes) the guide on remotes that have the key; the Smart Control has none |
 | Back | 1 (ESC) | closes the list/pad/guide/info panel, then clears the banner, then goes to the channel watched before (and back again on the next Back), as Samsung's tuner does; the tuner stays up and keeps the focus, so Samsung's app never sees the key (a hidden tuner hands the focus over and Samsung answers Back with its own "previous channel" and banner) |
 | Home | 63 | the tuner steps aside (hides/exits) and the system's Home handles the key; also 172 (HOMEPAGE), 139 (MENU), 116 (POWER) |
@@ -148,7 +162,7 @@ see the programmes of the multiplex the daemon was tuned to (`GetPresentProgram`
 
 * `Core/GuideReply.cs` parses a reply (never throws; wrong shape = false, "no data" = empty list). `Core/GuideStore.cs` keeps the schedule of each channel (re-read after 15 min, retried after 20 s on failure; `Nearest` orders neighbours first).
 * `Core/GuideGrid.cs` is the model: 180-minute window, 7 channel rows, focus (channel + time), moves (`MoveRow`, `MovePage`, `MoveTime` = previous/next programme, scrolling the window by 30 min when a gap or the edge is reached), horizon 72 h, gaps and not-yet-read rows become "Loading" cells.
-* `Core/GuideScene.cs` turns the model into a short list of primitives (line, cell, hatch, focus, text, key, logo); `Ui/GuideView.cs` draws it with pooled EFL objects (3 lines, 140 cells, 21 hatches, one focus, 260 texts of which the focused row's number and name and the header's title have their own object, 7 logos, 7 keys: about 440 made on the first open, about 110 on screen, nothing created while moving). The preview (`preview/`, the tuner tab) runs this code on a simulated EFL.
+* `Core/GuideScene.cs` turns the model into a short list of primitives (line, cell, hatch, focus, text, key, logo); `Ui/GuideView.cs` draws it with pooled EFL objects (3 lines, 140 cells, 21 hatches, one focus, 260 texts of which the focused row's number and name and the header's title have their own object, 7 logos, 7 keys: about 440, made a few seconds after the channel list arrives while nothing is on screen (or by the first open if it comes first), about 110 on screen, nothing created while moving). The preview (`preview/`, the tuner tab) runs this code on a simulated EFL.
 * Look (design/challenge/opus6): the full veil, SamsungOneUI 500/600, 8 px per minute, the half hours on the axis (full hours 600 white) over a 2 px line, the "now" mark (light blue 3x16) and its trace (.30) through the rows, one cell per programme 4 px apart and flush with the grid's edges, the ice focus; no coloured borders. Header: title 600/64, `21:20 – 01:03 · 3 h 44 min · Channel`, the long text of the programme (two lines, read on demand 250 ms after the focus stops), the date at the right.
 * **Held arrows (tested on the Q80A with the owner, 2026-11-07):** the Smart Control sends ONE press per hold and then a release, no auto-repeat events. The repeat is made by the tuner: 0.4 s after an Up/Down/Left/Right press with no release, a timer steps every 0.12 s until the release, 1 step, then 2 after ~5, then 3 after ~14 (7 per step was too fast). It only starts once a release has been seen on the device (so the first key after a restart does not repeat) and never runs more than 12 s. The same applies to the channel list.
 * Keys while it is open: Up/Down channel, Left/Right programme, CH+/- page, OK watch (tunes the focused channel and closes), Back or the guide key closes; it closes itself after 60 s without keys.
@@ -185,8 +199,10 @@ title, description, raw descriptor, source name, guidance. `Core/GuideText.cs` r
 ## Not done, and why
 
 * **EPG** is done (see "TV guide"); what remains is running it on the TV. `GetProgram(EProgramIndicator, TCProgramId, ...)` (code 3) is still not understood, but nothing needs it now.
-* **Subtitles.** No public call turns them on. Who draws them (the daemon or `tv-viewer-graphics`) is not known: switch them on in Samsung's tuner and look
-  at `enlightenment_info -topvwins`. If `tv-viewer-graphics` draws them, a daemon call alone would not show them under our window.
+* **Subtitles** (Down on the Audio toast, see above) are not tried on a TV. Open: whether the client fills the track objects (language, hard of
+  hearing) or only the language; whether a write from the tuner (root) reaches Samsung's app that draws them; whether they stay visible under the
+  tuner's window while it is up; whether a read right after a tune already has the new channel's tracks (the read when the toast opens covers it).
+  The log has one `subtitles N:` line per read with every track's raw fields, and one line per write.
 * **Audio list.** The client cannot list the tracks: Left tries the next index and reads it back, going back to the first when there is none.
   Checked on a channel with one track only (stays on the first); not yet on a channel with two.
 
@@ -227,6 +243,15 @@ title, description, raw descriptor, source name, guidance. `Core/GuideText.cs` r
 * Memory of the v0 process: RSS 25.8 MB, PSS 4.8 MB, private dirty 1.3 MB, 19 threads (tv-viewer: 43 / 19.5 / 10.3 MB, 31 threads).
 * Do not time `Process.GetCurrentProcess().StartTime` on this TV, it reads ~800 ms too high; stamp the launch in an env var.
 
+**`--perf`** (by hand only, never in the service's start line; off it costs one test of a flag) writes lines starting with `perf ` into the log
+(`src/Ui/Perf.cs`): `perf anim LABEL` for every transition (frames, min/avg/max interval, frames over 30 ms, the tuner's own work per frame in ms;
+`+cut` when a key ended it early), `perf key LABEL` for every key (`zap`, `list open`, `guide open`, `guide open (objects made now)` when the guide
+had not been made while idle yet, `guide move`, `info open`...: the handler's ms and the ms to the next frame tick), `perf cmd WORD` for pipe
+commands, `perf show` when the resident tuner comes up, `perf guide draw` (ms, texts really set, cuts measured, cuts found already made) and once
+`perf start` (launch to `Main` only when the launcher sets `VETRO_TUNER_LAUNCH_MS` to the Unix time in ms, then `elm_init`, the window, the views,
+the loop). Over 50 Hz live TV a frame is 20 ms and over 60 Hz 16.7 ms: an interval over 30 ms is a dropped frame. In the preview the numbers mean
+nothing (its clock can be slowed or paused); there it only shows that the probes change nothing on screen.
+
 ## Running it on the TV (development)
 
 Build on a Mac with the .NET SDK (`dotnet build -c Release -p:TvsDll=<firmware copy of Tizen.TV.Broadcast.TVService.dll>`), copy
@@ -238,7 +263,7 @@ systemd-run --unit=vetro-tuner --collect -p WorkingDirectory=<dir> -p KillSignal
 ```
 
 Stop it with Back on the remote or `systemctl stop vetro-tuner`. Give test runs a long `--seconds`: it is an auto-exit safety net.
-Log: `/tmp/vetro-tuner.log`. Tests of the pure logic: `dotnet run` in `tests/` (126 checks: parser, store, grid, scene, fuzzed replies). The build output has a `res/` folder next to the dll: it must be copied with it.
+Log: `/tmp/vetro-tuner.log`. Tests of the pure logic: `dotnet run` in `tests/` (parser, store, grid, scene, key routing, fuzzed replies). The build output has a `res/` folder next to the dll: it must be copied with it.
 
 ## Layout
 

@@ -1,6 +1,6 @@
 namespace Tuner.Core
 {
-    /// <summary>Audio languages as the broadcast gives them (ISO 639-2, three letters) turned into words for the screen.</summary>
+    /// <summary>Audio and subtitle languages as the broadcast gives them (ISO 639-2, three letters) turned into words for the screen.</summary>
     internal static class Languages
     {
         public static string Name(string code)
@@ -24,7 +24,7 @@ namespace Tuner.Core
                 case "SRP": return "Serbian";
                 case "DUT": case "NLD": return "Dutch";
                 case "GRE": case "ELL": return "Greek";
-                case "UND": case "UNKNOWN": case "": return "Original";
+                case "QAA": case "UND": case "UNKNOWN": case "": return "Original";   // qaa: the broadcast's "original language" track
                 default: return code.ToUpperInvariant();
             }
         }

@@ -47,6 +47,7 @@ namespace Tuner.Native
         [DllImport(Evas)] public static extern void evas_object_resize(IntPtr obj, int w, int h);
         [DllImport(Evas)] public static extern void evas_object_show(IntPtr obj);
         [DllImport(Evas)] public static extern void evas_object_hide(IntPtr obj);
+        [DllImport(Evas)] public static extern void evas_object_del(IntPtr obj);
         [DllImport(Evas)] public static extern void evas_object_color_set(IntPtr obj, int r, int g, int b, int a);
         [DllImport(Evas)] public static extern IntPtr evas_object_rectangle_add(IntPtr evas);
         [DllImport(Evas)] public static extern IntPtr evas_object_text_add(IntPtr evas);
@@ -81,7 +82,6 @@ namespace Tuner.Native
         // --- evas: maps (a uniform zoom of a text while it flies to a text of another size; DESIGN.md: zoom maps cost nothing visible) ---
         // The map is populated from the object's own geometry (so its picture covers the whole object), then its four corners are moved.
         [DllImport(Evas)] public static extern IntPtr evas_map_new(int count);
-        [DllImport(Evas)] public static extern void evas_map_free(IntPtr map);
         [DllImport(Evas)] public static extern void evas_map_util_points_populate_from_geometry(IntPtr map, int x, int y, int w, int h, int z);
         [DllImport(Evas)] public static extern void evas_map_point_coord_set(IntPtr map, int idx, int x, int y, int z);
         [DllImport(Evas)] public static extern void evas_object_map_set(IntPtr obj, IntPtr map);
@@ -112,6 +112,8 @@ namespace Tuner.Native
         // The TV's current input, memory/system/source_type (the key the launcher's input panel reads): 0 is the TV tuner, 13-16 are
         // HDMI 1-4 (Samsung's Source enum). The call returns 0 when the key was read.
         [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
+        // Writes an int setting (0 = written). The subtitle switch of the Audio toast writes the TV's two subtitle settings with it (Tvs/SubtitleSettings.cs).
+        [DllImport("libvconf.so.0")] public static extern int vconf_set_int(string key, int value);
 
         /// <summary>Name of the evas engine in use, or null when it cannot be read.</summary>
         public static string EngineName(IntPtr evas)

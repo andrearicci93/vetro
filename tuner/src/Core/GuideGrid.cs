@@ -84,11 +84,38 @@ namespace Tuner.Core
 
         private sealed class Seg { public long Start, End; public GuideEvent Event; public bool Loading; }
 
-        /// <summary>The whole horizon of a channel, cut into the programmes and the stretches between them.</summary>
+        /// <summary>A channel's cut, and what it was cut from: the store's entry (replaced whole on every read, never edited) and the start of the horizon.</summary>
+        private sealed class Cut { public ChannelSchedule From; public long MinStart; public List<Seg> Segs; }
+        private readonly Dictionary<ulong, Cut> _cuts = new Dictionary<ulong, Cut>();
+        /// <summary>Past this many channels the cuts are dropped (a resident tuner pages through the whole list in a guide that stays open).</summary>
+        public const int KeepCuts = 48;
+
+        /// <summary>
+        /// The whole horizon of a channel, cut into the programmes and the stretches between them. A guide key used to cut each row's 72 h about
+        /// ten times to draw 3 h; the cut is now kept until the store's entry for that channel is replaced (a new read) or the horizon moves, and is
+        /// the same list as a fresh cut would be. The lists are only read by the callers.
+        /// </summary>
         private List<Seg> Segments(Channel c)
         {
-            var segs = new List<Seg>();
             ChannelSchedule sched = _store.Get(c.Id);
+            Cut cut;
+            if (!CacheCuts) return CutSegments(sched);
+            if (_cuts.TryGetValue(c.Id, out cut) && ReferenceEquals(cut.From, sched) && cut.MinStart == _minStart) return cut.Segs;
+            if (_cuts.Count >= KeepCuts) _cuts.Clear();
+            List<Seg> segs = CutSegments(sched);
+            _cuts[c.Id] = new Cut { From = sched, MinStart = _minStart, Segs = segs };
+            return segs;
+        }
+
+        /// <summary>False: every call cuts again, as before the cuts were kept (the tests compare the two).</summary>
+        public bool CacheCuts = true;
+
+        /// <summary>How many channels have a cut kept now (for the tests).</summary>
+        public int CutsKept { get { return _cuts.Count; } }
+
+        private List<Seg> CutSegments(ChannelSchedule sched)
+        {
+            var segs = new List<Seg>();
             if (sched == null) { segs.Add(new Seg { Start = _minStart, End = MaxEnd, Loading = true }); return segs; }
             long at = _minStart;
             bool any = false;
@@ -119,6 +146,17 @@ namespace Tuner.Core
                 if (_list.Count == 0) return null;
                 List<Seg> segs = Segments(_list[FocusRow]);
                 return segs[IndexAt(segs, FocusTime)].Event;
+            }
+        }
+
+        /// <summary>True when the focus is on a channel whose schedule has not been read yet (the header then says so, not "No information").</summary>
+        public bool FocusLoading
+        {
+            get
+            {
+                if (_list.Count == 0) return false;
+                List<Seg> segs = Segments(_list[FocusRow]);
+                return segs[IndexAt(segs, FocusTime)].Loading;
             }
         }
 

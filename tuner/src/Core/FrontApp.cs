@@ -22,6 +22,35 @@ namespace Tuner.Core
         /// <summary>A reading older than this is not trusted (the reading thread is stuck, or the call stopped answering).</summary>
         public const double StaleSeconds = 2.0;
 
+        /// <summary>
+        /// When the reading thread needs to ask the application manager for the app id of the focused process (one more call every half second,
+        /// for weeks). Not for the tuner's own window: <see cref="Judge"/> answers "Own" before it looks at the app id. Not again for the process
+        /// whose app id was just found: a process's app id is set when the app is launched and does not change; it is asked again after
+        /// <see cref="RecheckEvery"/> readings anyway, and every time while the process has none (a process that is not an app yet).
+        /// One reading thread only.
+        /// </summary>
+        public sealed class AppIdMemo
+        {
+            public const int RecheckEvery = 10;
+            private int _pid;
+            private string _app;
+            private int _uses;
+
+            /// <summary>True when the app id is already known (given in <paramref name="appId"/>); false when it must be asked, then <see cref="Asked"/>.</summary>
+            public bool Known(int pid, int ownPid, out string appId)
+            {
+                appId = null;
+                if (pid == ownPid) return true;
+                if (pid != _pid || _app == null || _uses >= RecheckEvery) return false;
+                _uses++;
+                appId = _app;
+                return true;
+            }
+
+            /// <summary>What the application manager said for <paramref name="pid"/> (null: not an app, or the call failed).</summary>
+            public void Asked(int pid, string appId) { _pid = pid; _app = appId; _uses = 0; }
+        }
+
         /// <param name="ok">The reading succeeded and named a process.</param>
         /// <param name="pid">The focused process.</param>
         /// <param name="appId">Its app id; null when the process is not an app.</param>

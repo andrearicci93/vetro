@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Tuner.Core
@@ -24,9 +25,20 @@ namespace Tuner.Core
         /// <summary>When no programme covers "now" (the list ran out, or the channel has no data) it is read again after this long.</summary>
         public const long RetrySeconds = 20;
 
+        /// <summary>Past this many channels, the ones not read for <see cref="MaxAgeSeconds"/> are dropped when a new one comes in (they would be read again anyway).</summary>
+        public const int KeepChannels = 100;
+
         public void Put(ulong id, List<GuideEvent> events, long readAt, long askedUntil)
         {
-            lock (_items) _items[id] = new ChannelSchedule { Events = events, ReadAt = readAt, AskedUntil = askedUntil };
+            lock (_items)
+            {
+                _items[id] = new ChannelSchedule { Events = events, ReadAt = readAt, AskedUntil = askedUntil };
+                if (_items.Count <= KeepChannels) return;
+                // A resident tuner lives for weeks: without this, paging through the guide keeps 72 h of every channel ever seen.
+                var old = new List<ulong>();
+                foreach (var kv in _items) if (kv.Key != id && readAt - kv.Value.ReadAt >= MaxAgeSeconds) old.Add(kv.Key);
+                foreach (ulong k in old) _items.Remove(k);
+            }
         }
 
         /// <summary>
@@ -44,7 +56,6 @@ namespace Tuner.Core
         }
 
         public ChannelSchedule Get(ulong id) { lock (_items) { ChannelSchedule c; return _items.TryGetValue(id, out c) ? c : null; } }
-        public int Count { get { lock (_items) return _items.Count; } }
 
         /// <summary>The programme on air at <paramref name="now"/>, or null (unknown channel, no data, or the list does not reach now).</summary>
         public GuideEvent Current(ulong id, long now)
@@ -55,6 +66,21 @@ namespace Tuner.Core
             return null;
         }
 
+        /// <summary>
+        /// The programme after the one on air at <paramref name="now"/>: the first one that starts when it ends or later (one that starts inside
+        /// it is skipped). With nothing on air, the first one that starts after <paramref name="now"/>. Null when the channel is not known, has no
+        /// data, or the list ends there. The events are sorted by start, so the first match is the next.
+        /// </summary>
+        public GuideEvent Next(ulong id, long now)
+        {
+            ChannelSchedule c = Get(id);
+            if (c == null) return null;
+            GuideEvent cur = null;
+            foreach (GuideEvent e in c.Events) if (e.Start <= now && now < e.End) { cur = e; break; }
+            foreach (GuideEvent e in c.Events) if (cur != null ? e.Start >= cur.End : e.Start > now) return e;
+            return null;
+        }
+
         /// <summary>True when the channel is worth reading again for a window that ends at <paramref name="until"/>.</summary>
         public bool NeedsRead(ulong id, long now, long until)
         {
@@ -62,7 +88,10 @@ namespace Tuner.Core
             if (c == null) return true;
             long age = now - c.ReadAt;
             if (age >= MaxAgeSeconds) return true;
-            if (c.AskedUntil < until && age >= RetrySeconds) return true;          // read for a shorter window than wanted now
+            // Read for a clearly shorter window than wanted now. Every caller asks for "now + horizon", which moves with the clock: a
+            // plain "AskedUntil < until" was true one second after any read, so every schedule went stale after RetrySeconds (20 s)
+            // instead of MaxAgeSeconds, and each zap read 25 channels again. The slack is the age a reading may have anyway.
+            if (c.AskedUntil + MaxAgeSeconds < until && age >= RetrySeconds) return true;
             bool coversNow = false;
             foreach (GuideEvent e in c.Events) if (e.Start <= now && now < e.End) { coversNow = true; break; }
             return !coversNow && age >= RetrySeconds;
@@ -71,17 +100,20 @@ namespace Tuner.Core
         /// <summary>
         /// Indexes of a list of <paramref name="count"/> channels in the order worth reading them: the ones next to the channel on screen first
         /// (+1, -1, +2, -2, ...), because that is where CH+/- goes next. The channel on screen itself is left out. Wraps around.
+        /// With <paramref name="limit"/>, only the first that many of that order: a zap and every step of a held CH+ need two dozen, not the
+        /// whole list (the order of the ones returned is the same).
         /// </summary>
-        public static List<int> Nearest(int count, int center)
+        public static List<int> Nearest(int count, int center, int limit = int.MaxValue)
         {
-            var order = new List<int>();
-            if (count <= 1 || center < 0 || center >= count) return order;
-            var seen = new HashSet<int> { center };
-            for (int k = 1; order.Count < count - 1; k++)
+            var order = new List<int>(Math.Max(0, Math.Min(limit, count - 1)));
+            if (count <= 1 || center < 0 || center >= count || limit <= 0) return order;
+            int want = Math.Min(count - 1, limit);
+            // +k and -k are the same index only when 2k is a multiple of count; any other repeat would need k >= count, which "want" never reaches.
+            for (int k = 1; order.Count < want; k++)
             {
                 int up = ((center + k) % count + count) % count, down = ((center - k) % count + count) % count;
-                if (seen.Add(up)) order.Add(up);
-                if (seen.Add(down)) order.Add(down);
+                if (up != center) order.Add(up);
+                if (order.Count < want && down != center && down != up) order.Add(down);
             }
             return order;
         }

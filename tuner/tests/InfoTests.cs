@@ -16,6 +16,15 @@ internal static partial class Tests
         Check(InfoText.Audio("ENG", 1) == "English · track 2", "info: another track says which");
         Check(InfoText.Audio("", 0) == "" && InfoText.Audio("ITA", -1) == "", "info: an audio track that cannot be read shows nothing");
 
+        // The Next line.
+        string ns, nt;
+        InfoText.Next(new GuideEvent { Start = 1794103440 + 600, Duration = 1800, Title = " Late Show " }, TimeSpan.FromHours(1), out ns, out nt);
+        Check(ns == ProgramClock.Clock(1794103440 + 600, TimeSpan.FromHours(1)) && ns.Length == 5 && nt == "Late Show", "info: next is the start in local time and the title: " + ns + " " + nt);
+        InfoText.Next(null, TimeSpan.Zero, out ns, out nt);
+        Check(ns == "" && nt == "", "info: no next programme leaves the line empty");
+        InfoText.Next(new GuideEvent { Start = 1794103440, Duration = 1800, Title = "" }, TimeSpan.Zero, out ns, out nt);
+        Check(ns == "" && nt == "", "info: a next programme without a title leaves the line empty (no time alone)");
+
         // Wrapping.
         List<string> l = InfoText.Wrap("one two three four", 100, 5, m);
         Check(l.Count == 2 && l[0] == "one two" && l[1] == "three four", "info: words go on the next line when the line is full");

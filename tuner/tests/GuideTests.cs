@@ -62,6 +62,25 @@ internal static partial class Tests
         Check(store.Current(5, now).Title == "Tu si que vales", "the programme on air comes from the store");
         Check(store.Current(5, c5[1].Start + 1).Title == "Tg5", "and the next one once it has started");
         Check(store.Current(5, c5[1].End) == null, "nothing on air after the last programme");
+        // the programme after the one on air (Info's Next line)
+        Check(store.Next(5, now) == c5[1], "next: the programme after the one on air");
+        Check(store.Next(5, c5[0].End - 1) == c5[1], "next: still the same one in the last second of the programme on air");
+        Check(store.Next(5, c5[1].Start + 1) == null, "next: none when the list ends with the programme on air");
+        Check(store.Next(5, c5[1].End) == null, "next: none when nothing is on air and nothing comes later");
+        Check(store.Next(5, c5[0].Start - 600) == c5[0], "next: before the first programme, the first one");
+        Check(store.Next(77, now) == null, "next: none for a channel not read");
+        var gaps = new GuideStore();
+        gaps.Put(30, new List<GuideEvent>(), now, now + 3600);
+        Check(gaps.Next(30, now) == null, "next: none for a channel with no data");
+        var g1 = new GuideEvent { Start = 1000, Duration = 1000, Title = "On air" };
+        var g2 = new GuideEvent { Start = 1500, Duration = 300, Title = "Starts inside it" };
+        var g3 = new GuideEvent { Start = 2300, Duration = 600, Title = "After a gap" };
+        var g4 = new GuideEvent { Start = 2900, Duration = 600, Title = "Later" };
+        gaps.Put(31, new List<GuideEvent> { g1, g2, g3, g4 }, now, now + 3600);
+        Check(gaps.Next(31, 1200) == g3, "next: one that starts inside the programme on air is skipped, a gap after it is not a stop");
+        Check(gaps.Next(31, 2100) == g3, "next: in a gap, the first one that starts after now");
+        Check(gaps.Next(31, 2300) == g4, "next: once it starts, the one after it");
+        Check(gaps.Next(31, 3500) == null, "next: none after the last one");
         Check(!store.NeedsRead(5, now + 5, now + 3600), "a channel just read is left alone");
         Check(store.NeedsRead(5, now + GuideStore.MaxAgeSeconds, now + 3600), "an old reading is read again");
         Check(store.NeedsRead(5, now + 60, now + 86400), "a reading for a shorter window is read again for a longer one");
@@ -71,6 +90,20 @@ internal static partial class Tests
         Check(store.PutFailed(11, now, now + 3600) && store.Get(11) != null && store.Get(11).Events.Count == 0, "a failed first read leaves the channel known and empty");
         Check(!store.NeedsRead(11, now + 5, now + 3600) && store.NeedsRead(11, now + GuideStore.RetrySeconds, now + 3600), "a channel whose read failed is retried, but not at once");
         Check(!store.PutFailed(5, now + 30, now + 3600) && store.Current(5, now) != null, "a failed read does not throw away a schedule that is known");
+        // Every caller asks for "now + horizon", a window that moves with the clock: a reading must still be good for MaxAgeSeconds,
+        // not go stale after 20 s (each zap then read 25 channels of 72 h again).
+        long horizon = 72 * 3600;
+        store.Put(21, c5, now, now + horizon);
+        Check(!store.NeedsRead(21, now + 19, now + 19 + horizon) && !store.NeedsRead(21, now + 60, now + 60 + horizon) && !store.NeedsRead(21, now + 600, now + 600 + horizon),
+            "a reading asked for 'now + horizon' stays good while the clock moves");
+        Check(store.NeedsRead(21, now + GuideStore.MaxAgeSeconds, now + GuideStore.MaxAgeSeconds + horizon), "and is read again when it is old");
+        // The store does not grow for ever: past KeepChannels, old readings go when a new one comes in.
+        var big = new GuideStore();
+        for (int i = 0; i < GuideStore.KeepChannels; i++) big.Put((ulong)(1000 + i), c5, now, now + horizon);
+        big.Put(5000, c5, now + GuideStore.MaxAgeSeconds + 1, now + horizon);
+        Check(big.Get(1000) == null && big.Get(5000) != null, "old readings are dropped once the store is full");
+        big.Put(5001, c5, now + GuideStore.MaxAgeSeconds + 2, now + horizon);
+        Check(big.Get(5000) != null, "a fresh reading is kept");
         Check(string.Join(",", GuideStore.Nearest(6, 0)) == "1,5,2,4,3", "neighbours first, wrapping, current left out");
         Check(string.Join(",", GuideStore.Nearest(4, 2)) == "3,1,0", "neighbours of a middle channel");
         Check(GuideStore.Nearest(1, 0).Count == 0 && GuideStore.Nearest(5, -1).Count == 0, "nothing to read with no neighbours or no current");

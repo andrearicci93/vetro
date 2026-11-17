@@ -116,8 +116,17 @@ namespace Tuner.Tvs
         // tuner and the SI running when the multiplex does not change (measured on the Q80A: picture back in ~1.5 s instead of ~2.5 s).
         // The managed client does not expose it, so the call is built with its internal marshalling classes by reflection:
         // out int result, profile, subId, then (service id, direction 0, false, "NoAppId"). Any failure falls back to SetSource.
-        private bool _isTv;           // the source is known to be TV, so SetService is allowed
-        private bool _setServiceBroken;
+        private volatile bool _isTv;  // the source is known to be TV, so SetService is allowed
+        private int _setServiceFails; // tries in a row of the fast call that did not work; at FastTries it is given up
+        private const int FastTries = 3;
+        /// <summary>Why the last tune did not use the fast call (null when it did, or was not tried): for the log.</summary>
+        public string TuneNote { get; private set; }
+
+        /// <summary>
+        /// The tuner comes back on screen: the TV may be on another input now (it was shown from the dashboard while on HDMI), so
+        /// the next tune asks which source is on instead of trusting what was true before.
+        /// </summary>
+        public void SourceUnknown() { _isTv = false; }
         private IServiceNavigation _nav;   // keeps the interface alive for the reflection call
         private object _conn, _helperType, _wrapType;
 
@@ -125,6 +134,7 @@ namespace Tuner.Tvs
         public int Tune(ulong serviceId)
         {
             var api = TVServiceAPI.Instance();
+            TuneNote = null;
             if (!_isTv)
             {
                 using (ISourceControl s0 = api.CreateSourceControl(Profile.Main, 0))
@@ -139,15 +149,22 @@ namespace Tuner.Tvs
                     }
                 }
             }
-            if (!_setServiceBroken)
+            // One refusal (a channel that is gone, a busy daemon) must not send every later zap down the slow path for the life of
+            // the process: the fast call is given up after FastTries failures in a row, or at once when it cannot be built at all.
+            if (_setServiceFails < FastTries)
             {
                 try
                 {
                     int r = SetService(api, serviceId);
-                    if (r == 1) return r;
+                    if (r == 1) { _setServiceFails = 0; return r; }
+                    _setServiceFails++;
+                    TuneNote = "SetService r=" + r + (_setServiceFails >= FastTries ? ", given up: SetSource from now on" : ", SetSource this time");
                 }
-                catch (Exception) { }
-                _setServiceBroken = true;   // do not keep trying a call that failed once
+                catch (Exception ex)
+                {
+                    _setServiceFails = FastTries;
+                    TuneNote = "SetService cannot be called (" + ex.GetType().Name + "): SetSource from now on";
+                }
             }
             using (ISourceControl src = api.CreateSourceControl(Profile.Main, 0))
                 return src.SetSource(Source.TV, serviceId, "NoAppId");
@@ -357,6 +374,44 @@ namespace Tuner.Tvs
                 }
                 index = idx2;
                 return lc2 == LanguageCode.Unknown ? "" : lc2.ToString();
+            }
+        }
+
+        /// <summary>
+        /// The subtitle tracks of a service (DVB and teletext alike), in the TV service's own order: the index of a track here is the index the
+        /// TV's subtitle setting holds (<see cref="SubtitleSettings"/>). <c>IServiceDataAux.SizeOfHybridSBT</c>, then <c>GetHybridSBT</c> for each
+        /// index, 1 = success. The language is the scalar the call fills (three letters packed in an int), or the track object's when that is
+        /// unknown; "hard of hearing" only when the object says so. A track that cannot be read keeps its place, with no language. False when the
+        /// number of tracks cannot be read. <paramref name="detail"/> is for the log: each track's raw fields, to check on the TV what the client
+        /// really fills. Not tried on a TV yet.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public bool ReadSubtitles(ulong serviceId, out List<SubtitleTrack> tracks, out string detail)
+        {
+            tracks = new List<SubtitleTrack>();
+            using (IServiceDataAux aux = TVServiceAPI.Instance().CreateServiceDataAux(Profile.Main, 0))
+            {
+                uint size = 0;
+                int r = aux.SizeOfHybridSBT(serviceId, ref size);
+                var log = new System.Text.StringBuilder("size r=" + r + " n=" + size);
+                if (r != 1) { detail = log.ToString(); return false; }
+                int n = (int)Math.Min(size, (uint)Subtitles.MaxTracks);
+                for (int i = 0; i < n; i++)
+                {
+                    LanguageCode lc = LanguageCode.Unknown;
+                    var sbt = new HybridSBT();
+                    int ri = -1;
+                    try { ri = aux.GetHybridSBT(serviceId, (uint)i, ref lc, sbt); }
+                    catch (Exception ex) { log.Append(" [" + i + " " + ex.GetType().Name + "]"); tracks.Add(new SubtitleTrack("", false)); continue; }
+                    string lang = ri == 1 ? Subtitles.Unpack((int)lc) : "";
+                    if (ri == 1 && lang.Length == 0) lang = Subtitles.Unpack((int)sbt.language);
+                    bool hoh = ri == 1 && sbt.sbtMode == SBTType.HardOfHearing;
+                    tracks.Add(new SubtitleTrack(lang, hoh));
+                    log.Append(" [" + i + " r=" + ri + " lang=0x" + ((int)lc).ToString("x") + " obj.lang=0x" + ((int)sbt.language).ToString("x") +
+                               " type=" + sbt.sbtType + " mode=" + sbt.sbtMode + " pid=" + sbt.pid + " page=" + sbt.magazine + "/" + sbt.page + "]");
+                }
+                detail = log.ToString();
+                return true;
             }
         }
 

@@ -53,9 +53,14 @@ namespace Tuner.Core
             return null;
         }
 
+        /// <summary>
+        /// Makes this channel the current one. It is found by its service id, not by reference: the channel on screen at start
+        /// (and after every resync) is read on its own and is not the list's object, and looking for that object lost the
+        /// position, so the next CH+ went to the first channel. A channel that is not in the list leaves the position where it was.
+        /// </summary>
         public Channel Select(Channel c)
         {
-            if (c != null) _current = _items.IndexOf(c);
+            if (c != null) SetCurrent(c.Id);
             return c;
         }
     }

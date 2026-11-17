@@ -37,11 +37,11 @@ namespace Tuner.Ui
         public void Set(int x0, int x1, int timesTop, int lineY, string start, string end, string left, double fraction)
         {
             int y = Theme.TopOf(timesTop, TimeSize, Theme.HaloPad);
-            Efl.evas_object_text_text_set(_start, start);
-            Efl.evas_object_text_text_set(_end, end);
-            Efl.evas_object_text_text_set(_left, left);
-            int startW = Efl.evas_object_text_horiz_advance_get(_start), endW = Efl.evas_object_text_horiz_advance_get(_end);
-            int leftW = string.IsNullOrEmpty(left) ? 0 : Efl.evas_object_text_horiz_advance_get(_left);
+            Texts.Set(_start, start);
+            Texts.Set(_end, end);
+            Texts.Set(_left, left);
+            int startW = Texts.Advance(_start), endW = Texts.Advance(_end);
+            int leftW = string.IsNullOrEmpty(left) ? 0 : Texts.Advance(_left);
             ProgressRow r = ProgressRow.Of(x0, x1, fraction, startW, endW, leftW);
             Theme.TintHalo(_start, r.HideStart ? 0 : Theme.VeilMuted);
             Theme.TintHalo(_end, r.HideEnd ? 0 : Theme.VeilMuted);
@@ -59,9 +59,9 @@ namespace Tuner.Ui
         /// <summary>No programme: no times, no line (an empty line would say "0%").</summary>
         public void Clear()
         {
-            Efl.evas_object_text_text_set(_start, "");
-            Efl.evas_object_text_text_set(_end, "");
-            Efl.evas_object_text_text_set(_left, "");
+            Texts.Set(_start, "");
+            Texts.Set(_end, "");
+            Texts.Set(_left, "");
             _track.SetWhite(0);
             Efl.evas_object_hide(_prog);
         }
@@ -94,7 +94,7 @@ namespace Tuner.Ui
             _name = s.HaloText(NameSize, Theme.TextMain, Theme.Font600);
             _title = s.HaloText(TitleSize, Theme.VeilTitle, Theme.Font500);
             _none = s.HaloText(NoneSize, Theme.VeilFaint, Theme.Font500);
-            Efl.evas_object_text_text_set(_none, "No programme information");
+            Texts.Set(_none, "No programme information");
             _progress = new ProgressView(s);
             _parts["num"] = new Part(_num, NumSize, true); _parts["name"] = new Part(_name, NameSize, true);
             _parts["title"] = new Part(_title, TitleSize, true); _parts["none"] = new Part(_none, NoneSize, true);
@@ -116,11 +116,11 @@ namespace Tuner.Ui
         /// </summary>
         public void ShowChannel(string number, string name, string logo = null, bool room = false)
         {
-            Efl.evas_object_text_text_set(_num, number);
-            _nameX = X0 + Efl.evas_object_text_horiz_advance_get(_num) + NumGap;
+            Texts.Set(_num, number);
+            _nameX = X0 + Texts.Advance(_num) + NumGap;
             _nameText = name;
             SetLogo(logo, room);
-            Efl.evas_object_text_text_set(_title, "");
+            Texts.Set(_title, "");
             Efl.evas_object_hide(_none);
             _progress.Clear();
             PlaceNumber();
@@ -151,7 +151,7 @@ namespace Tuner.Ui
 
         public void SetNoProgram()
         {
-            Efl.evas_object_text_text_set(_title, "");
+            Texts.Set(_title, "");
             Surface.SetFitted(_none, "No programme information", X1 - _nameX);
             Theme.MoveHalo(_none, _nameX, Theme.TopFor(Theme.Baseline(TitleTop, TitleSize), NoneSize, Theme.HaloPad));   // on the programme's baseline
             Efl.evas_object_show(_none);
@@ -197,13 +197,13 @@ namespace Tuner.Ui
                 int y = Y + Pad + r * RowH;
                 bool sel = idx == selected;
                 if (sel) { _focus.SetRect(X + 16, y + 2, W - 32, RowH - 4); _focus.SetRadius((RowH - 4) / 2); _focus.SetTint(Theme.Ice, Theme.FocusAlpha); }
-                Efl.evas_object_text_text_set(_num[r], c.Major.ToString());
+                Texts.Set(_num[r], c.Major.ToString());
                 if (sel) Theme.TintText(_num[r], Theme.Slate, 255); else Theme.TintText(_num[r], 0xFFFFFF, Theme.TextMuted);
                 if (sel) Theme.TintText(_name[r], Theme.Slate, 255); else Theme.TintText(_name[r], 0xFFFFFF, Theme.TextMain);
                 int nameX = room ? X + 172 : X + 150;
                 Surface.SetFitted(_name[r], c.Name, X + W - 40 - nameX);
                 int ty = Theme.TopForCentre(y, RowH, 32);                         // capitals centred in the row (Evas metrics, not a measured offset)
-                Efl.evas_object_move(_num[r], NumRight - Efl.evas_object_text_horiz_advance_get(_num[r]), ty);
+                Efl.evas_object_move(_num[r], NumRight - Texts.Advance(_num[r]), ty);
                 Efl.evas_object_move(_name[r], nameX, ty);
                 string file = logo == null ? null : logo(c);
                 if (file != null) _logo[r].Show(file, X + 114, y + (RowH - LogoSize) / 2, LogoSize); else _logo[r].Hide();
@@ -235,7 +235,7 @@ namespace Tuner.Ui
             _s = s;
             s.Panel().SetRect(X, Y, W, H, 40);
             _title = s.Text(26, Theme.TextMuted);
-            Efl.evas_object_text_text_set(_title, "Channel number");
+            Texts.Set(_title, "Channel number");
             Efl.evas_object_move(_title, X + Pad, Theme.TopFor(Y + TitleBase, 26));
             _typed = s.Text(76, Theme.TextMain);
             Efl.evas_object_move(_typed, X + Pad, Theme.TopFor(Y + TypedBase, 76));
@@ -255,9 +255,9 @@ namespace Tuner.Ui
             {
                 string t = NumberEntry.Label(i / NumberEntry.Cols, i % NumberEntry.Cols);
                 _label[i] = s.Text(t.Length > 1 ? 28 : 40, Theme.TextMain);
-                Efl.evas_object_text_text_set(_label[i], t);
+                Texts.Set(_label[i], t);
                 int r = i / NumberEntry.Cols, c = i % NumberEntry.Cols;
-                Efl.evas_object_move(_label[i], Left(c) + (KeyW - Efl.evas_object_text_horiz_advance_get(_label[i])) / 2, Theme.TopForCentre(Top(r), KeyH, t.Length > 1 ? 28 : 40));   // capitals and digits centred on the key
+                Efl.evas_object_move(_label[i], Left(c) + (KeyW - Texts.Advance(_label[i])) / 2, Theme.TopForCentre(Top(r), KeyH, t.Length > 1 ? 28 : 40));   // capitals and digits centred on the key
             }
         }
 
@@ -270,7 +270,7 @@ namespace Tuner.Ui
         /// <summary>Redraws the pad. <paramref name="preview"/> is the name of the channel the typed number would go to ("" for none).</summary>
         public void Draw(NumberEntry e, string preview, string logo = null)
         {
-            Efl.evas_object_text_text_set(_typed, e.Text.Length > 0 ? e.Text : "–");
+            Texts.Set(_typed, e.Text.Length > 0 ? e.Text : "–");
             Surface.SetFitted(_preview, preview, W - 2 * Pad - (logo != null ? 52 : 0));
             Efl.evas_object_move(_preview, X + Pad + (logo != null ? 52 : 0), Theme.TopFor(Y + PreviewBase, 28));
             if (logo != null) _logo.Show(logo, X + Pad, Y + 158, 44); else _logo.Hide();
@@ -286,7 +286,67 @@ namespace Tuner.Ui
         }
     }
 
-    /// <summary>A one-line message, top right ("Audio: English"): the osd 123's capsule (rim and slate body, radius half the height), no shadow.</summary>
+    /// <summary>
+    /// The Audio toast (Left), top right: two lines, Audio and Subtitles, on a panel of the osd 123's material (radius 40, no shadow). Each line is
+    /// the remote key that changes it (Left, Down), its label (white .76) and its value (600, white). The line just changed is at full strength;
+    /// the other is quieter (key .40, label .55, value .70). The panel's size and every column are fixed, so nothing moves whatever the values
+    /// are or when they arrive: a value too long for its column is cut with an ellipsis.
+    /// </summary>
+    internal sealed class AudioToastView
+    {
+        public const int Right = 1920 - 96, Y = 96, PadX = 40, PadY = 20, RowH = 56, H = 2 * PadY + 2 * RowH, Radius = 40;
+        // The value column fits "Italian (hard of hearing)" (335 px in SamsungOneUI 600 at 32) with a little to spare.
+        public const int KeySize = 40, KeyGap = 16, LabelCol = 160, ValueW = 352, Size = 32;
+        public const int W = PadX + KeySize + KeyGap + LabelCol + ValueW + PadX, X = Right - W;
+        public const int KeyX = X + PadX, LabelX = KeyX + KeySize + KeyGap, ValueX = LabelX + LabelCol;
+        /// <summary>Alphas of the line just changed and of the other one: key, label, value.</summary>
+        public const int KeyOn = 217, LabelOn = 194, ValueOn = 255, KeyOff = 102, LabelOff = 140, ValueOff = 178;
+        private readonly Surface _s;
+        private readonly IntPtr[] _key = new IntPtr[2], _label = new IntPtr[2], _value = new IntPtr[2];
+
+        public AudioToastView(Surface s)
+        {
+            _s = s;
+            s.Panel().SetRect(X, Y, W, H, Radius);
+            string[] keys = { "key_left", "key_down" }, labels = { "Audio", "Subtitles" };
+            for (int i = 0; i < 2; i++)
+            {
+                int top = Y + PadY + i * RowH;
+                _key[i] = s.Picture(keys[i]);
+                Efl.evas_object_move(_key[i], KeyX, top + (RowH - KeySize) / 2);
+                Efl.evas_object_resize(_key[i], KeySize, KeySize);
+                Efl.evas_object_show(_key[i]);
+                _label[i] = s.Text(Size, LabelOn, Theme.Font500);
+                Texts.Set(_label[i], labels[i]);
+                Efl.evas_object_move(_label[i], LabelX, Theme.TopForCentre(top, RowH, Size));   // capitals centred in the row; the value shares the baseline
+                _value[i] = s.Text(Size, ValueOn, Theme.Font600);
+                Efl.evas_object_move(_value[i], ValueX, Theme.TopForCentre(top, RowH, Size));
+            }
+        }
+
+        public bool Visible { get { return _s.Visible; } }
+        public void Hide() { _s.Hide(); }
+
+        /// <param name="audio">The Audio line's value ("Italian", "English (2)", "Not available").</param>
+        /// <param name="subtitles">The Subtitles line's value ("Off", "English", "None on this channel"...; "" while it is being read).</param>
+        /// <param name="subtitlesChanged">Down changed the subtitles: their line is the full-strength one (otherwise the Audio line is).</param>
+        public void Show(string audio, string subtitles, bool subtitlesChanged)
+        {
+            Surface.SetFitted(_value[0], audio ?? "", ValueW);
+            Surface.SetFitted(_value[1], subtitles ?? "", ValueW);
+            for (int i = 0; i < 2; i++)
+            {
+                bool on = (i == 1) == subtitlesChanged;
+                int k = on ? KeyOn : KeyOff;
+                Efl.evas_object_color_set(_key[i], k, k, k, k);
+                Theme.TintText(_label[i], 0xFFFFFF, on ? LabelOn : LabelOff);
+                Theme.TintText(_value[i], 0xFFFFFF, on ? ValueOn : ValueOff);
+            }
+            _s.Show();
+        }
+    }
+
+    /// <summary>A one-line message, top right ("No channel 12"): the osd 123's capsule (rim and slate body, radius half the height), no shadow.</summary>
     internal sealed class ToastView
     {
         private const int Pad = 40, H = 72, Right = 1920 - 96, Y = 96, Size = 32;
@@ -301,8 +361,8 @@ namespace Tuner.Ui
 
         public void Show(string text)
         {
-            Efl.evas_object_text_text_set(_text, text);
-            int w = Efl.evas_object_text_horiz_advance_get(_text) + 2 * Pad;
+            Texts.Set(_text, text);
+            int w = Texts.Advance(_text) + 2 * Pad;
             _card.SetRect(Right - w, Y, w, H, H / 2);
             Efl.evas_object_move(_text, Right - w + Pad, Theme.TopForCentre(Y, H, Size));   // capitals centred in the capsule
             _s.Show();

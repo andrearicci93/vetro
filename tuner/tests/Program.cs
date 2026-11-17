@@ -30,6 +30,14 @@ internal static partial class Tests
         l.Select(l[0]);
         Check(l.Step(-1).Major == 9, "CH- wraps from the first channel to the last");
 
+        // The channel on screen is read on its own (at start, after a resync): it is not the list's object. Selecting it must find it
+        // by its id, or the position is lost and the next CH+ goes to the first channel (Back to the channel watched before did this).
+        var foreign = Ch(3, "Rai 3");
+        l.Select(foreign);
+        Check(l.CurrentIndex == 2 && l.Step(+1).Major == 9 && l.Step(-1).Major == 2, "Select finds a channel by its id, not by reference");
+        l.Select(Ch(77, "Gone"));
+        Check(l.CurrentIndex == 2, "selecting a channel that is not in the list keeps the position");
+
         var fresh = Sample();
         Check(fresh.Step(+1).Major == 1, "CH+ with no current channel goes to the first");
         Check(fresh.Step(-1).Major == 9, "CH- with no current channel goes to the last (back from before the first)");
@@ -113,6 +121,7 @@ internal static partial class Tests
         KeyRoutingTests2();
         KeyRoutingTests3();
         InfoTests();
+        SubtitleTests();
         ProgressRowTests();
         TextMetricsTests();
         LogoChecks();
@@ -121,6 +130,7 @@ internal static partial class Tests
         GuideChecks();
         GuideGridChecks();
         MotionChecks();
+        PerfChecks();
         Console.WriteLine(_failed == 0 ? "ok: " + _run + " checks" : _failed + " of " + _run + " checks FAILED");
         return _failed == 0 ? 0 : 1;
     }

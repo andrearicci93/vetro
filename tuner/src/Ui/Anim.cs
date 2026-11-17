@@ -19,8 +19,10 @@ namespace Tuner.Ui
         /// <summary>A live switch read at every run (the features file); null: on.</summary>
         public static Func<bool> Switch;
 
-        private sealed class Track { public object Key; public double Start, Delay, Seconds; public double[][] Curve; public Action<double> Apply; public Action Done; }
+        private sealed class Track { public object Key; public double Start, Delay, Seconds; public double[][] Curve; public Action<double> Apply; public Action Done; public bool Gone; }
         private static readonly List<Track> Tracks = new List<Track>();
+        // The runs of the frame being drawn, copied into this one list (a frame allocates nothing). A run that leaves Tracks is marked Gone.
+        private static readonly List<Track> Frame = new List<Track>();
         private static readonly List<Action> Idle = new List<Action>();
         private static IntPtr _animator, _guard;
         private static double _guardDue;
@@ -42,7 +44,7 @@ namespace Tuner.Ui
             apply(0);
             double now = Efl.ecore_time_get();
             Tracks.Add(new Track { Key = key, Start = now, Delay = delay, Seconds = Math.Max(seconds, 0.001), Curve = curve, Apply = apply, Done = done });
-            if (_animator == IntPtr.Zero) _animator = Efl.ecore_animator_add(OnTick, IntPtr.Zero);
+            if (_animator == IntPtr.Zero) { _animator = Efl.ecore_animator_add(OnTick, IntPtr.Zero); Perf.AnimStart(now); }
             double due = now + delay + seconds + 0.3;
             if (_guard == IntPtr.Zero || due > _guardDue)
             {
@@ -56,7 +58,7 @@ namespace Tuner.Ui
         public static void Cancel(object key)
         {
             if (key == null) return;
-            Tracks.RemoveAll(t => Equals(t.Key, key));
+            for (int i = Tracks.Count - 1; i >= 0; i--) if (Equals(Tracks[i].Key, key)) { Tracks[i].Gone = true; Tracks.RemoveAt(i); }
         }
 
         /// <summary>Puts every run at its end at once (a key arrived, the tuner hides): last frames, end actions, then what waited for the end.</summary>
@@ -67,6 +69,7 @@ namespace Tuner.Ui
             {
                 Track t = Tracks[0];
                 Tracks.RemoveAt(0);
+                t.Gone = true;
                 t.Apply(1);
                 if (t.Done != null) t.Done();
             }
@@ -83,20 +86,27 @@ namespace Tuner.Ui
         private static byte Tick()
         {
             _ticking = true;
+            long t0 = Perf.On ? Perf.Now() : 0;
+            double now = 0;
             try
             {
-                double now = Efl.ecore_time_get();
-                foreach (Track t in Tracks.ToArray())
+                now = Efl.ecore_time_get();
+                Frame.Clear();
+                Frame.AddRange(Tracks);
+                for (int i = 0; i < Frame.Count; i++)
                 {
-                    if (!Tracks.Contains(t)) continue;                            // cancelled by the end of another run
+                    Track t = Frame[i];
+                    if (t.Gone) continue;                                         // cancelled by the end of another run
                     double p = (now - t.Start - t.Delay) / t.Seconds;
-                    if (p >= 1) { Tracks.Remove(t); t.Apply(1); if (t.Done != null) t.Done(); }
+                    if (p >= 1) { Tracks.Remove(t); t.Gone = true; t.Apply(1); if (t.Done != null) t.Done(); }
                     else if (p > 0) t.Apply(Motion.At(t.Curve, p));
                 }
             }
-            finally { _ticking = false; }
+            finally { _ticking = false; Frame.Clear(); }
+            if (Perf.On) Perf.AnimFrame(now, (Perf.Now() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
             if (Tracks.Count > 0) return 1;
             _animator = IntPtr.Zero;                                              // returning 0 deletes it
+            Perf.AnimEnd(false);
             if (_guard != IntPtr.Zero) { Efl.ecore_timer_del(_guard); _guard = IntPtr.Zero; }
             RunIdle();
             return 0;
@@ -104,7 +114,7 @@ namespace Tuner.Ui
 
         private static void Stop()
         {
-            if (_animator != IntPtr.Zero && !_ticking) { Efl.ecore_animator_del(_animator); _animator = IntPtr.Zero; }
+            if (_animator != IntPtr.Zero && !_ticking) { Efl.ecore_animator_del(_animator); _animator = IntPtr.Zero; Perf.AnimEnd(true); }
             if (_guard != IntPtr.Zero) { Efl.ecore_timer_del(_guard); _guard = IntPtr.Zero; }
         }
 
@@ -230,7 +240,7 @@ namespace Tuner.Ui
                             if (!cross) Efl.evas_object_hide(a.P.Obj);
                             Anim.Run(null, T, 0, Motion.Ease, p =>
                             {
-                                MapTo(b, Motion.FlyTo(a.X, a.Y, a.P.Size, b.X, b.Y, b.W, b.H, b.P.Size, p));
+                                { double x, y, w, h; Motion.FlyTo(a.X, a.Y, a.P.Size, b.X, b.Y, b.W, b.H, b.P.Size, p, out x, out y, out w, out h); MapTo(b, x, y, w, h); }
                                 if (cross) Fade(b, b, p); else Colour(b, a, b, p);
                             }, () => Unmap(b.P.Obj));
                             if (cross) Anim.Run(null, outSeconds, 0, Motion.Linear, p => Fade(a, a, 1 - p));
@@ -241,7 +251,7 @@ namespace Tuner.Ui
                             Fade(b, b, 0);
                             Anim.Run(null, T, 0, Motion.Ease, p =>
                             {
-                                MapTo(a, Motion.FlyFrom(a.X, a.Y, a.W, a.H, a.P.Size, b.X, b.Y, b.P.Size, p));
+                                { double x, y, w, h; Motion.FlyFrom(a.X, a.Y, a.W, a.H, a.P.Size, b.X, b.Y, b.P.Size, p, out x, out y, out w, out h); MapTo(a, x, y, w, h); }
                                 if (!cross) Colour(a, a, b, p);
                             });
                             if (cross)
@@ -295,12 +305,12 @@ namespace Tuner.Ui
 
         private static IntPtr _map;
 
-        /// <summary>Draws <paramref name="s"/>'s object (its own geometry: the map's picture is all of it) into the rectangle <paramref name="r"/> (x, y, w, h).</summary>
-        private static void MapTo(Snap s, double[] r)
+        /// <summary>Draws <paramref name="s"/>'s object (its own geometry: the map's picture is all of it) into the rectangle (x, y, w, h).</summary>
+        private static void MapTo(Snap s, double rx, double ry, double rw, double rh)
         {
             if (_map == IntPtr.Zero) _map = Efl.evas_map_new(4);
             Efl.evas_map_util_points_populate_from_geometry(_map, s.X, s.Y, s.W, s.H, 0);
-            int x0 = (int)Math.Round(r[0]), y0 = (int)Math.Round(r[1]), x1 = (int)Math.Round(r[0] + r[2]), y1 = (int)Math.Round(r[1] + r[3]);
+            int x0 = (int)Math.Round(rx), y0 = (int)Math.Round(ry), x1 = (int)Math.Round(rx + rw), y1 = (int)Math.Round(ry + rh);
             Efl.evas_map_point_coord_set(_map, 0, x0, y0, 0);
             Efl.evas_map_point_coord_set(_map, 1, x1, y0, 0);
             Efl.evas_map_point_coord_set(_map, 2, x1, y1, 0);

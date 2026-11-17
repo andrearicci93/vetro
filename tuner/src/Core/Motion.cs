@@ -49,8 +49,16 @@ namespace Tuner.Core
         /// </summary>
         public static double[] FlyFrom(int ax, int ay, int w, int h, int fromSize, int bx, int by, int toSize, double p)
         {
+            double x, y, rw, rh;
+            FlyFrom(ax, ay, w, h, fromSize, bx, by, toSize, p, out x, out y, out rw, out rh);
+            return new[] { x, y, rw, rh };
+        }
+
+        /// <summary><see cref="FlyFrom(int, int, int, int, int, int, int, int, double)"/> without an array: the animator calls it every frame.</summary>
+        public static void FlyFrom(int ax, int ay, int w, int h, int fromSize, int bx, int by, int toSize, double p, out double x, out double y, out double rw, out double rh)
+        {
             double s = Lerp(1.0, (double)toSize / fromSize, p);
-            return new[] { Lerp(ax, bx, p), Lerp(ay, by, p), w * s, h * s };
+            x = Lerp(ax, bx, p); y = Lerp(ay, by, p); rw = w * s; rh = h * s;
         }
 
         /// <summary>
@@ -60,8 +68,16 @@ namespace Tuner.Core
         /// </summary>
         public static double[] FlyTo(int ax, int ay, int fromSize, int bx, int by, int w, int h, int toSize, double p)
         {
+            double x, y, rw, rh;
+            FlyTo(ax, ay, fromSize, bx, by, w, h, toSize, p, out x, out y, out rw, out rh);
+            return new[] { x, y, rw, rh };
+        }
+
+        /// <summary><see cref="FlyTo(int, int, int, int, int, int, int, int, double)"/> without an array: the animator calls it every frame.</summary>
+        public static void FlyTo(int ax, int ay, int fromSize, int bx, int by, int w, int h, int toSize, double p, out double x, out double y, out double rw, out double rh)
+        {
             double s = Lerp((double)fromSize / toSize, 1.0, p);
-            return new[] { Lerp(ax, bx, p), Lerp(ay, by, p), w * s, h * s };
+            x = Lerp(ax, bx, p); y = Lerp(ay, by, p); rw = w * s; rh = h * s;
         }
     }
 }

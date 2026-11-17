@@ -23,7 +23,6 @@ namespace Tuner.Core
         private double _shownAt = -1;   // when the window was last put on screen; negative while hidden
 
         public bool Learned { get { return _learned; } }
-        public bool Focused { get { return _focused; } }
 
         /// <summary>The window was put on screen (and asked for the focus).</summary>
         public void Shown(double now) { _shownAt = now; _seenSinceShown = false; }

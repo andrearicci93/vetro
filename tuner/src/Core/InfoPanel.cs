@@ -11,6 +11,7 @@ namespace Tuner.Core
         public string Number = "", Name = "";
         public string Title = "", Start = "", End = "", Left = "", Description = "";   // Start and End: "21:00", "22:30" (the two ends of the progress line)
         public double? Fraction;           // how far the programme is, null when there is no programme on air
+        public string NextStart = "", NextTitle = "";   // the programme after it ("23:05", "Late Show"), the Next line; both empty when there is none
         public string Clock = "", Date = "";
         public string Source = "", Audio = "";
         public bool NoProgram;             // the daemon was asked and has none for this channel: the title row says so (while it is being asked the row is empty)
@@ -25,6 +26,16 @@ namespace Tuner.Core
         public static string Date(long unix, TimeSpan offset)
         {
             return DateTimeOffset.FromUnixTimeSeconds(unix).ToOffset(offset).ToString("dddd d MMMM", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// What the Next line shows of the programme after the one on air (<see cref="GuideStore.Next"/>): its start in the given offset from UTC
+        /// and its title. Both empty when there is none, or when it has no title (a time alone says nothing): the line then stays empty.
+        /// </summary>
+        public static void Next(GuideEvent e, TimeSpan offset, out string start, out string title)
+        {
+            if (e == null || string.IsNullOrWhiteSpace(e.Title)) { start = ""; title = ""; return; }
+            start = ProgramClock.Clock(e.Start, offset); title = e.Title.Trim();
         }
 
         /// <summary>"Italian" or "Italian · track 2" (the audio track on air, when the channel has more than one).</summary>

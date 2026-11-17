@@ -5,6 +5,8 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>Tuner.Tests</RootNamespace>
+    <!-- InfoData's fields are assigned in Program.cs, which this project does not compile: "never assigned" is not true of the tuner. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- The pure logic only: no EFL, no TV service. Runs on any machine (dotnet run in the tests folder) -->
@@ -14,6 +16,7 @@
     <Compile Include="../src/Core/ProgramClock.cs" />
     <Compile Include="../src/Core/GuideText.cs" />
     <Compile Include="../src/Core/Languages.cs" />
+    <Compile Include="../src/Core/Subtitles.cs" />
     <Compile Include="../src/Core/GuideReply.cs" />
     <Compile Include="../src/Core/GuideStore.cs" />
     <Compile Include="../src/Core/GuideGrid.cs" />
@@ -28,6 +31,9 @@
     <Compile Include="../src/Core/Motion.cs" />
     <Compile Include="../src/Core/TextMetrics.cs" />
     <Compile Include="../src/Core/ChannelLogos.cs" />
+    <Compile Include="../src/Core/TextFit.cs" />
+    <Compile Include="../src/Core/IdleWork.cs" />
+    <Compile Include="../src/Core/NodeScan.cs" />
     <None Include="fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" LinkBase="fixtures" />
     <None Include="present-reply.hex" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
