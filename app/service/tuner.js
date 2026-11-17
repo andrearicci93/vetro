@@ -100,6 +100,7 @@ Tuner.prototype.readState = function () {
         // the tuner is whole again (the list is not read, and the next save drops it).
         var state = {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null};
         if (s && typeof s.build === 'string') state.build = s.build;   // the Vetro build that last started the tuner
+        if (s && typeof s.buildPid === 'number') state.buildPid = s.buildPid;   // and the process it started
         return state;
     } catch (e) { return {enabled: false, since: null}; }
 };
@@ -214,11 +215,12 @@ Tuner.prototype.status = function () {
 // agent lives in sdbd's cgroup and the TV stops sdbd at standby, which would kill the tuner with it (measured for the dock).
 // KillSignal is SIGKILL because a process inside the EFL main loop does not leave on SIGTERM. If systemd-run is missing
 // or refuses, the old detached start is used. Never in this line: --seconds (auto exit), --hold, --backdrop (test options).
-Tuner.prototype.startScript = function () {
+// quiet: this start replaces a tuner that was running (an update, another build), so its Banner does not come up by itself.
+Tuner.prototype.startScript = function (quiet) {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0';
     var state = this.readState();
     var args = DLL + ' --resident --notif --control ' + CONTROL + ' --log ' + LOG_FILE + ' --pid-file ' + PID_FILE +
-        ' --takeover ' + TARGET_APP + ' --features ' + q(this.featuresFile);
+        ' --takeover ' + TARGET_APP + ' --features ' + q(this.featuresFile) + (quiet ? ' --quiet' : '');
     return [
         this.stopLines(),
         'cd ' + q(this.dir),
@@ -258,7 +260,7 @@ Tuner.prototype.waitRunning = function () {
     return this.sleep(1500).then(poll);
 };
 
-Tuner.prototype.launch = function () {
+Tuner.prototype.launch = function (quiet) {
     var self = this;
     try { this.writeFeatures(); } catch (e) { return Promise.reject(e); }
     this.changes++;
@@ -266,7 +268,7 @@ Tuner.prototype.launch = function () {
     // As for the launcher: right after a boot the start script gets the long wait, and one that still runs out of time
     // is not a failure (the tuner usually comes up from that same attempt): waitRunning() decides.
     var t0 = this.now();
-    return this.execute(wrap(this.startScript()), this.uptime() < BOOT_WINDOW_S ? BOOT_WAIT_MS : 10000).then(function (r) {
+    return this.execute(wrap(this.startScript(quiet)), this.uptime() < BOOT_WINDOW_S ? BOOT_WAIT_MS : 10000).then(function (r) {
         self.mark('startCallMs', self.now() - t0);
         if (r && r.timed_out) self.mark('startTimedOut', true);
         if (!r || !r.timed_out) check(r, 'Start');
@@ -274,9 +276,19 @@ Tuner.prototype.launch = function () {
     }).then(function (p) {
         self.mark('running');
         self.startedHere = true;   // in memory too: a state that cannot be saved must not restart the tuner at every round
-        if (self.build) { try { if (self.readState().build !== self.build) self.patchState({build: self.build}); } catch (e) {} }
+        if (self.build) { try { self.rememberBuild(p); } catch (e) {} }
         return p;
     });
+};
+
+// The build that started the tuner and the process it started; see the launcher's rememberBuild and otherBuild (dock.js).
+Tuner.prototype.rememberBuild = function (p) {
+    var state = this.readState(), pid = p && typeof p.pid === 'number' ? p.pid : null;
+    if (state.build !== this.build || (state.buildPid || null) !== pid) this.patchState({build: this.build, buildPid: pid});
+};
+Tuner.prototype.otherBuild = function (state, p) {
+    if (!this.build || this.startedHere) return false;
+    return state.build !== this.build || (!!state.buildPid && !!p && typeof p.pid === 'number' && state.buildPid !== p.pid);
 };
 
 Tuner.prototype.stopTuner = function () {
@@ -340,12 +352,12 @@ Tuner.prototype.supervise = function (agentConnected) {
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;
     this.mark('agentSeen');
-    var started = this.readState().build;
+    var saved = this.readState();
     // The cheap check while the tuner runs; "not running" is confirmed by the full probe before anything is started.
     return this.runningNow().then(function (c) { return c.cheap && !c.running ? self.probe() : c; }).then(function (p) {
         // A tuner started by another build of Vetro (the package was installed again over a running one) is the old
         // binary in its own unit: it is started again, once. See the launcher's supervise (dock.js).
-        if (p.running && self.build && started !== self.build && !self.startedHere) return self.launch().then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
+        if (p.running && self.otherBuild(saved, p)) return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
         // A warning left by an earlier failed round is stale once the tuner is seen running.
         if (p.running) { self.failures = 0; self.mark('running'); if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } return 'running'; }
         return self.launch().then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
@@ -358,12 +370,12 @@ Tuner.prototype.supervise = function (agentConnected) {
 };
 
 // After an update that replaced the tuner's files the old process keeps running the old assembly: start it again.
-Tuner.prototype.restart = function () {
+Tuner.prototype.restart = function (quiet) {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another tuner change is in progress'));
     if (!this.readState().enabled) return Promise.reject(new Error('The tuner is off'));
     this.busy = true; this.lastError = null;
-    return this.launch().then(function () { self.failures = 0; self.nextTry = 0; return self.status(); })
+    return this.launch(quiet).then(function () { self.failures = 0; self.nextTry = 0; return self.status(); })
         .catch(function (e) { self.lastError = e.message; throw e; })
         .finally(function () { self.busy = false; });
 };
@@ -372,8 +384,8 @@ Tuner.prototype.restart = function () {
 Tuner.prototype.restartAfterUpdate = function () {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another tuner change is in progress'));
-    if (!this.build || (this.readState().build !== this.build && !this.startedHere)) return this.restart();
-    return this.runningNow().then(function (p) { return p.running ? self.status() : self.restart(); });
+    if (!this.build) return this.restart(true);
+    return this.runningNow().then(function (p) { return p.running && !self.otherBuild(self.readState(), p) ? self.status() : self.restart(true); });
 };
 
 module.exports = {Tuner: Tuner, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS};

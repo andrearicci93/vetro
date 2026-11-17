@@ -32,7 +32,7 @@ function fixture(options) {
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
         if (script.includes('setsid nohup')) { tv.started = script; tv.running = !tv.neverStarts; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
-        if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=4242' : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
+        if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=' + (tv.pid || 4242) : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
         throw new Error('unexpected command: ' + script);
     };
     const dock = new Dock({execute: execute, dir: dir, stateFile: path.join(tmp, 'state.json'), appsFile: path.join(tmp, 'apps.tsv'),
@@ -437,6 +437,23 @@ function fixture(options) {
         const next = new Dock({execute: t.dock.execute, dir: t.dock.dir, stateFile: t.dock.stateFile, appsFile: t.dock.appsFile, build: '0.5.2+def', sleep: t.dock.sleep, now: t.dock.now});
         await next.restartAfterUpdate();
         assert.equal(starts(), 2, 'a new build restarts it after its update');
+        // Go back, then the same update again: the state still names this build, but the launcher that runs is the one the
+        // older Vetro started in between (another process). It is started again, once; the supervision sees it as well.
+        assert.equal(next.readState().buildPid, 4242, 'the process a build started is remembered with it');
+        const mk = () => new Dock({execute: t.dock.execute, dir: t.dock.dir, stateFile: t.dock.stateFile, appsFile: t.dock.appsFile, build: '0.5.2+def', sleep: t.dock.sleep, now: t.dock.now});
+        t.tv.pid = 5151;
+        const redo = mk();
+        await redo.restartAfterUpdate();
+        assert.equal(starts(), 3, 'same build in the state, another process running: started again after the update');
+        assert.equal(redo.readState().buildPid, 5151);
+        const same = mk();
+        await same.restartAfterUpdate();
+        assert.equal(await same.supervise(true), 'running');
+        assert.equal(starts(), 3, 'and left alone when it is the process this build started');
+        t.tv.pid = 6262;
+        assert.equal(await mk().supervise(true), 'started', 'the supervision restarts a process of another Vetro too');
+        assert.equal(starts(), 4);
+        t.tv.pid = undefined;
         // A state that cannot be saved must not turn into a restart at every round.
         const ro = fixture({running: true});
         fs.writeFileSync(ro.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
@@ -449,6 +466,41 @@ function fixture(options) {
         const plain = fixture({running: true});
         fs.writeFileSync(plain.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
         assert.equal(await plain.dock.supervise(true), 'running');
+    }
+
+    // The TV restarted after Vetro was installed again over 0.5.0: nothing runs, and the lists on disk are the ones 0.5.0 wrote (an
+    // apps list without row keys, no All apps list). The quick start after the boot uses them; once the boot has settled the
+    // launcher is started again, once, from lists this build writes.
+    {
+        const t = fixture();
+        fs.writeFileSync(t.dock.stateFile, JSON.stringify({enabled: true, since: 5, fixTizenTube: false, noMotion: false, autorunWas: 1,
+            customApp: null, customSince: null, customHomeDisabled: false, showHomeSources: false, useSourceImages: false}));
+        fs.writeFileSync(t.dock.appsFile, '# written by Vetro\nnetflix\tNetflix\torg.tizen.netflix-app\nsettings\tSettings\tkey:XF86SysMenu\torg.tizen.menu\n');
+        t.dock.build = '0.5.1+abc';
+        let up = 120;
+        t.dock.uptime = () => up;
+        const starts = () => t.tv.scripts.map(c => /^echo /.test(c) ? Buffer.from(c.split(' ')[1], 'base64').toString() : '').filter(s => s.includes('setsid nohup'));
+        assert.equal(await t.dock.supervise(true), 'started', 'boot: started at once');
+        assert.equal(starts().length, 1);
+        assert.ok(!starts()[0].includes('--all-apps'), 'the quick start had only the old lists');
+        assert.equal(await t.dock.supervise(true), 'running', 'inside the boot window it is left alone');
+        up = 400;
+        assert.equal(await t.dock.supervise(true), 'started', 'after the boot window: started again from new lists');
+        assert.equal(starts().length, 2);
+        assert.ok(starts()[1].includes('--all-apps'), 'with the All apps list: ' + starts()[1]);
+        assert.ok(t.dock.entries().every(e => e.key || e.system), 'the apps list now has row keys');
+        assert.equal(await t.dock.supervise(true), 'running');
+        assert.equal(starts().length, 2, 'once');
+        const again = new Dock({execute: t.dock.execute, dir: t.dock.dir, stateFile: t.dock.stateFile, appsFile: t.dock.appsFile, build: '0.5.1+abc',
+            sleep: t.dock.sleep, now: t.dock.now, uptime: () => 9999});
+        assert.equal(await again.supervise(true), 'running', 'a later run of the service finds the new lists and leaves it alone');
+        assert.equal(starts().length, 2);
+        // the custom launcher has no All apps list: never restarted for it
+        const c = fixture({running: true});
+        fs.writeFileSync(c.dock.stateFile, JSON.stringify({customApp: 'org.example.kodi', customSince: 1}));
+        fs.writeFileSync(c.dock.appsFile, 'netflix\tNetflix\torg.tizen.netflix-app\n');
+        c.dock.uptime = () => 9999; c.dock.appCheck = async () => ({ok: true});
+        assert.equal(await c.dock.supervise(true), 'running');
     }
 
     // The launcher's own calls to Vetro go to the port this build answers on.

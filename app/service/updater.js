@@ -145,8 +145,16 @@ Updater.prototype.status = function () {
         busy: this.busy,
         pending: readJson(this._file('pending.json')),
         last: readJson(this._file('result.json')),
-        canRollBack: !!readJson(this._file('backup.json'))
+        canRollBack: this._backupFits(readJson(this._file('backup.json')))
     };
+};
+// The saved files belong to one update: from one version to another. After Vetro is installed again with another version
+// (the update folder outlives an install), putting them back would lay an older version's files over the new package and
+// delete files it needs, with no watchdog behind it. So a backup counts only while this version is one of its two ends.
+Updater.prototype._backupFits = function (meta) {
+    if (!meta) return false;
+    var v = this.buildInfo.version;
+    return !v || typeof meta.from !== 'string' || typeof meta.to !== 'string' || meta.from === v || meta.to === v;
 };
 
 // What a bundle would change here, without applying it.
@@ -169,6 +177,16 @@ Updater.prototype._read = function (raw, expectedSha256) {
     }).sort();
     return parsed;
 };
+
+// The port the package was installed for, read from its config.xml (the access origin of the TV page). Apps2Samsung writes
+// a chosen port into the package's files but not into build-info.js, and a self-update never replaces config.xml: it is
+// the one place that still names the port after the service's files were swapped for ones built for 8099. Null when the
+// file says 8099 or cannot be understood.
+var ACCESS_PORT_RE = /<access\s+origin="http:\/\/127\.0\.0\.1:(\d{4,5})"/;
+function packagePort(configXml) {
+    var m = ACCESS_PORT_RE.exec(String(configXml || '')), port = m ? Number(m[1]) : 0;
+    return port >= 1024 && port <= 65535 && port !== 8099 && port !== 8001 && port !== 8002 ? port : null;
+}
 
 // What is specific to this installation survives the update: a port chosen at install time.
 Updater.prototype._adapt = function (files) {
@@ -274,6 +292,7 @@ Updater.prototype.rollback = function () {
     var meta = readJson(this._file('backup.json'));
     if (!meta || !Array.isArray(meta.files) || !Array.isArray(meta.added)) return Promise.reject(fail('There is no previous version to go back to', 'no-backup'));
     if (!meta.files.concat(meta.added).every(okPath)) return Promise.reject(fail('The saved list is not valid', 'bad-backup'));
+    if (!this._backupFits(meta)) return Promise.reject(fail('The saved files are from another version of Vetro (' + meta.from + ' to ' + meta.to + '), not from this one', 'other-backup'));
     if (this.busy) return Promise.reject(fail('An update is already in progress', 'busy'));
     var self = this;
     this.busy = true;
@@ -322,5 +341,5 @@ Updater.prototype.finish = function (restartDock) {
     });
 };
 
-module.exports = { Updater: Updater, verifyBundle: verifyBundle, compare: compare, okPath: okPath, sha256: sha256,
+module.exports = { Updater: Updater, packagePort: packagePort, verifyBundle: verifyBundle, compare: compare, okPath: okPath, sha256: sha256,
     parseBuildInfo: parseBuildInfo, ALLOWED: ALLOWED, FORMAT: FORMAT };

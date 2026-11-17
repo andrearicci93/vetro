@@ -24,7 +24,7 @@ function fixture(options) {
         if (script.includes('systemd-run')) { tv.starts++; tv.started = script; tv.running = !tv.neverStarts; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('echo "tuner=')) {
             if (tv.failProbe) throw new Error('agent gone');
-            return {exit_code: 0, stdout: (tv.running ? 'tuner=4242' : 'tuner=') + '\nclient=' + (tv.client ? 1 : 0) + '\ntvs=' + (tv.tvs ? 1 : 0) + '\ndotnet=' + (tv.dotnet ? 1 : 0) +
+            return {exit_code: 0, stdout: (tv.running ? 'tuner=' + (tv.pid || 4242) : 'tuner=') + '\nclient=' + (tv.client ? 1 : 0) + '\ntvs=' + (tv.tvs ? 1 : 0) + '\ndotnet=' + (tv.dotnet ? 1 : 0) +
                 '\nviewer=' + (tv.viewer ? 1 : 0) + '\nclientver=' + (tv.clientVersions === undefined ? '1.1.12,' : tv.clientVersions) + '\nlog:\n' + tv.log + '\n'};
         }
         if (script.includes('kill -9')) { tv.running = false; tv.stops++; return {exit_code: 0, stdout: ''}; }
@@ -222,6 +222,33 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     assert.equal(await f.tuner.supervise(true), 'running');
     await f.tuner.restartAfterUpdate();
     assert.equal(f.tv.starts, before + 1, 'not started twice for the same build');
+    // Go back, then the same update again: this build is in the state, but another process runs (the older Vetro's).
+    assert.equal(f.tuner.readState().buildPid, 4242);
+    f.tv.pid = 5151; f.tuner.startedHere = false;
+    await f.tuner.restartAfterUpdate();
+    assert.equal(f.tv.starts, before + 2, 'a tuner of the same build but another process is started again');
+    assert.equal(f.tuner.readState().buildPid, 5151);
+    f.tuner.startedHere = false;
+    assert.equal(await f.tuner.supervise(true), 'running');
+    assert.equal(f.tv.starts, before + 2, 'and left alone once it is the process this build started');
+
+    // A start that replaces a running tuner (an update, another build) is quiet: its Banner does not come up by itself over
+    // the programme. A start asked for from the dashboard, or of a tuner that was not running, shows it as ever.
+    f = fixture();
+    assert.ok(!f.tuner.startScript().includes('--quiet'));
+    assert.ok(f.tuner.startScript(true).endsWith(' --quiet </dev/null >/dev/null 2>&1 &\necho started'), 'on both ways of starting it');
+    assert.equal(f.tuner.startScript(true).split(' --quiet').length, 3);
+    const startLines = [], run = f.tuner.execute;
+    f.tuner.execute = async (cmd, ms) => { const text = Buffer.from(cmd.split(' ')[1], 'base64').toString(); if (text.includes('systemd-run')) startLines.push(text.includes(' --quiet')); return run(cmd, ms); };
+    await f.tuner.enable();
+    f.tv.running = false; f.tuner.nextTry = 0;
+    assert.equal(await f.tuner.supervise(true), 'started');
+    assert.deepEqual(startLines, [false, false], 'turned on, and started again after it died');
+    f.tuner.build = '0.5.1+abc'; f.tuner.startedHere = false;
+    assert.equal(await f.tuner.supervise(true), 'started');
+    f.tv.pid = 5151; f.tuner.startedHere = false;
+    await f.tuner.restartAfterUpdate();
+    assert.deepEqual(startLines, [false, false, true, true], 'another build, and after an update');
 
     console.log('tuner: ok');
 })().catch(e => { console.error(e); process.exit(1); });

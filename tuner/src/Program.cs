@@ -64,6 +64,11 @@ namespace Tuner
         }
         private static int _startMajor;
         private static bool _resident, _active;
+        // --quiet (the service adds it when this start replaces a tuner that was running: an update, a new build): for the first
+        // seconds the Banner does not come up by itself, so a restart nobody asked for draws nothing over the programme. A key shows it as ever.
+        private const long QuietStartMs = 15000;
+        private static long _quietUntilMs = -1;
+        private static bool QuietStart() { return _clock.ElapsedMilliseconds < _quietUntilMs; }
         private static string _controlPath;
         // Takeover (--takeover APPID): the resident tuner shows itself when that app (Samsung's live TV, org.tizen.tv-viewer) is on screen.
         private static string _takeoverApp, _pidFile;
@@ -146,6 +151,7 @@ namespace Tuner
             int autoExit = IntArg(args, "--seconds", 0);
             _startMajor = IntArg(args, "--major", 0);
             _resident = Flag(args, "--resident");
+            if (Flag(args, "--quiet")) _quietUntilMs = _clock.ElapsedMilliseconds + QuietStartMs;
             _controlPath = StrArg(args, "--control", "/tmp/vetro-tuner.ctl");
             _logPath = StrArg(args, "--log", "/tmp/vetro-tuner.log");
             _pidFile = StrArg(args, "--pid-file", null);
@@ -256,7 +262,7 @@ namespace Tuner
             try { TimeZoneInfo.ClearCachedData(); _utcOffset = TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow); } catch (Exception) { }
             Tvs.SourceUnknown();
             if (_listReadMs >= 0 && _clock.ElapsedMilliseconds - _listReadMs > ListMaxAgeMs) QueueListRead();
-            if (_shown != null) ShowBanner(_shown);
+            if (_shown != null && !QuietStart()) ShowBanner(_shown);
             StartPrefetch();                                            // schedules may have gone stale while hidden (the store ages them), and a zap may have happened from the pipe
             if (_list != null) { _resyncLeft = 1; ResyncNow(); }        // Samsung's app may have changed the channel while we were hidden
             Log("shown");
@@ -357,7 +363,7 @@ namespace Tuner
                 string status;
                 Channel cur = Tvs.ReadCurrent(out status);
                 Log("tvs: " + status + (cur != null ? " -> " + cur.Major + " " + cur.Name : ""));
-                if (cur != null) Ui(() => { _shown = cur; if (_active) ShowBanner(cur); RequestProgram(); });
+                if (cur != null) Ui(() => { _shown = cur; if (_active && !QuietStart()) ShowBanner(cur); RequestProgram(); });
                 Interlocked.Exchange(ref _listReading, 1);
                 LoadChannels(true);
                 foreach (Action a in Work.GetConsumingEnumerable()) a();
@@ -1062,7 +1068,7 @@ namespace Tuner
                     SetShown(cur);
                     QueueSubtitleRead(cur);                              // another channel: its subtitles and the settings, read again
                     if (_list != null) _list.SetCurrent(cur.Id);
-                    if (_active) { ShowBanner(cur); StartPrefetch(); }
+                    if (_active) { if (!QuietStart()) ShowBanner(cur); StartPrefetch(); }
                 });
             });
         }

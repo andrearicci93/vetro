@@ -99,6 +99,12 @@ var leftovers = new (require('./leftovers.js').Leftovers)(agentExecute);
 var TOGGLE_IDS = debloat.VERIFIED_GLOBAL_IDS.concat(quickSettings.ALLOWED_IDS);
 // The package builder writes a non-default port into build-info.js (VETRO_PORT=... node build.cjs);
 // VETRO_PORT at run time still wins for local runs.
+// A port chosen in Apps2Samsung is not in build-info.js: after a self-update it survives only in config.xml (see
+// packagePort). Read from there, the service stays on the user's port and the updater keeps it in the files it installs.
+if (!buildInfo.port) {
+    try { var keptPort = require('./updater.js').packagePort(fs.readFileSync(path.join(__dirname, '..', 'config.xml'), 'utf8')); if (keptPort) buildInfo.port = keptPort; }
+    catch (e) { /* no config.xml beside the service (a local run): the default port */ }
+}
 var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
 // Tasks that wait for the root agent after a boot (DNS filter, quick wins, keep-removed check, Vetro's own startup flags) try every
 // 5 s for this many rounds. The agent can take minutes to come up; the DNS filter used to give up after one (12 rounds).

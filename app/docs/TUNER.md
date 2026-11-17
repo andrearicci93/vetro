@@ -28,7 +28,7 @@ Open **Vetro UI → Live TV** (or the Overview tab) and turn the switch on; Vetr
 
 The page names the first one that is missing.
 
-It starts again by itself after a restart or a crash (back-off from 30 s up to 5 minutes, like the launcher) and after a Vetro update. **Refresh** reads the state again; **Show tuner now** brings it up without waiting for Samsung's app.
+It starts again by itself after a restart or a crash (back-off from 30 s up to 5 minutes, like the launcher) and after a Vetro update (that start is quiet: the Banner does not come up by itself over the programme). **Refresh** reads the state again; **Show tuner now** brings it up without waiting for Samsung's app.
 
 ## The remote
 

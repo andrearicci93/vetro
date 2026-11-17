@@ -49,6 +49,9 @@ assert.ok(platform.includes('app-only'));
 // The port is fixed at build time: the default package is untouched, a chosen port reaches the widget's access origin,
 // the probe page and the service, and a port the package already uses is refused.
 const text = (list, name) => list.find(file => decodeURIComponent(file.uri) === name).data.toString();
+// The package's own version (config.xml) is what the TV and Apps2Samsung see; the TV page compares it with the service's. A release
+// that bumps one and not the other shows up as "Version differs" (an older service) or as no update in the installer.
+assert.equal(/<widget\b[^>]*\sversion="([^"]+)"/.exec(text(files, 'config.xml'))[1], require('../package.json').version, 'config.xml, package.json and build-info.js carry the same version');
 assert.ok(text(files, 'config.xml').includes('http://127.0.0.1:8099"'));
 assert.ok(text(files, 'index.html').includes("var BASE = 'http://127.0.0.1:8099'"));
 assert.ok(!('port' in context.module.exports), 'the default build records no port');

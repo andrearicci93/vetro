@@ -295,12 +295,12 @@ function setSdbAccess(enabled) {
     });
 }
 
-function startTunnel(cb) {
-    if (SDB_TUNNEL_PORT_ERROR) {
-        state.sdbTunnel = { listening: false, error: SDB_TUNNEL_PORT_ERROR };
-        cb();
-        return;
-    }
+// The tunnel's port can still be held by an older Vetro on its way out (the package installed over a running one: the old
+// service is ended a few seconds after this one starts). With a single try the tunnel stayed down until the next restart
+// of the service. Only "address in use" is tried again, every TUNNEL_RETRY_MS, at most TUNNEL_RETRIES times.
+var TUNNEL_RETRY_MS = 5000, TUNNEL_RETRIES = 24;
+var tunnelRetryTimer = null;
+function openTunnel(done) {
     var enabled = false;
     try { enabled = readSdbPreference(); } catch (e) { /* unreadable settings never grant LAN access */ }
     // One shared listener/pool: the admission gate changes without interrupting Vetro's local SDB streams.
@@ -312,6 +312,27 @@ function startTunnel(cb) {
         state.sdbTunnel = err
             ? { listening: false, error: String(err.message || err) }
             : { listening: true, port: port };
+        done(err);
+    });
+}
+function retryTunnel(left) {
+    if (tunnelRetryTimer) clearTimeout(tunnelRetryTimer);
+    tunnelRetryTimer = setTimeout(function () {
+        tunnelRetryTimer = null;
+        if (!state.running || !tunnelServer || state.sdbTunnel.listening) return;
+        tunnelServer.close();
+        openTunnel(function (err) { if (err && err.code === 'EADDRINUSE' && left > 1) retryTunnel(left - 1); });
+    }, TUNNEL_RETRY_MS);
+}
+
+function startTunnel(cb) {
+    if (SDB_TUNNEL_PORT_ERROR) {
+        state.sdbTunnel = { listening: false, error: SDB_TUNNEL_PORT_ERROR };
+        cb();
+        return;
+    }
+    openTunnel(function (err) {
+        if (err && err.code === 'EADDRINUSE') retryTunnel(TUNNEL_RETRIES);
         cb();
     });
 }
@@ -541,6 +562,8 @@ function stop() {
     if (agentServer) agentServer.close();
     agentServer = null;
     agentConnected = false;
+    if (tunnelRetryTimer) clearTimeout(tunnelRetryTimer);
+    tunnelRetryTimer = null;
     if (tunnelServer) tunnelServer.close();
     tunnelServer = null;
     state.sdbTunnel = { listening: false };

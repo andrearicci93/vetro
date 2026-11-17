@@ -156,6 +156,18 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await f.u.rollback();
     assert.equal(f.read('service/a.js'), 'old a'); assert.ok(!fs.existsSync(path.join(f.install, 'service', 'b.js')));
     await assert.rejects(fixture('0.4.0').u.rollback(), /no previous version/);
+    // Vetro installed again with another version in between (the update folder outlives an install): the saved files are
+    // not this version's, so they are neither offered nor put back.
+    f = fixture('0.4.0');
+    await f.u.apply(next);
+    const other = new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.5', shell: 1 }, execute: () => Promise.reject(new Error('unused')) });
+    assert.equal(other.status().canRollBack, false, 'a backup of another version is not offered');
+    await assert.rejects(other.rollback(), err => err.code === 'other-backup');
+    assert.equal(f.read('service/a.js'), 'new a', 'and nothing was touched');
+    assert.equal(f.u.status().canRollBack, true, 'the version it was taken from still has it');
+    const target = new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.1', shell: 1 }, execute: () => Promise.reject(new Error('unused')) });
+    assert.equal(target.status().canRollBack, true, 'and so has the version it made way for');
+    await f.u.rollback();
 
     // identical files: nothing to do, nothing run
     f = fixture('0.4.0');

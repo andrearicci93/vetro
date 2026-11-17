@@ -206,6 +206,7 @@ Dock.prototype.readState = function () {
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
             build: s && typeof s.build === 'string' ? s.build : null,
+            buildPid: s && typeof s.buildPid === 'number' ? s.buildPid : null,
             // The cards the Control center had when it was last on: switching it off and on again (the TV screen's Vetro UI tile) brings them back.
             lastCards: s && Array.isArray(s.lastCards) ? cleanCards(s.lastCards) : [],
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacy('home'),
@@ -280,7 +281,9 @@ Dock.prototype.probe = function () {
     var script = [
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
-        'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || grep -qx csfs /proc/[0-9]*/comm 2>/dev/null; then echo "home=1"; else echo "home=0"; fi',
+        // Samsung's Home is a .NET app: its process is the TV's dotnet launcher and its name the tail of the app id after "DN_"
+        // (DN_sung.tv.csfs on a 2021 TV), so pidof never finds it and the name is not "csfs" alone. Both spellings count.
+        'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || grep -qE "(^|[._])csfs$" /proc/[0-9]*/comm 2>/dev/null; then echo "home=1"; else echo "home=0"; fi',
         // No log file yet is normal. Without || true the missing file failed the whole read, and the user saw its raw
         // output, "dock= home=0 log:", as the error (#82).
         'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
@@ -473,9 +476,22 @@ Dock.prototype.launch = function (quick) {
         // Which build of Vetro started this process (see supervise): never a reason to fail a start that worked.
         // Kept in memory too: if the state cannot be saved, the launcher must still be restarted only once per run.
         self.startedHere = true;
-        if (self.build) { try { if (self.readState().build !== self.build) self.patchState({build: self.build}); } catch (e) {} }
+        if (self.build) { try { self.rememberBuild(p); } catch (e) {} }
         return p;
     });
+};
+
+// The build that started the launcher, and the process it started. The pid matters after "go back, then update again to
+// the same version": the state still names this build, but the process running is the one the older Vetro started.
+Dock.prototype.rememberBuild = function (p) {
+    var state = this.readState(), pid = p && typeof p.pid === 'number' ? p.pid : null;
+    if (state.build !== this.build || state.buildPid !== pid) this.patchState({build: this.build, buildPid: pid});
+};
+// True when the launcher that runs was not started by this build: another build is named in the state, or this build is
+// but for another process. Never true for a launcher this run of the service started.
+Dock.prototype.otherBuild = function (state, p) {
+    if (!this.build || this.startedHere) return false;
+    return state.build !== this.build || (!!state.buildPid && !!p && typeof p.pid === 'number' && state.buildPid !== p.pid);
 };
 
 // The saved list is rebuilt once the TV has settled: in the first minutes Samsung's Home may still
@@ -636,8 +652,8 @@ Dock.prototype.refreshOr = function (undo) {
 Dock.prototype.restartAfterUpdate = function () {
     var self = this;
     if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
-    if (!this.build || (this.readState().build !== this.build && !this.startedHere)) return this.refresh();
-    return this.runningNow().then(function (p) { return p.running ? self.status() : self.refresh(); });
+    if (!this.build) return this.refresh();
+    return this.runningNow().then(function (p) { return p.running && !self.otherBuild(self.readState(), p) ? self.status() : self.refresh(); });
 };
 
 // ---- Custom launcher: the user's own app on the Home key --------------------------------------------------------
@@ -1016,8 +1032,16 @@ Dock.prototype.supervise = function (agentConnected) {
         // The launcher lives in its own unit, so it survives the service: after the package was installed again over a
         // running Vetro (an upgrade through the installer, not through self-update) the process found here is the OLD
         // build, which knows neither the new start options nor the new command words. It is started again, once.
-        var stale = p.running && !!self.build && state.build !== self.build && !self.startedHere;
-        if (stale) return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
+        var stale = p.running && self.otherBuild(state, p);
+        // The other way the old lists reach a new launcher: the TV restarted after such an install, and the quick start after the boot
+        // used the lists the older Vetro had written. They have no All apps list (this build always writes one next to the apps list)
+        // and no row keys, so All apps is nearly empty and no tile can be moved. Once the boot has settled the launcher is started
+        // again, once per run, from lists this build reads from Samsung's Home.
+        var oldLists = p.running && !custom && !self.relisted && self.uptime() >= BOOT_WINDOW_S && self.hasSavedApps() && !fs.existsSync(self.allAppsFile);
+        if (stale || oldLists) {
+            self.relisted = true; self.refreshPending = false;
+            return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
+        }
         if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
         return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {

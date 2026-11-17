@@ -128,6 +128,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 <div id="stage"><div class="safe" id="screen"></div></div>
 <script>
 var BASE = 'http://127.0.0.1:8099';
+// A self-update replaces this page with one built for the default port, but never config.xml, whose access origin is the
+// only address this page may call and still names a port chosen at install time. So the port is read from there; when the
+// file cannot be read the address above stays.
+(function () {
+  try {
+    var x = new XMLHttpRequest(); x.open('GET', 'config.xml', false); x.send(null);
+    var m = /<access\s+origin="(http:\/\/127\.0\.0\.1:\d{4,5})"/.exec(x.responseText || '');
+    if (m) BASE = m[1];
+  } catch (e) { /* not readable on this TV: nothing changes */ }
+})();
 var ICON = 'icon.png';
 var IDLE_MS = 300000;
 // Pictures of the Smart Remote's keys for the hints, from the dashboard's set (they take the text colour).
@@ -356,6 +366,15 @@ function svcWhy() {
   return why.length ? ' (' + why.join('; ') + ')' : '';
 }
 function appVersion() { try { return tizen.application.getCurrentApplication().appInfo.version || null; } catch (e) { return null; } }
+// The app's version is the package's (config.xml), which only a new install changes; a self-update replaces the service's files and
+// leaves it as it was. So a service NEWER than the app is a TV that updated itself, and only a service OLDER than the app is an old
+// service still running after an install. Versions that are not x.y.z are compared as before (any difference).
+function olderService(app, service) {
+  var a = /^(\d+)\.(\d+)\.(\d+)$/.exec(app || ''), s = /^(\d+)\.(\d+)\.(\d+)$/.exec(service || ''), i;
+  if (!a || !s) return !!app && !!service && app !== service;
+  for (i = 1; i <= 3; i++) if (+a[i] !== +s[i]) return +s[i] < +a[i];
+  return false;
+}
 
 // Root not connected: what the service saw decides what the screen asks for (#99, #91, #75). A cold start is what made
 // the agent connect on the TVs we heard from; reinstalling does not help a TV that cannot run it.
@@ -380,7 +399,7 @@ function checks(d) {
     out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +
       (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
   } else {
-    var av = appVersion(), mismatch = av && d.version && av !== d.version;
+    var av = appVersion(), mismatch = olderService(av, d.version);
     out.push(mismatch ? ['warn', 'Service', 'Version differs', 'The app is ' + esc(av) + ' and the service is ' + esc(d.version) + '. An older service is still running after the update. Restart the TV (unplug it for 30 seconds); if it still differs, reinstall Vetro.', 'SVC ' + d.version + '/APP ' + av, 'warn']
       : ['ok', 'Service', 'Running', 'Port ' + esc(d.port), 'svc ok']);
   }

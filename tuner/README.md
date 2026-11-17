@@ -136,6 +136,9 @@ show | hide | toggle | banner | list | pad | guide | info | quit | tune N (chann
 resume (the launcher closed without opening anything: back if live TV is on screen) | rescan (watch the remote bridge's new forwarding node now)
 ```
 
+`--quiet` (added by the service when the start replaces a tuner that was running: an update, another build of Vetro): for the first 15 s the Banner
+does not come up by itself when the tuner takes the screen back, so a restart nobody asked for draws nothing over the programme. A key shows it as ever.
+
 A launcher (the dock, Vetro's root agent) only has to run `echo show > /tmp/vetro-tuner.ctl`. Showing is instant (in-process ~1 ms; a cold start is
 ~310 ms). While hidden the keys are ignored. Cost of the resident process on the Q80A with the GL engine: RSS 30 MB, PSS 8.0 MB, private dirty 2.7 MB,
 19 threads (6 of them the Mali GPU driver); with `--shm` (software engine) 12 threads but PSS 9.3 MB / private dirty 4.5 MB, so GL stays the default.

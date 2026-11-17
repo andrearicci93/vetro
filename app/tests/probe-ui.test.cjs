@@ -195,8 +195,16 @@ async function openDetails(r) {
   assert.ok(failed.screen.innerHTML.includes('<em>LAUNCHER FAIL x4</em>'));
   assert.ok(failed.screen.innerHTML.includes('1 problem<'), 'the summary counts problems');
   assert.ok(failed.screen.innerHTML.includes('MEM 148M'));
-  const mismatch = await run({appVersion: '0.3.2'});
-  assert.ok(mismatch.screen.innerHTML.includes('Version differs'), 'an app and a service of different versions are named');
+  const mismatch = await run({appVersion: '0.5.1'});
+  assert.ok(mismatch.screen.innerHTML.includes('Version differs'), 'a service older than the app (an old one still running after an install) is named');
+  assert.ok(mismatch.screen.innerHTML.includes('SVC 0.3.5/APP 0.5.1'));
+  // A TV that updated itself: the package (config.xml) keeps the version it was installed with, the service is newer. Not a problem.
+  const selfUpdated = await run({appVersion: '0.3.2'});
+  assert.ok(!selfUpdated.screen.innerHTML.includes('Version differs'), 'a service newer than the package is a self-update, not an old service');
+  assert.ok(selfUpdated.screen.innerHTML.includes('svc ok'));
+  assert.ok((await run({appVersion: '0.3.5'})).screen.innerHTML.includes('svc ok'), 'same version');
+  assert.ok((await run({appVersion: '0.3.5-rc1'})).screen.innerHTML.includes('Version differs'), 'versions that are not x.y.z: any difference, as before');
+  assert.ok((await run({appVersion: '0.3.10'})).screen.innerHTML.includes('Version differs'), 'compared as numbers, not as text');
 
   // Service down: the page still draws itself, with no invented facts.
   const down = await run({screen: null});
@@ -289,7 +297,9 @@ async function openDetails(r) {
   assert.ok(noLan.screen.innerHTML.includes('SVC DOWN'));
   // Loopback works: the LAN address is never used.
   const normal = await run({lan: '192.168.1.42'});
-  assert.ok(normal.sent.every(s => /^http:\/\/127\.0\.0\.1/.test(s.url)), 'loopback first, and enough');
+  // The one request that is not to the service is the page reading its own config.xml, for the port (package-port.test.cjs).
+  assert.ok(normal.sent.filter(s => s.url !== 'config.xml').every(s => /^http:\/\/127\.0\.0\.1/.test(s.url)), 'loopback first, and enough');
+  assert.equal(normal.sent.filter(s => s.url === 'config.xml').length, 1, 'config.xml is read once');
   assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
   // The service runs but refuses this page (0.5.0 on a Q8F, Tizen 9): the screen says so, with what the service saw.

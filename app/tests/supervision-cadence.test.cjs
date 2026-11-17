@@ -30,6 +30,7 @@ function dockFixture(options) {
     fs.writeFileSync(path.join(dir, 'tvlauncher-dotnet.dll'), 'x');
     fs.writeFileSync(path.join(dir, 'res', 'glass_tile.png'), 'x');
     fs.writeFileSync(path.join(tmp, 'apps.tsv'), 'yt\tYouTube\tyoutube.app\n');
+    fs.writeFileSync(path.join(tmp, 'vetro-dock-allapps.tsv'), 'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu\n');   // lists of this build
     const tv = {running: options.running !== false, commands: [], clock: 1000000, cheapSays: null};
     const execute = async function (cmd) {
         const k = kind(cmd); tv.commands.push(k);

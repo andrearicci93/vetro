@@ -242,4 +242,34 @@ function settle() { return new Promise(r => setImmediate(r)); }
         assert.equal(t.context.launchFailures, 0, 'stop() resets the failure count');
         console.log('PASS callback timeouts back off (' + waits.join(' ms, ') + ' ms); the counter resets on connect and stop');
     }
+
+    // --- the tunnel's port still held by an older Vetro --------------------------------------------------------
+    {
+        let busy = true, made = 0, closed = 0;
+        const t = load({'./sdb-tunnel.js': {TunnelServer: function () {
+            made++;
+            this.start = function (cb) { if (busy) { const e = new Error('listen EADDRINUSE'); e.code = 'EADDRINUSE'; cb(e); } else cb(null, 26201); };
+            this.close = function () { closed++; };
+        }}});
+        t.provider.start();
+        await settle();
+        assert.equal(t.provider.status().sdbTunnel.listening, false, 'the port is held: no tunnel yet');
+        const retry = () => t.timers.filter(x => !x.cleared && x.ms === 5000).pop();
+        assert.ok(retry(), 'another try is armed');
+        const first = retry(); first.cleared = true; first.fn();
+        assert.equal(t.provider.status().sdbTunnel.listening, false);
+        assert.equal(made, 2, 'a new listener for each try');
+        busy = false;
+        const second = retry(); second.cleared = true; second.fn();
+        assert.equal(t.provider.status().sdbTunnel.listening, true, 'the tunnel is up once the older Vetro let the port go');
+        assert.equal(retry(), undefined, 'and nothing is armed any more');
+        t.provider.stop();
+        // An error that is not "in use" is not tried again.
+        const u = load({'./sdb-tunnel.js': {TunnelServer: function () { this.start = function (cb) { cb(new Error('invalid tunnel port')); }; this.close = function () {}; }}});
+        u.provider.start();
+        await settle();
+        assert.equal(u.timers.filter(x => !x.cleared && x.ms === 5000).length, 0);
+        u.provider.stop();
+        console.log('PASS the SDB tunnel tries its port again while an older Vetro still holds it');
+    }
 })().catch(e => { console.error(e); process.exit(1); });
