@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Launcher: show only Samsung's Home row.** The 2022 Home keeps a row of recently used apps, and the launcher adds every other visible app to it. A new *Show all apps* switch in the Launcher page turns that off, so the bar shows only the Home row; it is on by default, which keeps today's list. Hidden apps and Vetro are left out either way. The choice is saved in `vetro-dock.json`, rebuilds the list, and a failed rebuild puts the previous value back. Added because 0.5.0 showed 33 tiles on a QN90B (Tizen 6.5) whose Home row holds 6.
+
 ## 0.5.0 — 2026-11-06
 
 > **Republished (7 Nov 2026, twice).** The first 0.5.0 build had pairing always on. On a Samsung Q8F (Tizen 9, firmware 1300.9) the Vetro app on the TV could not reach the service, so the pairing code never appeared and the dashboard could not be opened. This republished 0.5.0 makes pairing automatic (open until the TV app is seen), keeps readable refusals on the TV screen (**"Refused this screen"** with the address and Origin the service saw) and fixes the TV's address list on some Node versions. **If you installed 0.5.0 before this note, reinstall with Apps2Samsung**: in-place update does not offer it, because the version number is the same. The two builds differ only by their source revision in the diagnostics report. Not yet tried on a Q8F; reports welcome.

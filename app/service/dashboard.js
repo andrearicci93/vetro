@@ -1117,6 +1117,7 @@ function eraseVetroData(){
  })}).finally(function(){quickBusy=false;renderRestore()});
 }
 // --- Launcher: a minimal launcher for the Home key. The service builds its app list from Samsung's Home row. ---
+var LIST_OPTION_LABELS={showHomeSources:'HDMI sources on Home',useSourceImages:'HDMI source images',showAllApps:'Show all apps'};
 var dockData=null,dockError=null,dockBusy=false,dockConfirm=false,dockTab='vetro',customConfirm=false,customChoice=null,customChosen='';
 ${require('./dock.js').customCandidate.toString()}
 function launcherOn(d){return d.mode?d.mode!=='off':!!d.enabled}
@@ -1171,12 +1172,13 @@ function renderDock(){
  var noTube=inventory.length>0&&!tizenTubeInstalled(d),fixState=d.fixTizenTube?chip('On','on'):chip('Off');
  var fix='<div class="quick-item" data-quick-item="fix-tizentube"><div><h3>Fix TizenTube</h3><p>Shows the YouTube icon on the TizenTube tile and closes Samsung’s YouTube (com.samsung.tv.cobalt-yt) before starting it. Launcher tile only.</p><div class="quick-state">'+fixState+(noTube?chip('TizenTube is not installed on this TV','partial'):d.enabled&&!dockHasTizenTube(d)?chip('TizenTube is not in Samsung’s Home row','partial'):'')+'</div></div>'+switchMarkup('data-dock-fix',!!d.fixTizenTube,dockBusy||!d.installed||noTube&&!d.fixTizenTube,'Fix TizenTube')+'</div>';
  var still='<div class="quick-item" data-quick-item="reduce-motion"><div><h3>Reduce motion</h3><p>Turns off all launcher animations immediately.</p><div class="quick-state">'+(d.noMotion?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-still',!!d.noMotion,dockBusy||!d.installed,'Reduce motion')+'</div>';
- function sourceOption(key,label,description){
-  return '<div class="quick-item" data-quick-item="'+key+'"><div><h3>'+label+'</h3><p>'+description+'</p><div class="quick-state">'+chip(d[key]?'On':'Off',d[key]?'on':'')+'</div></div>'+switchMarkup('data-dock-source-option="'+key+'"',!!d[key],dockBusy||!d.installed,label)+'</div>';
+ function listOption(key,label,description){
+  return '<div class="quick-item" data-quick-item="'+key+'"><div><h3>'+label+'</h3><p>'+description+'</p><div class="quick-state">'+chip(d[key]?'On':'Off',d[key]?'on':'')+'</div></div>'+switchMarkup('data-dock-list-option="'+key+'"',!!d[key],dockBusy||!d.installed,label)+'</div>';
  }
- var sourceOptions=sourceOption('showHomeSources','HDMI sources on Home','Shows the HDMI tiles already in Samsung’s Home row, in the same positions. Turn off to hide them. The Sources page is unchanged.');
- sourceOptions+=sourceOption('useSourceImages','HDMI source images','Use Samsung source images on Home and Sources. Turn off for the generic source icon. Names and source order stay the same.');
- box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+sourceOptions+fix+still+'</div></div>';
+ var listOptions=listOption('showAllApps','Show all apps','Samsung’s Home row on this TV can hold only the apps it has shown recently. On adds the other visible apps to the launcher; off shows the Home row alone. Hidden apps and Vetro are always left out.');
+ listOptions+=listOption('showHomeSources','HDMI sources on Home','Shows the HDMI tiles already in Samsung’s Home row, in the same positions. Turn off to hide them. The Sources page is unchanged.');
+ listOptions+=listOption('useSourceImages','HDMI source images','Use Samsung source images on Home and Sources. Turn off for the generic source icon. Names and source order stay the same.');
+ box.innerHTML='<div class="dock-layout">'+previewMarkup(d)+'<div class="quick-group">'+main+listOptions+fix+still+'</div></div>';
  setTimeout(fitPreview,0);
  renderCustom();
 }
@@ -1209,7 +1211,7 @@ function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;customConfirm=false;renderDock();
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;
-  var message=action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Samsung’s Home answers the Home key again.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Samsung’s Home answers the Home key again.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Samsung’s Home answers the Home key again.':LIST_OPTION_LABELS[action]?LIST_OPTION_LABELS[action]+' '+(extra&&extra.on?'on':'off')+'; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
@@ -1343,7 +1345,7 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.customSwitch!=null){if(x.checked){x.checked=false;customConfirm=true;renderCustom();var c=document.querySelector('[data-custom-confirm]');if(c)c.focus();return}return setDock('disableCustom','Turn off the custom launcher')}
  if(x.dataset.dockFix!=null)return setDock('fixTizenTube',x.checked?'Turn on Fix TizenTube':'Turn off Fix TizenTube',{on:!!x.checked});
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
- if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+(x.dataset.dockSourceOption==='showHomeSources'?'HDMI sources on Home':'HDMI source images'),{on:!!x.checked});
+ if(x.dataset.dockListOption!=null)return setDock(x.dataset.dockListOption,(x.checked?'Turn on ':'Turn off ')+LIST_OPTION_LABELS[x.dataset.dockListOption],{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
  return setDock('disable','Turn off the launcher');
