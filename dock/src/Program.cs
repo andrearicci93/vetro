@@ -869,8 +869,8 @@ namespace Launcher
         // ------------------------------------------------------------------ the three pages, and the user's own row
 
         private static DockLayout _inputsLayout, _allLayout;
-        // The hint of All apps, and of Sources when its inputs can be put in the row (a Sources list of an older Vetro has no row keys: "Back").
-        private const string AddHint = "Hold OK to add or take out  \u00b7  Back";
+        // The hint of All apps, and of Sources when its inputs can be put in the row (a Sources list of an older Vetro has no row keys: only
+        // the way back), drawn with the remote's keys like the Control center cards' footer (Dock.KeyHint).
         private static bool _sourcesEditable;
 
         /// <summary>The three pages' layouts for the current lists (one window, as wide as the widest page); the controllers start on them.</summary>
@@ -894,10 +894,10 @@ namespace Launcher
             _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
             _appsDock.Build();
             _sourcesEditable = RowEdit.CanAddFrom(_inputs, _apps);
-            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, _sourcesEditable ? AddHint : "Back", false);
+            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, Dock.KeyHint(_sourcesEditable), false);
             _inputsDock.Build();
             _inputsDock.SetVisible(false);
-            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, AddHint, false);
+            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, Dock.KeyHint(true), false);
             _allDock.Build();
             _allDock.SetVisible(false);
             _dock = _appsDock;

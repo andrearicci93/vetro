@@ -23,6 +23,9 @@
   .tile { position: absolute; display: grid; place-items: center; color: #fff; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, var(--vetro-tv-dock-icon-rim)); }
   .hint { position: absolute; display: flex; align-items: center; gap: 4px; font-size: 22px; line-height: 1; opacity: .9; text-shadow: 0 1px 6px rgba(0, 0, 0, .55); }
   .hint img { width: 24px; height: 24px; }
+  /* A key hint (All apps, Sources): the remote's keys as pictures, like the cards' footer: 34 px, 2 px between two keys, 8 to their word, 40 between groups; keys at .85 (the words' .9 x .944) */
+  .hint.keys { gap: 0; }
+  .hint img.hkey { width: 34px; height: 34px; opacity: .944; }
 </style>
 </head>
 <body>
@@ -52,13 +55,22 @@
   ];
   // An input the user put in the row from Sources (hold OK there): its tile is the Sources page's own picture, at the end of the apps.
   var ROW_SOURCE = { n: 'HDMI 2', img: 'in-hdmi2', glow: '#e2edff' };
+  // The key hint under All apps and Sources (Dock.KeyHint): "Hold [OK] add or take out   [Down][Back] return", groups as in footer() below.
+  var ADD_KEYS = [[['ok'], 'add or take out', 'Hold'], [['down', 'back'], 'return', '']];
+  function keyHint(groups) {
+    return groups.map(function (g, gi) {
+      return (g[2] ? '<span style="margin-right:8px">' + g[2] + '</span>' : '')
+        + g[0].map(function (k, i) { return '<img class="hkey" src="assets/dock/key_' + k + '.png" alt="" style="margin-right:' + (i < g[0].length - 1 ? 2 : 8) + 'px">'; }).join('')
+        + '<span' + (gi < groups.length - 1 ? ' style="margin-right:40px"' : '') + '>' + g[1] + '</span>';
+    }).join('');
+  }
   var PAGES = {
     apps: { items: APPS.concat([ROW_SOURCE, { n: 'All apps', pill: 'allapps', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length + 1, raised: false, hint: 'Source', up: true, below: (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',').length > 1 ? 'Control center' : 'Task manager' },
     /* All apps (the pill): every app the user can put in the row, by name, then Settings and the App store as pills; hold OK adds or takes out */
     allapps: { items: APPS.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).concat([{ n: 'Browser', g: '#2f6fd6', ch: '◍' }, { n: 'Gallery', g: '#e0567a', ch: '✿' }])
-      .concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'App store', pill: 'store', glow: '#e2edff' }]), groupStart: APPS.length + 2, raised: true, hint: 'Hold OK to add or take out  ·  Back', up: false },
-    /* Sources: hold OK adds the input to the row or takes it out, like All apps (a Sources list of an older Vetro has no row keys: "Back" only) */
-    inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, ROW_SOURCE, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, hint: 'Hold OK to add or take out  ·  Back', up: false }
+      .concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'App store', pill: 'store', glow: '#e2edff' }]), groupStart: APPS.length + 2, raised: true, keys: ADD_KEYS, up: false },
+    /* Sources: hold OK adds the input to the row or takes it out, like All apps (a Sources list of an older Vetro has no row keys: only [Down][Back] return) */
+    inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, ROW_SOURCE, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, keys: ADD_KEYS, up: false }
   };
   // The tick (RowEdit.Marks): on All apps and Sources, the entries the row holds.
   PAGES.allapps.marked = PAGES.allapps.items.map(function (it) { return PAGES.apps.items.indexOf(it) >= 0 && !it.pill; });
@@ -123,7 +135,8 @@
       Tv.mk(bd, 'tint', 5, 5, 22, 22, { 'background': '#fff', '-webkit-mask-box-image': 'url(assets/dock/out_check.png) 0 / 0 stretch' });
       els.badges[i] = bd;
     });
-    els.hint = Tv.mk(C, 'hint'); els.hint.innerHTML = '<span>' + P.hint + '</span><img src="assets/dock/' + (P.up ? 'chev_up' : 'chev_down') + '.png" alt="">';
+    els.hint = Tv.mk(C, P.keys ? 'hint keys' : 'hint');
+    els.hint.innerHTML = P.keys ? keyHint(P.keys) : '<span>' + P.hint + '</span><img src="assets/dock/' + (P.up ? 'chev_up' : 'chev_down') + '.png" alt="">';
     els.below = P.below ? Tv.mk(C, 'hint') : null; if (els.below) els.below.innerHTML = '<span>' + P.below + '</span><img src="assets/dock/chev_down.png" alt="">';
   }
   function place(e, x, y, w, h) { e.style.left = x + 'px'; e.style.top = y + 'px'; e.style.width = w + 'px'; e.style.height = h + 'px'; }
@@ -172,7 +185,7 @@
     // hint capsule
     var h = els.hint, hw = h.offsetWidth || 90;
     h.style.left = Math.round(960 - hw / 2) + 'px';
-    h.style.top = (Y0 + (L.raised ? top() + L.pillH + 14 : top() - 42) + slide) + 'px';   // "Source ˄" 42 above the bar, "Back ˅" 14 below
+    h.style.top = (Y0 + (L.raised ? top() + L.pillH + 14 - (P.keys ? 6 : 0) : top() - 42) + slide) + 'px';   // "Source ˄" 42 above the bar, the key hint 14 below (its 34 px keys centred on the words)
     h.style.opacity = presence * 0.9;
     if (els.below) { var bw = els.below.offsetWidth || 160; els.below.style.left = Math.round(960 - bw / 2) + 'px'; els.below.style.top = (top() + L.pillH + 14 + slide) + 'px'; els.below.style.opacity = presence * 0.9; }
     bar.say(P.items[Math.round(pos)].n);

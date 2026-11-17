@@ -9,7 +9,7 @@ namespace Launcher.Ui
     /// <summary>
     /// The evas objects of the dock and the code that maps controller state onto them.
     /// Object count is items + 8 (rim, pill, clippers, two glows, two focus rings; two labels and the clock only when the design shows names), plus the divider
-    /// when the strip has a system group and two per navigation hint (word, chevron);
+    /// when the strip has a system group and the parts of each navigation hint (a word and its chevron, or the remote's keys and their words);
     /// icons are pre-sized PNGs, and <see cref="Apply"/> only calls into EFL for values that changed
     /// since the previous frame, so an animation frame costs a handful of native calls.
     /// </summary>
@@ -33,7 +33,8 @@ namespace Launcher.Ui
         private int _labelY = int.MinValue;
         // The navigation hints: the main one (up above the apps pill, or down below the raised panel pill), and
         // an optional second one below the apps pill.
-        private readonly NavHint _hint, _hintBelow;
+        private NavHint _hint;
+        private readonly NavHint _hintBelow;
         private Box _dividerBox;
         private int _dividerAlpha = -1;
         private readonly IntPtr[] _icon;
@@ -60,13 +61,22 @@ namespace Launcher.Ui
         public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp)
             : this(win, layout, items, assetsDir, log, hint, hintUp, null) { }
 
+        /// <param name="keyHint">A key hint, like the Control center cards' footer: the remote's keys as pictures ("key_ok": res/key_ok.png)
+        /// and words, "|" between two groups (<see cref="KeyHint"/>). It has no chevron: the key it shows says where it leads.</param>
+        /// <param name="hintUp">True: the hint above the pill; false: below it.</param>
+        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string[] keyHint, bool hintUp)
+            : this(win, layout, items, assetsDir, log, (string)null, hintUp, null)
+        {
+            if (keyHint != null) _hint = new NavHint(keyHint, hintUp);
+        }
+
         /// <param name="hintBelow">Word of a second hint under the pill, with a down chevron ("Task manager"), or null.
         /// Only used with an up hint, and the layout needs <see cref="DockLayout.BelowBand"/> to have room for it.</param>
         public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp, string hintBelow)
         {
             _win = win; _layout = layout; _items = items; _assets = assetsDir; _log = log;
-            if (hint != null) _hint = new NavHint(hint, hintUp);
-            if (hintBelow != null && hintUp && layout.BelowBand) _hintBelow = new NavHint(hintBelow, false);
+            if (hint != null) _hint = new NavHint(new[] { hint }, hintUp);
+            if (hintBelow != null && hintUp && layout.BelowBand) _hintBelow = new NavHint(new[] { hintBelow }, false);
             _evas = Efl.evas_object_evas_get(win);
             _icon = new IntPtr[items.Length];
             _initials = new IntPtr[items.Length];
@@ -149,16 +159,68 @@ namespace Launcher.Ui
         }
 
         private const int HintChev = 24, HintGap = 4;
+        // A key hint's parts, as in the Control center cards' footer (CardChrome): keys 34 px, 2 px between two keys, 8 between a key and its
+        // word, 40 between two groups. Keys at 85% and words at 90%, the dock's other hints' strength.
+        private const int HintKey = 34, HintKeyGap = 2, HintInner = 8, HintGroup = 40;
 
-        /// <summary>One navigation hint: a word and its chevron, with what was last sent to EFL.</summary>
+        /// <summary>
+        /// The parts of a key hint for Sources and All apps: hold OK adds the entry to the row or takes it out, Down or Back go back to the row.
+        /// <paramref name="canAdd"/> false (a Sources list without row keys, written by an older Vetro): only the way back.
+        /// </summary>
+        public static string[] KeyHint(bool canAdd)
+        {
+            return canAdd
+                ? new[] { "Hold", "key_ok", "add or take out", "|", "key_down", "key_back", "return" }
+                : new[] { "key_down", "key_back", "return" };
+        }
+
+        /// <summary>One part of a hint: a word, or a key's picture, and the space after it.</summary>
+        private sealed class HintPart
+        {
+            public IntPtr Obj;
+            public bool Key;
+            public string Word;
+            public int W, Dy, Gap;
+        }
+
+        /// <summary>
+        /// One navigation hint, with what was last sent to EFL: a word and its chevron, or keys and words (no chevron). A word said for a
+        /// while (<see cref="SetHints"/>) goes into the first word, and the other parts are hidden meanwhile.
+        /// </summary>
         private sealed class NavHint
         {
-            public readonly string Word;
-            public readonly bool Up;
-            public IntPtr Chev, Text;
-            public int W, X, TextW, TextDy, Alpha = -1, Y = int.MinValue;
-            public bool ShowChev = true;
-            public NavHint(string word, bool up) { Word = word; Up = up; }
+            public readonly string[] Spec;
+            public readonly bool Up, HasKeys;
+            public IntPtr Chev;
+            public readonly List<HintPart> Parts = new List<HintPart>();
+            public HintPart Lead;            // the first word: it carries a word said for a while
+            public int W, X, Alpha = -1, Y = int.MinValue;
+            public bool ShowChev, Override;
+            public NavHint(string[] spec, bool up)
+            {
+                Spec = spec; Up = up;
+                foreach (string s in spec) if (s.StartsWith("key_", StringComparison.Ordinal)) HasKeys = true;
+                ShowChev = !HasKeys;
+            }
+
+            public bool Shown(HintPart p) { return !Override || p == Lead; }
+
+            public IEnumerable<IntPtr> Objects()
+            {
+                if (Chev != IntPtr.Zero) yield return Chev;
+                foreach (HintPart p in Parts) if (p.Obj != IntPtr.Zero) yield return p.Obj;
+            }
+
+            /// <summary>The width of what is shown now, and where it starts: centred under (or over) the pill.</summary>
+            public void Measure(DockLayout layout)
+            {
+                int w = 0, last = -1;
+                for (int i = 0; i < Parts.Count; i++) if (Shown(Parts[i])) last = i;
+                for (int i = 0; i <= last; i++) if (Shown(Parts[i])) w += Parts[i].W + (i < last && !Override ? Parts[i].Gap : 0);
+                if (ShowChev) w += HintGap + HintChev;
+                W = w;
+                X = layout.HintLeft(w);
+            }
         }
 
         private const int ShadowAlpha = 150;
@@ -177,27 +239,55 @@ namespace Launcher.Ui
             Efl.evas_object_text_shadow_color_set(text, 0, 0, 0, ShadowAlpha);
         }
 
-        /// <summary>The word, then its chevron: created last so they sit above the pill, never inside the clipper.</summary>
+        /// <summary>The words and keys, then the chevron of a word hint: created last so they sit above the pill, never inside the clipper.</summary>
         private void BuildHint(NavHint h)
         {
-            h.Chev = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(h.Chev, Path.Combine(_assets, h.Up ? "chev_up.png" : "chev_down.png"), null);
-            if (Efl.evas_object_image_load_error_get(h.Chev) != Efl.EvasLoadErrorNone) _log("asset missing: chevron");
-            Efl.evas_object_image_filled_set(h.Chev, true);
-            Efl.evas_object_image_smooth_scale_set(h.Chev, true);
-            Efl.evas_object_resize(h.Chev, HintChev, HintChev);
-            Efl.evas_object_show(h.Chev);
-            h.Text = Efl.evas_object_text_add(_evas);
-            Efl.evas_object_text_font_set(h.Text, Font, 22);
-            Efl.evas_object_text_text_set(h.Text, h.Word);
-            // No backing shape: a soft dark shadow keeps the word readable over bright video.
-            SoftShadow(h.Text);
-            Efl.evas_object_show(h.Text);
-            h.TextW = Efl.evas_object_text_horiz_advance_get(h.Text);
-            int textH = Efl.evas_object_text_vert_advance_get(h.Text);
-            h.W = h.TextW + HintGap + HintChev;
-            h.X = _layout.HintLeft(h.W);
-            h.TextDy = (DockLayout.CapsuleH - textH) / 2 - 1;
+            for (int i = 0; i < h.Spec.Length; i++)
+            {
+                string s = h.Spec[i];
+                if (s == "|") continue;
+                var p = new HintPart { Key = s.StartsWith("key_", StringComparison.Ordinal), Word = s };
+                if (p.Key)
+                {
+                    p.Obj = Efl.evas_object_image_add(_evas);
+                    Efl.evas_object_image_file_set(p.Obj, Path.Combine(_assets, s + ".png"), null);
+                    if (Efl.evas_object_image_load_error_get(p.Obj) != Efl.EvasLoadErrorNone) _log("asset missing: " + s);
+                    Efl.evas_object_image_filled_set(p.Obj, true);
+                    Efl.evas_object_image_smooth_scale_set(p.Obj, true);
+                    Efl.evas_object_resize(p.Obj, HintKey, HintKey);
+                    Efl.evas_object_color_set(p.Obj, 0, 0, 0, 0);
+                    p.W = HintKey;
+                    p.Dy = (DockLayout.CapsuleH - HintKey) / 2;
+                }
+                else
+                {
+                    p.Obj = Efl.evas_object_text_add(_evas);
+                    Efl.evas_object_text_font_set(p.Obj, Font, 22);
+                    Efl.evas_object_text_text_set(p.Obj, s);
+                    // No backing shape: a soft dark shadow keeps the word readable over bright video.
+                    SoftShadow(p.Obj);
+                    p.W = Efl.evas_object_text_horiz_advance_get(p.Obj);
+                    p.Dy = (DockLayout.CapsuleH - Efl.evas_object_text_vert_advance_get(p.Obj)) / 2 - 1;
+                    if (h.Lead == null) h.Lead = p;
+                }
+                Efl.evas_object_show(p.Obj);
+                // The space after it: a group break, two keys side by side, or a key and its word.
+                bool next = i + 1 < h.Spec.Length, brk = next && h.Spec[i + 1] == "|";
+                bool nextKey = next && h.Spec[i + 1].StartsWith("key_", StringComparison.Ordinal);
+                p.Gap = !next ? 0 : brk ? HintGroup : p.Key && nextKey ? HintKeyGap : HintInner;
+                h.Parts.Add(p);
+            }
+            if (!h.HasKeys)
+            {
+                h.Chev = Efl.evas_object_image_add(_evas);
+                Efl.evas_object_image_file_set(h.Chev, Path.Combine(_assets, h.Up ? "chev_up.png" : "chev_down.png"), null);
+                if (Efl.evas_object_image_load_error_get(h.Chev) != Efl.EvasLoadErrorNone) _log("asset missing: chevron");
+                Efl.evas_object_image_filled_set(h.Chev, true);
+                Efl.evas_object_image_smooth_scale_set(h.Chev, true);
+                Efl.evas_object_resize(h.Chev, HintChev, HintChev);
+                Efl.evas_object_show(h.Chev);
+            }
+            h.Measure(_layout);
         }
 
         /// <summary>
@@ -206,9 +296,8 @@ namespace Launcher.Ui
         /// </summary>
         public void SetVisible(bool visible)
         {
-            IntPtr[] top = { _rim, _pill, _clip, _label[0], _label[1], _clock,
-                _hint != null ? _hint.Chev : IntPtr.Zero, _hint != null ? _hint.Text : IntPtr.Zero,
-                _hintBelow != null ? _hintBelow.Chev : IntPtr.Zero, _hintBelow != null ? _hintBelow.Text : IntPtr.Zero };
+            var top = new List<IntPtr> { _rim, _pill, _clip, _label[0], _label[1], _clock };
+            foreach (NavHint h in new[] { _hint, _hintBelow }) if (h != null) top.AddRange(h.Objects());
             foreach (IntPtr o in top)
             {
                 if (o == IntPtr.Zero) continue;
@@ -228,12 +317,13 @@ namespace Launcher.Ui
 
         private void SetHint(NavHint h, string word, bool chevron)
         {
-            if (h == null || h.Text == IntPtr.Zero) return;
-            Efl.evas_object_text_text_set(h.Text, word ?? h.Word);
-            h.TextW = Efl.evas_object_text_horiz_advance_get(h.Text);
-            h.ShowChev = word == null || chevron;
-            h.W = h.TextW + (h.ShowChev ? HintGap + HintChev : 0);
-            h.X = _layout.HintLeft(h.W);
+            if (h == null || h.Lead == null) return;
+            Efl.evas_object_text_text_set(h.Lead.Obj, word ?? h.Lead.Word);
+            h.Lead.W = Efl.evas_object_text_horiz_advance_get(h.Lead.Obj);
+            // A key hint says the other words alone: its keys and its other words step aside until its own words come back.
+            h.Override = word != null && (h.HasKeys || h.Parts.Count > 1);
+            h.ShowChev = !h.HasKeys && (word == null || chevron);
+            h.Measure(_layout);
             h.Y = int.MinValue; h.Alpha = -1;   // placed and tinted again on the next frame
         }
 
@@ -300,7 +390,7 @@ namespace Launcher.Ui
             var all = new List<IntPtr> { _rim, _pill, _highlight, _highlight2, _ring, _ring2, _divider, _label[0], _label[1], _clock, _appsClip, _clip };
             all.AddRange(_icon); all.AddRange(_initials);
             if (_badge != null) { all.AddRange(_badge); all.AddRange(_badgeBg); }
-            foreach (NavHint h in new[] { _hint, _hintBelow }) if (h != null) { all.Add(h.Chev); all.Add(h.Text); }
+            foreach (NavHint h in new[] { _hint, _hintBelow }) if (h != null) all.AddRange(h.Objects());
             foreach (IntPtr x in all) if (x != IntPtr.Zero) Efl.evas_object_del(x);
         }
 
@@ -587,8 +677,8 @@ namespace Launcher.Ui
 
             if (Design.ShowLabels) ApplyLabels(c, slide, presence, scroll);
             if (Design.ShowClock) ApplyClock(slide, presence);
-            if (_hint != null && _hint.Text != IntPtr.Zero) ApplyHint(_hint, _layout.HintTop(slide), presence);
-            if (_hintBelow != null && _hintBelow.Text != IntPtr.Zero) ApplyHint(_hintBelow, _layout.HintBelowTop(slide), presence);
+            if (_hint != null && _hint.Parts.Count > 0) ApplyHint(_hint, _layout.HintTop(slide), presence);
+            if (_hintBelow != null && _hintBelow.Parts.Count > 0) ApplyHint(_hintBelow, _layout.HintBelowTop(slide), presence);
         }
 
         private static void ApplyHint(NavHint h, int y, int presence)
@@ -596,16 +686,27 @@ namespace Launcher.Ui
             if (y != h.Y)
             {
                 h.Y = y;
-                Efl.evas_object_move(h.Text, h.X, y + h.TextDy);
-                Efl.evas_object_move(h.Chev, h.X + h.TextW + HintGap, y + (DockLayout.CapsuleH - HintChev) / 2);
+                int x = h.X;
+                for (int i = 0; i < h.Parts.Count; i++)
+                {
+                    HintPart p = h.Parts[i];
+                    if (!h.Shown(p)) continue;
+                    Efl.evas_object_move(p.Obj, x, y + p.Dy);
+                    x += p.W + (h.Override ? 0 : p.Gap);
+                }
+                if (h.Chev != IntPtr.Zero) Efl.evas_object_move(h.Chev, x + HintGap, y + (DockLayout.CapsuleH - HintChev) / 2);
             }
-            // Quieter than the label, like the clock: a signpost, not a headline.
+            // Quieter than the label, like the clock: a signpost, not a headline. The keys a little under the words, as on the cards.
             if (presence != h.Alpha)
             {
                 h.Alpha = presence;
-                int a = presence * 9 / 10;
-                Tint(h.Chev, h.ShowChev ? a : 0);
-                TintText(h.Text, a);
+                int a = presence * 9 / 10, ka = presence * 85 / 100;
+                if (h.Chev != IntPtr.Zero) Tint(h.Chev, h.ShowChev ? a : 0);
+                foreach (HintPart p in h.Parts)
+                {
+                    if (p.Key) Tint(p.Obj, h.Shown(p) ? ka : 0);
+                    else TintText(p.Obj, h.Shown(p) ? a : 0);
+                }
             }
         }
 
