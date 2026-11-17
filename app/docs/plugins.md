@@ -240,7 +240,8 @@ Bundle: `{ "format": "vetro-plugin", "version": 1, "manifest": {…}, "files": {
   Its code is not even read until then: installing, listing, safe mode and booting with it off never run anything of it.
 - Calls into a plugin are guarded; 3 consecutive errors switch it off. Errors thrown later inside your
   own callbacks or promises are **not** caught: handle them yourself.
-- A boot that does not stay up for 60 s puts the next one in safe mode (plugins paused until resumed). In safe
+- Two boots in a row that do not stay up for 60 s put the next one in safe mode (plugins paused until resumed). One alone
+  does not: the TV turned off in the first minute after an update is not a plugin crashing Vetro. In safe
   mode the plugins are still listed, so you can switch off or remove the culprit before resuming.
 - A plugin whose `start()` throws gets `stop()` called so it can release what it took, and is marked Failed.
 - Not done yet: if an update installs but its `start()` fails, the previous version is not restored automatically (the plugin shows Failed; install the old bundle again).
@@ -259,4 +260,4 @@ Bundle: `{ "format": "vetro-plugin", "version": 1, "manifest": {…}, "files": {
 | "The plugin list is not published yet" | the list repository does not exist (404) |
 | "Could not reach the plugin list" | the browser has no internet, or a blocker stops `raw.githubusercontent.com` |
 | "Failed" | it could not start, or 3 errors in a row; the message shows the last one. Switch it on again after fixing |
-| plugins "Suspended" | safe mode: Vetro did not stay up last time. Resume, then restart Vetro |
+| plugins "Suspended" | safe mode: Vetro did not stay up the last two times. Resume, then restart Vetro |

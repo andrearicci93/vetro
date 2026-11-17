@@ -142,12 +142,19 @@ h3.start();
     assert.deepEqual(ctxB.config.get(), {}, 'config is per plugin');
     h3.stop();
 
-    // safe mode: a boot that never reached markStable suspends plugins on the next one
+    // safe mode: two boots in a row that never reached markStable suspend plugins on the next one; one alone does not
+    // (the TV turned off in the first minute after an update)
     const sdir = tmp();
     let s1 = new PluginHost({ dir: sdir, stableMs: 60000 }).register(good);
     s1.start();
     s1.stableTimer && clearTimeout(s1.stableTimer);
     // simulate a crash: no stop(), marker left behind
+    const s1b = new PluginHost({ dir: sdir, stableMs: 60000 }).register(good);
+    assert.equal(s1b.start()[0].state, 'running', 'one interrupted start is not enough');
+    assert.equal(s1b.safeMode, false);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(sdir, 'starting'), 'utf8')).missed, 2, 'the marker counts this start too');
+    s1b.stableTimer && clearTimeout(s1b.stableTimer);
+    // and that one is interrupted too
     const s2 = new PluginHost({ dir: sdir, stableMs: 60000 }).register(good);
     const l2 = s2.start();
     assert.equal(s2.safeMode, true);
@@ -159,6 +166,27 @@ h3.start();
     const s4 = new PluginHost({ dir: sdir, stableMs: 10 }).register(good);
     assert.equal(s4.start()[0].state, 'running');
     s4.stop();
+    // a start that stays up clears the count: an interruption after it is again only the first
+    const cdir = tmp();
+    const c1 = new PluginHost({ dir: cdir, stableMs: 60000 }).register(good);
+    c1.start(); c1.stableTimer && clearTimeout(c1.stableTimer);
+    const c2 = new PluginHost({ dir: cdir, stableMs: 60000 }).register(good);
+    c2.start(); c2.markStable(); c2.stableTimer && clearTimeout(c2.stableTimer);
+    const c3 = new PluginHost({ dir: cdir, stableMs: 60000 }).register(good);
+    c3.start(); c3.stableTimer && clearTimeout(c3.stableTimer);
+    const c4 = new PluginHost({ dir: cdir, stableMs: 60000 }).register(good);
+    assert.equal(c4.start()[0].state, 'running', 'interrupted, stable, interrupted: no safe mode');
+    c4.stop();
+    // the marker of an older Vetro (a bare time) is one interrupted start; an unreadable one too
+    for (const old of ['1794869917000', 'garbage', '{"missed":"x"}']) {
+        const odir = tmp();
+        fs.mkdirSync(odir, { recursive: true });
+        fs.writeFileSync(path.join(odir, 'starting'), old);
+        const o = new PluginHost({ dir: odir, stableMs: 60000 }).register(good);
+        assert.equal(o.start()[0].state, 'running', 'old marker ' + old);
+        assert.equal(JSON.parse(fs.readFileSync(path.join(odir, 'starting'), 'utf8')).missed, 2);
+        o.stop();
+    }
 
     // safe mode still lists folder plugins (metadata only) so the culprit can be switched off or removed
     const fdir = tmp();
@@ -168,6 +196,10 @@ h3.start();
     crashing.install(JSON.stringify({ format: 'vetro-plugin', version: 1, manifest: { id: 'culprit', apiVersion: 1 }, files: { 'index.js': 'global.__culpritRan=1;module.exports=function(){return {}}' } }));
     crashing.setEnabled('culprit', true);
     crashing.stableTimer && clearTimeout(crashing.stableTimer);
+    // the culprit takes Vetro down on the next start as well
+    const again = new PluginHost({ dir: fdir, stableMs: 60000 });
+    again.start();
+    again.stableTimer && clearTimeout(again.stableTimer);
     global.__culpritRan = 0;
     const afterCrash = new PluginHost({ dir: fdir, stableMs: 60000 });
     const listed = afterCrash.start();

@@ -90,7 +90,7 @@ Invariant: at most one socket. No invalid state reached (covered by the existing
 
 ### SM-4 Plugin host
 
-States per plugin: `stopped`, `running`, `failed`, `suspended` (safe mode), `invalid`. Host-level: `safeMode`, and the `starting` boot marker written before plugins load and removed after a clean start (or a deliberate stop).
+States per plugin: `stopped`, `running`, `failed`, `suspended` (safe mode), `invalid`. Host-level: `safeMode`, and the `starting` boot marker written before plugins load and removed after a clean start (or a deliberate stop); it counts the starts in a row that never got that far, and safe mode needs two.
 
 | From | Event | To |
 |---|---|---|
@@ -99,7 +99,7 @@ States per plugin: `stopped`, `running`, `failed`, `suspended` (safe mode), `inv
 | running | error count reaches `maxErrors` | failed (`_halt`) |
 | running | async exception whose stack is inside the plugin folder | failed (`handleCrash`) |
 | running | switch off | stopped |
-| any | boot marker found at start | suspended (safe mode) until "Resume plugins" |
+| any | boot marker of two starts in a row found at start | suspended (safe mode) until "Resume plugins" |
 | any | remove | gone (folder deleted, module cache purged) |
 
 Reachable invalid states found:
@@ -223,7 +223,7 @@ All under `/opt/usr/home/owner/share` unless noted. "Atomic" means written throu
 | `vetro.jsonl` (also `/tmp/vetro.jsonl`) | `platform.js persist()` | append, bounded (B1) | diagnostics only |
 | `tvlauncher.log` | native dock | append, bounded (B18) | diagnostics only |
 | `tvlauncher.guard` | native dock | write | the current guard generation; a kill of the chain runs only if it still matches |
-| plugin boot marker, `plugins/*` | `plugin-host.js` | marker is deliberately a single write | a marker left by a crash starts safe mode |
+| plugin boot marker, `plugins/*` | `plugin-host.js` | marker is deliberately a single write | two markers in a row (crashes or power cuts) start safe mode |
 
 Invariant for every file whose loss changes what the TV does: write to a temp file and rename. The remap and dock files were the two that were plain writes while losing them changes what the TV does; the rest already used a temp file. `vetro-probe.json` is still a plain write: it only caches a report that the next probe rebuilds.
 

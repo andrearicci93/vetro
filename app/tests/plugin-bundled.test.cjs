@@ -50,11 +50,11 @@ r = res(); h.dispatch('inner', { method: 'GET', headers: {} }, r, 'hi', json);
 assert.equal(r.code, 503);
 assert.match(r.body.error, /Inner is not running/);
 
-// safe mode: an interrupted boot pauses the third-party plugin and leaves the bundled one running
+// safe mode: two interrupted boots in a row pause the third-party plugin and leave the bundled one running
 const dir = tmp();
 h = new PluginHost({ dir, external: false, services }).register(bundled).register(third);
 fs.mkdirSync(dir, { recursive: true });
-fs.writeFileSync(path.join(dir, 'starting'), '1');
+fs.writeFileSync(path.join(dir, 'starting'), JSON.stringify({ missed: 2, at: 1 }));
 seen = {};
 h.start();
 assert.equal(h.safeMode, true);

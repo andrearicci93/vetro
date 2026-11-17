@@ -215,8 +215,8 @@ Notes:
 ## Open questions
 
 1. **Safe mode.** *What it is:* the host writes a `starting` marker when Vetro starts and removes it after the service has
-   stayed up for 60 s (or on a deliberate stop). If the next start finds the marker, the last boot did not survive, so
-   the host starts with every plugin **paused** ("Suspended"): still listed, never run, so the plugin that crashes Vetro
+   stayed up for 60 s (or on a deliberate stop). The marker counts the starts in a row that did not survive; when the
+   next start finds two, the host starts with every plugin **paused** ("Suspended"): still listed, never run, so the plugin that crashes Vetro
    can be switched off or removed. **Resume** takes effect at the next restart. It exists so that one bad plugin cannot
    put Vetro in a crash loop and lock the owner out of the dashboard. *The question:* today it pauses everything,
    bundled plugins included, so the launcher would no longer be supervised or reachable on its routes. The dock process

@@ -11,7 +11,7 @@
 // docs/PLUGIN-ARCHITECTURE.md). The host owns the lifecycle of the ones
 // that are added and keeps a failing plugin from taking Vetro down:
 // every call into a plugin is guarded, a plugin that keeps failing is switched
-// off, and a start that never completes makes the next boot come up in safe mode.
+// off, and two starts in a row that never complete make the next boot come up in safe mode.
 // Plain ES5 on purpose: the TV runs Node 4.4 (no worker_threads, no vm sandbox
 // worth the name), so this is fault isolation, not a security boundary.
 
@@ -31,6 +31,7 @@ var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var CONTROL_RE = /[\u0000-\u001f\u007f<>]/;
 var INTERCEPT_MAX = 3;
 var LAUNCH_MS = 120000;
+var SAFE_AFTER = 2;
 var RESERVED = ['install', 'resume', 'developer'];
 var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
@@ -113,6 +114,9 @@ function PluginHost(opts) {
     this.execute = opts.execute || null;       // agent command runner, only lent to plugins asking for 'exec'
     this.maxErrors = opts.maxErrors || 3;      // consecutive failures before a plugin is switched off
     this.stableMs = opts.stableMs == null ? 60000 : opts.stableMs;
+    // Starts in a row that did not stay up for stableMs before the next one comes up in safe mode. One alone is not enough:
+    // turning the TV off in the first minute after an update or a restart is common and is not a plugin crashing Vetro.
+    this.safeAfter = opts.safeAfter || SAFE_AFTER;
     this.registry = opts.registry || null;     // URL of the plugin list the dashboard shows
     this.external = opts.external !== false;   // load plugin folders from dir
     // Public key of the plugin list (PEM), a different key from the one that signs Vetro updates. Without it
@@ -544,9 +548,8 @@ PluginHost.prototype.start = function () {
     if (this.started) return this.list();
     this.started = true;
     var state = this._readState();
-    var interrupted = false;
-    try { interrupted = fs.existsSync(this._file('starting')); } catch (e) { /* treated as clean */ }
-    if (interrupted && !state.suspended) {
+    var missed = this._missedStarts();
+    if (missed >= this.safeAfter && !state.suspended) {
         state.suspended = true;
         try { this._writeState(state); } catch (e) { /* best effort */ }
     }
@@ -565,7 +568,8 @@ PluginHost.prototype.start = function () {
     try {
         fs.mkdirSync(this.dir);
     } catch (e) { /* exists */ }
-    try { fs.writeFileSync(this._file('starting'), String(Date.now())); } catch (e) { /* no marker, no safe mode */ }
+    // The marker counts this start too: if it does not stay up either, the next start finds one more.
+    try { fs.writeFileSync(this._file('starting'), JSON.stringify({ missed: missed + 1, at: Date.now() })); } catch (e) { /* no marker, no safe mode */ }
     if (this.external) this._loadExternal();
     for (var i = 0; i < this.order.length; i++) {
         var entry = this.entries[this.order[i]];
@@ -576,6 +580,16 @@ PluginHost.prototype.start = function () {
     this.stableTimer = setTimeout(function () { host.markStable(); }, this.stableMs);
     if (this.stableTimer.unref) this.stableTimer.unref();
     return this.list();
+};
+
+// How many starts in a row ended before they were stable: 0 without a marker. A marker of an older Vetro (a bare time) or
+// one that cannot be read is one start.
+PluginHost.prototype._missedStarts = function () {
+    var text;
+    try { text = fs.readFileSync(this._file('starting'), 'utf8'); } catch (e) { return 0; }
+    var n = 1;
+    try { var m = JSON.parse(text); if (m && typeof m === 'object' && m.missed >= 1 && m.missed < 1000) n = Math.floor(m.missed); } catch (e) { /* older marker */ }
+    return n;
 };
 
 // Boot survived long enough: the next boot does not need to be careful.

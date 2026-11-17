@@ -1490,7 +1490,7 @@ function pluginChip(p){var k=p.state==='running'?'on':'';return chip(p.state==='
 function renderPlugins(){
  var box=$('pluginsBody');if(!box)return;var d=pluginData;
  if(!d){box.innerHTML='<div class="panel"><p class="notice">'+esc(pluginError||'Reading…')+'</p></div>';return}
- var safe=d.safeMode?'<div class="panel"><p class="quick-callout">Vetro was stopped less than a minute after it started (a crash, a power cut, or a restart or update right after boot), so third-party plugins are paused as a precaution. Nothing was removed. Resume them, then restart Vetro to start them again.</p><div class="quick-actions"><button data-plugin-resume '+(pluginBusy?'disabled':'')+'>Resume plugins</button></div></div>':'';
+ var safe=d.safeMode?'<div class="panel"><p class="quick-callout">Vetro was stopped less than a minute after it started twice in a row (a crash, a power cut, or the TV turned off right after a restart or an update), so third-party plugins are paused as a precaution. Nothing was removed. Resume them, then restart Vetro to start them again.</p><div class="quick-actions"><button data-plugin-resume '+(pluginBusy?'disabled':'')+'>Resume plugins</button></div></div>':'';
  var rows=!d.plugins.length?'':d.plugins.map(function(p){
   var sw=p.state==='invalid'?'':switchMarkup('data-plugin-switch="'+esc(p.id)+'"',p.enabled&&p.state!=='suspended'&&p.state!=='failed',pluginBusy||d.safeMode,p.name);
   var err=p.state==='failed'&&p.lastError?'<p class="quick-callout">Switched off after repeated errors: '+esc(p.lastError)+'</p>':p.state==='invalid'?'<p class="quick-callout">Not loaded: '+esc(p.lastError)+'</p>':'';
