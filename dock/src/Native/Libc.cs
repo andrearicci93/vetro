@@ -14,7 +14,6 @@ namespace Launcher.Native
         public const int O_RDWR = 2;
         public const int O_NONBLOCK = 0x800;   // Linux (ARM and x86)
         public const int O_WRONLY = 1;
-        public const int EAGAIN = 11;
 
         [DllImport(C, SetLastError = true)] public static extern int setenv(string name, string value, int overwrite);
         [DllImport(C, SetLastError = true)] public static extern int mkfifo(string path, uint mode);

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Launcher.Core
 {
@@ -33,7 +32,13 @@ namespace Launcher.Core
 
         public static readonly PadCell[] Digits = BuildDigits();
         public static readonly PadCell[] Colors = BuildColors();
-        private static readonly Regex KeyName = new Regex("^[A-Za-z0-9_]+$");
+        /// <summary>A key name that may go on a command line: letters, digits and "_" only. A loop, not a Regex: the first 123 press would pay for loading and building one.</summary>
+        private static bool IsKeyName(string k)
+        {
+            if (string.IsNullOrEmpty(k)) return false;
+            foreach (char c in k) if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
+            return true;
+        }
         private readonly StringBuilder _typed = new StringBuilder();
 
         public int Page { get; private set; }
@@ -131,7 +136,7 @@ namespace Launcher.Core
         {
             var sb = new StringBuilder("(sleep 0.25");
             foreach (string k in keys.Split(' '))
-                if (k.Length > 0 && KeyName.IsMatch(k)) sb.Append("; ").Append(keyTool).Append(k);
+                if (k.Length > 0 && IsKeyName(k)) sb.Append("; ").Append(keyTool).Append(k);
             return sb.Append(extra).Append(") >/dev/null 2>&1 &").ToString();
         }
 
@@ -157,7 +162,7 @@ namespace Launcher.Core
             }
             var byName = new StringBuilder();
             foreach (string k in names.ToString().Split(' '))
-                if (k.Length > 0 && KeyName.IsMatch(k)) byName.Append(' ').Append(keyTool).Append(k).Append(';');
+                if (k.Length > 0 && IsKeyName(k)) byName.Append(' ').Append(keyTool).Append(k).Append(';');
             if (number.Length > 0) tuner.Append(" echo 'tune ").Append(number).Append("' > /tmp/vetro-tuner.ctl;");
             if (byName.Length == 0) return "(sleep 0.25) >/dev/null 2>&1 &";
             if (tuner.Length == 0) return "(sleep 0.25;" + byName.ToString().TrimEnd(';') + ") >/dev/null 2>&1 &";
@@ -182,7 +187,7 @@ namespace Launcher.Core
         /// <summary>The same for one function key (colour, teletext, record...).</summary>
         public static string SendKeyCommand(string key, string keyTool)
         {
-            string safe = key != null && KeyName.IsMatch(key) ? key : "";
+            string safe = key != null && IsKeyName(key) ? key : "";
             // A key sent by name comes from the injector, not from the remote, so Vetro's Live TV (which reads the remote's input device) never sees it,
             // and Samsung's app would answer Info with its own panel. With the tuner on screen the pad asks it for its own info panel instead.
             if (safe == "XF86Info")

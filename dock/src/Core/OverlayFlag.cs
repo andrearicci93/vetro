@@ -15,14 +15,19 @@ namespace Launcher.Core
         public const string DockPath = "/tmp/vetro-dock.open";
         public const string PadPath = "/tmp/vetro-numpad.open";
 
-        private static readonly string Pid = System.Diagnostics.Process.GetCurrentProcess().Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        /// <summary>
+        /// This process's pid as text. The launcher sets it at start from getpid (Program.Main): asking System.Diagnostics.Process
+        /// for it loads a whole assembly, and that happened in the middle of the first show. Left unset (the tests), it is asked there.
+        /// </summary>
+        public static string Pid;
+        private static string PidText() { return Pid ?? (Pid = System.Diagnostics.Process.GetCurrentProcess().Id.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
 
         /// <summary>Writes (or touches) the flag, or removes it. Never throws: a flag that cannot be written only costs the tuner's courtesy.</summary>
         public static void Mark(string path, bool on, Action<string> log)
         {
             try
             {
-                if (on) File.WriteAllText(path, Pid);
+                if (on) File.WriteAllText(path, PidText());
                 else if (File.Exists(path)) File.Delete(path);
             }
             catch (Exception ex) { if (log != null) log("flag " + path + ": " + ex.Message); }

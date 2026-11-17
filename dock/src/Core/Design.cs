@@ -33,7 +33,6 @@ namespace Launcher.Core
         /// <summary>Nine-slice border of the bar image: more than its corner radius, so the curve is never stretched.</summary>
         public const int ShellSlice = 32;
         public const int ShadowBlur = 50;      // CSS blur radius: a Gaussian of sigma = blur / 2
-        public const int ShadowDy = 18;
         public const float ShadowAlpha = 0.45f;
 
         // ---- Icons ----
@@ -57,13 +56,10 @@ namespace Launcher.Core
         public const int Lift = 4;
 
         // ---- Chips and light (the Fumé material: dark smoked sheet, ice focus, blue light only for progress and indicators) ----
-        public const int ChipRadius = 12;
         /// <summary>Light blue used only for progress and indicators (the level of the volume pill, a switch that is on).</summary>
         public const int LightColor = 0xA5D8FF;
         /// <summary>Opacity of the volume pill's body: a little of the picture shows through.</summary>
         public const float VolumeAlpha = 0.90f;
-        /// <summary>A resting chip, key or programme: white at this opacity over the sheet.</summary>
-        public const float FillRest = 0.20f;
 
         // ---- Text ----
         public static readonly bool ShowLabels = false;

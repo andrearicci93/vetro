@@ -23,7 +23,6 @@ namespace Launcher.Native
         public const int EvasCallbackKeyUp = 11;
         public const int EcoreFdRead = 1;
         public const int EvasLoadErrorNone = 0;
-        public const int EvasImageScaleHintStatic = 2;
         public const int EvasImageScaleHintDynamic = 1;
 
         // --- delegates (kept alive by their owners; the GC must not collect a callback in use) ---
@@ -34,7 +33,6 @@ namespace Launcher.Native
         // --- elementary ---
         [DllImport(Elm)] public static extern int elm_init(int argc, IntPtr argv);
         [DllImport(Elm)] public static extern void elm_run();
-        [DllImport(Elm)] public static extern void elm_exit();
         [DllImport(Elm)] public static extern void elm_shutdown();
         [DllImport(Elm)] public static extern IntPtr elm_win_add(IntPtr parent, string name, int type);
         [DllImport(Elm)] public static extern void elm_win_title_set(IntPtr win, string title);
@@ -94,13 +92,11 @@ namespace Launcher.Native
         /// <summary>EVAS_TEXT_STYLE_SOFT_SHADOW: the ninth value of the enum (PLAIN, SHADOW, OUTLINE, SOFT_OUTLINE, GLOW, OUTLINE_SHADOW, FAR_SHADOW, OUTLINE_SOFT_SHADOW, SOFT_SHADOW).</summary>
         public const int EvasTextStyleSoftShadow = 8;
         /// <summary>EVAS_TEXT_STYLE_PLAIN: no shadow (the first value of the same enum).</summary>
-        public const int EvasTextStylePlain = 0;
 
         // --- ecore ---
         [DllImport(Ecore)] public static extern double ecore_time_get();
         [DllImport(Ecore)] public static extern IntPtr ecore_animator_add(TaskCb func, IntPtr data);
         [DllImport(Ecore)] public static extern double ecore_animator_frametime_get();
-        [DllImport(Ecore)] public static extern IntPtr ecore_animator_del(IntPtr animator);
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_add(double inSeconds, TaskCb func, IntPtr data);
         [DllImport(Ecore)] public static extern void ecore_timer_reset(IntPtr timer);
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_del(IntPtr timer);

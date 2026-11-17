@@ -24,7 +24,7 @@ namespace Launcher.Ui
         protected readonly Action<string> _log;
         private readonly string _tag;
 
-        protected IntPtr _clip, _listClip, _rim, _bg, _divider, _plate;
+        protected IntPtr _clip, _listClip, _rim, _bg, _plate;
         protected IntPtr _title, _sub, _empty;
         // The footer: pictures of the remote's keys (res/key_*.png, the dashboard's set) and short words, in one centred line.
         protected const int FootKey = 34, FootInner = 8, FootGroup = 40;
@@ -32,8 +32,15 @@ namespace Launcher.Ui
         private readonly List<IntPtr> _foot = new List<IntPtr>();
         private readonly List<bool> _footKey = new List<bool>();
         private readonly List<int> _footGap = new List<int>();   // space after each part
+        private readonly List<int> _footW = new List<int>(), _footH = new List<int>();   // each part's size, measured when it is made
         private int _chromeKey = -1, _plateAlpha = -1;
-        private bool _visible;
+        // Every text is measured when it is set (a text's width, and its line height, which is not the same for an empty text), never per
+        // frame. _version moves on with every change of a text or of the rows, so a placement made for the old ones is not kept.
+        private int _version, _titleW, _titleAsc, _subH, _subAsc, _emptyW, _emptyH, _footTotal;
+        private bool _clipPlaced;
+        // What the panel, the capsule and the rows were last placed for: a frame with the same values (the card at rest, or another card's
+        // selection moving) moves and resizes nothing.
+        private PlaceKey _chromeAt, _plateAt;
 
         protected CardChrome(IntPtr win, TaskLayout layout, string assets, Action<string> log, string tag)
         {
@@ -47,7 +54,42 @@ namespace Launcher.Ui
         /// How far under its top a text's baseline is. This binding has no ascent getter, so it is taken from the line height: ascent is 0.775 of
         /// ascent + descent in the TV's font (1047 / 1351); for another font the header texts would still share a baseline within half a pixel.
         /// </summary>
-        protected static int Ascent(IntPtr text) { return (int)Math.Round(Efl.evas_object_text_vert_advance_get(text) * 0.775); }
+        protected static int Ascent(IntPtr text) { return AscentOf(Efl.evas_object_text_vert_advance_get(text)); }
+
+        /// <summary>The same from a line height already measured.</summary>
+        protected static int AscentOf(int lineHeight) { return (int)Math.Round(lineHeight * 0.775); }
+
+        /// <summary>Moves on every time a text or the rows change: placements made before are made again on the next frame.</summary>
+        protected int Version { get { return _version; } }
+        protected void Changed() { _version++; }
+
+        /// <summary>The quieter line of the header.</summary>
+        protected void SetSub(string text)
+        {
+            Efl.evas_object_text_text_set(_sub, text);
+            MeasureSub();
+        }
+
+        private void MeasureSub()
+        {
+            _subH = Efl.evas_object_text_vert_advance_get(_sub);
+            _subAsc = AscentOf(_subH);
+            Changed();
+        }
+
+        /// <summary>What the list says while it has no rows.</summary>
+        protected void SetEmpty(string text)
+        {
+            Efl.evas_object_text_text_set(_empty, text);
+            MeasureEmpty();
+        }
+
+        private void MeasureEmpty()
+        {
+            _emptyW = Efl.evas_object_text_horiz_advance_get(_empty);
+            _emptyH = Efl.evas_object_text_vert_advance_get(_empty);
+            Changed();
+        }
 
         /// <summary>The clippers, the panel, the capsule and the header. Rows made after this sit above the capsule.</summary>
         protected void BuildChrome(string title)
@@ -62,22 +104,28 @@ namespace Launcher.Ui
             // The dock bar's material: rim 2 px outside, then the sheet, nine-sliced to the panel radius.
             _rim = Slice("pill_rim", Design.RimSlice, (Design.PanelRadius + Design.ShellBorderW) / (double)Design.RimSlice);
             _bg = Slice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
-            _divider = Efl.evas_object_rectangle_add(_evas);
-            Efl.evas_object_clip_set(_divider, _clip);
             // The selection: the 123 pad's ice capsule, its ends fully round (border_scale = half the plate's height / border).
             _plate = Slice("pill_cap", Design.CapSlice, (TaskLayout.RowH - 8) / 2.0 / Design.CapSlice);
 
             _title = Text(FontBold, 30);
             Efl.evas_object_text_text_set(_title, title);
+            _titleW = Efl.evas_object_text_horiz_advance_get(_title);
+            _titleAsc = Ascent(_title);
             _sub = Text(Font, 22);
             _empty = Text(Font, 26);
             Efl.evas_object_clip_set(_empty, _listClip);
+            MeasureSub();     // no text yet: an empty line's height
+            MeasureEmpty();
         }
 
         /// <summary>One part of the key hint: a key's picture (res/<paramref name="what"/>.png) or a word, then <paramref name="gap"/> px.</summary>
         protected void Foot(string what, bool key, int gap)
         {
-            _foot.Add(key ? FootIcon(what) : FootText(what)); _footKey.Add(key); _footGap.Add(gap);
+            IntPtr part = key ? FootIcon(what) : FootText(what);
+            int w = key ? FootKey : Efl.evas_object_text_horiz_advance_get(part), h = key ? FootKey : Efl.evas_object_text_vert_advance_get(part);
+            _foot.Add(part); _footKey.Add(key); _footGap.Add(gap); _footW.Add(w); _footH.Add(h);
+            _footTotal += w + gap;
+            Changed();
         }
 
         private IntPtr FootText(string word)
@@ -99,14 +147,6 @@ namespace Launcher.Ui
             Efl.evas_object_color_set(img, 0, 0, 0, 0);
             Efl.evas_object_show(img);
             return img;
-        }
-
-        /// <summary>Width of the footer line: keys, words and the spaces between them.</summary>
-        private int FooterWidth()
-        {
-            int w = 0;
-            for (int i = 0; i < _foot.Count; i++) w += (_footKey[i] ? FootKey : Efl.evas_object_text_horiz_advance_get(_foot[i])) + _footGap[i];
-            return w;
         }
 
         protected IntPtr Slice(string name, int border, double scale)
@@ -161,11 +201,8 @@ namespace Launcher.Ui
             return img;
         }
 
-        public bool Visible { get { return _visible; } }
-
         public void SetVisible(bool visible)
         {
-            _visible = visible;
             if (visible) Efl.evas_object_show(_clip); else Efl.evas_object_hide(_clip);
         }
 
@@ -180,12 +217,33 @@ namespace Launcher.Ui
             Efl.evas_object_text_shadow_color_set(t, 0, 0, 0, 150 * a / 255);
         }
 
+        /// <summary>
+        /// The row's one baseline: every text of a row stands on it, whatever its size (the name at 27 px and the value at 24 px
+        /// were each centred by their own box and ended up on two baselines, both low). <see cref="RowBase"/> px under the row's
+        /// middle, as drawn in design/dock.html; the 1 is the soft shadow's padding above the letters.
+        /// </summary>
+        protected const int RowBase = 9;
+        protected static int RowTextTop(IntPtr text, int rowMiddle) { return rowMiddle + RowBase - Ascent(text) - 1; }
+
+        /// <summary>
+        /// Slate ink for a text on the focus capsule. The style stays the soft shadow, with the shadow made invisible: switching to
+        /// the plain style dropped the shadow's padding, and the text jumped 1 px up and left when its row took the focus.
+        /// </summary>
+        protected static void InkText(IntPtr t, int a, int rgb)
+        {
+            TintRgb(t, a, rgb);
+            Efl.evas_object_text_shadow_color_set(t, 0, 0, 0, 0);
+        }
+
         protected static void TintRgb(IntPtr o, int a, int rgb)
         {
             Efl.evas_object_color_set(o, ((rgb >> 16) & 0xFF) * a / 255, ((rgb >> 8) & 0xFF) * a / 255, (rgb & 0xFF) * a / 255, a);
         }
 
         protected static void Place(IntPtr o, Box b) { Efl.evas_object_move(o, b.X, b.Y); Efl.evas_object_resize(o, b.W, b.H); }
+
+        /// <summary>Top of a text whose line height is known, standing on the row's baseline (as <see cref="RowTextTop(IntPtr, int)"/>).</summary>
+        protected static int RowTextTop(int lineHeight, int rowMiddle) { return rowMiddle + RowBase - AscentOf(lineHeight) - 1; }
 
         /// <summary>
         /// Draws the panel, the header, the divider, the footer and the capsule for a list of <paramref name="n"/> rows, and returns the
@@ -195,27 +253,42 @@ namespace Launcher.Ui
         {
             int slide = c.Slide;
             int a = (int)Math.Round(255f * c.Presence);
+            int rows = _layout.Rows(n);
 
-            Efl.evas_object_move(_clip, 0, 0);
-            Efl.evas_object_resize(_clip, _layout.WinW, _layout.WinH);
-            Place(_listClip, _layout.ListClip(n, slide));
-            Place(_rim, _layout.Rim(n, slide));
-            Place(_bg, _layout.Panel(n, slide));
-
-            // The header's texts stand on one baseline, HeaderBase under the header's top.
-            int headTop = _layout.HeaderTop(n, slide), headBase = headTop + HeaderBase;
-            Efl.evas_object_move(_title, _layout.ContentLeft, headBase - Ascent(_title));
-            Efl.evas_object_move(_sub, _layout.ContentLeft + Efl.evas_object_text_horiz_advance_get(_title) + 18, headBase - Ascent(_sub));
-            Box div; div.X = _layout.PanelX + TaskLayout.PadX; div.W = _layout.PanelW - 2 * TaskLayout.PadX; div.H = 1;
-            div.Y = _layout.ListTop(n, slide) - 6;
-            Place(_divider, div);
-            int fx = _layout.PanelX + (_layout.PanelW - FooterWidth()) / 2, fmid = _layout.FooterTop(n, slide) + FootKey / 2 - 4;
-            for (int i = 0; i < _foot.Count; i++)
+            if (!_clipPlaced)
             {
-                int w = _footKey[i] ? FootKey : Efl.evas_object_text_horiz_advance_get(_foot[i]);
-                int h = _footKey[i] ? FootKey : Efl.evas_object_text_vert_advance_get(_foot[i]);
-                Efl.evas_object_move(_foot[i], fx, fmid - h / 2);
-                fx += w + _footGap[i];
+                // The card's clipper covers the whole window, always.
+                _clipPlaced = true;
+                Efl.evas_object_move(_clip, 0, 0);
+                Efl.evas_object_resize(_clip, _layout.WinW, _layout.WinH);
+            }
+            if (!_chromeAt.Same(slide, n, rows, _version, 0f, 0f))
+            {
+                Place(_listClip, _layout.ListClip(n, slide));
+                Place(_rim, _layout.Rim(n, slide));
+                Place(_bg, _layout.Panel(n, slide));
+
+                // The header's texts stand on one baseline, HeaderBase under the header's top.
+                int headTop = _layout.HeaderTop(n, slide), headBase = headTop + HeaderBase;
+                Efl.evas_object_move(_title, _layout.ContentLeft, headBase - _titleAsc);
+                // The quieter line ends where the card's content ends: a long one ("The TV switches off in 120 min" on a 520 px card)
+                // is cut with an ellipsis instead of running to the card's edge.
+                int subX = _layout.ContentLeft + _titleW + 18;
+                Efl.evas_object_resize(_sub, Math.Max(1, _layout.ContentRight - subX), _subH);
+                Efl.evas_object_move(_sub, subX, headBase - _subAsc);
+                // The footer's keys and words are centred in its band (they sat 4 px high: 10 px above, 20 below).
+                int fx = _layout.PanelX + (_layout.PanelW - _footTotal) / 2, fmid = _layout.FooterTop(n, slide) + FootKey / 2;
+                for (int i = 0; i < _foot.Count; i++)
+                {
+                    Efl.evas_object_move(_foot[i], fx, fmid - _footH[i] / 2);
+                    fx += _footW[i] + _footGap[i];
+                }
+
+                if (n == 0)
+                {
+                    Box lc = _layout.ListClip(0, slide);
+                    Efl.evas_object_move(_empty, lc.X + (lc.W - _emptyW) / 2, lc.Y + (lc.H - _emptyH) / 2);
+                }
             }
 
             int key = a * 4 + (focused ? 1 : 0) + (n == 0 ? 2 : 0);
@@ -225,7 +298,6 @@ namespace Launcher.Ui
                 _chromeKey = key;
                 TintRgb(_rim, (int)Math.Round(a * Design.ShellBorderAlpha), Design.ShellBorderColor);
                 TintRgb(_bg, (int)Math.Round(a * Design.VolumeAlpha), Design.ShellColor);
-                Tint(_divider, (int)(a * Design.DividerAlpha));
                 TintText(_title, a);
                 TintText(_sub, a * 6 / 10);
                 // The hint is the focused card's: on the others it steps back.
@@ -234,15 +306,8 @@ namespace Launcher.Ui
                 TintText(_empty, n == 0 ? a * 6 / 10 : 0);
             }
 
-            if (n == 0)
-            {
-                Box lc = _layout.ListClip(0, slide);
-                int ew = Efl.evas_object_text_horiz_advance_get(_empty), eh = Efl.evas_object_text_vert_advance_get(_empty);
-                Efl.evas_object_move(_empty, lc.X + (lc.W - ew) / 2, lc.Y + (lc.H - eh) / 2);
-            }
-
             // Selection: one ice capsule on the selected row of the focused card (it slides between rows with the selection).
-            Place(_plate, _layout.Plate(c.SelPos, c.Scroll, n, slide));
+            if (!_plateAt.Same(slide, n, rows, _version, c.SelPos, c.Scroll)) Place(_plate, _layout.Plate(c.SelPos, c.Scroll, n, slide));
             int pa = n > 0 && focused && capsule ? (int)Math.Round(a * Design.FocusFillAlpha) : 0;
             if (pa != _plateAlpha) { _plateAlpha = pa; TintRgb(_plate, pa, Design.RingColor); }
             return a;

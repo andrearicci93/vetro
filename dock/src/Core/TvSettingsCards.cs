@@ -53,13 +53,17 @@ namespace Launcher.Core
 
         private const string Avoc = "busctl call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl ";
 
-        public static string GetCommand() { return Avoc + "GetPictureMode i 1"; }
+        // The reads give up after 3 s each (busctl waits 25 s by default): with avocd stuck, the 14 calls of one opening
+        // would otherwise keep the card "Reading…" for minutes. The set keeps the default: the switch itself may take a moment.
+        private const string AvocRead = "busctl --timeout=3 call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl ";
+
+        public static string GetCommand() { return AvocRead + "GetPictureMode i 1"; }
 
         /// <summary>One call for every candidate: each answer on its own line, in the candidates' order.</summary>
         public static string CheckCommand()
         {
             var parts = new List<string>();
-            foreach (int id in Candidates) parts.Add(Avoc + "CheckPictureModeByMode i " + id.ToString(CultureInfo.InvariantCulture) + " || echo x");
+            foreach (int id in Candidates) parts.Add(AvocRead + "CheckPictureModeByMode i " + id.ToString(CultureInfo.InvariantCulture) + " || echo x");
             return "{ " + string.Join("; ", parts.ToArray()) + "; }";
         }
 
@@ -104,7 +108,7 @@ namespace Launcher.Core
                 // Game, See colours, AI picture: Samsung's own menu shows only that mode and asks to turn it off first.
                 st.Rows.Clear();
                 st.Rows.Add(new ChoiceRow { Label = Name(current) ?? "Another mode", Value = current, Active = true });
-                st.Note = "Change it in Samsung's menu";
+                st.Note = "Set in Samsung's menu";   // short: it shares the header's line with the title, on a card that may be 520 px wide
                 st.Choosable = false;
                 return st;
             }
@@ -164,7 +168,7 @@ namespace Launcher.Core
                 st.Rows.Add(new ChoiceRow { Label = i == 0 ? "Off" : Minutes[i] + " min", Value = i, Active = known && i == index });
             if (!known) { st.Note = "Not available"; st.Choosable = false; return st; }
             if (index > 0 && int.TryParse(Value(read, LeftKey), NumberStyles.Integer, CultureInfo.InvariantCulture, out left) && left > 0)
-                st.Note = "The TV switches off in " + left + " min";
+                st.Note = "TV off in " + left + " min";
             return st;
         }
     }

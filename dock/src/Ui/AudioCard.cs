@@ -15,12 +15,13 @@ namespace Launcher.Ui
     {
         private const int Glyph = 40;
 
-        private sealed class Row { public IntPtr Icon, Text, Check; public int Key = -1; public bool Inked; }
+        private sealed class Row { public IntPtr Icon, Text, Check; public int Key = -1, TextH; }
 
         private readonly List<Row> _rows = new List<Row>();
         private List<OutputEntry> _entries = new List<OutputEntry>();
         private int _busyRow = -1;
         private string _busyText;
+        private PlaceKey _rowsAt;   // what the rows were last placed for
 
         public AudioCard(IntPtr win, TaskLayout layout, string assets, Action<string> log) : base(win, layout, assets, log, "audio") { }
 
@@ -39,7 +40,7 @@ namespace Launcher.Ui
             // OK play here · Up Back return
             Foot("key_ok", true, FootInner); Foot("play here", false, FootGroup);
             Foot("key_up", true, 2); Foot("key_back", true, FootInner); Foot("return", false, 0);
-            Efl.evas_object_text_text_set(_empty, "Reading the sound outputs…");
+            SetEmpty("Reading the sound outputs…");
             SetVisible(false);
         }
 
@@ -61,9 +62,11 @@ namespace Launcher.Ui
                 else Efl.evas_object_image_file_set(_rows[i].Icon, System.IO.Path.Combine(_assets, glyph + ".png"), null);
                 Efl.evas_object_text_ellipsis_set(_rows[i].Text, 1.0);
                 Efl.evas_object_text_text_set(_rows[i].Text, _entries[i].Label);
+                _rows[i].TextH = Efl.evas_object_text_vert_advance_get(_rows[i].Text);
                 _rows[i].Key = -1;
             }
-            Efl.evas_object_text_text_set(_sub, note ?? "");
+            SetSub(note ?? "");
+            Changed();
             Retint();
         }
 
@@ -73,6 +76,8 @@ namespace Launcher.Ui
             if (row < 0 || row >= _rows.Count) return;
             _busyRow = row; _busyText = text;
             Efl.evas_object_text_text_set(_rows[row].Text, text);
+            _rows[row].TextH = Efl.evas_object_text_vert_advance_get(_rows[row].Text);
+            Changed();
             _rows[row].Key = -1;
         }
 
@@ -87,15 +92,18 @@ namespace Launcher.Ui
             int iconX = _layout.IconX + (TaskLayout.IconSize - Glyph) / 2;
             int checkX = _layout.MemRight - Glyph;
             int textX = _layout.NameX, textW = checkX - 20 - textX;
+            bool place = !_rowsAt.Same(slide, n, _layout.Rows(n), Version, scroll, 0f);
             for (int i = 0; i < n; i++)
             {
                 Row r = _rows[i];
-                int mid = _layout.RowTop(i, scroll, n, slide) + TaskLayout.RowH / 2;
-                int th = Efl.evas_object_text_vert_advance_get(r.Text);
-                Efl.evas_object_move(r.Icon, iconX, mid - Glyph / 2);
-                Efl.evas_object_resize(r.Text, textW, th);
-                Efl.evas_object_move(r.Text, textX, mid - th / 2);
-                Efl.evas_object_move(r.Check, checkX, mid - Glyph / 2);
+                if (place)
+                {
+                    int mid = _layout.RowTop(i, scroll, n, slide) + TaskLayout.RowH / 2;
+                    Efl.evas_object_move(r.Icon, iconX, mid - Glyph / 2);
+                    Efl.evas_object_resize(r.Text, textW, r.TextH);
+                    Efl.evas_object_move(r.Text, textX, RowTextTop(r.TextH, mid));
+                    Efl.evas_object_move(r.Check, checkX, mid - Glyph / 2);
+                }
 
                 bool focus = focused && i == sel;
                 bool tick = _entries[i].Active && i != _busyRow;
@@ -103,15 +111,10 @@ namespace Launcher.Ui
                 int key = ra * 4 + (focus ? 1 : 0) + (tick ? 2 : 0);
                 if (key == r.Key) continue;
                 r.Key = key;
-                if (focus != r.Inked)
-                {
-                    r.Inked = focus;
-                    // On the ice capsule the text is slate and plain: the soft shadow that lifts white text off the glass would smudge it.
-                    Efl.evas_object_text_style_set(r.Text, focus ? Efl.EvasTextStylePlain : Efl.EvasTextStyleSoftShadow);
-                }
                 int ink = focus ? Design.ShellColor : 0xFFFFFF;
                 TintRgb(r.Icon, ra, ink);
-                if (focus) TintRgb(r.Text, ra, ink); else TintText(r.Text, ra);
+                // On the ice capsule the text is slate with no shadow (it would smudge dark ink on a light ground).
+                if (focus) InkText(r.Text, ra, ink); else TintText(r.Text, ra);
                 TintRgb(r.Check, tick ? ra : 0, ink);
             }
         }

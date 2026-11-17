@@ -37,7 +37,8 @@ namespace Launcher.Native
             devices = new List<BondedDevice>();
             try
             {
-                if (!_initialised) { int rc = BtInitialize(); _initialised = true; if (rc != 0) LastError = "bt_initialize rc=" + rc; }
+                // A refusal is not kept: right after a boot the Bluetooth service may not be ready, and the launcher lives for weeks.
+                if (!_initialised) { int rc = BtInitialize(); _initialised = rc == 0; if (rc != 0) LastError = "bt_initialize rc=" + rc; }
                 InitAudio();
                 var found = new List<BondedDevice>();
                 _keep = delegate (IntPtr info, IntPtr user)
@@ -57,9 +58,8 @@ namespace Launcher.Native
         private static void InitAudio()
         {
             if (_audioInitialised) return;
-            _audioInitialised = true;
-            try { int rc = AudioInitialize(); if (rc != 0) LastError = "bt_audio_initialize rc=" + rc; }
-            catch (Exception ex) { LastError = "bt_audio_initialize: " + ex.GetType().Name; }
+            try { int rc = AudioInitialize(); _audioInitialised = rc == 0; if (rc != 0) LastError = "bt_audio_initialize rc=" + rc; }
+            catch (Exception ex) { _audioInitialised = true; LastError = "bt_audio_initialize: " + ex.GetType().Name; }   // the call is not there: asking again will not bring it
         }
 
         public static bool TryConnect(string address)

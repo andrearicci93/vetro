@@ -33,7 +33,6 @@ namespace Launcher.Core
     {
         public int Pid, PPid;
         public long Ticks;      // utime + stime
-        public long MemoryKb;   // private resident + swap
     }
 
     /// <summary>
@@ -244,17 +243,6 @@ namespace Launcher.Core
                 if (c == 0) c = string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase);
                 return c != 0 ? c : string.CompareOrdinal(a.AppId, b.AppId);
             });
-        }
-
-        public static TaskSort Next(TaskSort s, int step)
-        {
-            int n = 3, i = ((int)s + step) % n;
-            return (TaskSort)(i < 0 ? i + n : i);
-        }
-
-        public static string SortName(TaskSort s)
-        {
-            return s == TaskSort.Cpu ? "CPU" : s == TaskSort.Name ? "Name" : "Memory";
         }
 
         public static string FormatMemory(long kb)

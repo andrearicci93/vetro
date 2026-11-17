@@ -7,7 +7,15 @@ namespace Launcher.Core
     // shell but letters, digits and ". _ -".
     internal static class ShardLaunch
     {
-        public const int ServicePort = 8099;
+        /// <summary>The port Vetro answers on. 8099 unless the package was built for another one (--service-port).</summary>
+        public static int ServicePort = 8099;
+
+        /// <summary>The port given on the command line, or the default when it is missing or not a usable port.</summary>
+        public static int ParsePort(string text)
+        {
+            int port;
+            return text != null && int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out port) && port >= 1024 && port <= 65535 ? port : 8099;
+        }
 
         public static string Command(AppEntry e, int port)
         {

@@ -28,8 +28,6 @@ namespace Launcher.Core
             _carry = new byte[recordSize];
         }
 
-        public int RecordSize { get { return _record; } }
-
         public List<int> Feed(byte[] data, int count)
         {
             var presses = new List<int>();

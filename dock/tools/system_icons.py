@@ -267,7 +267,10 @@ def render(slug, path):
     out = tile.copy()
     out.alpha_composite(g, (x0, (tile.height - g.height) // 2))
     text = Image.new("RGBA", tile.size, (0, 0, 0, 0))
-    ImageDraw.Draw(text).text((x0 + g.width + gap - tb[0], (tile.height - th) // 2 - tb[1]), label, font=font, fill=(255, 255, 255, 255))
+    # Placed by its capitals, not by its ink box: a name with a descender ("All apps", "App store") was lifted by it, and every
+    # label sat about 2 px above the glyph and the capsule's middle.
+    cap = probe.textbbox((0, 0), "H", font=font)
+    ImageDraw.Draw(text).text((x0 + g.width + gap - tb[0], (tile.height - (cap[3] - cap[1])) // 2 - cap[1]), label, font=font, fill=(255, 255, 255, 255))
     out = Image.alpha_composite(out, text)   # no shadow: the pill sits on the opaque bar
     out = out.resize((PILL_W, PILL_H), Image.LANCZOS)
     os.makedirs(os.path.dirname(path), exist_ok=True)

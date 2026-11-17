@@ -32,17 +32,18 @@ namespace Launcher.Core
         public static float RimWidth(int side) { return Math.Max(1f, side / (float)DockLayout.FocusIcon); }
 
         /// <summary>The square the finished icon will have for a w x h source.</summary>
-        public static int SideFor(int w, int h)
+        /// <param name="maxSide">The largest side worth keeping: a list that draws its icons small asks for less (less to compute, less memory).</param>
+        public static int SideFor(int w, int h, int maxSide = MaxSide)
         {
-            return Math.Max(MinSide, Math.Min(MaxSide, Math.Max(w, h)));
+            return Math.Max(MinSide, Math.Min(maxSide, Math.Max(w, h)));
         }
 
         /// <summary>Returns the finished icon: <see cref="SideFor"/> x <see cref="SideFor"/> pixels.</summary>
-        public static uint[] Prepare(uint[] src, int w, int h)
+        public static uint[] Prepare(uint[] src, int w, int h, int maxSide = MaxSide)
         {
             if (w <= 0 || h <= 0 || src == null || src.Length < w * h) throw new ArgumentException("bad icon size");
             // Big pictures (some apps ship a full-screen banner as their icon) are first brought down by whole halvings.
-            int side = SideFor(w, h);
+            int side = SideFor(w, h, maxSide);
             while (Math.Max(w, h) >= 2 * side && w > 1 && h > 1) { src = Halve(src, w, h); w = (w + 1) / 2; h = (h + 1) / 2; }
             bool square = w == h;
             bool filled = Coverage(src) >= LooseCoverage;

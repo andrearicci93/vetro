@@ -12,13 +12,15 @@ focus movement, icon growth/lift and per-icon glow colours; entrance and exit fa
 
 When it is on, the Home key opens this launcher instead of Samsung's Home. The dock shows
 the same apps, in the same order and with the same icons as Samsung's Home row, read
-from the TV at start-up, and ends with two outline pills, Settings and Samsung Home.
+from the TV at start-up (then the user's own order: hold OK on a tile to move it or take it out), and ends with two
+outline pills, All apps and Samsung Home. All apps lists every app, with Settings and the App store at its end.
 
-## Task manager
+## Control center and Task manager
 
-**Down** on the apps row (or below the last pill) opens a list of the apps that are running, in the dock's own
-glass: name, CPU and memory (private RAM plus swap of the app and its web renderers). **Left/Right** sorts by
-memory, CPU or name, **OK** switches to the selected app, **holding OK** (0.8 s) closes it (`app_launcher -t`, then
+**Down** on the apps row (or below the last pill) opens the Control center: up to three cards side by side (`--cards`,
+chosen in the dashboard): Task manager, Audio output, Picture mode, Sleep timer. **Left/Right** move between the cards.
+The Task manager lists the apps that are running, the biggest first: name, CPU (on a wide card) and memory (private RAM
+plus swap of the app and its web renderers). **OK** switches to the selected app, **holding OK** (0.8 s) closes it (`app_launcher -t`, then
 `-k` if it is still there two seconds later), **Up** on the first row or **Back** returns to the apps. A tap acts
 only when the key comes up (read from the input device and from the window), so a click never closes an app. Only visible UI apps are listed: Live TV, the
 on-screen menus, HbbTV, the keyboard and Vetro itself are left out (`Core/Tasks.cs`). Samsung's Home is listed, as

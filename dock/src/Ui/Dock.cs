@@ -38,6 +38,7 @@ namespace Launcher.Ui
         private int _dividerAlpha = -1;
         private readonly IntPtr[] _icon;
         private readonly IntPtr[] _initials;       // placeholder letters for icons that failed to load
+        private readonly int[] _initialsW, _initialsH;   // their size, measured once (the letters never change)
         private int _moving = -1;                  // the tile being moved (hold OK): its name reads "‹  Name  ›"
 
         private readonly Box[] _iconBox;
@@ -54,9 +55,6 @@ namespace Launcher.Ui
 
         public int MissingIcons { get; private set; }
 
-        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log)
-            : this(win, layout, items, assetsDir, log, null, false) { }
-
         /// <param name="hint">Word of the navigation hint ("Input", "Back"), or null for none.</param>
         /// <param name="hintUp">True: chevron up, capsule above the pill; false: chevron down, below it.</param>
         public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp)
@@ -72,6 +70,8 @@ namespace Launcher.Ui
             _evas = Efl.evas_object_evas_get(win);
             _icon = new IntPtr[items.Length];
             _initials = new IntPtr[items.Length];
+            _initialsW = new int[items.Length];
+            _initialsH = new int[items.Length];
             _iconBox = new Box[items.Length];
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
@@ -241,7 +241,7 @@ namespace Launcher.Ui
         // A tick on the icon's top right corner for the marked tiles (a slate disc and the white check): the dock draws no names, so this is how
         // All apps shows which apps the row holds. Made the first time something is marked.
         private IntPtr[] _badgeBg, _badge;
-        private int[] _badgeAlpha;
+        private int[] _badgeAlpha, _badgeX, _badgeY;
         public const int BadgeSize = 32, BadgeInset = 8;
 
         /// <summary>Tiles that carry a tick and whose name says "in the row" (All apps: the apps the user's row holds).</summary>
@@ -253,6 +253,7 @@ namespace Launcher.Ui
                 _fader.Invalidate();
                 if (_badge != null || value == null || value.Count == 0) { if (_badgeAlpha != null) for (int i = 0; i < _badgeAlpha.Length; i++) _badgeAlpha[i] = -1; return; }
                 _badgeBg = new IntPtr[_items.Length]; _badge = new IntPtr[_items.Length]; _badgeAlpha = new int[_items.Length];
+                _badgeX = new int[_items.Length]; _badgeY = new int[_items.Length];
                 for (int i = 0; i < _items.Length; i++)
                 {
                     IntPtr clip = i < _layout.AppCount ? _appsClip : _clip;
@@ -266,7 +267,7 @@ namespace Launcher.Ui
                     Efl.evas_object_resize(_badge[i], BadgeSize - 10, BadgeSize - 10);
                     Efl.evas_object_clip_set(_badge[i], clip);
                     Efl.evas_object_show(_badge[i]);
-                    _badgeAlpha[i] = -1;
+                    _badgeAlpha[i] = -1; _badgeX[i] = int.MinValue; _badgeY[i] = int.MinValue;
                 }
             }
         }
@@ -285,6 +286,8 @@ namespace Launcher.Ui
             AppEntry e = _items[i]; _items[i] = _items[j]; _items[j] = e;
             IntPtr o = _icon[i]; _icon[i] = _icon[j]; _icon[j] = o;
             o = _initials[i]; _initials[i] = _initials[j]; _initials[j] = o;
+            int m = _initialsW[i]; _initialsW[i] = _initialsW[j]; _initialsW[j] = m;
+            m = _initialsH[i]; _initialsH[i] = _initialsH[j]; _initialsH[j] = m;
             int g = _glowRgb[i]; _glowRgb[i] = _glowRgb[j]; _glowRgb[j] = g;
             _iconBox[i].W = _iconBox[j].W = -1; _iconAlpha[i] = _iconAlpha[j] = -1;
             _hlRgb = _hlRgb2 = -1;
@@ -372,6 +375,8 @@ namespace Launcher.Ui
                 Efl.evas_object_text_text_set(t, Initials(e.Label));
                 Efl.evas_object_show(t);
                 _initials[idx] = t;
+                _initialsW[idx] = Efl.evas_object_text_horiz_advance_get(t);
+                _initialsH[idx] = Efl.evas_object_text_vert_advance_get(t);
             }
             Efl.evas_object_image_filled_set(img, true);
             Efl.evas_object_image_smooth_scale_set(img, true);
@@ -536,6 +541,7 @@ namespace Launcher.Ui
             {
                 // Every item comes in on its own turn (the cascade); a pill stays a little dimmer than an icon until selected.
                 Box b = _layout.IconBox(i, fp, scroll, c.ItemSlide(i));
+                bool moved = !b.Equals(_iconBox[i]);
                 Place(_icon[i], ref _iconBox[i], b);
 
                 float amount = DockLayout.Amount(fp, i);
@@ -547,17 +553,21 @@ namespace Launcher.Ui
                     Tint(_icon[i], a);
                     if (_initials[i] != IntPtr.Zero) Efl.evas_object_color_set(_initials[i], a, a, a, a);
                 }
-                if (_initials[i] != IntPtr.Zero)
-                {
-                    int w = Efl.evas_object_text_horiz_advance_get(_initials[i]);
-                    int h = Efl.evas_object_text_vert_advance_get(_initials[i]);
-                    Efl.evas_object_move(_initials[i], b.X + (b.W - w) / 2, b.Y + (b.H - h) / 2);
-                }
+                // The letters follow their tile: moved only when the tile moved (Swap forgets the tile's box, so a swapped tile moves them too).
+                if (_initials[i] != IntPtr.Zero && moved)
+                    Efl.evas_object_move(_initials[i], b.X + (b.W - _initialsW[i]) / 2, b.Y + (b.H - _initialsH[i]) / 2);
                 if (_badge != null)
                 {
-                    int bx = b.X + b.W - BadgeSize + BadgeInset, by = b.Y - BadgeInset;
-                    Efl.evas_object_move(_badgeBg[i], bx, by);
-                    Efl.evas_object_move(_badge[i], bx + 5, by + 5);
+                    // The tick hangs BadgeInset over the tile's corner; on the focused tile, which is bigger, half of that, or it
+                    // reaches the next tile. Moved only when the tile has moved.
+                    int inset = BadgeInset - (b.W - DockLayout.Icon) * (BadgeInset / 2) / (DockLayout.FocusIcon - DockLayout.Icon);
+                    int bx = b.X + b.W - BadgeSize + inset, by = b.Y - inset;
+                    if (bx != _badgeX[i] || by != _badgeY[i])
+                    {
+                        _badgeX[i] = bx; _badgeY[i] = by;
+                        Efl.evas_object_move(_badgeBg[i], bx, by);
+                        Efl.evas_object_move(_badge[i], bx + 5, by + 5);
+                    }
                     int ba = _marked != null && _marked.Contains(i) ? (int)Math.Round(255f * c.ItemPresence(i)) : 0;
                     if (ba != _badgeAlpha[i])
                     {

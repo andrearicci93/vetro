@@ -138,8 +138,6 @@ namespace Launcher.Core
             return true;
         }
 
-        public bool Toggle() { return IsActive ? Hide() : Show(); }
-
         /// <summary>
         /// Takes over the visibility of the page the user is leaving, so switching pages inside a
         /// visible dock does not replay a hide and show. The new page starts a little tucked in

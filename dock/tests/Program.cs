@@ -1200,6 +1200,169 @@ namespace Launcher.Tests
                 T.Eq(after - before, 0L, "bytes allocated over 20000 iterations of 30 frames (sink " + sink + ")");
             });
 
+            T.Run("osd 123: the animator stops at rest and its restart moves exactly as a running one", () =>
+            {
+                // The pad's motion as it was written inline before (NumberPad.Tick: oFade, oX below), compared with PadMotion step by step.
+                var rnd = new Random(3);
+                var m = new PadMotion { Fade = 0, FocusX = 40 };
+                double oFade = 0, oX = 40;
+                bool sameAll = true, everSettled = false;
+                for (int f = 0; f < 400; f++)
+                {
+                    double dt = 1 / 60.0 + (rnd.NextDouble() - 0.5) * 0.004;
+                    bool onDone = (f / 50) % 3 == 1;
+                    double target = 40 + 96 * ((f / 37) % 4);
+                    bool gone;
+                    bool moving = m.Step(dt, false, onDone, target, out gone);
+                    oFade = Math.Min(1, oFade + dt / 0.12);
+                    if (!onDone) { oX += (target - oX) * Math.Min(1, dt * 18); if (Math.Abs(target - oX) < 0.5) oX = target; }
+                    sameAll &= m.Fade == oFade && m.FocusX == oX && !gone;
+                    // At rest exactly when every later frame would draw the same: opaque, and the capsule on its cell (or the focus on Done).
+                    T.True(moving == (oFade < 1 || (!onDone && oX != target)), "moving reported for frame " + f);
+                    everSettled |= !moving;
+                }
+                T.True(sameAll, "PadMotion follows the old arithmetic exactly");
+                T.True(everSettled, "the pad comes to rest");
+                var close = new PadMotion { Fade = 1, FocusX = 10 };
+                bool g = false; int frames = 0;
+                while (!g && frames < 100) { close.Step(1 / 60.0, true, false, 10, out g); frames++; }
+                T.True(g && close.Fade == 0 && frames == 8, "closing fades out in 0.12 s and says gone (" + frames + " frames)");
+                bool g2; T.True(close.Step(1 / 60.0, true, false, 10, out g2) == false && g2, "a closed pad stays gone");
+
+                // FrameStep: a run's first tick advances by the time since it began; a restart's first tick by the interval seen before.
+                var s = new FrameStep(0.05);
+                s.Begin(10.0);
+                T.True(Math.Abs(s.Next(10.008) - 0.008) < 1e-9, "first tick of a run: since it began");
+                T.True(Math.Abs(s.Next(10.028) - 0.020) < 1e-9 && Math.Abs(s.Interval - 0.020) < 1e-9, "a tick after a tick: the frame interval, and it is remembered");
+                s.Resume();
+                T.True(Math.Abs(s.Next(13.0) - 0.020) < 1e-9, "restarted after a rest of seconds: one frame interval, not the 50 ms cap");
+                T.True(Math.Abs(s.Next(13.020) - 0.020) < 1e-9, "then the time between ticks again");
+                T.True(s.Next(14.0) == 0.05, "a stalled frame is capped");
+                var fresh = new FrameStep(0.05);
+                fresh.Resume();
+                T.True(Math.Abs(fresh.Next(5) - 1 / 60.0) < 1e-12, "a restart before any interval was seen: 1/60 s");
+            });
+
+            T.Run("volume bar: it waits on a timer while it is held, and every frame is the one a running animator drew", () =>
+            {
+                // The old Tick, as it was: alpha from the time shown and the end of the hold.
+                Func<double, double, double, double> oldAlpha = (now, at, until) => { double a = Math.Min(1.0, (now - at) / 0.12); if (now > until) a = Math.Min(a, 1.0 - (now - until) / 0.22); return a; };
+                var rnd = new Random(5);
+                bool same = true;
+                for (int i = 0; i < 2000; i++)
+                {
+                    double at = rnd.NextDouble() * 10, until = at + 1.6, now = at + rnd.NextDouble() * 2.2;
+                    same &= VolumeFade.Alpha(now, at, until) == oldAlpha(now, at, until);
+                }
+                T.True(same, "VolumeFade.Alpha is the old formula");
+                T.True(VolumeFade.Holding(1.0, 5.0, 5.0) && !VolumeFade.Holding(1.0, 5.001, 5.0) && !VolumeFade.Holding(0.99, 4.0, 5.0), "held: full and not past the end");
+
+                // A model of both hosts on one 60 Hz clock: the old animator ticks every frame from the show to the end of the fade-out; the new one
+                // stops while held and a timer at the end of the hold adds it again (its first tick is the next frame). Keys come at random frames.
+                for (int run = 0; run < 50; run++)
+                {
+                    var keys = new HashSet<int>();
+                    for (int k = 0; k < 6; k++) keys.Add(rnd.Next(0, 400));
+                    double shownAtOld = 0, untilOld = 0, shownAtNew = 0, untilNew = 0, timerAt = -1;
+                    bool shownOld = false, shownNew = false, animNew = false;
+                    bool match = true; int ticksOld = 0, ticksNew = 0;
+                    for (int f = 0; f < 600; f++)
+                    {
+                        double now = f / 60.0, keyAt = now - 1 / 120.0;   // a key comes half a frame before the tick
+                        if (keys.Contains(f))
+                        {
+                            // Show(), the same code in both
+                            untilOld = keyAt + 1.6; if (!shownOld) { shownOld = true; shownAtOld = keyAt; } else if (keyAt - shownAtOld >= 0.13) shownAtOld = keyAt - 0.12;
+                            untilNew = keyAt + 1.6; if (!shownNew) { shownNew = true; shownAtNew = keyAt; } else if (keyAt - shownAtNew >= 0.13) shownAtNew = keyAt - 0.12;
+                            timerAt = -1; animNew = true;
+                        }
+                        if (timerAt >= 0 && timerAt <= now) { timerAt = -1; if (shownNew) animNew = true; }
+                        double aOld = -1, aNew = -1;
+                        if (shownOld) { ticksOld++; aOld = oldAlpha(now, shownAtOld, untilOld); if (aOld <= 0) shownOld = false; }
+                        if (shownNew && animNew)
+                        {
+                            ticksNew++;
+                            aNew = VolumeFade.Alpha(now, shownAtNew, untilNew);
+                            if (aNew <= 0) { shownNew = false; animNew = false; }
+                            else if (VolumeFade.Holding(aNew, now, untilNew)) { animNew = false; timerAt = untilNew; }
+                        }
+                        else if (shownNew) aNew = 1.0;   // not ticking: the last frame drawn stays, and it was drawn at full opacity
+                        if (aOld != aNew && !(aOld <= 0 && aNew <= 0)) match = false;
+                        if (shownOld != shownNew) match = false;
+                    }
+                    T.True(match, "run " + run + ": the same opacity on every frame, and gone on the same frame");
+                    T.True(ticksNew <= ticksOld, "fewer wake-ups (" + ticksNew + " against " + ticksOld + ")");
+                }
+            });
+
+            T.Run("cards: placement keys, the input-node gate, the guard's pending shell, the --perf probe", () =>
+            {
+                var k = new PlaceKey();
+                T.True(!k.Same(1, 2, 3, 4, 0.5f, 0f), "the first placement is never skipped");
+                T.True(k.Same(1, 2, 3, 4, 0.5f, 0f), "the same inputs: nothing to move");
+                T.True(!k.Same(1, 2, 3, 5, 0.5f, 0f), "a text changed (version)");
+                T.True(!k.Same(1, 2, 3, 5, 0.5001f, 0f), "the selection or the scroll moved");
+                T.True(k.Same(1, 2, 3, 5, 0.5001f, 0f), "and settled again");
+                k.Invalidate();
+                T.True(!k.Same(1, 2, 3, 5, 0.5001f, 0f), "invalidated: placed again");
+
+                long sec = TimeSpan.TicksPerSecond, t0 = 1000 * sec;
+                var g = new InputScanGate();
+                T.True(g.ShouldRead(t0, t0 + 100 * sec), "the first look reads");
+                g.Read(t0, t0 + 100 * sec, true);
+                T.True(!g.ShouldRead(t0, t0 + 103 * sec), "the directory unchanged since a clean read: skipped");
+                T.True(g.ShouldRead(t0 + 102 * sec, t0 + 103 * sec), "the directory changed: read");
+                g.Read(t0 + 102 * sec, t0 + 103 * sec, true);
+                T.True(g.ShouldRead(t0 + 102 * sec, t0 + 106 * sec), "changed one second before that read: read again (a second change could share its time)");
+                g.Read(t0 + 102 * sec, t0 + 106 * sec, true);
+                T.True(!g.ShouldRead(t0 + 102 * sec, t0 + 109 * sec), "then settled: skipped");
+                g.Read(t0 + 102 * sec, t0 + 109 * sec, false);
+                T.True(g.ShouldRead(t0 + 102 * sec, t0 + 112 * sec), "a node failed to open: the next look reads");
+                g.Read(t0 + 102 * sec, t0 + 112 * sec, true);
+                g.Force();
+                T.True(g.ShouldRead(t0 + 102 * sec, t0 + 115 * sec), "a node was dropped: read");
+                g.Read(t0 + 102 * sec, t0 + 115 * sec, true);
+                T.True(g.ShouldRead(0, t0 + 118 * sec), "the directory cannot be read: read");
+                g.Read(t0 + 102 * sec, t0 + 118 * sec, true);
+                int reads = 0;
+                for (int i = 0; i < 30; i++) if (g.ShouldRead(t0 + 102 * sec, t0 + (121 + 3 * i) * sec)) { reads++; g.Read(t0 + 102 * sec, t0 + (121 + 3 * i) * sec, true); }
+                T.Eq(reads, 3, "an unchanged directory is still read every " + InputScanGate.FullEvery + " looks");
+
+                var p = new PendingCommand();
+                T.True(!p.Pending && p.Take() == null, "nothing waits at first");
+                p.Set("a"); p.Set("b");
+                T.True(p.Pending && p.Take() == "b" && !p.Pending && p.Take() == null, "the newer press replaces the older; it runs once");
+
+                var probe = new OpenProbe();
+                T.True(probe.Tick(1.0, true) == null, "an idle probe says nothing");
+                probe.Begin("home", 10.0);
+                probe.HandlerDone(10.002);
+                T.True(probe.Tick(10.010, false) == null && probe.Tick(10.027, false) == null, "nothing before the last frame");
+                string line = probe.Tick(10.060, true);
+                T.Eq(line, "perf open home: frames=3 key to first tick ms=10.0 to first frame ms=27.0 to last frame ms=60.0 handler ms=2.0 interval ms max=33.0", "one line at the end");
+                T.True(!probe.Active && probe.Tick(10.1, true) == null, "and only one");
+
+                // The per-frame helpers allocate nothing (PlaceKey, the gate's skip, PadMotion, FrameStep, VolumeFade, an idle probe).
+                long sink = 0;
+                var mm = new PadMotion(); var st = new FrameStep(0.05); var idle = new OpenProbe(); var gate = new InputScanGate(); gate.Read(5, 10 * sec, true);
+                Action once = () =>
+                {
+                    bool gone;
+                    for (int f = 0; f < 30; f++)
+                    {
+                        if (!k.Same(f, 2, 3, 4, f * 0.1f, 0f)) sink++;
+                        sink += mm.Step(st.Next(f / 60.0), false, false, 100, out gone) ? 1 : 0;
+                        sink += VolumeFade.Holding(VolumeFade.Alpha(f / 60.0, 0, 1.6), f / 60.0, 1.6) ? 1 : 0;
+                        sink += idle.Tick(f, false) == null ? 1 : 0;
+                    }
+                    sink += gate.ShouldRead(5, 20 * sec) ? 1 : 0;
+                };
+                for (int i = 0; i < 2000; i++) once();
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                for (int i = 0; i < 20000; i++) once();
+                T.Eq(GC.GetAllocatedBytesForCurrentThread() - before, 0L, "bytes allocated by the new per-frame helpers (sink " + sink + ")");
+            });
+
             T.Run("tasks: app_launcher -S and pkginfo output (as printed by the Q80A)", () =>
             {
                 var r = Tasks.ParseStatus("\t appId (PID)\n\t  org.tizen.tv-viewer (482)\n\t  com.samsung.tv.cobalt-yt (3299)\r\n\t  bad id;rm (12)\n\t  x.y (0)\n");
@@ -1288,8 +1451,6 @@ namespace Launcher.Tests
                 Tasks.Sort(l, TaskSort.Memory); T.Eq(l[0].AppId, "b", "biggest first");
                 Tasks.Sort(l, TaskSort.Cpu); T.Eq(l[0].AppId, "c", "busiest first");
                 Tasks.Sort(l, TaskSort.Name); T.Eq(l[0].Label, "Alpha", "names ignore case");
-                T.Eq(Tasks.Next(TaskSort.Memory, -1), TaskSort.Name, "sort wraps left");
-                T.Eq(Tasks.Next(TaskSort.Name, 1), TaskSort.Memory, "sort wraps right");
                 T.Eq(Tasks.FormatMemory(118924), "116 MB", "MB");
                 T.Eq(Tasks.FormatMemory(5000), "4.9 MB", "small MB keeps a decimal");
                 T.Eq(Tasks.FormatCpu(-1), "–", "not measured yet");
@@ -1583,17 +1744,28 @@ namespace Launcher.Tests
                 ChoiceState hdr = PictureModes.Build("ii 393217 0", checks.ToString().Replace("i 2\ni 1\ni 2\n", "i 2\ni 1\ni 1\n"));
                 T.True(hdr.Rows.Exists(r => r.Label == "Movie" && r.Active), "an HDR variant reads as its own name");
                 ChoiceState game = PictureModes.Build("ii 65547 0", checks.ToString());
-                T.True(!game.Choosable && game.Rows.Count == 1 && game.Rows[0].Label == "Game" && game.Note == "Change it in Samsung's menu", "Game mode locks the list, as on Samsung's menu");
+                T.True(!game.Choosable && game.Rows.Count == 1 && game.Rows[0].Label == "Game" && game.Note == "Set in Samsung's menu", "Game mode locks the list, as on Samsung's menu");
                 T.True(!PictureModes.Build("", "").Choosable && PictureModes.Build("Failed to connect", checks.ToString()).Note == "Not available", "nothing read: not available");
                 T.Eq(PictureModes.SetCommand(655360), "busctl call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl SetPictureMode ii 655360 1", "set and saved, as Samsung's menu does");
                 T.True(PictureModes.SetCommand(65547) == null && PictureModes.SetCommand(-1) == null, "only a candidate can be set");
                 T.Eq(PictureModes.Numbers("ii 65538 0").Count, 2, "busctl's answer read"); T.Eq(PictureModes.Numbers("x 1").Count, 0, "not an answer");
+                // The reads give up after 3 s each (a stuck avocd must not hold the card for minutes); the set keeps busctl's own wait.
+                T.True(PictureModes.GetCommand().StartsWith("busctl --timeout=3 call org.tizen.tv.avoc "), "the read has a short timeout");
+                T.True(PictureModes.CheckCommand().Contains("busctl --timeout=3 call ") && !PictureModes.CheckCommand().Contains("busctl call "), "every check has it");
+                T.True(PictureModes.SetCommand(655360).StartsWith("busctl call "), "the set does not");
+                // The port the launcher calls Vetro on: the one given at start, 8099 for anything that is not a usable port.
+                T.Eq(ShardLaunch.ParsePort("9000"), 9000, "the service port given at start"); T.Eq(ShardLaunch.ParsePort(null), 8099, "no port: the default");
+                T.Eq(ShardLaunch.ParsePort("80"), 8099, "a reserved port is refused"); T.Eq(ShardLaunch.ParsePort("9000; reboot"), 8099, "only digits");
+                // A list that draws its icons small prepares them small: the Task manager asks for 104 px, the dock keeps 256.
+                T.Eq(IconPrep.SideFor(512, 512), 256, "the dock's icons: up to 256"); T.Eq(IconPrep.SideFor(512, 512, 104), 104, "the Task manager's: 104");
+                T.Eq(IconPrep.SideFor(64, 64, 104), 64, "a small icon is not enlarged");
+                T.Eq(IconPrep.Prepare(new uint[512 * 512], 512, 512, 104).Length, 104 * 104, "prepared at the size asked for");
                 string off = "memory/menu/system/time/sleeptimer/savetime, value = 0 (Int32)\ndb/menu/system/time/sleeptimer/time_t, value = 0 (String)\n";
                 ChoiceState s = SleepTimer.Build(off);
                 T.Eq(string.Join(",", s.Rows.ConvertAll(r => r.Label).ToArray()), "Off,30 min,60 min,120 min,180 min", "Samsung's five choices");
                 T.True(s.Rows[0].Active && s.Note == "", "off ticked, no line");
                 ChoiceState on = SleepTimer.Build("memory/menu/system/time/sleeptimer/savetime, value = 3 (Int32)\ndb/menu/system/time/sleeptimer/time_t, value = 97 (String)");
-                T.True(on.Rows[3].Active && on.Note == "The TV switches off in 97 min", "120 min chosen, 97 left");
+                T.True(on.Rows[3].Active && on.Note == "TV off in 97 min", "120 min chosen, 97 left");
                 T.True(!SleepTimer.Build("").Choosable && !SleepTimer.Build("memory/menu/system/time/sleeptimer/savetime, value = 9 (Int32)").Choosable, "unreadable or unknown: not available");
                 T.Eq(SleepTimer.SetCommand(2), "vconftool set -f -t int memory/menu/system/time/sleeptimer/savetime 2 && vconftool set -f -t string db/menu/system/time/sleeptimer/time_t 60", "the index first, then the minutes");
                 T.Eq(SleepTimer.SetCommand(0), "vconftool set -f -t int memory/menu/system/time/sleeptimer/savetime 0 && vconftool set -f -t string db/menu/system/time/sleeptimer/time_t 0", "off");

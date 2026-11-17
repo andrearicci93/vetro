@@ -333,10 +333,29 @@ namespace Launcher
         private static bool _listFailed;
         private static readonly HashSet<string> _openFailed = new HashSet<string>();
 
+        // The look every RescanSeconds reads /proc/bus/input/devices only when /dev/input may have changed (InputScanGate): one stat of the
+        // directory instead of the whole device list, for as long as the process lives, hidden or not. The fifo's "rescan" (Vetro's bridge
+        // has just made a node) and the look at start always read the list.
+        private static readonly InputScanGate ScanGate = new InputScanGate();
+
+        private static long InputDirTicks()
+        {
+            try { var d = new DirectoryInfo("/dev/input"); return d.Exists ? d.LastWriteTimeUtc.Ticks : 0; }
+            catch (Exception) { return 0; }
+        }
+
         private static byte OnRescan(IntPtr data)
         {
-            try { WatchNewNodes(); }
-            catch (Exception ex) { Log("input: rescan: " + ex.Message); }
+            try
+            {
+                long dir = InputDirTicks();
+                if (ScanGate.ShouldRead(dir, DateTime.UtcNow.Ticks))
+                {
+                    WatchNewNodes();
+                    ScanGate.Read(dir, DateTime.UtcNow.Ticks, !_listFailed && _openFailed.Count == 0);
+                }
+            }
+            catch (Exception ex) { Log("input: rescan: " + ex.Message); ScanGate.Force(); }
             return 1;
         }
 
@@ -345,6 +364,7 @@ namespace Launcher
         {
             if (_inputFds[index] < 0) return;
             Log("input: lost " + _inputPaths[index]);
+            ScanGate.Force();   // the next look reads the list: the node may come back without the directory changing
             if (_inputHandlers[index] != IntPtr.Zero) Efl.ecore_main_fd_handler_del(_inputHandlers[index]);
             Libc.close(_inputFds[index]);
             _inputFds[index] = -1;
@@ -521,6 +541,7 @@ namespace Launcher
         /// <summary>Down on the apps row: the Control center's cards rise where the bar was, in a window grown upwards for them.</summary>
         private static void OpenTasks()
         {
+            ProbeBegin("control center");
             float pop = Math.Min(_ctl.Presence, 0.55f);
             _ctl.Vanish();
             _dock.SetVisible(false);
@@ -535,14 +556,35 @@ namespace Launcher
                 RefreshTasks(true);
                 if (_taskRefresh == IntPtr.Zero) _taskRefresh = Efl.ecore_timer_add(TaskRefreshSeconds, TaskRefreshCb, IntPtr.Zero);
             }
-            if (HasCard(CardKind.Audio)) ReadOutputs(false);
-            foreach (CardKind k in _cards) if (ChoiceOf(k) != null) { ChoiceOf(k).Clear(); CardCtl(k).SetCount(0); _choiceFresh[(int)k] = true; SourceOf(k).Request(); }
+            if (HasCard(CardKind.Audio))
+            {
+                // The Bluetooth list is asked on the main loop (calls to another process, of unknown length on a TV): after the
+                // cards have come in, not in front of their first frame. Meanwhile the card shows what it showed last time
+                // ("Reading…" the first time).
+                _audioCtl.SetCount(_audioCard.Count);
+                if (_audioCard.Count > 0) _audioCtl.Select(_audioCard.ActiveRow);
+                CancelAudioReread();
+                _audioSelectActive = true;
+                _audioReread = Efl.ecore_timer_add(AudioOpenDelay, AudioRereadCb, IntPtr.Zero);
+            }
+            foreach (CardKind k in _cards)
+            {
+                ChoiceCard choice = ChoiceOf(k);
+                if (choice == null) continue;
+                // A card that already has its rows keeps them while the TV is asked again (the answer replaces them in place);
+                // only the first time is there nothing to show but "Reading…".
+                if (choice.Count == 0) { choice.Clear(); CardCtl(k).SetCount(0); }
+                else { choice.ClearBusy(); CardCtl(k).SetCount(choice.Count); CardCtl(k).Select(choice.ActiveRow); }
+                _choiceFresh[(int)k] = true;
+                SourceOf(k).Request();
+            }
             StartChoicePoll();
             ShowCards(true);
             ApplyCards();
             StartAnimator();
             ResetIdle();
             Log("control center: " + string.Join(",", Array.ConvertAll(_cards, k => k.ToString())));
+            ProbeHandlerDone();
         }
 
         /// <summary>Back to the apps row (<paramref name="rise"/>: it comes in at once), or put away while hidden.</summary>
@@ -612,7 +654,7 @@ namespace Launcher
         /// </summary>
         private static void ApplySnapshot(TaskSnapshot s)
         {
-            if (!_tasksOn) return;
+            if (!_tasksOn || _taskPanel == null) return;
             s.Apps = Tasks.UniqueById(s.Apps);   // one row per app id, or the panel counts a row it never draws
             RunningApp selected = _taskPanel.AppAt(_tasksCtl.Selected);
             if (s.Partial)
@@ -684,9 +726,6 @@ namespace Launcher
                     else if (card == CardKind.Audio) ChooseOutput();
                     else Choose(card);
                     break;
-                case TaskAction.Close:
-                    if (card == CardKind.Tasks) CloseTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
-                    break;
                 case TaskAction.Back:
                     LeaveTasks(true);
                     break;
@@ -711,6 +750,7 @@ namespace Launcher
         private static void TaskOkDown()
         {
             ResetIdle();
+            if (_taskPanel == null) return;
             if (!TaskOk.Press()) return;   // auto-repeat, or the window's copy of a press already handled
             _taskOkApp = _taskPanel.AppAt(_tasksCtl.Selected);
             if (_taskOkApp == null) { TaskOk.Cancel(); return; }
@@ -865,16 +905,37 @@ namespace Launcher
         /// </summary>
         private static void RebuildPages(AppEntry[] apps, int focus)
         {
+            ProbeBegin("row rebuild");
             long t0 = Stopwatch.GetTimestamp();   // how long a rebuild takes on a TV (the icons are prepared again) is not known yet
             bool onAll = _ctl == _allCtl;
             int allFocus = _allCtl.FocusTarget;
-            _appsDock.Destroy(); _inputsDock.Destroy(); _allDock.Destroy();
+            Dock inputsDock = _inputsDock, allDock = _allDock;
+            Controller inputsCtl = _inputsCtl, allCtl = _allCtl;
+            DockLayout inputsLayout = _inputsLayout, allLayout = _allLayout;
+            int wx = _appsLayout.WinX, wy = _appsLayout.WinY, ww = _appsLayout.WinW, wh = _appsLayout.WinH;
+            _appsDock.Destroy();
             _apps = apps;
             PageLayouts();
-            BuildPages();
-            MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
-            if (onAll) { ActivatePage(_allCtl, _allDock); _allCtl.SetFocus(allFocus); }
-            else _appsCtl.SetFocus(focus);
+            if (_appsLayout.WinX == wx && _appsLayout.WinY == wy && _appsLayout.WinW == ww && _appsLayout.WinH == wh)
+            {
+                // The window keeps its size (All apps is usually the widest page), so the Sources page and All apps are laid out
+                // exactly as before: they are kept, with their icons, and only the row is made again. Preparing every icon of the
+                // three pages at each change froze the launcher for a moment, and All apps lost its place.
+                _inputsLayout = inputsLayout; _allLayout = allLayout; _inputsCtl = inputsCtl; _allCtl = allCtl;
+                _inputsDock = inputsDock; _allDock = allDock;
+                _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
+                _appsDock.Build();
+                if (onAll) { _appsDock.SetVisible(false); _ctl = _allCtl; _dock = _allDock; }
+                else { _ctl = _appsCtl; _dock = _appsDock; _appsCtl.SetFocus(focus); }
+            }
+            else
+            {
+                inputsDock.Destroy(); allDock.Destroy();
+                BuildPages();
+                MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+                if (onAll) { ActivatePage(_allCtl, _allDock); _allCtl.SetFocus(allFocus); }
+                else _appsCtl.SetFocus(focus);
+            }
             MarkInRow();
             _ctl.Rise(1f);
             _dock.Apply(_ctl);
@@ -882,6 +943,7 @@ namespace Launcher
             StartClock();
             StartAnimator();
             ResetIdle();
+            ProbeHandlerDone();
         }
 
         /// <summary>All apps writes "in the row" under the apps that are in it.</summary>
@@ -894,10 +956,12 @@ namespace Launcher
 
         private static void OpenAllApps()
         {
+            ProbeBegin("all apps");
             MarkInRow();
             _allCtl.SetFocus(0);
             Log("all apps page, " + _allApps.Length + " entries");
             SelectPage(_allCtl, _allDock);
+            ProbeHandlerDone();
         }
 
         // OK on the apps row and on All apps: a tap opens the tile when the key comes up; held (0.8 s) it moves the tile (apps row)
@@ -997,9 +1061,18 @@ namespace Launcher
                 case "XF86Back":
                     AppEntry[] before = _moveBefore;
                     int back = Array.IndexOf(before, _apps[_moveIndex]);
-                    bool moved = !SameOrder(before, _apps);
+                    // The tile got where it is by swaps with its neighbours: the same swaps the other way put the row back
+                    // as it was, with nothing built again.
+                    while (back >= 0 && _moveIndex != back)
+                    {
+                        int step = _moveIndex + (back < _moveIndex ? -1 : 1);
+                        _appsDock.Swap(_moveIndex, step);
+                        _moveIndex = step;
+                    }
+                    bool restored = SameOrder(before, _apps);
+                    if (restored && back >= 0) _appsCtl.SetFocus(back);
                     FinishMove(false);
-                    if (moved) RebuildPages(before, back < 0 ? 0 : back);
+                    if (!restored) RebuildPages(before, back < 0 ? 0 : back);
                     return;
                 case "XF86Home":
                 case "XF86Exit":
@@ -1071,6 +1144,7 @@ namespace Launcher
         /// </summary>
         private static void StartClock()
         {
+            if (!Design.ShowClock) return;   // no clock is drawn in this look: no timer for it either
             string t = ClockText();
             _appsDock.SetClock(t);
             _inputsDock.SetClock(t);
@@ -1125,6 +1199,15 @@ namespace Launcher
 
         private static byte OnFrame(IntPtr data)
         {
+            byte again = Frame();
+            // The frame has been laid out (it is drawn when this callback returns): a Home guard that waited for it starts now.
+            if (GuardSpawn.Pending) ScheduleGuard();
+            return again;
+        }
+
+        private static byte Frame()
+        {
+            if (_dock == null) { _anim = IntPtr.Zero; return 0; }   // custom launcher mode: no page to draw
             try
             {
                 long t0 = _perf ? Stopwatch.GetTimestamp() : 0;
@@ -1148,7 +1231,7 @@ namespace Launcher
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
                     }
-                    if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
+                    if (_perf) { PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more); ProbeTick(now, !more); }
                     if (more) return 1;
                     _anim = IntPtr.Zero;
                     return 0;
@@ -1167,7 +1250,7 @@ namespace Launcher
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId);
                 }
                 else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
-                if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
+                if (_perf) { PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more); ProbeTick(now, !more); }
                 if (more) return 1;
             }
             catch (Exception ex) { Log("frame: " + ex); }
@@ -1183,6 +1266,19 @@ namespace Launcher
         private static string _perfWhy = "?";
         private static int _perfN;
         private static readonly double[] PerfDt = new double[2048], PerfWork = new double[2048];
+
+        // The openings (--perf): the key to the first frame and to the end of the entrance, one line each (OpenProbe). The Volume bar and the
+        // osd 123 have their own animators and carry their own probe.
+        private static OpenProbe _probe, _pillProbe, _padProbe;
+
+        private static void ProbeBegin(string what) { if (_probe != null) _probe.Begin(what, Efl.ecore_time_get()); }
+        private static void ProbeHandlerDone() { if (_probe != null) _probe.HandlerDone(Efl.ecore_time_get()); }
+        private static void ProbeTick(double now, bool last)
+        {
+            if (_probe == null || !_probe.Active) return;
+            string line = _probe.Tick(now, last);
+            if (line != null) Log(line);
+        }
 
         private static void PerfSample(double dt, double workMs, bool last)
         {
@@ -1241,7 +1337,7 @@ namespace Launcher
             _premapTimer = IntPtr.Zero;
             try
             {
-                if (_ctl.Phase == Phase.Hidden && !_tasksOn)
+                if (_dock != null && _ctl.Phase == Phase.Hidden && !_tasksOn)
                 {
                     _ctl.Reset();
                     _dock.Apply(_ctl);
@@ -1300,7 +1396,14 @@ namespace Launcher
                     if (IsOkKey(key) && FocusedCard == CardKind.Tasks) TaskOkDown(); else OnTaskKey(key);
                     return;
                 }
-                if (_moveIndex >= 0) { MoveKey(key); return; }
+                if (_moveIndex >= 0)
+                {
+                    // The OK that started the move is still held: its auto-repeat must not be read as the OK that ends it
+                    // (the move ended by itself a moment after it began, and the tile could not be carried).
+                    if (IsOkKey(key) && RowOk.IsDown) return;
+                    MoveKey(key);
+                    return;
+                }
                 // OK on the apps row and on All apps acts when it comes up: holding it moves a tile or adds it to the row instead.
                 if (IsOkKey(key) && (_ctl == _appsCtl || _ctl == _allCtl) && _ctl.IsActive) { RowOkDown(); return; }
                 int index;
@@ -1361,6 +1464,8 @@ namespace Launcher
         private static NumberPad _pad;
         private static void TogglePad()
         {
+            double keyAt = _perf ? Efl.ecore_time_get() : 0;
+            bool first = _pad == null;
             if (_pad == null)
                 _pad = new NumberPad(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH,
                     delegate (PadResult kind, string what)
@@ -1378,7 +1483,14 @@ namespace Launcher
                     });
             bool opening = !_pad.IsShown;
             if (opening) _padFromDock = _dockMapped;
+            if (_perf && opening)
+            {
+                if (_padProbe == null) _padProbe = new OpenProbe();
+                _padProbe.Begin(first ? "osd 123 (first, window built)" : "osd 123", keyAt);
+                _pad.Probe = _padProbe;
+            }
             _pad.Toggle();
+            if (_perf && opening) _padProbe.HandlerDone(Efl.ecore_time_get());
         }
 
         // The Audio output card: the TV speakers and the paired Bluetooth audio devices, read when the Control center opens and again after a choice.
@@ -1437,6 +1549,7 @@ namespace Launcher
                 {
                     ChoiceSource src = SourceOf(k);
                     if (src == null) continue;
+                    bool was = src.Busy;               // read before the take: an answer that lands between the two is taken at the next tick, not lost
                     ChoiceState st = src.TryTake();
                     if (st != null && _tasksOn)
                     {
@@ -1448,7 +1561,7 @@ namespace Launcher
                         ApplyCards();
                         StartAnimator();
                     }
-                    busy |= src.Busy;
+                    busy |= was;
                 }
                 if (busy) return 1;
             }
@@ -1474,11 +1587,13 @@ namespace Launcher
 
         private static readonly Efl.TaskCb AudioRereadCb = OnAudioReread;
         private static IntPtr _audioReread;
+        private static bool _audioSelectActive;        // the next read puts the selection on the output in use (the Control center has just opened)
+        private const double AudioOpenDelay = 0.35;    // after the cards' entrance
 
         private static byte OnAudioReread(IntPtr data)
         {
             _audioReread = IntPtr.Zero;
-            try { if (_tasksOn && HasCard(CardKind.Audio)) { ReadOutputs(true); ApplyCards(); } }
+            try { if (_tasksOn && HasCard(CardKind.Audio)) { bool select = _audioSelectActive; _audioSelectActive = false; ReadOutputs(!select); ApplyCards(); StartAnimator(); } }
             catch (Exception ex) { Log("outputs: " + ex.Message); }
             return 0;
         }
@@ -1515,6 +1630,8 @@ namespace Launcher
         private static bool OutputAction_(OutputAction what, OutputEntry e)
         {
             bool ok;
+            // Another choice made while a device chosen before is still connecting: that one must not take the sound a moment later.
+            if (what != OutputAction.Connect && _selectBtTimer != IntPtr.Zero) { Efl.ecore_timer_del(_selectBtTimer); _selectBtTimer = IntPtr.Zero; }
             if (what == OutputAction.UseTv) ok = Sound.TrySetSpeakerSelection(Sound.SpeakerTv);
             else if (what == OutputAction.UseBluetooth) ok = Sound.TrySetSpeakerSelection(Sound.SpeakerBluetooth);
             else
@@ -1534,6 +1651,7 @@ namespace Launcher
         private static int _levelBeforeMute;
         private static void VolumeKey(Command key)
         {
+            double keyAt = _perf ? Efl.ecore_time_get() : 0;
             int volume;
             if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }
             bool muted = SamsungMuted();
@@ -1551,8 +1669,17 @@ namespace Launcher
                 _levelBeforeMute = 0;
             }
             if (target != volume) { if (Sound.TrySetVolume(target)) volume = target; else Log("volume: level change refused"); }
+            bool first = _pill == null;
             if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge);
+            bool probe = _perf && !_pill.IsOnScreen;
+            if (probe)
+            {
+                if (_pillProbe == null) _pillProbe = new OpenProbe();
+                _pillProbe.Begin(first ? "volume bar (first, window built)" : "volume bar", keyAt);
+                _pill.Probe = _pillProbe;
+            }
             _pill.Show(volume, volume == 0 && _levelBeforeMute > 0);
+            if (probe) _pillProbe.HandlerDone(Efl.ecore_time_get());
         }
 
         private static byte OnFifo(IntPtr data, IntPtr handler)
@@ -1568,9 +1695,9 @@ namespace Launcher
                         Log("command " + c);
                         switch (c)
                         {
-                            case Command.Show: _perfWhy = "fifo-show"; ShowDock(); break;
+                            case Command.Show: _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
-                            case Command.Toggle: _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else ShowDock(); break;
+                            case Command.Toggle: _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
                             case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
                             case Command.Pad: TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
@@ -1616,16 +1743,7 @@ namespace Launcher
                             NavFromInput(code);
                             continue;
                         }
-                        if (_pad != null && _pad.IsShown) _pad.Close();
-                        double now = Efl.ecore_time_get();
-                        // The focused dock also gets XF86Home through evas and hides itself: count it once.
-                        if (now - _lastHome < HomeDebounceSeconds) continue;
-                        _lastHome = now;
-                        _lastRawHome = now;
-                        _perfWhy = "home";
-                        if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); continue; }
-                        if (DockActive) HideDock(); else ShowDock();
-                        ArmGuard();
+                        RawHome();
                     }
                     // The kernel always reports the release: it ends a held OK even when the window's key up is late.
                     for (int k = 0; k < InputReleases.Count; k++) if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
@@ -1635,15 +1753,86 @@ namespace Launcher
             return 1;
         }
 
+        // The kill chain is one shell that puts itself in the background, but starting it still waits for a shell to start (system()). That
+        // wait used to sit between the Home key and the dock's first frame; now the generation is written at once (so CancelGuard works as
+        // before) and the shell is started by a zero-delay timer added after the next frame has been laid out, or at once when nothing is
+        // being drawn. A second press before it ran replaces it: the older chain would have stopped at its first check anyway.
+        private static readonly PendingCommand GuardSpawn = new PendingCommand();
+        private static IntPtr _guardTimer;
+        private static readonly Efl.TaskCb GuardSpawnCb = OnGuardSpawn;
+
+        /// <summary>The Home key read from the input device: the dock opens or closes (or the custom launcher's app opens), and the guard is armed.</summary>
+        private static void RawHome()
+        {
+            if (_pad != null && _pad.IsShown) _pad.Close();
+            double now = Efl.ecore_time_get();
+            // The focused dock also gets XF86Home through evas and hides itself: count it once.
+            if (now - _lastHome < HomeDebounceSeconds) return;
+            _lastHome = now;
+            _lastRawHome = now;
+            _perfWhy = "home";
+            if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); return; }
+            if (DockActive) HideDock(); else { ProbeBegin("home"); ShowDock(); }
+            ArmGuard();
+            ProbeHandlerDone();
+        }
+
+        /// <summary>
+        /// The remote's nodes are opened before the pages are built, so what is pressed while the launcher starts waits in their buffers. Just
+        /// before the main loop starts they are read once: a Home press among them is answered now (until this change it was lost: nothing read
+        /// the remote yet), and every other key of that time is dropped, as it always was.
+        /// </summary>
+        private static void DrainStartupInput()
+        {
+            bool home = false;
+            for (int index = 0; index < _inputFds.Count; index++)
+            {
+                if (_inputFds[index] < 0) continue;
+                for (int round = 0; round < 64; round++)
+                {
+                    long n = (long)Libc.read(_inputFds[index], InputBuf, (UIntPtr)InputBuf.Length);
+                    if (n <= 0) break;
+                    InputPresses.Clear();
+                    InputReleases.Clear();
+                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses, InputReleases);
+                    if (InputPresses.Contains(_homeCode)) home = true;
+                }
+            }
+            if (!home) return;
+            Log("home pressed while the launcher was starting: answered now");
+            RawHome();
+        }
+
         private static void ArmGuard()
         {
             if (_guardApps == null) return;
             try
             {
                 NewGuardGeneration();
-                Libc.system(HomeGuard.Command(_guardApps, _guardFile, _guardGen));   // returns at once: the shell puts the whole chain in the background
+                GuardSpawn.Set(HomeGuard.Command(_guardApps, _guardFile, _guardGen));
+                if (_anim == IntPtr.Zero) ScheduleGuard();
             }
             catch (Exception ex) { Log("guard: " + ex.Message); }
+        }
+
+        private static void ScheduleGuard()
+        {
+            if (GuardSpawn.Pending && _guardTimer == IntPtr.Zero) _guardTimer = Efl.ecore_timer_add(0.0, GuardSpawnCb, IntPtr.Zero);
+        }
+
+        private static byte OnGuardSpawn(IntPtr data)
+        {
+            _guardTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            try
+            {
+                string cmd = GuardSpawn.Take();
+                if (cmd == null) return 0;
+                long t0 = _perf ? Stopwatch.GetTimestamp() : 0;
+                Libc.system(cmd);   // returns at once: the shell puts the whole chain in the background
+                if (_perf) Log("perf guard: shell started in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+            }
+            catch (Exception ex) { Log("guard: " + ex.Message); }
+            return 0;
         }
 
         /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
@@ -1863,7 +2052,9 @@ namespace Launcher
         {
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
+            if (_perf) _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
+            ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
             _dir = ResolveDir(args);
@@ -1935,30 +2126,6 @@ namespace Launcher
                 Efl.evas_object_resize(_win, layout.WinW, layout.WinH);
                 Log("window " + layout.WinW + "x" + layout.WinH + " at " + layout.WinX + "," + layout.WinY + " notification-level=" + level);
 
-                string res = Path.Combine(AppContext.BaseDirectory, "res");
-                string dumpIcons = Arg(args, "--dump-icons");
-                if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
-                BuildPages();
-                int cardsN = Math.Max(1, _cards.Length);
-                _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Tasks))), res, Log);
-                _taskPanel.Build();
-                _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Audio))), res, Log);
-                _audioCard.Build();
-                _pictureCard = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Picture))), res, Log, "picture", "Picture mode", "Reading the picture modes…");
-                _pictureCard.Build();
-                _sleepCard = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Sleep))), res, Log, "sleep", "Sleep timer", "Reading the sleep timer…");
-                _sleepCard.Build();
-                _dock = _appsDock;
-                if (!Flag(args, "--no-warmup")) WarmUp();
-                _appsDock.Apply(_appsCtl);
-                _inputsDock.Apply(_inputsCtl);
-                _allDock.Apply(_allCtl);
-                Log("engine in use: " + (Efl.EngineName(_dock.Evas) ?? "unknown") + ", " + _apps.Length + " apps, " + _inputs.Length + " inputs, " + _allApps.Length + " on All apps, "
-                    + (_appsDock.MissingIcons + _inputsDock.MissingIcons + _allDock.MissingIcons) + " icons missing" + (RowEdit.CanEdit(_apps) ? "" : "; the row cannot be edited (no row keys)"));
-
-                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
-                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyUp, KeyUpCb, IntPtr.Zero);
-                SetupFifo();
                 string guard = Arg(args, "--kill-on-home");
                 if (guard != null)
                 {
@@ -1972,7 +2139,58 @@ namespace Launcher
                     _homeLaunch = HomeLaunch.Parse(homeLaunch);
                     Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
+                // The remote is opened now, before the pages and the warm-up: a Home pressed meanwhile waits in the node's buffer and is answered
+                // when the loop starts (DrainStartupInput). The fifo is still made after the warm-up: until it has a reader the service sends the
+                // volume and 123 keys to the TV itself, and they must not wait for the start-up instead.
                 SetupInput(args);
+
+                string res = Path.Combine(AppContext.BaseDirectory, "res");
+                string dumpIcons = Arg(args, "--dump-icons");
+                if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
+                // Only what this run can show is built: in custom launcher mode the dock is never drawn (no pages, no cards), and of the
+                // Control center only the cards --cards names. Every use of a card is behind HasCard or the list of cards.
+                if (_homeLaunch == null) BuildPages();
+                int cardsN = Math.Max(1, _cards.Length);
+                if (HasCard(CardKind.Tasks))
+                {
+                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Tasks))), res, Log);
+                    _taskPanel.Build();
+                }
+                if (HasCard(CardKind.Audio))
+                {
+                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Audio))), res, Log);
+                    _audioCard.Build();
+                }
+                if (HasCard(CardKind.Picture))
+                {
+                    _pictureCard = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Picture))), res, Log, "picture", "Picture mode", "Reading the picture modes…");
+                    _pictureCard.Build();
+                }
+                if (HasCard(CardKind.Sleep))
+                {
+                    _sleepCard = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Sleep))), res, Log, "sleep", "Sleep timer", "Reading the sleep timer…");
+                    _sleepCard.Build();
+                }
+                _dock = _appsDock;
+                // The flags the tuner reads are cleared now (one left by a launcher that was killed), which also runs their first
+                // use here and not inside the first show.
+                OverlayFlag.Pid = Libc.getpid().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                OverlayFlag.Mark(OverlayFlag.DockPath, false, Log);
+                OverlayFlag.Mark(OverlayFlag.PadPath, false, Log);
+                if (_appsDock != null)
+                {
+                    if (!Flag(args, "--no-warmup")) WarmUp();
+                    _appsDock.Apply(_appsCtl);
+                    _inputsDock.Apply(_inputsCtl);
+                    _allDock.Apply(_allCtl);
+                    Log("engine in use: " + (Efl.EngineName(_dock.Evas) ?? "unknown") + ", " + _apps.Length + " apps, " + _inputs.Length + " inputs, " + _allApps.Length + " on All apps, "
+                        + (_appsDock.MissingIcons + _inputsDock.MissingIcons + _allDock.MissingIcons) + " icons missing" + (RowEdit.CanEdit(_apps) ? "" : "; the row cannot be edited (no row keys)"));
+                }
+                else Log("engine in use: " + (Efl.EngineName(Efl.evas_object_evas_get(_win)) ?? "unknown") + "; custom launcher mode: the dock's pages are not built");
+
+                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
+                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyUp, KeyUpCb, IntPtr.Zero);
+                SetupFifo();
 
                 string fpsArg = Arg(args, "--vblank-fps");
                 int fps;
@@ -1980,7 +2198,7 @@ namespace Launcher
                 if (_vblankFps > 0 && File.Exists("/usr/bin/tdm-monitor")) Efl.ecore_animator_add(FpsCb, IntPtr.Zero);
                 Log("animator frame time " + (Efl.ecore_animator_frametime_get() * 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
                 if (!Flag(args, "--hidden")) ShowDock();
-                else if (!Flag(args, "--no-premap"))
+                else if (!Flag(args, "--no-premap") && _appsDock != null)
                 {
                     _appsCtl.HoldFaint(0.012f);   // about 1% opacity: invisible, but drawn, so the shaders get compiled now
                     _appsDock.Apply(_appsCtl);
@@ -1991,6 +2209,7 @@ namespace Launcher
 
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
+                DrainStartupInput();   // after the collection: a Home answered here goes straight to its first frame
                 Log("elm_run");
                 Efl.elm_run();
                 Log("elm_run returned");

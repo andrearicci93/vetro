@@ -18,15 +18,15 @@ namespace Launcher.Ui
     {
         private const string Font = "SamsungOneUI 500";
         private const int NotificationLevelTop = 40, WindowLayer = 900;
-        private const double HoldSeconds = 1.6, FadeInSeconds = 0.12, FadeOutSeconds = 0.22;
+        private const double HoldSeconds = VolumeFade.HoldSeconds, FadeInSeconds = VolumeFade.FadeInSeconds;
 
         private readonly string _assets;
         private readonly Action<string> _log;
         private readonly VolumePlacement _p;
         private IntPtr _win, _rim, _body, _track, _fill, _clip, _num;
         private readonly IntPtr[] _icons = new IntPtr[3];
-        private IntPtr _animator;
-        private readonly Efl.TaskCb _tick;
+        private IntPtr _animator, _holdTimer;
+        private readonly Efl.TaskCb _tick, _holdEnd;
         private bool _built, _failed, _shown, _muted;
         private double _shownAt, _until;
         private int _fillLength, _iconLevel = -1;
@@ -34,10 +34,14 @@ namespace Launcher.Ui
         public VolumePill(string assets, Action<string> log, int screenW, int screenH, VolumeEdge edge)
         {
             _assets = assets; _log = log; _p = VolumePlacement.For(edge, screenW, screenH);
-            _tick = Tick;
+            _tick = Tick; _holdEnd = OnHoldEnd;
         }
 
-        public bool IsShown { get { return _shown; } }
+        /// <summary>--perf: the timing of a show from hidden (OpenProbe), or null.</summary>
+        public OpenProbe Probe;
+
+        /// <summary>The bar is on screen (fading in, held or fading out).</summary>
+        public bool IsOnScreen { get { return _shown; } }
 
         public void Show(int volume, bool muted)
         {
@@ -53,7 +57,24 @@ namespace Launcher.Ui
             }
             else if (now - _shownAt < FadeInSeconds + 0.01) { /* still fading in: keep going */ }
             else _shownAt = now - FadeInSeconds;   // came back during the fade-out: full again at once
+            // The hold starts again from now: the timer of the old one must not start the fade-out early. The animator runs at least one
+            // frame, which draws the new level (the fill and the icon follow it in Apply), then stops again while the bar is held.
+            CancelHold();
             if (_animator == IntPtr.Zero) _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero);
+        }
+
+        private void CancelHold()
+        {
+            if (_holdTimer != IntPtr.Zero) { Efl.ecore_timer_del(_holdTimer); _holdTimer = IntPtr.Zero; }
+        }
+
+        /// <summary>The hold has ended: the animator comes back for the fade-out.</summary>
+        private byte OnHoldEnd(IntPtr data)
+        {
+            _holdTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            try { if (_shown && _animator == IntPtr.Zero) _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero); }
+            catch (Exception ex) { _log("volume hold: " + ex.Message); }
+            return 0;
         }
 
         private bool Build()
@@ -182,18 +203,26 @@ namespace Launcher.Ui
             try
             {
                 double now = Efl.ecore_time_get();
-                double a = Math.Min(1.0, (now - _shownAt) / FadeInSeconds);
-                if (now > _until) a = Math.Min(a, 1.0 - (now - _until) / FadeOutSeconds);
+                double a = VolumeFade.Alpha(now, _shownAt, _until);
                 if (a <= 0)
                 {
                     Efl.evas_object_hide(_win);
                     _shown = false; _animator = IntPtr.Zero;
+                    CancelHold();
+                    if (Probe != null) Probe.Cancel();
                     return 0;
                 }
                 Apply(a);
-                return 1;
+                bool holding = VolumeFade.Holding(a, now, _until);
+                if (Probe != null && Probe.Active) { string line = Probe.Tick(now, a >= 1.0); if (line != null) _log(line); }
+                if (!holding) return 1;
+                // Full and held: every frame until the fade-out would draw the same bar. A one-shot timer brings the animator back then.
+                _animator = IntPtr.Zero;
+                CancelHold();
+                _holdTimer = Efl.ecore_timer_add(Math.Max(0.0, _until - now), _holdEnd, IntPtr.Zero);
+                return 0;
             }
-            catch (Exception ex) { _log("volume tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; Efl.evas_object_hide(_win); return 0; }
+            catch (Exception ex) { _log("volume tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; CancelHold(); Efl.evas_object_hide(_win); return 0; }
         }
     }
 }

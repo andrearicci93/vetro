@@ -21,7 +21,7 @@ namespace Launcher.Ui
         private const int BodyY = 92, BodyH = 96, CellY = BodyY + 12, CellH = 72, ChipY = 28, ChipH = 52;
         private const int NotificationLevelTop = 40, WindowLayer = 900, TypedSize = 36;
         private const string Font = "SamsungOneUI 500";
-        private const double FadeSeconds = 0.12, IdleSeconds = 14, SlideRate = 18;
+        private const double IdleSeconds = 14;
         // While the pad is open this file exists (touched on every key, OverlayFlag). The tuner reads the remote straight from the input device,
         // so it sees the arrows and OK too; it ignores the keys while the file is fresh, or Left/Right would also cycle its audio and open its channel pad.
         private const string OpenFlag = OverlayFlag.PadPath;
@@ -39,7 +39,18 @@ namespace Launcher.Ui
         private readonly Efl.TaskCb _tick, _idleCb;
         private readonly Efl.EvasCb _keyCb;
         private bool _built, _failed, _shown, _closing;
-        private double _fade, _lastFrame, _focusX;
+        // The fade and the capsule's slide. At rest (open, opaque, capsule on its cell) the animator stops; a key starts it again, and its
+        // first tick advances by one frame interval of the earlier run (FrameStep), so the next movement starts exactly as it did before.
+        private readonly PadMotion _motion = new PadMotion();
+        private readonly FrameStep _step = new FrameStep(0.05);
+        // What the last frame drew: the colours are set again only when one of their inputs changed (during a slide only the capsule moves).
+        private bool _tinted;
+        private double _tintFade;
+        private bool _tintDone;
+        private int _tintFocus, _tintPage, _focusDrawnX = int.MinValue;
+
+        /// <summary>--perf: the open's timing (OpenProbe), or null.</summary>
+        public OpenProbe Probe;
         private int _bodyX, _bodyW, _doneX, _doneW, _shownPage = -1;
 
         private readonly Action<bool> _closed;
@@ -70,12 +81,13 @@ namespace Launcher.Ui
             _model.Reset();
             _closing = false;
             LayoutPage(true);
-            _focusX = _slots[_model.Page][_model.Focus].X;
+            _motion.FocusX = _slots[_model.Page][_model.Focus].X;
             Refresh();
-            if (!_shown) { _shown = true; _fade = 0; _lastFrame = Efl.ecore_time_get(); Apply(); Efl.evas_object_show(_win); }
+            bool fresh = !_shown;
+            if (!_shown) { _shown = true; _motion.Fade = 0; _step.Begin(Efl.ecore_time_get()); _tinted = false; _focusDrawnX = int.MinValue; Apply(); Efl.evas_object_show(_win); }
             Efl.elm_win_activate(_win);
             ArmIdle();
-            if (_animator == IntPtr.Zero) _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero);
+            if (_animator == IntPtr.Zero) { if (!fresh) _step.Resume(); _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero); }
         }
 
         public void Close()
@@ -83,7 +95,15 @@ namespace Launcher.Ui
             if (!_shown || _closing) return;
             _closing = true;
             DisarmIdle();
-            if (_animator == IntPtr.Zero) _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero);
+            Wake();
+        }
+
+        /// <summary>Starts the animator again after it stopped at rest (a key, the close): it goes on as if it had kept running.</summary>
+        private void Wake()
+        {
+            if (!_shown || _animator != IntPtr.Zero) return;
+            _step.Resume();
+            _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero);
         }
 
         // ------------------------------------------------------------------ build
@@ -270,12 +290,16 @@ namespace Launcher.Ui
 
         private void Apply()
         {
-            double a = _fade;
+            double a = _motion.Fade;
             bool onDone = _model.OnDone;
+            int fx = (int)Math.Round(_motion.FocusX);
+            if (fx != _focusDrawnX) { _focusDrawnX = fx; Efl.evas_object_move(_focus, fx, CellY); }
+            // Every colour below follows from these four values: unchanged, they are already on screen.
+            if (_tinted && a == _tintFade && onDone == _tintDone && _model.Focus == _tintFocus && _model.Page == _tintPage) return;
+            _tinted = true; _tintFade = a; _tintDone = onDone; _tintFocus = _model.Focus; _tintPage = _model.Page;
             Tint(_rim, 0xFFFFFF, Design.ShellBorderAlpha * a);
             Tint(_body, Design.ShellColor, Design.VolumeAlpha * a);
             Tint(_focus, Design.RingColor, (onDone ? 0 : 0.96) * a);
-            Efl.evas_object_move(_focus, (int)Math.Round(_focusX), CellY);
             Tint(_typedBg, Design.ShellColor, Design.VolumeAlpha * a);   // always slate: it shows, it is never focused
             Tint(_typed, 0xFFFFFF, a);
             Tint(_doneBg, onDone ? Design.RingColor : Design.ShellColor, (onDone ? 0.96 : Design.VolumeAlpha) * a);
@@ -300,25 +324,24 @@ namespace Launcher.Ui
         {
             try
             {
-                double now = Efl.ecore_time_get(), dt = Math.Min(0.05, Math.Max(0, now - _lastFrame));
-                _lastFrame = now;
-                _fade = _closing ? _fade - dt / FadeSeconds : Math.Min(1, _fade + dt / FadeSeconds);
-                if (_closing && _fade <= 0)
+                double now = Efl.ecore_time_get(), dt = _step.Next(now);
+                bool gone;
+                bool moving = _motion.Step(dt, _closing, _model.OnDone, _slots[_model.Page][_model.Focus].X, out gone);
+                if (gone)
                 {
-                    _fade = 0; Efl.evas_object_hide(_win);
+                    Efl.evas_object_hide(_win);
                     _shown = false; _closing = false; _animator = IntPtr.Zero;
+                    if (Probe != null) Probe.Cancel();
                     MarkOpen(false);
                     SendPending();
                     return 0;
                 }
-                if (!_model.OnDone)
-                {
-                    double target = _slots[_model.Page][_model.Focus].X;
-                    _focusX += (target - _focusX) * Math.Min(1, dt * SlideRate);
-                    if (Math.Abs(target - _focusX) < 0.5) _focusX = target;
-                }
                 Apply();
-                return 1;
+                if (Probe != null && Probe.Active) { string line = Probe.Tick(now, !moving); if (line != null) _log(line); }
+                if (moving) return 1;
+                // At rest: every later frame would draw the same picture. The next key (or the close) starts the animator again.
+                _animator = IntPtr.Zero;
+                return 0;
             }
             catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; Efl.evas_object_hide(_win); MarkOpen(false); SendPending(); return 0; }
         }
@@ -350,10 +373,11 @@ namespace Launcher.Ui
                     case PadResult.None: break;
                     default:
                         // A move onto the other page starts the focus capsule at the cell it lands on.
-                        if (r == PadResult.Page) { LayoutPage(false); _focusX = _slots[_model.Page][_model.Focus].X; }
+                        if (r == PadResult.Page) { LayoutPage(false); _motion.FocusX = _slots[_model.Page][_model.Focus].X; }
                         Refresh();
                         break;
                 }
+                Wake();   // whatever the key did, the next frame draws it (and the capsule slides from where it is)
             }
             catch (Exception ex) { _log("pad key: " + ex.Message); }
         }

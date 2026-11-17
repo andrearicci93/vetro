@@ -8,7 +8,7 @@ const path = require('path');
 const {Resvg} = require('@resvg/resvg-js');
 
 const SIZE = 64;   // drawn at 32 px on the 1920 x 1080 screen: twice that, so the scaled picture stays sharp
-const MAP = {key_ok: 'pad-ok', key_left: 'pad-left', key_right: 'pad-right', key_up: 'pad-up', key_back: 'back'};
+const MAP = {key_ok: 'pad-ok', key_up: 'pad-up', key_back: 'back'};
 const src = path.join(__dirname, '..', '..', 'app', 'design-system', 'remote'), out = path.join(__dirname, '..', 'res');
 for (const [name, icon] of Object.entries(MAP)) {
     const svg = fs.readFileSync(path.join(src, icon + '.svg'), 'utf8')

@@ -2,7 +2,7 @@ using System;
 
 namespace Launcher.Core
 {
-    internal enum TaskAction { None, Moved, Open, Close, Left, Right, Back, Hide }
+    internal enum TaskAction { None, Moved, Open, Left, Right, Back, Hide }
 
     /// <summary>
     /// Geometry of one card of the Control center (the Task manager, the Audio output...): a glass panel with a header, a list of rows and a key
@@ -26,7 +26,6 @@ namespace Launcher.Core
         public const int FooterH = 54;
         public const int PadBottom = 10;
         public const int IconSize = 52;
-        public const int CpuColW = 110;        // right edge of the CPU column sits this far left of the memory column's
         /// <summary>Space between the panel's sides and the selection plate.</summary>
         public const int PlateInset = PadX - 8;
         public const int Margin = DockLayout.Margin;
@@ -120,7 +119,7 @@ namespace Launcher.Core
 
         public int IconX { get { return PanelX + PadX + 10; } }
         public int NameX { get { return IconX + IconSize + 22; } }
-        public int MemRight { get { return PanelX + PanelW - PadX - 14; } }
+        public int MemRight { get { return PanelX + PanelW - PadX - 10; } }   // the same inset as IconX on the left: the focus capsule holds its content evenly
         public int CpuRight { get { return MemRight - 150; } }
         /// <summary>Where a row's name must end: before the CPU column, or before the memory figure on a narrow card that has no CPU column.</summary>
         public int NameRight { get { return Narrow ? MemRight - 130 : CpuRight - 120; } }

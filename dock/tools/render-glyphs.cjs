@@ -15,6 +15,10 @@ const MAP = {
     out_tv: 'television-simple', out_bt: 'bluetooth', out_check: 'check'
 };
 const out = path.join(__dirname, '..', 'res');
+// Glyphs moved down (+) or up (-), in the 256 grid's units, so that their ink is centred in the picture: the television
+// stands high in its box and the check low, and side by side in a row of the Audio output card they were 3 px apart.
+const NUDGE = {out_tv: 13.33, out_check: -8};
+const nudged = (name, svg) => NUDGE[name] ? svg.replace('viewBox="0 0 256 256"', 'viewBox="0 ' + (-NUDGE[name]) + ' 256 256"') : svg;
 // The palette key: the glyph's outline is white like the others (tinted at run time), its four dots are a second picture in the colours of
 // the colour keys, in their order (red, green, yellow, blue), along the arc from the lower left over the top to the right: they keep their colour whatever the ink is.
 // The colours are the ones of NumberPadModel (RedColor ...). The dots are the glyph's last four sub-paths, drawn here slightly larger.
@@ -29,7 +33,7 @@ fs.writeFileSync(path.join(out, 'pad_colors_dots.png'), render(dots));
 for (const [name, glyph] of Object.entries(MAP)) {
     if (name === 'pad_colors') { fs.writeFileSync(path.join(out, name + '.png'), render(outline.replace(/currentColor/g, '#ffffff'))); continue; }
     const svg = fs.readFileSync(path.join(__dirname, 'glyphs', glyph + '-regular.svg'), 'utf8').replace(/currentColor/g, '#ffffff');
-    const png = new Resvg(svg, {fitTo: {mode: 'width', value: SIZE}}).render().asPng();
+    const png = new Resvg(nudged(name, svg), {fitTo: {mode: 'width', value: SIZE}}).render().asPng();
     fs.writeFileSync(path.join(out, name + '.png'), png);
 }
 console.log('rendered ' + (Object.keys(MAP).length + 1) + ' glyphs');
