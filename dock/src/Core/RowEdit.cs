@@ -6,7 +6,7 @@ namespace Launcher.Core
 {
     /// <summary>
     /// The user's own apps row: hold OK on a tile to move it (Left / Right) or take it out (Down), hold OK on an app of the All apps page
-    /// to add it to the row or take it out. The apps are the tiles before the pinned pills (All apps, Samsung Home), which never move.
+    /// or on an input of the Sources page (TV, HDMI 1-4) to add it to the row or take it out. The apps are the tiles before the pinned pills (All apps, Samsung Home), which never move.
     /// Every change is a new array; the row as the user leaves it is sent to Vetro by its row keys (<see cref="AppEntry.RowKey"/>), and
     /// Vetro lays it over Samsung's own Home row. Pure, so it is tested without a TV.
     /// </summary>
@@ -56,6 +56,43 @@ namespace Launcher.Core
             list.Insert(AppsEnd(row), app);
             if (list.Count > Catalog.MaxEntries) return row;
             return list.ToArray();
+        }
+
+        /// <summary>
+        /// Holding OK on a page of entries (All apps, Sources) can add them to the row or take them out: the row can be edited and at least one
+        /// entry of the page carries a row key. False for a Sources list written by an older Vetro (no keys): OK there only switches, and the page
+        /// does not promise a hold that cannot happen.
+        /// </summary>
+        public static bool CanAddFrom(AppEntry[] page, AppEntry[] row)
+        {
+            if (page == null || !CanEdit(row)) return false;
+            foreach (AppEntry e in page) if (!e.IsSystem && Catalog.ValidRowKey(e.RowKey)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Held OK on an entry of All apps or Sources: the row without it when it is there (<paramref name="added"/> false), with it at the end
+        /// when it is not (<paramref name="added"/> true). The same row when nothing can change: a pill, no row key, the row cannot be edited,
+        /// the last app of the row, or the row is full.
+        /// </summary>
+        public static AppEntry[] Toggle(AppEntry[] row, AppEntry entry, out bool added)
+        {
+            added = false;
+            if (entry == null || entry.IsSystem || entry.RowKey == null || !CanEdit(row)) return row;
+            int at = IndexOf(row, entry.RowKey);
+            if (at >= 0) return Remove(row, at);
+            AppEntry[] next = Add(row, entry);
+            added = next != row;
+            return next;
+        }
+
+        /// <summary>The entries of a page (All apps, Sources) that the row holds, by their place on the page: they carry the tick.</summary>
+        public static HashSet<int> Marks(AppEntry[] page, AppEntry[] row)
+        {
+            var marked = new HashSet<int>();
+            if (page == null || row == null) return marked;
+            for (int i = 0; i < page.Length; i++) if (IndexOf(row, page[i].RowKey) >= 0) marked.Add(i);
+            return marked;
         }
 
         /// <summary>Where the app with this row key is in the row, or -1.</summary>

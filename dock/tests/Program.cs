@@ -1731,6 +1731,51 @@ namespace Launcher.Tests
                 T.True(a.WinW == i.WinW && i.WinW == all.WinW && all.Raised && all.GroupStart == 28, "All apps shares the window, raised, with its pills");
             });
 
+            T.Run("row: sources added from the Sources page, taken out, marked; older lists", () =>
+            {
+                // The three lists as the service writes them (dock-catalog.js: tsv, inputsTsv, allAppsTsv) after the row ["app:org.a","source:14"].
+                AppEntry[] row = Catalog.Parse("a\tA\torg.a\t\t\t\t\tapp:org.a\nin-hdmi2\tHDMI 2\tsource:14\t\t\t\t\tsource:14\n"
+                    + "allapps\tAll apps\tpanel:allapps\nsamsunghome\tSamsung Home\tsys:com.samsung.tv.csfs").Entries;
+                AppEntry[] inputs = Catalog.Parse("# Sources in physical port order\nin-tv\tTV\tsource:0\t\t\t\t\tsource:0\nin-hdmi1\tHDMI 1 - Console\tsource:13\t\t\t\t\tsource:13\n"
+                    + "in-hdmi2\tHDMI 2\tsource:14\t\t\t\t\tsource:14\nin-hdmi3\tHDMI 3\tsource:15\t\t\t\t\tsource:15\nin-hdmi4\tHDMI 4\tsource:16\t\t\t\t\tsource:16").Entries;
+                T.Eq(inputs.Length, 5, "the five inputs parse with their row keys");
+                T.Eq(inputs[0].RowKey, "source:0", "TV is source:0");
+                T.True(inputs[0].SourceType == 0 && inputs[1].SourceType == 13 && !inputs[1].IsSystem, "an input is a plain entry that switches the source");
+                T.Eq(row[1].SourceType, 14, "the row tile of an input switches to it");
+                T.Eq(RowEdit.IndexOf(row, "source:14"), 1, "the source in the row is found by its key");
+                T.True(RowEdit.CanEdit(row), "a row with a source tile can still be edited");
+                T.True(RowEdit.CanAddFrom(inputs, row), "Sources with row keys: hold OK adds and takes out");
+                T.Eq(string.Join(",", RowEdit.Marks(inputs, row)), "2", "HDMI 2 carries the tick on Sources");
+                bool added;
+                AppEntry[] more = RowEdit.Toggle(row, inputs[1], out added);
+                T.True(added, "HDMI 1 goes into the row");
+                T.Eq(string.Join(",", Array.ConvertAll(more, e => e.Slug)), "a,in-hdmi2,in-hdmi1,allapps,samsunghome", "at the end of the apps, before the pills");
+                T.Eq(string.Join(",", RowEdit.Marks(inputs, more)), "1,2", "the marks follow at once");
+                T.Eq(RowEdit.Command(RowEdit.Keys(more), 8099),
+                    "( /usr/bin/curl -sf -m 15 -X POST -H 'Content-Type: application/json' -d '{\"row\":[\"app:org.a\",\"source:14\",\"source:13\"]}' 'http://127.0.0.1:8099/plugins/launcher/api/row' >/dev/null 2>&1 ) &",
+                    "the source keys go to Vetro as they are");
+                AppEntry[] less = RowEdit.Toggle(more, inputs[2], out added);
+                T.True(!added && RowEdit.IndexOf(less, "source:14") < 0 && less.Length == 4, "a second hold on HDMI 2 takes it out");
+                T.Eq(string.Join(",", Array.ConvertAll(less, e => e.Slug)), "a,in-hdmi1,allapps,samsunghome", "the rest of the row keeps its order");
+                AppEntry[] lone = RowEdit.Remove(less, 0);
+                T.Eq(string.Join(",", Array.ConvertAll(lone, e => e.Slug)), "in-hdmi1,allapps,samsunghome", "a row of one source");
+                T.True(RowEdit.Toggle(lone, inputs[1], out added) == lone && !added, "the last tile of the row stays, even a source");
+                T.True(RowEdit.Toggle(row, row[2], out added) == row && !added, "a pill is never toggled");
+                // A full row: nothing is added.
+                var full = new List<AppEntry>();
+                for (int n = 0; n < Catalog.MaxEntries - 2; n++) full.Add(new AppEntry("x" + n, "X", "org.x" + n, null, null, -1, null, false, null, null, false, "app:org.x" + n));
+                full.Add(row[2]); full.Add(row[3]);
+                AppEntry[] fullRow = full.ToArray();
+                T.True(RowEdit.Toggle(fullRow, inputs[0], out added) == fullRow && !added, "the row is full: the source is not added");
+                // A Sources list written by an older Vetro (no eighth column), or the built-in one: OK only switches, no hold, no promise.
+                AppEntry[] oldInputs = Catalog.Parse("in-tv\tTV\tsource:0\nin-hdmi1\tHDMI 1\tsource:13").Entries;
+                T.True(!RowEdit.CanAddFrom(oldInputs, row) && !RowEdit.CanAddFrom(Catalog.BuiltInInputs(), row), "an older Sources list cannot add");
+                T.True(RowEdit.Toggle(row, oldInputs[1], out added) == row && !added, "and a hold on it does nothing");
+                T.Eq(RowEdit.Marks(oldInputs, row).Count, 0, "and nothing is marked");
+                AppEntry[] oldRow = Catalog.Parse("a\tA\torg.a\nallapps\tAll apps\tpanel:allapps").Entries;
+                T.True(!RowEdit.CanAddFrom(inputs, oldRow), "a row of an older Vetro cannot take a source either");
+            });
+
             T.Run("picture mode and sleep timer cards: what is read, what is offered, what is sent", () =>
             {
                 T.Eq(string.Join(",", Array.ConvertAll(ControlCenter.Parse("sleep,picture,tasks,audio", false), k => k.ToString())), "Sleep,Picture,Tasks", "the two new cards, at most three");

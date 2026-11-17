@@ -50,13 +50,19 @@
     { n: 'Video', g: '#c2364a', ch: '▶' }, { n: 'Music', g: '#1fa971', ch: '♪' }, { n: 'Web', g: '#2a8fb8', ch: '◎' },
     { n: 'Photos', g: '#d98a1e', ch: '▦' }, { n: 'Games', g: '#8a52d6', ch: '✦' }, { n: 'Library', g: '#b8478f', ch: '☰' }, { n: 'Smart Things', g: '#3d7ad6', ch: '⌂' }
   ];
+  // An input the user put in the row from Sources (hold OK there): its tile is the Sources page's own picture, at the end of the apps.
+  var ROW_SOURCE = { n: 'HDMI 2', img: 'in-hdmi2', glow: '#e2edff' };
   var PAGES = {
-    apps: { items: APPS.concat([{ n: 'All apps', pill: 'allapps', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length, raised: false, hint: 'Source', up: true, below: (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',').length > 1 ? 'Control center' : 'Task manager' },
+    apps: { items: APPS.concat([ROW_SOURCE, { n: 'All apps', pill: 'allapps', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length + 1, raised: false, hint: 'Source', up: true, below: (new URLSearchParams(location.search).get('cards') || 'tasks,audio').split(',').length > 1 ? 'Control center' : 'Task manager' },
     /* All apps (the pill): every app the user can put in the row, by name, then Settings and the App store as pills; hold OK adds or takes out */
     allapps: { items: APPS.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).concat([{ n: 'Browser', g: '#2f6fd6', ch: '◍' }, { n: 'Gallery', g: '#e0567a', ch: '✿' }])
       .concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'App store', pill: 'store', glow: '#e2edff' }]), groupStart: APPS.length + 2, raised: true, hint: 'Hold OK to add or take out  ·  Back', up: false },
-    inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, { n: 'HDMI 2', img: 'in-hdmi2', glow: '#e2edff' }, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, hint: 'Back', up: false }
+    /* Sources: hold OK adds the input to the row or takes it out, like All apps (a Sources list of an older Vetro has no row keys: "Back" only) */
+    inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, ROW_SOURCE, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, hint: 'Hold OK to add or take out  ·  Back', up: false }
   };
+  // The tick (RowEdit.Marks): on All apps and Sources, the entries the row holds.
+  PAGES.allapps.marked = PAGES.allapps.items.map(function (it) { return PAGES.apps.items.indexOf(it) >= 0 && !it.pill; });
+  PAGES.inputs.marked = PAGES.inputs.items.map(function (it) { return PAGES.apps.items.indexOf(it) >= 0; });
 
   function layout(p) {
     var L = { count: p.items.length };
@@ -109,6 +115,14 @@
     els.div = L.groupStart >= 0 ? Tv.mk(C, 'rule', 0, 0, DIVW, DIVH, { '--a': Tv.tok('--vetro-tv-dock-divider') }) : null;
     els.ring1 = document.createElement('img'); els.ring1.className = 'pic'; els.ring1.src = 'assets/dock/dock_ring.png'; C.appendChild(els.ring1);
     els.ring2 = document.createElement('img'); els.ring2.className = 'pic'; els.ring2.src = 'assets/dock/dock_ring.png'; C.appendChild(els.ring2);
+    // the tick (made last, over the ring, as on the TV): a 32 px slate disc with out_check in white, over the icon's top right corner, at its opacity
+    els.badges = [];
+    if (P.marked) P.marked.forEach(function (on, i) {
+      if (!on) return;
+      var bd = Tv.mk(C, 'tint', 0, 0, 32, 32, { 'border-radius': '50%', 'background': '#243448' });
+      Tv.mk(bd, 'tint', 5, 5, 22, 22, { 'background': '#fff', '-webkit-mask-box-image': 'url(assets/dock/out_check.png) 0 / 0 stretch' });
+      els.badges[i] = bd;
+    });
     els.hint = Tv.mk(C, 'hint'); els.hint.innerHTML = '<span>' + P.hint + '</span><img src="assets/dock/' + (P.up ? 'chev_up' : 'chev_down') + '.png" alt="">';
     els.below = P.below ? Tv.mk(C, 'hint') : null; if (els.below) els.below.innerHTML = '<span>' + P.below + '</span><img src="assets/dock/chev_down.png" alt="">';
   }
@@ -143,6 +157,11 @@
         if (e.className === 'tile') e.style.fontSize = Math.round(size * .38) + 'px';
         var vis = cx + ICON / 2 > X0 + PADX - 1 && cx - ICON / 2 < X0 + PADX + L.viewportW + 1 || a > 0;
         e.style.display = vis ? '' : 'none';
+        var bd = els.badges && els.badges[i];
+        if (bd) {   // 8 px over the corner, 4 on the focused (bigger) tile so it never reaches the next one
+          var inset = 8 - Math.round((size - ICON) * 4 / (FOCUS - ICON)), ex = cx + size / 2, ey = Y0 + rowCY() - size / 2 - Math.round(LIFT * a) + slide;
+          place(bd, ex - 32 + inset, ey - inset, 32, 32); bd.style.opacity = e.style.opacity; bd.style.display = e.style.display;
+        }
       }
     });
     if (!isPinned(Math.round(pos))) els.pcap.style.display = 'none';

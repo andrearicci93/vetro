@@ -156,8 +156,9 @@ function sourceEntries(parsed, options) {
         var name = cleanLabel(meta.EditName || meta.DetectedName, base);
         var useImages = options && options.useSourceImages === true && type >= 13;
         var samsung = useImages ? [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(iconOk)[0] || null : null;
+        // The row key (source:<type>, TV is source:0) lets the launcher add the input to the user's row from the Sources page (hold OK).
         var entry = {slug: type === 0 ? 'in-tv' : 'in-hdmi' + (type - 12), label: name,
-            appId: 'source:' + type, icon: samsung, killFirst: null};
+            appId: 'source:' + type, icon: samsung, killFirst: null, key: 'source:' + type};
         // The Sources page always keeps TV, HDMI1, HDMI2, HDMI3, HDMI4 order and port labels.
         entry.inputLabel = type === 0 || name === base ? base : cleanLabel(base + ' - ' + name, base);
         return entry;
@@ -177,10 +178,13 @@ function youtubeIcon(parsed) {
 
 function build(parsed, options) {
     options = options || {};
-    var entries = [], skipped = [], slugs = {}, inputs = sourceEntries(parsed, options), seenPorts = {};
+    var entries = [], skipped = [], slugs = {}, inputs = sourceEntries(parsed, options), seenPorts = {}, inputSlugs = {};
+    // An input's tile in the row is drawn with the launcher's own picture of that slug (res/icons/in-hdmi2.png): an app whose name
+    // happens to slug the same way gets another one, so the input never loses its picture.
+    inputs.forEach(function (source) { inputSlugs[source.slug] = true; });
     function make(slug, label, appId, icon, key) {
-        var base = slug, n = 2;
-        while (slugs[slug] || RESERVED_SLUGS.indexOf(slug) >= 0) slug = base.slice(0, 36) + '-' + n++;
+        var base = slug, n = 2, input = typeof key === 'string' && key.indexOf('source:') === 0;
+        while (slugs[slug] || RESERVED_SLUGS.indexOf(slug) >= 0 || (!input && inputSlugs[slug])) slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
         return {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null, key: key || (appId ? 'app:' + appId : null)};
     }
@@ -258,6 +262,16 @@ function build(parsed, options) {
         var e = make(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[id] || parsed.packageIcons[reg.appId], key);
         pool[key] = e; poolList.push(e);
     });
+    // Every input of the Sources page can be put in the row (hold OK there), whether or not it is on Samsung's row and whatever
+    // showHomeSources says (that option only decides whether the sources on Samsung's row arrive in the row by themselves). Made after
+    // everything above, so a Home-row source keeps its own slug; the tile is the one that option makes. These belong to the Sources page,
+    // not to All apps: they stay out of poolList (a Home-row source with the option on is already in it, and is not made twice).
+    var sourceTiles = [];
+    inputs.forEach(function (source) {
+        if (pool[source.key]) return;
+        var e = make(source.slug, source.label, source.appId, source.icon, source.key);
+        pool[source.key] = e; sourceTiles.push(e);
+    });
     // The user's own row (Vetro's dock state, never Samsung's .appLayerCache): their order first, then whatever Samsung's row
     // holds that they have not placed (a newly installed app arrives at the end), without the ones they took out; custom names.
     var row = options.row && typeof options.row === 'object' ? options.row : null;
@@ -277,7 +291,7 @@ function build(parsed, options) {
         entries = out;
     }
     var labels = row && row.labels && typeof row.labels === 'object' ? row.labels : {};
-    poolList.forEach(function (e) { if (typeof labels[e.key] === 'string' && cleanLabel(labels[e.key], '')) e.label = cleanLabel(labels[e.key], e.label); });
+    poolList.concat(sourceTiles).forEach(function (e) { if (typeof labels[e.key] === 'string' && cleanLabel(labels[e.key], '')) e.label = cleanLabel(labels[e.key], e.label); });
     // A plugin that claims an app (manifest "intercepts") takes over its tile: the dock asks Vetro to start it instead of
     // starting it itself. Only the flag goes into the list, never anything the plugin wrote. The viewer is Live TV, not an app.
     var claimed = options.intercepted || {};

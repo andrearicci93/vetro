@@ -860,6 +860,7 @@ namespace Launcher
             if (Efl.vconf_get_int("memory/system/source_type", out type) == 0)
                 for (int i = 0; i < _inputs.Length; i++) if (_inputs[i].SourceType == type) { current = i; break; }
             _inputsDock.CurrentIndex = current;
+            if (_sourcesEditable) MarkSources();
             _inputsCtl.SetFocus(current >= 0 ? current : 0);
             Log("inputs panel, source_type=" + type + " current=" + current);
             SelectPage(_inputsCtl, _inputsDock);
@@ -868,7 +869,9 @@ namespace Launcher
         // ------------------------------------------------------------------ the three pages, and the user's own row
 
         private static DockLayout _inputsLayout, _allLayout;
-        private const string AllAppsHint = "Hold OK to add or take out  \u00b7  Back";
+        // The hint of All apps, and of Sources when its inputs can be put in the row (a Sources list of an older Vetro has no row keys: "Back").
+        private const string AddHint = "Hold OK to add or take out  \u00b7  Back";
+        private static bool _sourcesEditable;
 
         /// <summary>The three pages' layouts for the current lists (one window, as wide as the widest page); the controllers start on them.</summary>
         private static DockLayout PageLayouts()
@@ -890,10 +893,11 @@ namespace Launcher
         {
             _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
             _appsDock.Build();
-            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, "Back", false);
+            _sourcesEditable = RowEdit.CanAddFrom(_inputs, _apps);
+            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, _sourcesEditable ? AddHint : "Back", false);
             _inputsDock.Build();
             _inputsDock.SetVisible(false);
-            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, AllAppsHint, false);
+            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, AddHint, false);
             _allDock.Build();
             _allDock.SetVisible(false);
             _dock = _appsDock;
@@ -901,14 +905,15 @@ namespace Launcher
 
         /// <summary>
         /// A tile was taken out of the row or added to it: the three pages are made again for the new row (the window's width may change),
-        /// on screen at once, the focus on <paramref name="focus"/> of the apps row, or on the same tile of All apps when the change came from there.
+        /// on screen at once, the focus on <paramref name="focus"/> of the apps row, or on the same entry of All apps or Sources when the change
+        /// came from there.
         /// </summary>
         private static void RebuildPages(AppEntry[] apps, int focus)
         {
             ProbeBegin("row rebuild");
             long t0 = Stopwatch.GetTimestamp();   // how long a rebuild takes on a TV (the icons are prepared again) is not known yet
-            bool onAll = _ctl == _allCtl;
-            int allFocus = _allCtl.FocusTarget;
+            bool onAll = _ctl == _allCtl, onInputs = _ctl == _inputsCtl;
+            int allFocus = _allCtl.FocusTarget, inputsFocus = _inputsCtl.FocusTarget, inputsCurrent = _inputsDock.CurrentIndex;
             Dock inputsDock = _inputsDock, allDock = _allDock;
             Controller inputsCtl = _inputsCtl, allCtl = _allCtl;
             DockLayout inputsLayout = _inputsLayout, allLayout = _allLayout;
@@ -926,6 +931,7 @@ namespace Launcher
                 _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
                 _appsDock.Build();
                 if (onAll) { _appsDock.SetVisible(false); _ctl = _allCtl; _dock = _allDock; }
+                else if (onInputs) { _appsDock.SetVisible(false); _ctl = _inputsCtl; _dock = _inputsDock; }
                 else { _ctl = _appsCtl; _dock = _appsDock; _appsCtl.SetFocus(focus); }
             }
             else
@@ -933,10 +939,13 @@ namespace Launcher
                 inputsDock.Destroy(); allDock.Destroy();
                 BuildPages();
                 MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+                _inputsDock.CurrentIndex = inputsCurrent;   // the input in use still says so
                 if (onAll) { ActivatePage(_allCtl, _allDock); _allCtl.SetFocus(allFocus); }
+                else if (onInputs) { ActivatePage(_inputsCtl, _inputsDock); _inputsCtl.SetFocus(inputsFocus); }
                 else _appsCtl.SetFocus(focus);
             }
             MarkInRow();
+            MarkSources();
             _ctl.Rise(1f);
             _dock.Apply(_ctl);
             Log("row: pages rebuilt for " + _apps.Length + " tiles in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
@@ -946,13 +955,11 @@ namespace Launcher
             ProbeHandlerDone();
         }
 
-        /// <summary>All apps writes "in the row" under the apps that are in it.</summary>
-        private static void MarkInRow()
-        {
-            var marked = new HashSet<int>();
-            for (int i = 0; i < _allApps.Length; i++) if (RowEdit.IndexOf(_apps, _allApps[i].RowKey) >= 0) marked.Add(i);
-            _allDock.Marked = marked;
-        }
+        /// <summary>All apps puts a tick on the apps that are in the row.</summary>
+        private static void MarkInRow() { _allDock.Marked = RowEdit.Marks(_allApps, _apps); }
+
+        /// <summary>Sources puts the same tick on the inputs the user put in the row.</summary>
+        private static void MarkSources() { _inputsDock.Marked = RowEdit.Marks(_inputs, _apps); }
 
         private static void OpenAllApps()
         {
@@ -964,8 +971,11 @@ namespace Launcher
             ProbeHandlerDone();
         }
 
-        // OK on the apps row and on All apps: a tap opens the tile when the key comes up; held (0.8 s) it moves the tile (apps row)
-        // or adds the app to the row or takes it out (All apps). Inputs keep acting on the press.
+        // OK on the apps row, on All apps and on Sources: a tap opens the tile (switches to the input) when the key comes up; held (0.8 s) it
+        // moves the tile (apps row) or adds the entry to the row or takes it out (All apps, Sources). A Sources list without row keys (an older
+        // Vetro wrote it) keeps acting on the press, as before.
+        private static AppEntry[] PageEntries(Controller ctl) { return ctl == _allCtl ? _allApps : ctl == _inputsCtl ? _inputs : _apps; }
+        private static bool HoldsOk(Controller ctl) { return ctl == _appsCtl || ctl == _allCtl || (ctl == _inputsCtl && _sourcesEditable); }
         private static readonly HoldKey RowOk = new HoldKey();
         private static IntPtr _rowOkTimer;
         private static readonly Efl.TaskCb RowOkHoldCb = OnRowOkHold;
@@ -986,8 +996,9 @@ namespace Launcher
         {
             if (RowOk.Release() != HoldResult.Tap) return;
             if (_rowOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_rowOkTimer); _rowOkTimer = IntPtr.Zero; }
-            if (_tasksOn || _ctl != _rowOkPage || !_ctl.IsActive || _moveIndex >= 0) return;
-            AppEntry[] list = _ctl == _allCtl ? _allApps : _apps;
+            // The focus moved while OK was down: the tile it was pressed on is not the one in front of the user any more.
+            if (_tasksOn || _ctl != _rowOkPage || !_ctl.IsActive || _moveIndex >= 0 || _ctl.FocusTarget != _rowOkIndex) return;
+            AppEntry[] list = PageEntries(_ctl);
             if (_rowOkIndex >= 0 && _rowOkIndex < list.Length) Activate(list[_rowOkIndex]);
         }
 
@@ -996,8 +1007,8 @@ namespace Launcher
             _rowOkTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
             try
             {
-                if (RowOk.Fire() != HoldResult.Hold || _tasksOn || _ctl != _rowOkPage || !_ctl.IsActive) return 0;
-                if (_ctl == _appsCtl) StartMove(_rowOkIndex); else ToggleInRow(_rowOkIndex);
+                if (RowOk.Fire() != HoldResult.Hold || _tasksOn || _ctl != _rowOkPage || !_ctl.IsActive || _ctl.FocusTarget != _rowOkIndex) return 0;
+                if (_ctl == _appsCtl) StartMove(_rowOkIndex); else ToggleInRow(_ctl == _inputsCtl, _rowOkIndex);
             }
             catch (Exception ex) { Log("row hold: " + ex); }
             return 0;
@@ -1100,29 +1111,41 @@ namespace Launcher
             return true;
         }
 
-        /// <summary>Held OK on an app of All apps: into the row (at its end) when it is not there, out of it when it is.</summary>
-        private static void ToggleInRow(int index)
+        /// <summary>
+        /// Held OK on an app of All apps or an input of Sources (<paramref name="sources"/>): into the row (at its end) when it is not there,
+        /// out of it when it is. The page's dock is read from its field after the rebuild, which may have made it again.
+        /// </summary>
+        private static void ToggleInRow(bool sources, int index)
         {
-            if (index < 0 || index >= _allApps.Length) return;
-            AppEntry e = _allApps[index];
-            if (e.IsSystem || e.RowKey == null || !RowEdit.CanEdit(_apps)) return;
-            int at = RowEdit.IndexOf(_apps, e.RowKey);
-            AppEntry[] next = at >= 0 ? RowEdit.Remove(_apps, at) : RowEdit.Add(_apps, e);
-            if (next == _apps) return;   // the last app, or the row is full
-            Log("row: " + (at >= 0 ? "took out " : "added ") + e.RowKey + " from All apps");
+            AppEntry[] page = sources ? _inputs : _allApps;
+            if (index < 0 || index >= page.Length) return;
+            AppEntry e = page[index];
+            bool added;
+            AppEntry[] next = RowEdit.Toggle(_apps, e, out added);
+            if (next == _apps) return;   // a pill, no row key, the last app, or the row is full
+            Log("row: " + (added ? "added " : "took out ") + e.RowKey + (sources ? " from Sources" : " from All apps"));
             RebuildPages(next, 0);
-            _allDock.SetHints(at >= 0 ? "Taken out of the row" : "Added to the row", null, false);
-            if (_hintTimer != IntPtr.Zero) Efl.ecore_timer_del(_hintTimer);
+            // A hint left on the other page by a hold a moment ago goes back to its own words now.
+            if (_hintTimer != IntPtr.Zero) { Efl.ecore_timer_del(_hintTimer); _hintTimer = IntPtr.Zero; HintDock(_hintOnSources).SetHints(null, null, true); }
+            _hintOnSources = sources;
+            HintDock(sources).SetHints(added ? "Added to the row" : "Taken out of the row", null, false);
             _hintTimer = Efl.ecore_timer_add(2.5, HintBackCb, IntPtr.Zero);
             SendRow();
         }
 
         private static IntPtr _hintTimer;
+        private static bool _hintOnSources;   // which page shows "Added to the row" now: Sources, or All apps
         private static readonly Efl.TaskCb HintBackCb = OnHintBack;
+        private static Dock HintDock(bool sources) { return sources ? _inputsDock : _allDock; }
         private static byte OnHintBack(IntPtr data)
         {
             _hintTimer = IntPtr.Zero;
-            try { _allDock.SetHints(null, null, true); if (_ctl == _allCtl) StartAnimator(); } catch (Exception ex) { Log("hint: " + ex.Message); }
+            try
+            {
+                HintDock(_hintOnSources).SetHints(null, null, true);
+                if (_ctl == (_hintOnSources ? _inputsCtl : _allCtl)) StartAnimator();
+            }
+            catch (Exception ex) { Log("hint: " + ex.Message); }
             return 0;
         }
 
@@ -1404,8 +1427,8 @@ namespace Launcher
                     MoveKey(key);
                     return;
                 }
-                // OK on the apps row and on All apps acts when it comes up: holding it moves a tile or adds it to the row instead.
-                if (IsOkKey(key) && (_ctl == _appsCtl || _ctl == _allCtl) && _ctl.IsActive) { RowOkDown(); return; }
+                // OK on the apps row, All apps and Sources acts when it comes up: holding it moves a tile or adds it to the row instead.
+                if (IsOkKey(key) && HoldsOk(_ctl) && _ctl.IsActive) { RowOkDown(); return; }
                 int index;
                 switch (_ctl.Key(key, out index))
                 {
@@ -1415,7 +1438,7 @@ namespace Launcher
                         ResetIdle();
                         break;
                     case KeyAction.Launch:
-                        Activate((_ctl == _appsCtl ? _apps : _ctl == _allCtl ? _allApps : _inputs)[index]);
+                        Activate(PageEntries(_ctl)[index]);
                         break;
                     case KeyAction.OpenPanel:
                         OpenInputs();

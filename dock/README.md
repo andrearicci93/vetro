@@ -14,6 +14,10 @@ When it is on, the Home key opens this launcher instead of Samsung's Home. The d
 the same apps, in the same order and with the same icons as Samsung's Home row, read
 from the TV at start-up (then the user's own order: hold OK on a tile to move it or take it out), and ends with two
 outline pills, All apps and Samsung Home. All apps lists every app, with Settings and the App store at its end.
+Up opens Sources (TV, HDMI 1-4). On All apps and on Sources, holding OK adds the entry to the end of the row or takes it
+out (`RowEdit.Toggle`, sent to Vetro with `RowEdit.Command`), and a tick marks what the row holds; a short OK opens it or
+switches to the input when the key comes up. A Sources list without row keys (written by an older Vetro) keeps OK on the
+press, has no hold and shows "Back" only.
 
 ## Control center and Task manager
 
