@@ -87,6 +87,20 @@ function fixture(options) {
     await assert.rejects(f.dock.setNoMotion(true), /did not start/);
     assert.equal(f.dock.readState().noMotion, false, 'failed restart restores the selection preference');
 
+    // Captions is a start argument too, and off until asked for.
+    f.tv.neverStarts = false;
+    assert.equal(f.dock.readState().captions, 'off');
+    assert.ok(!f.tv.started.includes(' --captions'), 'the bar looks as it did before captions were added');
+    assert.equal((await f.dock.setCaptions('apps')).captions, 'apps');
+    assert.ok(f.tv.started.includes(' --captions apps'));
+    assert.equal((await f.dock.setCaptions('both')).captions, 'both');
+    assert.ok(f.tv.started.includes(' --captions both'));
+    await assert.rejects(f.dock.setCaptions('sometimes'), /Invalid value/);
+    f.tv.neverStarts = true;
+    await assert.rejects(f.dock.setCaptions('sources'), /did not start/);
+    assert.equal(f.dock.readState().captions, 'both', 'a failed restart keeps the previous choice');
+    f.tv.neverStarts = false;
+
     // Autorun Smart Hub: switched off with the launcher, put back with it, only if the launcher changed it.
     f = fixture({autorun: 1});
     s = await f.dock.enable();

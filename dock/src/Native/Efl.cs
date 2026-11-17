@@ -110,6 +110,8 @@ namespace Launcher.Native
         [DllImport(AppControl)] public static extern int app_control_destroy(IntPtr ac);
         [DllImport(AppControl)] public static extern int app_control_add_extra_data(IntPtr ac, string key, string value);
         [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
+        /// <summary>A string value; the caller frees it with <see cref="Libc.free"/>. Null when the key is not set.</summary>
+        [DllImport("libvconf.so.0")] public static extern IntPtr vconf_get_str(string key);
         /// <summary>Read-only: the app the TV treats as Home for the "main" operation (what the Home key launches).</summary>
         [DllImport("libcapi-appfw-app-operation-tv.so.0")] public static extern int app_operation_get_current_app(string operation, out IntPtr appId);
 

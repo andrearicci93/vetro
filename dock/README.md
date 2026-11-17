@@ -37,8 +37,19 @@ To change the look: edit `chosen.json` (or paste a new designer export there), u
 `render_all` before building (`cd tools && python3 -c "import system_icons as s; s.render_all('../res/icons')"`).
 
 Not ported from the designer (the launcher cannot do them): blurred background behind the bar, label fonts, the
-brightness boost on a selected pill, and the desaturation of unselected icons. With the chosen design there are no
-name labels and no clock, so the label styling options are not carried either.
+brightness boost on a selected pill, and the desaturation of unselected icons. The focused item's name is drawn in
+the system font, in a capsule above the bar (`res/caption.png`, shared with the hint). There is no clock in the
+chosen design.
+
+Captions is a runtime setting of the Launcher tab, off by default: `--captions off|apps|sources|both` picks the
+page that names its focused item. The layout keeps the band for the name either way, because the hint shares it.
+
+The marker of the input in use was removed: on a 2022 QN90B the firmware only publishes
+`memory/system/source_type` for a moment around a switch (`-1` afterwards, with the dock hidden too), no other
+vconf key carries it, and the source service exposes no readable state over D-Bus.
+
+The designer previews both pages: pick **sorgenti (Su)** or press Up. Serve `dock/` over http (for example
+`python3 -m http.server` in `dock/`) and open `designer/index.html?chosen` to start from `chosen.json`.
 
 ## Build
 

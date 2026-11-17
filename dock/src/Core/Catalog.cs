@@ -125,6 +125,11 @@ namespace Launcher.Core
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
         /// <summary>True for a plain Tizen app id (letters, digits, dot, dash, underscore): safe to put on a command line.</summary>
         public static bool ValidAppId(string s) { return s != null && IsAppId(s); }
+
+        /// <summary>
+        /// True when <paramref name="appId"/> is one of the apps this dock launches, or one an entry closes first
+        /// (YouTube behind TizenTube). The TV is then showing an app, so the input in use is not what is on screen.
+        /// </summary>
         // Plain digits, at most five: it is only ever formatted back into a number string.
         private static bool IsSourceType(string s, out int value)
         {

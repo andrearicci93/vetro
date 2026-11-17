@@ -16,6 +16,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
             if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
+            if (body.action === 'captions') dock = Object.assign({}, dock, {captions: body.value});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false});
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
             if (body.action === 'disableCustom') dock = Object.assign({}, dock, {mode: 'off', customApp: null, running: false});
@@ -109,6 +110,17 @@ const tick = () => new Promise(r => setImmediate(r));
     await el('dock').onchange({target: fix}); await tick(); await tick(); await tick();
     assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'fixTizenTube', on: false});
     assert.doesNotMatch(el('dockBody').innerHTML, /data-dock-fix[^>]* checked/);
+    // Captions is off until asked for.
+    page = el('dockBody').innerHTML;
+    assert.match(page, /<h3>Captions<\/h3>/);
+    assert.match(page, /data-dock-captions[^>]*><option value="off" selected>Off<\/option><option value="apps">Apps row only<\/option><option value="sources">Sources row only<\/option><option value="both">Both rows<\/option>/);
+    assert.doesNotMatch(page, /class="lp-cap"/, 'no name over the selected tile while captions are off');
+    await el('dock').onchange({target: {dataset: {dockCaptions: ''}, value: 'apps'}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'captions', value: 'apps'});
+    page = el('dockBody').innerHTML;
+    assert.match(page, /<option value="apps" selected>Apps row only<\/option>/);
+    assert.match(page, /class="lp-cap"/, 'the preview names the selected tile once captions are on');
+    assert.match(sandbox.operationEntries[0].message, /Captions: apps row only; it applies when the launcher is on\./);
     dock = Object.assign({}, dock, {enabled: true, running: true, entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}]});
     await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick();
     assert.match(el('dockBody').innerHTML, /TizenTube is not in Samsung’s Home row/, 'tells when there is no TizenTube tile to fix');

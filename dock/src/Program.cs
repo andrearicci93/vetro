@@ -70,6 +70,8 @@ namespace Launcher
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
         private static AppEntry _homeLaunch;
+        // --captions off|apps|sources|both: the Launcher's Captions setting, off unless asked for there.
+        private static string _captionsMode = "off";
 
         private static readonly NavigationInput Navigation = new NavigationInput();
         private static double _lastRawHome = -100;
@@ -392,13 +394,10 @@ namespace Launcher
 
         private static void OpenInputs()
         {
-            int current = -1, type;
-            // The firmware keeps the active input here (Vetro's TV state sensor reads the same key).
-            if (Efl.vconf_get_int("memory/system/source_type", out type) == 0)
-                for (int i = 0; i < _inputs.Length; i++) if (_inputs[i].SourceType == type) { current = i; break; }
-            _inputsDock.CurrentIndex = current;
-            _inputsCtl.SetFocus(current >= 0 ? current : 0);
-            Log("inputs panel, source_type=" + type + " current=" + current);
+            int type;
+            string front;
+            _inputsCtl.SetFocus(0);
+            Log("inputs panel");
             SelectPage(_inputsCtl, _inputsDock);
         }
 
@@ -903,6 +902,9 @@ namespace Launcher
             _perf = Flag(args, "--perf");
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
+            // --captions off|apps|sources|both (the Launcher's Captions setting): name the focused item above the bar.
+            // Off unless asked for, so the bar looks as it did before the name moved up there.
+            _captionsMode = Arg(args, "--captions") ?? "off";
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
@@ -961,12 +963,15 @@ namespace Launcher
                 string res = Path.Combine(AppContext.BaseDirectory, "res");
                 string dumpIcons = Arg(args, "--dump-icons");
                 if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
-                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true);
+                bool captionsApps = _captionsMode == "apps" || _captionsMode == "both";
+                bool captionsInputs = _captionsMode == "sources" || _captionsMode == "both";
+                _appsDock = new Dock(_win, layout, _apps, res, Log, Design.HintText, true, captionsApps);
                 _appsDock.Build();
-                _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false);
+                _inputsDock = new Dock(_win, inputsLayout, _inputs, res, Log, "Back", false, captionsInputs);
                 _inputsDock.Build();
                 _inputsDock.SetVisible(false);
                 _dock = _appsDock;
+                Log("look: captions=" + _captionsMode);
                 if (!Flag(args, "--no-warmup")) WarmUp();
                 _appsDock.Apply(_appsCtl);
                 _inputsDock.Apply(_inputsCtl);

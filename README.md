@@ -31,7 +31,7 @@ A fast, minimal launcher on the Home key. It shows the same apps and icons as Sa
   <br><em>The launcher on the TV.</em>
 </p>
 
-Turn it on in the **Launcher** tab, which also previews the bar. Optional switches: **Reduce motion**, **Fix TizenTube** (YouTube icon on the TizenTube tile), **HDMI sources on Home** and **HDMI source images**. Prefer another app on the Home key? **Custom launcher** opens any installed app instead.
+Turn it on in the **Launcher** tab, which also previews the bar. Press Up for the inputs panel. Two look settings there are off by default: **Captions** names the focused tile in a small tag above the bar (off, apps row only, sources row only or both rows), and **Mark the input in use** puts a short bar under the source the TV is showing on the inputs panel. Other switches: **Reduce motion**, **Fix TizenTube** (YouTube icon on the TizenTube tile), **HDMI sources on Home** and **HDMI source images**. Prefer another app on the Home key? **Custom launcher** opens any installed app instead.
 
 <p align="center">
   <img src="app/docs/images/launcher-tab-0.5.jpg" alt="The Launcher tab of the dashboard: a preview of the bar and the launcher, HDMI and TizenTube switches" width="1000">

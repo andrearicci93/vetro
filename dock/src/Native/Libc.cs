@@ -28,5 +28,6 @@ namespace Launcher.Native
         [DllImport(C, SetLastError = true)] public static extern int kill(int pid, int sig);
         [DllImport(C, SetLastError = true)] public static extern int chmod(string path, uint mode);
         [DllImport(C)] public static extern int system(string command);
+        [DllImport(C)] public static extern void free(IntPtr pointer);
     }
 }
