@@ -62,8 +62,11 @@ Invariants:
 | agent-callback | agent connects (`onConnect`) | connected | `launching=false`, `launchFailures=0` |
 | agent-callback | callback timer fires | retrying | `launchFailures++` |
 | any in-flight phase | agent connects | connected | the connect handler wins even if an older attempt is mid-handshake |
-| connected | agent socket closes | retrying | relaunch after `relaunchDelay(0)` = 8 s |
+| connected | agent socket closes | retrying | relaunch after `relaunchDelay(0)` = 8 s, or after 2 s when the agent had been connected for 30 s or more (the wake row below) |
+| retrying (after a stable agent was lost) | SDB handshake refused | retrying | tried again every 2 s for 2 minutes of awake time (`process.hrtime`, which stops while the TV is suspended, like libuv's timers); `launchFailures` does not grow and the same failure is not written to the log again; any other failure goes back to the backoff |
 | any | `stop()` | stopped | counters and timers cleared |
+
+Wake (performance pass, 2026-11-17, not tried on a TV): the TV stops sdbd at standby, which ends the agent; the socket close is seen at once (`onClose`). The old path armed an 8 s timer that kept running until the TV suspended and fired after the wake, then backed off (8, 16, 32 s ...) while sdbd was still coming back. The fast window above lets the launch start about 2 s after sdbd answers. `onAgent(fn)` tells the service when the agent comes and goes (the service restores the remote bridge first). `status().timing` (in memory, never in the flash log) has `firstConnect` and `reconnect` (`lostAt`, `connectedFor`, `awakeMs`, `wallMs`, `attempts`, and the stages of the attempt that connected: `handshakeMs`, `preflightMs`, `prepareMs`, `dispatchMs`, `callbackMs`) and `losses`. Not changed, to measure first: the preflight still runs its three probes through `appinstall` injections at every relaunch, a `dotnet` host among them; its answers cannot change without a reboot, so caching them is the next lever once `preflightMs` is known.
 
 Reachable invalid states found:
 
@@ -86,7 +89,7 @@ States: `disabled`, `connecting`, `connected`, `reconnecting`. Config is read fr
 | reconnecting | timer | connecting |
 | any | config disabled | disabled |
 
-Invariant: at most one socket. No invalid state reached (covered by the existing `mqtt-*.test.cjs` suites). The dashboard polls it every 3 s only while the MQTT tab is current.
+Invariant: at most one socket per process, and one connected process: the bridge is started by the copy of the service that listens on the port (or when the port is held by something that is not a Vetro). A second copy of the same Vetro, which waits for the port instead of ending, used to connect with the same client id, and the two took the session from each other every 10 s (#199, #213). No other invalid state reached (covered by the existing `mqtt-*.test.cjs` suites). The dashboard polls it every 3 s only while the MQTT tab is current.
 
 ### SM-4 Plugin host
 
@@ -100,6 +103,7 @@ States per plugin: `stopped`, `running`, `failed`, `suspended` (safe mode), `inv
 | running | async exception whose stack is inside the plugin folder | failed (`handleCrash`) |
 | running | switch off | stopped |
 | any | boot marker of two starts in a row found at start | suspended (safe mode) until "Resume plugins" |
+| suspended | "Resume plugins" | running at once (stopped if its switch is off); the marker is left one start short of safe mode, so two more interrupted starts suspend again (#190: it used to only clear the flag and wait for a restart nobody could ask for) |
 | any | remove | gone (folder deleted, module cache purged) |
 
 Reachable invalid states found:
@@ -152,7 +156,12 @@ State: `busy`, `failures`, `nextTry`, `lastError`, and the file `vetro-dock.json
 | idle | enable / disable / fix / launch | busy (rejects a second call: "Another dock change is in progress") |
 | busy | done or failed | idle (`finally`) |
 | idle (enabled) | supervisor tick, agent connected, `now ≥ nextTry`, not running | busy → launch; success `failures=0`; failure `failures++`, `nextTry` backs off |
-| idle (enabled) | process running | idle, `failures=0` |
+| idle (enabled) | process running | idle, `failures=0`; a warning left by a failed round is cleared |
+| idle (enabled) | process running, started by another build (`build` in the state file differs, and this run has not started it) | busy → launch, once: the launcher outlives the service, and after the package is installed again the old binary would keep running |
+
+Checks (performance pass, 2026-11-17): the supervision and the start wait use a cheap check (`runningCheck`: the pid file and `/proc/<pid>/cmdline`, read field by field with shell builtins, one line without the base64 wrapper, so one shell on the TV) instead of the full probe (10 processes for the launcher, 13 for the tuner: log tail, Samsung Home, prerequisites). Same meaning: the pid is alive AND its command line holds our dll. The full probe runs for the dashboard's status, before any start (a "not running" is confirmed first), at the end of a start wait that ran out of time, once after the boot window for Samsung's idle Home, and whenever the check reports `other=<pid>` (alive but not ours); if the full probe then finds that pid running, the check does not work on that shell and the full probe is used from then on (`cheapBroken`). The plugins' rounds back off while the part keeps running: 10 s, then 30 s after three rounds found running, 60 s after six, never longer; back to 10 s on the agent's connect edge, a dashboard action, a round that did not find it running, or a start/stop (`changes`, which also covers the restart after an update). The custom launcher's app lookup is once a minute by the clock (`APP_CHECK_MS`), not every sixth round, and reads that app's registry row (`AppRegistry.one`, or the inventory in memory when it is recent). `readState` keeps the parsed file and reads it again only when `writeState` ran or the file's inode, size or modification time changed (it is read on every key the bridge forwards). The first start of the tuner is in its status as `bootTimeline`, like the launcher's.
+
+Start rules (#179): inside the boot window (uptime < 300 s) the start script gets 75 s and a start call that runs out of time is not a failure (`waitRunning` decides); the first retry is after 10 s there, 30 s later on; one failed probe during the wait is "not seen yet". A setting that restarts the launcher (`refreshOr`) is put back only when the launcher really is not running after the failed wait. `bootSettled()` is true when the launcher is off, up, or 60 s have passed since the agent connected; `bootTimeline` in the status records the first start. The tuner follows the same start rules and the same build check (`tuner.js`).
 
 - **B13** Several state files were written in place: a power cut (or a full disk) in the middle could leave truncated JSON. In 0.5.0 `vetro-remap.json` (every shortcut and the saved input choice) and the sign-in session file (`auth.js`, every paired browser) were plain in-place writes, and so were the dock's app, input and custom-launcher lists. `Dock.writeState` (which holds `autorunWas`, so Autorun Smart Hub would never be switched back on if it were lost) already wrote a temp file and renamed it, but left the temp file behind when the rename failed. All of them now go through `atomic-file.js` (write `file.tmp`, `renameSync`, remove the tmp file on failure). Confirmed (`state-files.test.cjs`, `input-persistence.test.cjs`). Already atomic and untouched: `hbbtv.js`, `mqtt-bridge.js` `saveConfig`, `quick-wins.js` `save`, `plugin-host.js` state, `keep-removed.js`, `updater.js`.
 
@@ -166,7 +175,9 @@ Invariants: a win that the user switched off is never reapplied by a boot task; 
 
 ### SM-10 Boot tasks
 
-`dnsRestore`, `winsBoot` and `selfStartup` wait for the root agent and retry on a timer; `BOOT_RETRIES = 60` (every 5 s, about 5 min). `restoreInput` runs forever, every 5 s. All three boot timers tick every 5 s.
+`dnsRestore`, `winsBoot`, `keepRemoved`, `startupWarm` and `selfStartup` wait for the root agent AND for `dock.bootSettled()` (the agent runs one command at a time: their long commands must not queue in front of the launcher's start), and retry on a timer; `BOOT_RETRIES = 60` (every 5 s, about 5 min). `restoreInput` runs forever, every 5 s. All three boot timers tick every 5 s.
+
+Performance pass (2026-11-17): `selfStartup` reads Vetro's own row of the registry (`AppRegistry.one`, one sqlite3) instead of the whole inventory (three sqlite3 and the join); same decision, same commands. `dnsRestore` stops at once, with no command, when the filter's folder does not exist (`Filter.neverUsed`: only ENOENT counts; a folder the service cannot look into still gets the status read). `startupWarm` waits until the TV has been up for 5 minutes (a visit to the Startup tab before that starts the job itself). `restoreInput` runs at once when the agent connects (`platform.onAgent`), so after a boot or a wake the remote bridge's device read is the first command in the queue, and it gives `physical.start` the list it has just read (one read, not two). A saved interception that keeps failing is tried every 5 s for twelve tries, then every 30 s; the agent connecting, a request to `/input`, a saved Remapper, a Vetro UI key change or a success bring the 5 s pace back. GET `/status` has `rootCommands` (per minute for the last ten minutes) and `remoteBridge` (`first`, `last`: ms from the agent connecting to the bridge listening again).
 
 - **B9** `dnsRestore` gave up after 12 tries (about 60 s). A TV where the agent takes longer to come up (first boot after power loss) never got its domain filter back. Confirmed (`service-states.test.cjs`, "the DNS filter is restored when the root agent connects late"). Fixed: 60 tries like the others.
 
@@ -341,10 +352,34 @@ Changed in this pass (all reduce work or remove a stall; none changes the look):
 - `WatchNewNodes` reuses slots and does not log on every rescan.
 - The key-repeat timer is tracked and cancelled, so a held key does not keep ticking in a hidden dock.
 
+Changed in the second pass (2026-11-17; again nothing changes on screen):
+
+- **osd 123** (`NumberPad`): the animator stops once the pad is opaque and the focus capsule is on its cell, instead of drawing the same frame until the pad closes; every key (and the close) starts it again, and its first tick advances by the frame interval of the earlier run (`FrameStep`), so the capsule moves as it did with a running animator. The colours are set only when the fade, Done, the focused cell or the page changed (`PadMotion`, tint key).
+- **Volume bar** (`VolumePill`): it stops while it is full and held; a one-shot timer at the end of the hold brings the animator back for the fade-out. Every `Show` starts it for at least one frame (the level, the fill and the icon are drawn there) and moves the end of the hold (`VolumeFade`).
+- **Control center cards** (`CardChrome`, `TaskPanel`, `AudioCard`, `ChoiceCard`): every text is measured when it is set (width, line height: an empty text has another line height), never per frame; the panel, the capsule and the rows are moved only when their inputs changed (`PlaceKey`: slide, rows, scroll, selection, and a version that moves with every text or row change). A selection move redraws the capsule and the tints; the other cards are not touched.
+- **Dock**: the initials of a tile without an icon are measured once and moved only with their tile (the rest of `Dock.Apply` already placed only what changed).
+- **Home guard**: the generation is written on the key as before (cancelling works the same), but its shell is started by a zero-delay timer added after the next frame has been laid out (`PendingCommand`), or at once when nothing is drawn; it used to run between the key and the first frame.
+- **Input rescan** every 3 s: reads `/proc/bus/input/devices` only when `/dev/input` changed since the last full read (or changed less than 2 s before it), a node failed to open or was dropped, or every 10th look (`InputScanGate`); otherwise one stat. The fifo's `rescan` and the start-up look always read.
+- **Start-up**: the remote's nodes are opened before the pages are built; just before the loop their buffers are read once and a Home pressed during the start-up is answered (it was lost), every other key of that time is dropped as before. The fifo is still made after the warm-up: the service sends the volume and 123 keys to the TV itself while the fifo has no reader, and they must not wait for the start-up. Only the cards named by `--cards` are built, and in custom launcher mode (`--home-launch`) none of the Dock's pages.
+- **Probes** (`--perf`, off by default): one `perf open <what>:` line per opening (OpenProbe) for Home (`home`, `fifo show`), `control center`, `all apps`, `row rebuild`, `volume bar`, `osd 123` (the first of the last two says `first, window built`), and `perf guard: shell started in N ms`.
+
+How this was checked: a frame-stepped copy of the preview's simulator (virtual 60 Hz clock, scripted keys, a count of every native call) ran the old and the new code through the same scenarios (Dock, Control center with a Task manager close and choices, Sources, All apps, a row change, osd 123, Volume bar with keys on every frame and during the fade-out, custom launcher mode, `--no-motion`, three card layouts): the scene after every frame is identical, object by object (with `--cards tasks,audio,picture` the Sleep timer card's never drawn objects are no longer made, nothing else differs). Logic tests in `dock/tests` ("osd 123: …", "volume bar: …", "cards: …").
+
+Reading the probes on the Q80A (start the launcher with `--perf`, read `tvlauncher.log`):
+
+1. `warm-up N ms`, then `elm_run`: the start-up. After a Home pressed during it, `home pressed while the launcher was starting`.
+2. Home: `perf open home: frames=… key to first tick ms=… to first frame ms=… to last frame ms=… handler ms=… interval ms max=…`, then `perf guard: shell started in N ms` and `perf home: frames=… interval ms min/avg/max=…`. "to first frame" is the key to the start of the second tick (the first frame has gone to the screen by then); "handler ms" is the work done on the key itself.
+3. The same line for `control center` (to last frame = the end of the entrance), `all apps`, `row rebuild` (next to `row: pages rebuilt … in N ms`), `volume bar`, `osd 123`.
+4. A dropped frame is an interval above 1.5 frame periods: over 25 ms at 60 Hz, over 30 ms over 50 Hz live TV (the vblank follows the picture). `over30ms` counts them per animation; `interval ms max` in the `perf open` lines shows the worst gap of an entrance. A guard shell that takes more than a frame shows as the second interval of `perf home`.
+
 Needs a `--perf` measurement on the Q80A before changing (do not guess):
 
+- Running the Home guard's shell from a worker thread instead of the main loop (it would never sit between two frames). Risk: `system()` from another thread while EFL's SIGCHLD handler runs; decide from `perf guard`.
+- Starting the warm-up after `elm_run` (an idler, page by page), so the start-up answers Home sooner. Risk: the first show could land in the middle of the warm-up and stutter; measure `warm-up N ms` first.
+- Lowering `IconPrep.MaxSide` (256) to the drawn size (112 for the focused tile): about a fifth of the texture memory per icon and less work at start and on a row change. Risk: the drawn picture changes (the GPU then scales a 112 px picture down to 92 instead of a 256 px one); look at it on the TV first.
+- Touching the tuner's flag file at most once a second instead of on every key (the tuner trusts it for 25 s). Risk: a timing contract with the tuner.
 - Tiered JIT settings of the .NET 3.1 runtime (`TieredCompilation`, `TieredPGO`, ReadyToRun): startup against steady frame time.
-- Replacing the `/dev/input` rescan timer with inotify (saves a wakeup per second, but needs another fd handler).
+- inotify on `/dev/input` instead of the rescan timer (one wake-up every 3 s less, but another fd handler).
 - The remaining blocking `system()` calls in launch and kill paths: time them; they are rare and off the draw path, so the gain may be nil.
 
 ---

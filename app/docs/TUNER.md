@@ -37,7 +37,7 @@ It starts again by itself after a restart or a crash (back-off from 30 s up to 5
 | CH +, CH − | Next and previous channel, with the banner |
 | OK | Opens the channel list; in the list it tunes; on the number pad it presses the key |
 | Up | Opens the TV guide; moves in lists and the guide |
-| Left | Switches the audio track; jumps a page back in the list |
+| Left | Switches the audio track and shows the Audio toast (while it is up, Down switches the subtitles); jumps a page back in the list |
 | Right | Opens the number pad; jumps a page on in the list |
 | Back | Closes what is open, then clears the banner, then goes to the channel you were watching before (and back again on the next Back), as Samsung's tuner does. The tuner stays up, so Samsung's tuner does not appear |
 | Home | The tuner steps aside for the TV's own screen, and comes back when you return to live TV |
@@ -96,6 +96,6 @@ Because the client folder and the service cannot be seen in the old reports, **d
 ## Known limits
 
 - One TV tried (Q80A, DVB-T). Cable, satellite and other regions are untested.
-- No subtitles or teletext. Audio: switching works; listing tracks does not.
+- Subtitles (Down in the Audio toast) were written from an analysis of the firmware and have not been tried on a TV yet. No teletext. Audio: switching works; listing tracks does not.
 - The takeover polling, the key wake, Home, Power and Source while the tuner is shown, still need runs on a TV.
 - Not yet seen on a TV (2026-11-12): whether the tuner's notification window reports the keyboard focus reliably and how soon after another window takes it, what the window manager names as the focused app while the launcher, Samsung's 123 pad or YouTube are open, the HDMI step-aside, the launcher's `resume`. The log (`/home/owner/vetro-tuner.log`) records every change: `focus:`, `front:`, `input:` and `takeover:` lines, and each key with the input node it came from.

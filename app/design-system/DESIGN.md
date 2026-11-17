@@ -33,9 +33,21 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 
 Vetro should feel like a precise glass remote: light catches at the point of control, and feedback follows confirmed device state. The sidebar footer shows the version only; the app count and the connection line are gone. Purpose icons help scan Quick settings. A captured remote key gains a keycap treatment; completed actions use a quiet checkmark, while uncertain results retain the warning treatment and history. Reduced motion keeps all state cues without movement. No sounds, invented progress, or new runtime assets are introduced.
 
+## Page rules
+
+- A page has one title and one sentence under it; no second heading says the title again.
+- How-to text lives only in an empty state, never on the page for good.
+- One colour per meaning: amber only for what needs attention now (an error, a paused state), green for on or done, the action blue for the one main action of a view; a permanent caveat is muted text, not a box.
+- A view has at most one main action; everything else is a quiet button or a text link.
+- An error sits where the content would be, the message first and the retry control on the same row, with nothing else in that card until it works.
+- One name per thing: say once what it is, then use only that name, in labels and links too (a Shard is never called a plugin after the page's first sentence).
+- A card is for a list or a group of settings; an empty list is one sentence inside its card, and the card is only as tall as its content.
+
 ## Layout
 
 General settings pair Software update and Storage only when the content area can fit two columns of at least `--vetro-column-min` (26rem). Firmware, Restore and Remove stay full width, in DOM and keyboard order. Columns return to a linear flow as the container narrows or text grows; cards have no fixed heights or masonry reordering. Quick settings section headings and content use 12px internal spacing, with 24px between the main General groups. The lengthy removal procedure is a native disclosure; its open state and focus survive view refreshes, and restoration/deletion controls remain outside it. The Launcher preview follows the same content-width column rule. Live sampling controls wrap without widening the page.
+
+Density: a group of settings runs in two columns when its container fits two of at least `--vetro-column-min` (the Customization group of the launcher, the Disable, Privacy and Voice groups, the DNS candidate domains, the Developer cards two by two), and in one column otherwise; the grid is switched on only where the browser supports it, so an old TV browser keeps the single column. A preview sits beside the settings it shows (Launcher, Control center, Live TV, the Overview), not above them, and is as tall as its own content. A setting is its name, one short sentence, its state chip and its control; a longer explanation goes behind a native disclosure or is left out when it repeats the name or the chip. Rows of a settings list have 12px of padding. The Launcher tab has three sub-tabs: Vetro launcher (with Customization), Control center (one switch per card), Custom launcher.
 
 ## Device adaptation
 

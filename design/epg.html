@@ -158,7 +158,7 @@
     /* header */
     if (fe) {
       T(C, M, 70, 64, 600, 1, fe.title, 1360);
-      T(C, M, 152, 30, 500, MUTED, clock(fe.start) + ' – ' + clock(fe.end) + '   ·   ' + minutes(fe.end - fe.start) + '   ·   ' + fc.name, 1500);
+      T(C, M, 152, 30, 500, MUTED, fc.name + '   ·   ' + clock(fe.start) + ' – ' + clock(fe.end) + '   ·   ' + minutes(fe.end - fe.start), 1500);   // the name first: it does not move when the programme arrives
       if (desc && descFor === fe) { var d = T(C, M, 200, 28, 500, .70, desc, 1400); d.style.whiteSpace = 'normal'; d.style.lineHeight = '38px'; d.style.top = (200 - 5) + 'px'; d.style.maxHeight = '76px'; }
     } else { T(C, M, 70, 64, 600, FAINT, 'No information', 1360); T(C, M, 152, 30, 500, MUTED, fc.name, 1500); }
     var dt = new Date(g.focusTime * 1000), DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

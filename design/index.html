@@ -159,7 +159,7 @@
       <div><h3>Tuner · Info</h3><p class="muted">Lo stesso angolo che si allarga in alto e a destra: colonna sinistra 96–936, colonna destra allineata a 1296.</p><div class="tv-stage"><div class="tv-canvas" id="s-info"></div></div></div>
       <div><h3>Tuner · Channel list</h3><p class="muted">OK sul telecomando. A destra, centrata in altezza, numeri allineati a destra; la riga scelta è la capsula ghiaccio.</p><div class="tv-stage"><div class="tv-canvas" id="s-list"></div></div></div>
       <div><h3>Tuner · Channel pad</h3><p class="muted">Destra sul telecomando. Tasti a capsula bianca al 14%, il tasto scelto è la capsula ghiaccio; a destra, centrato come il Volume a sinistra.</p><div class="tv-stage"><div class="tv-canvas" id="s-pad"></div></div></div>
-      <div><h3>Tuner · Audio toast</h3><p class="muted">La capsula del 123, in alto a destra, 2 secondi.</p><div class="tv-stage"><div class="tv-canvas" id="s-toast"></div></div></div>
+      <div><h3>Tuner · Audio toast</h3><p class="muted">Sinistra sul telecomando: due righe, Audio e Subtitles, su un pannello di raggio 40 in alto a destra, 2,2 secondi; Giù mentre è aperto cambia i sottotitoli. La riga appena cambiata è piena, l'altra più quieta; misure e colonne fisse.</p><div class="tv-stage"><div class="tv-canvas" id="s-toast"></div></div></div>
       <div><h3>EPG</h3><p class="muted">Niente scheda: il velo copre lo schermo al 94%. Corsie di celle arrotondate, fuoco ghiaccio. Con circa 114 oggetti resta la schermata più cara: vedi “Prestazioni”.</p><div class="tv-stage"><div class="tv-canvas" id="s-guide"></div></div></div>
     </div>
     <p class="muted">Le stesse schermate, a tutto schermo e con i tasti del telecomando, sono in tre pagine a parte: <a href="dock.html">dock.html</a>, <a href="tuner.html">tuner.html</a> ed <a href="epg.html">epg.html</a>. Usano le immagini vere (<code>assets/</code>, copiate da <code>dock/res</code> e <code>tuner/res</code>) e la logica di layout del codice C#. <code>?still</code> le ferma per gli screenshot.</p>
@@ -355,7 +355,9 @@
     T(c, 'La notte del cacciatore', X0, 672, 72, 1, 600, R - X0, false, 'v');
     Tv.progressRow(c, X0, X1, 780, 826, '21:20', '23:05', '1 h 13 min left', .31);
     var d = T(c, 'A preacher with a past comes to a quiet river town, and two children hold the secret he wants. Before the night is over, everyone has to decide whom to trust.', X0, 860, 30, 1, 500, X1 - X0, false, 'v muted');
-    d.style.whiteSpace = 'normal'; d.style.lineHeight = '42px'; d.style.maxHeight = '126px';
+    d.style.whiteSpace = 'normal'; d.style.lineHeight = '42px'; d.style.maxHeight = '84px'; d.style.overflow = 'hidden'; d.style.display = '-webkit-box'; d.style.webkitBoxOrient = 'vertical'; d.style.webkitLineClamp = '2';
+    var nx = X0 + Tv.textW('Next', 30, 500) + 20, ntx = nx + Tv.textW('23:05', 30, 500) + 20;   // the Next line on the third line's baseline (975)
+    T(c, 'Next', X0, 950, 30, 1, 500, 200, false, 'v faint'); T(c, '23:05', nx, 950, 30, 1, 500, 200, false, 'v muted'); T(c, 'The Night Watch', ntx, 950, 30, 1, 500, X1 - ntx, false, 'v muted');
     T(c, '21:44', R + 4, 776, 88, 1, 200, 400, true, 'v');
     T(c, 'Wednesday 11 November', R, 878, 26, 1, 500, 500, true, 'v muted');
     T(c, 'Antenna', R, 918, 26, 1, 500, 500, true, 'v muted');
@@ -390,10 +392,17 @@
       var k = mk(c, 'key' + (l.length > 1 ? ' w' : ''), x, y, kw, kh); k.textContent = l; if (i === focus) k.style.color = 'var(--vetro-tv-focus-ink)';
     });
   };
+  /* The Audio toast (tuner/src/Ui/Views.cs AudioToastView): panel x 1176..1824, y 96..248, radius 40; per row the key picture (40 px at x 1216),
+     the label (32 / 500) at x 1272 and the value (32 / 600) at x 1432 on the row's baseline (155, 211). Shown after Down: the Subtitles row is the
+     changed one (key .85, label .76, value 1), the Audio row the quieter one (.40, .55, .70). */
   screens.toast = function (c) {
-    var pad = px('--vetro-tv-toast-pad'), H = px('--vetro-tv-toast-h'), right = 1920 - px('--vetro-tv-margin'), y = px('--vetro-tv-toast-y'), s = 'Audio: English · track 2', w = Tv.textW(s, 32, 500) + 2 * pad;
-    Tv.panel(c, right - w, y, w, H, H / 2);
-    T(c, s, right - w + pad + 1, y + 17, 32, 1, 500, w);
+    Tv.panel(c, 1176, 96, 648, 152, 40);
+    [['left', 'Audio', 'English (2)', 155, false], ['down', 'Subtitles', 'Italian', 211, true]].forEach(function (r, i) {
+      var top = Math.round(r[3] - Tv.baseOff(32)), on = r[4];
+      pic(c, 'assets/tuner/key_' + r[0] + '.png', 1216, 124 + i * 56, 40, 40).style.opacity = on ? .85 : .4;
+      T(c, r[1], 1272, top, 32, on ? .76 : .55, 500, 160, false, 'l1');
+      T(c, r[2], 1432, top, 32, on ? 1 : .7, 600, 352, false, 'l1');
+    });
   };
 
   /* ---------- EPG: on the veil (.94), lanes of rounded cells, the ice focus ---------- */

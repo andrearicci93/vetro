@@ -8,8 +8,8 @@
   The tuner as on the TV (approved look: design round opus6, DESIGN.md "TV material").
   Banner and Info stand on the veil (assets/tuner/veil_corner.png) with the halo under every text; Channel list, Channel pad and
   Audio toast are panels of the osd 123's material (pill_rim + pill_bg, radius 40 or capsule, no shadow) with the ice focus capsule.
-  URL: ?view=info|list|pad|toast opens a state; ?tune=N starts on channel N; ?still keeps every view on screen (no auto-hide: screenshots).
-  Keys (tuner/src/Program.cs): CH+/CH- = PageUp/PageDown, Enter = Channel list, Right = Channel pad, Left = audio track (toast),
+  URL: ?view=info|list|pad|toast|subtitles opens a state; ?tune=N starts on channel N; ?still keeps every view on screen (no auto-hide: screenshots).
+  Keys (tuner/src/Program.cs): CH+/CH- = PageUp/PageDown, Enter = Channel list, Right = Channel pad, Left = audio track (the Audio toast), Down while the toast is up = subtitles,
   I = Info, Up or G = EPG, digits = Channel pad, Esc = close, H = the toolbar.
 -->
 <link rel="stylesheet" href="tokens.css">
@@ -27,7 +27,7 @@
 <script>
 (function () {
   var C = document.getElementById('canvas');
-  var bar = Tv.toolbar('CH+ / CH-: PageUp / PageDown · Enter: list · Right: Channel pad · Left: audio · I: Info · Up: EPG · digits · Esc: close · H: this bar', [['EPG', 'epg.html'], ['Dock', 'dock.html'], ['Design system', 'index.html']]);
+  var bar = Tv.toolbar('CH+ / CH-: PageUp / PageDown · Enter: list · Right: Channel pad · Left: audio · Down (toast up): subtitles · I: Info · Up: EPG · digits · Esc: close · H: this bar', [['EPG', 'epg.html'], ['Dock', 'dock.html'], ['Design system', 'index.html']]);
   var X_ = Tv.px, STILL = /[?&]still/.test(location.search);
 
   /* ---- sample channels and programmes (the TV has 517 channels and the daemon's schedule) ---- */
@@ -48,6 +48,8 @@
   /* ---- a surface: shown or hidden as a group (the C# clips each view with one rectangle) ---- */
   function surface() { var g = document.createElement('div'); g.style.cssText = 'position:absolute;inset:0;display:none'; C.appendChild(g); return g; }
   function txt(g, s, x, y, size, kind, maxW, right) { return Tv.text(g, s, x, y, size, kind, maxW, right); }
+  /* cut with an ellipsis to fit, as Surface.SetFitted does (a text on the veil does not clip itself: its halo must show) */
+  function fit(s, size, wt, maxW) { if (Tv.textW(s, size, wt) <= maxW) return s; while (s.length > 1 && Tv.textW(s + '\u2026', size, wt) > maxW) s = s.slice(0, -1).replace(/\s+$/, ''); return s + '\u2026'; }
   /* Logos: a coloured disc with the initials. Some channels have none (the TV only shows what it has saved): the views then keep the column empty. */
   var LOGOS = true;                                                   // the "logos" switch of the Vetro page
   function hasLogo(c) { return LOGOS && !c.radio && c.num % 5 !== 0; }
@@ -104,7 +106,12 @@
         txt(g, DAYS[now.getDay()] + ' ' + now.getDate() + ' ' + MONTHS[now.getMonth()], R, 878, 26, 'v muted', 500, true);
         txt(g, c.radio ? 'Antenna · Radio' : 'Antenna', R, 918, 26, 'v muted', 500, true);
         txt(g, 'Audio: ' + AUDIO[audio], R, 958, 26, 'v muted', 500, true);
-        if (p) { var d = txt(g, DESC, X0, 866, 30, 'v muted', COL - X0); d.style.whiteSpace = 'normal'; d.style.lineHeight = '42px'; d.style.top = (866 - 6) + 'px'; d.style.maxHeight = (3 * 42) + 'px'; d.style.overflow = 'hidden'; }
+        if (p) { var d = txt(g, DESC, X0, 866, 30, 'v muted', COL - X0); d.style.whiteSpace = 'normal'; d.style.lineHeight = '42px'; d.style.top = (866 - 6) + 'px'; d.style.maxHeight = (2 * 42) + 'px'; d.style.overflow = 'hidden'; d.style.display = '-webkit-box'; d.style.webkitBoxOrient = 'vertical'; d.style.webkitLineClamp = '2'; }
+        // the Next line, where a third line of description would be (baseline 975): "Next" .64, start and title .76, 20 px apart; empty when there is no next programme (radios)
+        if (p) {
+          var nt = hhmm(p.end), tx = X0 + Tv.textW('Next', 30, 500) + 20, ix = tx + Tv.textW(nt, 30, 500) + 20;
+          txt(g, 'Next', X0, 950, 30, 'v faint', 200); txt(g, nt, tx, 950, 30, 'v muted', 200); txt(g, fit(TITLES[(i + 5) % TITLES.length], 30, 500, COL - ix), ix, 950, 30, 'v muted', COL - ix);
+        }
         g.style.display = ''; veil('info', true);
         later('info', 10000, INFO.hide);
       },
@@ -191,15 +198,47 @@
     return PADAPI;
   }());
 
-  /* ---- Audio toast: the osd 123's capsule, top right, 2 s (Views.cs ToastView) ---- */
+  /* ---- Audio toast (Left; Down while it is up): two rows, Audio and Subtitles, panel x 1176..1824, y 96..248, radius 40, 2.2 s (Views.cs AudioToastView).
+     Each row: the key picture (40 px), the label (32 / 500) at x 1272 and the value (32 / 600) at x 1432 on the row's baseline (155, 211).
+     The row just changed: key .85, label .76, value 1; the other: .40, .55, .70. Fixed size and columns: nothing moves when a value changes. ---- */
   var TOAST = (function () {
-    var g = surface(), pad = X_('--vetro-tv-toast-pad'), H = X_('--vetro-tv-toast-h'), right = 1920 - X_('--vetro-tv-margin'), Y = X_('--vetro-tv-toast-y');
-    var c = Tv.panel(g, right - 300, Y, 300, H, H / 2), t = txt(g, '', 0, Y + Math.round((H - 32 * 1.2) / 2), 32, '', 900);
-    return { show: function (s) { t.textContent = s; var w = Tv.textW(s, 32, 500) + 2 * pad; t.style.left = (right - w + pad + 1) + 'px'; c.move(right - w, Y, w, H, H / 2); g.style.display = ''; later('toast', 2000, function () { g.style.display = 'none'; }); } };
+    var g = surface(), X = 1176, Y = 96, W = 648, H = 152, VW = 352;
+    Tv.panel(g, X, Y, W, H, 40);
+    var rows = [['left', 'Audio', 155], ['down', 'Subtitles', 211]].map(function (r, i) {
+      var top = Math.round(r[2] - Tv.baseOff(32));
+      return {
+        key: Tv.mk(g, 'keyimg', 1216, Y + 20 + i * 56 + 8, 40, 40, { 'background': 'url(assets/tuner/key_' + r[0] + '.png) center / contain no-repeat' }),
+        label: txt(g, r[1], 1272, top, 32, 'l1', 160), value: txt(g, '', 1432, top, 32, 'l1 w600', VW)
+      };
+    });
+    return {
+      show: function (audioText, subsText, subsChanged) {
+        rows[0].value.textContent = fit(audioText, 32, 600, VW); rows[1].value.textContent = fit(subsText, 32, 600, VW);
+        rows.forEach(function (r, i) {
+          var on = (i === 1) === subsChanged;
+          r.key.style.opacity = on ? '.85' : '.4'; r.label.style.color = 'rgba(255,255,255,' + (on ? .76 : .55) + ')'; r.value.style.color = 'rgba(255,255,255,' + (on ? 1 : .7) + ')';
+        });
+        g.style.display = ''; later('toast', 2200, function () { g.style.display = 'none'; });
+      },
+      visible: function () { return g.style.display !== 'none'; }
+    };
   }());
 
   /* ---- behaviour ---- */
   var AUDIO = ['Italian', 'English', 'Original'], audio = 0;
+  function audioText() { return AUDIO[audio] + (audio > 0 ? ' (' + (audio + 1) + ')' : ''); }
+  /* Subtitles: sample tracks per channel (Doc, 4, cannot be read; every fifth from 3 and the radios have none; Cinema, 1, also has the
+     hard-of-hearing track); on/off and the track are the TV's two settings, one for every channel, as on the TV. */
+  function subTracks(c) { if (c.num === 4) return null; if (c.radio || c.num % 5 === 3) return []; return c.num === 1 ? ['Italian', 'English', 'Italian (hard of hearing)'] : ['Italian', 'English']; }
+  var subOn = false, subIdx = 0;
+  function subSel(t) { return subOn && t.length ? (subIdx < t.length ? subIdx : 0) : -1; }
+  function subsText() { var t = subTracks(CH[cur]); return t === null ? 'Not available' : !t.length ? 'None on this channel' : subSel(t) < 0 ? 'Off' : t[subSel(t)]; }
+  /* Down: Off -> track 1 -> ... -> Off; off keeps the index there is. With no track, or a list that cannot be read, nothing changes. */
+  function nextSubs() {
+    var t = subTracks(CH[cur]);
+    if (t && t.length) { var sel = subSel(t), nx = sel + 1 < t.length ? sel + 1 : -1; if (nx < 0) { subIdx = sel >= 0 ? sel : subIdx; subOn = false; } else { subIdx = nx; subOn = true; } }
+    TOAST.show(audioText(), subsText(), true);
+  }
   function tune(i) { cur = i; bar.say('CH ' + CH[i].num + ' ' + CH[i].name); INFO.hide(); B.show(i); }
   function closeViews() { LIST.hide(); PAD.close(); INFO.hide(); clearTimeout(timers.list); view = null; }
 
@@ -225,7 +264,8 @@
     } else {
       if (k === 'Enter') { B.hide(); view = 'list'; LIST.open(cur); }
       else if (k === 'ArrowRight') { B.hide(); view = 'pad'; PAD.open(''); }
-      else if (k === 'ArrowLeft') { audio = (audio + 1) % AUDIO.length; TOAST.show('Audio: ' + AUDIO[audio]); }
+      else if (k === 'ArrowLeft') { audio = (audio + 1) % AUDIO.length; TOAST.show(audioText(), subsText(), false); }
+      else if (k === 'ArrowDown' && TOAST.visible()) nextSubs();
       else if (k === 'i' || k === 'I') { B.hide(); view = 'info'; INFO.show(cur); }
       else if (k === 'ArrowUp' || k === 'g' || k === 'G') location.href = 'epg.html?ch=' + cur;
       else if (k === 'Escape') { B.hide(); bar.say('Back: the tuner steps aside (resident) or exits'); } else return;
@@ -240,7 +280,8 @@
     if (v && v[1] === 'list') { view = 'list'; LIST.open(cur); }
     else if (v && v[1] === 'pad') { view = 'pad'; PAD.open(''); }
     else if (v && v[1] === 'info') { view = 'info'; INFO.show(cur); }
-    else if (v && v[1] === 'toast') { tune(cur); TOAST.show('Audio: ' + AUDIO[1] + ' · track 2'); }
+    else if (v && v[1] === 'toast') { tune(cur); audio = 1; TOAST.show(audioText(), subsText(), false); }
+    else if (v && v[1] === 'subtitles') { tune(cur); subOn = true; subIdx = 0; TOAST.show(audioText(), subsText(), true); }
     else tune(cur);
   });
 }());

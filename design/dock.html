@@ -321,7 +321,7 @@
       else if (k === 'ArrowUp') { if (tsel[tcard] === 0) { closeTasks(); e.preventDefault(); return; } tsel[tcard]--; }
       else if (k === 'ArrowLeft') tcard = Math.max(0, tcard - 1); else if (k === 'ArrowRight') tcard = Math.min(CARDS.length - 1, tcard + 1);
       else if (k === 'Escape' || k === 'Backspace') { closeTasks(); e.preventDefault(); return; }
-      else if (k === 'Enter') { var cc = CHOICES[CARDS[tcard]]; if (cc) { cc.on = tsel[tcard]; cc.note = CARDS[tcard] === 'sleep' && cc.on > 0 ? 'The TV switches off in ' + cc.rows[cc.on] : ''; bar.say(cc.title + ': ' + cc.rows[cc.on]); } else if (CARDS[tcard] === 'audio') { OUTS.forEach(function (o, i) { o[2] = i === tsel[tcard]; }); bar.say('sound on: ' + OUTS[tsel[tcard]][0]); } else bar.say('open: ' + TASKS[tsel[tcard]][0]); }
+      else if (k === 'Enter') { var cc = CHOICES[CARDS[tcard]]; if (cc) { cc.on = tsel[tcard]; cc.note = CARDS[tcard] === 'sleep' && cc.on > 0 ? 'TV off in ' + cc.rows[cc.on] : ''; bar.say(cc.title + ': ' + cc.rows[cc.on]); } else if (CARDS[tcard] === 'audio') { OUTS.forEach(function (o, i) { o[2] = i === tsel[tcard]; }); bar.say('sound on: ' + OUTS[tsel[tcard]][0]); } else bar.say('open: ' + TASKS[tsel[tcard]][0]); }
       else return;
       drawTasks(); e.preventDefault(); return;
     }
