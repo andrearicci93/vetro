@@ -128,6 +128,12 @@ Notes:
 - **`intercepts` is a manifest key, not a permission,** and is already part of API 1 (see [plugins.md](plugins.md#taking-over-an-apps-launcher-tile-intercepts)).
   New permissions would make a Shard fail to load on an older Vetro; an optional key is ignored there. Under isolation `launch(appId)` is a call from the host into the Shard, so it keeps working
   and needs the same `exec` (or its future replacement) to start the app. The launcher only ever sees that a tile is taken over, never what the Shard does.
+- **`controlCenter` is a manifest key too, not a permission, and part of API 1** (see [plugins.md](plugins.md#adding-a-card-to-the-control-center-controlcenter)): `{ "label": "…" }` (1–24 characters)
+  adds one card to the launcher's Control center, filled by the Shard's `card()` and `cardSelect(rowId)`. Limits, all applied by the host and not trusted to the Shard: 7 rows of `id` (`A-Za-z0-9._-`, up to 40),
+  `label` (40), `value` (24), a `note` (80); control characters become spaces; reads time out at 3 s, actions at 10 s; errors are the card's own ("Not available") and do not count towards the 3 that switch a Shard off.
+  The launcher never runs Shard code: it reads plain text from the Vetro service on the TV, which asks the Shard. The card needs no capability beyond what the Shard's own code may do (a Shard that
+  talks to a home server over the network needs nothing from Vetro for it; one that runs commands still needs `exec`). Under isolation both methods are calls from the host into the Shard, as `launch(appId)` is.
+  A Shard that is switched off has no card; the user's choice of the card stays saved, one card per Shard, at most three cards in all with Vetro's own four.
 
 ## The catalog (vetro-plugins)
 

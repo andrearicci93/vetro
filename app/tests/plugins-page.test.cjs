@@ -87,3 +87,29 @@ assert.match(html,/id="pluginInstalledTitle">Installed'/);assert.match(html,/id=
     assert.match(html, /The downloaded file intercepts different apps than the catalog says/);
     console.log('plugins page: intercept label ok');
 }
+
+// A Shard that adds a card to the Control center says so: on its card, in the catalog, in the install question, and in the Control center tab.
+{
+    const vm = require('vm');
+    const grab = name => new RegExp('function ' + name + '\\([^)]*\\)\\{[^\\n]*\\}\\n').exec(html)[0];
+    const special = /HTML_SPECIAL_RE\s*=\s*[^;]*;/.exec(html)[0].replace(/^[^H]*/, 'var ');
+    const infoVar = /var CARD_INFO=\{[^\n]*\};\n/.exec(html)[0];
+    const code = special + ['esc', 'cardWords', 'cardKey', 'cardNote', 'cardInfo'].map(grab).join('') + infoVar + 'var dockData=null;';
+    const ctx = vm.createContext({});
+    vm.runInContext(code, ctx);
+    const run = (name, ...a) => vm.runInContext(name, ctx)(...a);
+    assert.match(run('cardWords', { label: 'Home Assistant' }), /adds a card to the Control center \(“Home Assistant”\)/, 'the install question says it');
+    assert.equal(run('cardWords'), ''); assert.equal(run('cardWords', {}), ''); assert.equal(run('cardWords', { label: 5 }), '');
+    assert.equal(run('cardKey', { label: 'Lights', extra: 1 }), 'Lights'); assert.equal(run('cardKey'), ''); assert.notEqual(run('cardKey', { label: 'A' }), run('cardKey'), 'a bundle with a card the list does not name is refused');
+    assert.match(run('cardNote', { label: 'Lights' }), /Adds a card to the Control center \(“Lights”\)\. Switch it on in Vetro UI/);
+    assert.doesNotMatch(run('cardNote', { label: 'Lights' }), /row-error/, 'no error: nothing to say');
+    assert.match(run('cardNote', { label: 'Lights', error: 'The Shard did not answer in time' }), /row-error">Control center card: The Shard did not answer in time/, 'an error of the card is shown on the Shard');
+    assert.equal(run('cardNote'), ''); assert.match(run('cardNote', { label: '<i>x</i>' }), /&lt;i&gt;/, 'labels are escaped');
+    assert.equal(run('cardInfo', 'tasks', {}).name, 'Task manager');
+    assert.equal(run('cardInfo', 'shard:home-assistant', { cardShards: { 'shard:home-assistant': 'Home Assistant' } }).name, 'Home Assistant', 'the Shard names its card');
+    assert.equal(run('cardInfo', 'shard:gone', {}).name, 'shard:gone', 'unknown: its name, no crash');
+    assert.match(html, /The downloaded file differs from the catalog on the Control center card/);
+    assert.match(html, /data-quick-item="card-paused-'/, 'a card whose Shard is off is listed as paused, not dropped');
+    assert.match(html, /Adds a card to the Control center'\]/, 'the catalog entry says it');
+    console.log('plugins page: control center card ok');
+}

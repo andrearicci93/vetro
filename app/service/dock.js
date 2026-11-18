@@ -155,9 +155,22 @@ Dock.prototype.installed = function () {
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the volume bar sits (the dock's --volume-edge)
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
 var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;
+// A Shard (plugin) can add one card (manifest "controlCenter"): it is named "shard:<plugin id>". A saved list keeps such a name even while
+// its Shard is off or gone, so the choice comes back with the Shard; what the launcher is started with (cardsArg) only has the running ones.
+var SHARD_CARD_RE = /^shard:([a-z][a-z0-9-]{1,31})$/;
 function cleanCards(list) {
     var out = [];
-    (Array.isArray(list) ? list : []).forEach(function (c) { if (CARDS.indexOf(c) >= 0 && out.indexOf(c) < 0 && out.length < MAX_CARDS) out.push(c); });
+    (Array.isArray(list) ? list : []).forEach(function (c) { if ((CARDS.indexOf(c) >= 0 || (typeof c === 'string' && SHARD_CARD_RE.test(c))) && out.indexOf(c) < 0 && out.length < MAX_CARDS) out.push(c); });
+    return out;
+}
+// A card's label on the launcher's command line: every byte outside [A-Za-z0-9.-] as =HH (UTF-8), so it needs no quoting in a shell and
+// no % for systemd. The launcher decodes it (ControlCenter.Parse).
+function hexLabel(text) {
+    var bytes = Buffer.from(String(text), 'utf8'), out = '';
+    for (var i = 0; i < bytes.length; i++) {
+        var b = bytes[i];
+        out += (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b === 46 || b === 45 ? String.fromCharCode(b) : '=' + (b < 16 ? '0' : '') + b.toString(16).toUpperCase();
+    }
     return out;
 }
 // The user's own row: Vetro's order of the tiles and the ones taken out of it, by row key (dock-catalog ROW_KEY), plus
@@ -207,11 +220,13 @@ Dock.prototype.readState = function () {
             customHomeDisabled: s && s.customHomeDisabled === true,
             build: s && typeof s.build === 'string' ? s.build : null,
             buildPid: s && typeof s.buildPid === 'number' ? s.buildPid : null,
+            // The --cards the running launcher was started with (null: started by a Vetro that did not note it).
+            shownCards: s && typeof s.shownCards === 'string' ? s.shownCards.slice(0, 400) : null,
             // The cards the Control center had when it was last on: switching it off and on again (the TV screen's Vetro UI tile) brings them back.
             lastCards: s && Array.isArray(s.lastCards) ? cleanCards(s.lastCards) : [],
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacy('home'),
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images')};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images')}; }
 };
 
@@ -362,7 +377,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: state.cards, cardChoices: CARDS.slice(), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -378,6 +393,43 @@ function servicePort(port) {
     var n = typeof port === 'function' ? port() : port;
     return typeof n === 'number' && n % 1 === 0 && n >= 1024 && n <= 65535 ? n : null;
 }
+
+// --- the Control center's cards, with the Shards' ones ---------------------------------------------------------------------------
+// {"shard:<id>": label} for the running Shards that have a card.
+Dock.prototype.cardShards = function () {
+    var out = {};
+    if (!this.shards || typeof this.shards.cards !== 'function') return out;
+    var list;
+    try { list = this.shards.cards() || []; } catch (e) { return out; }
+    list.forEach(function (c) { if (c && typeof c.plugin === 'string' && typeof c.label === 'string') out['shard:' + c.plugin] = c.label; });
+    return out;
+};
+// What can be switched on now: the four cards of Vetro and one for each running Shard that has one.
+Dock.prototype.cardChoices = function () { return CARDS.concat(Object.keys(this.cardShards())); };
+// The saved cards the launcher shows now: a Shard's card only while that Shard runs.
+Dock.prototype.cardsEffective = function (state) {
+    var shards = this.cardShards();
+    return (state || this.readState()).cards.filter(function (c) { return CARDS.indexOf(c) >= 0 || Object.prototype.hasOwnProperty.call(shards, c); });
+};
+// Saved Shard cards that are not shown now, with the label the Shard gave and why: [{card, label, why}].
+Dock.prototype.cardsPaused = function (state) {
+    var self = this, shards = this.cardShards();
+    return (state || this.readState()).cards.filter(function (c) { return SHARD_CARD_RE.test(c) && !Object.prototype.hasOwnProperty.call(shards, c); }).map(function (c) {
+        var id = SHARD_CARD_RE.exec(c)[1], st = null;
+        try { st = self.shards && self.shards.status(id); } catch (e) { st = null; }
+        return {card: c, label: st && st.controlCenter ? st.controlCenter.label : id, why: !st ? 'The Shard is not installed' : st.state === 'running' ? 'The Shard has no card' : 'The Shard is switched off'};
+    });
+};
+// The value of the launcher's --cards: "tasks,shard:home-assistant:Home=20Assistant" ('' when no card shows).
+Dock.prototype.cardsArg = function (state) {
+    var shards = this.cardShards();
+    return this.cardsEffective(state).map(function (c) { return SHARD_CARD_RE.test(c) ? c + ':' + hexLabel(shards[c]) : c; }).join(',');
+};
+// True when the launcher that runs was started with the cards it should show now.
+Dock.prototype.cardsShown = function () {
+    var state = this.readState(), want = this.cardsArg(state);
+    return state.shownCards === null ? want.indexOf('shard:') < 0 : state.shownCards === want;
+};
 
 // The launch line. Paths are fixed constants or come from this package's own folder, and are quoted.
 //
@@ -397,7 +449,7 @@ Dock.prototype.startScript = function () {
         (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
-        (state.cards.length && !state.customApp ? ' --cards ' + state.cards.join(',') : ' --no-tasks');
+        (!state.customApp && this.cardsArg(state) ? ' --cards ' + this.cardsArg(state) : ' --no-tasks');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
@@ -477,6 +529,7 @@ Dock.prototype.launch = function (quick) {
         // Kept in memory too: if the state cannot be saved, the launcher must still be restarted only once per run.
         self.startedHere = true;
         if (self.build) { try { self.rememberBuild(p); } catch (e) {} }
+        try { var st = self.readState(); if (!st.customApp) self.patchState({shownCards: self.cardsArg(st)}); } catch (e) { /* only decides whether a Shard's change restarts the launcher */ }
         return p;
     });
 };
@@ -519,7 +572,7 @@ Dock.prototype.setShards = function (host) {
             if (self.busy) { self.refreshPending = true; return; }
             // Plugins start with the service, so this runs at every service start: when the row already shows what
             // the plugins claim, there is nothing to rebuild and the launcher must not be restarted for it.
-            if (self.claimsShown()) return;
+            if (self.claimsShown() && self.cardsShown()) return;
             // A rebuild that fails here (the root agent not connected yet, right after a service restart) is tried again
             // by the supervision once the launcher is seen running; it is not an error to show on the Launcher page.
             self.refresh().catch(function () { self.refreshPending = true; self.lastError = null; });
@@ -852,16 +905,61 @@ Dock.prototype.setNoMotion = function (on) {
 // argument (--cards, or --no-tasks when there is none), so a running Vetro launcher is restarted.
 Dock.prototype.setCards = function (list) {
     var self = this;
-    if (!Array.isArray(list) || list.some(function (c) { return CARDS.indexOf(c) < 0; })) return Promise.reject(new Error('Unknown card'));
+    if (!Array.isArray(list)) return Promise.reject(new Error('Unknown card'));
+    var state = this.readState(), shards = this.cardShards();
+    // A Shard's card can be chosen while its Shard runs; one that was saved earlier may be put back at any time (the TV screen's tile does).
+    var known = state.cards.concat(state.lastCards);
+    if (list.some(function (c) { return CARDS.indexOf(c) < 0 && !(SHARD_CARD_RE.test(c) && (Object.prototype.hasOwnProperty.call(shards, c) || known.indexOf(c) >= 0)); })) return Promise.reject(new Error('Unknown card'));
     var cards = cleanCards(list);
     if (cards.length !== list.length) return Promise.reject(new Error('At most ' + MAX_CARDS + ' cards, each once'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
-    var state = this.readState();
-    var last = cards.length ? cards : state.cards.length ? state.cards : state.lastCards;
-    try { this.patchState({cards: cards, taskManager: cards.indexOf('tasks') >= 0, lastCards: last}); }
+    // A Shard card whose Shard is off stays saved, behind the cards just chosen and while there is room (it comes back with the Shard).
+    var saved = cards.slice();
+    if (cards.length) state.cards.forEach(function (c) {
+        if (SHARD_CARD_RE.test(c) && !Object.prototype.hasOwnProperty.call(shards, c) && saved.indexOf(c) < 0 && saved.length < MAX_CARDS) saved.push(c);
+    });
+    var last = saved.length ? saved : state.cards.length ? state.cards : state.lastCards;
+    try { this.patchState({cards: saved, taskManager: saved.indexOf('tasks') >= 0, lastCards: last}); }
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.status();
     return this.refreshOr(function () { self.patchState({cards: state.cards, taskManager: state.taskManager, lastCards: state.lastCards}); });
+};
+
+// The card of a Shard for the launcher, as text (the launcher has no JSON parser): lines of tab-separated fields, always answered, so that
+// the launcher shows "Not available" and goes on whatever the Shard does. READ and SELECT answer the same way (docs/plugins.md).
+//   status<TAB>ok|unavailable   [result<TAB>ok|fail (a choice)]   note<TAB>text   choosable<TAB>1|0   row<TAB>id<TAB>label<TAB>value<TAB>ticked 0|1
+function shardCardText(card, extra) {
+    var lines = [];
+    if (!card || card.ok !== true) {
+        lines.push('status\tunavailable');
+        if (extra && extra.result) lines.push('result\t' + extra.result);
+        lines.push('note\t' + ((extra && extra.note) || (card && card.reason) || 'Not available'));
+        lines.push('choosable\t0');
+    } else {
+        lines.push('status\tok');
+        if (extra && extra.result) lines.push('result\t' + extra.result);
+        var note = extra && extra.note || card.note;
+        if (note) lines.push('note\t' + note);
+        lines.push('choosable\t' + (card.choosable ? 1 : 0));
+        card.rows.forEach(function (r) { lines.push('row\t' + r.id + '\t' + r.label + '\t' + r.value + '\t' + (r.ticked ? 1 : 0)); });
+    }
+    return lines.join('\n') + '\n';
+}
+
+Dock.prototype.shardCardRead = function (id) {
+    if (!this.shards || typeof this.shards.cardOf !== 'function') return Promise.resolve(shardCardText({ok: false, reason: 'Plugins are not available'}));
+    return Promise.resolve(this.shards.cardOf(id)).then(null, function (e) { return {ok: false, reason: String(e && e.message || e)}; }).then(function (card) { return shardCardText(card); });
+};
+
+Dock.prototype.shardCardSelect = function (id, rowId) {
+    var self = this;
+    if (!this.shards || typeof this.shards.selectCard !== 'function') return Promise.resolve(shardCardText({ok: false, reason: 'Plugins are not available'}, {result: 'fail'}));
+    return Promise.resolve(this.shards.selectCard(id, rowId)).then(null, function (e) { return {ok: false, note: String(e && e.message || e), card: null}; }).then(function (r) {
+        if (r && r.unavailable) return shardCardText(r, {result: 'fail'});
+        var note = r && r.note || (r && r.ok ? '' : 'It did not work');
+        // Without a card after a failed action, the card is read again: the rows must still be on screen.
+        return (r && r.card ? Promise.resolve(r.card) : self.shards.cardOf(id)).then(function (card) { return shardCardText(card, {result: r && r.ok ? 'ok' : 'fail', note: note}); });
+    });
 };
 
 // The launcher sends the row as the user left it (moved, a tile taken out or added from All apps), always whole, and does not wait for
@@ -1085,4 +1183,4 @@ Dock.prototype.checkCustomApp = function (appId) {
 };
 
 module.exports = {rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
-    customCandidate: customCandidate, customAppCheck: customAppCheck};
+    customCandidate: customCandidate, customAppCheck: customAppCheck, hexLabel: hexLabel, shardCardText: shardCardText, cleanCards: cleanCards};

@@ -1650,7 +1650,7 @@ namespace Launcher.Tests
 
             T.Run("control center: which cards, in which order, and Left/Right between them", () =>
             {
-                Func<CardKind[], string> names = k => string.Join(",", Array.ConvertAll(k, x => x.ToString()));
+                Func<CardSpec[], string> names = k => string.Join(",", Array.ConvertAll(k, x => x.ToString()));
                 T.Eq(names(ControlCenter.Parse(null, false)), "Tasks", "no --cards: the Task manager alone, as before");
                 T.Eq(names(ControlCenter.Parse(null, true)), "", "--no-tasks: no card");
                 T.Eq(names(ControlCenter.Parse("audio,tasks", false)), "Audio,Tasks", "the order given");
@@ -1815,6 +1815,101 @@ namespace Launcher.Tests
                 T.Eq(SleepTimer.SetCommand(2), "vconftool set -f -t int memory/menu/system/time/sleeptimer/savetime 2 && vconftool set -f -t string db/menu/system/time/sleeptimer/time_t 60", "the index first, then the minutes");
                 T.Eq(SleepTimer.SetCommand(0), "vconftool set -f -t int memory/menu/system/time/sleeptimer/savetime 0 && vconftool set -f -t string db/menu/system/time/sleeptimer/time_t 0", "off");
                 T.True(SleepTimer.SetCommand(5) == null && SleepTimer.SetCommand(-1) == null, "nothing outside Samsung's five");
+            });
+
+            T.Run("shard cards: --cards tokens, labels, title and hint", () =>
+            {
+                Func<CardSpec[], string> names = k => string.Join(",", Array.ConvertAll(k, x => x.ToString()));
+                CardSpec[] one = ControlCenter.Parse("shard:demo-lights", false);
+                T.Eq(names(one), "Shard:demo-lights", "a Shard's card alone");
+                T.Eq(one[0].Kind, CardKind.Shard, "its kind"); T.Eq(one[0].Label, "demo-lights", "no label: the id");
+                T.Eq(ControlCenter.HintText(one), "demo-lights", "one card: its title under the bar");
+                CardSpec[] lab = ControlCenter.Parse("shard:demo-lights:Demo=20lights", false);
+                T.Eq(lab[0].Label, "Demo lights", "the label, a space escaped");
+                T.Eq(ControlCenter.Title(lab[0]), "Demo lights", "the card's title is the label");
+                T.Eq(ControlCenter.HintText(lab), "Demo lights", "and so is the hint");
+                T.Eq(names(ControlCenter.Parse("tasks,shard:demo-lights,audio", false)), "Tasks,Shard:demo-lights,Audio", "in the order given, beside the others");
+                T.Eq(ControlCenter.HintText(ControlCenter.Parse("tasks,shard:demo-lights", false)), "Control center", "two cards: Control center");
+                T.Eq(names(ControlCenter.Parse("shard:aa,shard:bb,shard:cc", false)), "Shard:aa,Shard:bb,Shard:cc", "three Shards at once");
+                T.Eq(names(ControlCenter.Parse("shard:aa,shard:aa:Other,shard:bb", false)), "Shard:aa,Shard:bb", "each Shard once (the first token wins)");
+                T.Eq(names(ControlCenter.Parse("tasks,audio,picture,shard:aa", false)), "Tasks,Audio,Picture", "at most three cards");
+                T.Eq(names(ControlCenter.Parse("shard:aa,tasks,sleep,audio", false)), "Shard:aa,Tasks,Sleep", "a Shard counts as one of the three");
+                T.Eq(names(ControlCenter.Parse("shard:,shard:a,shard:Aa,shard:1a,shard:a_b,shard:a;b,shard:" + new string('a', 33) + ",shard,tasks", false)), "Tasks", "bad ids skipped");
+                T.Eq(names(ControlCenter.Parse("shard:" + new string('a', 32), false)), "Shard:" + new string('a', 32), "32 characters is the longest id");
+                T.Eq(ControlCenter.Parse("shard:aa:Caf=C3=A9", false)[0].Label, "Café", "UTF-8 bytes decoded");
+                T.Eq(ControlCenter.Parse("shard:aa:=E2=9C=A8=20Lights", false)[0].Label, "✨ Lights", "a symbol too");
+                T.Eq(ControlCenter.Parse("shard:aa:caf=c3=a9", false)[0].Label, "café", "lower-case hex read as well");
+                T.Eq(ControlCenter.Parse("shard:aa:Bad=G1", false)[0].Label, "aa", "a bad escape: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:Bad=4", false)[0].Label, "aa", "an escape cut short: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:Bad=", false)[0].Label, "aa", "a lone '=': the id");
+                T.Eq(ControlCenter.Parse("shard:aa:Two words", false)[0].Label, "aa", "a space that should have been escaped: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:a:b", false)[0].Label, "aa", "a raw ':' in the label: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:=C3", false)[0].Label, "aa", "bytes that are not UTF-8: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:=0A", false)[0].Label, "aa", "a control character: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:=20=20", false)[0].Label, "aa", "only spaces: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:", false)[0].Label, "aa", "an empty label: the id");
+                T.Eq(ControlCenter.Parse("shard:aa:" + new string('x', 24), false)[0].Label, new string('x', 24), "24 characters is the longest label");
+                T.Eq(ControlCenter.Parse("shard:aa:" + new string('x', 25), false)[0].Label, "aa", "25 is too long: the id");
+                T.Eq(ShardCard.EncodeLabel("Café: 1_2,3=4%"), "Caf=C3=A9=3A=201=5F2=2C3=3D4=25", "the service's escape: ':', ' ', '_', ',', '=', '%' too");
+                T.Eq(ShardCard.DecodeLabel(ShardCard.EncodeLabel("Luci · salotto")), "Luci · salotto", "and back");
+                T.True(ShardCard.EncodeLabel("Caf=C3=A9").IndexOf('%') < 0, "no '%' ever, for systemd's ExecStart");
+            });
+
+            T.Run("shard cards: the curl commands only carry checked ids", () =>
+            {
+                T.Eq(ShardCard.ReadCommand("demo-lights", 8099), "/usr/bin/curl -sf -m 5 'http://127.0.0.1:8099/plugins/launcher/api/card?plugin=demo-lights'", "the read: 5 s");
+                T.Eq(ShardCard.SelectCommand("demo-lights", "living_room.1", 9000), "/usr/bin/curl -sf -m 12 -X POST 'http://127.0.0.1:9000/plugins/launcher/api/card-select?plugin=demo-lights&row=living_room.1'", "the choice: 12 s, a POST, the port given");
+                foreach (string bad in new[] { null, "", "a", "A-b", "a'b", "a b", "a;reboot", "a$(x)", "a&b=c" })
+                {
+                    T.True(ShardCard.ReadCommand(bad, 8099) == null, "a bad Shard id never reaches the shell: " + bad);
+                    T.True(ShardCard.SelectCommand(bad, "row", 8099) == null, "nor in a choice: " + bad);
+                }
+                foreach (string bad in new[] { null, "", "a b", "a'b", "a&plugin=x", "a/b", "a;b", "é", new string('r', 41) })
+                    T.True(ShardCard.SelectCommand("demo-lights", bad, 8099) == null, "a bad row id never reaches the shell: " + bad);
+                T.True(ShardCard.SelectCommand("demo-lights", new string('r', 40), 8099) != null, "40 characters is the longest row id");
+            });
+
+            T.Run("shard cards: what the service answers, read again here", () =>
+            {
+                string r; ChoiceState st;
+                st = ShardCard.Parse("status\tok\nnote\t2 on\nrow\tliving\tLiving room\t80%\t1\nrow\tkitchen\tKitchen\t\t0\r\nrow\toff\tOff\t\t0\n", out r);
+                T.True(st.Choosable && st.Note == "2 on" && st.Rows.Count == 3, "ok: the rows and the note");
+                T.Eq(st.Rows[0].Label, "Living room · 80%", "a value after a middle dot");
+                T.Eq(st.Rows[1].Label, "Kitchen", "no value: the label alone (CRLF tolerated)");
+                T.True(st.Rows[0].Active && !st.Rows[1].Active, "ticked is the active row");
+                T.True(st.Rows[0].Id == "living" && st.Rows[2].Id == "off" && st.Rows[0].Value == 0 && st.Rows[2].Value == 2, "each row keeps its id, its value is its index");
+                T.True(r == null, "a read has no result");
+                st = ShardCard.Parse("status\tok\nresult\tfail\nnote\tThe bridge did not answer\nrow\ta\tA\t\t1\n", out r);
+                T.True(r == "fail" && st.Rows.Count == 1 && st.Note == "The bridge did not answer", "a choice's result, the card as it is now");
+                st = ShardCard.Parse("status\tok\nchoosable\t0\nrow\ta\tA\t\t1\n");
+                T.True(!st.Choosable && st.Rows.Count == 1, "choosable 0: shown, not chosen");
+                T.True(ShardCard.Parse("status\tok\nrow\ta\tA\t\t0").Choosable, "choosable when it is not said");
+                st = ShardCard.Parse("status\tunavailable\nnote\tThe Shard is off\nrow\ta\tA\t\t1\n");
+                T.True(!st.Choosable && st.Rows.Count == 0 && st.Note == "The Shard is off", "unavailable: its reason, no rows");
+                T.Eq(ShardCard.Parse("status\tunavailable\n").Note, "Not available", "unavailable without a reason");
+                foreach (string bad in new[] { null, "", "\n\n", "<html>502 Bad Gateway</html>", "status\tmaybe\nrow\ta\tA\t\t1", "row\ta\tA\t\t1", "status ok\nrow a A  1" })
+                {
+                    ChoiceState g = ShardCard.Parse(bad);
+                    T.True(!g.Choosable && g.Rows.Count == 0 && g.Note == "Not available", "garbage or nothing: not available (" + (bad ?? "null") + ")");
+                }
+                st = ShardCard.Parse("status\tok\n");
+                T.True(!st.Choosable && st.Note == "Not available", "ok without rows: nothing to choose");
+                var many = new StringBuilder("status\tok\n");
+                for (int i = 0; i < 10; i++) many.Append("row\tr" + i + "\tRow " + i + "\t\t0\n");
+                st = ShardCard.Parse(many.ToString());
+                T.Eq(st.Rows.Count, TaskLayout.MaxRows, "at most seven rows");
+                T.Eq(st.Rows[6].Id, "r6", "the first seven");
+                st = ShardCard.Parse("status\tok\nrow\ta b\tSpace\t\t0\nrow\ta'b\tQuote\t\t0\nrow\t\tEmpty\t\t0\nrow\tok\tGood\t\t0\nrow\tok\tAgain\t\t1\nrow\tn\t\t\t0\nrow\tt\tTick\t\tyes\n");
+                T.Eq(st.Rows.Count, 1, "rows with a bad id, a repeated id, no label or a bad tick dropped");
+                T.True(st.Rows[0].Id == "ok" && st.Rows[0].Label == "Good" && st.Rows[0].Value == 0, "the good one, at index 0");
+                st = ShardCard.Parse("status\tok\nrow\ta\tLabel\twith\ttab\t1\nrow\tb\tB\t\t0\nrow\tc\tC\t\t0\textra\nnote\tone\ttwo\n");
+                T.True(st.Rows.Count == 1 && st.Rows[0].Id == "b", "a tab inside a row's texts shifts its fields: the row is dropped");
+                T.Eq(st.Note, "one two", "a tab inside the note reads as a space");
+                st = ShardCard.Parse("status\tok\nnote\t" + new string('n', 100) + "\nrow\ta\t" + new string('l', 50) + "\t" + new string('v', 30) + "\t0\nunknown\tline\n");
+                T.Eq(st.Note.Length, ShardCard.MaxNote, "a long note is cut to 80");
+                T.True(st.Note.EndsWith("…"), "with an ellipsis");
+                T.Eq(st.Rows[0].Label, new string('l', 39) + "… · " + new string('v', 23) + "…", "a long label cut to 40, a long value to 24");
+                T.Eq(ShardCard.Parse("status\tok\nrow\ta\tA\u0007b\t\t0\n").Rows[0].Label, "A b", "control characters read as spaces");
             });
 
             T.Run("design: one material for the panels", () =>

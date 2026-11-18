@@ -84,7 +84,7 @@ function fakes(over) {
   const tunerState = Object.assign({enabled: false}, over.tuner);
   const d = {
     calls,
-    dock: {installed: () => over.dockInstalled !== false, readState: () => dockState,
+    dock: {installed: () => over.dockInstalled !== false, readState: () => dockState, cardsEffective: s => s.cards,
       enable: () => { calls.push('dock.enable'); dockState.enabled = true; return Promise.resolve({}); },
       disable: () => { calls.push('dock.disable'); dockState.enabled = false; return Promise.resolve({}); },
       disableCustom: () => { calls.push('dock.disableCustom'); dockState.customApp = null; return Promise.resolve({}); },

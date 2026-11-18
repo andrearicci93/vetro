@@ -46,6 +46,7 @@ function entryFor(r, url) {
     if (m.author) e.author = m.author;
     e.permissions = m.permissions || [];
     if (m.intercepts && m.intercepts.length) e.intercepts = m.intercepts.map(a => ({ appId: a.appId, label: a.label }));   // the dashboard shows it before the install
+    if (m.controlCenter) e.controlCenter = { label: m.controlCenter.label };   // same: the card is announced before the install
     e.url = url;
     e.sha256 = r.sha256;
     return e;
@@ -61,6 +62,7 @@ function load(folder, manifest) {
     for (const k of ['start', 'stop', 'status', 'route']) if (inst[k] != null && typeof inst[k] !== 'function') throw new Error(k + ' must be a function');
     if (manifest.ui && typeof inst.route !== 'function') throw new Error('manifest.ui is set, so route(req, res, sub) must serve "ui"');
     if (manifest.intercepts && typeof inst.launch !== 'function') throw new Error('manifest.intercepts is set, so launch(appId) must be a function that returns a Promise');
+    if (manifest.controlCenter && (typeof inst.card !== 'function' || typeof inst.cardSelect !== 'function')) throw new Error('manifest.controlCenter is set, so card() and cardSelect(rowId) must be functions (sync or returning a Promise)');
     return inst;
 }
 
@@ -103,6 +105,7 @@ try {
         if (r.skipped.length) console.log('not bundled: ' + r.skipped.join(', '));
         if (r.manifest.permissions && r.manifest.permissions.length) console.log('asks for: ' + r.manifest.permissions.join(', ') + ' (shown to the user)');
         if (r.manifest.intercepts) console.log('intercepts: ' + r.manifest.intercepts.map(a => a.label + ' (' + a.appId + ')').join(', ') + ' (shown to the user)');
+        if (r.manifest.controlCenter) console.log('Control center card: ' + r.manifest.controlCenter.label + ' (shown to the user)');
     } else if (cmd === 'pack') {
         if (!a) die('usage: node scripts/vetro-plugin.cjs pack <folder> [outDir]', 2);
         const r = pack(a), file = path.join(b || '.', r.id + '-' + r.version + '.vplugin');

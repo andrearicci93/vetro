@@ -49,13 +49,17 @@ namespace Launcher
         // (selection, scroll); they open, fade and close together. _cardFocus is the card Left and Right have moved to.
         private static DockLayout _appsLayout;
         private static TaskLayout _taskLayout;
-        private static CardKind[] _cards = new CardKind[0];
+        private static CardSpec[] _cards = new CardSpec[0];
         private static int _cardFocus;
-        private static TaskController _tasksCtl, _audioCtl, _pictureCtl, _sleepCtl;
+        // The controller of the card at each position; the Task manager's and the Audio output's are also kept by name (their own code uses them).
+        private static TaskController[] _cardCtl = new TaskController[0];
+        private static TaskController _tasksCtl, _audioCtl;
         private static TaskPanel _taskPanel;
         private static AudioCard _audioCard;
-        private static ChoiceCard _pictureCard, _sleepCard;
-        private static ChoiceSource _pictureSrc, _sleepSrc;
+        // The choice cards (Picture mode, Sleep timer, a Shard's card: there may be several of those) and what reads them, by position;
+        // null at the positions of the other cards.
+        private static ChoiceCard[] _choiceCards = new ChoiceCard[0];
+        private static ChoiceSource[] _choiceSrcs = new ChoiceSource[0];
         private static TaskSource _taskSource;
         private static bool _tasksOn;
         private static List<RunningApp> _taskApps = new List<RunningApp>();
@@ -398,29 +402,31 @@ namespace Launcher
 
         // ------------------------------------------------------------------ Control center cards
 
-        private static bool HasCard(CardKind k) { return Array.IndexOf(_cards, k) >= 0; }
-        private static CardKind FocusedCard { get { return _cards.Length == 0 ? CardKind.Tasks : _cards[_cardFocus]; } }
-        private static TaskController CardCtl(CardKind k)
-        {
-            switch (k) { case CardKind.Audio: return _audioCtl; case CardKind.Picture: return _pictureCtl; case CardKind.Sleep: return _sleepCtl; default: return _tasksCtl; }
-        }
-        private static ChoiceCard ChoiceOf(CardKind k) { return k == CardKind.Picture ? _pictureCard : k == CardKind.Sleep ? _sleepCard : null; }
-        private static ChoiceSource SourceOf(CardKind k) { return k == CardKind.Picture ? _pictureSrc : k == CardKind.Sleep ? _sleepSrc : null; }
+        /// <summary>The position of the first card of kind <paramref name="k"/>, -1 without one.</summary>
+        private static int CardAt(CardKind k) { return Array.FindIndex(_cards, c => c.Kind == k); }
+        private static bool HasCard(CardKind k) { return CardAt(k) >= 0; }
+        private static CardKind FocusedCard { get { return _cards.Length == 0 ? CardKind.Tasks : _cards[_cardFocus].Kind; } }
+        private static TaskController FocusedCtl { get { return _cards.Length == 0 ? _tasksCtl : _cardCtl[_cardFocus]; } }
         /// <summary>The cards open, fade and close together: the first one stands for all of them.</summary>
-        private static TaskController LeadCtl { get { return CardCtl(_cards.Length == 0 ? CardKind.Tasks : _cards[0]); } }
+        private static TaskController LeadCtl { get { return _cards.Length == 0 ? _tasksCtl : _cardCtl[0]; } }
         private static bool CardsActive { get { return LeadCtl.IsActive; } }
 
-        private static void OpenCards(float pop) { foreach (CardKind k in _cards) CardCtl(k).Open(pop); }
-        private static bool HideCards() { bool any = false; foreach (CardKind k in _cards) any |= CardCtl(k).Hide(); return any; }
-        private static void DropCards() { foreach (CardKind k in _cards) CardCtl(k).Drop(); }
-        private static bool TickCards(double dt) { bool more = false; foreach (CardKind k in _cards) more |= CardCtl(k).Tick(dt); return more; }
+        private static void OpenCards(float pop) { foreach (TaskController c in _cardCtl) c.Open(pop); }
+        private static bool HideCards() { bool any = false; foreach (TaskController c in _cardCtl) any |= c.Hide(); return any; }
+        private static void DropCards() { foreach (TaskController c in _cardCtl) c.Drop(); }
+        private static bool TickCards(double dt) { bool more = false; foreach (TaskController c in _cardCtl) more |= c.Tick(dt); return more; }
 
         private static void ShowCards(bool on)
         {
             if (HasCard(CardKind.Tasks)) _taskPanel.SetVisible(on);
             if (HasCard(CardKind.Audio)) _audioCard.SetVisible(on);
-            if (HasCard(CardKind.Picture)) _pictureCard.SetVisible(on);
-            if (HasCard(CardKind.Sleep)) _sleepCard.SetVisible(on);
+            foreach (ChoiceCard c in _choiceCards) if (c != null) c.SetVisible(on);
+        }
+
+        /// <summary>The rows a choice card keeps free beside the others while it reads, so the cards do not grow when the answer comes.</summary>
+        private static int ReserveRows(CardKind k)
+        {
+            return k == CardKind.Sleep ? SleepTimer.Minutes.Length : k == CardKind.Shard ? ShardCard.ReserveRows : 5;
         }
 
         /// <summary>Draws every card; side by side they are as tall as the tallest one, and only the focused one shows its capsule.</summary>
@@ -432,17 +438,15 @@ namespace Launcher
                 if (HasCard(CardKind.Tasks)) rows = Math.Max(rows, TaskLayout.VisibleRows(_taskPanel.Count));
                 if (HasCard(CardKind.Audio)) rows = Math.Max(rows, TaskLayout.VisibleRows(_audioCard.Count));
                 // A choice card reserves its rows while it reads, so the cards do not grow when the answer comes.
-                if (HasCard(CardKind.Picture)) rows = Math.Max(rows, TaskLayout.VisibleRows(Math.Max(_pictureCard.Count, 5)));
-                if (HasCard(CardKind.Sleep)) rows = Math.Max(rows, TaskLayout.VisibleRows(SleepTimer.Minutes.Length));
+                for (int i = 0; i < _choiceCards.Length; i++)
+                    if (_choiceCards[i] != null) rows = Math.Max(rows, TaskLayout.VisibleRows(Math.Max(_choiceCards[i].Count, ReserveRows(_cards[i].Kind))));
                 if (HasCard(CardKind.Tasks)) _taskPanel.Layout.ShowRows = rows;
                 if (HasCard(CardKind.Audio)) _audioCard.Layout.ShowRows = rows;
-                if (HasCard(CardKind.Picture)) _pictureCard.Layout.ShowRows = rows;
-                if (HasCard(CardKind.Sleep)) _sleepCard.Layout.ShowRows = rows;
+                foreach (ChoiceCard c in _choiceCards) if (c != null) c.Layout.ShowRows = rows;
             }
             if (HasCard(CardKind.Tasks)) _taskPanel.Apply(_tasksCtl, FocusedCard == CardKind.Tasks);
             if (HasCard(CardKind.Audio)) _audioCard.Apply(_audioCtl, FocusedCard == CardKind.Audio);
-            if (HasCard(CardKind.Picture)) _pictureCard.Apply(_pictureCtl, FocusedCard == CardKind.Picture);
-            if (HasCard(CardKind.Sleep)) _sleepCard.Apply(_sleepCtl, FocusedCard == CardKind.Sleep);
+            for (int i = 0; i < _choiceCards.Length; i++) if (_choiceCards[i] != null) _choiceCards[i].Apply(_cardCtl[i], i == _cardFocus);
         }
 
         // The window is mapped for the Dock or the Task manager (not for the start-up pre-map): its flag (OverlayFlag) tells the tuner the keys
@@ -567,16 +571,16 @@ namespace Launcher
                 _audioSelectActive = true;
                 _audioReread = Efl.ecore_timer_add(AudioOpenDelay, AudioRereadCb, IntPtr.Zero);
             }
-            foreach (CardKind k in _cards)
+            for (int i = 0; i < _cards.Length; i++)
             {
-                ChoiceCard choice = ChoiceOf(k);
+                ChoiceCard choice = _choiceCards[i];
                 if (choice == null) continue;
                 // A card that already has its rows keeps them while the TV is asked again (the answer replaces them in place);
                 // only the first time is there nothing to show but "Reading…".
-                if (choice.Count == 0) { choice.Clear(); CardCtl(k).SetCount(0); }
-                else { choice.ClearBusy(); CardCtl(k).SetCount(choice.Count); CardCtl(k).Select(choice.ActiveRow); }
-                _choiceFresh[(int)k] = true;
-                SourceOf(k).Request();
+                if (choice.Count == 0) { choice.Clear(); _cardCtl[i].SetCount(0); }
+                else { choice.ClearBusy(); _cardCtl[i].SetCount(choice.Count); _cardCtl[i].Select(choice.ActiveRow); }
+                _choiceFresh[i] = true;
+                _choiceSrcs[i].Request();
             }
             StartChoicePoll();
             ShowCards(true);
@@ -701,7 +705,7 @@ namespace Launcher
         private static void OnTaskKey(string key)
         {
             CardKind card = FocusedCard;
-            TaskController ctl = CardCtl(card);
+            TaskController ctl = FocusedCtl;
             switch (ctl.Key(key))
             {
                 case TaskAction.Moved:
@@ -724,7 +728,7 @@ namespace Launcher
                 case TaskAction.Open:
                     if (card == CardKind.Tasks) OpenTaskApp(_taskPanel.AppAt(_tasksCtl.Selected));
                     else if (card == CardKind.Audio) ChooseOutput();
-                    else Choose(card);
+                    else Choose(_cardFocus);
                     break;
                 case TaskAction.Back:
                     LeaveTasks(true);
@@ -1552,15 +1556,15 @@ namespace Launcher
             _audioReread = Efl.ecore_timer_add(what == OutputAction.Connect ? 4.5 : 1.2, AudioRereadCb, IntPtr.Zero);
         }
 
-        // The Picture mode and Sleep timer cards: read off the main loop when the Control center opens, set the same way. While a read or a
-        // choice is under way a timer looks for the answer.
-        private static readonly bool[] _choiceFresh = new bool[4];   // the next answer puts the selection on the ticked row
+        // The Picture mode, Sleep timer and Shard cards: read off the main loop when the Control center opens, set the same way. While a read
+        // or a choice is under way a timer looks for the answer.
+        private static readonly bool[] _choiceFresh = new bool[TaskLayout.MaxCards];   // by position: the next answer puts the selection on the ticked row
         private static IntPtr _choicePoll;
         private static readonly Efl.TaskCb ChoicePollCb = OnChoicePoll;
 
         private static void StartChoicePoll()
         {
-            if (_choicePoll == IntPtr.Zero && (HasCard(CardKind.Picture) || HasCard(CardKind.Sleep))) _choicePoll = Efl.ecore_timer_add(0.1, ChoicePollCb, IntPtr.Zero);
+            if (_choicePoll == IntPtr.Zero && Array.Exists(_choiceSrcs, src => src != null)) _choicePoll = Efl.ecore_timer_add(0.1, ChoicePollCb, IntPtr.Zero);
         }
 
         private static byte OnChoicePoll(IntPtr data)
@@ -1568,19 +1572,19 @@ namespace Launcher
             try
             {
                 bool busy = false;
-                foreach (CardKind k in _cards)
+                for (int i = 0; i < _cards.Length; i++)
                 {
-                    ChoiceSource src = SourceOf(k);
+                    ChoiceSource src = _choiceSrcs[i];
                     if (src == null) continue;
                     bool was = src.Busy;               // read before the take: an answer that lands between the two is taken at the next tick, not lost
                     ChoiceState st = src.TryTake();
                     if (st != null && _tasksOn)
                     {
-                        ChoiceCard card = ChoiceOf(k);
-                        TaskController ctl = CardCtl(k);
+                        ChoiceCard card = _choiceCards[i];
+                        TaskController ctl = _cardCtl[i];
                         card.SetState(st);
                         ctl.SetCount(card.Count);
-                        if (_choiceFresh[(int)k]) { ctl.Select(card.ActiveRow); _choiceFresh[(int)k] = false; }
+                        if (_choiceFresh[i]) { ctl.Select(card.ActiveRow); _choiceFresh[i] = false; }
                         ApplyCards();
                         StartAnimator();
                     }
@@ -1593,20 +1597,56 @@ namespace Launcher
             return 0;
         }
 
-        /// <summary>OK on a Picture mode or Sleep timer row: the TV is asked to switch (off the main loop), and the card is read again.</summary>
-        private static void Choose(CardKind k)
+        /// <summary>
+        /// OK on a Picture mode, Sleep timer or Shard card row (the card at position <paramref name="i"/>): the TV, or the Shard through Vetro,
+        /// is asked to switch (off the main loop), and the card shows the state that comes back.
+        /// </summary>
+        private static void Choose(int i)
         {
             ResetIdle();
-            ChoiceCard card = ChoiceOf(k);
-            TaskController ctl = CardCtl(k);
+            ChoiceCard card = _choiceCards[i];
+            TaskController ctl = _cardCtl[i];
+            if (card == null) return;
             ChoiceRow row = card.RowAt(ctl.Selected);
             if (row == null || !card.Choosable || row.Active) return;
-            if (!SourceOf(k).Request(row.Value)) return;
-            Log((k == CardKind.Picture ? "picture mode: " : "sleep timer: ") + row.Label + " (" + row.Value + ")");
+            if (!_choiceSrcs[i].Request(row)) return;
+            Log(_choiceSrcs[i].Name + ": " + row.Label + " (" + (row.Id ?? row.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)) + ")");
             card.SetBusy(ctl.Selected, "Switching…");
             ApplyCards();
             StartChoicePoll();
         }
+
+        /// <summary>
+        /// What reads (and sets) the choice card <paramref name="card"/>; null for the Task manager and the Audio output. A Shard's card asks
+        /// the Vetro service with curl (never the Shard itself): the read, and a choice that answers the card's new state, so one call each.
+        /// </summary>
+        private static ChoiceSource ChoiceSourceFor(CardSpec card)
+        {
+            switch (card.Kind)
+            {
+                case CardKind.Picture:
+                    return new ChoiceSource("picture mode", () => PictureModes.Build(Shell.Read(PictureModes.GetCommand()), Shell.Read(PictureModes.CheckCommand())), PictureModes.SetCommand, Log);
+                case CardKind.Sleep:
+                    return new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);
+                case CardKind.Shard:
+                    string id = card.ShardId, name = "shard card " + id;
+                    // The port is read when the command is made: --service-port is taken after the cards.
+                    return new ChoiceSource(name,
+                        () => ShardCard.Parse(ShardAnswer(ShardCard.ReadCommand(id, ShardLaunch.ServicePort))),
+                        row =>
+                        {
+                            string result;
+                            ChoiceState st = ShardCard.Parse(ShardAnswer(ShardCard.SelectCommand(id, row.Id, ShardLaunch.ServicePort)), out result);
+                            Log(name + ": " + row.Id + " result " + (result ?? "none"));
+                            return st;
+                        }, Log);
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>The service's answer to a Shard card command; empty (the card is then not available) for a command that could not be made.</summary>
+        private static string ShardAnswer(string command) { return command == null ? "" : Shell.Read(command); }
 
         private static readonly Efl.TaskCb AudioRereadCb = OnAudioReread;
         private static IntPtr _audioReread;
@@ -2130,10 +2170,14 @@ namespace Launcher
                 _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, band, Math.Max(1, _cards.Length), 0);
                 _tasksCtl = new TaskController();
                 _audioCtl = new TaskController();
-                _pictureCtl = new TaskController();
-                _sleepCtl = new TaskController();
-                _pictureSrc = new ChoiceSource("picture mode", () => PictureModes.Build(Shell.Read(PictureModes.GetCommand()), Shell.Read(PictureModes.CheckCommand())), PictureModes.SetCommand, Log);
-                _sleepSrc = new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);
+                _cardCtl = new TaskController[_cards.Length];
+                _choiceSrcs = new ChoiceSource[_cards.Length];
+                for (int i = 0; i < _cards.Length; i++)
+                {
+                    CardKind kind = _cards[i].Kind;
+                    _cardCtl[i] = kind == CardKind.Tasks ? _tasksCtl : kind == CardKind.Audio ? _audioCtl : new TaskController();
+                    _choiceSrcs[i] = ChoiceSourceFor(_cards[i]);
+                }
                 _taskSource = new TaskSource(_apps, Log);
 
                 Efl.elm_win_title_set(_win, "tvlauncher");
@@ -2176,23 +2220,23 @@ namespace Launcher
                 int cardsN = Math.Max(1, _cards.Length);
                 if (HasCard(CardKind.Tasks))
                 {
-                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Tasks))), res, Log);
+                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Tasks)), res, Log);
                     _taskPanel.Build();
                 }
                 if (HasCard(CardKind.Audio))
                 {
-                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Audio))), res, Log);
+                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Audio)), res, Log);
                     _audioCard.Build();
                 }
-                if (HasCard(CardKind.Picture))
+                _choiceCards = new ChoiceCard[_cards.Length];
+                for (int i = 0; i < _cards.Length; i++)
                 {
-                    _pictureCard = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Picture))), res, Log, "picture", "Picture mode", "Reading the picture modes…");
-                    _pictureCard.Build();
-                }
-                if (HasCard(CardKind.Sleep))
-                {
-                    _sleepCard = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, Math.Max(0, Array.IndexOf(_cards, CardKind.Sleep))), res, Log, "sleep", "Sleep timer", "Reading the sleep timer…");
-                    _sleepCard.Build();
+                    CardSpec spec = _cards[i];
+                    if (spec.Kind != CardKind.Picture && spec.Kind != CardKind.Sleep && spec.Kind != CardKind.Shard) continue;
+                    string tag = spec.Kind == CardKind.Picture ? "picture" : spec.Kind == CardKind.Sleep ? "sleep" : "shard " + spec.ShardId;
+                    string reading = spec.Kind == CardKind.Picture ? "Reading the picture modes…" : spec.Kind == CardKind.Sleep ? "Reading the sleep timer…" : "Reading…";
+                    _choiceCards[i] = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, i), res, Log, tag, ControlCenter.Title(spec), reading);
+                    _choiceCards[i].Build();
                 }
                 _dock = _appsDock;
                 // The flags the tuner reads are cleared now (one left by a launcher that was killed), which also runs their first

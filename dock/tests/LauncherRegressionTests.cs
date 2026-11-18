@@ -101,6 +101,24 @@ namespace Launcher.Tests
                 finally { Directory.Delete(dir, true); }
             });
 
+            T.Run("shard card: the shell gives curl the whole URL, '&' and all, as one argument", () =>
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "vetro-shard-'" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(dir);
+                try
+                {
+                    string log = Path.Combine(dir, "args"), tool = Path.Combine(dir, "curl");
+                    File.WriteAllText(tool, "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\" >> " + Q(log) + "; done\n");
+                    Shell("chmod +x " + Q(tool));
+                    Shell(ShardCard.SelectCommand("demo-lights", "living_room.1", 8099).Replace("/usr/bin/curl", Q(tool)));
+                    T.Eq(string.Join(" | ", File.ReadAllLines(log)), "-sf | -m | 12 | -X | POST | http://127.0.0.1:8099/plugins/launcher/api/card-select?plugin=demo-lights&row=living_room.1", "the choice: one URL, nothing run in the background");
+                    File.Delete(log);
+                    Shell(ShardCard.ReadCommand("demo-lights", 8099).Replace("/usr/bin/curl", Q(tool)));
+                    T.Eq(string.Join(" | ", File.ReadAllLines(log)), "-sf | -m | 5 | http://127.0.0.1:8099/plugins/launcher/api/card?plugin=demo-lights", "the read");
+                }
+                finally { Directory.Delete(dir, true); }
+            });
+
             T.Run("custom launcher mode: only a plain app id becomes the Home target", () =>
             {
                 AppEntry e = HomeLaunch.Parse("org.example.projectivy");

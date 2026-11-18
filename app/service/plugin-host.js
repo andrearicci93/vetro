@@ -4,7 +4,8 @@
 //
 //   manifest: { id, name, version, apiVersion: 1, permissions: ['exec'], main: 'index.js',
 //               ui: { label } (optional: a page in the dashboard sidebar while it runs),
-//               intercepts: [{ appId, label }] (optional: launcher tiles of those apps start this plugin's launch(appId)) }
+//               intercepts: [{ appId, label }] (optional: launcher tiles of those apps start this plugin's launch(appId)),
+//               controlCenter: { label } (optional: one card in the launcher's Control center, from card() and cardSelect(rowId)) }
 //   index.js: module.exports = function (ctx) { return { start, stop, status, route } }
 //
 // Most of Vetro's own features are not plugins yet; the launcher is the first bundled one (bundled: true, see
@@ -30,6 +31,10 @@ var ID_RE = /^[a-z][a-z0-9-]{1,31}$/;
 var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var CONTROL_RE = /[\u0000-\u001f\u007f<>]/;
 var INTERCEPT_MAX = 3;
+// The card a plugin adds to the Control center (manifest "controlCenter"): what the host lets through to the launcher.
+var CARD_ROWS_MAX = 7, CARD_ROW_ID_RE = /^[A-Za-z0-9_.-]{1,40}$/, CARD_LABEL_MAX = 40, CARD_VALUE_MAX = 24, CARD_NOTE_MAX = 80;
+var CARD_READ_MS = 3000, CARD_ACTION_MS = 10000;
+var TEXT_CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 var LAUNCH_MS = 120000;
 var SAFE_AFTER = 2;
 var RESERVED = ['install', 'resume', 'developer'];
@@ -53,6 +58,18 @@ function checkIntercepts(list, who) {
     }
 }
 
+// "controlCenter": { label } makes the plugin's card() appear as a card of the Control center while the plugin runs. Optional and not a
+// permission (an older Vetro ignores the key and still loads the plugin). One card per plugin.
+function checkControlCenter(cc, who) {
+    if (cc == null) return;
+    if (typeof cc !== 'object' || Array.isArray(cc)) throw new Error(who + 'controlCenter must be an object with a label');
+    if (typeof cc.label !== 'string' || !cc.label.trim() || cc.label.length > 24 || CONTROL_RE.test(cc.label)) throw new Error(who + 'controlCenter.label must be 1-24 characters of plain text');
+}
+
+function copyControlCenter(cc) {
+    return cc ? { label: cc.label } : null;
+}
+
 function copyIntercepts(list) {
     return (list || []).map(function (a) { return { appId: a.appId, label: a.label }; });
 }
@@ -72,6 +89,7 @@ function checkManifest(m) {
     if (m.ui != null && (typeof m.ui.label !== 'string' || !m.ui.label || m.ui.label.length > 24)) throw new Error('ui.label must be 1-24 characters');
     if (m.main != null && (typeof m.main !== 'string' || !FILE_RE.test(m.main))) throw new Error('main must be a file name inside the plugin folder');
     checkIntercepts(m.intercepts, '');
+    checkControlCenter(m.controlCenter, '');
 }
 
 // A whole bundle object (parsed JSON): manifest, file names, sizes, entry file. Returns the file names.
@@ -129,6 +147,7 @@ function PluginHost(opts) {
     this.entries = Object.create(null);
     this.order = [];
     this.listeners = [];                       // see onInterceptChange
+    this.cardJobs = Object.create(null);       // plugin id -> reads and actions of its Control center card that are under way
     this.safeMode = false;
     this.started = false;
     this.stableTimer = null;
@@ -199,7 +218,7 @@ PluginHost.prototype._loadFolder = function (id, folder) {
     };
     this.register({
         id: id, name: manifest.name, version: manifest.version, description: manifest.description, author: manifest.author, apiVersion: manifest.apiVersion,
-        permissions: manifest.permissions, ui: manifest.ui, intercepts: manifest.intercepts, create: create
+        permissions: manifest.permissions, ui: manifest.ui, intercepts: manifest.intercepts, controlCenter: manifest.controlCenter, create: create
     });
 };
 
@@ -341,6 +360,7 @@ PluginHost.prototype.register = function (def) {
         throw new Error(def.id + ': ui.label must be 1-24 characters');
     }
     checkIntercepts(def.intercepts, def.id + ': ');
+    checkControlCenter(def.controlCenter, def.id + ': ');
     // A bundled plugin ships in the Vetro package: on unless its definition says otherwise.
     this.entries[def.id] = {
         def: def, instance: null, state: 'stopped', errors: 0, lastError: null,
@@ -533,14 +553,134 @@ PluginHost.prototype.launch = function (appId) {
     });
 };
 
-// fn() runs after a running plugin that claims apps starts or stops, so the launcher can rebuild its list. A plugin that listens
+// --- plugins that add a card to the Control center (manifest "controlCenter") ----------------------------------------------------
+// The card is read from the plugin's card() and chosen with cardSelect(rowId); both may answer directly or with a Promise. The launcher
+// never runs plugin code: it asks Vetro (routes of the launcher plugin), and everything the plugin returns is cleaned here first (rows,
+// lengths, control characters), so the launcher only ever gets short plain text. The card exists only while the plugin is running.
+// Errors and timeouts of the card are the card's own ("Not available"): they never count towards the failures that switch a plugin off.
+
+function cardText(v, max) {
+    if (typeof v === 'number' && isFinite(v)) v = String(v);
+    if (typeof v !== 'string') return '';
+    var t = v.replace(TEXT_CONTROL_RE, ' ').replace(/^\s+|\s+$/g, '');
+    return t.length > max ? t.slice(0, max).replace(/\s+$/, '') : t;
+}
+
+// What card() returned, as the launcher may see it, or null when it is not an object at all.
+function cleanCard(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    var rows = [], seen = Object.create(null), list = Array.isArray(raw.rows) ? raw.rows : [];
+    for (var i = 0; i < list.length && rows.length < CARD_ROWS_MAX; i++) {
+        var r = list[i];
+        if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !CARD_ROW_ID_RE.test(r.id) || seen[r.id]) continue;
+        var label = cardText(r.label, CARD_LABEL_MAX);
+        if (!label) continue;
+        seen[r.id] = true;
+        rows.push({ id: r.id, label: label, value: cardText(r.value, CARD_VALUE_MAX), ticked: r.ticked === true });
+    }
+    return { rows: rows, note: cardText(raw.note, CARD_NOTE_MAX), choosable: raw.choosable !== false && rows.length > 0 };
+}
+
+// The running plugins that have a card, in registration order: [{plugin, label}]. The dock builds its --cards from this.
+PluginHost.prototype.cards = function () {
+    var out = [];
+    for (var i = 0; i < this.order.length; i++) {
+        var entry = this.entries[this.order[i]];
+        if (!entry || !entry.instance || entry.state !== 'running' || !entry.def.controlCenter) continue;
+        if (typeof entry.instance.card !== 'function' || typeof entry.instance.cardSelect !== 'function') continue;
+        out.push({ plugin: entry.def.id, label: entry.def.controlCenter.label });
+    }
+    return out;
+};
+
+PluginHost.prototype._cardEntry = function (id) {
+    var entry = typeof id === 'string' && ID_RE.test(id) ? this.entries[id] : null;
+    if (!entry || !entry.def.controlCenter) return { reason: 'No such card' };
+    if (!entry.instance || entry.state !== 'running') return { reason: 'Not running' };
+    if (typeof entry.instance.card !== 'function' || typeof entry.instance.cardSelect !== 'function') return { reason: 'The Shard has no card() and cardSelect()' };
+    return { entry: entry };
+};
+
+// Calls fn() (a plugin method) with a deadline. Always resolves: {value} or {error}. A plugin stopped meanwhile counts as an error.
+PluginHost.prototype._cardCall = function (entry, ms, fn) {
+    var inst = entry.instance;
+    return new Promise(function (resolve) {
+        var done = false, timer = null;
+        function finish(r) {
+            if (done) return;
+            done = true;
+            if (timer) clearTimeout(timer);
+            resolve(entry.instance !== inst ? { error: 'The Shard was switched off' } : r);
+        }
+        timer = setTimeout(function () { finish({ error: 'The Shard did not answer in time' }); }, ms);
+        if (timer.unref) timer.unref();
+        var out;
+        try { out = fn(inst); }
+        catch (e) { finish({ error: String(e && e.message || e) }); return; }
+        Promise.resolve(out).then(function (v) { finish({ value: v }); }, function (e) { finish({ error: String(e && e.message || e) }); });
+    });
+};
+
+PluginHost.prototype._cardFail = function (entry, reason) {
+    entry.cardError = cardText(reason, 120) || 'Not available';
+    return { ok: false, unavailable: true, reason: entry.cardError };
+};
+
+// Reads the card of a plugin. Always resolves: {ok: true, label, rows, note, choosable} or {ok: false, unavailable: true, reason}.
+// Reads that overlap (the Control center opened again while a slow plugin is still answering) share one call.
+PluginHost.prototype.cardOf = function (id) {
+    var host = this, found = this._cardEntry(id);
+    if (!found.entry) return Promise.resolve({ ok: false, unavailable: true, reason: found.reason });
+    var entry = found.entry, jobs = this.cardJobs[id] || (this.cardJobs[id] = {});
+    if (jobs.read) return jobs.read;
+    var job = this._cardCall(entry, this.cardReadMs || CARD_READ_MS, function (inst) { return inst.card(); }).then(function (r) {
+        if (jobs.read === job) jobs.read = null;
+        if (r.error) return host._cardFail(entry, r.error);
+        var card = cleanCard(r.value);
+        if (!card) return host._cardFail(entry, 'card() returned no card');
+        entry.cardError = null;
+        return { ok: true, label: entry.def.controlCenter.label, rows: card.rows, note: card.note, choosable: card.choosable };
+    });
+    jobs.read = job;
+    return job;
+};
+
+// Chooses a row. Always resolves: {ok: true|false, note, card} where card is what cardOf() gives (the state after the action: the rows
+// cardSelect() returned, else a fresh read), or {ok: false, unavailable: true, reason} when the card cannot be used at all. One action
+// at a time per plugin: a second one while the first is under way is refused, not queued.
+PluginHost.prototype.selectCard = function (id, rowId) {
+    var host = this, found = this._cardEntry(id);
+    if (!found.entry) return Promise.resolve({ ok: false, unavailable: true, reason: found.reason });
+    if (typeof rowId !== 'string' || !CARD_ROW_ID_RE.test(rowId)) return Promise.resolve({ ok: false, unavailable: true, reason: 'Invalid row' });
+    var entry = found.entry, jobs = this.cardJobs[id] || (this.cardJobs[id] = {});
+    if (jobs.action) return Promise.resolve({ ok: false, note: 'Another change is under way', card: null });
+    var job = this._cardCall(entry, this.cardActionMs || CARD_ACTION_MS, function (inst) { return inst.cardSelect(rowId); }).then(function (r) {
+        if (jobs.action === job) jobs.action = null;
+        if (r.error) {
+            host._cardFail(entry, r.error);
+            return { ok: false, note: cardText(r.error, CARD_NOTE_MAX), card: null };
+        }
+        var v = r.value, ok = !(v === false || (v && typeof v === 'object' && v.ok === false));
+        var note = v && typeof v === 'object' ? cardText(v.note, CARD_NOTE_MAX) : '';
+        var fresh = v && typeof v === 'object' && Array.isArray(v.rows) ? cleanCard({ rows: v.rows, note: v.note, choosable: v.choosable }) : null;
+        if (fresh && fresh.rows.length) {
+            entry.cardError = null;
+            return { ok: ok, note: note, card: { ok: true, label: entry.def.controlCenter.label, rows: fresh.rows, note: fresh.note, choosable: fresh.choosable } };
+        }
+        return host.cardOf(id).then(function (card) { return { ok: ok, note: note, card: card }; });
+    });
+    jobs.action = job;
+    return job;
+};
+
+// fn() runs after a running plugin that claims apps or adds a Control center card starts or stops, so the launcher can rebuild its list. A plugin that listens
 // must not throw; one that does is ignored.
 PluginHost.prototype.onInterceptChange = function (fn) {
     if (typeof fn === 'function') this.listeners.push(fn);
 };
 
 PluginHost.prototype._interceptsChanged = function (entry) {
-    if (!entry.def.intercepts || !this.listeners.length) return;
+    if ((!entry.def.intercepts && !entry.def.controlCenter) || !this.listeners.length) return;
     for (var i = 0; i < this.listeners.length; i++) { try { this.listeners[i](); } catch (e) { /* the listener's problem */ } }
 };
 
@@ -674,6 +814,7 @@ PluginHost.prototype.status = function (id) {
         apiVersion: entry.def.apiVersion,
         permissions: (entry.def.permissions || []).slice(),
         intercepts: copyIntercepts(entry.def.intercepts),
+        controlCenter: entry.def.controlCenter ? { label: entry.def.controlCenter.label, error: entry.cardError || null } : null,
         interceptConflicts: this._conflictsOf(id),
         bundled: !!entry.def.bundled,
         trust: entry.def.bundled ? 'bundled' : st.trust[id] || 'folder',
@@ -829,4 +970,5 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     return true;
 };
 
-module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle, checkIntercepts: checkIntercepts, INTERCEPT_MAX: INTERCEPT_MAX };
+module.exports = { PluginHost: PluginHost, signedText: signedText, API_VERSION: API_VERSION, BUNDLE_MAX_BYTES: BUNDLE_MAX_BYTES, checkManifest: checkManifest, checkBundle: checkBundle, checkIntercepts: checkIntercepts, INTERCEPT_MAX: INTERCEPT_MAX,
+    checkControlCenter: checkControlCenter, CARD_ROWS_MAX: CARD_ROWS_MAX, CARD_ROW_ID_RE: CARD_ROW_ID_RE, CARD_LABEL_MAX: CARD_LABEL_MAX, CARD_VALUE_MAX: CARD_VALUE_MAX, CARD_NOTE_MAX: CARD_NOTE_MAX, CARD_READ_MS: CARD_READ_MS, CARD_ACTION_MS: CARD_ACTION_MS };

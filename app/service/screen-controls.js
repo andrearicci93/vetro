@@ -98,7 +98,7 @@ function uiParts(d) {
     var parts = [], launcher = d.dock.readState();
     if (d.dock.installed() && d.pluginRunning('launcher')) {
         parts.push({name: 'keys', on: launcher.volumePill && launcher.numberPad});
-        parts.push({name: 'cards', on: launcher.cards.length > 0});
+        parts.push({name: 'cards', on: d.dock.cardsEffective(launcher).length > 0});
     }
     if (d.tuner.installed() && d.pluginRunning('tuner') && !d.tuner.unsupported) parts.push({name: 'tuner', on: d.tuner.readState().enabled});
     return parts;
@@ -120,7 +120,7 @@ function setUi(d, on) {
         if (p.name === 'keys') step(function () { return d.dock.setKeys(on); });
         if (p.name === 'cards') step(function () {
             var s = d.dock.readState();
-            if (on === (s.cards.length > 0)) return null;
+            if (on === (d.dock.cardsEffective(s).length > 0)) return null;
             return d.dock.setCards(on ? (s.lastCards.length ? s.lastCards : ['tasks']) : []);
         });
         if (p.name === 'tuner') step(function () {

@@ -112,7 +112,9 @@ namespace Launcher.Ui
             _titleW = Efl.evas_object_text_horiz_advance_get(_title);
             _titleAsc = Ascent(_title);
             _sub = Text(Font, 22);
+            Efl.evas_object_text_ellipsis_set(_sub, 1.0);   // without it the width set below does not cut the line (see ApplyChrome)
             _empty = Text(Font, 26);
+            Efl.evas_object_text_ellipsis_set(_empty, 1.0);   // a long reason (a Shard card's note, up to 80 characters) ends in "…" inside the card
             Efl.evas_object_clip_set(_empty, _listClip);
             MeasureSub();     // no text yet: an empty line's height
             MeasureEmpty();
@@ -287,7 +289,10 @@ namespace Launcher.Ui
                 if (n == 0)
                 {
                     Box lc = _layout.ListClip(0, slide);
-                    Efl.evas_object_move(_empty, lc.X + (lc.W - _emptyW) / 2, lc.Y + (lc.H - _emptyH) / 2);
+                    // Sized to the room there is (never to its own advance, which could cut a short text's last letter), centred by what it shows.
+                    int room = Math.Max(1, lc.W - 48), ew = Math.Min(_emptyW, room);
+                    Efl.evas_object_resize(_empty, room, _emptyH);
+                    Efl.evas_object_move(_empty, lc.X + (lc.W - ew) / 2, lc.Y + (lc.H - _emptyH) / 2);
                 }
             }
 

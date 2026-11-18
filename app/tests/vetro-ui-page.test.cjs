@@ -141,6 +141,20 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['audio'], cardChoices: ['tasks', 'audio']}, 'tasks', true)), ['tasks', 'audio'], 'a card turned on takes its place in the list');
     assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['tasks', 'audio'], cardChoices: ['tasks', 'audio']}, 'tasks', false)), ['audio'], 'and off leaves the others');
     assert.deepEqual(Array.from(sandbox.dockCards({taskManager: true})), ['tasks'], 'an older service: the Task manager switch is that card');
+    // A Shard's card: a switch of its own, named by the Shard, off until chosen; a saved one whose Shard is off is shown as paused (and keeps the choice).
+    const ha = {cardShards: {'shard:home-assistant': 'Home Assistant'}, cardChoices: ['tasks', 'audio', 'picture', 'sleep', 'shard:home-assistant']};
+    sandbox.dockData = Object.assign({}, dock, ha, {enabled: true, mode: 'vetro', cards: ['tasks'], maxCards: 3, cardsPaused: []}); sandbox.renderDock();
+    assert.match(el('dockCards').innerHTML, /data-quick-item="card-shard:home-assistant"[\s\S]*Home Assistant[\s\S]*A card from a Shard[\s\S]*data-dock-card="shard:home-assistant"/);
+    assert.deepEqual(Array.from(sandbox.cardsWith(sandbox.dockData, 'shard:home-assistant', true)), ['tasks', 'shard:home-assistant'], 'turned on, it joins the others');
+    sandbox.dockData = Object.assign({}, sandbox.dockData, {cards: ['tasks', 'shard:home-assistant']}); sandbox.renderDock();
+    assert.match(el('dockBody').innerHTML, /Control center ˅/);
+    sandbox.dockData = Object.assign({}, sandbox.dockData, {cards: ['shard:home-assistant']}); sandbox.renderDock();
+    assert.match(el('dockBody').innerHTML, /Home Assistant ˅/, 'one card: the Shard\'s label under the bar');
+    sandbox.dockData = Object.assign({}, dock, {enabled: true, mode: 'vetro', cards: ['tasks'], cardChoices: ['tasks', 'audio', 'picture', 'sleep'], cardShards: {}, maxCards: 3,
+        cardsPaused: [{card: 'shard:home-assistant', label: 'Home Assistant', why: 'The Shard is switched off'}]}); sandbox.renderDock();
+    assert.match(el('dockCards').innerHTML, /card-paused-shard:home-assistant[\s\S]*Home Assistant[\s\S]*The Shard is switched off\. Your choice is kept[\s\S]*Paused/);
+    assert.doesNotMatch(el('dockCards').innerHTML, /data-dock-card="shard:home-assistant"/, 'no switch for a card that is not there');
+    sandbox.dockData = Object.assign({}, sandbox.dockData, {cards: ['tasks', 'audio'], cardsPaused: []}); sandbox.renderDock();
     sandbox.uiRules = [{id: 'physical_108', enabled: true, trigger: {type: 'physical', value: '108'}, actions: [{type: 'launch', appId: 'org.example.down'}]}]; sandbox.renderDock();
     assert.match(el('dockCards').innerHTML, /A shortcut of yours uses Key Down \(108\) opens org\.example\.down\. While the remote interception is on, the launcher never gets that key/);
     sandbox.dockData = Object.assign({}, sandbox.dockData, {enabled: false, mode: 'custom', customApp: 'org.example.app'}); sandbox.renderDock();

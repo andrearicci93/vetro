@@ -11,6 +11,8 @@
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
 //   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|cards|resetRow|enableCustom|disableCustom, on, cards, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
+//   GET  api/card        ?plugin=<id>  the Control center card of a Shard, as text lines (the launcher has no JSON parser): see dock.js shardCardText
+//   POST api/card-select ?plugin=<id>&row=<row id>  choose a row of that card; answers the card as it is after the choice
 //   POST api/open     ?slug=<tile>  start the app of a tile a plugin has taken over (the launcher calls this; answers 202 at once)
 //   POST api/row      {row: [key...]}  the launcher's row as the user left it (moved, taken out, added from All apps)
 //
@@ -20,6 +22,12 @@
 var homeCleanup = require('./home-cleanup.js');
 
 var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
+var PLUGIN_QUERY_RE = /[?&]plugin=([^&#]*)/, ROW_QUERY_RE = /[?&]row=([^&#]*)/;
+function queryOf(re, rawUrl) {
+    var m = re.exec(rawUrl || '');
+    if (!m) return undefined;
+    try { return decodeURIComponent(m[1].replace(PLUS_RE, ' ')); } catch (e) { return undefined; }
+}
 var PLUS_RE = /\+/g;
 function slugOf(rawUrl) {
     var m = SLUG_QUERY_RE.exec(rawUrl || '');
@@ -133,6 +141,16 @@ function definition(dock, options) {
                         if (!dock.shardEntry(slug)) { vetro.json(res, { ok: false, error: 'No plugin tile with that name' }, 404); return true; }
                         vetro.json(res, { ok: true }, 202);
                         dock.openEntry(slug).catch(function () { /* openEntry never rejects; belt and braces */ });
+                        return true;
+                    }
+                    // A Shard's Control center card. Always 200 with text, even when the Shard is off or fails ("status unavailable"): the launcher
+                    // reads the answer, never an HTTP error. The Shard's own code runs here, in the service, behind the plugin host's checks and timeouts.
+                    if ((sub === 'card' && req.method === 'GET') || (sub === 'card-select' && req.method === 'POST')) {
+                        var shard = queryOf(PLUGIN_QUERY_RE, req.url), work = sub === 'card' ? dock.shardCardRead(shard) : dock.shardCardSelect(shard, queryOf(ROW_QUERY_RE, req.url));
+                        work.then(function (text) {
+                            res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+                            res.end(text);
+                        }).catch(function () { vetro.json(res, { error: 'card unavailable' }, 500); });
                         return true;
                     }
                     // The launcher sends its row after the user moved a tile, took one out or added one from All apps (row keys in order).

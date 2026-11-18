@@ -4,12 +4,14 @@ using System.Globalization;
 
 namespace Launcher.Core
 {
-    /// <summary>One row of a choice card (Picture mode, Sleep timer): what it says, what choosing it sets, and whether it is the current one.</summary>
+    /// <summary>One row of a choice card (Picture mode, Sleep timer, a Shard card): what it says, what choosing it sets, and whether it is the current one.</summary>
     internal sealed class ChoiceRow
     {
         public string Label;
         public int Value;
         public bool Active;
+        /// <summary>A Shard card's own name for the row (what a choice sends back); null on the TV's own cards.</summary>
+        public string Id;
     }
 
     /// <summary>What a choice card shows after a read: its rows, a line for the header, and whether the rows can be chosen.</summary>

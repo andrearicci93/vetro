@@ -22,7 +22,11 @@ press, has no hold and shows "Back" only.
 ## Control center and Task manager
 
 **Down** on the apps row (or below the last pill) opens the Control center: up to three cards side by side (`--cards`,
-chosen in the dashboard): Task manager, Audio output, Picture mode, Sleep timer. **Left/Right** move between the cards.
+chosen in the dashboard): Task manager, Audio output, Picture mode, Sleep timer, and the card of a Shard (`shard:<id>` or
+`shard:<id>:<label>`, the label escaped as `=HH` UTF-8 bytes outside `[A-Za-z0-9.-]`; several Shards may have one each).
+**Left/Right** move between the cards. A Shard card is drawn like Picture mode: its rows come from the Vetro service
+(`GET /plugins/launcher/api/card?plugin=<id>`, a choice `POST …/card-select?plugin=<id>&row=<row>`, tab-separated lines, read
+with curl off the main loop, `Core/ShardCard.cs`); the dock never runs the Shard. Not tried on a TV yet.
 The Task manager lists the apps that are running, the biggest first: name, CPU (on a wide card) and memory (private RAM
 plus swap of the app and its web renderers). **OK** switches to the selected app, **holding OK** (0.8 s) closes it (`app_launcher -t`, then
 `-k` if it is still there two seconds later), **Up** on the first row or **Back** returns to the apps. A tap acts
