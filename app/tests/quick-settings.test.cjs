@@ -116,7 +116,11 @@ function harness(opts){
 // Apps that come with the TV: one switch each in a section of their own, plain groups (no microphone, no confirmation,
 // no services), with ids nobody protects; an app that is not on the TV reads "unavailable" (the page then hides it).
 {const apps=quick.GROUPS.filter(g=>g.section==='apps');
- assert.deepEqual(apps.map(g=>g.id),['app-netflix','app-primevideo','app-youtube','app-appletv','app-browser','app-gallery']);
+ assert.deepEqual(apps.map(g=>g.id),['app-netflix','app-primevideo','app-youtube','app-appletv','app-browser','app-gallery','app-disney','app-spotify','app-xbox','app-geforce','app-luna','app-health']);
+ // A package's background service goes with its app; a TV that has the app without one of the services still reads on/off from what it has.
+ const spotify=quick.find('app-spotify');
+ assert.ok(spotify.ids.includes('rJeHak5zRg.SpotifyService'));
+ assert.equal(quick.state(spotify,[{appId:'rJeHak5zRg.Spotify',disabled:true,onboot:false,autorestart:false},{appId:'rJeHak5zRg.SpotifyService',disabled:true,onboot:false,autorestart:false}]).status,'off','no ContinueWatchingService on this TV');
  const debloat=require('../service/debloat.js');
  apps.forEach(g=>{assert.ok(g.ids.length&&!g.microphone&&!g.confirm&&!g.services&&g.description==='',g.id);
   g.ids.forEach(id=>{assert.ok(quick.ALLOWED_IDS.includes(id),id);assert.ok(!debloat.isProtected(id),id+' is not protected');});});

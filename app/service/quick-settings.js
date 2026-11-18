@@ -46,13 +46,22 @@ var GROUPS = [
     // "apps", the second group of the Disable tab): the app is disabled like any member of a group, and the same switch,
     // or Restore the TV, enables it again. The ids are the Q80A's; a TV without the app does not show its switch. The row
     // has no description: the group's one sentence says what a disabled app means.
-    {id: 'app-netflix', label: 'Netflix', section: 'apps', description: '', ids: ['org.tizen.netflix-app']},
+    {id: 'app-netflix', label: 'Netflix', section: 'apps', description: '', ids: ['org.tizen.netflix-app', 'org.tizen.netflixlowmem']},
     {id: 'app-primevideo', label: 'Prime Video', section: 'apps', description: '',
         ids: ['org.tizen.primevideo', 'org.tizen.primevideo-dummy', 'org.tizen.primevideo_companionapp']},
     {id: 'app-youtube', label: 'YouTube', section: 'apps', description: '', ids: ['9Ur5IzDKqV.TizenYouTube']},
     {id: 'app-appletv', label: 'Apple TV', section: 'apps', description: '', ids: ['com.samsung.tv.aria-video', 'com.samsung.tv.aria-dummy']},
     {id: 'app-browser', label: 'Internet browser', section: 'apps', description: '', ids: ['org.tizen.browser']},
     {id: 'app-gallery', label: 'Gallery', section: 'apps', description: '', ids: ['com.samsung.tv.gallery']},
+    // The same apps the Uninstall tab offers, for people who would rather switch them off: each with the background service its package
+    // starts (seen in the 88 diagnostics of 2026-11-18: Disney+ on 49 TVs, Spotify 57, Xbox 29, GeForce NOW and Amazon Luna 10, Samsung Health 14).
+    {id: 'app-disney', label: 'Disney+', section: 'apps', description: '', ids: ['MCmYXNxgcu.DisneyPlus', 'MCmYXNxgcu.DisneyPlusService']},
+    {id: 'app-spotify', label: 'Spotify', section: 'apps', description: '',
+        ids: ['rJeHak5zRg.Spotify', 'rJeHak5zRg.SpotifyService', 'rJeHak5zRg.ContinueWatchingService']},
+    {id: 'app-xbox', label: 'Xbox', section: 'apps', description: '', ids: ['GHI3a0zMSx.XboxGamePass', 'GHI3a0zMSx.Service']},
+    {id: 'app-geforce', label: 'GeForce NOW', section: 'apps', description: '', ids: ['w0wZu3xkQq.GeForceNOW', 'w0wZu3xkQq.GeForceNOWService']},
+    {id: 'app-luna', label: 'Amazon Luna', section: 'apps', description: '', ids: ['CmeyUlnhYY.LunaWebApp', 'CmeyUlnhYY.LunaService']},
+    {id: 'app-health', label: 'Samsung Health', section: 'apps', description: '', ids: ['com.samsung.tv.samsung-health']},
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
     // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
     {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,

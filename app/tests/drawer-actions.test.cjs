@@ -8,7 +8,7 @@ class Node {
  appendChild(n){this.children.push(n);}focus(){}scrollIntoView(){}
 }
 const el=id=>nodes[id]||(nodes[id]=new Node());
-const app={appId:'MCmYXNxgcu.DisneyPlusService',packageId:'MCmYXNxgcu',name:'DisneyPlusPreviewService',system:false,removable:true,disabled:false,show:false,onboot:false,autorestart:true};
+const app={appId:'Xx0Example1.PreviewService',packageId:'Xx0Example1',name:'ExamplePreviewService',system:false,removable:true,disabled:false,show:false,onboot:false,autorestart:true};
 const sandbox={document:{body:{classList:{contains:()=>false}},querySelector:el,getElementById:el,createElement:()=>new Node(),querySelectorAll:()=>[],addEventListener(){}},console,setInterval(){},setTimeout(){},clearTimeout(){},confirm:()=>true,fetch:async url=>({ok:true,json:async()=>url.startsWith('/apps')?{apps:[app],summary:{total:1}}:url==='/remap'?{rules:[]}:url==='/input'?{devices:[],status:{events:[]}}:url.startsWith('/monitor')?{ts:Date.now(),cpu:{cores:[]},memory:{},network:[],processes:[]}:{} })};
 vm.runInNewContext(require('../service/dashboard')().match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
 (async()=>{
@@ -29,7 +29,7 @@ vm.runInNewContext(require('../service/dashboard')().match(/<script>([\s\S]*?)<\
  assert.equal(performed.length,0,'opening confirmation must not mutate the TV');
  el('cancelComponentAction').onclick();assert.equal(performed.length,0);
  el('toggleApp').onclick();el('confirmComponentAction').onclick();assert.equal(performed[0].action,'disable');
- el('uninstallComponent').onclick();assert.match(el('componentConfirmation').innerHTML,/MCmYXNxgcu/,'uninstall confirmation identifies the whole package');
+ el('uninstallComponent').onclick();assert.match(el('componentConfirmation').innerHTML,/Xx0Example1/,'uninstall confirmation identifies the whole package');
  assert.equal(performed.length,1);el('cancelComponentAction').onclick();assert.equal(performed.length,1);
  sandbox.inventory=[{...app,system:true,removable:false}];sandbox.detail(app.appId);
  assert.equal(el('toggleApp').disabled,true);assert.equal(el('uninstallComponent').disabled,true);

@@ -633,7 +633,7 @@ function componentAction(p) {
                     // Cleaned here, then the launcher rebuilds its list, or its tile stays until the next start and does not open.
                     var afterUninstall=verified&&p.action==='uninstall'?homeCleanup.clean(agentExecute,a.packageId,widgetIds).then(function(c){
                         cleanup=c;invalidateInventory();
-                        var launcher=dock.readState();if(launcher.enabled||launcher.customApp)dock.refresh().catch(function(){/* busy or off: the next start rebuilds it */});
+                        launcherFollow();
                     }):Promise.resolve();
                     return afterUninstall.then(function(){
                     return {ok:verified,verified:verified,action:p.action,appId:p.appId,packageId:a.packageId,changed:p.action==='flags'?a[p.flag]!==p.enabled:undefined,
@@ -677,6 +677,11 @@ function homeLockMessage() {
 // Samsung's live TV app stays installed and enabled while Vetro TV Tuner is on: the tuner covers it, but a disabled
 // app would leave the takeover with nothing to watch and nobody to hand the screen back to.
 function tunerLockMessage() { return 'Turn off Vetro TV Tuner before disabling Samsung\u2019s TV app'; }
+// An app was uninstalled, or switched off or on: the Vetro launcher reads the lists again and redraws its pages without a restart (relist, reload);
+// the custom launcher's headless process is started again as before. Busy or off: the next start, or the launcher's own check, rebuilds them.
+function launcherFollow(){var launcher=dock.readState();
+    if(launcher.enabled&&!launcher.customApp)dock.relist().catch(function(){});
+    else if(launcher.customApp)dock.refresh().catch(function(){});}
 function handleQuick(req,res) {readJsonBody(req,res,function(p){
     if(p.id==='samsung-home'&&homeLockMessage())return serveJson(res,{ok:false,error:homeLockMessage()},409);
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
@@ -684,7 +689,7 @@ function handleQuick(req,res) {readJsonBody(req,res,function(p){
         .then(function(d){debloatBusy=false;
             // An app switched off or on again (the "apps" groups): the launcher rebuilds its list, so the tile goes or comes back now and not at the next start.
             var group=quickSettings.find(p.id);
-            if(group&&group.section==='apps'&&d&&d.ok!==false){var launcher=dock.readState();if(launcher.enabled||launcher.customApp)dock.refresh().catch(function(){/* busy or off: the next start rebuilds it */});}
+            if(group&&group.section==='apps'&&d&&d.ok!==false)launcherFollow();
             serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 });}
 // {enabled:true|false}; the first 0.5.0 release form {disabled:true|false} is still accepted. Turning pairing on needs a paired browser
