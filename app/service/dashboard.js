@@ -1211,7 +1211,7 @@ function renderRemove(){
  if(!$('quickRemove'))return;
  var v=restoreView,p=v.plan,ready=!!p&&p.pending===0,busy=quickBusy||uiOperationBusy.restore,stepsOpen=$('removeSteps')&&$('removeSteps').open;
  var unread=p?p.items.filter(function(i){return i.state==='unknown'}).map(function(i){return i.label}):[];
- var html='<p class="section-note">Vetro cannot remove itself. Restore the TV first, then:</p><details class="removal-steps" id="removeSteps"'+(stepsOpen?' open':'')+'><summary id="removeStepsToggle">Removal steps</summary><ol class="steps">'
+ var html='<p class="section-note">Vetro cannot remove itself. Restore the TV first, then follow these steps. If a restore step keeps failing, you can still delete the app (step 3).</p><details class="removal-steps" id="removeSteps"'+(stepsOpen?' open':'')+'><summary id="removeStepsToggle">Removal steps</summary><ol class="steps">'
   +'<li><strong>Optional: remove Vetro’s saved data.</strong> It holds the values used to restore, your remapper rules, MQTT settings, plugins and the paired browsers. It is only offered once everything is restored, and it cannot be undone.</li>'
   +'<li><strong>Restart the TV.</strong> This clears the temporary changes and reloads Home.</li>'
   +'<li><strong>Remove the app on the TV.</strong> Open <em>Apps</em>, go to the settings icon of the Apps screen, select Vetro and choose <em>Delete</em>. Menu names vary by model and year.</li>'
@@ -1220,7 +1220,7 @@ function renderRemove(){
   +'<li><strong>Home Assistant.</strong> If you connected Vetro to Home Assistant, delete the TV device there to remove its sensors and controls.</li></ol></details>';
  if(v.erased)html+='<p class="section-note">Vetro’s saved data was removed'+(v.erased.left?' (a few items could not be deleted)':'')+'. Vetro keeps running until you remove the app; browsers stay paired until it restarts.</p>';
  else if(v.eraseConfirm&&ready)html+='<div class="inline-confirm" role="group" aria-label="Confirm removing the data"><p><strong>Delete Vetro’s saved data on the TV?</strong> The saved restore values, settings, rules, plugins and pairing are deleted. The launcher is off and the recorded changes are already put back. This cannot be undone.'+(unread.length?' <strong>Could not be checked: '+esc(unread.join(', '))+'.</strong> If Vetro changed any of them, the saved values needed to put them back are lost.':'')+'</p><div class="row"><button class="primary" data-erase-confirm>Delete the data</button><button data-erase-cancel>Cancel</button></div></div>';
- else html+='<div class="quick-actions"><button data-erase-ask '+(ready&&!busy?'':'disabled')+'>Remove Vetro’s saved data…</button></div>'+(ready?'':'<p class="section-note">Review the restore above; this unlocks when nothing is left to put back.</p>');
+ else html+='<div class="quick-actions"><button data-erase-ask '+(ready&&!busy?'':'disabled')+'>Remove Vetro’s saved data…</button></div>'+(ready?'':'<p class="section-note">Unlocks when nothing is left to put back. Deleting the app on the TV is never blocked.</p>');
  replaceControls($('quickRemove'),html,['id','data-erase-ask','data-erase-cancel','data-erase-confirm']);
 }
 function loadRestorePlan(){
