@@ -828,8 +828,8 @@ setInterval(function () { if (pairing) paintPairing(); }, 1000);
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
 
 /* demo data for the comparison page: the page believes the service answered */
-if(/[?&]demo/.test(location.search)||true){report.settings={realModel:'QE55Q80A',firmware:'T-NKM2DEUC-2310.0'};controls={canControl:true,update:{configured:true,version:'0.5.1'}};focus=1;view='main';
-var FAKE={version:'0.5.1',address:'192.168.1.40',port:8099,root:{connected:true},input:{enabled:true,connected:true},launcher:{enabled:true,running:true,installed:true},memory:{availableMb:900}};
+if(/[?&]demo/.test(location.search)||true){report.settings={realModel:'QE55Q80A',firmware:'T-NKM2DEUC-2310.0'};controls={canControl:true,update:{configured:true,version:'0.7.0'}};focus=1;view='main';
+var FAKE={version:'0.7.0',address:'192.168.1.40',port:8099,root:{connected:true},input:{enabled:true,connected:true},launcher:{enabled:true,running:true,installed:true},memory:{availableMb:900}};
 render=function(){renderMain(FAKE)};renderDetails=function(){renderMain(FAKE)};setInterval(function(){try{renderMain(FAKE)}catch(e){}},300);}
 </script>
 <script type="module">import { Service } from 'wrt:service'; window.a2sService = Service;</script>

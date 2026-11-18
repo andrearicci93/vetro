@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — unreleased
 
 ### Launcher: TV-Store, and new apps without a restart
 
@@ -10,7 +10,7 @@
 - **Disable has switches for Disney+, Spotify, Xbox, GeForce NOW, Amazon Luna and Samsung Health** (Quick settings → Disable, "Apps you don't use"), the same apps the Uninstall tab offers. Each switch also stops the background service the app's package starts (Spotify's two, Disney+'s, Xbox's...); Netflix's switch also covers the low-memory Netflix some TVs have. A switch only shows on a TV that has the app.
 - **Switching an app off or on, or uninstalling it, no longer restarts the launcher.** It reads its lists again and redraws (tried on the Q80A: Spotify off and on, the launcher kept running).
 
-### Velo look (opus6, trial on branch explore/opus6-ui)
+### Velo look on the tuner and the dock
 
 - **Banner, Info and the TV guide on one veil from the bottom-left corner.** The channel banner is a compact block in the bottom-left corner (number in a light 128 px weight standing on the programme line, name, logo, the progress line with the times and "N min left" following its head: when the label would touch a time, that time steps aside). Info is the same corner grown up and to the right (title, line, two lines of description and the next programme, clock, date, source, audio), and the guide covers the screen with the same veil: lanes of rounded programme cells, the focused one filled ice with slate text. The veil is one stretched picture (`tuner/res/veil_corner.png`) whose fade is baked so it reads evenly on bright pictures; the texts carry the soft shadow the launcher already uses. Changing between them is one movement (the veil grows, the shared parts move). Tried in the computer preview only, not on a TV.
 - **Nothing moves when the programme arrives.** The banner's big number used to sit on the name's line until the programme was read, then drop 49 px onto the programme's line; it now stands on the programme's line from the start, and the line fills in place. The info panel no longer says "No programme information" while it is still reading: its title row stays empty until the TV has answered, and the message (when there really is none) sits on the title's own baseline.
