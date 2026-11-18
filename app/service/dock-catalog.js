@@ -154,18 +154,32 @@ function cleanLabel(text, fallback) {
     return s || fallback;
 }
 
+// Inputs beyond TV and HDMI 1-4 that only some devices have, listed only when the device's own source list (.sourceCache) holds them:
+// DisplayPort on Samsung's monitors (Odyssey G6, Smart Monitor M8: key "DISPLAYPORT", SourceType 33, #215). A TV never lists it.
+var EXTRA_SOURCES = [{type: 33, slug: 'in-dp', base: 'DisplayPort'}];
+// Samsung's entry for an input. The key is the source's name ("HDMI2"), and on the newer Home it gains the activity index of the
+// device found on it ("HDMI2/0", CoBA's GenerateSourceID): the exact name first, then any entry of that source type.
+function sourceMeta(sources, type, key) {
+    sources = sources || {};
+    if (sources[key] && typeof sources[key] === 'object') return sources[key];
+    var keys = Object.keys(sources).filter(function (k) { return sources[k] && typeof sources[k] === 'object' && sources[k].SourceType === type; });
+    return keys.length ? sources[keys[0]] : null;
+}
+
 // Sources retain their physical port identity and Samsung-provided names.
 function sourceEntries(parsed, options) {
-    return [0, 13, 14, 15, 16].map(function (type) {
-        var key = type === 0 ? 'TV' : 'HDMI' + (type - 12), base = type === 0 ? 'TV' : 'HDMI ' + (type - 12);
-        var meta = (parsed.sources || {})[key] || {};
+    var types = [0, 13, 14, 15, 16].concat(EXTRA_SOURCES.filter(function (x) { return sourceMeta(parsed.sources, x.type, '') !== null; }).map(function (x) { return x.type; }));
+    return types.map(function (type) {
+        var extra = EXTRA_SOURCES.filter(function (x) { return x.type === type; })[0];
+        var key = type === 0 ? 'TV' : extra ? '' : 'HDMI' + (type - 12), base = type === 0 ? 'TV' : extra ? extra.base : 'HDMI ' + (type - 12);
+        var meta = sourceMeta(parsed.sources, type, key) || {};
         var name = cleanLabel(meta.EditName || meta.DetectedName, base);
         var useImages = options && options.useSourceImages === true && type >= 13;
         var samsung = useImages ? [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(iconOk)[0] || null : null;
         // The row key (source:<type>, TV is source:0) lets the launcher add the input to the user's row from the Sources page (hold OK).
-        var entry = {slug: type === 0 ? 'in-tv' : 'in-hdmi' + (type - 12), label: name,
+        var entry = {slug: type === 0 ? 'in-tv' : extra ? extra.slug : 'in-hdmi' + (type - 12), label: name,
             appId: 'source:' + type, icon: samsung, killFirst: null, key: 'source:' + type};
-        // The Sources page always keeps TV, HDMI1, HDMI2, HDMI3, HDMI4 order and port labels.
+        // The Sources page always keeps TV, HDMI1, HDMI2, HDMI3, HDMI4 order and port labels, then DisplayPort where there is one.
         entry.inputLabel = type === 0 || name === base ? base : cleanLabel(base + ' - ' + name, base);
         return entry;
     });

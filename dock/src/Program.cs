@@ -2089,7 +2089,9 @@ namespace Launcher
             {
                 if (Efl.app_control_create(out ac) != 0) { Log("source: app_control_create failed"); return; }
                 string n = e.SourceType.ToString();
-                string icon = SourceIconDir + (e.SourceType >= 13 && e.SourceType <= 16 ? "r_icon_device_s_hdmi" + (e.SourceType - 12) : "r_icon_device_s_tv") + ".png";
+                // 33 is a monitor's DisplayPort (#215); the firmware's theme has a DisplayPort device icon (r_icon_device_s_dpport, seen in the Q80A image).
+                string icon = SourceIconDir + (e.SourceType >= 13 && e.SourceType <= 16 ? "r_icon_device_s_hdmi" + (e.SourceType - 12)
+                    : e.SourceType == 33 ? "r_icon_device_s_dpport" : "r_icon_device_s_tv") + ".png";
                 Efl.app_control_set_app_id(ac, "org.tizen.tv-viewer");
                 Efl.app_control_add_extra_data(ac, "change_source", n);
                 Efl.app_control_add_extra_data(ac, "sourceType", n);

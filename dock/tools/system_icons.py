@@ -150,6 +150,8 @@ INPUTS = {
     "in-hdmi2": ("HDMI 2", 14, (90, 169, 255)),
     "in-hdmi3": ("HDMI 3", 15, (90, 169, 255)),
     "in-hdmi4": ("HDMI 4", 16, (90, 169, 255)),
+    # Samsung's monitors (Odyssey, Smart Monitor) have a DisplayPort input, source type 33, listed only where the device has it (#215).
+    "in-dp": ("DisplayPort", 33, (90, 169, 255)),
 }
 
 
@@ -191,9 +193,28 @@ def _hdmi_glyph(number):
     return draw
 
 
+def _dp_glyph():
+    """DisplayPort in the HDMI icons' hand: the port with its one cut corner, and "DP" under it in the pill font's bold."""
+    def draw(d, c, acc):
+        port = [(28, 22), (100, 22), (100, 42), (90, 52), (28, 52), (28, 22)]
+        _line(d, port, c, 7)
+        for x in (50, 64, 78):
+            _line(d, [(x, 31), (x, 40)], c, 5)
+        font = _pill_font(40 * SS)
+        layer = Image.new("RGBA", (SIZE * SS, SIZE * SS), (0, 0, 0, 0))
+        ld = ImageDraw.Draw(layer)
+        tb = ld.textbbox((0, 0), "DP", font=font)
+        x = (SIZE * SS - (tb[2] - tb[0])) // 2 - tb[0]
+        y = 66 * SS - tb[1]
+        ld.text((x, y), "DP", font=font, fill=c)
+        return ("overlay", layer)
+    return draw
+
+
 def render_input(slug, path):
     accent = INPUTS[slug][2]
-    glyph = _phosphor("television-simple-bold", 66) if slug == "in-tv" else _hdmi_glyph(int(slug[-1]))
+    glyph = (_phosphor("television-simple-bold", 66) if slug == "in-tv" else _dp_glyph() if slug == "in-dp"
+             else _hdmi_glyph(int(slug[-1])))
     _render(accent, glyph, path)
 
 
