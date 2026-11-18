@@ -8,7 +8,7 @@
   The launcher as on the TV (approved look: design round opus6, DESIGN.md "TV material"). Every panel is the osd 123's material
   (pill_rim white .22 2 px outside pill_bg slate .90, radius 40 or capsule, no drop shadow); the one focus is the ice capsule with slate text;
   the dock icons keep their ice ring + glow. Bars centred on x 960.
-  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|allapps|tasks|volume|pad123; ?cards=tasks,audio,picture,sleep,shard,shardoff (the Control center's cards, at most three, default tasks,audio; shard: a Shard's card, "Demo lights", shardoff: the same Shard not available); ?focus=N (dock item); ?bd=video|black|light|grid.
+  URL: ?still (no entrance, no auto-hide, no toolbar: screenshots); ?view=sources|allapps|tasks|volume|pad123; ?store=samsung (All apps ends with Samsung's App store instead of TV-Store); ?cards=tasks,audio,picture,sleep,shard,shardoff (the Control center's cards, at most three, default tasks,audio; shard: a Shard's card, "Demo lights", shardoff: the same Shard not available); ?focus=N (dock item); ?bd=video|black|light|grid.
   Keys: Left / Right move · Up: Sources · Down: Control center (Left / Right between its cards) · Esc: back · Enter: launch · + / - / M: Volume bar · N: osd 123 (digits, Left / Right, Enter) ·
   R: replay the entrance · H: the toolbar.
 -->
@@ -66,9 +66,10 @@
   }
   var PAGES = {
     apps: { items: APPS.concat([ROW_SOURCE, { n: 'All apps', pill: 'allapps', glow: '#e2edff' }, { n: 'Samsung Home', pill: 'samsunghome', glow: '#e2edff' }]), groupStart: APPS.length + 1, raised: false, hint: 'Source', up: true, below: cardsHint() },
-    /* All apps (the pill): every app the user can put in the row, by name, then Settings and the App store as pills; hold OK adds or takes out */
+    /* All apps (the pill): every app the user can put in the row, by name, then Settings and the store as pills; hold OK adds or takes out.
+       The store pill is TV-Store when it is installed (the default), Samsung's App store otherwise or when the dashboard says so: ?store=samsung */
     allapps: { items: APPS.slice().sort(function (a, b) { return a.n.localeCompare(b.n); }).concat([{ n: 'Browser', g: '#2f6fd6', ch: '◍' }, { n: 'Gallery', g: '#e0567a', ch: '✿' }])
-      .concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, { n: 'App store', pill: 'store', glow: '#e2edff' }]), groupStart: APPS.length + 2, raised: true, keys: ADD_KEYS, up: false },
+      .concat([{ n: 'Settings', pill: 'settings', glow: '#e2edff' }, new URLSearchParams(location.search).get('store') === 'samsung' ? { n: 'App store', pill: 'store', glow: '#e2edff' } : { n: 'TV-Store', pill: 'tvstore', glow: '#e2edff' }]), groupStart: APPS.length + 2, raised: true, keys: ADD_KEYS, up: false },
     /* Sources: hold OK adds the input to the row or takes it out, like All apps (a Sources list of an older Vetro has no row keys: only [Down][Back] return) */
     inputs: { items: [{ n: 'TV', img: 'in-tv', glow: '#e2edff' }, { n: 'HDMI 1', img: 'in-hdmi1', glow: '#e2edff' }, ROW_SOURCE, { n: 'HDMI 3', img: 'in-hdmi3', glow: '#e2edff' }, { n: 'HDMI 4', img: 'in-hdmi4', glow: '#e2edff' }], groupStart: -1, raised: true, keys: ADD_KEYS, up: false }
   };

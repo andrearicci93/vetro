@@ -35,6 +35,12 @@ namespace Launcher
         private static int _fifoFd = -1;
         private static double _lastFrame;
         private static AppEntry[] _apps, _inputs, _allApps;
+        // Where the three lists were read from, to read them again when Vetro says "reload"; _allAppsWatch is the All apps list Vetro wrote
+        // (--all-apps), whose date says whether it is older than the package database (ListWatch). Null when Vetro passed none.
+        private static string _appsPath, _inputsPath, _allAppsPath, _allAppsWatch;
+        private static bool _reloadPending;
+        private static DateTime _listsAskedFor = DateTime.MinValue;
+        private static double _listsAskedAt;
         // Three pages share one window: the apps row, the inputs panel (Up) and All apps (its pill). _ctl / _dock always
         // point at the page on screen, so everything below works on "the dock" as before.
         private static Controller _ctl, _appsCtl, _inputsCtl, _allCtl;
@@ -503,6 +509,8 @@ namespace Launcher
                 if (CardsActive) { ResetIdle(); return; }
                 LeaveTasks(false);   // it was fading out: the dock comes back on the apps row
             }
+            // Lists Vetro wrote while a tile was being moved or the Control center was open: read now, before the dock comes in.
+            if (_reloadPending && !_ctl.IsActive) ReloadLists();
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
             if (!_ctl.Show()) { ResetIdle(); return; }
@@ -516,6 +524,80 @@ namespace Launcher
             StartClock();
             StartAnimator();
             ResetIdle();
+            AskForLists();   // after the dock is on its way in: an app installed since the lists were written
+        }
+
+        // ------------------------------------------------------------------ lists written again by Vetro (an app installed or removed)
+
+        /// <summary>A file's date, or <see cref="DateTime.MinValue"/> when it is not there.</summary>
+        private static DateTime FileDate(string path)
+        {
+            try { return path != null && File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
+            catch (Exception) { return DateTime.MinValue; }
+        }
+
+        /// <summary>
+        /// The package database is newer than the lists Vetro wrote: an app was installed or removed since. Vetro is asked once (in the
+        /// background) to read the TV again; it answers with "reload" when the lists changed. Two stat calls when nothing changed.
+        /// </summary>
+        private static void AskForLists()
+        {
+            if (_allAppsWatch == null || _homeLaunch != null) return;
+            DateTime db = FileDate(ListWatch.PackageDb);
+            double now = Efl.ecore_time_get();
+            if (!ListWatch.ShouldAsk(db, FileDate(_allAppsWatch), _listsAskedFor, now - _listsAskedAt)) return;
+            string cmd = ListWatch.Command(ShardLaunch.ServicePort);
+            if (cmd == null) return;
+            _listsAskedFor = db; _listsAskedAt = now;
+            Log("lists: the package database changed, asking Vetro rc=" + Libc.system(cmd));
+        }
+
+        /// <summary>What an entry of a page is known by across a reload: its row key, or its slug.</summary>
+        private static string EntryKey(AppEntry e) { return e.RowKey ?? "slug:" + e.Slug; }
+
+        /// <summary>
+        /// Vetro wrote the three lists again (see <see cref="ListWatch"/>): they are read again and, when they differ from what the pages show,
+        /// all three pages are made again, the window resized for them. On screen the same page stays, its focus on the same entry. While the
+        /// user moves a tile, holds OK or has the Control center open it waits for the next time the dock comes on screen.
+        /// </summary>
+        private static void ReloadLists()
+        {
+            if (_homeLaunch != null || _appsDock == null) return;
+            if (_moveIndex >= 0 || _rowOkTimer != IntPtr.Zero || _tasksOn) { _reloadPending = true; Log("lists: reload waits until the dock is free"); return; }
+            _reloadPending = false;
+            AppEntry[] apps = LoadApps(_appsPath), inputs = LoadList(_inputsPath, Catalog.BuiltInInputs), all = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
+            if (ListWatch.Same(apps, _apps) && ListWatch.Same(inputs, _inputs) && ListWatch.Same(all, _allApps)) { Log("lists: read again, nothing changed"); return; }
+            ProbeBegin("lists reload");
+            long t0 = Stopwatch.GetTimestamp();
+            bool shown = _ctl.IsActive, onAll = _ctl == _allCtl, onInputs = _ctl == _inputsCtl;
+            AppEntry[] before = onAll ? _allApps : onInputs ? _inputs : _apps;
+            int at = _ctl.FocusTarget, inputsCurrent = _inputsDock.CurrentIndex;
+            string key = at >= 0 && at < before.Length ? EntryKey(before[at]) : null;
+            _appsDock.Destroy(); _inputsDock.Destroy(); _allDock.Destroy();
+            _apps = apps; _inputs = inputs; _allApps = all;
+            PageLayouts();
+            BuildPages();
+            MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+            if (inputsCurrent < _inputs.Length) _inputsDock.CurrentIndex = inputsCurrent;   // the input in use still says so
+            MarkInRow();
+            MarkSources();
+            if (shown)
+            {
+                Controller ctl = onAll ? _allCtl : onInputs ? _inputsCtl : _appsCtl;
+                AppEntry[] page = onAll ? _allApps : onInputs ? _inputs : _apps;
+                int focus = -1;
+                for (int i = 0; key != null && i < page.Length; i++) if (EntryKey(page[i]) == key) { focus = i; break; }
+                ActivatePage(ctl, onAll ? _allDock : onInputs ? _inputsDock : _appsDock);
+                ctl.SetFocus(focus >= 0 ? focus : Math.Max(0, Math.Min(at, page.Length - 1)));
+                _ctl.Rise(1f);
+                StartClock();
+                StartAnimator();
+                ResetIdle();
+            }
+            _dock.Apply(_ctl);
+            Log("lists: read again, pages made for " + _apps.Length + " tiles, " + _allApps.Length + " on All apps, in "
+                + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+            ProbeHandlerDone();
         }
 
         private static void HideDock()
@@ -1764,6 +1846,7 @@ namespace Launcher
                             case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
                             case Command.Pad: TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
+                            case Command.Reload: ReloadLists(); break;
                         }
                     }
                 }
@@ -2153,8 +2236,12 @@ namespace Launcher
                 Log("screen reported " + sw + "x" + sh + ", layout " + screenW + "x" + screenH);
                 _pillScreenW = screenW; _pillScreenH = screenH;
 
-                _apps = LoadApps(Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv"));
-                _inputs = LoadList(Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv"), Catalog.BuiltInInputs);
+                _appsPath = Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv");
+                _inputsPath = Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv");
+                _allAppsWatch = Arg(args, "--all-apps");
+                _allAppsPath = _allAppsWatch ?? Path.Combine(AppContext.BaseDirectory, "res", "allapps.tsv");
+                _apps = LoadApps(_appsPath);
+                _inputs = LoadList(_inputsPath, Catalog.BuiltInInputs);
                 // One window for both pages: as wide as the wider of the two, the other is centred in it.
                 // With the task manager on, the apps page also shows a "Task manager" hint under the bar: both pages
                 // get the extra band so the shared window keeps one height, and the task panel ends where the bar does.
@@ -2162,7 +2249,7 @@ namespace Launcher
                 // switch: the Task manager alone unless --no-tasks. No cards: Down does nothing and there is no hint under the bar.
                 _cards = ControlCenter.Parse(Arg(args, "--cards"), Flag(args, "--no-tasks"));
                 bool tasks = _cards.Length > 0;
-                _allApps = LoadList(Arg(args, "--all-apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "allapps.tsv"), Catalog.BuiltInAllApps);
+                _allApps = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
                 _screenW = screenW; _screenH = screenH;
                 _res = Path.Combine(AppContext.BaseDirectory, "res");
                 DockLayout layout = PageLayouts();

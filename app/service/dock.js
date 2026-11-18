@@ -127,6 +127,8 @@ function Dock(options) {
     this.changes = 0;             // counts starts and stops: the supervision goes back to its short interval when it moves
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.pendingRow = null; this.rowRunning = false; this.rowRetry = null;
+    this.relistPending = false; this.relistRetry = null; this.relistTimer = null; this.reloadedAt = null;
+    this.relistFollowMs = options.relistFollowMs || 20000;
     this.rowRetryMs = options.rowRetryMs || 1000;
     this.now = options.now || Date.now;
     this.uptime = options.uptime || function () { return os.uptime(); };
@@ -225,9 +227,11 @@ Dock.prototype.readState = function () {
             // The cards the Control center had when it was last on: switching it off and on again (the TV screen's Vetro UI tile) brings them back.
             lastCards: s && Array.isArray(s.lastCards) ? cleanCards(s.lastCards) : [],
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacy('home'),
-            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images')};
+            useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
+            // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
+            appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
     } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
-        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images')}; }
+        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
 };
 
 // Source-option migration must never overwrite an unreadable or malformed existing state.
@@ -377,7 +381,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -474,13 +478,26 @@ Dock.prototype.writeCatalog = function () {
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
-        intercepted: this.shards ? this.shards.intercepted() : {}, row: state.row}).then(function (c) {
-        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); atomicFile.write(fs, self.allAppsFile, c.allAppsTsv); }
-        catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
-        self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
+    return catalog.load(this.execute, this.catalogOptions(state)).then(function (c) {
+        self.saveLists(c);
         return c;
     });
+};
+
+// What every read of the Home data is built with, from the saved state: one place, so no caller forgets a setting (a row saved from the
+// launcher that left the store choice out would put TV-Store back on a TV where the user chose Samsung's store).
+Dock.prototype.catalogOptions = function (state, row) {
+    return {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
+        intercepted: this.shards ? this.shards.intercepted() : {}, row: row === undefined ? state.row : row, appStore: state.appStore};
+};
+// Writes the three lists the launcher reads. Returns true when one of them is not what was there before.
+Dock.prototype.saveLists = function (c) {
+    var files = [[this.appsFile, c.tsv], [this.inputsFile, c.inputsTsv], [this.allAppsFile, c.allAppsTsv]];
+    var changed = files.some(function (f) { try { return fs.readFileSync(f[0], 'utf8') !== f[1]; } catch (e) { return true; } });
+    try { files.forEach(function (f) { atomicFile.write(fs, f[0], f[1]); }); }
+    catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
+    this.lastCatalog = {count: c.count, skipped: c.skipped, at: this.now(), appStore: c.appStore || 'samsung', tvStoreInstalled: !!c.tvStoreInstalled};
+    return changed;
 };
 
 // Right after a boot the TV is still starting dozens of services, so a start that is slow but
@@ -552,7 +569,10 @@ Dock.prototype.otherBuild = function (state, p) {
 Dock.prototype.refreshCatalogLater = function () {
     if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S) return;
     this.refreshPending = false;
-    this.writeCatalog().catch(function () {});
+    var self = this;
+    // The running launcher is told too: these lists may also hold an app installed meanwhile, and once they are written the launcher's
+    // own check (its lists newer than the package database) would not ask for them any more.
+    this.writeCatalog().then(function () { return self.tellReload(); }).catch(function () {});
 };
 
 // Plugins that claim an app's tile (manifest "intercepts"). `host` is the plugin host: intercepted() says which apps are claimed,
@@ -886,6 +906,20 @@ Dock.prototype.setFixTizenTube = function (on) {
     return this.refreshOr(function () { self.patchState({fixTizenTube: state.fixTizenTube}); });
 };
 
+// Which store the store pill of All apps opens: 'tvstore' (TV-Store when it is installed, Samsung's store otherwise) or 'samsung'.
+// It only changes the lists, rebuilt like Fix TizenTube does.
+Dock.prototype.setAppStore = function (store) {
+    var self = this;
+    if (catalog.APP_STORES.indexOf(store) < 0) return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    if (state.appStore === store) return this.status();
+    try { this.patchState({appStore: store}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });
+    return this.refreshOr(function () { self.patchState({appStore: state.appStore}); });
+};
+
 // Still selection: the focus jumps between tiles and the icons keep their size (the dock's --no-motion).
 // It is a start argument, so a running dock is restarted.
 Dock.prototype.setNoMotion = function (on) {
@@ -995,16 +1029,16 @@ Dock.prototype.drainRows = function () {
     var list = this.pendingRow, state = this.readState(), before = state.row;
     this.pendingRow = null;
     this.rowRunning = true; this.busy = true;
-    return catalog.load(this.execute, {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
-        intercepted: this.shards ? this.shards.intercepted() : {}, row: {order: list, hidden: [], exact: true, labels: before && before.labels || {}}}).then(function (c) {
-        try { atomicFile.write(fs, self.appsFile, c.tsv); atomicFile.write(fs, self.inputsFile, c.inputsTsv); atomicFile.write(fs, self.allAppsFile, c.allAppsTsv); }
-        catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
+    return catalog.load(this.execute, this.catalogOptions(state, {order: list, hidden: [], exact: true, labels: before && before.labels || {}})).then(function (c) {
+        self.saveLists(c);
         self.patchState({row: rowAfter(before, list, c.samsungKeys || [])});
-        self.lastCatalog = {count: c.count, skipped: c.skipped, at: self.now()};
     }).finally(function () {
         self.busy = false; self.rowRunning = false;
     }).then(function () {
-        return self.pendingRow ? self.drainRows() : {ok: true};
+        // A relist that read the row before this one arrived may have sent the launcher its lists, with the old row: they are
+        // sent again (the launcher does nothing when they are what it shows).
+        var resend = !self.pendingRow && self.reloadedAt !== null && self.now() - self.reloadedAt < 60000;
+        return (resend ? self.tellReload() : Promise.resolve()).then(function () { return self.pendingRow ? self.drainRows() : {ok: true}; });
     }, function (e) {
         if (self.pendingRow) return self.drainRows();
         throw e;
@@ -1018,6 +1052,53 @@ Dock.prototype.resetRow = function () {
     try { this.patchState({row: null}); } catch (e) { return Promise.reject(e); }
     var state = this.readState();
     return (state.enabled && !state.customApp ? this.refresh() : this.status());
+};
+
+// An app was installed or removed (from any store, Apps2Samsung, pkgcmd): the launcher found the package manager's database newer than
+// its lists when it came on screen, and asks for this. The Home data is read again with the saved row and settings, the lists are always
+// written (their date tells the launcher the change has been looked at) and the launcher is always told to read them again, without a
+// restart: it compares them with what it shows and does nothing when they are the same, so a "reload" lost on the way (the agent
+// reconnecting) or lists written meanwhile by another path are still delivered by the next pass. One more pass follows a little later: Samsung's web app registry can get the new app's row after the
+// package manager has it. While another launcher change runs, the relist waits for it (up to a minute).
+Dock.prototype.relist = function (followUp) {
+    var self = this, state = this.readState();
+    if (!state.enabled || state.customApp) return Promise.resolve({ok: false, error: 'The Vetro launcher is off'});
+    if (this.busy) { this.relistPending = true; this.relistWhenFree(); return Promise.resolve({queued: true}); }
+    this.busy = true; this.relistPending = false;
+    var changed = false;
+    return catalog.load(this.execute, this.catalogOptions(state)).then(function (c) {
+        changed = self.saveLists(c);
+    }).finally(function () {
+        self.busy = false;
+    }).then(function () {
+        if (!followUp) self.relistLater();
+        return self.tellReload();
+    }).then(function () {
+        if (self.pendingRow) self.drainRows().catch(function (e) { self.lastError = 'The launcher row was not saved: ' + e.message; });
+        return {ok: true, changed: changed};
+    });
+};
+Dock.prototype.relistWhenFree = function () {
+    var self = this, tries = 0;
+    if (this.relistRetry) return;
+    this.relistRetry = setInterval(function () {
+        if (self.busy && ++tries < 60000 / self.rowRetryMs) return;
+        clearInterval(self.relistRetry); self.relistRetry = null;
+        if (!self.busy && self.relistPending) self.relist().catch(function () {});
+    }, this.rowRetryMs);
+    if (this.relistRetry.unref) this.relistRetry.unref();
+};
+Dock.prototype.relistLater = function () {
+    var self = this;
+    if (this.relistTimer) clearTimeout(this.relistTimer);
+    this.relistTimer = setTimeout(function () { self.relistTimer = null; self.relist(true).catch(function () {}); }, this.relistFollowMs);
+    if (this.relistTimer.unref) this.relistTimer.unref();
+};
+// "reload" down the launcher's control pipe, when it runs: it reads its three lists again and makes its pages again if they changed.
+Dock.prototype.tellReload = function () {
+    this.reloadedAt = this.now();
+    var line = 'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo reload >&3 ); fi; true';
+    return this.execute(line, 5000).catch(function () {});
 };
 
 // The launcher's process draws Vetro UI's volume bar and number pad, so when it comes or goes (from the dashboard, the TV screen's tile,

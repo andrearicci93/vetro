@@ -684,6 +684,25 @@ namespace Launcher.Tests
                 T.Eq(NumberPadModel.SendKeyCommand("x; rm -rf /", "k "), "(sleep 0.25) >/dev/null 2>&1 &", "a bad key name sends nothing");
                 var b = new CommandBuffer(); var bytes = Encoding.ASCII.GetBytes("pad\n"); T.Eq(b.Feed(bytes, bytes.Length)[0], Command.Pad, "pad command");
                 var rb = Encoding.ASCII.GetBytes("rescan\n"); T.Eq(new CommandBuffer().Feed(rb, rb.Length)[0], Command.Rescan, "rescan command (the remote bridge made a new forwarding node)");
+                var rl = Encoding.ASCII.GetBytes("reload\n"); T.Eq(new CommandBuffer().Feed(rl, rl.Length)[0], Command.Reload, "reload command (Vetro wrote the app lists again)");
+                // ListWatch: ask Vetro for the lists only when the package database is newer than them, once per change of the database.
+                var t0 = new DateTime(2026, 11, 18, 10, 0, 0, DateTimeKind.Utc);
+                T.True(!ListWatch.ShouldAsk(t0, t0.AddSeconds(5), DateTime.MinValue, 1e9), "lists newer than the database: nothing to ask");
+                T.True(!ListWatch.ShouldAsk(t0, t0, DateTime.MinValue, 1e9), "the same second: nothing to ask");
+                T.True(ListWatch.ShouldAsk(t0.AddSeconds(5), t0, DateTime.MinValue, 0), "an app installed after the lists were written: ask");
+                T.True(!ListWatch.ShouldAsk(t0.AddSeconds(5), t0, t0.AddSeconds(5), 10), "the same change, asked 10 s ago: not again");
+                T.True(ListWatch.ShouldAsk(t0.AddSeconds(5), t0, t0.AddSeconds(5), ListWatch.RetrySeconds), "asked long ago and still not answered: ask again");
+                T.True(ListWatch.ShouldAsk(t0.AddSeconds(9), t0, t0.AddSeconds(5), 10), "another install since the last question: ask");
+                T.True(!ListWatch.ShouldAsk(DateTime.MinValue, t0, DateTime.MinValue, 1e9) && !ListWatch.ShouldAsk(t0, DateTime.MinValue, DateTime.MinValue, 1e9), "a missing file never asks");
+                T.Eq(ListWatch.Command(8099), "( /usr/bin/curl -sf -m 60 -X POST 'http://127.0.0.1:8099/plugins/launcher/api/relist' >/dev/null 2>&1 ) &", "the question goes to the service in the background");
+                T.True(ListWatch.Command(0) == null && ListWatch.Command(70000) == null, "no port, no question");
+                var la = Catalog.Parse("netflix\tNetflix\torg.tizen.netflix-app\t\t\t\t\tapp:org.tizen.netflix-app\nstore\tApp store\tsys:com.samsung.tv.store").Entries;
+                var lb = Catalog.Parse("netflix\tNetflix\torg.tizen.netflix-app\t\t\t\t\tapp:org.tizen.netflix-app\nstore\tApp store\tsys:com.samsung.tv.store").Entries;
+                var lc = Catalog.Parse("netflix\tNetflix\torg.tizen.netflix-app\t\t\t\t\tapp:org.tizen.netflix-app\ntvstore\tTV-Store\tsys:A2STVStore.Store\tcom.samsung.tv.store").Entries;
+                T.True(ListWatch.Same(la, lb), "two readings of the same list are the same pages");
+                T.True(!ListWatch.Same(la, lc), "the store pill changed: the pages are made again");
+                T.True(!ListWatch.Same(la, new[] { la[0] }), "an app removed: the pages are made again");
+                T.Eq(lc[1].AppId + "|" + lc[1].FallbackAppId + "|" + lc[1].SystemApp, "A2STVStore.Store|com.samsung.tv.store|True", "the TV-Store pill opens TV-Store, Samsung's store when it does not start");
                 string flag = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vetro-flag-test-" + System.Diagnostics.Process.GetCurrentProcess().Id);
                 OverlayFlag.Mark(flag, true, null);
                 T.Eq(System.IO.File.ReadAllText(flag), System.Diagnostics.Process.GetCurrentProcess().Id.ToString(), "an overlay flag names the launcher's pid (the tuner ignores a flag whose launcher is dead)");

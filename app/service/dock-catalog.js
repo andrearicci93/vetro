@@ -59,12 +59,15 @@ var SYSTEM_ROWS = [
     'samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs'
 ];
 // The All apps page ends with two pills: Settings sends the System Menu key, which the TV routes to Samsung's own menu
-// app (org.tizen.menu, menu.json; starting csfs would only show Home); the App store is Samsung's store app.
-var ALL_APPS_SYSTEM_ROWS = [
-    'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu',
-    'store\tApp store\tsys:com.samsung.tv.store'
-];
-var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'store'];
+// app (org.tizen.menu, menu.json; starting csfs would only show Home); the App store is Samsung's store app, or TV-Store.
+var SETTINGS_ROW = 'settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu';
+var SAMSUNG_STORE_ROW = 'store\tApp store\tsys:com.samsung.tv.store';
+// TV-Store (Apps2Samsung's store of Tizen apps, a web app) takes the store pill when it is installed and switched on, unless the
+// user chose Samsung's store (dock state appStore 'samsung'). Samsung's store is the fallback when TV-Store does not start.
+var TV_STORE = 'A2STVStore.Store';
+var TV_STORE_ROW = 'tvstore\tTV-Store\tsys:' + TV_STORE + '\tcom.samsung.tv.store';
+var APP_STORES = ['tvstore', 'samsung'];
+var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'store', 'tvstore'];
 // A row key: what the user's own order and hidden list refer to (app:<id>, live:<TVPLUS|RF>, source:<type>).
 var ROW_KEY = /^(?:app:[A-Za-z0-9_.-]{1,120}|live:[A-Z]{1,12}|source:\d{1,5})$/;
 var VETRO_APP = /^vetrotvapp(\.|$)/;
@@ -301,8 +304,11 @@ function build(parsed, options) {
     poolList.forEach(function (e) {
         if (e.appId !== VIEWER && Object.prototype.hasOwnProperty.call(claimed, e.appId)) e.viaShard = true;
     });
-    var allApps = poolList.slice().sort(function (a, b) { return a.label.localeCompare(b.label); }).slice(0, MAX_ENTRIES - ALL_APPS_SYSTEM_ROWS.length);
-    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null};
+    var allApps = poolList.slice().sort(function (a, b) { return a.label.localeCompare(b.label); }).slice(0, MAX_ENTRIES - 2);
+    // Only a package list that came back whole says TV-Store is there; without it the pill stays Samsung's store.
+    var tvStore = !!(parsed.installed && parsed.installed[TV_STORE]) && !offApps[TV_STORE];
+    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null,
+        tvStoreInstalled: tvStore, appStore: tvStore && options.appStore !== 'samsung' ? 'tvstore' : 'samsung'};
 }
 
 // Seventh column: "shard" when a plugin has taken the tile over. An older dock ignores the column and starts the app itself.
@@ -310,7 +316,8 @@ function build(parsed, options) {
 function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : '', e.key && ROW_KEY.test(e.key) ? e.key : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
 function allAppsTsv(built) {
     return ['# Every app the launcher\'s All apps page lists, by name; written by Vetro, rebuilt with the app list']
-        .concat((built.allApps || []).map(function (e) { return entryLine(e); })).concat(ALL_APPS_SYSTEM_ROWS).join('\n') + '\n';
+        .concat((built.allApps || []).map(function (e) { return entryLine(e); }))
+        .concat([SETTINGS_ROW, built.appStore === 'tvstore' ? TV_STORE_ROW : SAMSUNG_STORE_ROW]).join('\n') + '\n';
 }
 function inputsTsv(built) {
     return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
@@ -365,10 +372,11 @@ function load(execute, options) {
         var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return /^s\/source\.layer\.hdmi@HDMI[1-4]$/.test(entry); });
         if (!built.entries.length && !filteredSources) throw new Error('None of the Home row apps could be matched in the registry');
         return existing(execute, built).then(function (b) {
-            return {tsv: tsv(b), inputsTsv: inputsTsv(b), allAppsTsv: allAppsTsv(b), count: b.entries.length, skipped: b.skipped, samsungKeys: b.samsungKeys, rowKeys: b.entries.map(function (e) { return e.key; })};
+            return {tsv: tsv(b), inputsTsv: inputsTsv(b), allAppsTsv: allAppsTsv(b), count: b.entries.length, skipped: b.skipped, samsungKeys: b.samsungKeys, rowKeys: b.entries.map(function (e) { return e.key; }),
+                appStore: b.appStore, tvStoreInstalled: b.tvStoreInstalled};
         });
     });
 }
 
-module.exports = {ROW_KEY: ROW_KEY, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
 

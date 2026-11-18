@@ -9,12 +9,13 @@
 // client changes. The same routes are also reachable as /plugins/launcher/api/<sub>.
 //
 //   GET  api/status   the launcher's state and the preview of its list      (was GET /dock)
-//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|cards|resetRow|enableCustom|disableCustom, on, cards, appId}     (was POST /dock)
+//   POST api/action   {action: enable|disable|refresh|fixTizenTube|noMotion|cards|resetRow|appStore|enableCustom|disableCustom, on, cards, store, appId}     (was POST /dock)
 //   GET  api/icon     ?slug=<tile>  the PNG of a tile                       (was GET /dock/icon)
 //   GET  api/card        ?plugin=<id>  the Control center card of a Shard, as text lines (the launcher has no JSON parser): see dock.js shardCardText
 //   POST api/card-select ?plugin=<id>&row=<row id>  choose a row of that card; answers the card as it is after the choice
 //   POST api/open     ?slug=<tile>  start the app of a tile a plugin has taken over (the launcher calls this; answers 202 at once)
 //   POST api/row      {row: [key...]}  the launcher's row as the user left it (moved, taken out, added from All apps)
+//   POST api/relist   an app was installed or removed: the launcher asks for its lists again (answers 202 at once)
 //
 // Plain ES5, like every module the TV loads.
 
@@ -97,6 +98,7 @@ function definition(dock, options) {
                 if (p.action === 'numberPad') return dock.setNumberPad(p.on);
                 if (p.action === 'cards') return dock.setCards(p.cards);
                 if (p.action === 'resetRow') return dock.resetRow();
+                if (p.action === 'appStore') return dock.setAppStore(p.store);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();
@@ -159,6 +161,13 @@ function definition(dock, options) {
                             dock.setRow(p && p.row).then(function () { vetro.json(res, { ok: true }); })
                                 .catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
                         });
+                        return true;
+                    }
+                    // The launcher came on screen and found the package manager's database newer than its lists (an app was installed or
+                    // removed). It does not wait: the lists are read again here and the launcher is told to reload them when they changed.
+                    if (sub === 'relist' && req.method === 'POST') {
+                        vetro.json(res, { ok: true }, 202);
+                        dock.relist().catch(function () { /* the next time the launcher comes on screen it asks again */ });
                         return true;
                     }
                     if (sub === 'icon' && req.method === 'GET') {

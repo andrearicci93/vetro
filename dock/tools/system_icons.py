@@ -29,6 +29,8 @@ SYSTEM = {
     # The apps row's first pill opens the All apps page; Samsung's store closes that page, after Settings.
     "allapps": ("All apps", "panel:allapps", None, (196, 204, 220)),
     "store": ("App store", "sys:com.samsung.tv.store", None, (196, 204, 220)),
+    # TV-Store takes the store's place on All apps when it is installed (Vetro writes the line, see dock-catalog.js); same bag glyph.
+    "tvstore": ("TV-Store", "sys:A2STVStore.Store", "com.samsung.tv.store", (196, 204, 220)),
 }
 
 
@@ -137,8 +139,8 @@ def _glyph_bag(d, c, acc):
 
 
 # The line glyphs above stay as a fallback; the shipped look uses Phosphor bold so all three share one hand.
-GLYPH_HEIGHT = {"settings": 23, "samsunghome": 16, "allapps": 19, "store": 21}
-GLYPHS = {"settings": _phosphor("gear-six-bold", 62), "samsunghome": _glyph_back, "allapps": _glyph_grid, "store": _glyph_bag}
+GLYPH_HEIGHT = {"settings": 23, "samsunghome": 16, "allapps": 19, "store": 21, "tvstore": 21}
+GLYPHS = {"settings": _phosphor("gear-six-bold", 62), "samsunghome": _glyph_back, "allapps": _glyph_grid, "store": _glyph_bag, "tvstore": _glyph_bag}
 
 
 # The inputs panel: slug -> (label, Samsung SourceType, accent). TV is 0, HDMI 1-4 are 13-16.

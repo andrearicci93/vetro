@@ -211,3 +211,36 @@ console.log('dock-catalog 2022 Home: ok');
     assert.deepEqual(on.entries.map(e => e.appId), ['pkg.app1', 'pkg.off'], 'enabled again, it is back');
 }
 console.log('PASS dock catalog skips registry rows whose package is gone');
+
+// TV-Store (A2STVStore.Store) takes the store pill of All apps when it is installed and switched on, unless the user chose Samsung's
+// store; Samsung's store stays its fallback. TV-Store itself stays in the A-Z list (it can be put in the row), under its own slug.
+{
+    const pkgs = Array.from({length: 30}, (_, i) => 'A|' + hex('pkg.app' + i) + '|false');
+    const base = ['F|csfs', 'O|d/webapp@live',
+        'R|' + hex('live') + '|' + hex('Live App') + '|' + hex('pkg.app1') + '|0|1',
+        'R|' + hex('tvs') + '|' + hex('TV-Store') + '|' + hex(catalog.TV_STORE) + '|0|1'];
+    const pills = t => t.trim().split('\n').slice(-2);
+    const SAMSUNG = 'store\tApp store\tsys:com.samsung.tv.store', TVSTORE = 'tvstore\tTV-Store\tsys:A2STVStore.Store\tcom.samsung.tv.store';
+    const without = catalog.build(catalog.parse(base.concat(pkgs).join('\n')));
+    assert.equal(without.tvStoreInstalled, false);
+    assert.deepEqual(pills(catalog.allAppsTsv(without)), ['settings\tSettings\tkey:XF86SysMenu\torg.tizen.menu', SAMSUNG], 'TV-Store not installed: Samsung\'s store');
+    const lines = base.concat(pkgs, 'A|' + hex(catalog.TV_STORE) + '|false').join('\n');
+    const withIt = catalog.build(catalog.parse(lines));
+    assert.equal(withIt.tvStoreInstalled, true);
+    assert.equal(withIt.appStore, 'tvstore');
+    const text = catalog.allAppsTsv(withIt);
+    assert.equal(pills(text)[1], TVSTORE, 'installed: the pill opens TV-Store, Samsung\'s store if it does not start');
+    const slugs = text.trim().split('\n').filter(l => !l.startsWith('#')).map(l => l.split('\t')[0]);
+    assert.equal(new Set(slugs).size, slugs.length, 'no slug twice: the dock would drop the second line, the pill');
+    assert.ok(slugs.includes('tv-store'), 'TV-Store is also on the A-Z list, so it can be put in the row');
+    const chosen = catalog.build(catalog.parse(lines), {appStore: 'samsung'});
+    assert.equal(chosen.appStore, 'samsung');
+    assert.equal(pills(catalog.allAppsTsv(chosen))[1], SAMSUNG, 'the user chose Samsung\'s store');
+    const off = catalog.build(catalog.parse(base.concat(pkgs, 'A|' + hex(catalog.TV_STORE) + '|true').join('\n')));
+    assert.equal(pills(catalog.allAppsTsv(off))[1], SAMSUNG, 'TV-Store disabled on the TV: Samsung\'s store');
+    // An app named "TVStore" would slug like the pill: it gets another slug.
+    const named = catalog.build(catalog.parse(base.concat(pkgs, 'A|' + hex(catalog.TV_STORE) + '|false', 'O|d/webapp@x',
+        'R|' + hex('x') + '|' + hex('TVStore') + '|' + hex('pkg.app2') + '|0|1').join('\n')));
+    assert.ok(named.entries.every(e => e.slug !== 'tvstore') && named.allApps.every(e => e.slug !== 'tvstore'), 'the pill\'s slug is reserved');
+}
+console.log('PASS dock catalog: TV-Store takes the store pill when installed, unless Samsung\'s store is chosen');

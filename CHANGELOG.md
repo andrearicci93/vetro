@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Launcher: TV-Store, and new apps without a restart
+
+- **TV-Store opens from All apps.** When TV-Store is installed on the TV, the store pill at the end of All apps opens it instead of Samsung's store (Samsung's store opens if TV-Store does not start). The Launcher tab has a switch, "TV-Store in All apps", to go back to Samsung's store. TV-Store also stays in the A-Z list, so it can be put in the row. Not yet tried on a TV.
+- **An app you install appears in the launcher without a restart.** Apps installed from Samsung's store, TV-Store or Apps2Samsung reached the row and All apps only after a restart of the launcher or *Rebuild app list*. The launcher now notices that the package list changed when it comes on screen, asks Vetro to read the apps again and redraws its pages a moment later, on the page you are on. An app removed goes away the same way. Not yet tried on a TV.
+
 ### Velo look (opus6, trial on branch explore/opus6-ui)
 
 - **Banner, Info and the TV guide on one veil from the bottom-left corner.** The channel banner is a compact block in the bottom-left corner (number in a light 128 px weight standing on the programme line, name, logo, the progress line with the times and "N min left" following its head: when the label would touch a time, that time steps aside). Info is the same corner grown up and to the right (title, line, two lines of description and the next programme, clock, date, source, audio), and the guide covers the screen with the same veil: lanes of rounded programme cells, the focused one filled ice with slate text. The veil is one stretched picture (`tuner/res/veil_corner.png`) whose fade is baked so it reads evenly on bright pictures; the texts carry the soft shadow the launcher already uses. Changing between them is one movement (the veil grows, the shared parts move). Tried in the computer preview only, not on a TV.
