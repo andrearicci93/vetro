@@ -83,7 +83,10 @@ function script() {
         'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
         '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
         // app_featured last: 1 downloaded, 2 Samsung's partners; what Samsung's own Apps screen lists, so All apps lists them too.
-        'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden||\'|\'||ifnull(app_featured,0) FROM widgetinfo;" 2>/dev/null',
+        // The column is only confirmed on the Q80A (Tizen 6.0): where it is missing sqlite refuses the whole query, so the
+        // 0.5.0 query runs instead (five fields, featured unknown: All apps then lists every registry app, the row is the same).
+        'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden||\'|\'||ifnull(app_featured,0) FROM widgetinfo;" 2>/dev/null' +
+        ' || sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
         'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
