@@ -25,14 +25,15 @@ function availableMb(meminfo) {
 //   sdb          the TV refused or closed its local developer connection (the code says how, e.g. sdbClosed)
 //   agent        the helper was started but never called back
 //   starting     no verdict yet: no attempt, or a single one (in flight, or refused once)
-// code is the last connection code; only a short word in a fixed shape leaves the service.
+// code is the last connection code; only a short word in a fixed shape leaves the service. Codes with a hyphen
+// (preflight-failed, runtime-unsupported, token-write-failed) count too: they used to leave the screen on Connecting forever.
 function rootReason(p) {
     p = p || {};
     if (p.mode !== 'tv-integration' || (p.agent || {}).connected === true) return null;
     if (p.unsupported === true) return {reason: 'unsupported', code: null};
     if (p.prepareError) return {reason: 'prepare', code: null};
     var launches = (Array.isArray(p.attempts) ? p.attempts : []).filter(function (a) { return a && a.phase === 'launch'; });
-    var last = launches[launches.length - 1], m = last && /^fail:([A-Za-z]{1,24})$/.exec(last.connect || '');
+    var last = launches[launches.length - 1], m = last && /^fail:([A-Za-z][A-Za-z-]{0,31})$/.exec(last.connect || '');
     // Right after a start the port may not be open yet: one refusal is not a verdict, two in a row are.
     if (m && launches.length > 1) return {reason: 'sdb', code: m[1]};
     if (last && last.connect === 'ok' && launches.length > 1) return {reason: 'agent', code: null};
