@@ -13,6 +13,18 @@ const withForwarded=devices(inventory);
 assert.equal(withForwarded.length,1);
 assert.equal(withForwarded[0].node,'/dev/input/event4');
 assert.equal(withForwarded[0].unique,true);
+// Real BLE Smart Control remotes expose keyless companion HID nodes under the same name; only the keyed one is selectable.
+const bleKeyed='N: Name="Smart Control 2016"\nH: Handlers=kbd event7\nB: EV=3\nB: KEY=380000 0 10001ffe\n';
+const bleRelOnly='N: Name="Smart Control 2016"\nH: Handlers=event14\nB: EV=5\nB: REL=200\n';
+const bleRepOnly='N: Name="Smart Control 2016"\nH: Handlers=event15\nB: EV=100001\n';
+const bleZeroKeys='N: Name="Smart Control 2016"\nH: Handlers=event16\nB: EV=3\nB: KEY=0 0 0\n';
+const bleParsed=devices(bleKeyed+'\n'+bleRelOnly+'\n'+bleRepOnly+'\n'+bleZeroKeys);
+assert.equal(bleParsed.length,4);
+assert.equal(bleParsed[0].selectable,true);
+assert.equal(bleParsed[0].unique,true);
+assert.equal(bleParsed[1].selectable,false);
+assert.equal(bleParsed[2].selectable,false);
+assert.equal(bleParsed[3].selectable,false);
 (async function(){
  let socket, bridge, commands=[], got=[], bad=false;
  let authMode='observe';

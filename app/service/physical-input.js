@@ -13,9 +13,19 @@ var NOT_REMOTE_NAME_RE = /keyboard|mouse|panel/i;
 // Marks Vetro's own forwarding device; must match ForwardedPhys in rooting/payload/SamsungTvRemoteInputAgent.cs.
 var FORWARDED_PHYS = 'vetro-forwarded-remote';
 var DEVICE_PHYS_RE = /^P: Phys=(.*)$/m;
+var DEVICE_EV_RE = /^B: EV=([0-9a-f]+)$/mi;
+var DEVICE_KEY_RE = /^B: KEY=(.*)$/m;
+var NON_ZERO_HEX_RE = /[1-9a-f]/i;
 var KEY_CODE_RE = /^\d{1,3}$/;
 var MAC_HEX_RE = /^[a-f0-9]{64}$/;
 function quote(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
+function blockHasKeys(block) {
+    var key = DEVICE_KEY_RE.exec(block);
+    if (key) return NON_ZERO_HEX_RE.test(key[1]);
+    var ev = DEVICE_EV_RE.exec(block);
+    if (ev) return (parseInt(ev[1].slice(-8), 16) & 2) !== 0;
+    return true;
+}
 function devices(text) {
     return String(text).split(BLANK_LINE_RE).map(function (block) {
         var n = DEVICE_NAME_RE.exec(block), h = DEVICE_HANDLERS_RE.exec(block);
@@ -24,10 +34,13 @@ function devices(text) {
         if (phys && phys[1] === FORWARDED_PHYS) {
             return null;
         }
-        return n && node ? {name:n[1], node:'/dev/input/' + node[0]} : null;
+        return n && node ? {
+            name: n[1],
+            node: '/dev/input/' + node[0],
+            selectable: REMOTE_NAME_RE.test(n[1]) && !NOT_REMOTE_NAME_RE.test(n[1]) && blockHasKeys(block)
+        } : null;
     }).filter(Boolean).map(function (d, i, all) {
-        d.unique = all.filter(function (x) {return x.name === d.name;}).length === 1;
-        d.selectable = REMOTE_NAME_RE.test(d.name) && !NOT_REMOTE_NAME_RE.test(d.name);
+        d.unique = all.filter(function (x) {return (d.selectable ? x.selectable : true) && x.name === d.name;}).length === 1;
         return d;
     });
 }
