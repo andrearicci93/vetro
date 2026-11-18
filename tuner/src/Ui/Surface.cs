@@ -205,7 +205,7 @@ namespace Tuner.Ui
         public string AssetProblems()
         {
             string problems = "";
-            var names = new System.Collections.Generic.List<string>(new[] { "bar", "veil_corner", "progress", "pill_bg", "pill_rim", "pill_cap", "pill", "hatch" });
+            var names = new System.Collections.Generic.List<string>(new[] { "bar", "veil_corner", "progress", "pill_bg", "pill_rim", "pill_cap", "pill", "hatch", "hatch_ends" });
             names.AddRange(Tuner.Core.GuideScene.KeyNames);
             IntPtr img = Efl.evas_object_image_add(_evas);
             Efl.evas_object_hide(img);
@@ -258,12 +258,15 @@ namespace Tuner.Ui
         /// A picture repeated at its own size over the object (hatch.png, 16 px: the stripes of "no information"): not filled, the fill is one tile.
         /// Hidden until it is placed.
         /// </summary>
-        public IntPtr Tile(string name, int tile)
+        public IntPtr Tile(string name, int tile) { return Tile(name, tile, tile); }
+
+        /// <summary>A picture drawn at its own size (<paramref name="w"/> x <paramref name="h"/>) and repeated, so moving its fill shows another part of it.</summary>
+        public IntPtr Tile(string name, int w, int h)
         {
             IntPtr img = Efl.evas_object_image_add(_evas);
             Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
             Efl.evas_object_image_filled_set(img, false);
-            Efl.evas_object_image_fill_set(img, 0, 0, tile, tile);
+            Efl.evas_object_image_fill_set(img, 0, 0, w, h);
             Efl.evas_object_image_smooth_scale_set(img, false);
             Clipped(img);
             Efl.evas_object_hide(img);

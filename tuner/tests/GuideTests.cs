@@ -176,6 +176,18 @@ internal static partial class Tests
         Check(Titles(g, 2).StartsWith("Tu si que vales|Tg5"), "Canale 5 row: its programmes in order");
         Check(Titles(g, 3) == "…" , "a channel not read yet is one 'loading' box");
         Check(g.Cells(5).Count == 1 && g.Cells(5)[0].Event == null && !g.Cells(5)[0].Loading, "a channel with no data is one 'no information' box (row of channel 8)");
+        {
+            // that box is stripes from end to end: a left end, the tiled middle and a right end that meet exactly, and no plain cell under them
+            GuideCell box = g.Cells(5)[0];
+            int ry = -1; var parts = new List<Prim>();
+            foreach (Prim p in GuideScene.Build(g, ProbeNow, TimeSpan.FromHours(1), ""))
+                if ((p.Kind == PrimKind.Hatch || p.Kind == PrimKind.HatchEnd || p.Kind == PrimKind.Fill) && p.X >= box.X && p.X + p.W <= box.X + box.W && (ry < 0 || p.Y == ry)
+                    && (p.Kind != PrimKind.Fill || p.W == box.W)) { if (p.Kind == PrimKind.HatchEnd && p.X == box.X) ry = p.Y; if (p.Y == ry) parts.Add(p); }
+            Check(parts.Count == 3 && parts[0].Kind == PrimKind.HatchEnd && parts[0].Phase == 0 && parts[0].X == box.X && parts[0].W == GuideScene.HatchEndW
+                && parts[1].Kind == PrimKind.Hatch && parts[1].X == box.X + GuideScene.HatchEndW && parts[1].W == box.W - 2 * GuideScene.HatchEndW && parts[1].Phase == GuideScene.HatchEndW % GuideScene.HatchTile
+                && parts[2].Kind == PrimKind.HatchEnd && parts[2].X + parts[2].W == box.X + box.W && parts[2].Phase == 1 + (box.W - GuideScene.HatchEndW) % GuideScene.HatchTile,
+                "a 'no information' box: striped end to end (left end, middle, right end), the stripes running on across the joins, no plain cell under it");
+        }
 
         // right: next programme, scrolling the time when it would not show
         g.MoveTime(+1);
@@ -228,18 +240,23 @@ internal static partial class Tests
         {
             switch (rnd0.Next(5)) { case 0: g.MoveTime(+1); break; case 1: g.MoveTime(-1); break; case 2: g.MoveRow(+1); break; case 3: g.MoveRow(-1); break; default: g.MovePage(rnd0.Next(2) == 0 ? 1 : -1); break; }
             List<Prim> scene = GuideScene.Build(g, ProbeNow, TimeSpan.FromHours(1), "A description.");
-            int fills = 0, texts = 0, focus = 0, hatches = 0, lines = 0; var keyNames = new HashSet<string>(); var keyed = new Dictionary<string, int>();
+            int fills = 0, texts = 0, focus = 0, hatches = 0, hatchEnds = 0, lines = 0, stripesFrom = -1; var keyNames = new HashSet<string>(); var keyed = new Dictionary<string, int>();
             foreach (Prim p in scene)
             {
                 if (p.Kind == PrimKind.Key && (!keyNames.Add(p.Text) || Array.IndexOf(GuideScene.KeyNames, p.Text) < 0 || p.W != GuideScene.KeyWidth(p.Text) || p.H != GuideScene.KeyH)) { sceneOk = false; sceneWhy = "footer key " + p.Text; }
-                if (p.Kind == PrimKind.Fill) fills++; else if (p.Kind == PrimKind.Text) texts++; else if (p.Kind == PrimKind.Focus) focus++; else if (p.Kind == PrimKind.Hatch) hatches++; else if (p.Kind == PrimKind.Line) lines++;
+                if (p.Kind == PrimKind.Fill) fills++; else if (p.Kind == PrimKind.Text) texts++; else if (p.Kind == PrimKind.Focus) focus++; else if (p.Kind == PrimKind.Hatch) hatches++; else if (p.Kind == PrimKind.HatchEnd) hatchEnds++; else if (p.Kind == PrimKind.Line) lines++;
+                // A "No information" cell is striped end to end: left end (slot 0), middle, right end; every piece shows the stripes as they fall
+                // from the cell's left edge, so the lines run on across the joins.
+                if (p.Kind == PrimKind.HatchEnd && p.Phase == 0) stripesFrom = p.X;
+                else if ((p.Kind == PrimKind.Hatch || p.Kind == PrimKind.HatchEnd) && (stripesFrom < 0 || (p.Kind == PrimKind.Hatch ? p.Phase : p.Phase - 1) != (p.X - stripesFrom) % GuideScene.HatchTile)) { sceneOk = false; sceneWhy = "stripes break at x " + p.X; }
+                if (p.Kind == PrimKind.HatchEnd && p.Phase > 0) stripesFrom = -1;
                 if (p.Kind == PrimKind.Text && p.Key != null) { int n; keyed.TryGetValue(p.Key, out n); keyed[p.Key] = n + 1; }
                 if (p.Kind != PrimKind.Text && (p.X < 0 || p.X + p.W > 1920 || p.Y < 0 || p.Y + p.H > 1080)) { sceneOk = false; sceneWhy = "shape outside the screen"; }
-                if ((p.Kind == PrimKind.Fill || p.Kind == PrimKind.Focus || p.Kind == PrimKind.Hatch) && (p.X < GuideLayout.CellsX || p.X + p.W > GuideLayout.CellsX + GuideLayout.CellsW)) { sceneOk = false; sceneWhy = "cell outside the grid"; }
+                if ((p.Kind == PrimKind.Fill || p.Kind == PrimKind.Focus || p.Kind == PrimKind.Hatch || p.Kind == PrimKind.HatchEnd) && (p.X < GuideLayout.CellsX || p.X + p.W > GuideLayout.CellsX + GuideLayout.CellsW)) { sceneOk = false; sceneWhy = "cell outside the grid"; }
                 if (p.Kind == PrimKind.Text && (p.Text == null || p.MaxW <= 0 || p.X < GuideLayout.LabelX || p.X > GuideLayout.Right || p.Weight == 0)) { sceneOk = false; sceneWhy = "text placement"; }
             }
             if (keyNames.Count != GuideScene.KeyNames.Length) { sceneOk = false; sceneWhy = "footer shows " + keyNames.Count + " of " + GuideScene.KeyNames.Length + " keys"; }
-            if (fills > GuideScene.MaxFills || texts > GuideScene.MaxTexts || hatches > GuideScene.MaxHatches || lines > GuideScene.MaxLines || focus != 1) { sceneOk = false; sceneWhy = "pools: fills " + fills + " texts " + texts + " hatches " + hatches + " lines " + lines + " focus " + focus; }
+            if (fills > GuideScene.MaxFills || texts > GuideScene.MaxTexts || hatches > GuideScene.MaxHatches || hatchEnds > GuideScene.MaxHatchEnds || lines > GuideScene.MaxLines || focus != 1) { sceneOk = false; sceneWhy = "pools: fills " + fills + " texts " + texts + " hatches " + hatches + " ends " + hatchEnds + " lines " + lines + " focus " + focus; }
             foreach (var kv in keyed) if (kv.Value != 1 || Array.IndexOf(GuideScene.TextKeys, kv.Key) < 0) { sceneOk = false; sceneWhy = "keyed text " + kv.Key + " x" + kv.Value; }
             if (!keyed.ContainsKey("num") || !keyed.ContainsKey("name")) { sceneOk = false; sceneWhy = "the focused row's number and name are not keyed"; }
         }

@@ -6,7 +6,7 @@
 <title>Vetro TV guide — as on the TV</title>
 <!--
   The EPG as approved (design round opus6, DESIGN.md "TV material"): no card, the veil (veil_corner.png) grown over the whole screen at .94;
-  lanes of rounded cells (pill.png, radius 20) in white at .09 / .16 on air / .05 loading / .035 + hatch.png with no information; the focus is
+  lanes of rounded cells (pill.png, radius 20) in white at .09 / .16 on air / .05 loading / .035 striped end to end (hatch.png, rounded ends hatch_ends.png on the TV) with no information; the focus is
   the same cell in ice with its text in slate. Geometry from challenge/opus6 (the fork's GuideScene still draws the old card).
   URL: ?ch=N focuses channel N (row index); ?still reads every schedule at once (screenshots); ?bd=video|black|light|grid.
   Keys: Up / Down channel, Left / Right programme, PageUp / PageDown page, Enter watch, Esc close, H the toolbar.
@@ -181,8 +181,9 @@
         var cx = cell.x - CELLSX, cy = r * ROWH + (ROWH - CELLH) / 2, onAir = cell.ev && cell.start <= NOW && NOW < cell.end;
         if (cell.focus) { focusCell = { cell: cell, y: ROWSY + cy }; return; }
         var a = cell.loading ? Tv.tok('--vetro-tv-cell-loading') : !cell.ev ? Tv.tok('--vetro-tv-cell-empty') : onAir ? Tv.tok('--vetro-tv-cell-onair') : Tv.tok('--vetro-tv-cell-rest');
-        Tv.mk(G, 'cell', cx, cy, cell.w, CELLH, { opacity: a });
-        if (!cell.ev && !cell.loading && cell.w > 48) Tv.mk(G, 'hatch', cx + 20, cy, cell.w - 40, CELLH);
+        // no information: stripes from end to end in the cell's shape (hatch.png holds the .035 itself); under 48 px a plain cell
+        if (!cell.ev && !cell.loading && cell.w >= 48) Tv.mk(G, 'hatch', cx, cy, cell.w, CELLH);
+        else Tv.mk(G, 'cell', cx, cy, cell.w, CELLH, { opacity: a });
         if (cell.ev) { if (cell.w >= 90) T(G, cx + 20, cy + 23, 28, 500, onAir ? 1 : .9, cell.ev.title, cell.w - 36); }
         else if (cell.w >= (cell.loading ? 150 : 190)) T(G, cx + 20, cy + 26, 24, 500, FAINT, cell.loading ? 'Loading…' : 'No information', cell.w - 36);
       });

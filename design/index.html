@@ -445,8 +445,9 @@
           T(c, clock(p[0]) + ' – ' + clock(p[0] + p[1]), x + 20, cy + 47, 22, 'ink', 500, w - 36, false, 'l1');
           return;
         }
-        mk(c, 'cell', x, cy, w, CH_, { 'opacity': p[2] === null ? tok('--vetro-tv-cell-empty') : onAir ? tok('--vetro-tv-cell-onair') : tok('--vetro-tv-cell-rest') });
-        if (p[2] === null) { mk(c, 'hatch', x + 20, cy, w - 40, CH_); if (w >= 190) T(c, 'No information', x + 20, cy + 26, 24, .64, 500, w - 36, false, 'l1'); }
+        if (p[2] === null && w >= 48) mk(c, 'hatch', x, cy, w, CH_);   // no information: stripes end to end in the cell's shape
+        else mk(c, 'cell', x, cy, w, CH_, { 'opacity': p[2] === null ? tok('--vetro-tv-cell-empty') : onAir ? tok('--vetro-tv-cell-onair') : tok('--vetro-tv-cell-rest') });
+        if (p[2] === null) { if (w >= 190) T(c, 'No information', x + 20, cy + 26, 24, .64, 500, w - 36, false, 'l1'); }
         else if (w >= 90) T(c, p[2], x + 20, cy + 23, 28, onAir ? 1 : .9, 500, w - 36, false, 'l1');
       });
     });

@@ -134,7 +134,7 @@
   --vetro-tv-cell-rest: .09;             /* a programme */
   --vetro-tv-cell-onair: .16;            /* a programme on air */
   --vetro-tv-cell-loading: .05;          /* "Loading…" */
-  --vetro-tv-cell-empty: .035;           /* no information: + hatch.png (16 px tile, diagonal lines at .10) */
+  --vetro-tv-cell-empty: .035;           /* no information: hatch.png end to end (16 px tile: this .035 plus diagonal lines at .10), rounded ends hatch_ends.png */
   /* RETIRED (old sheet fills, solid.png): */
   --vetro-tv-fill-empty: .047;
   --vetro-tv-fill-rest: .20;

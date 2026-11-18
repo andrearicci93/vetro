@@ -555,8 +555,10 @@ function drawGrid(prev) {
         put('p' + k, Img(G, 'pill.png', px, gy, pw, CELLH, 0.05, [24, 24, 24, 24]));
         if (pw >= 150) put('t' + k, Text(G, px + 20, gy + 26, 24, 500, FAINT, 'Loading…', pw - 36));
       } else if (!s.ev) {
-        put('p' + k, Img(G, 'pill.png', px, gy, pw, CELLH, 0.035, [24, 24, 24, 24]));
-        if (pw > 48) put('h' + k, Img(G, 'hatch.png', px + 20, gy, pw - 40, CELLH, 1, 'tile'));
+        // stripes from end to end in the cell's rounded shape (hatch.png already holds the .035); on the TV: two ends (hatch_ends.png) and the
+        // tiled middle. A cell too short for both ends (under 48 px) stays plain.
+        if (pw >= 48) { var hh = Img(G, 'hatch.png', px, gy, pw, CELLH, 1, 'tile'); hh.style.webkitMaskBoxImage = 'url(assets/pill.png) 24 / 24px stretch'; put('h' + k, hh); }
+        else put('p' + k, Img(G, 'pill.png', px, gy, pw, CELLH, 0.035, [24, 24, 24, 24]));
         if (pw >= 190) put('t' + k, Text(G, px + 20, gy + 26, 24, 500, FAINT, 'No information', pw - 36));
       } else {
         var onAir = s.start <= NOW && NOW < s.end;

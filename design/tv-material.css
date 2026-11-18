@@ -28,14 +28,16 @@
 /* progress: the track (bar.png, white .22) and the Luce progress with its head (progress.png, 32 high, head = the right 32 px) */
 .trk { position: absolute; height: 6px; border-style: solid; border-width: 0 3px; border-image: url(assets/tuner/bar.png) 0 3 fill / 0 3px stretch; opacity: var(--vetro-tv-track); }
 .prg { position: absolute; height: 32px; border-style: solid; border-width: 0 32px 0 4px; border-image: url(assets/tuner/progress.png) 0 32 0 4 fill / 0 32px 0 4px stretch; }
-/* EPG cells: pill.png (white, radius 20, slice 24) at the cell's alpha; no information adds hatch.png; the focus is the same shape in ice */
+/* EPG cells: pill.png (white, radius 20, slice 24) at the cell's alpha; no information is hatch.png (it holds the .035 itself) from end to end
+   in the cell's shape (on the TV the rounded ends are hatch_ends.png, tuner/tools/make-hatch-ends.py); the focus is the same shape in ice */
 .cell { position: absolute; border-style: solid; border-width: 24px; border-image: url(assets/tuner/pill.png) 24 fill / 24px stretch; }
 .cell.focus { border: 0; background: color-mix(in srgb, var(--vetro-tv-focus-fill) calc(var(--vetro-tv-focus-alpha) * 100%), transparent); -webkit-mask-box-image: url(assets/tuner/pill.png) 24 / 24px stretch; }
-.hatch { position: absolute; background: url(assets/tuner/hatch.png) repeat; }
+.hatch { position: absolute; background: url(assets/tuner/hatch.png) repeat; -webkit-mask-box-image: url(assets/tuner/pill.png) 24 / 24px stretch; }
 /* index.html shows the screens scaled to about half: there the 9-slice masks leave seams, so the same shapes are drawn with border-radius
    (same radius, same tint). The full-screen pages keep the real pictures. */
 .tv-stage .pnl-body, .tv-stage .cap, .tv-stage .donechip, .tv-stage .cell.focus { -webkit-mask-box-image: none; border-radius: var(--r, 40px); }
 .tv-stage .cell.focus { border-radius: var(--vetro-tv-cell-radius); }
+.tv-stage .hatch { -webkit-mask-box-image: none; border-radius: var(--vetro-tv-cell-radius); }
 .tv-stage .pnl-rim { -webkit-mask-box-image: none; border-radius: calc(var(--r, 40px) + 2px); }
 .tv-stage .pnl-rim { background: transparent; border: var(--vetro-tv-panel-rim-w) solid color-mix(in srgb, var(--vetro-tv-ink) calc(var(--vetro-tv-panel-rim-alpha) * 100%), transparent); }
 .tv-stage .cell:not(.focus) { border: 0; border-image: none; border-radius: var(--vetro-tv-cell-radius); background: #fff; }

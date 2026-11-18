@@ -21,6 +21,7 @@ namespace Tuner.Ui
         private readonly IntPtr[] _lines = new IntPtr[GuideScene.MaxLines];
         private readonly Chip[] _fills = new Chip[GuideScene.MaxFills];
         private readonly IntPtr[] _hatches = new IntPtr[GuideScene.MaxHatches];
+        private readonly IntPtr[] _hatchEnds = new IntPtr[GuideScene.MaxHatchEnds];
         private readonly Chip _focus;
         private readonly Logo[] _logos = new Logo[GuideScene.MaxLogos];
         private readonly Slot[] _texts = new Slot[GuideScene.MaxTexts - 3];
@@ -29,7 +30,7 @@ namespace Tuner.Ui
         private readonly HashSet<string> _keysShown = new HashSet<string>(), _keyedShown = new HashSet<string>();
         private readonly Dictionary<string, Part> _parts = new Dictionary<string, Part>();
         private readonly IntPtr _probe;
-        private int _linesUsed, _fillsUsed, _hatchesUsed, _textsUsed;
+        private int _linesUsed, _fillsUsed, _hatchesUsed, _hatchEndsUsed, _textsUsed;
 
         /// <summary>A pooled text object and what was last put on it (font and text are only set again when they change).</summary>
         private sealed class Slot { public IntPtr T; public string Text, Font; public int Size = -1, MaxW = -1; }
@@ -40,7 +41,8 @@ namespace Tuner.Ui
             _measureNative = MeasureNative;
             for (int i = 0; i < _lines.Length; i++) _lines[i] = s.Rect();
             for (int i = 0; i < _fills.Length; i++) _fills[i] = s.Pill();
-            for (int i = 0; i < _hatches.Length; i++) _hatches[i] = s.Tile("hatch", 16);
+            for (int i = 0; i < _hatches.Length; i++) _hatches[i] = s.Tile("hatch", GuideScene.HatchTile);
+            for (int i = 0; i < _hatchEnds.Length; i++) _hatchEnds[i] = s.Tile("hatch_ends", HatchEndsSlots * GuideScene.HatchEndW, GuideLayout.CellH);
             _focus = s.Pill();
             for (int i = 0; i < _logos.Length; i++) _logos[i] = s.Logo();
             for (int i = 0; i < _texts.Length; i++) _texts[i] = NewSlot();
@@ -52,6 +54,9 @@ namespace Tuner.Ui
             _parts["name"] = new Part(_keyed["name"].T, 26, false);
             _parts["title"] = new Part(_keyed["title"].T, 64, false);
         }
+
+        /// <summary>hatch_ends.png: the left end, then the right end for each of the 16 places it can start in the stripes' tile (tools/make-hatch-ends.py).</summary>
+        private const int HatchEndsSlots = 1 + GuideScene.HatchTile;
 
         private Slot NewSlot() { var sl = new Slot { T = _s.Text(24, Theme.TextMain) }; Efl.evas_object_hide(sl.T); return sl; }
 
@@ -78,7 +83,7 @@ namespace Tuner.Ui
 
         public void Draw(List<Prim> scene)
         {
-            int lines = 0, fills = 0, hatches = 0, texts = 0, logos = 0;
+            int lines = 0, fills = 0, hatches = 0, hatchEnds = 0, texts = 0, logos = 0;
             bool focus = false;
             _keysShown.Clear(); _keyedShown.Clear();
             foreach (Prim p in scene)
@@ -102,6 +107,17 @@ namespace Tuner.Ui
                         {
                             IntPtr h = _hatches[hatches++];
                             Efl.evas_object_move(h, p.X, p.Y); Efl.evas_object_resize(h, p.W, p.H);
+                            Efl.evas_object_image_fill_set(h, -p.Phase, 0, GuideScene.HatchTile, GuideScene.HatchTile);
+                            Efl.evas_object_color_set(h, p.Alpha, p.Alpha, p.Alpha, p.Alpha); Efl.evas_object_show(h);
+                        }
+                        break;
+                    case PrimKind.HatchEnd:
+                        if (hatchEnds < _hatchEnds.Length)
+                        {
+                            // One slot of hatch_ends.png shows through the end's 24 px: the picture's fill is moved left by the slot's offset.
+                            IntPtr h = _hatchEnds[hatchEnds++];
+                            Efl.evas_object_move(h, p.X, p.Y); Efl.evas_object_resize(h, p.W, p.H);
+                            Efl.evas_object_image_fill_set(h, -p.Phase * GuideScene.HatchEndW, 0, HatchEndsSlots * GuideScene.HatchEndW, GuideLayout.CellH);
                             Efl.evas_object_color_set(h, p.Alpha, p.Alpha, p.Alpha, p.Alpha); Efl.evas_object_show(h);
                         }
                         break;
@@ -128,8 +144,9 @@ namespace Tuner.Ui
             for (int i = lines; i < _linesUsed; i++) Efl.evas_object_hide(_lines[i]);
             for (int i = fills; i < _fillsUsed; i++) _fills[i].SetWhite(0);
             for (int i = hatches; i < _hatchesUsed; i++) Efl.evas_object_hide(_hatches[i]);
+            for (int i = hatchEnds; i < _hatchEndsUsed; i++) Efl.evas_object_hide(_hatchEnds[i]);
             for (int i = texts; i < _textsUsed; i++) Efl.evas_object_hide(_texts[i].T);
-            _linesUsed = lines; _fillsUsed = fills; _hatchesUsed = hatches; _textsUsed = texts;
+            _linesUsed = lines; _fillsUsed = fills; _hatchesUsed = hatches; _hatchEndsUsed = hatchEnds; _textsUsed = texts;
             _veil.SetGuide(true);
             _s.Show();
         }

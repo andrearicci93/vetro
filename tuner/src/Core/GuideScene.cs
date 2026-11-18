@@ -3,11 +3,12 @@ using System.Collections.Generic;
 
 namespace Tuner.Core
 {
-    internal enum PrimKind { Line, Fill, Hatch, Focus, Text, Key, Logo }
+    internal enum PrimKind { Line, Fill, Hatch, HatchEnd, Focus, Text, Key, Logo }
 
     /// <summary>
     /// One thing to draw. Line is a plain rectangle; Fill is a programme's rounded cell (pill.png, radius 20) in white at <see cref="Alpha"/>
-    /// (0..255); Hatch is the "no information" stripes (hatch.png tiled); Focus is the focused cell, the same pill in ice; Text is text at
+    /// (0..255); Hatch is the "no information" stripes (hatch.png tiled, its fill moved by <see cref="Phase"/> px), HatchEnd one rounded end of
+    /// such a cell (hatch_ends.png, slot <see cref="Phase"/>: 0 the left end, 1 + k the right end starting k px into the tile); Focus is the focused cell, the same pill in ice; Text is text at
     /// <see cref="Alpha"/> in white, or in <see cref="Tint"/> (opaque) when set; Key is the picture of a remote key (res/key_*.png, its name in
     /// <see cref="Text"/>); Logo is a channel's logo (the file path in <see cref="Text"/>, drawn as a W x H square).
     /// </summary>
@@ -25,6 +26,7 @@ namespace Tuner.Core
         public int LineH;              // text: the pitch of a paragraph's lines
         public bool Right;             // text: X is the right edge
         public string Key;             // text: "num", "name" (the focused row's label) or "title" (the header): what a transition flies to or from
+        public int Phase;              // hatch: how far the stripes' tile is moved left; hatch end: the slot of hatch_ends.png
     }
 
     /// <summary>
@@ -34,7 +36,7 @@ namespace Tuner.Core
     internal static class GuideScene
     {
         /// <summary>The pools the view makes once: these caps hold for every state (the tests fuzz them).</summary>
-        public const int MaxFills = 140, MaxHatches = 21, MaxLines = 3, MaxTexts = 260, MaxLogos = GuideLayout.Rows, LogoSize = 56;
+        public const int MaxFills = 140, MaxHatches = 21, MaxHatchEnds = 2 * MaxHatches, MaxLines = 3, MaxTexts = 260, MaxLogos = GuideLayout.Rows, LogoSize = 56;
 
         /// <summary>The texts with a <see cref="Prim.Key"/>: the view keeps one object each, so a transition can hold on to them while the rest is redrawn.</summary>
         public static readonly string[] TextKeys = { "num", "name", "title" };
@@ -49,6 +51,9 @@ namespace Tuner.Core
 
         /// <summary>Cells: rest .09, on air .16, loading .05, no information .035 (with the hatch); the focus is ice at .96. Lines: the axis .157, "now" .30.</summary>
         public const int CellRest = 23, CellOnAir = 41, CellLoading = 13, CellNone = 9, FocusAlpha = 245, AxisAlpha = 40, NowAlpha = 77;
+
+        /// <summary>A "No information" cell: the ends are HatchEndW px each (pill.png's border), the stripes' tile is HatchTile px.</summary>
+        public const int HatchEndW = 24, HatchTile = 16;
 
         /// <param name="description">The long text of the focused programme, when it has been read (empty otherwise).</param>
         /// <param name="logo">The logo file of a channel (null for none). Passing it at all (even if every answer is null) keeps a column for the logos
@@ -150,8 +155,16 @@ namespace Tuner.Core
                     }
                     else if (cell.Event == null)
                     {
-                        fills.Add(Cell(cell, cy, CellNone));
-                        if (cell.W > 48) hatches.Add(new Prim { Kind = PrimKind.Hatch, X = cell.X + 20, Y = cy, W = cell.W - 40, H = GuideLayout.CellH, Alpha = 255 });
+                        // Stripes from end to end: two rounded ends and the tiled middle, all anchored at the cell's left edge (hatch.png already
+                        // holds the cell's .035, so there is no plain cell under it). A cell too short for both ends stays plain.
+                        if (cell.W >= 2 * HatchEndW)
+                        {
+                            int midW = cell.W - 2 * HatchEndW;
+                            hatches.Add(new Prim { Kind = PrimKind.HatchEnd, X = cell.X, Y = cy, W = HatchEndW, H = GuideLayout.CellH, Alpha = 255, Phase = 0 });
+                            if (midW > 0) hatches.Add(new Prim { Kind = PrimKind.Hatch, X = cell.X + HatchEndW, Y = cy, W = midW, H = GuideLayout.CellH, Alpha = 255, Phase = HatchEndW % HatchTile });
+                            hatches.Add(new Prim { Kind = PrimKind.HatchEnd, X = cell.X + cell.W - HatchEndW, Y = cy, W = HatchEndW, H = GuideLayout.CellH, Alpha = 255, Phase = 1 + (cell.W - HatchEndW) % HatchTile });
+                        }
+                        else fills.Add(Cell(cell, cy, CellNone));
                         if (cell.W >= 190) texts.Add(T(cell.X + 20, cy + 26, 24, 500, Faint, "No information", tw));
                     }
                     else
