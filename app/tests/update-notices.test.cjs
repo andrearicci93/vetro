@@ -57,7 +57,7 @@ const asked = (calls, url) => calls.filter(c => c === url).length;
     assert.ok(t.tabs.quick.dot, 'Quick settings has a dot');
     assert.match(t.tabs.quick.dot.title, /Vetro update is available/);
     assert.ok(t.tabs.plugins.dot, 'Vetro Shards has a dot');
-    assert.match(t.tabs.plugins.dot.title, /plugin update is available/);
+    assert.match(t.tabs.plugins.dot.title, /Shard update is available/);
     assert.equal(t.nodes.applyUpdate.hidden, false, 'the Update button is offered');
     assert.equal(t.nodes.applyUpdate.textContent, 'Update to 0.5.1');
     assert.equal(t.calls.filter(c => c === '/update/apply').length, 0, 'nothing is installed');

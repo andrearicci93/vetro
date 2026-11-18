@@ -59,7 +59,7 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  // Turning it on from an unpaired browser: pair this browser first, with a code on the TV.
  const pairingCheckbox={dataset:{pairingEnabled:''},checked:true};el('quick').onchange({target:pairingCheckbox});
  assert.equal(pairingCheckbox.checked,false);assert.equal(modes.length,0);
- assert.match(el('quickPairing').innerHTML,/First pair this browser/);assert.match(el('quickPairing').innerHTML,/data-pairing-start/);
+ assert.match(el('quickPairing').innerHTML,/Enter the 6-digit code shown on the TV/);assert.match(el('quickPairing').innerHTML,/data-pairing-start/);
  assert.doesNotMatch(el('quickPairing').innerHTML,/data-pairing-confirm/,'an unpaired browser cannot switch it on directly');
  sandbox.pairingStep={id:'x'};sandbox.renderPairingMode();assert.match(el('quickPairing').innerHTML,/id="pairingCode"[\s\S]*data-pairing-code/);
  el('quick').onclick({target:{dataset:{pairingCancel:''}}});assert.equal(sandbox.pairingConfirm,false);assert.equal(sandbox.pairingStep,null);
@@ -97,4 +97,4 @@ const startupHtml = require('../service/dashboard.js')({});
 assert.match(startupHtml, /<option value="flagged">Can start: flag set, app enabled<\/option><option value="flags">Flag set, including disabled apps<\/option>/);
 assert.match(startupHtml, /\(a\.onboot\|\|a\.autorestart\)&&\(mode==='flags'\|\|a\.disabled===false\)/, 'default filter requires an enabled component');
 assert.match(startupHtml, /function mixedCount/, 'a Mixed flag says how many components have it on');
-assert.match(startupHtml, /a disabled app keeps them/);
+assert.match(startupHtml, /Disabled apps keep their startup settings/);

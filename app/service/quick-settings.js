@@ -13,24 +13,24 @@ var RESTORE_FLAGS_FOR_RE = /^(\S+) (\d+|none)$/;
 // except the ones that role "keep" or the protection rules cover (Smart Hub's ad agent, Vetro itself).
 var GROUPS = [
     {id: 'tracking-all', label: 'All advertising and tracking', section: 'tracking', area: 'tracking',
-        description: 'Viewing data, ad players, analytics, personalised content and the privacy screens. Smart Hub’s ad agent stays on: Home loads part of it.',
+        description: 'Stops viewing data, ad players, analytics, personalised content and privacy screens. Samsung Home still uses Smart Hub’s ad agent.',
         ids: []},
     {id: 'voice-all', label: 'All voice assistants', section: 'voice', area: 'voice', microphone: true, everything: true,
-        description: 'Alexa, Bixby, Google Assistant, the assistant hub, always-on voice, speech, voice actions and search suggestions.',
+        description: 'Stops Alexa, Bixby, Google Assistant and shared voice services, including search suggestions.',
         ids: []},
     {id: 'alexa', label: 'Alexa', section: 'voice', microphone: true,
-        description: 'Alexa client, its full-screen view, launcher and wake-word engine.',
+        description: 'Stops Alexa and its wake word.',
         ids: ['com.samsung.tv.alexa-client', 'com.samsung.tv.alexa-fullscreen-app', 'com.samsung.tv.alexa-jump-starter',
             'com.samsung.tv.wakeup-engine-alexa']},
     {id: 'google', label: 'Google Assistant', section: 'voice', microphone: true,
-        description: 'Google Assistant service and its full-screen view.',
+        description: 'Stops Google Assistant and its full-screen view.',
         ids: ['com.samsung.tv.google-assistant', 'com.samsung.tv.google-fullscreen-app']},
     {id: 'bixby', label: 'Bixby', section: 'voice', microphone: true,
-        description: 'Bixby clients, voice discovery menu, capsule viewer and wake-word engine.',
+        description: 'Stops Bixby, its voice menus and wake word.',
         ids: ['com.samsung.tv.bixby-context-client', 'com.samsung.tv.bixby-prov', 'com.samsung.tv.bixbycapsuleviewer',
             'com.samsung.tv.mybixby', 'com.samsung.tv.wakeup-engine-bixby']},
     {id: 'voice', label: 'Voice services', section: 'voice', microphone: true,
-        description: 'Voice interaction framework, speech-to-text, far-field and on-device voice, voice app and music assistant.',
+        description: 'Stops speech-to-text, hands-free voice and other voice services.',
         ids: ['com.samsung.tv.vif', 'com.samsung.tv.farfieldvoice', 'com.samsung.tv.ondevice-voice',
             'com.samsung.tv.voiceassistant-music', 'com.samsung.tv.cnvoice', 'com.samsung.tv.cnvoice-assistant',
             'org.tizen.voice-app', 'org.tizen.voice-app-service', 'org.tizen.voice-client', 'org.tizen.stt-client']},
@@ -39,7 +39,7 @@ var GROUPS = [
     // Samsung's own units skip the start when a file exists in /opt/usr/share/systemd/system, which `services` lists.
     // These packages are not system packages, so Components can also uninstall them (pkgcmd -u).
     {id: 'tvplus', label: 'Samsung TV Plus', section: 'memory',
-        description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Frees about 25 MB (measured on a Q80A). Reversible; Components can uninstall them instead.',
+        description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Stops Samsung TV Plus and its background services. Frees about 25 MB.',
         ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
         services: ['slive-provider-daemon', 'bms']},
     // Apps that come with the TV and that Samsung's own Apps screen does not let you delete. One switch each (section
@@ -65,7 +65,7 @@ var GROUPS = [
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
     // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
     {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,
-        description: 'The Home key stops opening Samsung’s Home. Risky: on a Q80A the TV may not finish starting while it is off, and only a factory reset fixes that. Turn it back on before a restart. For another launcher, use Vetro UI → Launcher.',
+        description: 'Home stops opening Samsung Home. On a Q80A the TV may stall at startup and need a factory reset. Turn Samsung Home back on before restarting. For another launcher, use Vetro UI → Launcher.',
         ids: ['com.samsung.tv.csfs']}
 ];
 var ALLOWED_IDS = GROUPS.reduce(function (all, g) { return all.concat(g.ids); }, []);

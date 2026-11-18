@@ -381,22 +381,22 @@ function olderService(app, service) {
 var COLD = 'turn the TV off at the wall (or unplug it) for 30 seconds, then on again';
 function rootCheck(r) {
   var code = r.code ? ' ' + r.code : '';
-  if (r.reason === 'unsupported') return ['warn', 'Root access', 'Not available on this TV', 'This TV\'s system is too old for the root helper. Vetro works here as an app only: features that need root are off. Reinstalling will not change this.', 'ROOT N/A old-tv', 'warn'];
+  if (r.reason === 'unsupported') return ['warn', 'Root access', 'Not available on this TV', 'This TV’s software is too old for root access. Vetro works with app-only features. Reinstalling will not help.', 'ROOT N/A old-tv', 'warn'];
   if (r.reason === 'starting') return ['warn', 'Root access', 'Connecting', 'Root usually connects within a minute of the TV starting. Press OK to check again.', 'ROOT WAIT', 'warn'];
-  if (r.reason === 'sdb') return ['bad', 'Root access', 'Not connected', 'The TV refused the local developer connection root needs. Check that Developer Mode is on and Host PC IP is 127.0.0.1, then ' + COLD + '.', 'ROOT DOWN' + code, 'bad'];
-  if (r.reason === 'agent') return ['bad', 'Root access', 'Not connected', 'The root helper started but did not answer. Check that Host PC IP is 127.0.0.1, then ' + COLD + '. If it stays like this, reinstall the root package.', 'ROOT DOWN agent', 'bad'];
+  if (r.reason === 'sdb') return ['bad', 'Root access', 'Not connected', 'Root connection refused. Check that Developer Mode is on and Host PC IP is 127.0.0.1, then ' + COLD + '.', 'ROOT DOWN' + code, 'bad'];
+  if (r.reason === 'agent') return ['bad', 'Root access', 'Not connected', 'The root helper started but did not answer. Check that Host PC IP is 127.0.0.1, then ' + COLD + '. If it still fails, reinstall the root package.', 'ROOT DOWN agent', 'bad'];
   if (r.reason === 'prepare') return ['bad', 'Root access', 'Not connected', 'Vetro could not prepare the root helper. Reinstall the root package.', 'ROOT DOWN prepare', 'bad'];
-  return ['bad', 'Root access', 'Not connected', 'Features that need root are off. Restart the TV; if it stays like this, reinstall the root package.', 'ROOT DOWN', 'bad'];
+  return ['bad', 'Root access', 'Not connected', 'Root features are off. Restart the TV. If it still fails, reinstall the root package.', 'ROOT DOWN', 'bad'];
 }
 // One check: [state, name, value, hint, token, tokenState]. state is ok | warn | bad | off | na. The token is the
 // short form for the support line; it is upper case (and coloured) when something is wrong.
 function checks(d) {
   var out = [], root, api, apiMissing = [], slow, slowHint, mem, l, i;
   if (!d && refusal) {
-    out.push(['bad', 'Service', 'Refused this screen', 'The service is running but did not accept this screen (' + esc(refusal) + '). Please report this on GitHub with a photo of this screen.',
+    out.push(['bad', 'Service', 'Refused this screen', 'The service is running but did not accept this screen (' + esc(refusal) + '). Report this on GitHub with a photo.',
       'SVC REFUSED ' + refusal, 'bad']);
   } else if (!d) {
-    out.push(['bad', 'Service', 'Not answering', 'Vetro\'s background service did not answer on port 8099. Close this screen and open Vetro again; if it stays like this, reinstall Vetro.' +
+    out.push(['bad', 'Service', 'Not answering', 'Vetro’s service did not answer on port 8099. Reopen Vetro. If it still fails, reinstall Vetro.' +
       (report.probe.serviceLaunch && !report.probe.serviceLaunch.ok ? ' ' + esc(report.probe.serviceLaunch.error) : ''), 'SVC DOWN' + svcWhy(), 'bad']);
   } else {
     var av = appVersion(), mismatch = olderService(av, d.version);
@@ -405,7 +405,7 @@ function checks(d) {
   }
   if (!d) out.push(['na', 'Root access', 'Unknown', null, 'root ?']);
   else if (d.root.connected) out.push(['ok', 'Root access', 'Connected', null, 'root ok']);
-  else if (d.root.mode === 'app-only') out.push(['warn', 'Root access', 'Not available', 'This is the app-only package. Features that need root are off.', 'ROOT NO', 'warn']);
+  else if (d.root.mode === 'app-only') out.push(['warn', 'Root access', 'Not available', 'App-only package. Root features are off.', 'ROOT NO', 'warn']);
   else out.push(rootCheck(d.root));
   root = !!(d && d.root.connected);
   if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
@@ -418,8 +418,8 @@ function checks(d) {
   else if (!l.enabled) out.push(['off', 'Launcher', 'Off', null, 'launcher off']);
   else if (l.running === true) out.push(['ok', 'Launcher', 'Running', null, 'launcher ok']);
   else if (l.running === false) out.push(['bad', 'Launcher', l.failures ? 'Failed to start' : 'Not running',
-    (l.failures ? 'Tried ' + esc(l.failures) + ' times. ' : '') + 'Open Vetro UI, Launcher tab, in the dashboard and read the error.', 'LAUNCHER FAIL' + (l.failures ? ' x' + l.failures : ''), 'bad']);
-  else out.push(['warn', 'Launcher', 'Cannot check', 'It needs root access to be checked.', 'LAUNCHER ?', 'warn']);
+    (l.failures ? 'Tried ' + esc(l.failures) + ' times. ' : '') + 'In the dashboard, open Vetro UI → Launcher.', 'LAUNCHER FAIL' + (l.failures ? ' x' + l.failures : ''), 'bad']);
+  else out.push(['warn', 'Launcher', 'Cannot check', 'Requires root access.', 'LAUNCHER ?', 'warn']);
   // The package list is read after the verdict: not read yet is not missing.
   ['tizenObject', 'webapisObject', 'apps', 'packages'].forEach(function (k) { if (!probeOk(k) && (k !== 'packages' || report.probe.packages)) apiMissing.push(k.replace('Object', '')); });
   slow = slowSteps();
@@ -458,11 +458,11 @@ var TILE_ICONS = {
 // Tile order is the order on screen. "on"/"off" are the words for the switch; a switch is "on" when the feature is switched on
 // (the launcher, Vetro UI) or switched off for good (ads, voice: the dashboard's "Disable" switches).
 var TILES = [
-  {id: 'launcher', title: 'Vetro Launcher', tag: '', on: 'On', off: 'Off', desc: 'Home opens Vetro’s launcher instead of Samsung’s Home.', words: ['Launcher on', 'Launcher off']},
-  {id: 'ui', title: 'Vetro UI', tag: '', on: 'On', off: 'Off', desc: 'Vetro’s live TV, volume bar, number pad and Control center.', words: ['Vetro UI on', 'Vetro UI off']},
+  {id: 'launcher', title: 'Vetro launcher', tag: '', on: 'On', off: 'Off', desc: 'Home opens the Vetro launcher.', words: ['Launcher on', 'Launcher off']},
+  {id: 'ui', title: 'Vetro UI', tag: '', on: 'On', off: 'Off', desc: 'Live TV, Volume bar, Number pad and Control center.', words: ['Vetro UI on', 'Vetro UI off']},
   {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
-  {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google and voice search. The mic button stops working.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
-  {id: 'update', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.'}
+  {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google Assistant and voice search. Turns off the mic.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
+  {id: 'update', title: 'Update Vetro', tag: '', desc: 'Press OK to check GitHub.'}
 ];
 // A call to the service with its own time limit, so a tile can never stay on "Working" for good. Resolves {status, data}.
 function call(method, path, body, ms) {
@@ -534,7 +534,7 @@ function updateView(t, o) {
   o.tag = (c && c.update && c.update.version) || (lastScreen && lastScreen.version) || '';
   o.na = !ok;
   if (!c) { o.btn = 'Check for update'; return o; }
-  if (!c.update || !c.update.configured) { o.desc = 'This build has no update key, so it cannot be updated from here.'; o.btn = 'Check for update'; return o; }
+  if (!c.update || !c.update.configured) { o.desc = 'This build has no update key.'; o.btn = 'Check for update'; return o; }
   var p = upd.phase;
   if (p === 'checking') o.btn = 'Checking…';
   else if (p === 'none') { o.desc = 'You have the newest version.'; o.note = 'Up to date'; o.cls = 'ok'; }
@@ -565,7 +565,7 @@ var SHORT = {'Root access': 'Root', 'Remote input': 'Input'};
 function renderMain(d) {
   var list = checks(d), bad = 0, warn = 0, state, label, chips = '', tiles = '', i, c, locked = controls && !controls.canControl;
   list.forEach(function (x) { if (x[0] === 'bad') bad++; else if (x[0] === 'warn') warn++; });
-  if (bad) { state = 'bad'; label = 'Needs attention'; } else if (warn) { state = 'warn'; label = 'Running, with limits'; } else { state = 'ok'; label = 'Running in the background'; }
+  if (bad) { state = 'bad'; label = 'Needs attention'; } else if (warn) { state = 'warn'; label = 'Running with limits'; } else { state = 'ok'; label = 'Running in the background'; }
   var device = report.settings, model = device.realModel || device.model, firmware = device.firmware ? String(device.firmware).split('-').pop() : null, version = d.version || appVersion();
   var pin = pairing ? pairing.code.slice(0, 3) + ' ' + pairing.code.slice(3) : '', addr = d.address ? 'http://' + d.address + ':' + d.port : null;
   for (i = 0; i < list.length; i++) {
@@ -574,7 +574,7 @@ function renderMain(d) {
   }
   var parts = [];
   for (i = 0; i < TILES.length; i++) { parts.push(tileParts(i)); tiles += '<div class="' + parts[i][0] + '">' + parts[i][1] + '</div>'; }
-  var right = locked ? esc('Switches are off here: this page is not recognised as the TV. Use the dashboard on a phone.') : focus < 5 ? keyIcon('pad-left', 'Left') + keyIcon('pad-right', 'Right') + 'to choose &middot; ' + keyIcon('pad-ok', 'OK') + 'to switch' : '';
+  var right = locked ? esc('This page is not recognised as the TV, so its switches are off. Use the dashboard.') : focus < 5 ? keyIcon('pad-left', 'Left') + keyIcon('pad-right', 'Right') + 'to choose &middot; ' + keyIcon('pad-ok', 'OK') + 'to switch' : '';
   var el = document.getElementById('screen');
   // The hero without the PIN slot, which paintPairing redraws on its own every second.
   var heroA = '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
@@ -629,8 +629,8 @@ function chosen() { return TILES[focus] && TILES[focus].id; }
 function activate() {
   var id = chosen(), s, want;
   if (focus === 5) { view = 'details'; render(lastScreen, false); return; }
-  if (!controls) { toast('The controls did not load. Press Back and open Vetro again; the service may be starting.'); return; }
-  if (!controls.canControl) { toast('This TV page cannot change settings. Use the dashboard.'); return; }
+  if (!controls) { toast('Controls did not load. Press Back and reopen Vetro.'); return; }
+  if (!controls.canControl) { toast('Use the dashboard to change settings.'); return; }
   if (id === 'update') return activateUpdate();
   if (busy[id]) return;
   s = controls.tiles[id];
@@ -700,8 +700,8 @@ function renderDetails(d, waiting) {
   else if (!d && refusal) { state = 'bad'; label = 'Refused'; sum = 'The service refused this screen'; }
   else if (!d) { state = 'bad'; label = 'Not responding'; sum = 'The service is down'; }
   else if (bad) { state = 'bad'; label = 'Needs attention'; sum = bad + (bad === 1 ? ' problem' : ' problems'); }
-  else if (warn) { state = 'warn'; label = 'Running, with limits'; sum = warn + (warn === 1 ? ' thing to check' : ' things to check'); }
-  else { state = 'ok'; label = 'Running in the background'; sum = 'All good. You can close this screen, Vetro keeps running without it.'; }
+  else if (warn) { state = 'warn'; label = 'Running with limits'; sum = warn + (warn === 1 ? ' thing to check' : ' things to check'); }
+  else { state = 'ok'; label = 'Running in the background'; sum = 'Checks passed. You can close this screen: Vetro keeps running without it.'; }
   version = (d && d.version) || appVersion();
   model = device.realModel || device.model;
   firmware = device.firmware ? String(device.firmware).split('-').pop() : null;   // T-NKM2DEUC-2310.0 -> 2310.0
@@ -716,10 +716,10 @@ function renderDetails(d, waiting) {
     '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
     '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
     '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
-    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. This can take 1&ndash;2 minutes: please do not close this screen.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
+    '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. Keep this screen open for 1&ndash;2 minutes.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
     '<div class="panel ' + (bad ? 'bad' : warn ? 'warn' : '') + '"><div class="ph"><h2>Diagnostics</h2><div class="sum ' + (state === 'ok' ? '' : state) + '" id="sum">' + esc(sum) + '</div></div>' +
     '<div class="grid">' + cells + '</div>' +
-    '<div class="share"><div class="t">Asking for help? Read out or photograph this line.</div><code>' + (waiting ? 'Collecting the details&hellip;' : line.join(' &middot; ')) + '</code></div>' +
+    '<div class="share"><div class="t">For support, read out or photograph this line.</div><code>' + (waiting ? 'Collecting the details&hellip;' : line.join(' &middot; ')) + '</code></div>' +
     '<div class="keys">' + (waiting ? '' : '<span>' + keyIcon('pad-ok', 'OK') + 'Check again</span>') + '<span>' + keyIcon('back', 'Back') + 'Close</span></div></div>';
 }
 function fit() {
@@ -781,7 +781,7 @@ function checkPairing() {
     var d, was = pairingBlocked;
     try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
     if (xhr.status !== 200) {
-      pairingBlocked = d && d.pending ? 'The code cannot be shown on this screen (' + refusedText(xhr.status, d) + '). Please report this on GitHub with a photo of this screen.' : null;
+      pairingBlocked = d && d.pending ? 'The code cannot be shown on this screen (' + refusedText(xhr.status, d) + '). Report this on GitHub with a photo.' : null;
       if (pairingBlocked || was) paintPairing();
       return;
     }

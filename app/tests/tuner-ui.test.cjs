@@ -65,7 +65,7 @@ const change = (dataset, checked) => { const x = {dataset, checked}; sandbox.$('
     assert.equal(sw.checked, false, 'the switch does not flip before the confirmation');
     assert.equal(calls.length, before, 'no request yet');
     body = el('tunerBody').innerHTML;
-    assert.match(body, /Turn on Vetro TV Tuner\?/); assert.match(body, /not removed, disabled or changed/);
+    assert.match(body, /Turn on Vetro TV Tuner\?/); assert.match(body, /covers the TV input only/);
     click({tunerCancel: ''});
     assert.doesNotMatch(el('tunerBody').innerHTML, /Turn on Vetro TV Tuner\?/, 'Cancel closes the question');
     assert.equal(calls.length, before);
@@ -87,7 +87,7 @@ const change = (dataset, checked) => { const x = {dataset, checked}; sandbox.$('
     tuner = Object.assign({}, tuner, {supported: false, enabled: false, unsupportedReason: 'This TV has no .NET runtime.'});
     await click({tunerReload: ''}); await tick(); await tick();
     body = el('tunerBody').innerHTML;
-    assert.match(body, /This TV has no \.NET runtime\./); assert.match(body, /Samsung’s tuner stays as it is/);
+    assert.match(body, /This TV has no \.NET runtime\./); assert.doesNotMatch(body, /stays as it is/);
     assert.match(body, /data-tuner-switch[^>]* disabled/);
     console.log('PASS Vetro TV Tuner page: entry, keys, previews, confirm flow, unsupported TV');
 })().catch(e => { console.error(e); process.exit(1); });

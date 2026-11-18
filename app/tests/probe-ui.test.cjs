@@ -138,7 +138,7 @@ async function openDetails(r) {
   assert.deepEqual(good.launched, ['vetrotvapp.svc'], 'the page starts the background service itself');
   assert.ok(good.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/screen'));
   assert.ok(good.screen.innerHTML.includes('Running in the background'));
-  assert.ok(good.screen.innerHTML.includes('You can close this screen, Vetro keeps running without it.'));
+  assert.ok(good.screen.innerHTML.includes('You can close this screen: Vetro keeps running without it.'));
   assert.ok(good.screen.innerHTML.includes('http://192.168.1.42:8099'));
   assert.ok(good.screen.innerHTML.includes('QE55Q80A'), 'model comes from the TV itself');
   assert.ok(good.screen.innerHTML.includes('V0.3.5 &middot; QE55Q80A 2310.0 &middot; svc ok &middot; root ok'), 'the support line');
@@ -171,23 +171,23 @@ async function openDetails(r) {
 
   // Errors are loud and say what to do.
   const root = await run({screen: Object.assign({}, GOOD, {root: {mode: 'app-only', connected: false}})});
-  assert.ok(root.screen.innerHTML.includes('Running, with limits'));
+  assert.ok(root.screen.innerHTML.includes('Running with limits'));
   assert.ok(!root.screen.innerHTML.includes('You can close this screen'), 'the all-clear is only said when everything is green');
-  assert.ok(root.screen.innerHTML.includes('app-only package'));
+  assert.ok(root.screen.innerHTML.includes('App-only package'));
   assert.ok(root.screen.innerHTML.includes('<em class="w">ROOT NO</em>'));
   // Root not connected: the screen asks for what the service saw (#99, #91, #75)
   const rootAs = async (reason, code) => (await run({screen: Object.assign({}, GOOD, {root: {mode: 'tv-integration', connected: false, reason, code: code || null}})})).screen.innerHTML;
   const old = await rootAs('unsupported');
-  assert.ok(old.includes('Not available on this TV') && old.includes('Vetro works here as an app only') && old.includes('Reinstalling will not change this'));
+  assert.ok(old.includes('Not available on this TV') && old.includes('Vetro works with app-only features') && old.includes('Reinstalling will not help'));
   assert.ok(!old.includes('reinstall the root package'), 'an old TV is not told to reinstall');
-  assert.ok(old.includes('ROOT N/A old-tv') && old.includes('Running, with limits'), 'a warning, not a failure');
+  assert.ok(old.includes('ROOT N/A old-tv') && old.includes('Running with limits'), 'a warning, not a failure');
   const sdbDown = await rootAs('sdb', 'sdbClosed');
   assert.ok(sdbDown.includes('Developer Mode is on and Host PC IP is 127.0.0.1') && sdbDown.includes('off at the wall'));
   assert.ok(sdbDown.includes('<em>ROOT DOWN sdbClosed</em>'), 'the connection code is in the support line');
   assert.ok((await rootAs('agent')).includes('ROOT DOWN agent'));
   assert.ok((await rootAs('starting')).includes('Root usually connects within a minute'));
   assert.ok((await rootAs('prepare')).includes('ROOT DOWN prepare'));
-  assert.ok((await rootAs(undefined)).includes('Restart the TV; if it stays like this, reinstall the root package.'), 'an older service: the old message');
+  assert.ok((await rootAs(undefined)).includes('Restart the TV. If it still fails, reinstall the root package.'), 'an older service: the old message');
   const failed = await run({screen: Object.assign({}, GOOD, {launcher: {installed: true, enabled: true, running: false, failures: 4, hasError: true}, memory: {availableMb: 148}})});
   assert.ok(failed.screen.innerHTML.includes('Needs attention'));
   assert.ok(failed.screen.innerHTML.includes('Failed to start'));
@@ -253,7 +253,7 @@ async function openDetails(r) {
   assert.ok(waiting.screen.innerHTML.includes('class="c wait"'), 'one placeholder per check while waiting');
   assert.ok(waiting.screen.innerHTML.includes('Root access'));
   assert.ok(waiting.screen.innerHTML.includes('Vetro is checking the TV'));
-  assert.ok(waiting.screen.innerHTML.includes('1&ndash;2 minutes: please do not close this screen'), 'the wait is announced');
+  assert.ok(waiting.screen.innerHTML.includes('Keep this screen open for 1&ndash;2 minutes'), 'the wait is announced');
   assert.equal(waiting.screen.textContent, 'Checking 7 of 9 done \u00b7 Starting the service \u00b7 0 s', 'how many are done, which is open and the seconds');
   assert.ok(waiting.intervals.some(t => t.ms === 1000), 'the seconds tick');
   assert.ok(!waiting.screen.innerHTML.includes('aria-label="OK"'), 'no OK key while OK does nothing (#104)');
@@ -300,7 +300,7 @@ async function openDetails(r) {
   // The one request that is not to the service is the page reading its own config.xml, for the port (package-port.test.cjs).
   assert.ok(normal.sent.filter(s => s.url !== 'config.xml').every(s => /^http:\/\/127\.0\.0\.1/.test(s.url)), 'loopback first, and enough');
   assert.equal(normal.sent.filter(s => s.url === 'config.xml').length, 1, 'config.xml is read once');
-  assert.ok(!waiting.screen.innerHTML.includes('Asking for help') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
+  assert.ok(!waiting.screen.innerHTML.includes('For support, read out') || !waiting.screen.innerHTML.includes('SVC'), 'no verdict while waiting');
   assert.ok(/<style>[\s\S]*@keyframes spin/.test(html), 'the waiting ring turns');
   // The service runs but refuses this page (0.5.0 on a Q8F, Tizen 9): the screen says so, with what the service saw.
   const seen = {address: '169.254.3.4', origin: 'file://', host: '127.0.0.1:8099'};
@@ -332,13 +332,13 @@ async function openDetails(r) {
   let t = await tilesOf();
   assert.ok(/class="tiles"/.test(t.screen.innerHTML), 'the tiles are the first thing shown once the checks are done');
   assert.ok(t.sent.some(s => s.method === 'GET' && s.url === 'http://127.0.0.1:8099/screen/controls'), 'one read of the tile states');
-  for (const title of ['Vetro Launcher', 'Disable ads and viewing data', 'Disable all voice assistants', 'Update Vetro', 'Vetro UI']) assert.ok(t.screen.innerHTML.includes(title), title);
+  for (const title of ['Vetro launcher', 'Disable ads and viewing data', 'Disable all voice assistants', 'Update Vetro', 'Vetro UI']) assert.ok(t.screen.innerHTML.includes(title), title);
   assert.ok(t.screen.innerHTML.includes('class="sw on"') && t.screen.innerHTML.includes('class="sw part"') && t.screen.innerHTML.includes('class="sw off"'), 'on, partly and off');
   assert.ok(t.screen.innerHTML.includes('3 still on'), 'the voice tile says how many members still run');
   assert.ok(t.screen.innerHTML.includes('Check for update'));
   assert.ok(t.screen.innerHTML.includes('id="pin" hidden'), 'the sign-in code slot is still reserved');
   assert.ok(/<div class="diag "/.test(t.screen.innerHTML) && t.screen.innerHTML.includes('aria-label="Down"><svg') && t.screen.innerHTML.includes('</span>for details'));
-  assert.ok(!t.screen.innerHTML.includes('Asking for help'), 'the support line is behind Details');
+  assert.ok(!t.screen.innerHTML.includes('For support, read out'), 'the support line is behind Details');
   assert.ok(!t.timers.some(x => x.ms === 5000 && false) && posted(t).length === 0, 'nothing is changed just by opening the screen');
   assert.ok(!/border-top|borderTop/.test(html.slice(html.indexOf('.tile{'), html.indexOf('.diag{'))), 'no coloured top edge on the rounded tiles');
   // Switching: the first tile asks for the opposite of what it shows, shows "Working" meanwhile, then what the service says.
@@ -395,10 +395,10 @@ async function openDetails(r) {
   assert.ok(t.sent.filter(s => /\/screen\/controls$/.test(s.url)).length >= 2, 'the state is read again after a refusal');
   // This page is not recognised as the TV (Q8F): the tiles show, nothing is sent, and the screen says what to do.
   t = await tilesOf({controls: Object.assign(clone(CONTROLS), {canControl: false})});
-  assert.ok(t.screen.innerHTML.includes('this page is not recognised as the TV') && t.screen.innerHTML.includes('class="tile na"'));
+  assert.ok(t.screen.innerHTML.includes('This page is not recognised as the TV') && t.screen.innerHTML.includes('class="tile na"'));
   key(t, 13); key(t, 39); key(t, 39); key(t, 39); key(t, 13);
   assert.equal(posted(t).length, 0, 'no request leaves from a page that may not change anything');
-  assert.match(t.context.toastText, /cannot change settings/);
+  assert.match(t.context.toastText, /Use the dashboard to change settings/);
   // The controls do not load: tiles are marked unavailable, the checks still show, nothing is sent.
   t = await tilesOf({controls: null});
   assert.ok(t.screen.innerHTML.includes('Unavailable') && t.screen.innerHTML.includes('Running in the background'));
@@ -415,7 +415,7 @@ async function openDetails(r) {
   // The strip opens the details (checks list and support line); Back returns to the tiles; Back again closes.
   t = await tilesOf();
   key(t, 40); assert.ok(t.screen.innerHTML.includes('aria-label="OK"><svg') && t.screen.innerHTML.includes('</span></b>Details'));
-  key(t, 13); assert.ok(t.screen.innerHTML.includes('Asking for help') && t.screen.innerHTML.includes('<div class="c">'));
+  key(t, 13); assert.ok(t.screen.innerHTML.includes('For support, read out') && t.screen.innerHTML.includes('<div class="c">'));
   key(t, 10009); assert.ok(/class="tiles"/.test(t.screen.innerHTML) && t.exits.length === 0);
   key(t, 10009); assert.equal(t.exits.length, 1);
   // Service down: no tiles, the old screen with its reasons.

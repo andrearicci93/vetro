@@ -54,12 +54,12 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.match(over, /drawn by the launcher/); assert.match(over, /which Vetro UI turns on for you/); assert.match(over, /Vetro UI comes first/);
     // The slideshow beside the switches: the launcher rising, the guide scrolling, the bar, the pad, the task manager.
     assert.match(over, /data-show="overview"/); assert.equal((over.match(/class="tuner-shot tshow-slide/g) || []).length, 5);
-    assert.match(over, /class="lp[^"]* lp-rise"/); assert.match(over, /Up opens the sources/); assert.match(over, /Up, while watching live TV/); assert.match(over, /class="tg-scroll"/); assert.match(over, /tshow-slide is-on/);
+    assert.match(over, /class="lp[^"]* lp-rise"/); assert.match(over, /Up opens Sources/); assert.match(over, /Up, while watching live TV/); assert.match(over, /class="tg-scroll"/); assert.match(over, /tshow-slide is-on/);
     assert.match(over, /data-show-pause aria-pressed="false"/);
 
     // The displays: what they need, their switches, the bar's position and a preview that follows it.
     let osd = el('osd').innerHTML;
-    assert.match(osd, /Drawn by the Vetro launcher, which is on/);
+    assert.match(osd, /Drawn by the Vetro launcher\./);
     assert.match(osd, /The remote interception is off/);
     assert.match(osd, /data-osd="volumePill"/); assert.match(osd, /data-osd-edge/);
     assert.match(osd, /aria-label="The volume bar on the left edge/);
@@ -93,7 +93,7 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
 
     // With Samsung's Home on the Home key the displays say they do nothing, and where to choose a launcher.
     sandbox.dockData = Object.assign({}, dock, {enabled: false, mode: 'off'}); sandbox.renderOsd();
-    assert.match(el('osd').innerHTML, /these do nothing/); assert.match(el('osd').innerHTML, /data-ui-open="launcher"/);
+    assert.match(el('osd').innerHTML, /Turn on a launcher to use these displays/); assert.match(el('osd').innerHTML, /data-ui-open="launcher"/);
     sandbox.dockData = dock;
 
     // The Remapper lists the keys Vetro UI holds, locked, first; the user's shortcut on the same key says it is overridden.
@@ -144,7 +144,7 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     // A Shard's card: a switch of its own, named by the Shard, off until chosen; a saved one whose Shard is off is shown as paused (and keeps the choice).
     const ha = {cardShards: {'shard:home-assistant': 'Home Assistant'}, cardChoices: ['tasks', 'audio', 'picture', 'sleep', 'shard:home-assistant']};
     sandbox.dockData = Object.assign({}, dock, ha, {enabled: true, mode: 'vetro', cards: ['tasks'], maxCards: 3, cardsPaused: []}); sandbox.renderDock();
-    assert.match(el('dockCards').innerHTML, /data-quick-item="card-shard:home-assistant"[\s\S]*Home Assistant[\s\S]*A card from a Shard[\s\S]*data-dock-card="shard:home-assistant"/);
+    assert.match(el('dockCards').innerHTML, /data-quick-item="card-shard:home-assistant"[\s\S]*Home Assistant[\s\S]*A Shard adds this card[\s\S]*data-dock-card="shard:home-assistant"/);
     assert.deepEqual(Array.from(sandbox.cardsWith(sandbox.dockData, 'shard:home-assistant', true)), ['tasks', 'shard:home-assistant'], 'turned on, it joins the others');
     sandbox.dockData = Object.assign({}, sandbox.dockData, {cards: ['tasks', 'shard:home-assistant']}); sandbox.renderDock();
     assert.match(el('dockBody').innerHTML, /Control center ˅/);

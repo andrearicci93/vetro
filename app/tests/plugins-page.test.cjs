@@ -20,7 +20,7 @@ assert.match(html, /The catalog gives no SHA-256/, 'registry installs need a che
 assert.match(html, /u\.protocol!=='https:'/, 'registry downloads are https only');
 assert.match(html, /data-plugin-warning/, 'third-party warning is always on the page');
 assert.match(html, /takes no responsibility/);
-assert.match(html, /spot-checked, not audited/);
+assert.match(html, /not audited/);
 assert.match(html, /function confirmPlugin/, 'installs and updates ask first');
 assert.match(html, /function pluginUpdate/, 'installed plugins show a newer version from the list');
 assert.match(html, /registryChecked=true;loadRegistry\(\)/, 'the list is read once when the page opens');
@@ -59,7 +59,7 @@ const shardsNav=/<button data-tab="plugins"[^>]*>([\s\S]*?)<\/button>/.exec(html
 assert.match(shardsNav,/>Vetro Shards$/);
 assert.match(shardsNav,/M4 3h9l-4 7-6-2 1-5Z/,'approved three-fragment icon');
 assert.doesNotMatch(shardsNav,/M9 3v4M15 3v4/,'plug icon replaced');
-assert.match(html,/plugins:\['Vetro Shards','Plugins that add features to Vetro\. Other people write them/);
+assert.match(html,/plugins:\['Vetro Shards','Plugins written by other people/);
 assert.match(html,/<summary>Full notice<\/summary>/,'the long notice sits behind the page\'s sentence');
 assert.match(html,/id="pluginInstalledTitle">Installed'/);assert.match(html,/id="pluginCatalogTitle">Catalog<\/h2>/);
 
@@ -76,8 +76,8 @@ assert.match(html,/id="pluginInstalledTitle">Installed'/);assert.match(html,/id=
     assert.match(vm.runInContext('interceptChips', ctx)(yt, ['com.samsung.tv.cobalt-yt']), /Conflict · YouTube tile/, 'a conflict is shown instead');
     assert.equal(vm.runInContext('interceptChips', ctx)(undefined), '', 'a Shard without the field shows nothing');
     assert.equal(vm.runInContext('interceptNote', ctx)([]), '');
-    assert.match(vm.runInContext('interceptNote', ctx)(yt), /launcher tile of YouTube \(com\.samsung\.tv\.cobalt-yt\) starts this Shard.*Switched off, the tile is untouched/, 'says what changes and that off gives it back');
-    assert.match(vm.runInContext('interceptNote', ctx)(yt, ['x']), /neither is used/);
+    assert.match(vm.runInContext('interceptNote', ctx)(yt), /launcher tile of YouTube \(com\.samsung\.tv\.cobalt-yt\) opens this Shard\. If the Shard fails, the tile opens the app/, 'says what changes and the fallback');
+    assert.match(vm.runInContext('interceptNote', ctx)(yt, ['x']), /Two Shards claim this app/);
     assert.match(vm.runInContext('interceptWords', ctx)(yt), /intercepts the launcher tile of YouTube/, 'the install question says it too');
     assert.equal(vm.runInContext('interceptWords', ctx)(), '');
     const key = vm.runInContext('interceptKey', ctx);
@@ -101,7 +101,7 @@ assert.match(html,/id="pluginInstalledTitle">Installed'/);assert.match(html,/id=
     assert.match(run('cardWords', { label: 'Home Assistant' }), /adds a card to the Control center \(“Home Assistant”\)/, 'the install question says it');
     assert.equal(run('cardWords'), ''); assert.equal(run('cardWords', {}), ''); assert.equal(run('cardWords', { label: 5 }), '');
     assert.equal(run('cardKey', { label: 'Lights', extra: 1 }), 'Lights'); assert.equal(run('cardKey'), ''); assert.notEqual(run('cardKey', { label: 'A' }), run('cardKey'), 'a bundle with a card the list does not name is refused');
-    assert.match(run('cardNote', { label: 'Lights' }), /Adds a card to the Control center \(“Lights”\)\. Switch it on in Vetro UI/);
+    assert.match(run('cardNote', { label: 'Lights' }), /Adds a Control center card \(“Lights”\)\. Enable it in Vetro UI/);
     assert.doesNotMatch(run('cardNote', { label: 'Lights' }), /row-error/, 'no error: nothing to say');
     assert.match(run('cardNote', { label: 'Lights', error: 'The Shard did not answer in time' }), /row-error">Control center card: The Shard did not answer in time/, 'an error of the card is shown on the Shard');
     assert.equal(run('cardNote'), ''); assert.match(run('cardNote', { label: '<i>x</i>' }), /&lt;i&gt;/, 'labels are escaped');

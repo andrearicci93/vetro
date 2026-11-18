@@ -51,7 +51,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.match(el('dockBody').innerHTML, /An example row/, 'no list read yet: an example row, never an empty box');
     sandbox.dockData = dock; sandbox.renderDock();
     assert.match(page, /<h3>Fix TizenTube<\/h3>/);
-    assert.match(page, /com\.samsung\.tv\.cobalt-yt/, 'says which process it closes');
+    assert.match(page, /closes Samsung’s YouTube first/, 'says what it closes');
     assert.match(page, /data-dock-fix[^>]*aria-label="Fix TizenTube"/);
     assert.doesNotMatch(page, /data-dock-fix[^>]* checked/);
 
@@ -65,8 +65,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.match(page, /instead of Samsung’s Home/);
     assert.match(page, /closes Samsung’s Home each time you press it/);
     assert.match(page, /goes back to Samsung’s Home by itself/);
-    assert.match(page, /Nothing of Samsung’s is removed or disabled/);
-    assert.match(page, /Tested on a Q80A only/);
+    assert.doesNotMatch(page, /Tested on a Q80A only|Nothing of Samsung’s is removed/, 'no disclaimers in the question');
 
     // Cancel leaves it as it was.
     el('dock').onclick({target: {closest: () => ({dataset: {dockCancel: ''}})}});
@@ -181,7 +180,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.equal(csw.checked, false);
     assert.ok(!calls.some(c => c.body && c.body.action === 'enableCustom'));
     custom = el('dockCustom').innerHTML;
-    assert.match(custom, /Use My Launcher as the launcher\?/); assert.match(custom, /Samsung’s Home off/); assert.match(custom, /Autorun Smart Hub/); assert.match(custom, /turns this mode off by itself/);
+    assert.match(custom, /Use My Launcher as the launcher\?/); assert.match(custom, /Samsung’s Home off/); assert.match(custom, /Autorun Smart Hub/); assert.match(custom, /Home returns to Samsung Home/);
     el('dock').onclick({target: {closest: () => ({dataset: {customCancel: ''}})}});
     assert.doesNotMatch(el('dockCustom').innerHTML, /Use My Launcher as the launcher\?/);
     csw.checked = true; el('dock').onchange({target: csw});
@@ -191,7 +190,7 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.match(custom, /On · running/); assert.match(custom, /data-custom-switch[^>]* checked/);
     assert.match(sandbox.operationEntries[0].message, /Custom launcher on and running/);
     assert.equal(sandbox.launcherEnabled, true, 'any launcher on locks the Samsung Home switch');
-    assert.match(el('dockBody').innerHTML, /My Launcher is the launcher now\. The Vetro launcher and another app are never on together\./);
+    assert.match(el('dockBody').innerHTML, /My Launcher is the current launcher\./);
     assert.match(el('dockBody').innerHTML, /data-launcher-switch="vetro"[^>]*>Use the Vetro launcher instead</, 'one button switches straight over');
     assert.match(el('dockBody').innerHTML, /data-dock-switch[^>]* disabled/, 'the Vetro launcher cannot be turned on at the same time');
     // Changing the app needs no second confirmation.
@@ -214,7 +213,7 @@ const tick = () => new Promise(r => setImmediate(r));
     // Switching straight from the Vetro launcher to the app: one question, then off and on in that order.
     el('dock').onclick({target: {closest: () => ({dataset: {launcherSwitch: 'custom'}})}});
     custom = el('dockCustom').innerHTML;
-    assert.match(custom, /Switch the Home key from the Vetro launcher to My Launcher\?/); assert.match(custom, /If the second step fails, Samsung’s Home answers the Home key/);
+    assert.match(custom, /Switch the Home key from the Vetro launcher to My Launcher\?/); assert.match(custom, /If the second step fails, Home opens Samsung Home/);
     const sent = calls.filter(c => c.url === '/dock' && c.body).length;
     el('dock').onclick({target: {closest: () => ({dataset: {launcherSwitchCancel: ''}})}});
     assert.doesNotMatch(el('dockCustom').innerHTML, /Switch the Home key/); assert.equal(calls.filter(c => c.url === '/dock' && c.body).length, sent, 'Cancel sends nothing');
