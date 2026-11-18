@@ -122,6 +122,35 @@ function settle() { return new Promise(r => setImmediate(r)); }
         console.log('PASS repeated launch failures back off (' + delays.join(' ms, ') + ' ms)');
     }
 
+    // --- the TV screen cuts a backoff wait short --------------------------------------------------------------
+    // After a few failures the next attempt can be minutes away; opening Vetro on the TV starts it at once, at most every 20 s,
+    // never while a launch is running, and without forgetting the failures.
+    {
+        const t = load();
+        let connects = 0, hang = false;
+        Object.assign(t.sdb, {connect: () => { connects++; if (hang) return new Promise(() => {}); const e = new Error('refused'); e.code = 'sdbRefused'; return Promise.reject(e); }});
+        t.provider.start();
+        for (let i = 0; i < 3; i++) {
+            await settle(); await settle();
+            const timer = t.timers.filter(x => !x.cleared && !x.fired && x.ms >= 8000).pop();
+            timer.fired = true; timer.cleared = true; timer.fn();
+        }
+        await settle(); await settle();
+        const waiting = t.timers.filter(x => !x.cleared && !x.fired && x.ms >= 8000).pop();
+        assert(waiting && waiting.ms > 8000, 'a backed-off relaunch is waiting');
+        const failures = t.context.launchFailures, before = connects;
+        hang = true;
+        assert.equal(t.provider.retryNow(), true, 'a waiting relaunch starts now');
+        await settle();
+        assert.equal(connects, before + 1, 'one attempt, at once');
+        assert.equal(waiting.cleared, true, 'the backoff timer is dropped');
+        assert.equal(t.context.launchFailures, failures, 'the failure count is kept');
+        assert.equal(t.provider.retryNow(), false, 'not while that launch runs');
+        hang = false;
+        assert.equal(t.provider.retryNow(), false, 'and not twice within 20 s');
+        console.log('PASS the TV screen starts a waiting root launch at once, without resetting the backoff');
+    }
+
     // --- a TV where the agent can never start: the files written by persist() stay bounded -------------------
     {
         const t = load();

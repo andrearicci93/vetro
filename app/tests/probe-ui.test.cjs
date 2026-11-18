@@ -185,7 +185,7 @@ async function openDetails(r) {
   assert.ok(sdbDown.includes('Developer Mode is on and Host PC IP is 127.0.0.1') && sdbDown.includes('off at the wall'));
   assert.ok(sdbDown.includes('<em>ROOT DOWN sdbClosed</em>'), 'the connection code is in the support line');
   assert.ok((await rootAs('agent')).includes('ROOT DOWN agent'));
-  assert.ok((await rootAs('starting')).includes('Root usually connects within a minute'));
+  assert.ok((await rootAs('starting')).includes('Press OK to try again now'));
   assert.ok((await rootAs('prepare')).includes('ROOT DOWN prepare'));
   assert.ok((await rootAs(undefined)).includes('Restart the TV. If it still fails, reinstall the root package.'), 'an older service: the old message');
   const failed = await run({screen: Object.assign({}, GOOD, {launcher: {installed: true, enabled: true, running: false, failures: 4, hasError: true}, memory: {availableMb: 148}})});

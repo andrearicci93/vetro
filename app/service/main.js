@@ -175,6 +175,8 @@ function readTelemetry() {
 
 // What the TV screen shows. The launcher's pid check is the only root command, and it runs only while the launcher is on.
 function screenSummary() {
+    // Opening the screen (or OK on Check again) is someone waiting for root: a relaunch waiting for its backoff runs now.
+    if (typeof platform.retryNow === 'function') platform.retryNow();
     var launcherState = dock.readState(), p = platform.status();
     launcherState.enabled = launcherState.enabled || !!launcherState.customApp;     // the TV screen shows either launcher as "on"
     var checkLauncher = launcherState.enabled && p.agent.connected ? dock.runningNow().then(function (r) { return r.running; }, function () { return null; }) : Promise.resolve(null);
@@ -289,6 +291,15 @@ function downloadDiagnostics(res, withComponents) {
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         tuner: later(function () { return tuner.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
+        input: later(function () {
+            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags();
+            return physical.inventory().then(function (all) {
+                var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
+                return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
+                    savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
+                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem};
+            });
+        }),
         quickWins: later(function () { return wins.read(); }),
         factoryTest: later(function () { return factoryTest.read(); }),
         // Opt-in: the manifests of the components the catalog does not know. Without the box ticked the section says so.

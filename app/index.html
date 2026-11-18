@@ -382,7 +382,7 @@ var COLD = 'turn the TV off at the wall (or unplug it) for 30 seconds, then on a
 function rootCheck(r) {
   var code = r.code ? ' ' + r.code : '';
   if (r.reason === 'unsupported') return ['warn', 'Root access', 'Not available on this TV', 'This TV’s software is too old for root access. Vetro works with app-only features. Reinstalling will not help.', 'ROOT N/A old-tv', 'warn'];
-  if (r.reason === 'starting') return ['warn', 'Root access', 'Connecting', 'Root usually connects within a minute of the TV starting. Press OK to check again.', 'ROOT WAIT', 'warn'];
+  if (r.reason === 'starting') return ['warn', 'Root access', 'Connecting', 'Vetro keeps trying in the background. Press OK to try again now.', 'ROOT WAIT', 'warn'];
   if (r.reason === 'sdb') return ['bad', 'Root access', 'Not connected', 'Root connection refused. Check that Developer Mode is on and Host PC IP is 127.0.0.1, then ' + COLD + '.', 'ROOT DOWN' + code, 'bad'];
   if (r.reason === 'agent') return ['bad', 'Root access', 'Not connected', 'The root helper started but did not answer. Check that Host PC IP is 127.0.0.1, then ' + COLD + '. If it still fails, reinstall the root package.', 'ROOT DOWN agent', 'bad'];
   if (r.reason === 'prepare') return ['bad', 'Root access', 'Not connected', 'Vetro could not prepare the root helper. Reinstall the root package.', 'ROOT DOWN prepare', 'bad'];

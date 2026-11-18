@@ -58,19 +58,28 @@ function screenProgress(d){var g=(d||{}).progress;if(!g||typeof g!=='object')ret
         slow:STEPS.filter(function(k){var p=probe[k];return !!(p&&p.ok===false&&/^(no answer|skipped)/.test(String(p.error||'')));}),
         carried:list(d.carried,2).filter(function(k){return k==='apps'||k==='packages';})};}
 function choice(v, allowed) { return allowed.indexOf(v) >= 0 ? v : null; }
+// A .dll under Samsung's TV client folder, relative to it ("1.3.15/Tizen.TV.Broadcast.TVService.dll"): Samsung's own file names only.
+var CLIENT_FILE_RE=/^[A-Za-z0-9_.-]{1,40}(?:\/[A-Za-z0-9_.-]{1,80}){0,3}\.dll$/;
+var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
+    'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
+    'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError','error'];
 function rooting(d) {
     var r=d.rooting||{}, f=r.failure||{};
     return {backend:choice(r.backend,['sdb-archive']),
         phase:choice(r.phase,['stopped','unsupported','preparing','preflight','sdb-handshake','launch-command','agent-callback','connected','retrying']),
         failure:r.failure?{
             stage:choice(f.stage,['preparation','preflight','sdb-handshake','launch-command','agent-callback','agent-connection']),
-            code:choice(f.code,['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
-                'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
-                'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError'])
+            code:choice(f.code,ROOT_CODES)
         }:null};
 }
+// The last root launches, oldest first: how each ended (ok, a code from the fixed list of rooting(), "pending" while it runs) and how
+// long ago, so a report shows why root took long or never came (#99, the 0.6.9 preview reports).
+function attempts(d){var launches=list(d.attempts,500).filter(function(a){return a&&a.phase==='launch';});
+    return {count:launches.length,firstConnectSeconds:typeof((d.timing||{}).firstConnect||{}).ms==='number'?Math.round(d.timing.firstConnect.ms/1000):null,
+        last:launches.slice(-6).map(function(a){var c=String(a.connect||''),code=c.indexOf('fail:')===0?c.slice(5):null;
+            return {result:c==='ok'?'ok':!c?'pending':choice(code,ROOT_CODES)||'other',agoSeconds:typeof a.t==='number'?Math.max(0,Math.round((Date.now()-a.t)/1000)):null};})};}
 var projectors = {
-    platform:function(d){return {mode:token(d.mode),running:boolean(d.running),prepared:boolean(d.prepared),rootAgent:{connected:boolean((d.agent||{}).connected),uid:numeric((d.agent||{}).uid)},rooting:rooting(d),rootRuntime:choice((d.preflight||{}).runtime,['3.1','6.0']),runtime:token((d.self||{}).node),persistence:'unknown',backgroundExecution:'unknown'};},
+    platform:function(d){return {mode:token(d.mode),running:boolean(d.running),prepared:boolean(d.prepared),rootAgent:{connected:boolean((d.agent||{}).connected),uid:numeric((d.agent||{}).uid)},rooting:rooting(d),rootAttempts:attempts(d),rootRuntime:choice((d.preflight||{}).runtime,['3.1','6.0']),runtime:token((d.self||{}).node),persistence:'unknown',backgroundExecution:'unknown'};},
     device:function(d){var out={};['model','realModel','modelCode','firmware'].forEach(function(k){out[k]=token((d||{})[k]);});out.source='widget-probe';out.probeAgeMinutes=ageMinutes((d||{}).receivedAt);out.firmwareSource=out.firmware===null?null:(d||{}).firmwareSource==='service-read'?'service-read':'widget-probe';out.modelSource=out.realModel===null&&out.model===null?null:(d||{}).modelSource==='service-api'?'service-api':'widget-probe';out.tizenVersion=require('./device-info.js').version((d||{}).tizenVersion);out.tizenVersionSource=out.tizenVersion===null?'unknown':(d||{}).tizenVersionSource==='widget-capability'?'widget-capability':'service-read';return out;},
     inventory:function(d){return {source:token(d.source),registryAvailable:!d.registryError,dependenciesAvailable:boolean(d.dependenciesAvailable),apps:list(d.apps).map(function(a){return Object.assign({appId:token(a.appId),packageId:token(a.packageId),version:token(a.version),type:token(a.type),component:token(a.component),category:token(a.category),origin:token(a.origin),size:numeric(a.size),dependencies:dependencies(a.dependencies),dependents:dependencies(a.dependents)},flags(a,['disabled','onboot','autorestart','show','system','removable','protected']));})};},
     settings:function(d){return {items:list(d.items).filter(function(x){return settings.some(function(s){return s.id===x.id;});}).map(function(x){return {id:x.id,value:typeof x.value==='boolean'?x.value:numeric(x.value),writable:boolean(x.writable),access:x.access==='verified'?'implemented':token(x.access),probe:token(x.probe),available:!x.error};}),api:d.api&&typeof d.api==='object'?{status:token(d.api.status),methods:numeric(d.api.methods)}:null};},
@@ -87,13 +96,15 @@ var projectors = {
         appCount:numeric((d.apps||{}).count),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
-        {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp)});},
+        {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
+         cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore'])});},
     // Vetro TV Tuner: states and counts only. The error text and the log tail stay out. `prerequisites` says which of the four things
     // the tuner needs exist on this TV (the firmware's dotnet, Samsung's TV client, tvs-daemon, Samsung's live TV app) and `clientVersions`
     // the version folders of that client (numbers only), so a report from another TV shows what is different there.
     tuner:function(d){return Object.assign({failures:numeric(d.failures),hasError:boolean(d.hasError)},flags(d,['installed','enabled','running','supported','busy','samsungTunerFound']),
         {prerequisites:d.prerequisites?flags(d.prerequisites,['dotnet','client','tvs','viewer']):null,
-         clientVersions:list(d.clientVersions,5).filter(function(v){return typeof v==='string'&&/^\d+(?:\.\d+){0,3}$/.test(v);})});},
+         clientVersions:list(d.clientVersions,5).filter(function(v){return typeof v==='string'&&/^\d+(?:\.\d+){0,3}$/.test(v);}),
+         clientFiles:list(d.clientFiles,12).filter(function(v){return typeof v==='string'&&CLIENT_FILE_RE.test(v);})});},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});out.screen=screenProgress(d);return out;},
     // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
@@ -104,7 +115,11 @@ var projectors = {
                 flags(c,['declaredOnBoot','declaredAutoRestart','taskmanage','registeredOnBoot','registeredAutoRestart','differs']));})};})};},
     // #135: read only. Whether db/FactoryApp/Aging exists and its value (1 = the factory colour test starts at every boot).
     factoryTest:function(d){return {present:boolean(d.present),value:numeric(d.value),type:token(d.type),active:boolean(d.active)};},
-    serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);}
+    serviceApis:function(d){return flags(d,['tizenObject','webapisObject','application','package','tvinputdevice','systeminfo']);},
+    // The remote interception, in counts and yes/no only (remote names can be personal): whether it is on and holds a remote, whether the
+    // saved remote is among the remotes now, how many input nodes share its name (a Bluetooth remote can split its keys over several)
+    // and how many remotes there are to choose from. With Vetro UI's two key switches, this says why the volume bar or the pad stay away.
+    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','selectableCount']));}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
 var SLOW = {startup: 4, components: 3};

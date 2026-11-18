@@ -22,7 +22,8 @@ const probeStore=require('../service/probe');
  const secret='PERSONAL_SENTINEL@example.com';
  const poison={username:secret,password:secret,serial:secret,hostname:secret,bootId:secret,token:secret,error:null,unknown:secret};
  const readers={
-  platform:()=>({...poison,mode:'tv-integration',running:true,agent:{connected:true,uid:0,pid:123,identity:secret},self:{node:'v12.4.0',pid:123}}),
+  platform:()=>({...poison,mode:'tv-integration',running:true,agent:{connected:true,uid:0,pid:123,identity:secret},self:{node:'v12.4.0',pid:123},timing:{firstConnect:{ms:65400}},
+   attempts:[{phase:'launch',t:Date.now()-120000,connect:'fail:sdbClosed',err:secret},{phase:'agent-connected',output:secret},{phase:'launch',t:Date.now()-60000,connect:'fail:'+secret},{phase:'launch',t:Date.now()-30000,connect:'fail:preflight-failed'},{phase:'launch',t:Date.now(),connect:'ok'},{phase:'launch',t:Date.now()}]}),
   device:()=>({...poison,model:'QE50Q80A',firmware:'T-NKM2DEUC-2301.1',realModel:'192.0.2.10'}),
   inventory:()=>({...poison,apps:[{...poison,name:secret,author:secret,appId:'com.samsung.tv.acr',packageId:'com.samsung.tv.acr-service',version:'1.0',disabled:true,onboot:false,dependencies:[{packageId:'org.tizen.test',version:'1.0',token:secret}]}]}),
   settings:()=>({items:[{id:'pictureMode',value:65538,writable:false,error:secret},{id:'backlight',value:secret},{id:'password',value:secret}]}),
@@ -36,10 +37,11 @@ const probeStore=require('../service/probe');
   privacy:()=>({...poison,adId:{psid:secret},agreements:[secret],doNotTrack:1}),
   serviceApis:()=>({tizenObject:false,application:false,secret}),
   hbbtv:()=>{throw Error(secret);},
-  launcher:()=>({...poison,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:'com.example.'+secret,failures:2,hasError:true,log:secret,
+  launcher:()=>({...poison,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:'com.example.'+secret,volumePill:true,numberPad:false,cards:['tasks',secret],appStore:secret,failures:2,hasError:true,log:secret,
    apps:{count:11,skipped:[{item:secret,reason:secret}]},entries:[{slug:'tizentube',label:secret,appId:'xvvl3S1TT1.TizenTubeStandalone'},{slug:'x',label:secret,appId:secret}],inputs:[{label:secret}]}),
   tuner:()=>({...poison,installed:true,enabled:true,running:false,supported:false,busy:false,samsungTunerFound:true,failures:1,hasError:true,log:secret,error:null,
-   prerequisites:{dotnet:false,client:true,tvs:true,viewer:true,extra:secret},clientVersions:['1.1.12','../'+secret,'latest','2.0']}),
+   prerequisites:{dotnet:false,client:true,tvs:true,viewer:true,extra:secret},clientVersions:['1.1.12','../'+secret,'latest','2.0'],clientFiles:['1.3.15/Tizen.TV.Broadcast.TVService.dll','../'+secret+'.dll',secret,'a b.dll']}),
+  input:()=>({...poison,enabled:true,auto:true,connected:false,savedPresent:false,sameNameCount:3,selectableCount:2,volumeKeys:true,padKey:true,problem:false,device:secret,node:'/dev/input/'+secret}),
   factoryTest:()=>({...poison,key:secret,present:true,value:1,type:'Int32',active:true}),
   quickWins:()=>({wins:{firmware:{status:'on',value:0},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
  };
@@ -55,8 +57,13 @@ const probeStore=require('../service/probe');
  assert.equal(d.sections.startup.data.services[0].bootState,'disabled');
  assert.equal(d.sections.serviceApis.data.tizenObject,false);
  assert.equal(d.sections.hbbtv.status,'unavailable');
- assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:1,appCount:11,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:true},'launcher: states and counts only (the custom app id is reduced to a yes/no)');
- assert.deepEqual(d.sections.tuner.data,{failures:1,hasError:true,installed:true,enabled:true,running:false,supported:false,busy:false,samsungTunerFound:true,prerequisites:{dotnet:false,client:true,tvs:true,viewer:true},clientVersions:['1.1.12','2.0']},'tuner: flags, which prerequisite is missing and the client version folders (numbers only); no log, no error text');
+ assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:1,appCount:11,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:true,volumeBar:true,numberPad:false,cardCount:2,appStore:null},'launcher: states and counts only (the custom app id is reduced to a yes/no)');
+ assert.deepEqual(d.sections.tuner.data,{failures:1,hasError:true,installed:true,enabled:true,running:false,supported:false,busy:false,samsungTunerFound:true,prerequisites:{dotnet:false,client:true,tvs:true,viewer:true},clientVersions:['1.1.12','2.0'],clientFiles:['1.3.15/Tizen.TV.Broadcast.TVService.dll']},'tuner: flags, which prerequisite is missing and the client version folders (numbers only); no log, no error text');
+ assert.deepEqual(d.sections.input.data,{enabled:true,auto:true,connected:false,savedPresent:false,volumeKeys:true,padKey:true,problem:false,sameNameCount:3,selectableCount:2},'input: yes/no and counts, never the remote name or node');
+ const ra=d.sections.platform.data.rootAttempts;
+ assert.equal(ra.count,5);assert.equal(ra.firstConnectSeconds,65);
+ assert.deepEqual(ra.last.map(a=>a.result),['sdbClosed','other','preflight-failed','ok','pending'],'root attempts: fixed codes only');
+ assert(ra.last[0].agoSeconds>=119&&ra.last[0].agoSeconds<=121);
  assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true}});
  assert.deepEqual(d.sections.factoryTest.data,{present:true,value:1,type:'Int32',active:true},'#135: the Aging key, read only');
  assert.equal(d.sections.probe.data.supportedKeys.keys[0],'VolumeUp');

@@ -248,7 +248,22 @@ function prepareForRuntime(port) {
 
 // Report only phases we can observe. An SDB stream finishing does not prove
 // injection or archive execution succeeded; only authenticated AUTH proves root.
-function rootPhase(phase) { state.rooting.phase = phase; }
+function rootPhase(phase) { if (state.rooting.phase !== phase) phaseAt = Date.now(); state.rooting.phase = phase; }
+
+// The TV screen asks for an attempt now (opening Vetro, OK on Check again). A few failures right after an install leave the
+// backoff waiting minutes, and root then connected "suddenly" when the timer fired. Only a relaunch that waits (for its backoff
+// timer, or for an agent that has not called back for a minute) starts at once, at most every 20 s: a launch in progress is
+// never cut, and the failure count is kept, so a TV that can never get root still backs off.
+var RETRY_NOW_MS = 20000, STALE_CALLBACK_MS = 60000, retryNowAt = 0, phaseAt = 0;
+function retryNow() {
+    if (!state.running || state.unsupported || agentConnected || launching || !agentServer) return false;
+    var waiting = !!relaunchTimer || (state.rooting.phase === 'agent-callback' && Date.now() - phaseAt > STALE_CALLBACK_MS);
+    if (!waiting || Date.now() - retryNowAt < RETRY_NOW_MS) return false;
+    retryNowAt = Date.now();
+    if (relaunchTimer) { clearTimeout(relaunchTimer); relaunchTimer = null; }
+    relaunch();
+    return true;
+}
 function rootFailure(stage, code) {
     state.rooting.failure = { stage: stage, code: code };
 }
@@ -592,5 +607,5 @@ function setApplicationsEnabled(appIds, enabled) {
         return agentExecute(command, 60000);
     } catch (error) { return Promise.reject(error); }
 }
-module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute, onAgent: onAgent,
+module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute, onAgent: onAgent, retryNow: retryNow,
     sdbAccess: sdbAccess, setSdbAccess: setSdbAccess, install: install, setApplicationsEnabled: setApplicationsEnabled};
