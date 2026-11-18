@@ -306,6 +306,59 @@ namespace Launcher
             // The remote's nodes come and go: it reconnects after standby, and Vetro creates its forwarding
             // node some time after this process started. A node that appears later is picked up here.
             _rescanTimer = Efl.ecore_timer_add(RescanSeconds, RescanCb, IntPtr.Zero);
+            WatchInputDir();
+        }
+
+        // inotify on /dev/input (idea and first version: BirikuSistema, vetro-bar, issue #219): a remote that comes back after standby
+        // is watched about 80 ms after its node appears, instead of at the next look of the timer above (up to RescanSeconds). The kernel
+        // wakes the main loop only when the directory changes; nothing runs meanwhile. Without inotify the timer alone does it, as before.
+        private static int _inotifyFd = -1;
+        private static IntPtr _inotifyHandler, _inotifyTimer;
+        private static readonly Efl.FdCb InotifyCb = OnInotify;
+        private static readonly Efl.TaskCb InotifyLookCb = OnInotifyLook;
+        private const double InotifyDelaySeconds = 0.08;   // udev gives the node its permissions just after creating it
+
+        private static void WatchInputDir()
+        {
+            try
+            {
+                int fd = Libc.inotify_init1(Libc.IN_NONBLOCK);
+                if (fd < 0) { Log("input: no inotify (errno " + Marshal.GetLastWin32Error() + "), the look every " + RescanSeconds + " s finds new nodes"); return; }
+                if (Libc.inotify_add_watch(fd, "/dev/input", Libc.IN_CREATE | Libc.IN_ATTRIB | Libc.IN_MOVED_TO) < 0)
+                {
+                    Log("input: cannot watch /dev/input (errno " + Marshal.GetLastWin32Error() + ")");
+                    Libc.close(fd);
+                    return;
+                }
+                _inotifyHandler = Efl.ecore_main_fd_handler_add(fd, Efl.EcoreFdRead, InotifyCb, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                if (_inotifyHandler == IntPtr.Zero) { Libc.close(fd); return; }
+                _inotifyFd = fd;
+                Log("input: /dev/input watched with inotify");
+            }
+            catch (Exception ex) { Log("input: inotify: " + ex.Message); }
+        }
+
+        private static readonly byte[] InotifyBuf = new byte[1024];
+
+        private static byte OnInotify(IntPtr data, IntPtr handler)
+        {
+            try
+            {
+                // Only "something changed" matters: the events are drained, and one look follows shortly (a burst of events makes one look).
+                for (int round = 0; round < 8 && (long)Libc.read(_inotifyFd, InotifyBuf, (UIntPtr)InotifyBuf.Length) > 0; round++) { }
+                ScanGate.Force();
+                if (_inotifyTimer == IntPtr.Zero) _inotifyTimer = Efl.ecore_timer_add(InotifyDelaySeconds, InotifyLookCb, IntPtr.Zero);
+            }
+            catch (Exception ex) { Log("input: inotify: " + ex.Message); }
+            return 1;
+        }
+
+        private static byte OnInotifyLook(IntPtr data)
+        {
+            _inotifyTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            try { if (WatchNewNodes() > 0) Log("input: new node seen through inotify"); }
+            catch (Exception ex) { Log("input: inotify look: " + ex.Message); }
+            return 0;
         }
 
         /// <summary>Opens every remote node that is not being watched yet. Returns how many were added.</summary>

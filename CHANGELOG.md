@@ -6,6 +6,7 @@
 
 - **TV-Store opens from All apps.** When TV-Store is installed on the TV, the store pill at the end of All apps opens it instead of Samsung's store (Samsung's store opens if TV-Store does not start). The Launcher tab has a switch, "TV-Store in All apps", to go back to Samsung's store. TV-Store also stays in the A-Z list, so it can be put in the row. Not yet tried on a TV.
 - **An app you install appears in the launcher without a restart.** Apps installed from Samsung's store, TV-Store or Apps2Samsung reached the row and All apps only after a restart of the launcher or *Rebuild app list*. The launcher now notices that the package list changed when it comes on screen, asks Vetro to read the apps again and redraws its pages a moment later, on the page you are on. An app removed goes away the same way. Not yet tried on a TV.
+- **The remote answers the launcher right after standby** ([#219](https://github.com/andrearicci93/vetro/issues/219), idea and first version by BirikuSistema in vetro-bar). The launcher looked for new input nodes every 3 seconds, so a Bluetooth remote reconnecting after standby could wait that long before Home opened it. It now watches `/dev/input` with inotify and picks a new node up about 80 ms after it appears; the 3-second look stays as the fallback (and is the only one where inotify is missing).
 
 ### Velo look (opus6, trial on branch explore/opus6-ui)
 
