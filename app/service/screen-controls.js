@@ -175,8 +175,13 @@ Controls.prototype.read = function (canControl) {
 Controls.prototype.act = function (p) {
     var d = this.deps, self = this, on, id = p && p.id;
     if (id === 'update') {
-        if (p.step === 'check') return this.lookUp().then(function (r) { return {ok: true, phase: r.phase, version: r.version}; });
+        // The updater replaces files through the root agent: without it (Tizen 10, Tizen 5.5 and older, root not connected yet)
+        // a new version is still worth knowing about, but it is installed with Apps2Samsung, and the bundle is never fetched.
+        if (p.step === 'check') return this.lookUp().then(function (r) {
+            return {ok: true, phase: r.phase === 'found' && !d.agentConnected() ? 'noroot' : r.phase, version: r.version};
+        });
         if (p.step !== 'apply') return Promise.reject(problem('Invalid update step', 400));
+        if (!d.agentConnected()) return Promise.reject(problem('Needs root access, which is not connected: install the new version with Apps2Samsung'));
         return this.lookUp().then(function (r) {
             if (r.phase === 'none') throw problem('You already have the newest version');
             if (r.phase === 'reinstall') throw problem('This version changes the package itself: install it again with Apps2Samsung');

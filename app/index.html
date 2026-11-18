@@ -540,6 +540,7 @@ function updateView(t, o) {
   else if (p === 'none') { o.desc = 'You have the newest version.'; o.note = 'Up to date'; o.cls = 'ok'; }
   else if (p === 'found') { o.desc = 'Version ' + upd.version + ' is ready. The signed update is checked on the TV before it is installed.'; o.btn = 'Update to ' + upd.version; o.go = true; }
   else if (p === 'confirm') { o.desc = 'Version ' + upd.version + ' is ready. The signed update is checked on the TV before it is installed.'; o.btn = 'OK again to confirm'; o.go = true; }
+  else if (p === 'noroot') { o.desc = 'Version ' + upd.version + ' is out. Without root access it is installed with Apps2Samsung.'; o.btn = 'Check for update'; }
   else if (p === 'reinstall') { o.desc = 'Version ' + upd.version + ' changes the package itself. Install it again with Apps2Samsung.'; o.btn = 'Check for update'; }
   else if (p === 'run') { o.note = 'Updating… Vetro restarts'; o.cls = 'mute'; }
   else if (p === 'error') { o.btn = 'Check for update'; o.desc = upd.error || 'The update did not work.'; }

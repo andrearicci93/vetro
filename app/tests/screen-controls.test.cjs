@@ -217,6 +217,13 @@ async function update() {
     assert.deepEqual(d.calls, ['updater.apply ' + sha + ' 15']);
     assert.deepEqual(hits, ['/update-index.json', '/vetro-update-0.5.2.json']);
     // Nothing newer, or a version that needs a reinstall: no download of the bundle.
+    // Without the root agent the check still says a version is out, but as one to install with Apps2Samsung, and apply refuses
+    // before anything is downloaded (Tizen 10 and Tizen 5.5 TVs have no root).
+    d = fakes({source, agent: false}); hits = [];
+    assert.deepEqual(await new Controls(d).act({id: 'update', step: 'check'}), {ok: true, phase: 'noroot', version: '0.5.2'});
+    await assert.rejects(new Controls(d).act({id: 'update', step: 'apply'}), /Needs root access.*Apps2Samsung/);
+    assert.deepEqual(hits, ['/update-index.json'], 'no bundle without root');
+    assert.deepEqual(d.calls, []);
     d = fakes({source, updaterStatus: {version: '0.5.2'}}); hits = [];
     assert.equal((await new Controls(d).act({id: 'update', step: 'check'})).phase, 'none');
     await assert.rejects(new Controls(d).act({id: 'update', step: 'apply'}), /newest version/);
