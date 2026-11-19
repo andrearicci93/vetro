@@ -59,9 +59,20 @@ function createProxy(opts) {
         }
         var tv = req.method === 'GET' && inject.isTvPage(req.url) && !!opts.script();
         var chunks = [], size = 0, over = false;
-        req.on('data', function (c) { size += c.length; if (size > MAX_BODY) { over = true; chunks = []; return; } chunks.push(c); });
+        req.on('data', function (c) {
+            if (over) return;
+            size += c.length;
+            if (size > MAX_BODY) {
+                over = true;
+                chunks = [];
+                if (!res.headersSent) { res.writeHead(413, { 'content-length': 0, 'connection': 'close' }); res.end(); }
+                drop(req.socket);
+                return;
+            }
+            chunks.push(c);
+        });
         req.on('end', guard(function () {
-            if (over) { res.writeHead(413, { 'content-length': 0 }); res.end(); return; }
+            if (over) return;
             var h = client.request({ host: host, method: req.method, path: req.url, headers: req.headers, identity: tv }, Buffer.concat(chunks), guard(function (err, r) {
                 if (err) { opts.log('upstream ' + host + ' failed: ' + err.message); fail(); return; }
                 var type = String(r.headers['content-type'] || '');
@@ -124,7 +135,7 @@ function createProxy(opts) {
             c.pause();
             var rest = buf.slice(end + 4);
             connect(c, buf.slice(0, end).toString('binary').split('\r\n')[0], rest);
-        }));
+        }, function () { drop(c); }));
     }
 
     function connect(c, line, rest) {
@@ -152,7 +163,7 @@ function createProxy(opts) {
             if (rest.length) up.write(rest);
             c.pipe(up); up.pipe(c);
             c.resume();
-        }));
+        }, cleanup));
         function cleanup() { try { c.unpipe(up); } catch (e) {} try { up.unpipe(c); } catch (e) {} drop(up); drop(c); }
         up.on('error', cleanup);
         c.on('error', cleanup);

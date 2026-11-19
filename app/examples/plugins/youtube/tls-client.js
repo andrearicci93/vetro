@@ -8,6 +8,8 @@ var PassThrough = require('stream').PassThrough;
 
 function bytes(n) { return Buffer.alloc ? Buffer.alloc(n) : new Buffer(n); }
 
+var CHUNK_SIZE_RE = /^[0-9a-fA-F]{1,16}(?:;[^\r\n]*)?$/;
+
 // Turns a chunked body into plain bytes written to `out`. Feed it with write(buffer).
 function Dechunk(out) {
     var buf = bytes(0), state = 'size', left = 0;
@@ -17,9 +19,14 @@ function Dechunk(out) {
         for (;;) {
             if (state === 'size') {
                 var i = buf.indexOf('\r\n');
-                if (i < 0) return;
-                left = parseInt(buf.slice(0, i).toString('binary'), 16);
+                if (i < 0) {
+                    if (buf.length > 1024) { state = 'bad'; if (out.abort) out.abort(new Error('chunk header too long')); }
+                    return;
+                }
+                var line = buf.slice(0, i).toString('binary');
                 buf = buf.slice(i + 2);
+                if (!CHUNK_SIZE_RE.test(line)) { state = 'bad'; if (out.abort) out.abort(new Error('bad chunk size')); return; }
+                left = parseInt(line.split(';')[0], 16);
                 if (left !== left || left < 0) { state = 'bad'; if (out.abort) out.abort(new Error('bad chunk size')); return; }
                 if (left === 0) { state = 'done'; if (!out.destroyed && out.writable) out.end(); return; }
                 state = 'data';
@@ -32,6 +39,7 @@ function Dechunk(out) {
                 if (left === 0) state = 'crlf';
             } else if (state === 'crlf') {
                 if (buf.length < 2) return;
+                if (buf[0] !== 13 || buf[1] !== 10) { state = 'bad'; if (out.abort) out.abort(new Error('bad chunk delimiter')); return; }
                 buf = buf.slice(2);
                 state = 'size';
             } else return;
@@ -71,7 +79,7 @@ function parseHead(text) {
     var cl = out.headers['content-length'];
     if (cl !== undefined) {
         var vals = Array.isArray(cl) ? cl : [cl], ok = vals.every(function (x) { return /^\d{1,15}$/.test(x) && x === vals[0]; });
-        if (ok && !out.chunked) out.length = parseInt(vals[0], 10);
+        if (ok && !out.chunked) { out.length = parseInt(vals[0], 10); out.headers['content-length'] = vals[0]; }
         if (out.chunked || !ok) delete out.headers['content-length'];
     }
     return out;
