@@ -386,6 +386,7 @@ namespace Tuner
 
         private static void WorkerMain()
         {
+            Libc.NameThread("vetro-tvs");
             try
             {
                 if (!UiReady.Wait(UiReadyWaitMs)) Log("tvs: the window system is not up after " + UiReadyWaitMs / 1000 + " s, reading the TV anyway");
@@ -1771,6 +1772,7 @@ namespace Tuner
 
         private static void FrontMain()
         {
+            Libc.NameThread("vetro-front");
             var buf = new byte[256];
             var memo = new FrontApp.AppIdMemo();
             while (true)

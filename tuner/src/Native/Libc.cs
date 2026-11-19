@@ -17,6 +17,10 @@ namespace Tuner.Native
         public const int EAGAIN = 11;
 
         [DllImport(C, SetLastError = true)] public static extern int setenv(string name, string value, int overwrite);
+        // PR_SET_NAME (15): names the calling thread in /proc (15 bytes at most). .NET on these TVs leaves its threads named after the
+        // process, so a diagnostics list of the tuner's threads could not tell the TV-service worker from the others.
+        [DllImport(C)] private static extern int prctl(int option, string name, IntPtr a3, IntPtr a4, IntPtr a5);
+        public static void NameThread(string name) { try { prctl(15, name, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero); } catch (Exception) { } }
         [DllImport(C, SetLastError = true)] public static extern int open(string path, int flags);
         [DllImport(C, SetLastError = true)] public static extern int close(int fd);
         [DllImport(C, SetLastError = true)] public static extern IntPtr read(int fd, byte[] buf, UIntPtr count);
