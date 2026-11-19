@@ -34,6 +34,12 @@ namespace Launcher.Core
     {
         public static readonly int[] Candidates = { 65536, 65541, 65537, 393216, 65542, 65538, 393217, 65539, 65540, 393218, 393219, 655360, 655361 };
 
+        /// <summary>
+        /// The mode a 2022-or-later TV reports while Auto Filmmaker Mode has switched to Filmmaker Mode for the content (an S95C on 2220.4 read
+        /// 327705 while Samsung's own list ticked FILMMAKER MODE, 2026-11-19; 16 sets on 2022+ firmware report it, none on 2021). Read as 655360.
+        /// </summary>
+        public const int AutoFilmmaker = 327705;
+
         public static string Name(int id)
         {
             switch (id)
@@ -45,7 +51,7 @@ namespace Launcher.Core
                 case 65538: case 393217: return "Movie";
                 case 65539: case 393218: return "Calibrated Night";
                 case 65540: case 393219: return "Calibrated Day";
-                case 655360: case 655361: return "Filmmaker Mode";
+                case 655360: case 655361: case AutoFilmmaker: return "Filmmaker Mode";
                 case 65547: case 393222: return "Game";
                 case 327687: return "See colours";
                 case 589824: case 589825: return "AI picture";
@@ -91,6 +97,7 @@ namespace Launcher.Core
             var st = new ChoiceState();
             List<int> cur = Numbers(getAnswer);
             int current = cur.Count >= 2 && cur[1] == 0 ? cur[0] : -1;
+            if (current == AutoFilmmaker) current = 655360;    // Filmmaker Mode turned on by the content: Samsung's list ticks Filmmaker Mode and keeps every other mode
             string[] lines = (checkAnswer ?? "").Replace("\r", "").Split('\n');
             var seen = new HashSet<string>();
             for (int i = 0, k = 0; i < lines.Length && k < Candidates.Length; i++)

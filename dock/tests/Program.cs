@@ -1809,6 +1809,8 @@ namespace Launcher.Tests
                 T.True(hdr.Rows.Exists(r => r.Label == "Movie" && r.Active), "an HDR variant reads as its own name");
                 ChoiceState game = PictureModes.Build("ii 65547 0", checks.ToString());
                 T.True(!game.Choosable && game.Rows.Count == 1 && game.Rows[0].Label == "Game" && game.Note == "Set in Samsung's menu", "Game mode locks the list, as on Samsung's menu");
+                ChoiceState auto = PictureModes.Build("ii 327705 0", checks.ToString());
+                T.True(auto.Choosable && auto.Rows.Exists(r => r.Label == "Filmmaker Mode" && r.Active) && auto.Rows.Count > 1, "Auto Filmmaker Mode (327705): the list stays choosable, Filmmaker Mode ticked");
                 T.True(!PictureModes.Build("", "").Choosable && PictureModes.Build("Failed to connect", checks.ToString()).Note == "Not available", "nothing read: not available");
                 T.Eq(PictureModes.SetCommand(655360), "busctl call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl SetPictureMode ii 655360 1", "set and saved, as Samsung's menu does");
                 T.True(PictureModes.SetCommand(65547) == null && PictureModes.SetCommand(-1) == null, "only a candidate can be set");
