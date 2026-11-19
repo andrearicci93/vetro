@@ -20,7 +20,8 @@ const sandbox = {
         if (typeof d === 'function') d = d(p);
         const gate = gates[key] && gates[key].shift();
         if (gate) await gate;
-        if (d === undefined) d = url.startsWith('/apps') ? {apps: [], summary: {total: 0}} : url === '/remap' ? {rules: []}
+        // /status as a rooted TV answers it (the page shows the wins' switches only with the root agent up)
+        if (d === undefined) d = url === '/status' ? {agent: {connected: true}, mode: 'tv-integration'} : url.startsWith('/apps') ? {apps: [], summary: {total: 0}} : url === '/remap' ? {rules: []}
             : url === '/input' ? {devices: [], status: {policy: {mode: 'off'}, events: []}}
             : url.startsWith('/monitor') ? {ts: Date.now(), memory: {}, cpu: {cores: []}, processes: [], network: []} : {};
         return {ok: true, json: async () => d};

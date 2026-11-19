@@ -246,6 +246,7 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .removal-steps summary{min-height:44px;padding:var(--s2) 0;cursor:pointer;font-weight:500}
 .removal-steps .steps{margin-top:var(--s3)}
 .quick-group>.quick-callout{margin:var(--s2) 0}
+.fw-steps{margin:var(--s2) 0 0;padding-left:1.4em;display:grid;gap:var(--s1);color:var(--muted);font-size:var(--fs-s);line-height:1.6;max-width:var(--vetro-prose-measure)}
 .quick-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2) var(--s4);padding:var(--s4) 0}
 .quick-item+.quick-item{border-top:1px solid var(--border)}
 .quick-sub{padding-left:var(--s5)}
@@ -574,7 +575,9 @@ $('observe').onclick=function(){if(!inputListening)return policy('observe');var 
 var polling=false,inputListening=false,inputPreferenceState=null,listenSince=0;function pollInput(){if(polling)return;polling=true;return api('/input').then(function(d){var value=$('device').value, options=d.devices.filter(function(x){return x.selectable});if(options.map(function(x){return x.node}).join('|')!==lastDevice){lastDevice=options.map(function(x){return x.node}).join('|');$('device').innerHTML=options.length?'<option value="auto">Detect automatically (listen only)</option>'+options.map(function(x){return '<option value="'+esc(x.node)+'">'+esc(x.name)+' · '+esc(x.node)+'</option>'}).join(''):'<option value="">No compatible device</option>';if(options.some(function(x){return x.node===value}))$('device').value=value}var p=d.status.policy;inputListening=p.mode==='observe';listenSince=inputListening?listenSince||Date.now():0;inputPreferenceState=d.status.preference||null;$('observe').textContent=inputListening?'Stop listening':'Start listening';if(!uiOperationBusy.rules)$('filter').checked=d.status.preference?d.status.preference.enabled:p.mode==='filter';if(p.node&&options.some(function(x){return x.node===p.node}))$('device').value=p.node;$('inputStatus').textContent=d.error||d.status.error|| (p.mode==='off'?(d.status.preference&&d.status.preference.enabled?'Interception enabled · waiting for remote':'Interception off'):(p.mode==='observe'?'Listening':'Interception')+' · '+p.device+(p.connected?' · connected':' · connecting…'));var down=d.status.events.filter(function(e){return e.action==='down'}), event=down[down.length-1];if(event&&event.node+':'+event.sequence!==lastSeq){lastSeq=event.node+':'+event.sequence;$('device').value=event.node;$('keyEvent').textContent=(event.key||'Key')+' · '+event.code;$('keyEvent').className='has-key';$('inputCode').value=event.code}}).catch(function(e){$('inputStatus').textContent=e.message}).finally(function(){polling=false})}
 function k(key){api('/control',{key:key}).catch(function(e){say(e.message)})}
 function setConnection(on){var c=$('connection');c.textContent=on?'Connected':'Not connected';c.className=on?'is-on':''}
-api('/status').then(function(d){if(d.app&&d.app.version)$('appVersion').textContent='Vetro '+d.app.version;setConnection(!!(d.agent&&d.agent.connected))}).catch(function(){setConnection(false)});
+var statusRead=api('/status').then(function(d){if(d.app&&d.app.version)$('appVersion').textContent='Vetro '+d.app.version;setConnection(!!(d.agent&&d.agent.connected));
+ // Whether the root agent is up: the Quick settings wins need it (without it /wins answers 503), and the firmware card then says what still works.
+ quickData.root=!!(d.agent&&d.agent.connected);if(!quickData.root)renderQuick()}).catch(function(){setConnection(false)});
 
 var categories={user:'User apps',media:'Media',ads:'Advertising / viewing recognition',privacy:'Privacy',voice:'Voice assistants',connectivity:'Connectivity',hotel:'Hotel / retail',system:'System',protected:'Protected',other:'Other'};
 var origins={installed:'Installed',preinstalled:'Preinstalled',system:'System',unknown:'Unknown'};
@@ -855,7 +858,7 @@ $('settingGroups').onclick=function(e){var c=e.target.closest('[data-catalog-id]
 // --- Quick settings: shared state with the Debloater, DNS blocking and TV settings ---
 var quickGroups=${JSON.stringify(quickGroups)},quickState=${quickStateFn.toString()};
 var restoreView={plan:null,error:null,result:null,confirm:false,eraseConfirm:false,erased:null,loading:false};
-var quickData={dns:null,leftovers:null,leftoversError:null,hbbtvError:null,wins:null,winsError:null},quickBusy=false,quickConfirm=null,leftoverConfirm=false;
+var quickData={dns:null,leftovers:null,leftoversError:null,hbbtvError:null,wins:null,winsError:null,root:null},quickBusy=false,quickConfirm=null,leftoverConfirm=false;
 // Every Quick settings switch is a win: on means it is applied, off puts the TV back. Memory figures were measured on a Q80A.
 var launcherEnabled=null;
 var groupTitles={'tracking-all':'Disable advertising and tracking services','voice-all':'Disable all voice assistants',alexa:'Disable Alexa',google:'Disable Google Assistant',bixby:'Disable Bixby',voice:'Disable the other voice services','samsung-home':'Disable Samsung Home'};
@@ -905,7 +908,22 @@ function winPartial(id,w){
  if(m>0&&!n)return 'no update service blocked'+(w.value===0?', Auto update is off':'');
  return w.value?'Auto update is on':'some update services are still reachable';
 }
+// Without root no win can be switched (they stop services, mask units, write vconf): no switch, and the firmware card says what
+// still protects the TV. With root (or before the root state is known) the switches are as they always were.
+var FW_NO_ROOT_STEPS=['Router: deny internet egress for this TV, IPv4 and IPv6. A VLAN without internet is the surest way.',
+ 'If you need apps, allow only the streaming/CDN hosts you use; any Samsung service you allow can still be an update path.',
+ 'Log the TV’s DNS queries and flows before the next update window, so the exact endpoint is known.',
+ 'A firmware file on a USB stick still works for recovery; it needs no network.'];
+function winNoRoot(id){
+ var c=winCopy[id];
+ if(id!=='firmware')return quickItem(id,c.title,c.desc,chip('Root required','partial'),'','<details><summary>What this changes</summary><p>'+esc(c.detail)+'</p></details>');
+ return quickItem('firmware','Block firmware and software updates','',chip('Root required','partial'),'',
+  '<p class="section-note">Stopping the update services needs root. Without root the only reliable block is the network: give this TV no internet access (IPv4 and IPv6), or put it on a network that cannot reach the internet. Blocking DNS alone is not enough.</p>'+
+  '<ol class="fw-steps">'+FW_NO_ROOT_STEPS.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ol>'+
+  '<details><summary>What a firmware update can do</summary><p>A patch can remove root and close the path Vetro uses. The TV’s own Auto update setting does not stop the background update loop.</p></details>');
+}
 function winItem(id){
+ if(quickData.root===false)return winNoRoot(id);
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
  if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · updates are blocked':id==='keyguides'?'Done · the guides count as seen':'Done · Multi View starts when you open it','on');
@@ -992,7 +1010,11 @@ function renderQuick(){
 }
 function loadLeftovers(){quickData.leftoversError=null;return api('/leftovers').then(function(d){if(!Array.isArray(d.files))throw Error('Staging folder unreadable');quickData.leftovers=d;quickReadAt.leftovers=Date.now();}).catch(function(e){quickData.leftoversError=e.message;}).finally(renderQuick);}
 var winsSeq=0;
-function loadWins(){var mine=++winsSeq;quickData.winsError=null;return api('/wins').then(function(d){if(!d.wins)throw Error('Quick wins unreadable');if(mine===winsSeq){quickData.wins=d;quickReadAt.wins=Date.now()}}).catch(function(e){if(mine===winsSeq)quickData.winsError=e.message;}).finally(renderQuick);}
+function loadWins(){var mine=++winsSeq;quickData.winsError=null;
+ // Without root the wins cannot be read (503): the root agent is asked about first, and nothing privileged is called while it is down.
+ // The first read waits for the page's own /status answer, so a TV without root is never asked for the wins at all.
+ var first=quickData.root===false?api('/status').then(function(d){quickData.root=!!(d.agent&&d.agent.connected)}):quickData.root===null&&statusRead?statusRead:Promise.resolve();
+ return first.then(function(){if(quickData.root===false)return;return api('/wins').then(function(d){if(!d.wins)throw Error('Quick wins unreadable');if(mine===winsSeq){quickData.wins=d;quickData.root=true;quickReadAt.wins=Date.now()}})}).catch(function(e){if(mine===winsSeq)quickData.winsError=e.message;}).finally(renderQuick);}
 /* #135: AgingApp can leave db/FactoryApp/Aging at 1; the TV then starts the colour test at every boot. Shown only when it reads exactly 1. */
 var factoryTestView={state:null,busy:false,message:''};
 function renderFactoryTest(){var b=$('factoryTestBanner');if(!b)return;var v=factoryTestView,on=!!v.state&&v.state.active===true;

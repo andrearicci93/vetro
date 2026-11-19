@@ -169,3 +169,33 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(un,/alert-row[\s\S]*The app list could not be read[\s\S]*data-uninstall-retry/,'an error is the only thing in the list, with Retry');assert.doesNotMatch(un,/Nothing on this TV|data-uninstall-ask/);
  console.log('PASS quick UI: wins read as done or not, partial states, new switches, microphone confirmation, shared inventory, cleanup confirmation');
 })().catch(e=>{console.error(e);process.exitCode=1});
+
+// Without root (the app-only build, or a TV whose root agent is not up): /wins answers 503, so no win has a switch. The firmware card
+// says "Root required" and what still protects the TV (the network), and /wins is not even asked while the agent is down.
+(async()=>{
+ const nodes2={};const el2=id=>nodes2[id]||(nodes2[id]={id,value:'',hidden:true,textContent:'',innerHTML:'',disabled:false,focus(){}});
+ const calls2=[];
+ const noRoot=()=>({ok:false,status:503,json:async()=>({error:'no root agent'})});
+ const sb={document:{getElementById:el2,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},console,setTimeout(fn){return 1},clearTimeout(){},setInterval(){},
+  fetch:async(url,opts)=>{calls2.push(url);
+   if(url==='/status')return {ok:true,json:async()=>({agent:null,mode:'app-only',app:{version:'9.9.9'}})};
+   if(url==='/wins'||url==='/hbbtv'||url==='/keep-removed'||url.startsWith('/quick')||url==='/leftovers')return noRoot();
+   if(url.startsWith('/apps'))return {ok:true,json:async()=>({apps:[],summary:{total:0}})};
+   return {ok:true,json:async()=>({})};}};
+ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sb);
+ const tick2=()=>new Promise(r=>setImmediate(r));
+ for(let i=0;i<4;i++)await tick2();
+ sb.showQuickTab('general');for(let i=0;i<4;i++)await tick2();
+ const control=el2('quickControl').innerHTML;
+ assert.match(control,/<h3>Block firmware and software updates<\/h3>/);
+ assert.match(control,/chip[^>]*>Root required/,'the chip says what is missing');
+ assert.doesNotMatch(control,/data-win-switch="firmware"/,'no switch that would fail');
+ assert.doesNotMatch(control,/Reading…/,'not "Reading…" for ever');
+ assert.match(control,/Without root the only reliable block is the network[\s\S]*Blocking DNS alone is not enough/);
+ assert.match(control,/<ol class="fw-steps"><li>Router: deny internet egress for this TV, IPv4 and IPv6\./,'the network checklist');
+ assert.match(control,/A firmware file on a USB stick still works for recovery/);
+ assert.match(control,/What a firmware update can do[\s\S]*does not stop the background update loop/);
+ assert.doesNotMatch(control,/data-win-switch=/,'no other win switch without root either');
+ assert.ok(!calls2.includes('/wins'),'/wins is not asked while the root agent is down');
+ console.log('PASS quick UI without root: firmware card says Root required, network checklist, no switch, no /wins');
+})().catch(e=>{console.error(e);process.exitCode=1});
