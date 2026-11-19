@@ -861,13 +861,25 @@ function parseTsv(text) {
     }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }
 Dock.prototype.entries = function () {
-    try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
+    try {
+        var text = fs.readFileSync(this.appsFile, 'utf8');
+        if (text === this._appsTsvText) return this._appsTsvEntries.slice();
+        this._appsTsvText = text;
+        this._appsTsvEntries = parseTsv(text);
+        return this._appsTsvEntries.slice();
+    } catch (e) { this._appsTsvText = null; this._appsTsvEntries = null; return []; }
 };
 Dock.prototype.inputListPath = function () {
     return fs.existsSync(this.inputsFile) ? this.inputsFile : path.join(this.dir, 'res', 'inputs.tsv');
 };
 Dock.prototype.inputEntries = function () {
-    try { return parseTsv(fs.readFileSync(this.inputListPath(), 'utf8')); } catch (e) { return []; }
+    try {
+        var file = this.inputListPath(), text = fs.readFileSync(file, 'utf8'), key = file + '\n' + text;
+        if (key === this._inputsTsvKey) return this._inputsTsvEntries.slice();
+        this._inputsTsvKey = key;
+        this._inputsTsvEntries = parseTsv(text);
+        return this._inputsTsvEntries.slice();
+    } catch (e) { this._inputsTsvKey = null; this._inputsTsvEntries = null; return []; }
 };
 
 // Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.

@@ -25,7 +25,7 @@ namespace Launcher.Ui
         private readonly string _assets;
         private readonly Action<string> _log;
 
-        private IntPtr _rim, _pill, _clip, _appsClip, _highlight, _highlight2, _ring, _ring2, _clock, _divider;
+        private IntPtr _rim, _pill, _clip, _appsClip, _highlight, _highlightPill, _highlight2, _highlight2Pill, _ring, _ring2, _clock, _divider;
         // Two name labels cross-fade (see LabelFader): the name under the icon being left and the one being reached.
         private readonly IntPtr[] _label = new IntPtr[2];
         private readonly LabelFader _fader = new LabelFader();
@@ -45,12 +45,11 @@ namespace Launcher.Ui
 
         private readonly Box[] _iconBox;
         private readonly int[] _iconAlpha;
-        private Box _rimBox, _pillBox, _hlBox, _hlBox2, _ringBox, _ringBox2;
-        private int _chromeAlpha = -1, _hlAlpha = -1, _hlAlpha2 = -1, _clockAlpha = -1, _ringAlpha = -1, _ringAlpha2 = -1;
-        private int _hlRgb = -1, _hlRgb2 = -1;
+        private Box _rimBox, _pillBox, _hlBox, _hlPillBox, _hlBox2, _hl2PillBox, _ringBox, _ringBox2;
+        private int _chromeAlpha = -1, _hlAlpha = -1, _hlPillAlpha = -1, _hlAlpha2 = -1, _hlPillAlpha2 = -1, _clockAlpha = -1, _ringAlpha = -1, _ringAlpha2 = -1;
+        private int _hlRgb = -1, _hlPillRgb = -1, _hlRgb2 = -1, _hlPillRgb2 = -1;
         // Colour of each item's glow: the icon's dominant hue, or the design's own colour.
         private readonly int[] _glowRgb;
-        private bool _hlRound, _hlRound2;      // which outline each glow object currently shows
         private int _clockW, _clockX = int.MinValue, _clockY = int.MinValue;
         private int _current = -1;
         private bool _clipSet;
@@ -88,7 +87,7 @@ namespace Launcher.Ui
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
             for (int i = 0; i < items.Length; i++) { _iconBox[i].W = -1; _iconAlpha[i] = -1; _glowRgb[i] = Design.GlowColor; }
-            _rimBox.W = _pillBox.W = _hlBox.W = _hlBox2.W = _ringBox.W = _ringBox2.W = -1;
+            _rimBox.W = _pillBox.W = _hlBox.W = _hlPillBox.W = _hlBox2.W = _hl2PillBox.W = _ringBox.W = _ringBox2.W = -1;
         }
 
         public IntPtr Evas { get { return _evas; } }
@@ -101,8 +100,15 @@ namespace Launcher.Ui
             _rim = NineSlice("pill_rim", Design.RimSlice, (Design.PanelRadius + Design.ShellBorderW) / (double)Design.RimSlice);
             _pill = NineSlice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
             // The focused icon grows and a soft glow, drawn at its final size, sits behind it; a thin ring is drawn around it.
+            // Pre-create both rounded-square and pill glow shapes so animations never reload PNG textures from disk mid-frame.
             _highlight = NineSlice("dock_glow", 0);
+            _highlightPill = NineSlice("dock_glow_pill", 0);
             _highlight2 = NineSlice("dock_glow", 0);
+            _highlight2Pill = NineSlice("dock_glow_pill", 0);
+            Tint(_highlight, 0);
+            Tint(_highlightPill, 0);
+            Tint(_highlight2, 0);
+            Tint(_highlight2Pill, 0);
 
             _clip = Efl.evas_object_rectangle_add(_evas);
             Efl.evas_object_color_set(_clip, 255, 255, 255, 255);
@@ -122,7 +128,9 @@ namespace Launcher.Ui
                 if (_initials[i] != IntPtr.Zero) Efl.evas_object_clip_set(_initials[i], clip);
             }
             Efl.evas_object_clip_set(_highlight, _clip);
+            Efl.evas_object_clip_set(_highlightPill, _clip);
             Efl.evas_object_clip_set(_highlight2, _clip);
+            Efl.evas_object_clip_set(_highlight2Pill, _clip);
             // The ring follows the icon's box, grown by its width: one object per icon being left and reached, like the glow.
             _ring = RingImage();
             _ring2 = RingImage();
@@ -383,14 +391,14 @@ namespace Launcher.Ui
             int g = _glowRgb[i]; _glowRgb[i] = _glowRgb[j]; _glowRgb[j] = g;
             string k = _iconKey[i]; _iconKey[i] = _iconKey[j]; _iconKey[j] = k;
             _iconBox[i].W = _iconBox[j].W = -1; _iconAlpha[i] = _iconAlpha[j] = -1;
-            _hlRgb = _hlRgb2 = -1;
+            _hlRgb = _hlPillRgb = _hlRgb2 = _hlPillRgb2 = -1;
             _fader.Invalidate();
         }
 
         /// <summary>Deletes every object of the page (the row was rebuilt with other tiles); the page is not used again.</summary>
         public void Destroy()
         {
-            var all = new List<IntPtr> { _rim, _pill, _highlight, _highlight2, _ring, _ring2, _divider, _label[0], _label[1], _clock, _appsClip, _clip };
+            var all = new List<IntPtr> { _rim, _pill, _highlight, _highlightPill, _highlight2, _highlight2Pill, _ring, _ring2, _divider, _label[0], _label[1], _clock, _appsClip, _clip };
             all.AddRange(_icon); all.AddRange(_initials);
             if (_badge != null) { all.AddRange(_badge); all.AddRange(_badgeBg); }
             foreach (NavHint h in new[] { _hint, _hintBelow }) if (h != null) all.AddRange(h.Objects());
@@ -412,11 +420,12 @@ namespace Launcher.Ui
             _clockX = int.MinValue;   // re-place on the next frame: the width may have changed
         }
 
-        private void GlowShape(IntPtr img, ref bool round, bool wantRound)
+        private static void ApplyGlowSlot(IntPtr active, ref Box activeBox, ref int activeAlpha, ref int activeRgb,
+            IntPtr inactive, ref int inactiveAlpha, Box gb, int ga, int gc)
         {
-            if (round == wantRound) return;
-            round = wantRound;
-            Efl.evas_object_image_file_set(img, Path.Combine(_assets, (round ? "dock_glow_pill" : "dock_glow") + ".png"), null);
+            Place(active, ref activeBox, gb);
+            if (ga != activeAlpha || gc != activeRgb) { activeAlpha = ga; activeRgb = gc; TintRgb(active, ga, gc); }
+            if (inactiveAlpha != 0) { inactiveAlpha = 0; Tint(inactive, 0); }
         }
 
         /// <summary>The focus ring image: a white outline that is scaled to the icon's box, so its corners keep the icon's proportions.</summary>
@@ -661,14 +670,14 @@ namespace Launcher.Ui
             _layout.GlowAt(fp, out g1, out g2, out w2);
             // The pinned system entries are oval pills: their glow follows a capsule, not the apps' rounded square.
             bool pin1 = g1 >= 0 && _layout.IsPinned(g1), pin2 = g2 >= 0 && _layout.IsPinned(g2);
-            GlowShape(_highlight, ref _hlRound, pin1);
-            GlowShape(_highlight2, ref _hlRound2, pin2);
-            Place(_highlight, ref _hlBox, _layout.GlowBox(g1, scroll, c.ItemSlide(g1)));
-            Place(_highlight2, ref _hlBox2, _layout.GlowBox(g2, scroll, c.ItemSlide(g2)));
+            Box gb1 = _layout.GlowBox(g1, scroll, c.ItemSlide(g1));
+            Box gb2 = _layout.GlowBox(g2, scroll, c.ItemSlide(g2));
             int ga1 = (int)Math.Round(255f * c.ItemPresence(g1) * (1f - w2)), ga2 = (int)Math.Round(255f * c.ItemPresence(g2) * w2);
             int gc1 = GlowRgb(g1), gc2 = GlowRgb(g2);
-            if (ga1 != _hlAlpha || gc1 != _hlRgb) { _hlAlpha = ga1; _hlRgb = gc1; TintRgb(_highlight, ga1, gc1); }
-            if (ga2 != _hlAlpha2 || gc2 != _hlRgb2) { _hlAlpha2 = ga2; _hlRgb2 = gc2; TintRgb(_highlight2, ga2, gc2); }
+            if (pin1) ApplyGlowSlot(_highlightPill, ref _hlPillBox, ref _hlPillAlpha, ref _hlPillRgb, _highlight, ref _hlAlpha, gb1, ga1, gc1);
+            else ApplyGlowSlot(_highlight, ref _hlBox, ref _hlAlpha, ref _hlRgb, _highlightPill, ref _hlPillAlpha, gb1, ga1, gc1);
+            if (pin2) ApplyGlowSlot(_highlight2Pill, ref _hl2PillBox, ref _hlPillAlpha2, ref _hlPillRgb2, _highlight2, ref _hlAlpha2, gb2, ga2, gc2);
+            else ApplyGlowSlot(_highlight2, ref _hlBox2, ref _hlAlpha2, ref _hlRgb2, _highlight2Pill, ref _hlPillAlpha2, gb2, ga2, gc2);
 
             // The focus ring hugs the selected icon (never a pill) and grows with it, so it keeps the icon's own corner radius.
             Place(_ring, ref _ringBox, _layout.RingBox(g1, fp, scroll, c.ItemSlide(g1)));

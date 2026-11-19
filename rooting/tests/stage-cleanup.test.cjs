@@ -28,5 +28,11 @@ assert.equal(removed.length, 3);
 assert.deepEqual(fs.readdirSync(root + '/on-demand').sort(),
     [id(2), id(5), id(6), id(99)].map(n => [n + '.tar.gz', n + '.tar.gz.signature']).flat().concat('other.tar.gz').sort(),
     'archives follow their folders; foreign files stay');
+fs.writeFileSync(root + '/on-demand/' + id(501) + '.tar.gz', 'x');
+fs.rmSync(root + '/' + id(2), {recursive: true, force: true});
+fs.rmSync(root + '/' + id(5), {recursive: true, force: true});
+service.stageInUse = () => { throw new Error('stageInUse should not run when directories <= STAGE_KEEP - 1'); };
+assert.equal(service.cleanStage(id(99)).length, 0);
+assert.ok(!fs.existsSync(root + '/on-demand/' + id(501) + '.tar.gz'), 'orphan archive still removed when proc scan is skipped');
 fs.rmSync(root, {recursive: true, force: true});
 console.log('PASS staging cleanup: current, newest and in-use folders stay; older folders and orphan archives are removed');

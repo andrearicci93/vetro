@@ -289,7 +289,7 @@ namespace Launcher.Ui
         private static string TakeString(int rc, IntPtr p)
         {
             if (p == IntPtr.Zero) return null;
-            string s = rc == 0 ? Marshal.PtrToStringAnsi(p) : null;
+            string s = rc == 0 ? Marshal.PtrToStringUTF8(p) : null;
             free(p);
             return s;
         }

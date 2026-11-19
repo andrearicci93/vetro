@@ -147,10 +147,19 @@ var BOOT_RETRIES = 60;
 function tryRead(p) { try { return fs.readFileSync(p, 'utf8').trim(); } catch (e) { return null; } }
 function tryReadRaw(p) { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return null; } }
 
+var telemetryCache = {at: 0, data: null};
+var TELEMETRY_TTL_MS = 1000;
+var bootIdCache = undefined, cpuCoresCache = undefined, thermalPathCache = undefined;
+
 function readTelemetry() {
+    var now = Date.now();
+    if (telemetryCache.data && now >= telemetryCache.at && (now - telemetryCache.at) < TELEMETRY_TTL_MS) {
+        return Object.assign({}, telemetryCache.data);
+    }
+    if (!bootIdCache) bootIdCache = tryRead('/proc/sys/kernel/random/boot_id');
     var out = {
-        ts: Math.floor(Date.now() / 1000),
-        boot_id: tryRead('/proc/sys/kernel/random/boot_id'),
+        ts: Math.floor(now / 1000),
+        boot_id: bootIdCache,
         hostname: tryRead('/etc/hostname'),
         loadavg: tryRead('/proc/loadavg'),
         cpu_online: tryRead('/sys/devices/system/cpu/online'),
@@ -162,9 +171,12 @@ function readTelemetry() {
     if (up) out.uptime_s = parseFloat(up.split(WHITESPACE_RE)[0]);
     else out.uptime_s = null;
 
-    var cpuinfo = tryReadRaw('/proc/cpuinfo');
-    if (cpuinfo) out.cpu_cores = (cpuinfo.match(PROCESSOR_LINE_RE) || []).length;
-    else out.cpu_cores = null;
+    if (!cpuCoresCache) {
+        var cpuinfo = tryReadRaw('/proc/cpuinfo');
+        var coreCount = cpuinfo ? (cpuinfo.match(PROCESSOR_LINE_RE) || []).length : 0;
+        cpuCoresCache = coreCount > 0 ? coreCount : null;
+    }
+    out.cpu_cores = cpuCoresCache;
 
     var freq = tryRead('/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq');
     if (freq) out.cpu_freq_khz = parseInt(freq, 10);
@@ -184,23 +196,40 @@ function readTelemetry() {
     }
 
     var temp = null;
-    ['/sys/class/thermal', '/sys/devices/virtual/thermal'].forEach(function (dir) {
-        if (temp) return;
-        var zones = [];
-        try { zones = fs.readdirSync(dir).filter(function (n) { return THERMAL_ZONE_RE.test(n); }).sort(); } catch (e) { zones = []; }
-        zones.forEach(function (zone) { if (!temp) temp = tryRead(dir + '/' + zone + '/temp'); });
-    });
-    // Samsung's TVs have no Linux thermal zones (nothing under /sys/class/thermal): the SoC driver exposes the
-    // temperature in whole degrees, as <soc>/<name>.thermal/temperature (56 on a Q80A), readable by everyone.
-    if (!temp) {
-        var soc = '/sys/devices/platform/soc', names = [];
-        try { names = fs.readdirSync(soc).filter(function (n) { return THERMAL_DEVICE_RE.test(n); }).sort(); } catch (e) { names = []; }
-        names.forEach(function (n) { if (!temp) temp = tryRead(soc + '/' + n + '/temperature'); });
+    if (thermalPathCache !== undefined) {
+        if (thermalPathCache) temp = tryRead(thermalPathCache);
+    } else {
+        var foundThermal = null;
+        ['/sys/class/thermal', '/sys/devices/virtual/thermal'].forEach(function (dir) {
+            if (temp) return;
+            var zones = [];
+            try { zones = fs.readdirSync(dir).filter(function (n) { return THERMAL_ZONE_RE.test(n); }).sort(); } catch (e) { zones = []; }
+            zones.forEach(function (zone) {
+                if (temp) return;
+                var p = dir + '/' + zone + '/temp';
+                temp = tryRead(p);
+                if (temp) foundThermal = p;
+            });
+        });
+        // Samsung's TVs have no Linux thermal zones (nothing under /sys/class/thermal): the SoC driver exposes the
+        // temperature in whole degrees, as <soc>/<name>.thermal/temperature (56 on a Q80A), readable by everyone.
+        if (!temp) {
+            var soc = '/sys/devices/platform/soc', names = [];
+            try { names = fs.readdirSync(soc).filter(function (n) { return THERMAL_DEVICE_RE.test(n); }).sort(); } catch (e) { names = []; }
+            names.forEach(function (n) {
+                if (temp) return;
+                var p = soc + '/' + n + '/temperature';
+                temp = tryRead(p);
+                if (temp) foundThermal = p;
+            });
+        }
+        if (foundThermal !== null) thermalPathCache = foundThermal;
     }
     if (temp) { var t = parseInt(temp, 10); out.soctemp_c = (t > 1000) ? (t / 1000) : t; }
     else out.soctemp_c = null;
 
-    return out;
+    telemetryCache = {at: Date.now(), data: out};
+    return Object.assign({}, out);
 }
 
 // What the TV screen shows. The launcher's pid check is the only root command, and it runs only while the launcher is on.
@@ -688,7 +717,7 @@ function handleProbe(req, res) {
 }
 
 var registryCache = null, registryAt = 0, registryPending = null, registryGeneration = 0, registryPendingGeneration = 0;
-function invalidateInventory() { registryAt = 0; registryCache = null; registryGeneration++; }
+function invalidateInventory() { registryAt = 0; registryCache = null; registryGeneration++; iconCache = Object.create(null); iconCacheOrder = []; }
 function inventory(refresh) {
     if (!refresh && registryCache && Date.now()-registryAt<60000) return Promise.resolve(registryCache);
     if (registryPending) {
@@ -893,7 +922,12 @@ function handleLeftovers(req,res) {
     });
 }
 function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);});}
-var iconCache = {};
+var iconCache = Object.create(null), iconCacheOrder = [], MAX_ICON_CACHE = 100;
+function touchIconOrder(id) {
+    var idx = iconCacheOrder.indexOf(id);
+    if (idx >= 0) iconCacheOrder.splice(idx, 1);
+    iconCacheOrder.push(id);
+}
 // ?appId=... read straight from the query string: the one parameter does not need a URL parser.
 function appIdOf(rawUrl) {
     var m = APP_ID_QUERY_RE.exec(rawUrl || '');
@@ -911,13 +945,13 @@ function handleIcon(req,res) {
         if(req.headers&&req.headers['if-none-match']===icon.etag){res.writeHead(304,headers);return res.end();}
         headers['content-length']=icon.data.length;res.writeHead(200,headers);res.end(icon.data);
     }
-    if(iconCache[id])return send(iconCache[id]);
+    if(iconCache[id]){touchIconOrder(id);return send(iconCache[id]);}
     inventory(false).then(function(data){var row=data.apps.find(function(r){return r.appId===id;}), command=AppRegistry.iconCommand(row);
         if(!command)throw new Error('no readable icon');
         return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error('icon unavailable');var data=Buffer.from(r.stdout.replace(WHITESPACE_CHAR_RE,''),'base64');
             var png=data.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), jpg=data[0]===255&&data[1]===216;
             if((!png&&!jpg)||data.length>262144)throw new Error('unsupported icon');
-            var icon={data:data,mime:png?'image/png':'image/jpeg',etag:iconEtag(data)};if(Object.keys(iconCache).length<100)iconCache[id]=icon;send(icon);
+            var icon={data:data,mime:png?'image/png':'image/jpeg',etag:iconEtag(data)};touchIconOrder(id);iconCache[id]=icon;while(iconCacheOrder.length>MAX_ICON_CACHE)delete iconCache[iconCacheOrder.shift()];send(icon);
         });
     }).catch(function(){serveJson(res,{error:'icon unavailable'},404);});
 }
@@ -1412,13 +1446,17 @@ process.on('uncaughtException', function (e) {
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
-var presenceTimer=setInterval(function(){
- if(!bridge.connected)return;
- presence.read().then(function(d){
-  var fg=d.foreground;if(fg){var row=apps.normalize(state.apps,state.packages).filter(function(a){return a.appId===fg.appId})[0];fg=Object.assign({name:row&&row.name||fg.appId},fg);}
-  bridge.publishPresence(fg);
- }).catch(function(){});
-},5000);if(presenceTimer.unref)presenceTimer.unref();
+var presenceTimer=null;
+function schedulePresence(){
+ presenceTimer=setTimeout(function(){
+  if(!bridge.connected){schedulePresence();return;}
+  presence.read().then(function(d){
+   var fg=d.foreground;if(fg){var lists=[registryCache&&registryCache.apps,state.apps],name=fg.appId;for(var k=0;k<lists.length;k++){var list=lists[k]||[];for(var i=0;i<list.length;i++){if(list[i]&&(list[i].id===fg.appId||list[i].appId===fg.appId)&&list[i].name){name=list[i].name;break;}}if(name!==fg.appId)break;}fg=Object.assign({name:name},fg);}
+   bridge.publishPresence(fg);
+  }).catch(function(){}).then(schedulePresence);
+ },5000);if(presenceTimer.unref)presenceTimer.unref();
+}
+schedulePresence();
 
 // Native audio/source reads require no foreground UI and never alter the TV.
 var tvStateTimer=setInterval(function(){

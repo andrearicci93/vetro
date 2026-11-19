@@ -114,20 +114,25 @@ function removeTree(p) {
 function cleanStage(keep) {
     var removed = [];
     var onDemand = STAGE + '/on-demand';
-    var used = stageInUse();
-    var dirs = fs.readdirSync(STAGE).filter(function (n) {
+    var dirNames = fs.readdirSync(STAGE).filter(function (n) {
         return /^archive-root-[0-9a-f]{16}$/.test(n) && n !== keep;
-    }).map(function (n) {
-        var t = 0;
-        try { var st = fs.statSync(STAGE + '/' + n); t = st.mtimeMs || +st.mtime || 0; } catch (e) {}
-        return { name: n, time: t };
-    }).sort(function (a, b) { return b.time - a.time; });
+    });
     var spared = {};
     spared[keep] = true;
-    dirs.forEach(function (d, i) {
-        if (i < STAGE_KEEP - 1 || used.indexOf(d.name) >= 0) { spared[d.name] = true; return; }
-        try { removeTree(STAGE + '/' + d.name); removed.push(d.name); } catch (e) {}
-    });
+    if (dirNames.length > STAGE_KEEP - 1) {
+        var used = stageInUse();
+        var dirs = dirNames.map(function (n) {
+            var t = 0;
+            try { var st = fs.statSync(STAGE + '/' + n); t = st.mtimeMs || +st.mtime || 0; } catch (e) {}
+            return { name: n, time: t };
+        }).sort(function (a, b) { return b.time - a.time; });
+        dirs.forEach(function (d, i) {
+            if (i < STAGE_KEEP - 1 || used.indexOf(d.name) >= 0) { spared[d.name] = true; return; }
+            try { removeTree(STAGE + '/' + d.name); removed.push(d.name); } catch (e) {}
+        });
+    } else {
+        dirNames.forEach(function (n) { spared[n] = true; });
+    }
     // Archives in on-demand/ whose folder is gone (or never existed) have no use.
     try {
         fs.readdirSync(onDemand).forEach(function (n) {

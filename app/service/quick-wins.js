@@ -439,7 +439,7 @@ Wins.prototype.airplay = function (on) {
 Wins.prototype.boot = function (hbbtv) {
     var self = this, mine = this.load(), did = [], id = this.bootId();
     var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function () {}) : Promise.resolve();
-    return Promise.all([start, self.bootFirmware(mine, id, did), self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, did)]).then(function () { return did; });
+    return Promise.all([start, self.bootFirmware(mine, id, did), self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, id, did)]).then(function () { return did; });
 };
 
 // Runtime masks live in /run, so after a boot the update units are free again: the lock is applied once per boot,
@@ -464,9 +464,9 @@ Wins.prototype.bootFirmware = function (mine, id, did) {
     }).then(function (v) { self.fwBootBusy = false; return v; }, function (e) { self.fwBootBusy = false; throw e; });
 };
 
-Wins.prototype.bootAirplay = function (mine, did) {
+Wins.prototype.bootAirplay = function (mine, id, did) {
     var self = this;
-    if (!mine.airplay) return Promise.resolve();
+    if (!mine.airplay || (id && mine.airplayBoot === id)) return Promise.resolve();
     var n = 0;
     function chosen() { return self.changing !== 'airplay' && self.load().airplay; }
     function poll() {
@@ -474,7 +474,12 @@ Wins.prototype.bootAirplay = function (mine, did) {
         return self.execute(wrap(AIRPLAY_WEB_RUNNING + ' && echo up || echo down'), 8000).then(function (r) {
             if (!chosen()) return;
             if (UP_RE.test(r.stdout || '') && !r.exit_code) {
-                return self.execute(wrap(AIRPLAY_WEB_STOP + '\nsleep 1\ntrue'), 12000).then(function () { if (chosen()) did.push('airplay'); });
+                return self.execute(wrap(AIRPLAY_WEB_STOP + '\nsleep 1\ntrue'), 12000).then(function () {
+                    if (chosen()) {
+                        did.push('airplay');
+                        if (id) self.save({airplayBoot: id});
+                    }
+                });
             }
             if (++n >= BOOT_POLLS) return null;
             return self.sleep(BOOT_POLL_MS).then(poll);
@@ -483,7 +488,9 @@ Wins.prototype.bootAirplay = function (mine, did) {
             return self.sleep(BOOT_POLL_MS).then(poll);
         });
     }
-    return poll();
+    return poll().then(function () {
+        if (id && chosen() && self.load().airplayBoot !== id) self.save({airplayBoot: id});
+    });
 };
 
 // The update units can start before the launcher is ready, so this half runs as soon as the root agent is up.

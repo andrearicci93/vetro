@@ -30,7 +30,15 @@ function load(execute,probe){
             if(!r){r=apps.normalize([{id:f[0],packageId:f[1],show:false}],[])[0];rows.push(r);byId[f[0]]=r;}
             Object.assign(r,{packageId:f[1],type:f[2],component:f[3],disabled:f[4]==='true',removable:f[5]==='true',version:f[6]||r.version,size:+f[7]||r.size,author:f[8]||null,system:f[9]==='true',preload:f[10]==='true',onboot:f[11]==='true',autorestart:f[12]==='true',show:f[13]==='false',name:r.name||f[14]||null,iconPath:f[15]||null,dependencies:data[1]===null?null:[],dependents:data[1]===null?null:[],dependencySource:data[1]===null?null:'package registry'});
         });
-        data[2].forEach(function(f){if(byId[f[0]])byId[f[0]].disabled=f[1]==='true';});rows=rows.filter(function(r){return registered[r.appId]});rows.forEach(function(r){r.origin=r.system?'system':r.preload?'preinstalled':r.system===false&&r.preload===false?'installed':'unknown';Object.assign(r,apps.classification(r),apps.describe(r));(data[1]||[]).forEach(function(d){if(d[0]===r.packageId)r.dependencies.push({packageId:d[1],type:d[2],version:d[3]||null});if(d[1]===r.packageId)r.dependents.push({packageId:d[0],type:d[2],version:d[3]||null});});});
+        var depsByPkg = {}, dependentsByPkg = {};
+        if (data[1]) {
+            data[1].forEach(function (d) {
+                var pkg = d[0], dep = d[1], type = d[2], ver = d[3] || null;
+                (depsByPkg[pkg] || (depsByPkg[pkg] = [])).push({packageId: dep, type: type, version: ver});
+                (dependentsByPkg[dep] || (dependentsByPkg[dep] = [])).push({packageId: pkg, type: type, version: ver});
+            });
+        }
+        data[2].forEach(function(f){if(byId[f[0]])byId[f[0]].disabled=f[1]==='true';});rows=rows.filter(function(r){return registered[r.appId]});rows.forEach(function(r){r.origin=r.system?'system':r.preload?'preinstalled':r.system===false&&r.preload===false?'installed':'unknown';Object.assign(r,apps.classification(r),apps.describe(r));if(data[1]!==null){r.dependencies=(depsByPkg[r.packageId]||[]).slice();r.dependents=(dependentsByPkg[r.packageId]||[]).slice();}});
         return {apps:rows,summary:apps.summarize(rows),source:'package registry + public probe',dependenciesAvailable:data[1]!==null,collectedAt:new Date().toISOString()};
     });
 }

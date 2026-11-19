@@ -796,14 +796,14 @@ PluginHost.prototype.get = function (id) {
     return entry && entry.instance || null;
 };
 
-PluginHost.prototype.status = function (id) {
+PluginHost.prototype.status = function (id, state) {
     var entry = this.entries[id];
     if (!entry) return null;
     var detail = null;
     if (entry.instance && entry.instance.status) {
         detail = this._guard(entry, function () { return entry.instance.status(); }, true) || null;
     }
-    var st = this._readState(), enabled = st.enabled[id];
+    var st = state || this._readState(), enabled = st.enabled[id];
     return {
         id: id,
         name: entry.def.name || id,
@@ -827,8 +827,8 @@ PluginHost.prototype.status = function (id) {
 };
 
 PluginHost.prototype.list = function () {
-    var out = [];
-    for (var i = 0; i < this.order.length; i++) out.push(this.status(this.order[i]));
+    var st = this._readState(), out = [];
+    for (var i = 0; i < this.order.length; i++) out.push(this.status(this.order[i], st));
     return out;
 };
 

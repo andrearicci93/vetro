@@ -88,6 +88,6 @@ namespace Launcher.Native
             return d;
         }
 
-        private static string Text(IntPtr s) { return s == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(s); }
+        private static string Text(IntPtr s) { return s == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(s); }
     }
 }
