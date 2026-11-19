@@ -16,10 +16,10 @@
 //             while it downloads. The lock is also put in place before the TV's own boot services: AT-HUB runs
 //             /opt/etc/parseinfo.sh as root at ~10 s, before the SWU timer (120 s) and the path-activated updaters,
 //             so while the win is on that vendor script is replaced by a small awk one that applies the same lock
-//             (the original is kept as parseinfo.sh.vetro-orig and restored when the win is turned off). It is
-//             installed only where the file is the known one (or a bash script that writes /proc/target_version);
-//             on other firmware the lock still starts with Vetro's root agent. swu-standalone.* is left alone: it is
-//             the USB recovery path.
+//             (the original is kept as parseinfo.sh.vetro-orig and restored when the win is turned off). It acts only
+//             while the choice is saved and the app is still installed; it is installed only where the file is the
+//             known one (or a bash script that writes /proc/target_version); on other firmware the lock still starts
+//             with Vetro's root agent. swu-standalone.* is left alone: it is the USB recovery path.
 //             Evidence: topics/firmware-update-channels.md in the private wiki (dump + live Q80A, 2026-11-19);
 //             not tried on a TV. A firmware update that lands anyway replaces everything this win did.
 //   multiscreen  Samsung's own unit com.samsung.tv.multiscreen.service has ConditionPathExists=! on
@@ -325,15 +325,18 @@ function fwSet(key, value) {
 }
 
 // The AT-HUB hook (see the header): the same lock at ~10 s, then the vendor behaviour (the /proc/target_version write).
-// It does nothing if Vetro's saved choice is not on, so turning the win off also stops the next boot from locking.
+// It does nothing if Vetro's saved choice is not on (or Vetro is no longer installed), so turning the win off, Restore
+// the TV or removing the app also stops the next boot from locking.
 function fwHookScript() {
     return '#!/usr/bin/awk -f\n' +
         '# ' + FW_HOOK_MARK + ' - Vetro applies the update lock before the update units can start.\n' +
         '# The replaced vendor script is kept in ' + FW_HOOK_BAK + ' and put back when the win is turned off.\n' +
         'BEGIN {\n' +
         '    lock = 0\n' +
-        '    while ((getline l < "' + FILE + '") > 0) { if (l ~ /"firmware"[ \\t]*:[ \\t]*true/) lock = 1 }\n' +
-        '    close("' + FILE + '")\n' +
+        '    if (system("[ -d /opt/usr/apps/vetrotvapp ]") == 0) {\n' +
+        '        while ((getline l < "' + FILE + '") > 0) { if (l ~ /"firmware"[ \\t]*:[ \\t]*true/) lock = 1 }\n' +
+        '        close("' + FILE + '")\n' +
+        '    }\n' +
         '    if (lock) {\n' +
         '        system("/usr/bin/systemctl stop --no-block ' + fwStoppable().join(' ') + ' >/dev/null 2>&1")\n' +
         '        system("for u in ' + FWUNITS.join(' ') + '; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
