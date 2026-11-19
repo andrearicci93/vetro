@@ -202,15 +202,18 @@ MqttClient.prototype._handle = function (type, flags, body) {
             var id=body.readUInt16BE(0),topic=this._subscriptions[id];delete this._subscriptions[id];
             if(topic)this._emit('subscribed',{topic:topic,accepted:body[2]===0});
             break;
+        case 11: break; // UNSUBACK
     }
 };
 
 MqttClient.prototype._startKeepalive = function () {
     var self = this;
+    if (this._pingTimer) clearInterval(this._pingTimer);
     this._pingTimer = setInterval(function () {
         if(self._pingOutstanding){self._fail('MQTT keepalive timeout');return;}
         if (self._socket){self._pingOutstanding=true;self._socket.write(packet(12, 0, null));}
     }, Math.floor(this.keepalive * 1000) * 0.5 || 15000);
+    if (this._pingTimer && this._pingTimer.unref) this._pingTimer.unref();
 };
 
 MqttClient.prototype.publish = function (topic, payload, opts) {
@@ -224,11 +227,23 @@ MqttClient.prototype.publish = function (topic, payload, opts) {
 MqttClient.prototype.subscribe = function (topic, fn) {
     if (fn) this._subscribers.push({ topic: topic, fn: fn });
     // Without a callback, the global message event is sufficient.
-    if (this._socket) {
+    if (this._connected && this._socket) {
         var pid = Buffer.alloc(2);
         this._packetId=this._packetId%65535+1;pid.writeUInt16BE(this._packetId,0);this._subscriptions[this._packetId]=topic;
         var body = Buffer.concat([ pid, encodeString(topic), Buffer.from([0]) ]); // QoS 0
         this._socket.write(packet(8, 2, body));
+    }
+    return this;
+};
+
+MqttClient.prototype.unsubscribe = function (topic) {
+    this._subscribers = this._subscribers.filter(function (s) { return s.topic !== topic; });
+    if (this._connected && this._socket) {
+        var pid = Buffer.alloc(2);
+        this._packetId = this._packetId % 65535 + 1;
+        pid.writeUInt16BE(this._packetId, 0);
+        var body = Buffer.concat([ pid, encodeString(topic) ]);
+        this._socket.write(packet(10, 2, body));
     }
     return this;
 };

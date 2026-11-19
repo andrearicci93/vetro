@@ -49,7 +49,8 @@ function validateConfig(p,previous){previous=previous||{};if(p.enabled!=null&&ty
  ['username','password','deviceName','clientId','ca'].forEach(function(k){if(p[k]!=null&&(typeof p[k]!=='string'||p[k].length>(k==='ca'?32768:k==='password'?1024:120)))throw Error('Invalid field: '+k);});
  return {enabled:enabled,host:p.host,port:p.port||(p.tls?8883:1883),tls:p.tls===true,ca:p.ca||null,username:p.username||null,password:Object.prototype.hasOwnProperty.call(p,'password')?p.password:previous.password||null,topicPrefix:prefix,deviceName:p.deviceName||'Vetro',clientId:p.clientId||previous.clientId||newId()};
 }
-function saveConfig(cfg){var temp=CONFIG_PATH_PERSISTENT+'.tmp';fs.writeFileSync(temp,JSON.stringify(cfg)+'\n',{mode:0o600});fs.chmodSync(temp,0o600);fs.renameSync(temp,CONFIG_PATH_PERSISTENT);}
+var saveSeq = 0;
+function saveConfig(cfg){var temp=CONFIG_PATH_PERSISTENT+'.'+(++saveSeq)+'.tmp';try{fs.writeFileSync(temp,JSON.stringify(cfg)+'\n',{mode:0o600});fs.chmodSync(temp,0o600);fs.renameSync(temp,CONFIG_PATH_PERSISTENT);}catch(e){try{if(fs.unlinkSync)fs.unlinkSync(temp);}catch(x){}throw e;}}
 
 function MqttBridge(getTelemetry,onMessage) {
     this.getTelemetry = getTelemetry;this.onMessage=onMessage||function(){};
@@ -196,11 +197,13 @@ MqttBridge.prototype.start = function () {
             self.stopClient();
         }
     }, 30000);
+    if (this.timer && this.timer.unref) this.timer.unref();
 
     // publish telemetry every 10s
     this.publishTimer = setInterval(function () {
         if (self.client) { self._publishTelemetry(); self._discover(); }
     }, 10000);
+    if (this.publishTimer && this.publishTimer.unref) this.publishTimer.unref();
 
     if (this.config && this.config.enabled !== false) this._connect();
 };
@@ -245,6 +248,7 @@ MqttBridge.prototype._connect = function () {
             self.reconnectTimer = null;
             if (self.running) self._connect();
         }, 10000);
+        if (self.reconnectTimer && self.reconnectTimer.unref) self.reconnectTimer.unref();
     });
 
     this.client = client;
@@ -274,7 +278,7 @@ MqttBridge.prototype.stop = function () {
 MqttBridge.prototype.event=function(type,message){this.events.push({ts:Date.now(),type:type,message:message});if(this.events.length>50)this.events.shift();};
 MqttBridge.prototype.status=function(){return {identity:this.identity,identityPersistent:!!(this.config&&this.config.clientId)||this.legacyIdentity.persistent,availabilityTopic:this.availabilityTopic,state:this.state,connected:this.connected,lastError:this.lastError,connectedAt:this.connectedAt,retryAt:this.retryAt,lastMessageAt:this.lastMessageAt,lastPublishAt:this.lastPublishAt,sent:this.sent,received:this.received,subscriptions:this.subscriptions.slice(),events:this.events.slice()};};
 MqttBridge.prototype.configure=function(cfg){this.config=cfg;this._connect();};
-MqttBridge.prototype.setTopics=function(topics){topics=Array.from(new Set(topics)).sort();if(JSON.stringify(topics)===JSON.stringify(this.topics))return;this.topics=topics;if(this.running&&this.config)this._connect();};
+MqttBridge.prototype.setTopics=function(topics){var next=[],seen={};(topics||[]).forEach(function(t){if(t&&!seen[t]){seen[t]=true;next.push(t);}});next.sort();if(JSON.stringify(next)===JSON.stringify(this.topics))return;var prev=this.topics||[];this.topics=next;if(this.connected&&this.client){var client=this.client,self=this;prev.forEach(function(t){if(!seen[t]&&typeof client.unsubscribe==='function')client.unsubscribe(t);});this.subscriptions=this.subscriptions.filter(function(s){return !!seen[s.topic];});next.forEach(function(t){if(prev.indexOf(t)<0){self.subscriptions.push({topic:t,status:'pending'});client.subscribe(t);}});return;}if(this.running&&this.config)this._connect();};
 MqttBridge.prototype.publish=function(topic,payload,opts){if(!this.connected||!this.client)throw Error('MQTT disconnected');this.client.publish(topic,payload,opts);this.sent++;this.lastPublishAt=Date.now();};
 
 function parseMeminfo(s) {
