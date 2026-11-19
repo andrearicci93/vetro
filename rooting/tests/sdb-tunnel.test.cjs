@@ -324,6 +324,75 @@ async function main() {
     await assert.rejects(startTunnel(26101, {port: 70000}), /invalid tunnel port/);
   });
 
+  await check('tunnel: drops queued OPEN on early client close and rejects WRTE before OKAY', async () => {
+    const upstreamServices = [];
+    let releaseCnxn = null;
+    const fake = net.createServer((socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('error', () => {});
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        while (buffer.length >= HEADER) {
+          const cmd = buffer.toString('ascii', 0, 4);
+          const len = buffer.readUInt32LE(12);
+          if (buffer.length < HEADER + len) break;
+          const arg0 = buffer.readUInt32LE(4);
+          const payload = buffer.slice(HEADER, HEADER + len);
+          buffer = buffer.slice(HEADER + len);
+          if (cmd === 'CNXN') releaseCnxn = () => socket.write(encode('CNXN', 0x01000000, 4096, null));
+          else if (cmd === 'OPEN') {
+            const svc = payload.toString('ascii').replace(/\0$/, '');
+            upstreamServices.push(svc);
+            if (svc !== 'shell:premature') socket.write(encode('OKAY', 4001, arg0, null));
+          }
+        }
+      });
+    });
+    const sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      // 1. Client connects, queues OPEN while upstream CNXN is stalled, then disconnects early
+      await new Promise((resolve) => {
+        const c1 = net.connect(port, '127.0.0.1');
+        c1.on('error', () => {});
+        c1.on('connect', () => {
+          c1.write(encode('CNXN', 0x01000000, 4096, 'host::'));
+          c1.write(encode('OPEN', 11, 0, 'shell:early-bye'));
+          setTimeout(() => { c1.destroy(); resolve(); }, 30);
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.ok(releaseCnxn, 'upstream handshake initiated');
+      releaseCnxn();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(upstreamServices, [], 'queued OPEN of disconnected client must not reach sdbd');
+
+      // 2. Client sends WRTE before OKAY sets remoteId: tunnel destroys it cleanly without crashing
+      await new Promise((resolve, reject) => {
+        const c2 = net.connect(port, '127.0.0.1');
+        c2.resume();
+        const timer = setTimeout(() => { c2.destroy(); reject(new Error('WRTE before OKAY was not rejected')); }, 1500);
+        c2.on('error', () => {});
+        c2.on('close', () => { clearTimeout(timer); resolve(); });
+        c2.on('connect', () => {
+          c2.write(Buffer.concat([
+            encode('CNXN', 0x01000000, 4096, 'host::'),
+            encode('OPEN', 22, 0, 'shell:premature'),
+            encode('WRTE', 22, 0, 'bad')
+          ]));
+        });
+      });
+
+      // 3. Pool.close() clears queued packets, streams, and banner state
+      tunnel._pool.queued.push(Buffer.from('stale'));
+      tunnel._pool.streams.set(999, {client: null, clientId: 1, remoteId: -1});
+      tunnel._pool.close();
+      assert.equal(tunnel._pool.queued.length, 0);
+      assert.equal(tunnel._pool.streams.size, 0);
+      assert.equal(tunnel._pool.banner, null);
+    } finally { tunnel.close(); fake.close(); }
+  });
+
   process.exitCode = failures ? 1 : 0;
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; });
