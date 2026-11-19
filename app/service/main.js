@@ -381,7 +381,7 @@ function downloadDiagnostics(res, withComponents) {
                 'guideViewerDb|' + v('db/tv-viewer/key_guide_status'), 'settingsMenuGuide|' + v('db/menu/settings_menu_guide'), 'oobStatus|' + v('db/btapp/oob_status'),
                 'netcoreapp|$(readlink /usr/share/dotnet.tizen/netcoreapp 2>/dev/null)', 'inputKeyevent|' + has('/usr/bin/input_keyevent'),
                 'volumeApp|$([ -d /usr/apps/org.tizen.volume-app ] || [ -d /opt/usr/apps/org.tizen.volume-app ] && echo 1 || echo 0)',
-                'functionOsd|$([ -d /usr/apps/org.tizen.function-osd ] || [ -d /opt/usr/apps/org.tizen.function-osd ] && echo 1 || echo 0)',
+                'functionOsd|$([ -d /usr/apps/org.tizen.function-osd ] || [ -d /opt/usr/apps/org.tizen.function-osd ] || [ -d /usr/apps/com.samsung.tv.virtual-remote ] && echo 1 || echo 0)',
                 'quicklaunch|$([ -d /usr/apps/com.samsung.tv.quicklaunch ] || [ -d /opt/usr/apps/com.samsung.tv.quicklaunch ] && echo 1 || echo 0)',
                 'hbbtvApp|$([ -d /usr/apps/org.tizen.hbbtv ] || [ -d /opt/usr/apps/org.tizen.hbbtv ] && echo 1 || echo 0)',
                 'inputHelpers|$(ps -eo args 2>/dev/null | grep -c "[S]amsungTvRemoteInputAgent.dll")',
