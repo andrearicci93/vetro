@@ -86,6 +86,34 @@ var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var factoryApps = require('./factory-apps.js');
 var factoryTest = new factoryApps.FactoryTest(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter});
+// Remote key guides: the capsule with a picture of the remote ("Press Volume: Mute", the play/pause wheel) that Samsung's
+// volume-app and tv-viewer show on a key press. Each shows its guide while its own "done" flag is false and then sets it; on
+// Tizen 9 the flags are memory keys (memory/volume-app/key_guide_status, memory/tv-viewer/key_guide_status), cleared at every
+// cold boot, so the guides come back after each power-on (2021-22 firmware keep tv-viewer's in db/tv-viewer/key_guide_status,
+// so they show once). Samsung's own "Settings menu guide" switch reads neither. With this on, Vetro sets the flags that exist
+// to done now and after every boot; off sets the memory ones back to Samsung's default. Read from the firmware (2026-11-19),
+// not yet tried on a Tizen 9 TV. Kept here rather than in quick-wins.js: that file is unchanged since 0.5.0 and the update
+// from 0.5.0 has no room for one more changed file.
+var keyGuides=(function(){
+    var FILE='/opt/usr/home/owner/share/vetro-key-guides.json', KEYS=['memory/volume-app/key_guide_status','memory/tv-viewer/key_guide_status','db/tv-viewer/key_guide_status'];
+    function chosen(){try{return JSON.parse(fs.readFileSync(FILE,'utf8')).on===true;}catch(e){return false;}}
+    // One line per key that exists: K|<key>|<value>; a bool reads "... = 1 (Bool)" or "... = 0 (Bool)".
+    function script(value){return KEYS.map(function(k){var memory=k.indexOf('memory/')===0;
+        return 'o=$(vconftool get '+k+' 2>/dev/null); case "$o" in *"(Bool)"*) t=bool;; *"(Int32)"*) t=int;; *) t=;; esac; '+
+            'if [ -n "$t" ]; then '+(value===null||(value===0&&!memory)?'':'vconftool set -f -t $t '+k+' '+value+' >/dev/null 2>&1; ')+
+            'echo "K|'+k+'|$(vconftool get '+k+' 2>/dev/null | sed -n "s/.*= \\([0-9]*\\) .*/\\1/p")"; fi';}).join('\n')+'\ntrue';}
+    function run(value){return agentExecute('echo '+Buffer.from(script(value)).toString('base64')+' | base64 -d | sh',15000).then(function(r){
+        var keys={};String(r&&r.stdout||'').split('\n').forEach(function(l){var f=l.split('|');if(f[0]==='K'&&f.length===3)keys[f[1]]=f[2]==='1';});return keys;});}
+    function status(keys){var names=Object.keys(keys);if(!names.length)return {status:'unknown'};
+        var on=chosen(),done=names.every(function(k){return keys[k];});return {status:!on?'off':done?'on':'partial',keys:names.length};}
+    return {
+        read:function(){return run(null).then(status);},
+        apply:function(on){
+            try{atomicFile.write(fs,FILE,JSON.stringify({on:on===true}));}catch(e){return Promise.reject(Error('The setting could not be saved: '+e.message));}
+            return run(on?1:0).then(status);},
+        boot:function(){return chosen()?run(1):Promise.resolve(null);}
+    };
+})();
 // Apps removed through Vetro stay removed (keep-removed.js; idea and mechanism by zabique, github.com/zabique/vetro).
 var keepRemoved = new (require('./keep-removed.js').KeepRemoved)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
@@ -737,7 +765,7 @@ function handleSdbAccess(req,res) {
 }
 function handleWins(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
-    Promise.resolve().then(function(){return wins.apply(p.id,p.on);}).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
+    Promise.resolve().then(function(){if(p.id==='keyguides'){if(typeof p.on!=='boolean')throw Error('Invalid state');return keyGuides.apply(p.on);}return wins.apply(p.id,p.on);}).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
 });}
 // Keep removed apps removed: {action:'enable'|'disable'} is the global switch, {action:'allow', packages:[...]} takes apps off the
 // list. Each answer says whether Samsung's list was brought in line; the switch is saved either way.
@@ -1134,7 +1162,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/pairing-mode') return handlePairingMode(req,res);
     if (url === '/sdb-access') return handleSdbAccess(req,res);
     if (url === '/keep-removed') return serveJson(res, keepRemoved.summary());
-    if (url === '/wins') return wins.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
+    if (url === '/wins') return wins.read().then(function(d){return keyGuides.read().then(function(k){d.wins.keyguides=k;return d;},function(){d.wins.keyguides={status:'unknown'};return d;});}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/factory-test') return handleFactoryTest(req,res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
@@ -1326,7 +1354,7 @@ var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRest
 
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){});keyGuides.boot().catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Keep removed apps removed: the source fix is written on every change; this is only the safety net, slow, and only
 // while the switch is on. It also runs once when the adapter is up, and once more to take Vetro's ids out if the

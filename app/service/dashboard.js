@@ -859,6 +859,8 @@ var winCopy={
   detail:'Stops contents-recognition-service (recognises the app, content type and channel on screen), canalysis, pisa-service and adagent-service (analytics and ads), mirroring-recognition-manager, contents-ui-detector-service and contents-ott-detector-service (find thumbnails and app screens in the picture), kpi-logging (key presses), emergency-log-transmitter and devicetracker. canalysis and pisa-service are kept off across restarts with the files their own start-up units check; the rest are stopped again at each boot. data-service collects KPI logs (its configuration lists remote keys, apps, channels, volume and the advertising ID among the sources) and its log endpoints are on lcprd1.samsungcloudsolution.net; other components start it again, so that host is also added to the saved list of the domain filter. What it sends was not inspected, the connection is encrypted. Turn on Enable DNS blocking to apply it. Switch off to start everything again and remove the host if Vetro added it. Some TV features that report back to Samsung, such as targeted suggestions, may stop updating. canalysis also works on logo recognition for HDMI inputs and pisa-service starts feature services and handles ad terms, so source recognition or some consent screens may change; neither was tested.'},
  airplay:{title:'Disable AirPlay',desc:'Stops the AirPlay receiver now and after every restart. Casting from an Apple device to this TV does not work while this is on.',
   detail:'Stops the receiver and AirPlay app and prevents the receiver from starting at boot. Turning this off restarts the receiver. Method by zabique.'},
+ keyguides:{title:'Hide remote key guides',desc:'Stops the picture of the remote that pops up on Vol, Play and other keys (\u201cPress Volume: Mute\u201d), now and after every restart.',
+  detail:'Samsung\u2019s volume and TV apps show the guide until they note it was seen; on 2024 and later TVs that note is lost at every power-on. Vetro marks the guides as seen now and after each restart. Switch off to let Samsung show them again.'},
  firmware:{title:'Disable automatic firmware update',desc:'A firmware update can remove root access, so install updates yourself.',
   detail:'Turns off automatic firmware updates and restores the previous setting when switched off.'}
 };
@@ -885,9 +887,10 @@ function groupItem(g,compact){
 function winItem(id){
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
- if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · Auto update is off':'Done · Multi View starts when you open it','on');
+ if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · Auto update is off':id==='keyguides'?'Done · the guides count as seen':'Done · Multi View starts when you open it','on');
  if(id==='telemetry'&&st==='on'&&w.dnsBlocked===false)state+=chip('Uploads can resume · turn on Enable DNS blocking','partial');
- if(st==='partial')state=chip(id==='telemetry'?'Partly done · '+w.running+' service'+(w.running===1?'':'s')+' started again':'Partly done · Samsung started it again','partial');
+ if(st==='partial'&&id==='keyguides')state=chip('Partly done · a guide can still show','partial');
+ else if(st==='partial')state=chip(id==='telemetry'?'Partly done · '+w.running+' service'+(w.running===1?'':'s')+' started again':'Partly done · Samsung started it again','partial');
  if(st==='off'&&w.running)state=chip('Running now','');
  var control=quickData.wins&&st&&st!=='unknown'?switchMarkup('data-win-switch="'+id+'"',st==='on',busy,c.title):'';
  return quickItem(id,c.title,c.desc,state,control,'<details><summary>What this changes</summary><p>'+esc(c.detail)+'</p></details>');
@@ -950,7 +953,7 @@ function renderQuick(){
  $('quickAppsGroup').hidden=!appGroups.length;paint($('quickApps'),appGroups.map(function(g){return groupItem(g,true)}).join(''));
  paint($('quickKeep'),keepItem());
  renderUninstall();
- paint($('quickControl'),winItem('firmware'));
+ paint($('quickControl'),winItem('firmware')+winItem('keyguides'));
  paint($('quickTracking'),winItem('telemetry')+quickGroups.filter(function(g){return g.section==='tracking'}).map(function(g){return groupItem(g)}).join('')+dns);
  paint($('quickVoice'),quickGroups.filter(function(g){return g.section==='voice'}).map(function(g){return groupItem(g)}).join(''));
  renderCustom();
@@ -1065,6 +1068,7 @@ var winsBusy=false;
 function winMessage(id,on,d){
  if(d.changed===false)return winCopy[id].title+': already in the requested state.';
  if(id==='firmware')return 'Auto update '+(on?'off':'on')+'; value '+d.previous+' → '+d.value+' read back from the TV.';
+ if(id==='keyguides')return 'Remote key guides '+(on?'hidden: they count as seen now and after every restart.':'back: Samsung shows them again.');
  if(id==='airplay')return 'AirPlay '+(on?'disabled: the receiver stays off after a restart.':'back on: the receiver has restarted.');
  if(id==='multiscreen')return 'Multi View autostart '+(on?'disabled: Multi View is stopped':'back on')+' (read back). '+(on?'Multi View still opens on demand.':'It loads again at the next restart.');
  return 'Ambient autostart '+(on?'disabled: the app is stopped and will be stopped after each restart':'back on: Ambient has started')+'.';
