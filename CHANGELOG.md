@@ -66,7 +66,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Remapper
 
-- **Switch to an input from a shortcut**: rules can send `KEY_HDMI1` to `KEY_HDMI4` and `KEY_TV` ([#204](https://github.com/andrearicci93/vetro/issues/204)).
+- **A remote button can press another key.** Besides opening an app, a shortcut can switch to an input (TV, HDMI 1 to 4), play or pause (one Play/Pause key, or Play, Pause, Stop, Rewind, Fast forward), or press Home, Back, OK, the arrows or the volume keys: choose *Send key* in Step 2 ([#204](https://github.com/andrearicci93/vetro/issues/204)). The Home Assistant rules offer the same keys.
 - **Only the parts of a remote that send keys are listed** ([#217](https://github.com/andrearicci93/vetro/issues/217), [#218](https://github.com/andrearicci93/vetro/pull/218), by swiezaczek).
 - **The on-screen keyboard works with the remote interception on** more TVs (reported and first fixed by MoryCorp, [#143](https://github.com/andrearicci93/vetro/issues/143)).
 

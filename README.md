@@ -65,7 +65,7 @@ Quick settings and Task manager share the same inventory: disable an assistant i
 
 ## Remapper
 
-Do what you want with the remote. Press a button, choose an app, and the button opens it. Shortcuts survive restarts, and the Home Assistant page can also turn a key press into an MQTT message.
+Do what you want with the remote. Press a button, choose an app or another key (an HDMI input, Play/Pause...), and the button does it. Shortcuts survive restarts, and the Home Assistant page can also turn a key press into an MQTT message.
 
 <p align="center">
   <img src="app/docs/images/remapper-0.5.jpg" alt="The Remapper tab: listen to a remote key, choose an app and save the shortcut" width="1000">

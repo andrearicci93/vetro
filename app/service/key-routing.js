@@ -21,7 +21,7 @@ var TUNER_SHOWN = TUNER_PIPE + '.shown';
 // Named keys (control.js KEYS) and what the tuner does with them: the evdev code it reads for the same key on the remote, or a pipe word.
 var TUNER_KEYS = {
     Up: 'key 103', Down: 'key 108', Left: 'key 105', Right: 'key 106', Return: 'key 28',
-    XF86Back: 'key 1', XF86Exit: 'key 174', XF86Info: 'key 358', XF86ChannelGuide: 'key 365', XF86ChannelList: 'list',
+    XF86Back: 'key 1', XF86Exit: 'key 174', XF86Info: 'key 358', XF86ChannelGuide: 'key 365', XF86ChannelList: 'list', XF86PlayBack: 'key 244',
     '1': 'key 2', '2': 'key 3', '3': 'key 4', '4': 'key 5', '5': 'key 6', '6': 'key 7', '7': 'key 8', '8': 'key 9', '9': 'key 10', '0': 'key 11'
 };
 // Keys that send the tuner away on the real remote (its SystemKeys): it steps aside first, then the key goes to the system as before.
