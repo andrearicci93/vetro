@@ -16,6 +16,7 @@ assert.equal(messages.length,1);assert.equal(messages[0].retained,true);assert.e
 assert.ok(socket.writes.some(b=>b.equals(Buffer.from([0x40,2,0,7]))));
 const sub=socket.writes.find(b=>(b[0]>>4)===8),id=sub.readUInt16BE(2);
 socket.emit('data',Buffer.from([0x90,3,id>>8,id&255,0]));assert.equal(subscriptions[0].accepted,true);
+c.unsubscribe('in');const unsub=socket.writes.at(-1);assert.equal(unsub[0],0xa2);socket.emit('data',Buffer.from([0xb0,2,unsub[2],unsub[3]]));
 c.publish('state','ready',{retain:true});assert.equal(socket.writes.at(-1)[0],0x31);
 // Fragmented message is delivered once, after the complete payload arrives.
 const p=Buffer.from([0x30,5,0,2,105,110,122]);socket.emit('data',p.subarray(0,3));assert.equal(messages.length,1);socket.emit('data',p.subarray(3));assert.equal(messages.length,2);
