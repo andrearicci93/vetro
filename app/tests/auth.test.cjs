@@ -199,5 +199,60 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
     } finally { crypto.timingSafeEqual = real; }
   }
 
+  // Concurrent /auth/pair requests before body finishes cannot overwrite pending, oversized body returns 413, and error/close guards prevent crashes.
+  auth._reset();
+  {
+    const mkReq = () => {
+      const req = new EventEmitter();
+      Object.assign(req, {method: 'POST', url: '/auth/pair', socket: {remoteAddress: '192.168.1.20'}, headers: {host: '192.168.1.10:8099'}});
+      return req;
+    };
+    let r1Res, r2Res;
+    const p1 = new Promise(resolve => { r1Res = {writeHead(c) { this.c = c; }, end(t) { resolve({code: this.c, body: JSON.parse(t)}); }}; });
+    const p2 = new Promise(resolve => { r2Res = {writeHead(c) { this.c = c; }, end(t) { resolve({code: this.c, body: JSON.parse(t)}); }}; });
+    const req1 = mkReq(), req2 = mkReq();
+    let launches = 0;
+    assert.equal(auth.gate(req1, r1Res, '/auth/pair', {onPair: () => launches++}), true);
+    assert.equal(auth.gate(req2, r2Res, '/auth/pair', {onPair: () => launches++}), true);
+    req1.emit('data', Buffer.from(JSON.stringify({name: 'First'}))); req1.emit('end');
+    req2.emit('data', Buffer.from(JSON.stringify({name: 'Second'}))); req2.emit('end');
+    const [a, b] = await Promise.all([p1, p2]);
+    assert.equal(a.code, 200); assert.equal(b.code, 429); assert.equal(launches, 1);
+
+    auth._reset();
+    const big = await call('POST', '/auth/confirm', {body: {name: 'x'.repeat(3000)}});
+    assert.equal(big.code, 413);
+
+    {
+      const req = new EventEmitter();
+      Object.assign(req, {method: 'POST', url: '/auth/confirm', socket: {remoteAddress: '192.168.1.20'},
+        headers: {host: '192.168.1.10:8099'}, destroy() { req.emit('close'); }});
+      const code = await new Promise(resolve => {
+        let c;
+        const r = {writeHead(x) { c = x; }, end() { resolve(c); }};
+        auth.gate(req, r, '/auth/confirm');
+        req.emit('data', Buffer.alloc(2100, 65));
+      });
+      assert.equal(code, 413);
+    }
+
+    // Expired sessions stored on disk are filtered out on load().
+    const tmpAuth = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-auth-exp-')), 'auth.json');
+    const liveKey = 'a'.repeat(64);
+    const liveHash = require('crypto').createHash('sha256').update(liveKey).digest('hex');
+    fs.writeFileSync(tmpAuth + '.mode', JSON.stringify({enabled: true}));
+    fs.writeFileSync(tmpAuth, JSON.stringify({sessions: [
+      {hash: 'expired', name: 'Old', created: 1, seen: 1, expires: Date.now() - 1000},
+      {hash: liveHash, name: 'Live', created: 1, seen: 1, expires: Date.now() + 60000}
+    ]}));
+    const child = require('child_process').spawnSync(process.execPath, ['-e',
+      "process.env.VETRO_AUTH_PATH=" + JSON.stringify(tmpAuth) + ";const a=require('./app/service/auth.js');" +
+      "const res={c:0,b:null,writeHead(c){this.c=c},end(t){this.b=JSON.parse(t)}};" +
+      "a.gate({method:'GET',url:'/auth/devices',socket:{remoteAddress:'192.168.1.20'},headers:{host:'192.168.1.10:8099',authorization:'Bearer " + liveKey + "'}},res,'/auth/devices');" +
+      "if(res.c!==200||!res.b||res.b.devices.length!==1||res.b.devices[0].name!=='Live')process.exit(1);"
+    ], {encoding: 'utf8'});
+    assert.equal(child.status, 0, child.stderr);
+  }
+
   console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported, Node 4 fallback');
 })().catch(e => { console.error(e); process.exitCode = 1; });
