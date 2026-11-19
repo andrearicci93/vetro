@@ -132,6 +132,7 @@ Tuner.prototype.writeFeatures = function () {
 // version folder of it, any version) and the tuner service itself (tvs-daemon). Without them it would start and find
 // nothing to tune, so the switch is refused there. Only a Q80A with a DVB-T tuner has been seen working.
 Tuner.prototype.probe = function () {
+    var self = this;
     var script = [
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "tuner=$p"; else echo "tuner="; fi',
@@ -141,9 +142,12 @@ Tuner.prototype.probe = function () {
         'if [ -e /usr/apps/' + TARGET_APP + ' ]; then echo viewer=1; else echo viewer=0; fi',
         // The version folders of Samsung's client, for the diagnostic report (which versions exist on which firmware is not known yet).
         'echo "clientver=$(ls ' + CLIENT_ROOT + ' 2>/dev/null | tr "\\n" ",")"',
-        // The client's .dll files, relative to its folder, for the report: on Tizen 9 the version folders exist but the file is not where
-        // CLIENT_GLOB looks (the S95C and S95F reports of 2026-11-18). Names only, at most 12.
-        'echo "clientdll=$(cd ' + CLIENT_ROOT + ' 2>/dev/null && find . -maxdepth 4 -name "*.dll" 2>/dev/null | sed "s|^\\./||" | head -n 12 | tr "\\n" ",")"',
+        // What the client's folder holds, relative to it, for the report: on Tizen 9 the version folders exist but hold no .dll at all
+        // (the S95C and S95F reports of 2026-11-18). Names only, at most 12.
+        'echo "clientdll=$(cd ' + CLIENT_ROOT + ' 2>/dev/null && find . -maxdepth 4 ! -type d 2>/dev/null | sed "s|^\\./||" | head -n 12 | tr "\\n" ",")"',
+        // Where else the firmware keeps the client (the Q80A has copies under /usr/apps): searched once per run, and only on a TV where the
+        // usual place has none, since walking /usr/apps takes a moment.
+        self._clientElsewhere ? '' : 'if ! ls ' + CLIENT_GLOB + ' >/dev/null 2>&1; then echo "clientelse=$(find /usr/apps /opt/usr/apps /usr/share/dotnet.tizen /opt/usr/dotnet -maxdepth 6 -name "Tizen.TV.Broadcast.TVService*.dll" 2>/dev/null | head -n 6 | tr "\\n" ",")"; fi',
         // No log file yet is normal: without || true the missing file would fail the whole read.
         'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
     ].join('\n');
@@ -154,10 +158,13 @@ Tuner.prototype.probe = function () {
         while ((m = PROBE_FLAG_RE.exec(out))) flags[m[1]] = m[2] === '1';
         var tail = out.split(LOG_SPLIT)[1];
         var versions = /^clientver=(.*)$/m.exec(out), dlls = /^clientdll=(.*)$/m.exec(out);
+        var elsewhere = /^clientelse=(.*)$/m.exec(out);
+        if (elsewhere) self._clientElsewhere = elsewhere[1].split(',').filter(function (v) { return v.length > 0; }).slice(0, 6);
         return {running: !!pid, pid: pid ? +pid[1] : null, client: flags.client === true, tvs: flags.tvs === true,
             dotnet: flags.dotnet === true, viewer: flags.viewer === true,
             clientVersions: versions ? versions[1].split(',').filter(function (v) { return CLIENT_VERSION_RE.test(v); }).slice(0, 5) : [],
             clientFiles: dlls ? dlls[1].split(',').filter(function (v) { return v.length > 0; }).slice(0, 12) : [],
+            clientElsewhere: self._clientElsewhere || [],
             log: tail ? tail.trim() : ''};
     });
 };
@@ -207,9 +214,9 @@ Tuner.prototype.status = function () {
         self.unsupported = reason;
         return Object.assign(base, {running: p.running, pid: p.pid, supported: reason === null, unsupportedReason: reason,
             samsungTunerFound: p.viewer, prerequisites: {dotnet: p.dotnet, client: p.client, tvs: p.tvs, viewer: p.viewer},
-            clientVersions: p.clientVersions, clientFiles: p.clientFiles, log: p.log});
+            clientVersions: p.clientVersions, clientFiles: p.clientFiles, clientElsewhere: p.clientElsewhere, log: p.log});
     }).catch(function (e) {
-        return Object.assign(base, {running: null, pid: null, supported: null, unsupportedReason: null, samsungTunerFound: null, prerequisites: null, clientVersions: [], clientFiles: [], log: '', probeError: e.message});
+        return Object.assign(base, {running: null, pid: null, supported: null, unsupportedReason: null, samsungTunerFound: null, prerequisites: null, clientVersions: [], clientFiles: [], clientElsewhere: [], log: '', probeError: e.message});
     });
 };
 
