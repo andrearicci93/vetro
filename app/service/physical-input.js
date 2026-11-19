@@ -130,7 +130,12 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                 var token='/tmp/vetro-input-'+crypto.randomBytes(12).toString('hex')+'.token';
                 var helper=path.join(__dirname,'..','payload','SamsungTvRemoteInputAgent.dll');
                 var args=['127.0.0.1',String(address.port),token,selected.name+'@'+selected.node,'evdev','TV',mode,mode==='filter'?tokens.join(','):''];
-                var command='umask 077; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
+                // A filter helper still running from an earlier start (another service run, a bridge that was never told to stop) keeps the
+                // remote grabbed: every new helper then fails EVIOCGRAB with EBUSY and the interception never connects (S95B on 1720.7,
+                // static analysis 2026-11-19). Before a filter start any other filter helper is ended; observers (listen) are left alone.
+                // The pattern does not rely on the argument separators: the Q80A's tr leaves the NULs and the shell drops them.
+                var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
+                var command=stale+'umask 077; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
                 self.execute(command,5000,active).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
         });

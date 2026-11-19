@@ -50,6 +50,7 @@ internal static class SamsungTvRemoteInputAgent
     private const int DisplayStateOff = 3;
     private const string ScreenOnCommand = "--timeout=3 call org.tizen.system.deviced /Org/Tizen/System/DeviceD/Display "
         + "org.tizen.system.deviced.display ChangeState s lcdon";
+    private const int DeviceBusy = 16;   // EBUSY
     private const int UinputUserDeviceSize = 1116;
     private const int UinputNameBytes = 80;
 
@@ -407,7 +408,11 @@ internal static class SamsungTvRemoteInputAgent
                 true);
             using (NetworkStream stream = client.GetStream())
             {
+                // The service writes its hello at once; a helper whose service never speaks (or is gone) must not sit
+                // there for ever holding nothing, so the first read gives up after 10 s.
+                client.ReceiveTimeout = 10000;
                 string hello = ReadLine(stream);
+                client.ReceiveTimeout = 0;
                 string[] helloFields = hello.Split('\t');
                 if (helloFields.Length != 2 || helloFields[0] != ProtocolVersion)
                 {
@@ -430,7 +435,15 @@ internal static class SamsungTvRemoteInputAgent
                     if (filter)
                     {
                         forwarder = new UinputForwarder(device);
-                        if (ioctl_integer(inputDescriptor, EviocGrab, 1) != 0)
+                        // EBUSY: the helper of an earlier start may still be letting go of the remote (seen once on
+                        // an AU7000); a short wait is enough, the service ends stale helpers before a new start.
+                        int grab = ioctl_integer(inputDescriptor, EviocGrab, 1);
+                        for (int attempt = 0; grab != 0 && Marshal.GetLastWin32Error() == DeviceBusy && attempt < 5; attempt++)
+                        {
+                            System.Threading.Thread.Sleep(300);
+                            grab = ioctl_integer(inputDescriptor, EviocGrab, 1);
+                        }
+                        if (grab != 0)
                         {
                             throw NativeError("EVIOCGRAB " + device.Node);
                         }
