@@ -68,6 +68,7 @@ const kinds = () => JSON.parse(JSON.stringify(c.inputHistory)).map(e => e.kind +
         prevHelperLog: 'IOException: remote input device disconnected\n', helperLog: '', remoconSubtype: 'remocon subtype: no tool\n'});
     assert.equal(p.remoconSubtype, 'no-tool', 'the helper\'s Remocon line as a fixed word');
     assert.equal(report.projectors.input({remoconSubtype: 'remocon subtype: /etc/x'}).remoconSubtype, null);
+    assert.equal(report.projectors.input({remoconSubtype: 'remocon subtype: unsupported\n'}).remoconSubtype, 'unsupported', 'firmware without the command (Q80A, Tizen 6.0)');
     const events = p.history.map(e => e.event);
     assert.ok(events.includes('lost helper-disconnected') && events.includes('failed helper-did-not-connect') && events.includes('stop request') && events.includes('request filter'), events.join(' | '));
     assert.equal(events[events.length - 1], 'lost other', 'an unknown reason is "other"; an unknown kind and a negative age are dropped');

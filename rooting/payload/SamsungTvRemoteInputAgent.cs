@@ -143,7 +143,7 @@ internal static class SamsungTvRemoteInputAgent
             {
                 return;
             }
-            // The outcome goes to the log as one fixed line ("remocon subtype: set / refused / no tool / no node / failed"), read by
+            // The outcome goes to the log as one fixed line ("remocon subtype: set / unsupported / refused / no tool / no node / failed"), read by
             // the diagnostics: on Tizen 9 boards keys passed on through this copy seem not to reach Samsung's apps or Vetro's TV page
             // (S95C, Q70C, 2026-11-19), and whether the copy became a Remocon there is the first thing to know.
             Task.Run(() =>
@@ -187,6 +187,12 @@ internal static class SamsungTvRemoteInputAgent
                             if (output.Contains("Success"))
                             {
                                 Console.Error.WriteLine("remocon subtype: set");
+                                return;
+                            }
+                            // Firmware without the command (Tizen 6.0 on the Q80A answers "unknown option"): asking again changes nothing.
+                            if (output.Contains("unknown option"))
+                            {
+                                Console.Error.WriteLine("remocon subtype: unsupported");
                                 return;
                             }
                         }
