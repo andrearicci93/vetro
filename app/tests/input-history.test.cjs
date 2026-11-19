@@ -65,7 +65,9 @@ const kinds = () => JSON.parse(JSON.stringify(c.inputHistory)).map(e => e.kind +
         history: c.inputHistory.map(e => ({secondsAgo: Math.round((now - e.at) / 1000), kind: e.kind, why: e.why}))
             .concat([{secondsAgo: 3, kind: 'lost', why: '/home/owner/secret'}, {secondsAgo: 2, kind: 'evil', why: 'x'}, {secondsAgo: -1, kind: 'restore'}]),
         loop: {paused: true, lifecycle: true, restoring: false, faultPauseSeconds: 0, retryWaitSeconds: 25, retryFailures: 12, tokenCount: 4, mode: 'filter', extra: 'x'},
-        prevHelperLog: 'IOException: remote input device disconnected\n', helperLog: ''});
+        prevHelperLog: 'IOException: remote input device disconnected\n', helperLog: '', remoconSubtype: 'remocon subtype: no tool\n'});
+    assert.equal(p.remoconSubtype, 'no-tool', 'the helper\'s Remocon line as a fixed word');
+    assert.equal(report.projectors.input({remoconSubtype: 'remocon subtype: /etc/x'}).remoconSubtype, null);
     const events = p.history.map(e => e.event);
     assert.ok(events.includes('lost helper-disconnected') && events.includes('failed helper-did-not-connect') && events.includes('stop request') && events.includes('request filter'), events.join(' | '));
     assert.equal(events[events.length - 1], 'lost other', 'an unknown reason is "other"; an unknown kind and a negative age are dropped');

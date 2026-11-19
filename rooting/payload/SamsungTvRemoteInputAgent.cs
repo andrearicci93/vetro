@@ -143,8 +143,12 @@ internal static class SamsungTvRemoteInputAgent
             {
                 return;
             }
+            // The outcome goes to the log as one fixed line ("remocon subtype: set / refused / no tool / no node / failed"), read by
+            // the diagnostics: on Tizen 9 boards keys passed on through this copy seem not to reach Samsung's apps or Vetro's TV page
+            // (S95C, Q70C, 2026-11-19), and whether the copy became a Remocon there is the first thing to know.
             Task.Run(() =>
             {
+                bool asked = false;
                 try
                 {
                     for (int attempt = 0; attempt < 12; attempt++)
@@ -166,8 +170,10 @@ internal static class SamsungTvRemoteInputAgent
                         }
                         if (!File.Exists("/usr/bin/enlightenment_info"))
                         {
+                            Console.Error.WriteLine("remocon subtype: no tool");
                             return;
                         }
+                        asked = true;
                         using (System.Diagnostics.Process process = new System.Diagnostics.Process())
                         {
                             process.StartInfo.FileName = "/usr/bin/enlightenment_info";
@@ -180,13 +186,16 @@ internal static class SamsungTvRemoteInputAgent
                             process.WaitForExit(5000);
                             if (output.Contains("Success"))
                             {
+                                Console.Error.WriteLine("remocon subtype: set");
                                 return;
                             }
                         }
                     }
+                    Console.Error.WriteLine(asked ? "remocon subtype: refused" : "remocon subtype: no node");
                 }
                 catch (Exception)
                 {
+                    Console.Error.WriteLine("remocon subtype: failed");
                 }
             });
         }

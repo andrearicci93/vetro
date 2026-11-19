@@ -195,7 +195,9 @@ var projectors = {
     // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out; prevHelperError: the
     // same for the helper before it (why a helper that held the remote ended).
     input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','savedNodePresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','keyedSameNameCount','selectableCount']),
-        {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog),prevHelperError:helperError(d.prevHelperLog)},
+        {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog),prevHelperError:helperError(d.prevHelperLog),
+            // remoconSubtype: whether the helper made its copy of the remote a Remocon on the TV (set, refused, no tool, no node, failed).
+            remoconSubtype:(function(m){return m?m[1].replace(' ','-'):null;})(/^remocon subtype: (set|refused|no tool|no node|failed)$/.exec(String(d.remoconSubtype||'').trim()))},
         // loop: what the 5 s restore loop is waiting on; history: the bridge's last turns (connected, lost, ended before connecting, a restore
         // tried or failed, a stop and who asked, the root agent up or down, a Remapper request), newest last.
         {loop:d.loop&&typeof d.loop==='object'?Object.assign(flags(d.loop,['paused','lifecycle','restoring']),numbers(d.loop,['faultPauseSeconds','retryWaitSeconds','retryFailures','tokenCount']),{mode:choice(d.loop.mode,['off','filter','observe'])}):null,

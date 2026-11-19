@@ -211,7 +211,9 @@ function screenSummary() {
     launcherState.enabled = launcherState.enabled || !!launcherState.customApp;     // the TV screen shows either launcher as "on"
     var checkLauncher = launcherState.enabled && p.agent.connected ? dock.runningNow().then(function (r) { return r.running; }, function () { return null; }) : Promise.resolve(null);
     return checkLauncher.then(function (running) {
-        return require('./screen-status.js').build({version: buildInfo.version, port: PORT, platform: p, input: inputSnapshot(),
+        // restarting: a start of the remote bridge is under way and none has failed yet (the TV screen says "Reconnecting", not "not found").
+        var lastTurn = inputHistory[inputHistory.length - 1], restarting = !inputError && (inputRestoring || !!(lastTurn && Date.now() - lastTurn.at < 15000 && /^(?:stop|lost|ended|restore|agent)$/.test(lastTurn.kind)));
+        return require('./screen-status.js').build({version: buildInfo.version, port: PORT, platform: p, input: Object.assign(inputSnapshot(), {restarting: restarting}),
             launcher: {installed: dock.installed(), enabled: launcherState.enabled, running: running, failures: dock.failures, error: !!dock.lastError},
             meminfo: tryReadRaw('/proc/meminfo'), interfaces: os.networkInterfaces()});
     });
@@ -332,7 +334,7 @@ function downloadDiagnostics(res, withComponents) {
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
                 .then(function (tunerLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: tunerLog}); }); }); }),
         input: later(function () {
-            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '', prevHelperLog = '', now = Date.now();
+            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '', prevHelperLog = '', subtype = '', now = Date.now();
             // What the restore loop is waiting on, read before the commands below: paused by the Remapper, the service's input stopped, a
             // start in progress, a pause after a fault or failed tries, no key to hold.
             var loop = {paused: inputPaused, lifecycle: inputLifecycleActive, restoring: inputRestoring, faultPauseSeconds: Math.max(0, Math.ceil((inputFaultUntil - now) / 1000)),
@@ -340,8 +342,9 @@ function downloadDiagnostics(res, withComponents) {
             var history = inputHistory.map(function (e) { return {secondsAgo: Math.round((now - e.at) / 1000), kind: e.kind, why: e.why}; });
             // The helper's own last words (it writes them to /tmp/vetro-input.log, root only): why it could not hold the remote. The helper
             // before it (vetro-input.prev.log) says why that one ended.
-            return agentExecute('tail -n 2 /tmp/vetro-input.log 2>/dev/null; echo ---; tail -n 2 /tmp/vetro-input.prev.log 2>/dev/null', 5000).then(function (r) {
-                var parts = String(r && r.stdout || '').split(/(?:^|\n)---\n?/); helperLog = parts[0] || ''; prevHelperLog = parts[1] || ''; }, function () {}).then(function () {
+            // remoconSubtype: whether the helper's copy of the remote was made a Remocon (its "remocon subtype: ..." line).
+            return agentExecute('tail -n 2 /tmp/vetro-input.log 2>/dev/null; echo ---; tail -n 2 /tmp/vetro-input.prev.log 2>/dev/null; echo ---; grep -h "remocon subtype: " /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null | tail -n 1', 5000).then(function (r) {
+                var parts = String(r && r.stdout || '').split(/(?:^|\n)---\n?/); helperLog = parts[0] || ''; prevHelperLog = parts[1] || ''; subtype = parts[2] || ''; }, function () {}).then(function () {
                 return physical.inventory();
             }).then(function (all) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
@@ -351,7 +354,7 @@ function downloadDiagnostics(res, withComponents) {
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
                     keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null,
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
-                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, loop: loop, history: history,
+                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, remoconSubtype: subtype.trim(), loop: loop, history: history,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; })};
             });
         }),

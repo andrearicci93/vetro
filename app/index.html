@@ -411,6 +411,8 @@ function checks(d) {
   if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
   else if (!d.input.enabled) out.push(['off', 'Remote input', 'Off', null, 'input off']);
   else if (d.input.connected) out.push(['ok', 'Remote input', 'Filtering', null, 'input ok']);
+  // Vetro is taking the remote again (after a start, a wake or a change of keys): a few seconds, not a lost remote.
+  else if (d.input.restarting) out.push(['na', 'Remote input', 'Reconnecting', 'Vetro is taking the remote again. If this stays, open this screen again in a minute.', 'input wait']);
   else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remapper in the dashboard.', 'INPUT LOST', 'bad']);
   l = d && d.launcher;
   if (!d) out.push(['na', 'Launcher', 'Unknown', null, 'launcher ?']);

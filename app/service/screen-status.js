@@ -50,7 +50,7 @@ function build(deps) {
         port: deps.port,
         address: address(deps.interfaces),
         root: Object.assign({mode: (deps.platform || {}).mode || null, connected: agent.connected === true}, rootReason(deps.platform)),
-        input: {enabled: preference.enabled === true, connected: policy.connected === true},
+        input: {enabled: preference.enabled === true, connected: policy.connected === true, restarting: policy.connected !== true && (deps.input || {}).restarting === true},
         launcher: {installed: launcher.installed === true, enabled: launcher.enabled === true,
             running: typeof launcher.running === 'boolean' ? launcher.running : null,
             failures: launcher.failures || 0, hasError: launcher.error === true},
