@@ -38,7 +38,7 @@ var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" conte
     'function $(i){return document.getElementById(i)}' +
     'function say(t,bad){var m=$("msg");m.textContent=t;m.className=bad?"err":""}' +
     'function post(p,b){return fetch(p,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(b||{})}).then(function(r){return r.json()})}' +
-    'var busy=false,cleanArmed=false,cleanReset=0;' +
+    'var busy=false,pollBusy=false,pollSeq=0,cleanArmed=false,cleanReset=0;' +
     'function resetClean(){cleanArmed=false;clearTimeout(cleanReset);$("clean").textContent="Remove certificate and files";}' +
     'function show(d){$("s_setup").textContent=d.setup==="ready"?"ready":d.setup==="working"?"setting up…":d.setup==="nocobalt"?"Samsung YouTube not found":d.setup==="error"?"error: "+d.error:"not made yet";' +
     '$("s_script").textContent=d.script==="ready"?"TizenTube "+d.scriptVersion:d.script==="error"?"error: "+d.scriptError:"not downloaded yet";' +
@@ -46,13 +46,13 @@ var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" conte
     '$("s_pages").textContent=d.pages?d.pages+(d.lastPage?" (last "+d.lastPage+")":""):"none yet";' +
     'if(!busy){$("tile").checked=!!d.tileOn}' +
     '$("tilenote").textContent=d.tileState==="on"?"On.":d.tileState==="waiting"?"Waiting: "+d.tileNote:d.tileState==="unsupported"||d.tileState==="error"?d.tileNote:""}' +
-    'function poll(){fetch("status").then(function(r){return r.json()}).then(show).catch(function(){})}' +
+    'function poll(force){if(pollBusy&&!force)return;pollBusy=true;var seq=++pollSeq;fetch("status").then(function(r){return r.json()}).then(function(d){if(seq===pollSeq){pollBusy=false;show(d)}},function(){if(seq===pollSeq)pollBusy=false})}' +
     'function fail(e){say(e&&e.message||"Request failed",true)}' +
-    '$("open").onclick=function(){say("Preparing and starting… the first time takes up to a minute.");post("open").then(function(d){say(d.ok?(d.warning||"YouTube is starting on the TV."):d.error,!d.ok||!!d.warning);poll()}).catch(fail)};' +
-    '$("close").onclick=function(){post("close").then(function(){say("YouTube closed.");poll()}).catch(fail)};' +
-    '$("tile").onchange=function(){busy=true;var on=$("tile").checked;say(on?"Preparing…":"Switching off…");post("tile",{on:on}).then(function(d){busy=false;say(d.ok?"":d.error,!d.ok);poll()},function(e){busy=false;fail(e)})};' +
-    '$("clean").onclick=function(){if(!cleanArmed){cleanArmed=true;$("clean").textContent="Click again to remove files";clearTimeout(cleanReset);cleanReset=setTimeout(resetClean,5000);return;}resetClean();post("cleanup").then(function(d){say(d.ok?"Removed.":d.error,!d.ok);poll()}).catch(fail)};' +
-    'document.addEventListener("visibilitychange",function(){if(!document.hidden)poll()});' +
+    '$("open").onclick=function(){say("Preparing and starting… the first time takes up to a minute.");post("open").then(function(d){say(d.ok?(d.warning||"YouTube is starting on the TV."):d.error,!d.ok||!!d.warning);poll(true)}).catch(fail)};' +
+    '$("close").onclick=function(){post("close").then(function(d){say(d&&d.ok===false?(d.error||"Failed to close."):"YouTube closed.",d&&d.ok===false);poll(true)}).catch(fail)};' +
+    '$("tile").onchange=function(){busy=true;var on=$("tile").checked;say(on?"Preparing…":"Switching off…");post("tile",{on:on}).then(function(d){busy=false;say(d.ok?"":d.error,!d.ok);poll(true)},function(e){busy=false;fail(e)})};' +
+    '$("clean").onclick=function(){if(!cleanArmed){cleanArmed=true;$("clean").textContent="Click again to remove files";clearTimeout(cleanReset);cleanReset=setTimeout(resetClean,5000);return;}resetClean();post("cleanup").then(function(d){say(d.ok?"Removed.":d.error,!d.ok);poll(true)}).catch(fail)};' +
+    'document.addEventListener("visibilitychange",function(){if(!document.hidden)poll(true)});' +
     'poll();setInterval(function(){if(!document.hidden)poll()},3000);' +
     '</script></body>';
 

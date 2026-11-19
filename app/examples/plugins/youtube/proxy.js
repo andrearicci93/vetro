@@ -65,6 +65,7 @@ function createProxy(opts) {
             if (size > MAX_BODY) {
                 over = true;
                 chunks = [];
+                if (req.resume) req.resume();
                 if (!res.headersSent) {
                     res.writeHead(413, { 'content-length': 0, 'connection': 'close' });
                     res.end(function () { drop(req.socket); });
@@ -155,11 +156,12 @@ function createProxy(opts) {
         if (!m) { c.end('HTTP/1.1 502 Bad Gateway\r\nconnection: close\r\ncontent-length: 0\r\n\r\n'); return; }
         var host = m[1].toLowerCase(), port = parseInt(m[2], 10);
         if (port < 1 || port > 65535) { c.end('HTTP/1.1 400 Bad Request\r\nconnection: close\r\ncontent-length: 0\r\n\r\n'); return; }
-        if (port === 443 && inject.MITM_HOSTS[host] && opts.script() && !rest.length) {
+        if (port === 443 && inject.MITM_HOSTS[host] && opts.script()) {
             var t = ensureTls();
             if (t) {
                 opened++;
                 c.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+                if (rest.length) c.unshift(rest);
                 t.emit('connection', c);
                 c.resume();
                 return;
