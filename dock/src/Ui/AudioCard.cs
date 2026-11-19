@@ -59,7 +59,7 @@ namespace Launcher.Ui
             for (int i = 0; i < _entries.Count; i++)
             {
                 OutputKind kind = _entries[i].Kind;
-                string glyph = kind == OutputKind.TvSpeaker ? "out_tv" : kind == OutputKind.ScreenOff ? "out_screen_off" : kind == OutputKind.External ? "vol_icon_2" : "out_bt";
+                string glyph = kind == OutputKind.TvSpeaker ? "out_tv" : kind == OutputKind.ScreenOff ? "out_tv" : kind == OutputKind.External ? "vol_icon_2" : "out_bt";
                 if (i >= _rows.Count) _rows.Add(new Row { Icon = RowIcon(glyph, Glyph), Text = RowText(FontBold, 27), Check = RowIcon("out_check", Glyph) });
                 else Efl.evas_object_image_file_set(_rows[i].Icon, System.IO.Path.Combine(_assets, glyph + ".png"), null);
                 Efl.evas_object_text_ellipsis_set(_rows[i].Text, 1.0);

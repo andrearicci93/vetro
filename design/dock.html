@@ -226,7 +226,7 @@
      capsule (inset 16 from the sides, 4 from the row, the row's texts in slate) and a bright key hint (the others' hint at 40 / 30%) ---- */
   var TASKS = [['Samsung TV Plus', '#1674fb', 382], ['YouTube', '#c2364a', 239], ['Stremio', '#8a52d6', 170], ['NOW', '#1fa971', 95], ['Apple TV', '#5f6f86', 53]];
   // The last row is an action, not an output: "Turn off screen" (Samsung's Picture Off; any key but volume and power brings the picture back).
-  var OUTS = [['TV speakers', 'out_tv', true], ['JBL Charge 5', 'out_bt', false], ['Sonos Beam', 'out_bt', false], ['Turn off screen', 'out_screen_off', false, 'screen']];
+  var OUTS = [['TV speakers', 'out_tv', true], ['JBL Charge 5', 'out_bt', false], ['Sonos Beam', 'out_bt', false], ['Turn off screen', 'out_tv', false, 'screen']];
   var CHOICES = { picture: { title: 'Picture mode', rows: ['Dynamic', 'Standard', 'Natural', 'Movie', 'Filmmaker Mode'], on: 3, note: '' },
     sleep: { title: 'Sleep timer', rows: ['Off', '30 min', '60 min', '120 min', '180 min'], on: 0, note: '' },
     /* a Shard's card (the same ChoiceCard): the title is the Shard's label, a row is its label then " · " and its value; when the Shard
