@@ -289,7 +289,11 @@ function downloadDiagnostics(res, withComponents) {
         privacy: later(function () { return privacy.read(); }),
         hbbtv: later(function () { return hbbtv.read(); }),
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
-        launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
+        // keyLog: the launcher's log lines about the keys it is handed (Vol, Mute, 123), their windows and the Audio card; the report keeps fixed shapes only.
+        launcher: later(function () { return dock.status().then(function (d) {
+            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|fifo: )' " + dockModule.LOG_FILE + ' | tail -n 24').toString('base64') + ' | base64 -d | sh', 5000)
+                .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
+                .then(function (keyLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: keyLog}); }); }); }),
         tuner: later(function () { return tuner.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         input: later(function () {
             var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '';

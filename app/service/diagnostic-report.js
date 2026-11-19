@@ -71,6 +71,14 @@ function inputErrorCode(v){return typeof v==='string'&&v?(Object.prototype.hasOw
 function helperError(text){var lines=String(text||'').split('\n').map(function(l){return l.replace(/\/dev\/input\/[A-Za-z0-9_-]{1,32}/g,'<node>').trim();}).filter(function(l){return HELPER_ERROR_RE.test(l);});
     return lines.length?lines[lines.length-1]:null;}
 var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .<>:-]{1,100}$/;
+// The launcher's own log, only the lines about the remote keys it is handed and the windows it draws for them (the volume bar, the
+// osd 123), and the Audio card's speaker-selection number. Fixed shapes only: the time of day is cut, Bluetooth addresses never pass
+// (the "outputs: <device>" lines are not in the list), an exception message passes only without slashes or quotes.
+var DOCK_EVENT_RES=[/^command (?:Show|Hide|Toggle|VolUp|VolDown|VolMute|Pad|Rescan|Reload)$/,/^volume: (?:the level cannot be read|level change refused|pill ready|elm_win_add failed)$/,
+    /^pad: (?:ready|elm_win_add failed)$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
+    /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo): [A-Za-z0-9 .,()_:=-]{1,160}$/];
+function dockEvents(text){return String(text||'').split('\n').map(function(l){return l.replace(/^\d{2}:\d{2}:\d{2}\.\d{3} /,'').trim();})
+    .filter(function(l){return DOCK_EVENT_RES.some(function(re){return re.test(l);});}).slice(-16);}
 var KEY_NAME_RE=/^[A-Z][A-Z0-9_]{1,31}$/, SCAN_RE=/^0x[0-9A-F]{8}$/;
 var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
     'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
@@ -103,13 +111,14 @@ var projectors = {
     mqtt:function(d){return Object.assign({state:['connected','connecting','disconnected','disabled','error'].indexOf(d.state)>=0?d.state:'unknown',hasError:!!d.lastError},flags(d,['connected']),numbers(d,['sent','received']));},
     privacy:function(d){return {doNotTrack:numeric(d.doNotTrack),acr:numbers(d.acr,['recognitionStatus','reset']),hbbtv:Object.assign(numbers(d.hbbtv,['dataService']),flags(d.hbbtv,['off','appRunning'])),tvPlusConsent:boolean(d.tvPlusConsent),agreementsAvailable:boolean(d.agreementsAvailable)};},
     hbbtv:function(d){return Object.assign({value:numeric(d.value)},flags(d,['off','canRestore']));},
-    // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out.
+    // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out; `events` is the
+    // last lines of its log about Vol, Mute, 123, their windows and the Audio card, in the fixed shapes of DOCK_EVENT_RES.
     launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,
         appCount:numeric((d.apps||{}).count),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
-         cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore'])});},
+         cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog)});},
     // Vetro TV Tuner: states and counts only. The error text and the log tail stay out. `prerequisites` says which of the four things
     // the tuner needs exist on this TV (the firmware's dotnet, Samsung's TV client, tvs-daemon, Samsung's live TV app) and `clientVersions`
     // the version folders of that client (numbers only), so a report from another TV shows what is different there.
