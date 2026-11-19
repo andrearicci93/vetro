@@ -97,6 +97,12 @@ function request() {
             '10:00:02.000 outputs: UseExternal Optical refused (rc -22)', '10:00:03.000 outputs: Connect AA:BB:CC:DD:EE:FF ok',
             '10:00:04.000 outputs: UseExternal Optical refused (/home/owner/x)'].join('\n')}).events;
         assert.deepEqual(out, ['outputs: UseTv TV speakers ok', 'outputs: UseExternal Optical ok', 'outputs: UseExternal Optical refused (rc -22)']);
+        // The launcher's openings and their timings: fixed names and numbers; anything else is dropped.
+        const op = report.projectors.launcher({openLog: ['10:00:00.000 perf open home: frames=14 key to first tick ms=180.2 to first frame ms=231.0 to last frame ms=512.7 handler ms=95.4 interval ms max=61.3',
+            '10:00:05.000 perf open control center: frames=9 key to first tick ms=40.0 to first frame ms=60.5 to last frame ms=300.1 handler ms=12.0 interval ms max=40.2',
+            '10:00:06.000 perf open /home/owner: frames=1 key to first tick ms=1.0 to first frame ms=1.0 to last frame ms=1.0 handler ms=1.0 interval ms max=1.0', 'garbage'].join('\n')}).openings;
+        assert.deepEqual(JSON.parse(JSON.stringify(op)), [{what: 'home', frames: 14, firstFrameMs: 231, lastFrameMs: 512.7, handlerMs: 95.4, maxGapMs: 61.3},
+            {what: 'control center', frames: 9, firstFrameMs: 60.5, lastFrameMs: 300.1, handlerMs: 12, maxGapMs: 40.2}]);
 
         // Input: the keyed same-name nodes and whether the saved node is still there.
         const inp = report.projectors.input({keyedSameNameCount: 2, savedNodePresent: false});

@@ -85,6 +85,10 @@ var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .<>:-]{1,100}$/;
 var DOCK_EVENT_RES=[/^command (?:Show|Hide|Toggle|VolUp|VolDown|VolMute|Pad|Rescan|Reload)$/,/^volume: (?:the level cannot be read|level change refused|pill ready|elm_win_add failed)$/,
     /^pad: (?:ready|elm_win_add failed)$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
     /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^outputs: (?:UseTv TV speakers|UseExternal [A-Za-z ()+-]{1,30}) (?:ok|refused \([A-Za-z0-9 .,:=_-]{0,80}\))$/,/^launch com\.samsung\.tv\.csfs rc=-?\d{1,6}$/,/^launch via HbbTV (?:request \d{1,6} ms|failed)$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/];
+// The launcher's last openings (its OpenProbe lines): what opened and how long it took from the key to the first and the last frame of the
+// entrance, the key handler's own time and the longest gap between two frames, in ms. Fixed names, numbers only.
+var OPEN_RE=/^(?:\d{2}:\d{2}:\d{2}\.\d{3} )?perf open (home|fifo show|fifo toggle|control center|all apps|row rebuild|lists reload): frames=(\d{1,5}) key to first tick ms=(\d{1,6}\.\d) to first frame ms=(\d{1,6}\.\d) to last frame ms=(\d{1,6}\.\d) handler ms=(\d{1,6}\.\d) interval ms max=(\d{1,6}\.\d)$/;
+function dockOpenings(text){return String(text||'').split('\n').map(function(l){var m=OPEN_RE.exec(l.trim());return m?{what:m[1],frames:+m[2],firstFrameMs:+m[4],lastFrameMs:+m[5],handlerMs:+m[6],maxGapMs:+m[7]}:null;}).filter(Boolean).slice(-12);}
 // A launch through the HbbTV app (#200) keeps only its outcome and timing: which app it was is the user's business.
 function dockEvents(text){return String(text||'').split('\n').map(function(l){return l.replace(/^\d{2}:\d{2}:\d{2}\.\d{3} /,'').trim()
         .replace(/^launch [A-Za-z0-9_.-]{1,120} via HbbTV request (\d{1,6}) ms$/,'launch via HbbTV request $1 ms').replace(/^launch via HbbTV failed: .*$/,'launch via HbbTV failed');})
@@ -156,7 +160,8 @@ var projectors = {
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
          cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog),
-         bootTimeline:d.bootTimeline&&typeof d.bootTimeline==='object'?numbers(d.bootTimeline,['serviceStart','agentSeen','shownAtPowerOn']):null});},
+         bootTimeline:d.bootTimeline&&typeof d.bootTimeline==='object'?numbers(d.bootTimeline,['serviceStart','agentSeen','shownAtPowerOn']):null,
+         openings:dockOpenings(d.openLog)});},
     // Vetro TV Tuner: states and counts only. The error text and the log tail stay out. `prerequisites` says which of the four things
     // the tuner needs exist on this TV (the firmware's dotnet, Samsung's TV client, tvs-daemon, Samsung's live TV app) and `clientVersions`
     // the version folders of that client (numbers only), so a report from another TV shows what is different there.

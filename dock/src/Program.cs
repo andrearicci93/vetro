@@ -1393,7 +1393,8 @@ namespace Launcher
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
                     }
-                    if (_perf) { PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more); ProbeTick(now, !more); }
+                    if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
+                    ProbeTick(now, !more);
                     if (more) return 1;
                     _anim = IntPtr.Zero;
                     return 0;
@@ -1412,7 +1413,8 @@ namespace Launcher
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId);
                 }
                 else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
-                if (_perf) { PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more); ProbeTick(now, !more); }
+                if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
+                ProbeTick(now, !more);
                 if (more) return 1;
             }
             catch (Exception ex) { Log("frame: " + ex); }
@@ -1429,8 +1431,10 @@ namespace Launcher
         private static int _perfN;
         private static readonly double[] PerfDt = new double[2048], PerfWork = new double[2048];
 
-        // The openings (--perf): the key to the first frame and to the end of the entrance, one line each (OpenProbe). The Volume bar and the
-        // osd 123 have their own animators and carry their own probe.
+        // The openings: the key to the first frame and to the end of the entrance, one line each (OpenProbe). Always on for the launcher's
+        // own openings (Home, the Control center, All apps...), so a tester's diagnostics say how slow "slow" is on that TV (a Q70C with 2 GB
+        // reported the launcher slower, 2026-11-19); it costs a few numbers per frame and one log line per opening. The Volume bar and the osd
+        // 123 have their own animators and keep their probe behind --perf.
         private static OpenProbe _probe, _pillProbe, _padProbe;
 
         private static void ProbeBegin(string what) { if (_probe != null) _probe.Begin(what, Efl.ecore_time_get()); }
@@ -2348,7 +2352,7 @@ namespace Launcher
         {
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
-            if (_perf) _probe = new OpenProbe();
+            _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
             ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
