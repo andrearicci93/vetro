@@ -177,6 +177,7 @@ namespace Tuner
 
             SetupEnvironment(Flag(args, "--shm"));
             long mInit = _clock.ElapsedMilliseconds;
+            Log("elm_init start");   // with "elm_init done" below it tells a stall inside EFL's start from one before it (S95B, 2022)
             Efl.elm_init(0, IntPtr.Zero);
             long mInitDone = _clock.ElapsedMilliseconds;
             Log("elm_init done");
@@ -382,6 +383,7 @@ namespace Tuner
                 }
                 Channel cur = _firstRead;
                 Log("tvs: " + status + (cur != null ? " -> " + cur.Major + " " + cur.Name : ""));
+                if (TvsClient.LoadedFrom != null) Log("tvs: client " + TvsClient.LoadedFrom);
                 if (cur != null) Ui(() => { _shown = cur; if (_active && !QuietStart()) ShowBanner(cur); RequestProgram(); });
                 Interlocked.Exchange(ref _listReading, 1);
                 LoadChannels(true);

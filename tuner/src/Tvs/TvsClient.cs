@@ -47,6 +47,9 @@ namespace Tuner.Tvs
 
         private static bool _resolver;
 
+        /// <summary>Where Samsung's client was loaded from and its version (for the log: 2021, 2022 and 2024 firmware keep it in different places).</summary>
+        public static volatile string LoadedFrom;
+
         public static void InstallResolver()
         {
             if (_resolver) return;
@@ -54,7 +57,14 @@ namespace Tuner.Tvs
             AppDomain.CurrentDomain.AssemblyResolve += (s, e) =>
             {
                 string file = new AssemblyName(e.Name).Name + ".dll";
-                foreach (string d in Dirs) { string p = d + file; if (System.IO.File.Exists(p)) return Assembly.LoadFrom(p); }
+                foreach (string d in Dirs)
+                {
+                    string p = d + file;
+                    if (!System.IO.File.Exists(p)) continue;
+                    Assembly a = Assembly.LoadFrom(p);
+                    if (file == "Tizen.TV.Broadcast.TVService.dll") LoadedFrom = p + " " + a.GetName().Version;
+                    return a;
+                }
                 return null;
             };
         }
