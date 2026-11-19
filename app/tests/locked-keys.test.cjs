@@ -38,9 +38,9 @@ const settle = () => new Promise(r => setTimeout(r, 40));
     physical.onEvent({code: 68, action: 'down', decision: 'blocked'}); physical.onEvent({code: 68, action: 'up', decision: 'blocked'}); await settle();
     physical.onEvent({code: 140, action: 'down', decision: 'blocked'}); physical.onEvent({code: 140, action: 'up', decision: 'blocked'}); await settle();
     assert.ok(commands.includes('/usr/bin/input_keyevent XF86AudioRaiseVolume'), 'Vol+ held for the volume bar, sent back by name with the launcher down');
-    assert.ok(commands.includes('/usr/bin/input_keyevent XF86NumberPad'), '123 held for the osd 123, sent back by name with the launcher down (it was lost before)');
+    assert.ok(commands.includes('/usr/bin/input_keyevent XF86More'), '123 held for the osd 123, sent back as XF86More (its name on 6.0, 6.5 and 9) with the launcher down');
     assert.ok(!commands.some(c => /example\.(vol|pad)/.test(c)), 'a shortcut on a locked key does not run (Overridden by Vetro UI)');
-    assert.ok(!commands.some(c => c.includes('vetro-tuner.ctl') && /XF86(AudioRaiseVolume|NumberPad)/.test(c)), 'held keys never go through the tuner routing');
+    assert.ok(!commands.some(c => c.includes('vetro-tuner.ctl') && /XF86(AudioRaiseVolume|More)/.test(c)), 'held keys never go through the tuner routing');
     // A shortcut of the user's own on another key still runs, and its key action is the only thing the routing touches.
     physical.onEvent({code: 106, action: 'down', decision: 'blocked'}); await service.context.actionQueue; await settle();
     const ok = commands.find(c => c.includes('input_keyevent Return'));

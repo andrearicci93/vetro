@@ -34,6 +34,9 @@ internal static class SamsungTvRemoteInputAgent
     private const ushort MiscellaneousScan = 4;
     private const int KeyMaximum = 0x2ff;
     private const uint EviocGrab = 0x40044590;
+    // EVIOCGKEY(96): the keys the remote holds down now, one bit per code up to KEY_MAX (0x2ff).
+    private const uint EviocGetKeys = 0x80604518;
+    private const int KeyBitmapBytes = (KeyMaximum + 1) / 8;
     private const uint UiSetEventBit = 0x40045564;
     private const uint UiSetKeyBit = 0x40045565;
     private const uint UiDeviceCreate = 0x00005501;
@@ -277,6 +280,20 @@ internal static class SamsungTvRemoteInputAgent
         }
     }
 
+    private static void WaitForNoKeyDown(int descriptor)
+    {
+        var keys = new byte[KeyBitmapBytes];
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            Array.Clear(keys, 0, keys.Length);
+            if (ioctl_buffer(descriptor, EviocGetKeys, keys) < 0) return;   // the driver cannot say: grab as before
+            bool down = false;
+            for (int i = 0; i < keys.Length && !down; i++) down = keys[i] != 0;
+            if (!down) return;
+            System.Threading.Thread.Sleep(50);
+        }
+    }
+
     [DllImport(Libc, SetLastError = true)]
     private static extern int open(string path, int flags);
 
@@ -450,6 +467,10 @@ internal static class SamsungTvRemoteInputAgent
                     if (filter)
                     {
                         forwarder = new UinputForwarder(device);
+                        // A key held down at the moment of the grab would never be released for the window system: its release
+                        // then comes from the copy, while the remote still counts it as down, and Tizen 9 drops a release whose
+                        // code is down on another device (a Play/Pause that then reads as held). Wait up to a second for no key down.
+                        WaitForNoKeyDown(inputDescriptor);
                         // EBUSY: the helper of an earlier start may still be letting go of the remote (seen once on
                         // an AU7000); a short wait is enough, the service ends stale helpers before a new start.
                         int grab = ioctl_integer(inputDescriptor, EviocGrab, 1);

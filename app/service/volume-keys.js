@@ -11,15 +11,17 @@ var KEYS = {
     '68': {word: 'volup', native: 'XF86AudioRaiseVolume'},
     '67': {word: 'voldown', native: 'XF86AudioLowerVolume'},
     '66': {word: 'volmute', native: 'XF86AudioMute'},
-    '140': {word: 'pad', native: 'XF86NumberPad'}   // the 123 key: the dock draws its own number pad
+    // The 123 key: the dock draws its own number pad. Without the launcher it goes back to Samsung as XF86More, the name its code 140
+    // has in tizen_key_layout on 6.0, 6.5 and 9; XF86NumberPad (185) has no handler on 6.5 and 9, so 123 was dead there.
+    '140': {word: 'pad', native: 'XF86More'}
 };
 var GROUPS = {volume: ['66', '67', '68'], pad: ['140']};
 var TOKENS = GROUPS.volume.concat(GROUPS.pad);
 
 function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, String(code)); }
 
-// The key the remote sent, sent again by name when the dock cannot be reached: only the four names of the table above. control.js has no
-// XF86NumberPad (it is not offered to shortcuts), so going through its list left the 123 key dead whenever the dock was down.
+// The key the remote sent, sent again by name when the dock cannot be reached: only the four names of the table above. Going through
+// control.js's list (the shortcuts' keys) left the 123 key dead whenever the dock was down.
 var NATIVE = {};
 Object.keys(KEYS).forEach(function (c) { NATIVE[KEYS[c].native] = true; });
 function reinjectCommand(native) { return NATIVE[native] === true ? '/usr/bin/input_keyevent ' + native : null; }

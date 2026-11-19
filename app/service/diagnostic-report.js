@@ -78,7 +78,7 @@ function inputTurn(e){
 function inputErrorCode(v){return typeof v==='string'&&v?(Object.prototype.hasOwnProperty.call(INPUT_ERRORS,v)?INPUT_ERRORS[v]:'other'):null;}
 function helperError(text){var lines=String(text||'').split('\n').map(function(l){return l.replace(/\/dev\/input\/[A-Za-z0-9_-]{1,32}/g,'<node>').trim();}).filter(function(l){return HELPER_ERROR_RE.test(l);});
     return lines.length?lines[lines.length-1]:null;}
-var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .<>:-]{1,100}$/;
+var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .,<>:-]{1,100}$/;   // a comma too: "write returned -1, expected 16
 // The launcher's own log, only the lines about the remote keys it is handed and the windows it draws for them (the volume bar, the
 // osd 123), and the Audio card's speaker-selection number. Fixed shapes only: the time of day is cut, Bluetooth addresses never pass
 // (the "outputs: <device>" lines are not in the list), an exception message passes only without slashes or quotes.
