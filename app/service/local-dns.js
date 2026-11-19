@@ -12,7 +12,7 @@ var DNS_QUERY_RE = /\b(A|AAAA)\? ([a-zA-Z0-9_.-]+)\./;
 var BASE='/home/owner/share/vetro/dns',MARKER='# VETRO LOCAL DOMAIN FILTER';
 function wrap(s){return 'echo '+Buffer.from(s).toString('base64')+' | base64 -d | sh';}
 function validate(domains){if(!Array.isArray(domains)||domains.length>500)throw Error('At most 500 domains');var out=[];domains.forEach(function(d){if(typeof d!=='string')throw Error('Invalid domain');d=d.toLowerCase().trim();if(d.length>253||d.indexOf('.')<0||!d.split('.').every(function(l){return DOMAIN_LABEL_RE.test(l)})||IPV4_RE.test(d)||LOCALHOST_RE.test(d))throw Error('Invalid domain: '+d);var need=blocklist.essential(d);if(need)throw Error(d+' cannot be blocked: '+need.reason);if(out.indexOf(d)<0)out.push(d)});return out;}
-function check(r){if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Local filter unavailable');return r.stdout||'';}
+function check(r){if(!r||r.exit_code!==0||r.timed_out)throw Error((r&&(r.stderr||r.stdout))||'Local filter unavailable');return r.stdout||'';}
 function Filter(execute){this.execute=execute;this.busy=false;}
 // True only when the filter's folder provably does not exist: apply() creates it the first time the filter is switched on, so
 // there is nothing to restore. A folder the service cannot look into (EACCES) is not "never used": the status is read then.
@@ -26,7 +26,7 @@ if(enabled)script+='nsenter -t 1 -m -- cat /etc/hosts > '+BASE+'/hosts.original\
 script+='echo '+config+' | base64 -d > '+BASE+'/config.json\n';return this.execute(wrap(script),25000).then(function(r){var output=check(r);return self.status().then(function(s){s.namespaceWarnings=output.split('\n').filter(function(l){return NAMESPACE_SKIP_RE.test(l)});return s;});}).finally(function(){self.busy=false});};
 Filter.prototype.restore=function(){var self=this;return this.status().then(function(s){return s.enabled&&!s.applied?self.apply(true,s.domains):s;});};
 Filter.prototype.observe=function(){
-var script="command -v tcpdump >/dev/null 2>&1 || { echo 'tcpdump unavailable' >&2; exit 127; }\nO=$(mktemp /tmp/vetro-dns.XXXXXX) || exit 1\nE=$O.err\ntrap 'rm -f \"$O\" \"$E\"' EXIT\ntcpdump -nn -l -i any -c 60 'udp dst port 53' >\"$O\" 2>\"$E\" &\np=$!\n(sleep 6; kill -INT \"$p\" 2>/dev/null) &\nw=$!\nwait \"$p\"; rc=$?\nkill \"$w\" 2>/dev/null; wait \"$w\" 2>/dev/null\ncat \"$O\"\ncat \"$E\" >&2\nexit \"$rc\"";
+var script="command -v tcpdump >/dev/null 2>&1 || { echo 'tcpdump unavailable' >&2; exit 127; }\nO=$(mktemp /tmp/vetro-dns.XXXXXX) || exit 1\nE=$O.err\ntrap 'rm -f \"$O\" \"$E\"' EXIT\ntcpdump -nn -l -i any -c 60 'udp dst port 53' >\"$O\" 2>\"$E\" &\np=$!\n(sleep 6; kill -INT \"$p\" 2>/dev/null) &\nw=$!\nwait \"$p\"; rc=$?\nkill \"$w\" 2>/dev/null; wait \"$w\" 2>/dev/null\n[ \"$rc\" -eq 130 ] && rc=0\ncat \"$O\"\ncat \"$E\" >&2\nexit \"$rc\"";
 return this.execute(wrap(script),12000).then(function(r){var out=[];check(r).split('\n').forEach(function(l){var m=DNS_QUERY_RE.exec(l);if(m&&out.indexOf(m[2].toLowerCase())<0)out.push(m[2].toLowerCase())});return {domains:out,seconds:6,note:'UDP DNS only, in the capture namespace. No requests observed does not mean no traffic.'};});};
 
 module.exports={Filter:Filter,validate:validate};

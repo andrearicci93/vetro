@@ -93,7 +93,7 @@ if (require.main !== module) return;
 const [cmd, a, b, c] = process.argv.slice(2);
 try {
     if (cmd === 'new') {
-        if (!/^[a-z][a-z0-9-]{1,31}$/.test(a || '') || a === 'install' || a === 'resume') die('usage: node scripts/vetro-plugin.cjs new <id> [dir]\n  id: 2-32 chars, a-z 0-9 and -, starting with a letter', 2);
+        if (!/^[a-z][a-z0-9-]{1,31}$/.test(a || '') || a === 'install' || a === 'resume' || a === 'developer') die('usage: node scripts/vetro-plugin.cjs new <id> [dir]\n  id: 2-32 chars, a-z 0-9 and -, starting with a letter', 2);
         const dest = scaffold(a, b);
         console.log('Created ' + dest + '\nNext: edit index.js, then `check ' + dest + '` and `pack ' + dest + '` (docs/plugins.md).');
     } else if (cmd === 'check') {

@@ -567,12 +567,12 @@ Dock.prototype.otherBuild = function (state, p) {
 // The saved list is rebuilt once the TV has settled: in the first minutes Samsung's Home may still
 // be rewriting its own row, and a half-written read must not replace the good list.
 Dock.prototype.refreshCatalogLater = function () {
-    if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S) return;
+    if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
     this.refreshPending = false;
     var self = this;
     // The running launcher is told too: these lists may also hold an app installed meanwhile, and once they are written the launcher's
     // own check (its lists newer than the package database) would not ask for them any more.
-    this.writeCatalog().then(function () { return self.tellReload(); }).catch(function () {});
+    return this.writeCatalog().then(function () { return self.tellReload(); }).catch(function () {});
 };
 
 // Plugins that claim an app's tile (manifest "intercepts"). `host` is the plugin host: intercepted() says which apps are claimed,
@@ -1238,8 +1238,8 @@ Dock.prototype.supervise = function (agentConnected) {
             self.relisted = true; self.refreshPending = false;
             return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
         }
-        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return self.showAtPowerOn(state); }).then(function () { return 'running'; }); }
-        return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); self.refreshCatalogLater(); return 'started'; });
+        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); return self.closeHomeOnce(p.samsungHome).then(function () { return self.showAtPowerOn(state); }).then(function () { return self.refreshCatalogLater(); }).then(function () { return 'running'; }); }
+        return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return self.refreshCatalogLater().then(function () { return 'started'; }); });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;
     }).catch(function (e) {
