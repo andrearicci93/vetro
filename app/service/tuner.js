@@ -50,6 +50,9 @@ var BOOT_WAIT_MS = 75000;                             // a start in the first mi
 var BOOT_WINDOW_S = 300;
 var RETRY_FIRST_MS = 30000;
 var RETRY_MAX_MS = 300000;
+// A tuner found gone this soon after a start died at start (a client that throws, a TV it cannot read): that start counts as failed,
+// so the back-off grows instead of a dotnet start every supervision round.
+var QUICK_DEATH_MS = 60000;
 // What a dashboard may ask a running tuner to do: each word is a command of its control pipe, nothing else gets through.
 var COMMANDS = {show: 'show', hide: 'hide', toggle: 'toggle', guide: 'guide'};
 
@@ -376,8 +379,14 @@ Tuner.prototype.supervise = function (agentConnected) {
         // binary in its own unit: it is started again, once. See the launcher's supervise (dock.js).
         if (p.running && self.otherBuild(saved, p)) return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
         // A warning left by an earlier failed round is stale once the tuner is seen running.
-        if (p.running) { self.failures = 0; self.mark('running'); if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } return 'running'; }
-        return self.launch().then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; return 'started'; });
+        var age = self.lastStartAt ? self.now() - self.lastStartAt : Infinity;
+        if (p.running) {
+            // Failures are forgotten only once a start has lasted: a tuner that crashes a few seconds after each start keeps its back-off.
+            if (age >= QUICK_DEATH_MS) self.failures = 0;
+            self.mark('running'); if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } return 'running';
+        }
+        if (age < QUICK_DEATH_MS) { self.lastStartAt = 0; throw new Error('The tuner stopped ' + Math.round(age / 1000) + ' s after it started.'); }
+        return self.launch().then(function () { self.lastStartAt = self.now(); self.superviseFailed = false; self.lastError = null; return 'started'; });
     }).catch(function (e) {
         self.failures++; self.superviseFailed = true;
         self.nextTry = self.now() + Math.min(RETRY_MAX_MS, RETRY_FIRST_MS * Math.pow(2, Math.min(self.failures, 8) - 1));

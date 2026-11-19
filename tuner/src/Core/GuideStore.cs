@@ -38,6 +38,12 @@ namespace Tuner.Core
                 var old = new List<ulong>();
                 foreach (var kv in _items) if (kv.Key != id && readAt - kv.Value.ReadAt >= MaxAgeSeconds) old.Add(kv.Key);
                 foreach (ulong k in old) _items.Remove(k);
+                // Paging fast through a long (satellite) list reads hundreds of channels within 15 minutes: past twice the cap, the
+                // oldest reads go too, down to the cap (72 h each, tens of MB on a 2 GB TV otherwise).
+                if (_items.Count <= 2 * KeepChannels) return;
+                var byAge = new List<KeyValuePair<ulong, ChannelSchedule>>(_items);
+                byAge.Sort((a, b) => a.Value.ReadAt.CompareTo(b.Value.ReadAt));
+                for (int i = 0; i < byAge.Count && _items.Count > KeepChannels; i++) if (byAge[i].Key != id) _items.Remove(byAge[i].Key);
             }
         }
 

@@ -145,7 +145,20 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     f.tv.clock += 31000;
     f.tv.neverStarts = false;
     assert.equal(await f.tuner.supervise(true), 'started', 'after the back-off it tries again');
-    assert.equal(f.tuner.failures, 0); assert.equal(f.tuner.lastError, null);
+    assert.equal(f.tuner.failures, 1, 'failures are kept until a start lasts'); assert.equal(f.tuner.lastError, null);
+    f.tv.clock += 61000;
+    assert.equal(await f.tuner.supervise(true), 'running');
+    assert.equal(f.tuner.failures, 0, 'a tuner up for a minute forgets the failures');
+    // A tuner that dies a few seconds after each start: that start counts as failed and the wait grows (30 s, then 60 s), no dotnet start every round.
+    f.tv.clock += 5000; f.tv.running = false; f.tuner.lastStartAt = f.tv.clock - 5000;
+    assert.equal(await f.tuner.supervise(true), 'failed'); assert.match(f.tuner.lastError, /stopped 5 s after it started/);
+    f.tv.clock += 31000; assert.equal(await f.tuner.supervise(true), 'started');
+    f.tv.clock += 4000; f.tv.running = false;
+    assert.equal(await f.tuner.supervise(true), 'failed'); assert.equal(f.tuner.failures, 2);
+    f.tv.clock += 31000; f.tv.scripts.length = 0;
+    assert.equal(await f.tuner.supervise(true), null, 'the second quick death waits 60 s, not 30'); assert.equal(f.tv.scripts.length, 0);
+    f.tv.clock += 30000; assert.equal(await f.tuner.supervise(true), 'started');
+    f.tv.clock += 61000; assert.equal(await f.tuner.supervise(true), 'running'); assert.equal(f.tuner.failures, 0);
     assert.equal(f.tuner.readState().enabled, true, 'failures never switch the tuner off');
     for (let i = 0; i < 5; i++) { f.tv.running = false; f.tv.neverStarts = true; f.tv.clock += 400000; await f.tuner.supervise(true); }
     assert.match(f.tuner.lastError, /has not started after 5 tries; Vetro keeps trying/);

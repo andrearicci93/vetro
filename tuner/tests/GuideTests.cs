@@ -90,6 +90,11 @@ internal static partial class Tests
         Check(store.PutFailed(11, now, now + 3600) && store.Get(11) != null && store.Get(11).Events.Count == 0, "a failed first read leaves the channel known and empty");
         Check(!store.NeedsRead(11, now + 5, now + 3600) && store.NeedsRead(11, now + GuideStore.RetrySeconds, now + 3600), "a channel whose read failed is retried, but not at once");
         Check(!store.PutFailed(5, now + 30, now + 3600) && store.Current(5, now) != null, "a failed read does not throw away a schedule that is known");
+        // A hard cap: paging through 300 channels within a minute keeps at most twice KeepChannels schedules, the newest ones.
+        var many = new GuideStore();
+        for (int c = 1; c <= 300; c++) many.Put((ulong)c, new List<GuideEvent>(), now + c / 10, now + 3600);
+        int kept = 0; for (int c = 1; c <= 300; c++) if (many.Get((ulong)c) != null) kept++;
+        Check(kept <= 2 * GuideStore.KeepChannels && many.Get(300) != null && many.Get(1) == null, "the guide store keeps the newest reads, at most twice its cap");
         // Every caller asks for "now + horizon", a window that moves with the clock: a reading must still be good for MaxAgeSeconds,
         // not go stale after 20 s (each zap then read 25 channels of 72 h again).
         long horizon = 72 * 3600;

@@ -249,10 +249,24 @@ namespace Tuner
 
         // ---- showing and hiding the whole tuner ----
 
+        /// <summary>
+        /// Whether the tuner can do anything on screen: it has a channel list with at least one channel. Before that (Samsung's client still
+        /// starting, a slow or failing first read, a TV with no channels) the window would cover Samsung's live TV and take its keys while
+        /// CH, OK and the pad do nothing: Samsung's own app keeps the screen until the list is there.
+        /// </summary>
+        private static bool Ready() { return _list != null && _list.Count > 0; }
+        private static bool _loggedNotReady;
+
         /// <summary>Puts the window on screen (the first time, or again after <see cref="Deactivate"/>) with the banner of the channel we are on.</summary>
         private static void Activate()
         {
             if (_active) return;
+            if (!Ready())
+            {
+                if (!_loggedNotReady) { _loggedNotReady = true; Log("not shown: no channel list yet, Samsung's live TV keeps the screen"); }
+                return;
+            }
+            _loggedNotReady = false;
             long perfAt = Perf.On ? Perf.Now() : 0;
             _active = true;
             MarkShown(true);
@@ -334,6 +348,7 @@ namespace Tuner
                 _listReadMs = _clock.ElapsedMilliseconds;
                 Channel on = _shown;
                 if (on != null) _list.SetCurrent(on.Id);
+                else { _resyncLeft = 1; ResyncNow(); }                 // the first read found nothing on: ask again now that the list is here
                 if (!had && _startMajor > 0)
                 {
                     Channel want = _list.ByNumber(_startMajor);
@@ -341,6 +356,8 @@ namespace Tuner
                 }
                 StartPrefetch();                                       // the neighbours of where we are, before the first key
                 if (_guideView == null) Restart(ref _guideBuildTimer, IdleWork.FirstDelay, OnGuideBuild);   // the guide's objects, made while nothing happens
+                // A tuner that is not resident shows itself at start (Activate waits for the list); a resident one is shown by the takeover poll.
+                if (!_resident && !_active && Ready()) Activate();
             });
             if (!usable) return;
             string logoStatus = "";
@@ -759,9 +776,13 @@ namespace Tuner
             return 1;
         };
 
+        private static int _noHold;     // the CH key that woke the tuner: Samsung's app zaps on it, the tuner must not repeat it
+
         private static void BeginHold(int code)
         {
             StopHold();
+            if (code == _noHold) { _noHold = 0; return; }
+            _noHold = 0;
             if (!_features.On("hold")) return;
             bool channel = IsChannelKey(code);
             if (!_active || (code != KeyUp && code != KeyDown && !channel && !(GuideOpen && (code == KeyLeft || code == KeyRight)))) return;
@@ -975,7 +996,7 @@ namespace Tuner
             if (!_active)
             {
                 if (!WakeOnKey(code)) return;                           // resident and hidden: keys are not ours, unless Samsung's app is up and this is a TV key
-                if (IsChannelKey(code)) { ResyncSoon(); return; }       // Samsung's app has the same key and changes the channel itself: ours would be a second step from a stale channel
+                if (IsChannelKey(code)) { _noHold = code; ResyncSoon(); return; }   // Samsung's app has the same key and changes the channel itself: ours would be a second step from a stale channel (and no hold zap on it)
             }
             if (SystemKeys.Contains(code)) { Deactivate(code != KeyPower); return; }    // Home, Menu, Power...: step aside, the system does the rest
             if (code == Key123)
@@ -1080,7 +1101,13 @@ namespace Tuner
                 string status;
                 Channel cur = null;
                 try { cur = Tvs.ReadCurrent(out status); } catch (Exception ex) { Log("resync: " + ex.Message); }
-                if (cur == null) return;
+                if (cur == null)
+                {
+                    // Nothing on yet (the tuner often comes up before tv-viewer's first tune): while it is on screen without a channel, ask
+                    // again every 3 s, or the Banner never shows, Info says "not known" and CH+ starts from the first channel.
+                    Ui(() => { if (_shown == null && _active && _resyncTimer == IntPtr.Zero) Restart(ref _resyncTimer, 3.0, OnResync); });
+                    return;
+                }
                 Ui(() =>
                 {
                     if (goGen != Volatile.Read(ref _goGen)) return;      // we asked for a channel ourselves since this was read: that decides
@@ -1100,6 +1127,7 @@ namespace Tuner
             int status = ReadTargetStatus();
             FrontApp.Kind front = CurrentFront();
             if (!TakeoverState.KeyWake(status, TvInput(), front)) return false;
+            if (!Ready()) return false;                                 // the key stays with Samsung's app until the tuner has channels
             Log("takeover: key " + code + " with " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
             Activate();
             return true;
@@ -1123,6 +1151,7 @@ namespace Tuner
                                        : "resume: another app has the keys for now (front " + front + "); the tuner comes back with live TV");
                 return;
             }
+            if (!Ready()) { Log("resume: back on live TV, but no channel list yet"); return; }
             Log("resume: back on live TV, showing the tuner");
             Activate();
         }
@@ -1163,6 +1192,9 @@ namespace Tuner
         /// </summary>
         private static void OnRepeat(int code)
         {
+            // A remote that sends repeat events as well as releases (IR through rc-core): the hold timer already steps this key, and
+            // both together moved the list and the guide twice as fast.
+            if (code == _holdCode && _holdTimer != IntPtr.Zero) return;
             if (_active && GuideOpen) { _repeatLog++; if (_repeatLog <= 3 || _repeatLog % 10 == 0) Log("repeat " + code + " #" + _repeatLog); }
             if (_active && GuideOpen && (code == KeyUp || code == KeyDown || code == KeyLeft || code == KeyRight)) { GuideMove(code); return; }   // if the remote does send repeat events
             if (!_active || !_listView.Visible || _list == null) return;
