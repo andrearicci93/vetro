@@ -36,8 +36,10 @@ function probeVersion(port, host, timeoutMs) {
             });
             res.on('error', function () { finish(null); });
         });
-        req.on('timeout', function () { req.destroy(); finish(null); });
-        req.on('error', function () { finish(null); });
+        // No HTTP answer at all (a timeout, a refused or reset connection) is false, not null: it may be a Vetro too busy to answer
+        // (the first copy at boot), so it must not count as "somebody else's service".
+        req.on('timeout', function () { req.destroy(); finish(false); });
+        req.on('error', function () { finish(false); });
     });
 }
 
@@ -83,6 +85,7 @@ function endOlderService(port, ownVersion, options) {
     var find = options.listeningPids || function (p) { return listeningPids(p); };
     var probe = options.probe || function () { return probeVersion(port, host, 2000); };
     return probe().then(function (version) {
+        if (version === false) return {ended: false, reason: 'no-answer'};
         if (!version) return {ended: false, reason: 'not-vetro'};
         if (!older(version, ownVersion)) return {ended: false, reason: 'not-older', version: version};
         var pids = find(port).filter(function (p) { return p !== process.pid; });

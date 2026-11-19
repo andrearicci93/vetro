@@ -273,16 +273,23 @@ function fwState(s) {
     // No service_onoff key means this TV has no EMP/app-binary service: that half is then not required.
     var serviceOk = s.fwService === null || s.fwService === 0;
     var on = s.autoupdate === 0 && serviceOk && (known === 0 || masked === known);
-    var off = s.autoupdate !== 0 && masked === 0;
+    // Off means no lock of Vetro's: no unit masked. Samsung's own Auto update value is then the owner's setting, whatever it is.
+    // Firmware without any of the units falls back to the 0.5.0 meaning, the Auto update value alone.
+    var off = known === 0 ? s.autoupdate !== 0 : masked === 0;
     return {status: s.autoupdate === null ? 'unknown' : on ? 'on' : off ? 'off' : 'partial',
         value: s.autoupdate, masked: masked, units: known, running: running};
 }
 
+// Never stopped, only masked: the installers. Stopping one in the middle of a write could break a firmware or app install; masked,
+// it cannot start again, and one already running finishes.
+var FW_NOSTOP = ['swu-core-tv.service', 'swu-service.service', 'bootmode-system-update.service'];
 function fwMaskScript(stop) {
-    var stopLine = stop ? 'systemctl stop --no-block $u >/dev/null 2>&1; ' : '';
+    var stoppable = FWUNITS.filter(function (u) { return FW_NOSTOP.indexOf(u) < 0; });
+    // --runtime only: a plain mask would be written to /etc and outlive Vetro (and Restore), so a TV whose /etc is writable could
+    // never update again. A unit that cannot be masked at runtime shows in the readback as not masked.
     return 'set +e\n' +
-        'for u in ' + FWUNITS.join(' ') + '; do ' + stopLine +
-        'systemctl mask --runtime $u >/dev/null 2>&1 || systemctl mask $u >/dev/null 2>&1; done\n' +
+        (stop ? 'for u in ' + stoppable.join(' ') + '; do systemctl stop --no-block $u >/dev/null 2>&1; done\n' : '') +
+        'for u in ' + FWUNITS.join(' ') + '; do systemctl mask --runtime $u >/dev/null 2>&1; done\n' +
         'rm -f ' + FWMARKERS.join(' ') + ' 2>/dev/null\n' +
         'true';
 }
@@ -312,24 +319,36 @@ Wins.prototype.firmware = function (on) {
         });
     }
     function undo() {
-        var mine = self.load(), auto = mine.autoupdatePrevious || 1;
-        return self.execute(wrap(fwUnmaskScript()), 30000).then(function () { return setKey(AUTOUPDATE, auto); }).then(function () {
+        // Only values Vetro saved are written back: an owner who had Auto update off before the lock keeps it off.
+        var mine = self.load();
+        return self.execute(wrap(fwUnmaskScript()), 30000).then(function () {
+            return mine.autoupdatePrevious ? setKey(AUTOUPDATE, mine.autoupdatePrevious) : null;
+        }).then(function () {
             return mine.fwServicePrevious !== null ? setKey(FWSERVICE, mine.fwServicePrevious) : null;
         });
     }
     return current().then(function (before) {
-        var state = fwState(before);
-        if (on ? state.status === 'on' : state.status === 'off')
+        var state = fwState(before), mine = self.load();
+        // 0.5.0 turned Auto update off and saved the value it had; it masked nothing, so the switch reads off. Turning it off (Restore
+        // the TV) still puts that value back, once.
+        var leftover = !on && state.status === 'off' && !!mine.autoupdatePrevious && before.autoupdate === 0;
+        if (!leftover && (on ? state.status === 'on' : state.status === 'off'))
             return {id: 'firmware', changed: false, status: state.status, value: before.autoupdate};
+        // A value of 0 found now may be an earlier lock's (a reboot whose re-apply failed): the value saved then is kept.
         if (on) self.save({firmware: true, autoupdatePrevious: before.autoupdate > 0 ? before.autoupdate : self.load().autoupdatePrevious,
-            fwServicePrevious: before.fwService});
+            fwServicePrevious: before.fwService > 0 ? before.fwService : self.load().fwServicePrevious});
         else self.save({firmware: false, firmwareBoot: null});
         return (on ? lock(before) : undo()).then(current).then(function (after) {
             var st = fwState(after);
             if (on && st.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
-            if (!on && st.status === 'on') throw Error('The TV did not end the lock');
+            if (!on && st.masked > 0) throw Error('The TV did not end the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' still masked)');
+            // The values are back: forgotten, so a later Off or Restore never writes an old value over one the owner chose since.
+            if (!on) self.save({autoupdatePrevious: null, fwServicePrevious: null});
             return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate};
         }).catch(function (e) {
+            // A lock that did not hold is not the owner's choice any more: the boot must not mask the units again.
+            // An undo that failed is locked again below, so the boot must keep re-applying it.
+            self.save(on ? {firmware: false, firmwareBoot: null} : {firmware: true});
             // Put the switches back the way they were found: undo if the lock failed, lock again if the undo failed.
             var back = on
                 ? self.execute(wrap(fwUnmaskScript()), 30000).then(function () {

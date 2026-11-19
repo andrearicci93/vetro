@@ -80,8 +80,9 @@ const old035 = {mode: 'app-only', running: false, app: {version: '0.3.5', source
   assert.strictEqual(x.r.reason, 'kill-refused'); assert.strictEqual(x.r.error, 'EPERM');
 
   // Nothing answers on the port.
+  // (a Vetro too busy to answer looks the same: it is "no answer", never "somebody else's service")
   const r = await stale.endOlderService(1, '0.5.0', {probe: () => stale.probeVersion(1, '127.0.0.1', 300), listeningPids: () => [4321], kill: () => { throw new Error('must not kill'); }});
-  assert.strictEqual(r.reason, 'not-vetro');
+  assert.strictEqual(r.reason, 'no-answer');
 
   console.log('PASS the service ends only an older Vetro that holds its port');
 })().catch(e => { console.log('FAIL stale service: ' + (e && e.stack || e)); process.exit(1); });

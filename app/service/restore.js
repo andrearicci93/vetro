@@ -167,10 +167,13 @@ Restore.prototype.plan = function () {
         if (!apps.error) flag(it, compIds.length > 0, compIds.length);
 
         var w = wins.error ? null : wins.value.wins;
+        // Auto update off with a value saved by Vetro (0.5.0 saved it without masking anything): Restore puts that value back too.
+        var autoSaved = false;
+        try { autoSaved = !!d.wins.load().autoupdatePrevious; } catch (e) { /* unreadable: only the switch state counts */ }
         [['telemetry', 'Viewing-data and usage-log services', w && w.telemetry && w.telemetry.status !== 'off', 'Starts them again and lifts the DNS block Vetro added for the usage-log host.'],
             ['ambient', 'Ambient autostart', w && w.ambient && w.ambient.status !== 'off', 'Lets Samsung’s own start of the screen saver run again.'],
             ['multiscreen', 'Multi View autostart', w && w.multiscreen && w.multiscreen.status === 'on', 'Removes the preload file, so Multi View loads at boot again.'],
-            ['firmware', 'Firmware and software updates', w && w.firmware && w.firmware.status !== 'off', 'Unmasks the update services and puts the automatic update value back to what it was.'],
+            ['firmware', 'Firmware and software updates', w && w.firmware && (w.firmware.status !== 'off' || (autoSaved && w.firmware.value === 0)), 'Unmasks the update services and puts the automatic update value back to what it was.'],
             ['airplay', 'AirPlay receiver', w && w.airplay && w.airplay.status !== 'off', 'Removes the do-not-start files, so the AirPlay receiver can start again.']
         ].filter(function (c) {
             // A TV without the AirPlay receiver has nothing to put back, so it gets no row.

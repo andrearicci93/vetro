@@ -78,6 +78,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(f.ran.length, 0, 'nothing runs when a check fails');
     assert.equal(f.u.check(bundle('0.4.1', { 'service/a.js': 'new a' })).changed, 1);
 
+    // An apply whose script never runs (the TV busy, the agent gone) leaves no Go back list behind it
+    {
+        const g = fixture('0.4.0');
+        const busy = new Updater({ publicKey: publicPem, installDir: g.install, workDir: g.work, buildInfo: { version: '0.4.0', shell: 1 }, execute: () => Promise.reject(new Error('The TV is busy')) });
+        await assert.rejects(busy.apply(bundle('0.4.1', { 'service/a.js': 'new a' })), /busy/);
+        assert.ok(!fs.existsSync(path.join(g.work, 'backup.json')), 'no backup list without the backup');
+        assert.equal(busy.status().canRollBack, false);
+    }
     // success: files replaced, a new file added, the port kept, old files backed up, watchdog stays quiet after confirm
     const next = bundle('0.4.1', { 'service/a.js': 'new a', 'service/b.js': 'new b', 'index.html': "var BASE = 'http://127.0.0.1:8099';", 'service/build-info.js': info({ version: '0.4.1', shell: 1 }) });
     const res = await f.u.apply(next, sha(Buffer.from(next)));

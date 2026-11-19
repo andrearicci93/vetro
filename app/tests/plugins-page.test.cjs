@@ -39,7 +39,9 @@ console.log('plugins page: ok');
 // Vetro's own features are not plugins: the MQTT bridge is started by main.js itself.
 const main = require('fs').readFileSync(require('path').join(__dirname, '..', 'service', 'main.js'), 'utf8');
 assert.match(main, /function startBridge\(\) \{[^}]*\n    bridge\.start\(\);\n\}/, 'main.js must start the MQTT bridge');
-assert.match(main, /server\.on\('listening', function \(\) \{[^}]*startBridge\(\);/, 'the bridge starts with the copy of the service that listens (#199, #213)');
+assert.match(main, /server\.on\('listening', function \(\) \{[^}]*becomeOwner\(\);/, 'the bridge starts with the copy of the service that listens (#199, #213)');
+assert.match(main, /function becomeOwner\(\) \{[^}]*startBridge\(\);[^}]*platform\.start\(\);[^}]*plugins\.start\(\);/, 'and so do the root agent and the supervision (a second copy touches nothing on the TV)');
+assert.match(main, /function restoreInput\(\)\{\n    if\(!serviceOwner\)return;/, 'and the remote interception');
 assert.ok(!/plugin-mqtt/.test(main), 'MQTT is not a plugin');
 
 // Sign-in: a sandboxed plugin page cannot send the dashboard's cookie, so its session URL must reach the plugin host before the gate.

@@ -121,6 +121,8 @@ function firmwareSection(d){
         hbbtvApp:bit(d.hbbtvApp),inputHelpers:intIn(d.inputHelpers,0,99),uptimeMinutes:intIn(d.uptime,0,99999999)!==null?Math.round(+d.uptime/60):null};
 }
 var KEY_NAME_RE=/^[A-Z][A-Z0-9_]{1,31}$/, SCAN_RE=/^0x[0-9A-F]{8}$/;
+// Linux key codes that type something: the digits (KEY_1..KEY_0, the keypad's, KEY_NUMERIC_0..9) and the letters.
+function TYPED_KEY(c){return (c>=2&&c<=11)||(c>=16&&c<=25)||(c>=30&&c<=38)||(c>=44&&c<=50)||[71,72,73,75,76,77,79,80,81,82].indexOf(c)>=0||(c>=512&&c<=521);}
 var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
     'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
     'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError','error'];
@@ -202,7 +204,10 @@ var projectors = {
         // tried or failed, a stop and who asked, the root agent up or down, a Remapper request), newest last.
         {loop:d.loop&&typeof d.loop==='object'?Object.assign(flags(d.loop,['paused','lifecycle','restoring']),numbers(d.loop,['faultPauseSeconds','retryWaitSeconds','retryFailures','tokenCount']),{mode:choice(d.loop.mode,['off','filter','observe'])}):null,
             history:list(d.history,24).map(inputTurn).filter(Boolean)},
+        // Digits and letters (a PIN, a password typed on a keyboard that the interception holds) leave as "typed" only, without code,
+        // name or scan code: these reports are posted in public issues.
         {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
+            if(TYPED_KEY(e.code))return {code:null,key:null,scan:null,typed:true,held:e.decision==='blocked',woke:e.decision==='wake'};
             return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
                 held:e.decision==='blocked',woke:e.decision==='wake'};})});}
 };

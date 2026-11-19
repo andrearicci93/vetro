@@ -1075,6 +1075,7 @@ function vetroUiInput(){
     }).catch(function(e){vetroUiInputProblem=e.message;return false;});
 }
 function restoreInput(){
+    if(!serviceOwner)return;    // a second copy of the service never touches the remote (see becomeOwner)
     if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput('listen-idle');inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;
     if(!inputLifecycleActive||!preference.enabled||inputPaused||Date.now()<inputFaultUntil||Date.now()<inputRetryAt||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
@@ -1276,12 +1277,24 @@ function startBridge() {
     bridgeStarted = true;
     bridge.start();
 }
+// The same goes for everything that acts on the TV: the root agent, the launcher's and the tuner's supervision and the remote
+// interception belong to the copy that owns the port. A second copy that ran them too got its own root agent and, worse, ended
+// the other copy's remote helper at every 5 s restore (each start ends any other filter helper), so the interception dropped
+// every few seconds (an S95F, 2026-11-19). A copy owns the port when it listens, or when the holder answers and is not a Vetro.
+var serviceOwner = false;
+function becomeOwner() {
+    if (serviceOwner) return;
+    serviceOwner = true;
+    startBridge();
+    platform.start();
+    plugins.start();
+}
 function startListening() {
     server.listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0');
 }
 server.on('listening', function () {
     console.log('VETRO listening on ' + PORT);
-    startBridge();
+    becomeOwner();
 });
 server.on('error', function (e) {
     if (e && (e.code === 'EADDRINUSE' || e.code === 'EACCES')) {
@@ -1289,7 +1302,7 @@ server.on('error', function (e) {
             console.error('VETRO cannot listen on port ' + PORT + ' (' + e.code + '): another app holds it. Trying again in ' + Math.round(LISTEN_RETRY_MS / 1000) + ' s. Build with VETRO_PORT=<port> to use another one.');
             setTimeout(startListening, LISTEN_RETRY_MS);
         };
-        if (e.code !== 'EADDRINUSE') { startBridge(); return retry(); }
+        if (e.code !== 'EADDRINUSE') { becomeOwner(); return retry(); }
         if (staleAttempts >= 3) return retry();
         staleAttempts++;
         require('./stale-service.js').endOlderService(PORT, buildInfo.version, {host: process.env.VETRO_STALE_PROBE_HOST || '127.0.0.1'}).then(function (r) {
@@ -1297,8 +1310,9 @@ server.on('error', function (e) {
                 console.log('VETRO ended the older Vetro ' + r.version + ' (pid ' + r.pid + ') that still held port ' + PORT + (r.forced ? ' (forced)' : ''));
                 return setTimeout(startListening, 300);
             }
-            if (r.reason === 'not-vetro') startBridge();
-            else console.error('VETRO found Vetro ' + (r.version || '?') + ' on port ' + PORT + ' and did not end it: ' + r.reason + '. This copy stays without MQTT while the other one answers.');
+            if (r.reason === 'not-vetro') becomeOwner();
+            else if (r.reason === 'no-answer') console.error('VETRO: nothing answers on port ' + PORT + ' yet; this copy waits and touches nothing on the TV.');
+            else console.error('VETRO found Vetro ' + (r.version || '?') + ' on port ' + PORT + ' and did not end it: ' + r.reason + '. This copy stays idle (no root agent, launcher or remote) while the other one answers.');
             retry();
         }).catch(retry);
         return;
@@ -1318,7 +1332,7 @@ if(typeof platform.onAgent==='function')platform.onAgent(function(up){
     inputRetryReset();
     try{restoreInput();}catch(e){/* the 5 s round tries again */}
 });
-platform.start();
+// platform.start() and plugins.start() run in becomeOwner(), once this copy owns the port.
 // The launcher is started again after a boot or a crash while its switch is on: that supervision is the launcher plugin's (plugin-launcher.js).
 // Retry after boot and helper disconnects, including late adapter availability.
 var inputRestoreTimer=setInterval(restoreInput,5000);if(inputRestoreTimer.unref)inputRestoreTimer.unref();
@@ -1383,7 +1397,6 @@ var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developer
 plugins.register(require('./plugin-launcher.js').definition(dock));
 dock.setShards(plugins);       // plugins that take over an app's launcher tile (manifest "intercepts")
 plugins.register(require('./plugin-tuner.js').definition(tuner));
-plugins.start();
 // A plugin's timer or socket callback throws outside every guard the host has. Without this the whole service ended with it
 // (and, past the first minute after a boot, came back with the plugin enabled and ended again). Plugin code is stopped and the
 // service goes on; an error from anywhere else is printed and ends the process, as it always did.

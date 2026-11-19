@@ -240,7 +240,7 @@ Updater.prototype.apply = function (raw, expectedSha256) {
             mkdirp(path.dirname(path.join(staging, n)));
             fs.writeFileSync(path.join(staging, n), parsed.files[n]);
         });
-        writeJson(self._file('backup.json'), { from: from, to: to, files: existing, added: added, dock: dock });
+        writeJson(self._file('backup.json.next'), { from: from, to: to, files: existing, added: added, dock: dock });
         return self.execute(script, 120000);
     }).then(function (r) {
         if (!r || r.exit_code !== 0 || r.timed_out) throw fail('The files could not be replaced' + (r && r.stderr ? ': ' + String(r.stderr).trim().slice(0, 200) : ''), 'apply-failed');
@@ -254,11 +254,14 @@ Updater.prototype.apply = function (raw, expectedSha256) {
 Updater.prototype._applyScript = function (from, to, changed, existing, added, hashes, dock) {
     var I = sq(this.installDir), W = sq(this.workDir);
     var lines = ['set -e', 'I=' + I, 'W=' + W, 'S="$W/staging"', 'B="$W/backup"',
-        'rm -rf "$B"; mkdir -p "$B"; rm -f "$W"/ok-* "$W/pending.json"'];
+        'rm -rf "$B"; mkdir -p "$B"; rm -f "$W"/ok-* "$W/pending.json" "$W/backup.json"'];
     changed.forEach(function (n) {
         lines.push('[ "$(sha256sum "$S/' + n + '" | cut -d" " -f1)" = "' + hashes[n] + '" ] || { echo "staged file changed: ' + n + '" >&2; exit 3; }');
     });
     existing.forEach(function (n) { lines.push('mkdir -p "$B/' + path.dirname(n) + '"; cp -p "$I/' + n + '" "$B/' + n + '"'); });
+    // The list of what Go back restores appears only now, with the backup it names: a script that never ran (the TV busy, the agent
+    // gone) or stopped before this line leaves no list, so Go back is not offered over files of an older update.
+    lines.push('mv -f "$W/backup.json.next" "$W/backup.json"');
     // The copy is one && chain, not `set -e` lines: if a copy fails half way (disk full, a read-only folder) the files already
     // replaced are put back at once, because no watchdog exists yet at this point and a mix of old and new files would
     // otherwise stay until the next restart. (`set -e` is ignored inside an `||` list, so the chain is explicit.)

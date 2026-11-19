@@ -54,6 +54,26 @@ const noWait=()=>Promise.resolve();
  await assert.rejects(w.apply('firmware',true),/did not keep the lock.*previous state restored/);assert.equal(t.s.autoupdate,1);assert.equal(t.s.fwsvc,1);
  t=tv({failSet:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});
  await assert.rejects(w.apply('firmware',true),/did not keep the lock|denied|restore not confirmed/);
+ // A lock that failed is not remembered as chosen: the next boot does not mask the units again
+ t=tv({maskFails:true});io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
+ await assert.rejects(w.apply('firmware',true));assert.equal(JSON.parse(io.data).firmware,false);
+ // Only runtime masks (a plain mask would outlive Vetro), and the installers are masked but never stopped mid-write
+ t=tv();w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});await w.apply('firmware',true);
+ assert.ok(t.s.calls.every(c=>!/systemctl mask (?!--runtime)/.test(c)),'no persistent mask');
+ const stops=t.s.calls.join('\n').split('\n').filter(l=>l.includes('systemctl stop')).join('\n');
+ assert.ok(/swu-auto-upgrade\.timer/.test(stops)&&!/swu-core-tv|swu-service\.service|bootmode-system-update/.test(stops),'installers are not stopped');
+ // An owner who had Auto update off before the lock keeps it off afterwards; Off means no unit masked
+ t=tv({autoupdate:0});io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
+ await w.apply('firmware',true);assert.equal(JSON.parse(io.data).autoupdatePrevious,null);
+ r=await w.apply('firmware',false);assert.equal(t.s.autoupdate,0,'Auto update stays the owner\'s');assert.equal(r.status,'off');
+ // A 0.5.0 switch: Auto update off with the old value saved, nothing masked. It reads off, and Off (Restore) still puts the value back, once
+ t=tv({autoupdate:0});io=store();io.writeFileSync('x',JSON.stringify({autoupdatePrevious:1}));w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
+ assert.equal((await w.read()).wins.firmware.status,'off');assert.equal((await w.read()).wins.firmware.value,0);
+ r=await w.apply('firmware',false);assert.equal(t.s.autoupdate,1,'the 0.5.0 value is put back');assert.equal(JSON.parse(io.data).autoupdatePrevious,null);
+ assert.equal((await w.apply('firmware',false)).changed,false,'and only once');
+ // A second lock over a 0 left by the first (a reboot whose re-apply failed) keeps the values saved the first time
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});await w.apply('firmware',true);t.s.fwMasked={};
+ await w.apply('firmware',true);assert.equal(JSON.parse(io.data).autoupdatePrevious,1);assert.equal(JSON.parse(io.data).fwServicePrevious,1);
  // The runtime masks live in /run: the boot job puts them back once per boot, before the SWU timer (120 s)
  let bid='fw-b1';t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>bid,skipAmbient:true});
  await w.apply('firmware',true);t.s.fwMasked={};t.s.markers=true;let fwDid=await w.boot(null);
