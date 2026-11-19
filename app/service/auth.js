@@ -302,7 +302,9 @@ function gate(req, res, url, options) {
     if (local && WIDGET_ROUTES[url] && (req.headers || {}).origin === 'null') markTvSeen();
 
     if ((url === '/auth/pair' || url === '/auth/confirm') && req.method === 'POST') {
-        if (!originOk(req)) return json(res, 403, {error: 'Cross-site request refused'}), true;
+        // Both pages that pair (sign-in, dashboard) send their own origin and scripts send none: an opaque "null" is a
+        // sandboxed frame of some other page, which must not be able to put a code on the TV (#230).
+        if (!originOk(req) || (req.headers || {}).origin === 'null') return json(res, 403, {error: 'Cross-site request refused'}), true;
         return (url === '/auth/pair' ? startPair(req, res, onPair) : confirmPair(req, res)), true;
     }
     // What the sign-in page needs after a reload: is a code waiting, and was it asked for by this browser?

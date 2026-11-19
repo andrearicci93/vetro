@@ -86,6 +86,9 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
   }
   // Web pages can't start or finish a pairing: the Origin must match the Host.
   assert.equal((await call('POST', '/auth/pair', {headers: {origin: 'http://evil.example'}, body: {}})).code, 403);
+  // A sandboxed frame of another page sends the opaque Origin "null": it cannot start or finish a pairing (#230).
+  assert.equal((await call('POST', '/auth/pair', {headers: {origin: 'null'}, body: {}})).code, 403);
+  assert.equal((await call('POST', '/auth/confirm', {headers: {origin: 'null'}, body: {}})).code, 403);
   assert.equal((await call('POST', '/auth/confirm', {headers: {origin: 'http://evil.example'}, body: {}})).code, 403);
   // App-only mode (no TV adapter) stays open, but still refuses host names.
   assert.equal((await call('POST', '/exec', {open: true})).handled, false);
