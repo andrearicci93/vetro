@@ -88,6 +88,12 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Fixes
 
+- **Samsung Home opens from the launcher on 2022 and later TVs** ([#210](https://github.com/andrearicci93/vetro/issues/210), [#170](https://github.com/andrearicci93/vetro/issues/170)). The pill no longer starts Samsung's Home components package, which shows nothing; it asks Samsung's Home the way the TV's own Home key does.
+- **The TV powers on into the Vetro launcher** on 2022 and later TVs ([#206](https://github.com/andrearicci93/vetro/issues/206)). With the launcher on, those TVs started in Live TV every time; Vetro now opens its launcher once at power-on.
+- **The Audio output card shows optical and HDMI receivers.** "TV speakers" was ticked while the sound went to an optical output or a receiver; that output now has its own ticked row, and Vol goes to Samsung while it plays, so the level that changes is the one you hear.
+- **Picture mode on Samsung's Home picture.** The mode a TV reports while Samsung's Home has been on screen was read as Filmmaker Mode; it now ticks nothing and any mode can be chosen. Eco and Adaptive Picture are listed where the TV offers them.
+- **The remote interception reconnects after a reinstall or update.** A remote helper left from an earlier start kept the remote and every new one was refused; it is now ended before a new start, and a busy remote is tried again for a moment.
+- **Live TV on Tizen 9 reads programmes and the TV guide** (the TV client of 2024 firmware changed one call).
 - **The screen comes back after Picture Off with the remote interception on.** A key passed on by Vetro moved the TV back to "on" but left the panel dark (seen on a Q80A); Vetro now turns the picture on itself and drops that key, as Samsung does.
 - **Home Assistant no longer reconnects every 10 seconds** ([#199](https://github.com/andrearicci93/vetro/issues/199), [#213](https://github.com/andrearicci93/vetro/issues/213)).
 - **Removing Vetro is never blocked by a restore step**, and HbbTV can be turned back on where the TV has no HbbTV service app ([#212](https://github.com/andrearicci93/vetro/issues/212)).

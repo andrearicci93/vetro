@@ -28,33 +28,40 @@ namespace Launcher.Core
     /// <c>GetPictureMode i 1</c>, each candidate is offered when <c>CheckPictureModeByMode i id</c> answers 1, and a choice is set with
     /// <c>SetPictureMode ii id 1</c> (saved for the current source, as Samsung's own menu does). The candidates and their order are
     /// Samsung's own list (its Settings panel); the HDR variants share the SDR names, since the TV offers one or the other. A mode that is
-    /// not among them (Game, See colours, AI picture) locks the list, as on Samsung's own menu. Read on a Q80A; setting is not tried yet.
+    /// not offered (Game, See colours, a dimmed mode) locks the list, as on Samsung's own menu. Read on a Q80A; setting is not tried yet.
     /// </summary>
     internal static class PictureModes
     {
-        public static readonly int[] Candidates = { 65536, 65541, 65537, 393216, 65542, 65538, 393217, 65539, 65540, 393218, 393219, 655360, 655361 };
+        // Samsung's order (Dynamic, Standard, Eco, Natural, Movie, Calibrated, Filmmaker); variants share their mode's name and the TV offers
+        // one of them at a time. Eco (65552 and its HDR / PC ids) and Dynamic HDR exist on 2022+ firmware, Adaptive Picture can be chosen on 2022+
+        // (dimmed on 2021); CheckPictureModeByMode decides what is offered, so an id a TV does not know is simply never listed.
+        public static readonly int[] Candidates = { 65536, 393224, 65541, 65537, 393216, 458753, 458756, 65552, 393227, 458775, 458776, 65542, 65538, 393217,
+            65539, 65540, 393218, 393219, 589824, 589825, 655360, 655361 };
 
         /// <summary>
-        /// The mode a 2022-or-later TV reports while Auto Filmmaker Mode has switched to Filmmaker Mode for the content (an S95C on 2220.4 read
-        /// 327705 while Samsung's own list ticked FILMMAKER MODE, 2026-11-19; 16 sets on 2022+ firmware report it, none on 2021). Read as 655360.
+        /// "NewHome": the mode Samsung's Home (csfs) sets while it is the full-screen app, and clears when another app takes over (read from
+        /// the 2022 and 2024 firmware on 2026-11-19). Samsung's own list shows it as Standard. SUPERSEDES the reading of 327705 as Filmmaker
+        /// Mode turned on by the content. Read with nothing ticked and the list left choosable: it can stay on when Vetro's launcher stands in
+        /// for Samsung's Home, and choosing a mode is how to leave it.
         /// </summary>
-        public const int AutoFilmmaker = 327705;
+        public const int NewHome = 327705;
 
         public static string Name(int id)
         {
             switch (id)
             {
-                case 65536: return "Dynamic";
+                case 65536: case 393224: return "Dynamic";
                 case 65541: return "Entertain";
-                case 65537: case 393216: return "Standard";
+                case 65537: case 393216: case 458753: case 458756: case NewHome: return "Standard";
+                case 65552: case 393227: case 458775: case 458776: return "Eco";
                 case 65542: return "Natural";
                 case 65538: case 393217: return "Movie";
                 case 65539: case 393218: return "Calibrated Night";
                 case 65540: case 393219: return "Calibrated Day";
-                case 655360: case 655361: case AutoFilmmaker: return "Filmmaker Mode";
+                case 589824: case 589825: return "Adaptive Picture";
+                case 655360: case 655361: return "Filmmaker Mode";
                 case 65547: case 393222: return "Game";
                 case 327687: return "See colours";
-                case 589824: case 589825: return "AI picture";
                 default: return null;
             }
         }
@@ -97,7 +104,6 @@ namespace Launcher.Core
             var st = new ChoiceState();
             List<int> cur = Numbers(getAnswer);
             int current = cur.Count >= 2 && cur[1] == 0 ? cur[0] : -1;
-            if (current == AutoFilmmaker) current = 655360;    // Filmmaker Mode turned on by the content: Samsung's list ticks Filmmaker Mode and keeps every other mode
             string[] lines = (checkAnswer ?? "").Replace("\r", "").Split('\n');
             var seen = new HashSet<string>();
             for (int i = 0, k = 0; i < lines.Length && k < Candidates.Length; i++)
@@ -112,16 +118,18 @@ namespace Launcher.Core
                 st.Rows.Add(new ChoiceRow { Label = name, Value = id, Active = id == current });
             }
             if (current < 0) { st.Note = "Not available"; st.Choosable = false; st.Rows.Clear(); return st; }
-            if (Array.IndexOf(Candidates, current) < 0)
+            if (st.Rows.Count == 0) { st.Note = "Not available"; st.Choosable = false; return st; }
+            if (current == NewHome) return st;   // Samsung's Home picture: nothing ticked, any offered mode can be chosen
+            if (!st.Rows.Exists(r => r.Active))
             {
-                // Game, See colours, AI picture: Samsung's own menu shows only that mode and asks to turn it off first.
+                // Game, See colours, a mode this TV dims (Adaptive Picture on 2021 firmware): Samsung's own menu shows only that mode and asks
+                // to turn it off first.
                 st.Rows.Clear();
                 st.Rows.Add(new ChoiceRow { Label = Name(current) ?? "Another mode", Value = current, Active = true });
                 st.Note = "Set in Samsung's menu";   // short: it shares the header's line with the title, on a card that may be 520 px wide
                 st.Choosable = false;
                 return st;
             }
-            if (st.Rows.Count == 0) { st.Note = "Not available"; st.Choosable = false; }
             return st;
         }
 

@@ -130,20 +130,30 @@ namespace Launcher.Tests
                 T.Eq(HomeLaunch.Parse(null), null, "missing id refused");
             });
 
-            T.Run("Samsung Home: CoBA success still opens First Screen, in that order", () =>
+            T.Run("Samsung Home: csfs, with Samsung's Home-key bundle on root-app firmware; the component package is never launched", () =>
             {
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
                 try
                 {
                     string tool = Path.Combine(dir, "launcher"), log = Path.Combine(dir, "calls");
-                    string command = SystemLaunch.Command("com.samsung.tv.coba.newhome", "com.samsung.tv.csfs").Replace("/usr/bin/app_launcher", Q(tool));
-                    File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\n[ \"$2\" != com.samsung.tv.coba.newhome ]\n");
-                    Shell("chmod +x " + Q(tool)); Shell(command + " wait");
-                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome,com.samsung.tv.csfs", "failed newhome tries csfs");
-                    File.Delete(log); File.WriteAllText(tool, "#!/bin/sh\necho \"$2\" >> " + Q(log) + "\nexit 0\n");
-                    Shell(command + " wait");
-                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome,com.samsung.tv.csfs", "successful CoBA component launch still requests visible First Screen");
+                    string root = Path.Combine(dir, "get_root_app"), done = Path.Combine(dir, "firstscreen_done"), none = Path.Combine(dir, "absent");
+                    File.WriteAllText(tool, "#!/bin/sh\necho \"$*\" >> " + Q(log) + "\nexit 0\n");
+                    Shell("chmod +x " + Q(tool));
+                    Shell(SystemLaunch.Command("com.samsung.tv.coba.newhome", "com.samsung.tv.csfs", none, done).Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "-s com.samsung.tv.csfs", "an old list naming the component package opens csfs only, plainly on 2021 firmware");
+                    File.Delete(log);
+                    File.WriteAllText(root, ""); File.WriteAllText(done, "");
+                    Shell(SystemLaunch.Command("com.samsung.tv.csfs", null, root, done).Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "-s com.samsung.tv.csfs entry_point smarthub_key __NO_RAISE_WINDOW enable __K_EX_FORCE_BOOST enable", "root-app firmware: Samsung's Home-key bundle");
+                    File.Delete(log); File.Delete(done);
+                    Shell(SystemLaunch.Command("com.samsung.tv.csfs", null, root, done).Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.True(File.ReadAllText(log).Contains("__K_SPLASH_SCREEN LA_UI_DEFAULT __K_EX_SPLASH_SCREEN_FORCE_SHOW enable"), "first screen not done yet: the splash keys too");
+                    File.Delete(log);
+                    File.WriteAllText(tool, "#!/bin/sh\necho \"$*\" >> " + Q(log) + "\n[ $# -le 2 ]\n");
+                    Shell(SystemLaunch.Command("com.samsung.tv.csfs", null, root, done).Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.Eq(File.ReadAllLines(log).Length, 2, "a refused bundle falls back to the plain launch");
+                    T.Eq(File.ReadAllLines(log)[1], "-s com.samsung.tv.csfs", "the fallback is the plain launch");
                 }
                 finally { Directory.Delete(dir, true); }
             });
@@ -164,11 +174,8 @@ namespace Launcher.Tests
                     Shell(command + " wait");
                     T.Eq(string.Join(",", File.ReadAllLines(log)), "org.example.primary,org.example.fallback", "failed ordinary app still tries its fallback");
                     File.Delete(log);
-                    Shell(SystemLaunch.Command("com.samsung.tv.csfs", null).Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
-                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.csfs", "legacy Home launches First Screen once without CoBA");
-                    File.Delete(log);
-                    Shell(SystemLaunch.Command("com.samsung.tv.coba.newhome", "org.example.fallback").Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
-                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.coba.newhome", "CoBA with an unrelated fallback does not trigger the Home handoff");
+                    Shell(SystemLaunch.Command("com.samsung.tv.csfs", null, "/nonexistent/get_root_app").Replace("/usr/bin/app_launcher", Q(tool)) + " wait");
+                    T.Eq(string.Join(",", File.ReadAllLines(log)), "com.samsung.tv.csfs", "Home launches First Screen once on 2021 firmware");
                 }
                 finally { Directory.Delete(dir, true); }
             });
@@ -217,6 +224,11 @@ namespace Launcher.Tests
                 T.True(OutputPickerModel.Build(paired, 6)[1].Active && OutputPickerModel.Build(paired, -1)[1].Active, "6 reads as Bluetooth; unknown with a connected device assumes it plays");
                 T.True(OutputPickerModel.Build(null, 5)[0].Active, "Bluetooth selected but nothing connected: the TV plays");
                 T.Eq(OutputPickerModel.Build(null).Count, 1, "no list: only the TV speakers");
+                var optical = OutputPickerModel.Build(paired, 1);
+                T.True(!optical[0].Active && optical[1].Kind == OutputKind.External && optical[1].Label == "Optical" && optical[1].Active, "optical (1): its own ticked row, the TV speakers unticked");
+                T.Eq(OutputPickerModel.ActionFor(optical[1]), OutputAction.None, "the external output that plays cannot be chosen again");
+                T.True(OutputPickerModel.Build(null, 2)[1].Label == "Receiver (HDMI)" && OutputPickerModel.ExternalName(0) == null && OutputPickerModel.ExternalName(5) == null, "route names");
+                T.True(OutputPickerModel.VetroSetsLevel(0) && OutputPickerModel.VetroSetsLevel(5) && OutputPickerModel.VetroSetsLevel(-1) && !OutputPickerModel.VetroSetsLevel(1) && !OutputPickerModel.VetroSetsLevel(2) && !OutputPickerModel.VetroSetsLevel(9), "Vol stays with Vetro on TV speakers and Bluetooth, goes back to Samsung on optical, HDMI, TV + optical");
                 var withOff = OutputPickerModel.Build(paired, 5, true);
                 T.Eq(withOff[withOff.Count - 1].Kind, OutputKind.ScreenOff, "Turn off screen is the last row");
                 T.True(!withOff[withOff.Count - 1].Active && withOff[1].Active, "the screen row is never ticked and does not move the tick");

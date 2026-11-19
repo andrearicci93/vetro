@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Launcher.Core
 {
-    internal enum OutputKind { TvSpeaker, Bluetooth, ScreenOff }
+    internal enum OutputKind { TvSpeaker, Bluetooth, ScreenOff, External }
 
     /// <summary>A Bluetooth device the TV is paired with, as the system reports it (no EFL, no P/Invoke: the list is built from this).</summary>
     internal sealed class BondedDevice
@@ -49,6 +49,45 @@ namespace Launcher.Core
         public static bool IsBluetoothSelection(int selection) { return selection == 5 || selection == 6; }
 
         /// <summary>
+        /// The name of a sound output that is neither the TV speakers nor Bluetooth, from Samsung's route list (Tizen.TV.Multimedia
+        /// SoundTvOutputRoute, the same values on the 2021, 2022 and 2024 firmware, read from the firmware on 2026-11-19); null for the TV
+        /// speakers (0), Bluetooth (5, 6) and an unknown or unread value.
+        /// </summary>
+        public static string ExternalName(int selection)
+        {
+            switch (selection)
+            {
+                case 1: return "Optical";
+                case 2: return "Receiver (HDMI)";
+                case 3: return "Sound Share";
+                case 4: return "Wi-Fi speaker";
+                case 8: return "TV + receiver";
+                case 9: return "TV + optical";
+                case 10: return "TV + Wi-Fi speaker";
+                case 11: return "Optical (centre mode)";
+                case 12: return "Receiver (centre mode)";
+                case 13: return "Headphones";
+                case 14: return "Line out";
+                case 15: return "USB headset";
+                case 16: return "TV + Wi-Fi speaker";
+                case 17: return "TV + receiver";
+                case 18: return "TV + optical";
+                case 19: return "Auracast";
+                default: return null;
+            }
+        }
+
+        /// <summary>
+        /// Whether Vetro's volume bar should change the level itself: the TV speakers, Bluetooth headphones and wired headphones follow the TV's
+        /// level. On an optical, HDMI, Wi-Fi or combined output the level is the external device's (Samsung shows that device's level), so the
+        /// key goes back to Samsung. Unknown (-1) stays with Vetro, as before.
+        /// </summary>
+        public static bool VetroSetsLevel(int selection)
+        {
+            return selection < 0 || selection == 0 || IsBluetoothSelection(selection) || selection == 13;
+        }
+
+        /// <summary>
         /// The rows for a list of paired devices: TV speakers, then the audio devices, connected first, then by name. <paramref name="selection"/> is
         /// the TV's sound output (<c>sound_manager_get_speaker_selection</c>, -1 when unknown): the sound is on the connected device only when
         /// it says Bluetooth (or is unknown, then a connected device is assumed to be playing).
@@ -65,7 +104,11 @@ namespace Launcher.Core
             var rows = new List<OutputEntry>();
             bool anyConnected = devices.Exists(d => d.Connected);
             bool onBluetooth = anyConnected && (selection < 0 || IsBluetoothSelection(selection));
-            rows.Add(new OutputEntry { Kind = OutputKind.TvSpeaker, Label = TvLabel, Active = !onBluetooth });
+            // Another output (optical, a receiver on HDMI...) plays: it gets its own ticked row, and the TV speakers are not ticked (an S95C
+            // on optical showed "TV speakers" ticked). It cannot be chosen from here: it is already the one playing.
+            string external = ExternalName(selection);
+            rows.Add(new OutputEntry { Kind = OutputKind.TvSpeaker, Label = TvLabel, Active = !onBluetooth && external == null });
+            if (external != null) rows.Add(new OutputEntry { Kind = OutputKind.External, Label = external, Active = true });
             bool first = true;
             foreach (BondedDevice d in devices)
             {

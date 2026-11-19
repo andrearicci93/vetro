@@ -1878,6 +1878,15 @@ namespace Launcher
         private static void VolumeKey(Command key)
         {
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
+            // On an optical, HDMI or Wi-Fi output the level that counts is the external device's: the key goes back to Samsung, which
+            // shows that device's level (the TV's own level would change and nothing would be heard).
+            int output;
+            if (Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
+            {
+                string native = key == Command.VolUp ? "XF86AudioRaiseVolume" : key == Command.VolDown ? "XF86AudioLowerVolume" : "XF86AudioMute";
+                Log("volume: sound on output " + output + ", key passed to Samsung rc=" + Libc.system(KeyTool + native));
+                return;
+            }
             int volume;
             if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }
             bool muted = SamsungMuted();

@@ -139,9 +139,10 @@ assert.equal(ytShort.entries.length, 1, 'a short package list is not trusted: th
     console.log('PASS dock catalog: Home row, registry and icons become the dock list');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
-// CoBA uses its Home launcher, keeping csfs as a fallback; older TVs keep their original pill.
+// The pill always opens csfs, even where the Home component package is installed (it has no entry point: #170, #175, #210).
 const coba = catalog.build(catalog.parse(OUTPUT + '\nH|com.samsung.tv.coba.newhome'));
-assert.ok(catalog.tsv(coba).includes('samsunghome\tSamsung Home\tsys:com.samsung.tv.coba.newhome\tcom.samsung.tv.csfs'));
+assert.ok(catalog.tsv(coba).includes('samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs\n') || catalog.tsv(coba).includes('samsunghome\tSamsung Home\tsys:com.samsung.tv.csfs\t'));
+assert.ok(!catalog.tsv(coba).includes('coba.newhome'));
 assert.equal(catalog.parse('H|bad;command').homeApp, null);
 
 // 2022 Home (S95B), PR #43 by arnaudaprahamian: csfs has no row, the Media hub's file is the "recent" strip;

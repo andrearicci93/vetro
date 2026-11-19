@@ -71,9 +71,9 @@ var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'store', '
 // A row key: what the user's own order and hidden list refer to (app:<id>, live:<TVPLUS|RF>, source:<type>).
 var ROW_KEY = /^(?:app:[A-Za-z0-9_.-]{1,120}|live:[A-Z]{1,12}|source:\d{1,5})$/;
 var VETRO_APP = /^vetrotvapp(\.|$)/;
-// 2025 (CoBA) firmware: csfs is only the service; the Home that comes up on screen is started through this app,
-// which then spawns csfs, home.sidebar and home.media. When it is installed the pill starts it instead.
-var COBA_HOME = 'com.samsung.tv.coba.newhome';
+// The Samsung Home pill always opens csfs. com.samsung.tv.coba.newhome, which an older Vetro started instead where it was installed,
+// is a package of Home components whose app has no entry point (2022 firmware, 2025 update): it started and died, nothing showed
+// (#170, #175, #210). The launcher sends csfs the bundle of Samsung's own Home key where the firmware wants it (SystemLaunch.cs).
 
 function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
@@ -98,7 +98,6 @@ function script() {
         // The third field says whether the app is disabled (Quick settings → Disable, or Apps and processes): a disabled app
         // cannot start, so it gets no tile. An older reader of these lines (two fields) is not affected: it is this file.
         'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'A|\'||hex(app_id)||\'|\'||ifnull(app_disable,\'false\') FROM package_app_info;" 2>/dev/null',
-        '[ -d /usr/apps/' + COBA_HOME + ' ] || [ -d /opt/usr/apps/' + COBA_HOME + ' ] && echo "H|' + COBA_HOME + '"',
         'true'
     ].join('\n');
 }
@@ -136,8 +135,6 @@ function parse(text) {
                 out.installed[unhex(f[1])] = true;
                 if (f[2] === 'true') out.disabled[unhex(f[1])] = true;
                 out.installedCount++;
-            } else if (f[0] === 'H' && f.length === 2) {
-                if (f[1].trim() === COBA_HOME) out.homeApp = COBA_HOME;
             }
         } catch (e) { /* skip the line */ }
     });
