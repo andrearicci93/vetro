@@ -85,6 +85,7 @@ namespace Tuner
         // The thread that talks to tvs-daemon, and the way its results come back to the UI thread: a queue plus a pipe
         // the EFL main loop watches (the UI is single-threaded; nothing but the main thread touches EFL objects).
         private static readonly BlockingCollection<Action> Work = new BlockingCollection<Action>();
+        private static Channel _firstRead;
         private static readonly ConcurrentQueue<Action> UiQueue = new ConcurrentQueue<Action>();
         private static readonly int[] Wake = new int[2];
         private static IntPtr _wakeHandler;
@@ -179,6 +180,7 @@ namespace Tuner
             Efl.elm_init(0, IntPtr.Zero);
             long mInitDone = _clock.ElapsedMilliseconds;
             Log("elm_init done");
+            UiReady.Set();
             _win = Efl.elm_win_add(IntPtr.Zero, "vetro-tuner", Flag(args, "--notif") ? Efl.ElmWinNotification : 0);   // 0 = ELM_WIN_BASIC
             if (_win == IntPtr.Zero) { Log("elm_win_add failed"); return 2; }
             Efl.elm_win_title_set(_win, "vetro-tuner");
@@ -355,13 +357,30 @@ namespace Tuner
 
         // ---- the worker (everything that talks to tvs-daemon) ----
 
+        // The worker loads Samsung's TV client only once the window system is up. On an S95B (2022, the client from
+        // /usr/share/dotnet.tizen/framework) the log stopped right after "start": neither "elm_init done" nor the first "tvs:" line came,
+        // and the process stayed alive with nothing on screen, which reads as the two threads waiting on each other while both start.
+        // One after the other costs the first read a few milliseconds; if elm_init never returns the worker goes on after 5 s anyway, so
+        // the log then says which of the two is stuck.
+        private static readonly ManualResetEventSlim UiReady = new ManualResetEventSlim(false);
+        private const int UiReadyWaitMs = 5000, TvsSlowMs = 10000;
+
         private static void WorkerMain()
         {
             try
             {
+                if (!UiReady.Wait(UiReadyWaitMs)) Log("tvs: the window system is not up after " + UiReadyWaitMs / 1000 + " s, reading the TV anyway");
                 TvsClient.InstallResolver();
                 string status;
-                Channel cur = Tvs.ReadCurrent(out status);
+                // A client that never answers (another firmware's) leaves no trace otherwise: say so in the log once.
+                int answered = 0;
+                using (new Timer(_ => { if (Volatile.Read(ref answered) == 0) Log("tvs: no answer from the TV service after " + TvsSlowMs / 1000 + " s"); }, null, TvsSlowMs, Timeout.Infinite))
+                {
+                    Channel first = Tvs.ReadCurrent(out status);
+                    Volatile.Write(ref answered, 1);
+                    _firstRead = first;
+                }
+                Channel cur = _firstRead;
                 Log("tvs: " + status + (cur != null ? " -> " + cur.Major + " " + cur.Name : ""));
                 if (cur != null) Ui(() => { _shown = cur; if (_active && !QuietStart()) ShowBanner(cur); RequestProgram(); });
                 Interlocked.Exchange(ref _listReading, 1);
