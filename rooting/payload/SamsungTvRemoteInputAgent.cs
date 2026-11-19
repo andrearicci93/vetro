@@ -12,7 +12,7 @@ internal static class SamsungTvRemoteInputAgent
 {
     private const string ProtocolVersion = "SAMSUNG-TV-REMOTE/1";
     private const string Libc = "libc";
-    private const string VconfApi = "/usr/lib/libvconf.so.0";
+    private const string VconfApi = "libvconf.so.0";
     private const string CurrentSourceTypeKey = "memory/system/source_type";
     private const string CurrentFullscreenAppIdKey =
         "memory/appfw/current_fullscreen_appid";
@@ -24,6 +24,7 @@ internal static class SamsungTvRemoteInputAgent
     private const int OpenWriteOnly = 1;
     private const int OpenNonblock = 2048;
     private const int InterruptedSystemCall = 4;
+    private const int ResourceTemporarilyUnavailable = 11;
     private const short PollIn = 1;
     private const short PollError = 8;
     private const short PollHangup = 16;
@@ -803,28 +804,53 @@ internal static class SamsungTvRemoteInputAgent
         });
     }
 
+    private const int VconfCacheMs = 250;
+    private static int _cachedSourceTick;
+    private static int _cachedSourceType = -1;
+    private static bool _hasCachedSource;
+    private static int _cachedPresTick;
+    private static PresentationSnapshot _cachedPres;
+    private static bool _hasCachedPres;
+
     private static int ReadCurrentSourceType()
     {
+        int now = Environment.TickCount;
+        if (_hasCachedSource && (uint)(now - _cachedSourceTick) < VconfCacheMs)
+        {
+            return _cachedSourceType;
+        }
         int sourceType;
-        return VconfGetInt(CurrentSourceTypeKey, out sourceType) == 0
+        int value = VconfGetInt(CurrentSourceTypeKey, out sourceType) == 0
             ? sourceType
             : -1;
+        _cachedSourceType = value;
+        _cachedSourceTick = now;
+        _hasCachedSource = true;
+        return value;
     }
 
     private static PresentationSnapshot ReadPresentationSnapshot()
     {
+        int now = Environment.TickCount;
+        if (_hasCachedPres && (uint)(now - _cachedPresTick) < VconfCacheMs)
+        {
+            return _cachedPres;
+        }
         string fullscreen;
         string partial;
-        if (!TryReadVconfString(CurrentFullscreenAppIdKey, out fullscreen)
-            || !TryReadVconfString(CurrentPartialAppIdKey, out partial))
-        {
-            return null;
-        }
-        return new PresentationSnapshot
-        {
-            FullscreenApplicationId = fullscreen,
-            PartialApplicationId = partial,
-        };
+        PresentationSnapshot snap =
+            TryReadVconfString(CurrentFullscreenAppIdKey, out fullscreen)
+            && TryReadVconfString(CurrentPartialAppIdKey, out partial)
+                ? new PresentationSnapshot
+                {
+                    FullscreenApplicationId = fullscreen,
+                    PartialApplicationId = partial,
+                }
+                : null;
+        _cachedPres = snap;
+        _cachedPresTick = now;
+        _hasCachedPres = true;
+        return snap;
     }
 
     private static bool TryReadVconfString(string key, out string value)
@@ -1072,12 +1098,19 @@ internal static class SamsungTvRemoteInputAgent
 
     private static void RequireWrite(int descriptor, byte[] buffer)
     {
-        int count = write(descriptor, buffer, buffer.Length);
-        if (count != buffer.Length)
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            throw NativeError(
-                "write returned " + count + ", expected " + buffer.Length);
+            int count = write(descriptor, buffer, buffer.Length);
+            if (count == buffer.Length) return;
+            if (count >= 0) throw NativeError("write returned " + count + ", expected " + buffer.Length);
+            int errno = Marshal.GetLastWin32Error();
+            if (errno != InterruptedSystemCall && errno != ResourceTemporarilyUnavailable)
+            {
+                throw NativeError("write returned " + count + ", expected " + buffer.Length);
+            }
+            System.Threading.Thread.Sleep(1);
         }
+        throw NativeError("write returned -1 after retries, expected " + buffer.Length);
     }
 
     private static Exception NativeError(string operation)
@@ -1129,6 +1162,12 @@ internal static class SamsungTvRemoteInputAgent
                 case '\\':
                     builder.Append('\\').Append(character);
                     break;
+                case '\b':
+                    builder.Append("\\b");
+                    break;
+                case '\f':
+                    builder.Append("\\f");
+                    break;
                 case '\n':
                     builder.Append("\\n");
                     break;
@@ -1139,7 +1178,14 @@ internal static class SamsungTvRemoteInputAgent
                     builder.Append("\\t");
                     break;
                 default:
-                    builder.Append(character);
+                    if (character < ' ')
+                    {
+                        builder.Append("\\u").Append(((int)character).ToString("x4"));
+                    }
+                    else
+                    {
+                        builder.Append(character);
+                    }
                     break;
             }
         }

@@ -66,14 +66,14 @@ var pkg = 'archive-root-' + Array.from(crypto.randomBytes(8)).map(hex2).join('')
 
 function ensureDir(p) {
     // Node 4.4 fs.mkdirSync has no {recursive:true} and throws EEXIST.
-    var parts = p.split('/').filter(function (s) { return s; });
-    var current = p.charAt(0) === '/' ? '' : '.';
-    parts.forEach(function (name) {
-        current += '/' + name;
-        try { fs.mkdirSync(current, 511 /* 0o777, as the recursive form did */); } catch (e) {
-            if (e.code !== 'EEXIST') throw e;
-        }
-    });
+    var resolved = path.resolve(p);
+    var parent = path.dirname(resolved);
+    if (!parent || parent === resolved) return p;
+    if (fs.existsSync(resolved)) return p;
+    ensureDir(parent);
+    try { fs.mkdirSync(resolved, 511 /* 0o777, as the recursive form did */); } catch (e) {
+        if (e.code !== 'EEXIST') throw e;
+    }
     return p;
 }
 
@@ -198,6 +198,7 @@ var launchClient = null;   // temporary SDB connection during launch
 var launching = false;
 var relaunchTimer = null;
 var launchGen = 0;        // invalidates stale retry timers
+var callbackTimer = null;
 var launchFailures = 0;   // consecutive failed launches since the agent last connected: drives the retry delay
 
 // Wake. The TV stops sdbd at standby, which ends the agent; it starts sdbd again at wake. After the loss of an agent that had
@@ -358,12 +359,15 @@ function startAgent() {
     // Regenerate launch.sh for the current listener port on each lifecycle.
     state.prepared = false;
     state.unsupported = false;
+    state.agentPort = null;
+    var serverListening = false;
     state.rooting = { backend: 'sdb-archive', phase: 'preparing', failure: null };
-    agentServer = new RootAgentServer({
+    var server = new RootAgentServer({
         secret: secret,
         onConnect: function (conn) {
-            if (!state.running) { conn._socket.destroy(); return; }
+            if (agentServer !== server || !state.running) { conn._socket.destroy(); return; }
             if (relaunchTimer) { clearTimeout(relaunchTimer); relaunchTimer = null; }
+            if (callbackTimer) { clearTimeout(callbackTimer); callbackTimer = null; }
             agentConnected = true;
             // A connected agent ends any launch still in flight (it would otherwise keep `launching` set and
             // block every later relaunch), and the next outage starts again from the short retry delay.
@@ -391,7 +395,14 @@ function startAgent() {
             notifyAgent(true);
         },
         onClose: function () {
-            if (!state.running) return;
+            if (agentServer !== server || !state.running) return;
+            if (!serverListening) {
+                try { server.close(); } catch (e) {}
+                agentServer = null;
+                rootFailure('agent-connection', 'agent-disconnected');
+                persist();
+                return;
+            }
             var connectedFor = state.agent && state.agent.at ? Date.now() - state.agent.at : 0;
             agentConnected = false;
             state.agent = { connected: false };
@@ -407,11 +418,13 @@ function startAgent() {
             scheduleRelaunch();
         }
     });
+    agentServer = server;
 
     startTunnel(function () {
-        if (!state.running || !agentServer) return;
-        agentServer.start(function (port) {
-            if (!state.running) return;
+        if (agentServer !== server || !state.running) return;
+        server.start(function (port) {
+            if (agentServer !== server || !state.running) return;
+            serverListening = true;
             if (!startHr) startHr = process.hrtime();
             state.agentPort = port;
             if (typeof crypto.generateKeyPairSync !== 'function') prepareForRuntime(port);
@@ -430,7 +443,7 @@ function scheduleRelaunch() {
 }
 
 function relaunch() {
-    if (launching || agentConnected || !agentServer || !state.running || state.unsupported) return;
+    if (launching || agentConnected || !agentServer || !state.agentPort || !state.running || state.unsupported) return;
     launching = true;
     rootPhase('preparing');
     var gen = ++launchGen;
@@ -497,6 +510,10 @@ function relaunch() {
             rootPhase('launch-command');
             // The launch script returns independently of the agent lifetime.
             // Release this connection on agent connect as an additional safeguard.
+            function closeLaunch() {
+                if (launchClient === client) launchClient = null;
+                if (client) { try { sdb.close(client); } catch (ignored) {} }
+            }
             Promise.resolve().then(function () {
                 if (!state.running || gen !== launchGen || agentConnected) return;
                 return sdb.exec(client, 'shell:0 appinstall tpk ' + injection, { timeout: 60000 });
@@ -511,11 +528,13 @@ function relaunch() {
                     rootPhase('agent-callback');
                     persist();
                 }
-            });
+            }).then(closeLaunch, closeLaunch);
             launching = false;
             // if the agent has not connected within 30s, retry — but only if
             // this launch is still the current one (no newer relaunch started)
-            setTimeout(function () {
+            if (callbackTimer) clearTimeout(callbackTimer);
+            var cbTimer = setTimeout(function () {
+                if (callbackTimer === cbTimer) callbackTimer = null;
                 if (state.running && gen === launchGen && !agentConnected && !launching) {
                     // Keep a more specific error from this launch when available.
                     if (!entry.err) rootFailure('agent-callback', 'agent-timeout');
@@ -523,6 +542,7 @@ function relaunch() {
                     relaunch();
                 }
             }, retryPolicy.callbackWait(launchFailures));
+            callbackTimer = cbTimer;
         })
         .catch(function (e) {
             // This attempt is over whatever happened around it. Leaving the flag set when the agent connected
@@ -557,7 +577,11 @@ function agentExecute(cmd, timeoutMs) {
         missing.code = 'no-root-agent';
         return Promise.reject(missing);
     }
-    return agentServer.execute(cmd, timeoutMs || 30000);
+    var timeout = timeoutMs == null ? 30000 : timeoutMs;
+    if (typeof timeout === 'number' && isFinite(timeout)) {
+        timeout = Math.max(100, Math.min(Math.floor(timeout), 120000));
+    }
+    return agentServer.execute(cmd, timeout);
 }
 
 function status() {
@@ -568,10 +592,13 @@ function status() {
 function onAgent(fn) { if (typeof fn === 'function') agentListeners.push(fn); }
 function stop() {
     state.running = false;
+    state.agentPort = null;
     rootPhase('stopped');
     ++launchGen;
     if (relaunchTimer) clearTimeout(relaunchTimer);
     relaunchTimer = null;
+    if (callbackTimer) clearTimeout(callbackTimer);
+    callbackTimer = null;
     if (launchClient) sdb.close(launchClient);
     launchClient = null;
     if (agentServer) agentServer.close();
@@ -595,7 +622,7 @@ function install(packageId, wgtPath) {
     return sdb.connect(sdbTarget()).then(function (client) {
         dispatched = true;
         return sdb.exec(client, 'shell:0 vd_appinstall ' + packageId + ' ' + wgtPath, {timeout: 120000})
-            .finally(function () {sdb.close(client);});
+            .then(function (r) { sdb.close(client); return r; }, function (e) { sdb.close(client); throw e; });
     }).catch(function (error) {
         error.submitted = dispatched ? null : false;
         throw error;
