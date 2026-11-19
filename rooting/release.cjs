@@ -29,10 +29,19 @@ function keygen(folder) {
     console.log(publicPem);
 }
 
+// What never goes into a bundle: the Samsung package's own files (a file swap cannot change them) and the notices.
+const PACKAGE_ONLY = /^(?:config\.xml|LICENSE|THIRD_PARTY_NOTICES\.md|notices\/[A-Za-z0-9_.-]+)$/;
+// A TV checks the bundle with the updater it runs. 0.5.x refuses any subfolder of payload/ and then refuses the whole
+// bundle, so payload/net6 stays out until no 0.5.x is left to update (it has not changed since 0.5.0) (#226).
+const OLD_UPDATER = /^payload\/[^/]+\//;
+
 function buildBundle(privatePem) {
     const info = {};
     const all = collectIntegration().map(f => ({ name: decodeURIComponent(f.uri), data: f.data }));
-    const files = all.filter(f => updater.okPath(f.name));
+    const files = all.filter(f => updater.okPath(f.name) && !OLD_UPDATER.test(f.name));
+    // A file that is neither shipped nor package-only would be left behind on every TV without a word: stop instead.
+    const lost = all.filter(f => !updater.okPath(f.name) && !PACKAGE_ONLY.test(f.name)).map(f => f.name);
+    if (lost.length) throw new Error('Files the updater refuses, so no update would carry them: ' + lost.join(', '));
     const infoFile = files.find(f => f.name === 'service/build-info.js');
     Object.assign(info, updater.parseBuildInfo(infoFile.data));
     if (!info.version || !(info.shell >= 1)) throw new Error('build-info.js has no version or shell');

@@ -15,6 +15,9 @@ const names = Object.keys(parsed.manifest.files);
 assert.equal(parsed.manifest.version, require('../../app/package.json').version);
 assert.ok(names.includes('service/platform.js') && names.includes('service/root-agent.js'), 'the root adapter ships with updates');
 assert.ok(names.includes('service/updater.js') && names.includes('payload/SamsungTvRootAgent.dll'));
+// 0.5.x refuses a bundle that lists a payload subfolder, so payload/net6 stays out while 0.5.x TVs update (#226).
+const oldOkPath = n => /^(?:service\/[A-Za-z0-9_.-]+\.js|native\/[A-Za-z0-9_.\/-]+|payload\/[A-Za-z0-9_.-]+|index\.html|icon\.png)$/.test(n);
+assert.ok(names.every(oldOkPath), 'a 0.5.x updater accepts every path: ' + names.filter(n => !oldOkPath(n)).join(', '));
 assert.ok(!names.includes('config.xml') && names.every(n => !/signature|\.p12|\.cer/.test(n)), 'nothing of the Samsung package or certificates');
 assert.throws(() => updater.verifyBundle(built.raw, crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' })), /not signed/);
 console.log('PASS release tool: signed bundle verifies, root adapter included, config.xml and certificates excluded');

@@ -27,7 +27,8 @@ var MAX_FILES = 300;
 var MAX_BYTES = 12 * 1024 * 1024;
 var WAIT_SECONDS = 240;    // the watchdog waits this long for the new version to confirm itself
 // Only these paths can be replaced. config.xml, signatures and anything else of the package stay as installed.
-var ALLOWED = /^(?:service\/[A-Za-z0-9_.-]+\.js|native\/[A-Za-z0-9_.\/-]+|payload\/[A-Za-z0-9_.-]+|index\.html|icon\.png)$/;
+// payload/ takes subfolders (payload/net6) since 0.7.0; 0.5.x refuses them, so release.cjs keeps them out for now (#226).
+var ALLOWED = /^(?:service\/[A-Za-z0-9_.-]+\.js|native\/[A-Za-z0-9_.\/-]+|payload\/[A-Za-z0-9_.\/-]+|index\.html|icon\.png)$/;
 var DIR = /^\/[A-Za-z0-9_.\/-]+$/;
 var VERSION = /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/;
 var SERVICE_ID = 'vetrotvapp.svc';
@@ -81,7 +82,7 @@ function verifyBundle(raw, publicKey) {
     var signed;
     try {
         var v = crypto.createVerify('RSA-SHA256');
-        v.update(b.manifest);
+        v.update(b.manifest, 'utf8');
         signed = v.verify(publicKey, b.signature, 'base64');
     } catch (e) { signed = false; }
     if (!signed) throw fail('The update is not signed by the Vetro release key', 'bad-signature');
@@ -226,6 +227,12 @@ Updater.prototype.apply = function (raw, expectedSha256) {
     var from = this.buildInfo.version, to = parsed.manifest.version, changed = parsed.changed;
     var dock = changed.some(function (n) { return DOCK_PATH_RE.test(n); });
     return Promise.resolve().then(function () {
+        // The script is built first: if it cannot be (an unsafe path), nothing is staged or saved.
+        var existing = changed.filter(function (n) { return fs.existsSync(path.join(self.installDir, n)); });
+        var added = changed.filter(function (n) { return existing.indexOf(n) < 0; });
+        var hashes = {};
+        changed.forEach(function (n) { hashes[n] = sha256(parsed.files[n]); });
+        var script = self._applyScript(from, to, changed, existing, added, hashes, dock);
         var staging = self._file('staging');
         rmrf(staging);
         mkdirp(staging);
@@ -233,14 +240,10 @@ Updater.prototype.apply = function (raw, expectedSha256) {
             mkdirp(path.dirname(path.join(staging, n)));
             fs.writeFileSync(path.join(staging, n), parsed.files[n]);
         });
-        var existing = changed.filter(function (n) { return fs.existsSync(path.join(self.installDir, n)); });
-        var added = changed.filter(function (n) { return existing.indexOf(n) < 0; });
         writeJson(self._file('backup.json'), { from: from, to: to, files: existing, added: added, dock: dock });
-        var hashes = {};
-        changed.forEach(function (n) { hashes[n] = sha256(parsed.files[n]); });
-        return self.execute(self._applyScript(from, to, changed, existing, added, hashes, dock), 120000);
+        return self.execute(script, 120000);
     }).then(function (r) {
-        if (!r || r.exit_code || r.timed_out) throw fail('The files could not be replaced' + (r && r.stderr ? ': ' + String(r.stderr).trim().slice(0, 200) : ''), 'apply-failed');
+        if (!r || r.exit_code !== 0 || r.timed_out) throw fail('The files could not be replaced' + (r && r.stderr ? ': ' + String(r.stderr).trim().slice(0, 200) : ''), 'apply-failed');
         return { ok: true, from: from, to: to, changed: changed.length, restarting: true,
             note: 'Vetro restarts in a few seconds; if the new version does not start it is put back automatically' };
     }).then(function (res) { self.busy = false; return res; }, function (e) { self.busy = false; throw e; });
@@ -302,7 +305,7 @@ Updater.prototype.rollback = function () {
     lines.push("echo '" + JSON.stringify({ state: 'rolled-back', from: meta.to, to: meta.from, at: Date.now() }) + "' > \"$W/result.json\"",
         detached('sleep 3; ' + this.restartCommand), 'exit 0');
     return this.execute(lines.join('\n') + '\n', 60000).then(function (r) {
-        if (!r || r.exit_code || r.timed_out) throw fail('The previous files could not be put back', 'rollback-failed');
+        if (!r || r.exit_code !== 0 || r.timed_out) throw fail('The previous files could not be put back', 'rollback-failed');
         return { ok: true, from: meta.to, to: meta.from, restarting: true };
     }).then(function (res) { self.busy = false; return res; }, function (e) { self.busy = false; throw e; });
 };
