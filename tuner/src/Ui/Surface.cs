@@ -160,12 +160,15 @@ namespace Tuner.Ui
             return t;
         }
 
+        /// <summary>A picture's file: the tuner's own res folder, or the launcher's for the pictures both share (<see cref="AssetPath"/>).</summary>
+        private string Asset(string name) { return AssetPath.Of(_assets, name); }
+
         private IntPtr Slice(string name, int border) { return Slice(name, border, border, border, border); }
 
         private IntPtr Slice(string name, int l, int r, int t, int b)
         {
             IntPtr img = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
+            Efl.evas_object_image_file_set(img, Asset(name), null);
             Efl.evas_object_image_filled_set(img, true);
             Efl.evas_object_image_border_set(img, l, r, t, b);
             Efl.evas_object_image_border_center_fill_set(img, 1);
@@ -177,7 +180,7 @@ namespace Tuner.Ui
         public IntPtr Picture(string name)
         {
             IntPtr img = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
+            Efl.evas_object_image_file_set(img, Asset(name), null);
             Efl.evas_object_image_filled_set(img, true);
             Efl.evas_object_image_smooth_scale_set(img, true);
             Efl.evas_object_color_set(img, 0, 0, 0, 0);
@@ -211,7 +214,7 @@ namespace Tuner.Ui
             Efl.evas_object_hide(img);
             foreach (string n in names)
             {
-                Efl.evas_object_image_file_set(img, Path.Combine(_assets, n + ".png"), null);
+                Efl.evas_object_image_file_set(img, Asset(n), null);
                 int err = Efl.evas_object_image_load_error_get(img);
                 if (err != Efl.EvasLoadErrorNone) problems += " " + n + "=" + err;
             }
@@ -264,7 +267,7 @@ namespace Tuner.Ui
         public IntPtr Tile(string name, int w, int h)
         {
             IntPtr img = Efl.evas_object_image_add(_evas);
-            Efl.evas_object_image_file_set(img, Path.Combine(_assets, name + ".png"), null);
+            Efl.evas_object_image_file_set(img, Asset(name), null);
             Efl.evas_object_image_filled_set(img, false);
             Efl.evas_object_image_fill_set(img, 0, 0, w, h);
             Efl.evas_object_image_smooth_scale_set(img, false);

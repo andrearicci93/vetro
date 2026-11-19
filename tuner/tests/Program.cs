@@ -131,6 +131,19 @@ internal static partial class Tests
         GuideGridChecks();
         MotionChecks();
         PerfChecks();
+
+        // On the TV the package has native/tuner/res without the osd 123's pill pictures and native/dock/res with them: the tuner finds them there.
+        string pkg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vetro-assets-" + Guid.NewGuid().ToString("N"));
+        string tunerRes = System.IO.Path.Combine(pkg, "native", "tuner", "res"), dockRes = System.IO.Path.Combine(pkg, "native", "dock", "res");
+        System.IO.Directory.CreateDirectory(tunerRes); System.IO.Directory.CreateDirectory(dockRes);
+        System.IO.File.WriteAllText(System.IO.Path.Combine(tunerRes, "bar.png"), "t");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(dockRes, "pill_bg.png"), "d");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(dockRes, "bar.png"), "d");
+        Check(System.IO.File.ReadAllText(AssetPath.Of(tunerRes, "bar")) == "t", "the tuner's own picture comes first");
+        Check(System.IO.File.ReadAllText(AssetPath.Of(tunerRes, "pill_bg")) == "d", "a shared picture is found in the launcher's folder");
+        Check(AssetPath.Of(tunerRes, "missing") == System.IO.Path.Combine(tunerRes, "missing.png"), "a missing picture keeps its own path (the load error names it)");
+        System.IO.Directory.Delete(pkg, true);
+
         Console.WriteLine(_failed == 0 ? "ok: " + _run + " checks" : _failed + " of " + _run + " checks FAILED");
         return _failed == 0 ? 0 : 1;
     }

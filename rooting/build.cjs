@@ -31,6 +31,8 @@ function collectIntegration() {
         fs.readdirSync(directory).sort().forEach(name => {
             const next = relative + '/' + name;
             if (fs.statSync(path.join(__dirname, next)).isDirectory()) addPayloads(next);
+            // C# sources stay in the repository: the TV runs the built DLL, and each shipped file costs room in the update from 0.5.0 (#250).
+            else if (/\.cs$/.test(name)) return;
             else files.push({uri: encodeURIComponent(next), data: fs.readFileSync(path.join(__dirname, next))});
         });
     }

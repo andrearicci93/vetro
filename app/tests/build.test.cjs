@@ -14,7 +14,13 @@ assert.ok(dockRes.includes('native/dock/res/inputs.tsv'));
 assert.ok(dockRes.every(name => /\.(png|tsv)$/.test(name)), 'only images and the inputs list are packaged from dock/res');
 // The tuner ships its own glass pictures and the two files of the build, never Samsung's TV client DLL.
 const tunerRes = names.filter(name => name.startsWith('native/tuner/res/'));
-['veil_corner', 'pill_bg', 'pill_rim', 'pill_cap', 'progress', 'bar', 'hatch'].forEach(base => assert.ok(tunerRes.includes('native/tuner/res/' + base + '.png'), 'tuner image packaged: ' + base));
+['veil_corner', 'progress', 'bar', 'hatch'].forEach(base => assert.ok(tunerRes.includes('native/tuner/res/' + base + '.png'), 'tuner image packaged: ' + base));
+// The osd 123's material is the same file for the launcher and the tuner: shipped once, in native/dock/res, where the tuner also looks.
+['pill_bg', 'pill_rim', 'pill_cap'].forEach(base => {
+    assert.ok(!tunerRes.includes('native/tuner/res/' + base + '.png') && dockRes.includes('native/dock/res/' + base + '.png'), 'shipped once, with the launcher: ' + base);
+    const read = dir => require('fs').readFileSync(require('path').join(__dirname, '../..', dir, 'res', base + '.png'));
+    assert.ok(read('tuner').equals(read('dock')), 'the same picture: ' + base);
+});
 ['dock_bg', 'ring', 'shadow', 'solid'].forEach(base => assert.ok(!tunerRes.includes('native/tuner/res/' + base + '.png'), 'the old card material is no longer packaged: ' + base));
 assert.ok(tunerRes.every(name => /\.png$/.test(name)), 'only images are packaged from tuner/res');
 assert.ok(!names.some(name => /Tizen\.TV\.Broadcast\.TVService/i.test(name)), "Samsung's TV client is never packaged");

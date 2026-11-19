@@ -12,7 +12,11 @@ function nativeResources(part) {
             if (fs.statSync(full).isDirectory()) walk(full, next); else if (/\.(png|tsv)$/.test(name)) found.push(next);
         });
     })(root, '');
-    return found.map(rel => ({name: 'native/' + part + '/res/' + rel, source: path.join(root, rel)}));
+    // A tuner picture that is byte for byte the launcher's (the osd 123's pill_bg, pill_rim, pill_cap) is shipped once, in native/dock/res,
+    // where the tuner looks when its own folder lacks a file (tuner/src/Ui/Surface.cs Asset): each file costs room in the update from 0.5.0.
+    const dock = path.join(__dirname, '..', 'dock', 'res');
+    const same = rel => part === 'tuner' && fs.existsSync(path.join(dock, rel)) && fs.readFileSync(path.join(dock, rel)).equals(fs.readFileSync(path.join(root, rel)));
+    return found.filter(rel => !same(rel)).map(rel => ({name: 'native/' + part + '/res/' + rel, source: path.join(root, rel)}));
 }
 const DEFAULT_PORT = 8099;
 // Ports the package already uses for other things: the TV's remote WebSocket origins in config.xml.

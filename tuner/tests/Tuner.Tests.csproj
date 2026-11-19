@@ -11,6 +11,7 @@
   <ItemGroup>
     <!-- The pure logic only: no EFL, no TV service. Runs on any machine (dotnet run in the tests folder) -->
     <Compile Include="../src/Core/ChannelList.cs" />
+    <Compile Include="../src/Core/AssetPath.cs" />
     <Compile Include="../src/Input/Evdev.cs" />
     <Compile Include="../src/Core/NumberEntry.cs" />
     <Compile Include="../src/Core/ProgramClock.cs" />
