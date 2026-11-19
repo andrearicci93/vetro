@@ -41,6 +41,8 @@ var CLIENT_ROOT = '/opt/usr/dotnet/Tizen.TV.Broadcast.TVService';
 var CLIENT_GLOB = CLIENT_ROOT + '/*/Tizen.TV.Broadcast.TVService.dll';
 // The tuner also loads the client from the firmware's shared library folders (tuner/src/Tvs/TvsClient.cs FixedDirs): on 2022 firmware
 // (an S95B, 1720.7) there is no CLIENT_ROOT at all and the client sits in /usr/share/dotnet.tizen/framework (2026-11-19 export).
+var CLIENT_ELSEWHERE = ['/usr/share/dotnet.tizen/framework', '/usr/apps/*/shared/res', '/usr/apps/*/bin', '/usr/apps/*/lib', '/opt/usr/apps/*/bin',
+    '/opt/usr/apps/*/shared/res'].map(function (d) { return d + '/Tizen.TV.Broadcast.TVService.dll'; });
 var CLIENT_FIXED = ['/usr/share/dotnet.tizen/framework/Tizen.TV.Broadcast.TVService.dll', '/usr/apps/csapi-tv-tizenfx/shared/lib/Tizen.TV.Broadcast.TVService.dll'];
 var CLIENT_VERSION_RE = /^\d+(?:\.\d+){0,3}$/;
 var START_WAIT_MS = 15000;
@@ -148,9 +150,10 @@ Tuner.prototype.probe = function () {
         // What the client's folder holds, relative to it, for the report: on Tizen 9 the version folders exist but hold no .dll at all
         // (the S95C and S95F reports of 2026-11-18). Names only, at most 12.
         'echo "clientdll=$(cd ' + CLIENT_ROOT + ' 2>/dev/null && find . -maxdepth 4 ! -type d 2>/dev/null | sed "s|^\\./||" | head -n 12 | tr "\\n" ",")"',
-        // Where else the firmware keeps the client (the Q80A has copies under /usr/apps): searched once per run, and only on a TV where the
-        // usual place has none, since walking /usr/apps takes a moment.
-        self._clientElsewhere ? '' : 'if ! ls ' + CLIENT_GLOB + ' >/dev/null 2>&1; then echo "clientelse=$(find /usr/apps /opt/usr/apps /usr/share/dotnet.tizen /opt/usr/dotnet -maxdepth 6 -name "Tizen.TV.Broadcast.TVService*.dll" 2>/dev/null | head -n 6 | tr "\\n" ",")"; fi',
+        // Where else the firmware keeps the client, for the report: the shared library folders and the Samsung apps that carry a copy (an
+        // S95B had it in /usr/share/dotnet.tizen/framework, /usr/apps/<app>/shared/res and /opt/usr/apps/<app>/bin). Fixed patterns, no
+        // walk of /usr/apps: a find there took longer than the probe's 8 s on a Tizen 9 S90D and left the tuner's status empty.
+        self._clientElsewhere ? '' : 'if ! ls ' + CLIENT_GLOB + ' >/dev/null 2>&1; then echo "clientelse=$(ls -d ' + CLIENT_ELSEWHERE.join(' ') + ' 2>/dev/null | head -n 6 | tr "\\n" ",")"; fi',
         // No log file yet is normal: without || true the missing file would fail the whole read.
         'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
     ].join('\n');
