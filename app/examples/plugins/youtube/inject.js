@@ -8,7 +8,7 @@ var SCRIPT_PATH = '/vetro-youtube/userscript.js';     // served by the proxy its
 var CSP = "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; img-src * data: blob:; media-src * data: blob:; " +
     "script-src * data: blob: 'unsafe-inline' 'unsafe-eval'; style-src * data: blob: 'unsafe-inline'; connect-src *; font-src * data:";
 
-var META_CSP_RE = /<meta\b[^>]*http-equiv\s*=\s*["']Content-Security-Policy(?:-Report-Only)?["'][^>]*>/gi;
+var META_CSP_RE = /<meta\b[^>]*http-equiv\s*=\s*(?:["']Content-Security-Policy(?:-Report-Only)?["']|Content-Security-Policy(?:-Report-Only)?(?=[>\s\/]))[^>]*>/gi;
 
 // The TV app's start page: /tv or /tv?..., not /tv_config or anything else that merely starts with /tv.
 function isTvPage(url) { return url === '/tv' || url.indexOf('/tv?') === 0 || url.indexOf('/tv#') === 0; }
@@ -18,7 +18,8 @@ function scriptTag(version) { return '<script src="' + SCRIPT_PATH + '?v=' + enc
 // -> {html, injected}. Without a </body> the tag goes at the end of the document.
 function rewritePage(html, tag) {
     var text = String(html).replace(META_CSP_RE, '');
-    var at = text.indexOf('</body>');
+    var m, at = -1, re = /<\/body\s*>/gi;
+    while ((m = re.exec(text)) !== null) at = m.index;
     if (at < 0) return { html: text + tag, injected: false };
     return { html: text.slice(0, at) + tag + text.slice(at), injected: true };
 }
