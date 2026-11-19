@@ -15,7 +15,6 @@ var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
 // Regular expressions compiled once at module load, not on every call.
-var SAFE_PATH_RE = /^[A-Za-z0-9_.\/-]+$/;
 var SHA256_RE = /^[0-9a-f]{64}$/;
 var BUILD_INFO_RE = /module\.exports = (\{[\s\S]*\});\s*$/;
 var DEFAULT_PORT_RE = /\b8099\b/g;
@@ -30,6 +29,7 @@ var WAIT_SECONDS = 240;    // the watchdog waits this long for the new version t
 // payload/ takes subfolders (payload/net6) since 0.7.0; 0.5.x refuses them, so release.cjs keeps them out for now (#226).
 var ALLOWED = /^(?:service\/[A-Za-z0-9_.-]+\.js|native\/[A-Za-z0-9_.\/-]+|payload\/[A-Za-z0-9_.\/-]+|index\.html|icon\.png)$/;
 var DIR = /^\/[A-Za-z0-9_.\/-]+$/;
+var WIN_DIR = /^[A-Za-z]:[\\\/][A-Za-z0-9_.\\\/ ()+-]+$/;
 var VERSION = /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/;
 var SERVICE_ID = 'vetrotvapp.svc';
 
@@ -63,7 +63,12 @@ function writeJson(file, value) {
     fs.writeFileSync(temp, JSON.stringify(value) + '\n');
     fs.renameSync(temp, file);
 }
-function sq(v) { if (!SAFE_PATH_RE.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
+function dirOk(p) {
+    if (typeof p !== 'string' || !p) return false;
+    if (DIR.test(p)) return true;
+    return process.platform === 'win32' && WIN_DIR.test(p) && !/(^|[\\\/])\.\.([\\\/]|$)/.test(p);
+}
+function sq(v) { if (!DIR.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
 
 // The TV's UEP refuses to run a shell script FILE that is not signed ("the file is NOT signed"), but runs text given to
 // `sh -c`. So nothing is ever written to disk and executed: detached jobs are passed inline, as base64 to keep quoting simple.
@@ -133,7 +138,7 @@ function Updater(opts) {
         ('app_launcher -k ' + SERVICE_ID + ' >/dev/null 2>&1; sleep 8; app_launcher -S 2>/dev/null | grep -q "' + SERVICE_ID + ' (" || app_launcher -s ' + SERVICE_ID + ' >/dev/null 2>&1');
     this.waitSteps = Math.max(1, Math.ceil((opts.waitSeconds || WAIT_SECONDS) / 2));
     this.busy = false;
-    if (!DIR.test(this.installDir || '') || !DIR.test(this.workDir || '')) throw fail('Unsafe update folders');
+    if (!dirOk(this.installDir) || !dirOk(this.workDir)) throw fail('Unsafe update folders');
 }
 
 Updater.prototype._file = function (n) { return path.join(this.workDir, n); };

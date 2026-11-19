@@ -27,6 +27,11 @@ function bundle(version, files, opts) {
 // 1. paths and versions
 assert.ok(okPath('service/main.js') && okPath('native/dock/tvlauncher-dotnet.dll') && okPath('index.html') && okPath('payload/SamsungTvRootAgent.dll') && okPath('payload/net6/SamsungTvRootAgent.dll'));
 ['config.xml', 'author-signature.xml', '../x', 'service/../x.js', 'service/sub/x.js', '/etc/passwd', 'native/../x', 'payload/../x', 'payload//x', 'payload/net6/', 'service/a b.js', 'native//x', 'native/x/'].forEach(n => assert.ok(!okPath(n), 'refused: ' + n));
+assert.throws(() => new Updater({ installDir: 'relative/path', workDir: '/tmp/work' }), /Unsafe update folders/);
+if (process.platform === 'win32') {
+    const winUp = new Updater({ installDir: 'C:\\temp\\install', workDir: 'C:\\temp\\work' });
+    assert.throws(() => winUp._applyScript('0.4.0', '0.4.1', [], [], [], {}, false), /Unsafe path/);
+}
 assert.equal(compare('0.4.1', '0.4.0'), 1); assert.equal(compare('0.4.0', '0.4.0'), 0); assert.equal(compare('0.10.0', '0.9.9'), 1); assert.equal(compare('x', '0.1.0'), null);
 
 // 2. verification
@@ -77,6 +82,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await assert.rejects(f.u.apply(bundle('0.5.0', { 'service/a.js': 'x' }), 'f'.repeat(64)), /SHA-256/);
     assert.equal(f.ran.length, 0, 'nothing runs when a check fails');
     assert.equal(f.u.check(bundle('0.4.1', { 'service/a.js': 'new a' })).changed, 1);
+    if (process.platform === 'win32') {
+        console.log('PASS updater: signature, manifest paths, port kept, win32 constructor paths and POSIX apply-script guard');
+        process.exit(0);
+    }
 
     // success: files replaced, a new file added, the port kept, old files backed up, watchdog stays quiet after confirm
     const next = bundle('0.4.1', { 'service/a.js': 'new a', 'service/b.js': 'new b', 'index.html': "var BASE = 'http://127.0.0.1:8099';", 'service/build-info.js': info({ version: '0.4.1', shell: 1 }) });
