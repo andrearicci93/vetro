@@ -242,5 +242,12 @@ h3.start();
 
     // wrong field types are refused, not crashed on later
     assert.throws(() => new PluginHost({ dir: tmp() }).register({ id: 'typed', apiVersion: 1, permissions: {}, create: () => ({}) }), /permissions/);
+    // /plugins/resume returns structured 500 JSON when persisting state fails
+    const hFail = new PluginHost({ dir: tmp(), stableMs: 10 });
+    hFail._writeState = () => { throw new Error('disk full'); };
+    const rFail = res();
+    assert.equal(hFail.handle({ method: 'POST', headers: {} }, rFail, '/plugins/resume', json), true);
+    assert.equal(rFail.code, 500);
+    assert.equal(rFail.body.ok, false);
     console.log('plugin-host: ok');
 })().catch(e => { console.error(e); process.exit(1); });

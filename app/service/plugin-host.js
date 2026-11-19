@@ -169,10 +169,15 @@ PluginHost.prototype._readState = function () {
 PluginHost.prototype._writeState = function (state) {
     try {
         fs.mkdirSync(this.dir);
-    } catch (e) { /* already there */ }
+    } catch (e) { if (e.code !== 'EEXIST') throw e; }
     var temp = this._file('plugins.json.tmp');
-    fs.writeFileSync(temp, JSON.stringify(state) + '\n');
-    fs.renameSync(temp, this._file('plugins.json'));
+    try {
+        fs.writeFileSync(temp, JSON.stringify(state) + '\n', 'utf8');
+        fs.renameSync(temp, this._file('plugins.json'));
+    } catch (e) {
+        try { fs.unlinkSync(temp); } catch (ignored) {}
+        throw e;
+    }
 };
 
 // Plugins come from folders, never from the network: whoever puts one there has

@@ -88,6 +88,7 @@ function definition(dock, options) {
             }
 
             function action(p) {
+                if (!p || typeof p !== 'object') return Promise.reject(new Error('Invalid dock action'));
                 if (p.action === 'enable') return dock.enable();
                 if (p.action === 'disable') return dock.disable();
                 if (p.action === 'refresh') return rebuild();

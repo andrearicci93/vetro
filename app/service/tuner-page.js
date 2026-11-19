@@ -45,6 +45,7 @@ function veil(w, h, alpha) {
 }
 // A channel logo stand-in, as the mock-ups draw it (design/tuner.html): a coloured disc with the initials. The TV shows the channel's saved picture.
 function logo(name, x, y, size) {
+    name = name ? String(name) : 'TV';
     var h = 0, i;
     for (i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
     var initials = name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();

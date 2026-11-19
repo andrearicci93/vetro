@@ -212,16 +212,18 @@ function lanAddresses() {
     });
   })).then(function (ips) { return ips.filter(function (ip) { return ip && ip !== '0.0.0.0' && /^\d{1,3}(\.\d{1,3}){3}$/.test(ip); }); });
 }
-var baseChosen = null, lanKnown = null;
+var baseChosen = null, lanKnown = null, pickPending = null;
 // Resolves true when some address answered (and BASE is then that one), false when none did. A failure is not kept: the
 // service may simply not be up yet, and the next try looks again.
 function pickBase() {
   if (baseChosen) return Promise.resolve(true);
+  if (pickPending) return pickPending;
   var port = BASE.split(':').pop();
-  return answers(BASE).then(function (yes) {
+  pickPending = answers(BASE).then(function (yes) {
     if (yes) { baseChosen = BASE; return true; }
     return (lanKnown || (lanKnown = lanAddresses())).then(function (ips) {
-      return ips.reduce(function (p, ip) {
+      if (!ips || !ips.length) lanKnown = null;
+      return (ips || []).reduce(function (p, ip) {
         return p.then(function (found) {
           if (found) return found;
           var base = 'http://' + ip + ':' + port;
@@ -229,7 +231,8 @@ function pickBase() {
         });
       }, Promise.resolve(null));
     }).then(function (found) { if (found) { BASE = found; baseChosen = found; } return !!found; });
-  });
+  }).then(function (ok) { pickPending = null; return ok; }, function (e) { pickPending = null; throw e; });
+  return pickPending;
 }
 function settleBase(tries) {
   return pickBase().then(function (ok) {
@@ -244,13 +247,25 @@ function refusedText(status, d) {
   return 'HTTP ' + status + (seen.address ? ' from ' + String(seen.address).slice(0, 45) : '') + (seen.origin ? ' origin ' + String(seen.origin).slice(0, 60) : '');
 }
 function reach(tries) {
-  return fetch(BASE + '/status').then(function (r) {
+  var ac = typeof AbortController === 'function' ? new AbortController() : null;
+  var timer = null;
+  var req = fetch(BASE + '/status', ac ? {signal: ac.signal} : undefined);
+  if (req && typeof req.catch === 'function') req.catch(function () {});
+  var timeout = new Promise(function (_, reject) {
+    timer = setTimeout(function () {
+      if (ac) try { ac.abort(); } catch (e) {}
+      reject(new Error('Status request timed out'));
+    }, 8000);
+  });
+  return Promise.race([req, timeout]).then(function (r) {
+    if (timer) clearTimeout(timer);
     if (r.status === 200) return r.status;
     return r.json().then(null, function () { return null; }).then(function (d) {
       refusal = refusedText(r.status, d);
       throw new Error('refused: ' + refusal);
     });
   }, function (e) {
+    if (timer) clearTimeout(timer);
     if (tries <= 1) throw e;
     return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(function () { return reach(tries - 1); });
   });
@@ -295,10 +310,12 @@ function readScreen() {
 }
 function tryConnect(port) {
   return new Promise(function (resolve, reject) {
+    var settled = false;
     var ws = new WebSocket('ws://127.0.0.1:' + port + '/api/v2/channels/samsung.remote.control?name=' + btoa('Vetro'));
-    var t = setTimeout(function () { try { ws.close(); } catch (e) {} reject(new Error('timeout')); }, 4000);
-    ws.onopen = function () { clearTimeout(t); ws.close(); resolve('open'); };
-    ws.onerror = function () { clearTimeout(t); reject(new Error('refused')); };
+    var t = setTimeout(function () { if (settled) return; settled = true; try { ws.close(); } catch (e) {} reject(new Error('timeout')); }, 4000);
+    ws.onopen = function () { if (settled) return; settled = true; clearTimeout(t); ws.close(); resolve('open'); };
+    ws.onerror = function () { if (settled) return; settled = true; clearTimeout(t); reject(new Error('refused')); };
+    ws.onclose = function () { if (settled) return; settled = true; clearTimeout(t); reject(new Error('closed')); };
   });
 }
 // The steps run side by side, except that the service answer waits for the service start. The model and the service
@@ -581,7 +598,7 @@ function renderMain(d) {
   var right = locked ? esc('This page is not recognised as the TV, so its switches are off. Use the dashboard.') : focus < 5 ? keyIcon('pad-left', 'Left') + keyIcon('pad-right', 'Right') + 'to choose &middot; ' + keyIcon('pad-ok', 'OK') + 'to switch' : '';
   var el = document.getElementById('screen');
   // The hero without the PIN slot, which paintPairing redraws on its own every second.
-  var heroA = '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
+  var heroA = '<div class="hero"><img src="' + ICON + '" alt="Vetro" width="176" height="176"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
     '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
     '<div class="dash"><div class="dh"><small>DASHBOARD</small>',
     heroB = '</div>' +
@@ -717,11 +734,14 @@ function renderDetails(d, waiting) {
   var addr = d && d.address ? 'http://' + d.address + ':' + d.port : null;
   var cells = '';
   list.forEach(function (c) { cells += cell(c); });
+  var pinMarkup = pairingBlocked && !pin
+    ? '<div class="pin" id="pin">PIN<b>&mdash;</b><i>' + esc(pairingBlocked) + '</i></div>'
+    : '<div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div>';
   document.getElementById('screen').innerHTML =
-    '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' +
+    '<div class="hero"><img src="' + ICON + '" alt="Vetro" width="176" height="176"><div><h1>Vetro</h1><div class="meta">' +
     (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
     '</div><div class="state ' + (state === 'ok' ? '' : state) + '">' + ICONS[state] + esc(label) + '</div></div>' +
-    '<div class="dash"><div class="dh"><small>DASHBOARD</small><div class="pin" id="pin"' + (pin ? '' : ' hidden') + '>PIN<b>' + esc(pin) + '</b><i>' + esc(pairing ? pinLine() : '') + '</i></div></div>' +
+    '<div class="dash"><div class="dh"><small>DASHBOARD</small>' + pinMarkup + '</div>' +
     '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
     '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : waiting ? 'Vetro is checking the TV. Keep this screen open for 1&ndash;2 minutes.' : 'Dashboard at <code>http://&lt;TV&gt;:8099/</code> once the service answers (use the TV address from your router).') + '</p></div></div>' +
     '<div class="panel ' + (bad ? 'bad' : warn ? 'warn' : '') + '"><div class="ph"><h2>Diagnostics</h2><div class="sum ' + (state === 'ok' ? '' : state) + '" id="sum">' + esc(sum) + '</div></div>' +
@@ -779,12 +799,15 @@ function showPairing(p) {
   paintPairing();
   if (pairing && pairing.code !== was) ding();
 }
+var pairChecking = false;
 function checkPairing() {
-  if (document.hidden) return;
+  if (document.hidden || pairChecking) return;
+  pairChecking = true;
   var xhr = new XMLHttpRequest();
   xhr.open('GET', BASE + '/auth/pending', true);
   xhr.timeout = 3000;
   xhr.onload = function () {
+    pairChecking = false;
     var d, was = pairingBlocked;
     try { d = JSON.parse(xhr.responseText); } catch (e) { return; }
     if (xhr.status !== 200) {
@@ -796,7 +819,8 @@ function checkPairing() {
     if (was) paintPairing();
     showPairing(d);
   };
-  xhr.send();
+  xhr.onerror = xhr.ontimeout = xhr.onabort = function () { pairChecking = false; };
+  try { xhr.send(); } catch (e) { pairChecking = false; }
 }
 function resetIdle() {
   clearTimeout(idleTimer);
@@ -879,7 +903,10 @@ function readPackages() {
     render(lastScreen, false);
   });
 }
-document.addEventListener('visibilitychange', function () { if (document.hidden && delivered) leave(); });
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden && delivered) leave();
+  else if (!document.hidden) checkPairing();
+});
 document.addEventListener('keydown', function (e) {
   var k = e && e.keyCode;
   resetIdle();

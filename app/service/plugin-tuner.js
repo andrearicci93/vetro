@@ -49,6 +49,7 @@ function definition(tuner, options) {
             }
 
             function action(p) {
+                if (!p || typeof p !== 'object') return Promise.reject(new Error('Invalid tuner action'));
                 if (p.action === 'enable') return tuner.enable();
                 if (p.action === 'disable') return tuner.disable();
                 if (p.action === 'show' || p.action === 'hide' || p.action === 'toggle' || p.action === 'guide') return tuner.command(p.action);

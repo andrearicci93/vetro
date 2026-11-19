@@ -462,15 +462,17 @@ function readBody(req, cb, maxBytes) {
     }
     req.on('data', function (c) {
         if (finished) return;
-        size += c.length;
+        var buf = Buffer.isBuffer(c) ? c : Buffer.from(String(c), 'utf8');
+        size += buf.length;
         if (size > maxBytes) return fail('request body exceeds ' + (maxBytes / 1024) + ' KiB', 413);
-        chunks.push(c);
+        chunks.push(buf);
     });
     req.on('end', function () {
         if (!finished) finish(Buffer.concat(chunks).toString('utf8'));
     });
     req.on('error', function () { fail('bad request body', 400); });
     req.on('aborted', function () { fail('request aborted', 400); });
+    req.on('close', function () { fail('request closed', 400); });
 }
 
 function readJsonBody(req, res, cb, maxBytes) {
@@ -817,7 +819,8 @@ function handleSdbAccess(req,res) {
         if(typeof p.enabled!=='boolean')return serveJson(res,{error:'Invalid SDB access state'},400);
         if(debloatBusy)return serveJson(res,{error:'App change already in progress'},409);
         if(!platform.setSdbAccess)return serveJson(res,{error:'SDB access is unavailable'},503);
-        platform.setSdbAccess(p.enabled).then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
+        debloatBusy=true;
+        Promise.resolve().then(function(){return platform.setSdbAccess(p.enabled);}).then(function(d){debloatBusy=false;serveJson(res,d);},function(e){debloatBusy=false;serveJson(res,{error:e.message},503);});
     });
 }
 function handleWins(req,res) {readJsonBody(req,res,function(p){
