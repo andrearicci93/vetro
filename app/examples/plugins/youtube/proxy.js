@@ -65,8 +65,14 @@ function createProxy(opts) {
             if (size > MAX_BODY) {
                 over = true;
                 chunks = [];
-                if (!res.headersSent) { res.writeHead(413, { 'content-length': 0, 'connection': 'close' }); res.end(); }
-                drop(req.socket);
+                if (!res.headersSent) {
+                    res.writeHead(413, { 'content-length': 0, 'connection': 'close' });
+                    res.end(function () { drop(req.socket); });
+                    var closeTimer = setTimeout(function () { drop(req.socket); }, 250);
+                    if (closeTimer && closeTimer.unref) closeTimer.unref();
+                } else {
+                    drop(req.socket);
+                }
                 return;
             }
             chunks.push(c);
@@ -89,7 +95,13 @@ function createProxy(opts) {
                 r.body.on('end', guard(function () {
                     if (total > MAX_BODY) { fail(); return; }
                     var s2 = opts.script();
-                    var page = inject.rewritePage(Buffer.concat(parts).toString('utf8'), inject.scriptTag(s2 ? s2.version : '0'));
+                    if (!s2) {
+                        var raw = Buffer.concat(parts);
+                        res.writeHead(200, inject.pageHeaders(r.headers, raw.length));
+                        res.end(raw);
+                        return;
+                    }
+                    var page = inject.rewritePage(Buffer.concat(parts).toString('utf8'), inject.scriptTag(s2.version));
                     var out = Buffer.from ? Buffer.from(page.html, 'utf8') : new Buffer(page.html, 'utf8');
                     res.writeHead(200, inject.pageHeaders(r.headers, out.length));
                     res.end(out);
