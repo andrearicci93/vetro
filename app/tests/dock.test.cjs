@@ -32,6 +32,7 @@ function fixture(options) {
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
         if (script.includes('setsid nohup')) { tv.started = script; tv.running = !tv.neverStarts; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
+        if (script.includes('get_root_app')) { tv.powerOnShows = (tv.powerOnShows || 0) + 1; return {exit_code: 0, stdout: tv.rootApp ? 'shown\n' : ''}; }
         if (script.includes('echo "dock=')) return {exit_code: 0, stdout: (tv.running ? 'dock=' + (tv.pid || 4242) : 'dock=') + '\nhome=' + (tv.csfs ? 1 : 0) + '\nlog:\n' + tv.log + '\n'};
         throw new Error('unexpected command: ' + script);
     };
@@ -349,6 +350,27 @@ function fixture(options) {
     assert.equal(await f.dock.supervise(true), 'running');
     assert.equal(f.tv.csfs, true, 'closed only once per service run');
 
+
+    // #206: the launcher is opened once at power-on (the TV-side script checks the firmware and the app in front), never later, never twice.
+    f = fixture({running: true});
+    f.dock.patchState({enabled: true});
+    f.dock.serviceStart = 95; f.dock.uptime = () => 140; f.tv.rootApp = true;
+    assert.equal(await f.dock.supervise(true), 'running');
+    assert.equal(f.tv.powerOnShows, 1, 'shown once right after the boot');
+    assert.ok(f.tv.scripts.some(c => /^echo \S+ \| base64 -d \| sh$/.test(c) && /current_fullscreen_appid[\s\S]*org\.tizen\.tv-viewer[\s\S]*echo show/.test(Buffer.from(c.split(' ')[1], 'base64').toString())),
+        'only while tv-viewer is in front, through the launcher pipe');
+    assert.equal(await f.dock.supervise(true), 'running');
+    assert.equal(f.tv.powerOnShows, 1, 'not twice');
+    f = fixture({running: true});
+    f.dock.patchState({enabled: true});
+    f.dock.serviceStart = 95; f.dock.uptime = () => 900;
+    await f.dock.supervise(true);
+    assert.equal(f.tv.powerOnShows || 0, 0, 'too long after the boot: nothing');
+    f = fixture({running: true});
+    f.dock.patchState({enabled: true, customApp: 'org.example.app'});
+    f.dock.serviceStart = 95; f.dock.uptime = () => 140;
+    await f.dock.supervise(true);
+    assert.equal(f.tv.powerOnShows || 0, 0, 'custom launcher: nothing');
 
     // A service that restarts long after the boot (an update, a crash) leaves a Samsung Home on screen alone: the user opened it.
     f = fixture({running: true});

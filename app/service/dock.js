@@ -1190,6 +1190,23 @@ Dock.prototype.closeHomeOnce = function (samsungHome) {
     return this.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
 };
 
+// The Vetro launcher at power-on (#206; the owner's choice of 2026-11-19). Firmware that boots through a "root app" (2022 and later:
+// it has get_root_app) puts tv-viewer in front at every cold boot while Autorun Smart Hub is off, which the launcher needs (or
+// Samsung's Home comes up over it): the TV powered on into Live TV or the last input, and Live TV sat in Samsung's "Now playing".
+// So Vetro opens its own launcher once, as soon as it runs after the boot, while tv-viewer is still the app in front (the user has
+// chosen nothing yet). Only the run of the service that came up with the TV, only in the first minutes, only in the Vetro launcher
+// mode, never on 2021 firmware (there the same setting only shows the last input, as before).
+var POWER_ON_WINDOW_S = 420;
+Dock.prototype.showAtPowerOn = function (state) {
+    if (this.powerOnShown || !state || state.customApp || state.enabled !== true || this.serviceStart >= BOOT_WINDOW_S || this.uptime() > POWER_ON_WINDOW_S) return Promise.resolve();
+    this.powerOnShown = true;
+    var line = '[ -e /usr/bin/get_root_app ] || exit 0; ' +
+        'case "$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)" in *"value = org.tizen.tv-viewer ("*) ;; *) exit 0;; esac; ' +
+        'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo show >&3 ) && echo shown; fi; true';
+    var self = this;
+    return this.execute(wrap(line), 6000).then(function (r) { if (r && /shown/.test(r.stdout || '')) self.mark('shownAtPowerOn'); }).catch(function () {});
+};
+
 // Called every few seconds by the service, and at once when the root agent connects. Starts the
 // dock after a boot or a crash while it is switched on. It never switches the setting off: a slow
 // boot must not cost the user the launcher for good, so after repeated failures it keeps trying
@@ -1221,7 +1238,7 @@ Dock.prototype.supervise = function (agentConnected) {
             self.relisted = true; self.refreshPending = false;
             return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
         }
-        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return 'running'; }); }
+        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return self.showAtPowerOn(state); }).then(function () { return 'running'; }); }
         return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;

@@ -73,8 +73,9 @@ function prelude(o) {
         'K=' + (o.backupDir || BACKUP_DIR),
         'SETTLE=' + (o.settle === undefined ? 5 : o.settle),
         'mkdir -p "$K" 2>/dev/null',
-        // csfs rewrites its cache from memory while it runs.
-        'running() { ' + (o.runningCmd || 'pidof com.samsung.tv.csfs >/dev/null 2>&1 || ps 2>/dev/null | grep -q "[c]sfs"') + '; }',
+        // csfs rewrites its cache from memory while it runs; on 2024 firmware the row belongs to home.media (a service that keeps
+        // running), so the file is left to Samsung's own signal there too (static analysis of the Tizen 9 firmware, 2026-11-19).
+        'running() { ' + (o.runningCmd || 'pidof com.samsung.tv.csfs >/dev/null 2>&1 || ps 2>/dev/null | grep -qE "[c]sfs|[h]ome[.]media"') + '; }',
         // Rewrites every Home cache without the lines matching the extended regex $1. Prints how many lines went.
         'strip() { n=0; for d in $HOMES; do for f in ' + CACHES.join(' ') + '; do F="$d/$f"; [ -f "$F" ] || continue',
         '  c=$(grep -cE "$1" "$F" 2>/dev/null); [ "${c:-0}" -gt 0 ] || continue',
