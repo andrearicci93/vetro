@@ -39,6 +39,9 @@ var UNIT = 'vetro-tuner';                             // the tuner's own systemd
 var TARGET_APP = 'org.tizen.tv-viewer';               // Samsung's live TV app
 var CLIENT_ROOT = '/opt/usr/dotnet/Tizen.TV.Broadcast.TVService';
 var CLIENT_GLOB = CLIENT_ROOT + '/*/Tizen.TV.Broadcast.TVService.dll';
+// The tuner also loads the client from the firmware's shared library folders (tuner/src/Tvs/TvsClient.cs FixedDirs): on 2022 firmware
+// (an S95B, 1720.7) there is no CLIENT_ROOT at all and the client sits in /usr/share/dotnet.tizen/framework (2026-11-19 export).
+var CLIENT_FIXED = ['/usr/share/dotnet.tizen/framework/Tizen.TV.Broadcast.TVService.dll', '/usr/apps/csapi-tv-tizenfx/shared/lib/Tizen.TV.Broadcast.TVService.dll'];
 var CLIENT_VERSION_RE = /^\d+(?:\.\d+){0,3}$/;
 var START_WAIT_MS = 15000;
 var BOOT_WAIT_MS = 75000;                             // a start in the first minutes after a TV boot is slow
@@ -136,7 +139,7 @@ Tuner.prototype.probe = function () {
     var script = [
         'p=$(cat ' + PID_FILE + ' 2>/dev/null)',
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "tuner=$p"; else echo "tuner="; fi',
-        'if ls ' + CLIENT_GLOB + ' >/dev/null 2>&1; then echo client=1; else echo client=0; fi',
+        'if ls ' + CLIENT_GLOB + ' >/dev/null 2>&1' + CLIENT_FIXED.map(function (f) { return ' || [ -e ' + f + ' ]'; }).join('') + '; then echo client=1; else echo client=0; fi',
         'if pidof tvs-daemon >/dev/null 2>&1; then echo tvs=1; else echo tvs=0; fi',
         'if [ -x /usr/bin/dotnet ]; then echo dotnet=1; else echo dotnet=0; fi',
         'if [ -e /usr/apps/' + TARGET_APP + ' ]; then echo viewer=1; else echo viewer=0; fi',

@@ -252,3 +252,18 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
 
     console.log('tuner: ok');
 })().catch(e => { console.error(e); process.exit(1); });
+
+// 2022 firmware keeps the client in the firmware's shared folder (no /opt/usr/dotnet/Tizen.TV.Broadcast.TVService at all): the check
+// looks there too, as the tuner itself does (TvsClient.FixedDirs).
+(function () {
+    const {Tuner} = require('../service/tuner.js');
+    let script = '';
+    const t = new Tuner({execute: function (c) { script = Buffer.from(c.split(' ')[1], 'base64').toString(); return Promise.resolve({exit_code: 0, stdout: 'tuner=\nclient=1\ntvs=1\ndotnet=1\nviewer=1\nlog:\n'}); }});
+    return t.probe().then(function (r) {
+        assert.ok(script.indexOf('[ -e /usr/share/dotnet.tizen/framework/Tizen.TV.Broadcast.TVService.dll ]') >= 0, 'the framework copy counts');
+        assert.ok(script.indexOf('[ -e /usr/apps/csapi-tv-tizenfx/shared/lib/Tizen.TV.Broadcast.TVService.dll ]') >= 0, 'and the csapi copy');
+        assert.equal(r.client, true);
+        console.log('tuner: the client in the firmware shared folder counts');
+    });
+})();
+

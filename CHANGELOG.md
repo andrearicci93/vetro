@@ -33,6 +33,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 ### Live TV (Vetro TV Tuner)
 
 - **A live TV screen of Vetro's own**, on the Live TV tab: Banner, Channel list, Channel pad, Info, TV guide and Audio toast, drawn over the picture in place of Samsung's. Samsung's tuner is never removed or changed. [Guide](app/docs/TUNER.md).
+- **Live TV on more TVs.** Vetro also finds Samsung's TV client in the firmware's shared folder, where 2022 TVs keep it (found in an S95B's diagnostics).
 - **Info shows what is on next.**
 - **Subtitles from the Audio toast.** Left opens it; Down switches the subtitles (Off, each track, Off).
 - **Play / pause opens Info**, for remotes without an Info key.
