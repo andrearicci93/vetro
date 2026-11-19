@@ -154,7 +154,7 @@ Dock.prototype.installed = function () {
     catch (e) { return false; }
 };
 
-var VOLUME_EDGES = ['left', 'right', 'top', 'bottom'];   // where the volume bar sits (the dock's --volume-edge)
+var VOLUME_EDGES = ['left', 'right', 'top', 'bottom', 'hidden'];   // where the volume bar sits (the dock's --volume-edge); hidden: the level changes, no bar
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
 var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;
 // A Shard (plugin) can add one card (manifest "controlCenter"): it is named "shard:<plugin id>". A saved list keeps such a name even while

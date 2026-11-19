@@ -45,6 +45,7 @@ function osdGlyph(name, x, y, size, color, alpha) {
 // The Volume bar: 88 x 480 on the left or right edge, 640 x 88 at the top or bottom, 96 px from the edge, centred on the other axis. A capsule
 // track in white .16 that fills in light blue from the foot (vertical) or from the left (horizontal), the level (32 px, .95) and the speaker.
 function osdVolumePreview(edge, level) {
+    if (edge === 'hidden') return osdSvg('Nothing on the screen: Vol changes the level without a bar.', []);
     var vertical = edge !== 'top' && edge !== 'bottom', w = vertical ? 88 : 640, h = vertical ? 480 : 88, m = 96;
     var x = edge === 'left' || !edge ? m : edge === 'right' ? 1920 - m - w : (1920 - w) / 2;
     var y = edge === 'top' ? m : edge === 'bottom' ? 1080 - m - h : (1080 - h) / 2;

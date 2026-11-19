@@ -9,7 +9,7 @@ The page has four tabs:
 | **Overview** | One switch per part, its state, what it still needs, and how the parts depend on each other |
 | **Launcher** | What the Home key opens: the Vetro launcher (with its preview, the task manager, HDMI and TizenTube options) or **another app** you installed (the custom launcher). Samsung’s Home switch lives here too |
 | **Live TV** | The tuner: its switch, each of its parts (banner, channel list, TV guide (EPG), number pad, info panel, audio key, hold-to-repeat), the remote buttons and a picture of every screen |
-| **On-screen displays** | The volume bar (with its position) and the number pad, what they need, and a picture of each that follows the chosen position |
+| **On-screen displays** | The volume bar (with its position: an edge, or Hidden, where Vol changes the level and nothing is drawn) and the number pad, what they need, and a picture of each that follows the chosen position |
 
 Old links still work: opening the former Launcher or Tuner page opens Vetro UI on the matching tab.
 

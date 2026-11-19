@@ -1867,6 +1867,7 @@ namespace Launcher
                 _levelBeforeMute = 0;
             }
             if (target != volume) { if (Sound.TrySetVolume(target)) volume = target; else Log("volume: level change refused"); }
+            if (_volumeEdge == VolumeEdge.Hidden) return;      // the level changes, no bar is drawn
             bool first = _pill == null;
             if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge);
             bool probe = _perf && !_pill.IsOnScreen;

@@ -41,7 +41,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Volume bar and number pad
 
-- **A volume bar and a number pad drawn by Vetro**, each behind its own switch in On-screen displays. The volume bar can sit on any edge. The number pad's Done tunes Vetro's live TV, and its Info chip opens Info.
+- **A volume bar and a number pad drawn by Vetro**, each behind its own switch in On-screen displays. The volume bar can sit on any edge, or be hidden: Vol then changes the level with nothing on screen, for a soundbar that shows its own. The number pad's Done tunes Vetro's live TV, and its Info chip opens Info.
 
 ### Quick settings
 

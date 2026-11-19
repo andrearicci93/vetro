@@ -1,7 +1,8 @@
 namespace Launcher.Core
 {
-    /// <summary>Which screen edge the volume pill sits on. Left and Right make it vertical, Top and Bottom horizontal.</summary>
-    internal enum VolumeEdge { Left, Right, Top, Bottom }
+    /// <summary>Which screen edge the volume pill sits on. Left and Right make it vertical, Top and Bottom horizontal. Hidden: the keys still
+    /// change the level (and keep Samsung's bar away), but nothing is drawn, for a soundbar that shows its own level.</summary>
+    internal enum VolumeEdge { Left, Right, Top, Bottom, Hidden }
 
     /// <summary>
     /// Where every part of the volume pill goes, for one edge and one screen size. Pure geometry (no EFL), so it is tested without a TV.
@@ -35,6 +36,7 @@ namespace Launcher.Core
                 case "right": return VolumeEdge.Right;
                 case "top": return VolumeEdge.Top;
                 case "bottom": return VolumeEdge.Bottom;
+                case "hidden": return VolumeEdge.Hidden;
                 default: return VolumeEdge.Left;
             }
         }
