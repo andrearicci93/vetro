@@ -181,7 +181,6 @@ namespace Tuner
             Efl.elm_init(0, IntPtr.Zero);
             long mInitDone = _clock.ElapsedMilliseconds;
             Log("elm_init done");
-            UiReady.Set();
             _win = Efl.elm_win_add(IntPtr.Zero, "vetro-tuner", Flag(args, "--notif") ? Efl.ElmWinNotification : 0);   // 0 = ELM_WIN_BASIC
             if (_win == IntPtr.Zero) { Log("elm_win_add failed"); return 2; }
             Efl.elm_win_title_set(_win, "vetro-tuner");
@@ -213,6 +212,7 @@ namespace Tuner
             if (_resident) Log("resident: window stays hidden until 'show' arrives on " + _controlPath);
             else Activate();
             Log("window up engine=" + Efl.EngineName(Efl.evas_object_evas_get(_win)));
+            UiReady.Set();   // only now may the worker load Samsung's client: see WorkerMain
 
             // From here on results of the worker may be applied.
             _wakeHandler = Efl.ecore_main_fd_handler_add(Wake[0], Efl.EcoreFdRead, OnWake, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
@@ -375,11 +375,12 @@ namespace Tuner
 
         // ---- the worker (everything that talks to tvs-daemon) ----
 
-        // The worker loads Samsung's TV client only once the window system is up. On an S95B (2022, the client from
-        // /usr/share/dotnet.tizen/framework) the log stopped right after "start": neither "elm_init done" nor the first "tvs:" line came,
-        // and the process stayed alive with nothing on screen, which reads as the two threads waiting on each other while both start.
-        // One after the other costs the first read a few milliseconds; if elm_init never returns the worker goes on after 5 s anyway, so
-        // the log then says which of the two is stuck.
+        // The worker loads Samsung's TV client only once the window is up. On an S95B (2022, the client from
+        // /usr/share/dotnet.tizen/framework) the log stopped right after "start" while both started together; when the worker waited for
+        // elm_init only (preview12), the log stopped right after "elm_init done", where the window and the client load ran together
+        // again, and not even the worker's 10 s "no answer" line came. So the client load waits for the whole window. One after the other
+        // costs the first read a few hundred milliseconds at a start that happens at boot; if the window never comes up the worker goes on
+        // after 5 s anyway, and the log then says the main thread is the one stuck.
         private static readonly ManualResetEventSlim UiReady = new ManualResetEventSlim(false);
         private const int UiReadyWaitMs = 5000, TvsSlowMs = 10000;
 

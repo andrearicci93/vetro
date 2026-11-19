@@ -414,4 +414,4 @@ Tuner.prototype.restartAfterUpdate = function () {
     return this.runningNow().then(function (p) { return p.running && !self.otherBuild(self.readState(), p) ? self.status() : self.restart(true); });
 };
 
-module.exports = {Tuner: Tuner, LOG_FILE: LOG_FILE, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS};
+module.exports = {Tuner: Tuner, LOG_FILE: LOG_FILE, PID_FILE: PID_FILE, STATE_FILE: STATE_FILE, TARGET_APP: TARGET_APP, CONTROL: CONTROL, unsupportedReason: unsupportedReason, COMMANDS: COMMANDS};

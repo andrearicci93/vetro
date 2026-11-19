@@ -85,6 +85,16 @@ function request() {
             'tvs worker: System.ArgumentException']);
         assert.equal(ev[2].ms, 136);
         assert.ok(JSON.stringify(ev).indexOf('Rai') < 0 && JSON.stringify(ev).indexOf('/home/') < 0, 'no channel name, no home path');
+        // Its window and the last show / takeover lines, and its threads (S95B: which thread stops, and where).
+        const tw = report.projectors.tuner({tunerLog: ['+500ms window up engine=wayland_egl', '+900ms takeover: org.tizen.tv-viewer status first -> 3 (tuner hidden)',
+            "+901ms not shown: no channel list yet, Samsung's live TV keeps the screen", '+950ms shown', '+960ms takeover: failed /home/owner/x',
+            '+970ms resume: not on live TV (status 3, tv input True)'].join('\n'),
+            tunerThreads: ['vetro-tuner.dll|D|mali_ioctl|__switch_to mali_kbase_ioctl /home/x', 'tvs|S|futex_wait_queue_me|', '.NET ThreadPool|S|0|', 'bad|name|Q|', '/home/x|S|f|', 'junk'].join('\n')});
+        assert.deepEqual(tw.events.map(e => e.line), ['window up engine=wayland_egl', 'takeover: org.tizen.tv-viewer status first -> 3 (tuner hidden)',
+            "not shown: no channel list yet, Samsung's live TV keeps the screen", 'shown', 'resume: not on live TV (status 3, tv input True)']);
+        assert.deepEqual(tw.threads, [{name: 'vetro-tuner.dll', state: 'D', wait: 'mali_ioctl', stack: ['__switch_to', 'mali_kbase_ioctl']},
+            {name: 'tvs', state: 'S', wait: 'futex_wait_queue_me', stack: null}, {name: '.NET ThreadPool', state: 'S', wait: null, stack: null}]);
+        assert.deepEqual(report.projectors.tuner({}).threads, []);
 
         // The launcher's new shapes: the Samsung Home pill and the screen off; other launches (app ids of the user) stay out.
         const lv = report.projectors.launcher({keyLog: ['10:00:00.000 launch com.samsung.tv.csfs rc=0', '10:00:01.000 screen: off ok',

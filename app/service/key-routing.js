@@ -49,4 +49,10 @@ function rescanCommand() {
     }).join('; ') + '; true';
 }
 
-module.exports = {keyCommand: keyCommand, rescanCommand: rescanCommand, TUNER_KEYS: TUNER_KEYS, TUNER_PIPE: TUNER_PIPE, DOCK_FIFO: DOCK_FIFO};
+// The shell line that hands the launcher one of the volume-keys.js words (volup, voldown, volmute, pad) when the service may not open
+// its FIFO itself: exits non-zero when the launcher is not there to read it, so the key goes back to Samsung instead.
+function dockWordCommand(word) {
+    return /^(?:volup|voldown|volmute|pad)$/.test(word) ? alive(DOCK_PID, DOCK_FIFO) + ' && ' + write(DOCK_FIFO, word) : null;
+}
+
+module.exports = {keyCommand: keyCommand, rescanCommand: rescanCommand, dockWordCommand: dockWordCommand, TUNER_KEYS: TUNER_KEYS, TUNER_PIPE: TUNER_PIPE, DOCK_FIFO: DOCK_FIFO};

@@ -28,6 +28,12 @@ assert.ok(rescan.includes("[ -d /proc/$p ] && [ -p /tmp/vetro-tuner.ctl ]; then 
 assert.ok(rescan.endsWith('; true'), 'a missing process is not an error');
 assert.ok(!/[`]/.test(rescan + routed + home), 'no command substitution beyond the pid read');
 
+// ---- a Vol / 123 word for the launcher, written by the root agent when the service may not open the FIFO ----
+const vol = kr.dockWordCommand('volup');
+assert.equal(vol, "p=$(cat /home/owner/tvlauncher.pid 2>/dev/null); [ -n \"$p\" ] && [ -d /proc/$p ] && [ -p /home/owner/tvlauncher.fifo ] && ( exec 3<>/home/owner/tvlauncher.fifo && echo 'volup' >&3 )", 'fails when the launcher is not there');
+['voldown', 'volmute', 'pad'].forEach(function (w) { assert.ok(kr.dockWordCommand(w).includes("echo '" + w + "'")); });
+['show', 'rescan', "volup'; reboot; '", '', null].forEach(function (w) { assert.equal(kr.dockWordCommand(w), null, 'only the four words: ' + w); });
+
 // ---- the bridge's hooks: onConnect after AUTH, onStop on every stop (asked, or the helper went away) ----
 (async function () {
     let socket, connects = [], stops = 0;

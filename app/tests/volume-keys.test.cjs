@@ -36,6 +36,35 @@ const {Dock} = require('../service/dock.js');
     assert.equal(how, 'native');
     assert.deepEqual(reinjected, ['XF86AudioRaiseVolume'], 'no reader on the FIFO: the key is given back to Samsung');
 
+    // 2022+ firmware: the service may not open the root-made FIFO (EACCES). The root agent writes the word instead, and from then on
+    // the service does not try its own open again; the route and the errno are reported.
+    const relayed = [], routes = [], st = {refused: false};
+    let opens = 0;
+    const refused = () => { opens++; const e = new Error('denied'); e.code = 'EACCES'; throw e; };
+    const viaAgent = {write: refused, relay: async w => { relayed.push(w); }, reinject: k => reinjected.push(k), route: (h, e) => routes.push([h, e]), state: st};
+    reinjected.length = 0;
+    how = await vk.handle(down, viaAgent);
+    assert.equal(how, 'agent');
+    assert.deepEqual(relayed, ['volup']);
+    assert.equal(st.refused, true);
+    how = await vk.handle({code: 140, action: 'down', decision: 'blocked'}, viaAgent);
+    assert.equal(how, 'agent');
+    assert.deepEqual(relayed, ['volup', 'pad']);
+    assert.equal(opens, 1, 'not opened again once refused');
+    assert.deepEqual(routes, [['agent', 'EACCES'], ['agent', null]]);
+    assert.deepEqual(reinjected, []);
+    // The agent finds no launcher reading: the key goes back to Samsung.
+    how = await vk.handle(down, Object.assign({}, viaAgent, {relay: async () => { throw new Error('launcher not reading'); }}));
+    assert.equal(how, 'native');
+    assert.deepEqual(reinjected, ['XF86AudioRaiseVolume']);
+    // ENOENT (the launcher is starting): back to Samsung, and the service's own open is still tried next time.
+    const st2 = {refused: false}, rel2 = [];
+    how = await vk.handle(down, {write: () => { const e = new Error('gone'); e.code = 'ENOENT'; throw e; }, relay: async w => { rel2.push(w); }, reinject: () => {}, state: st2});
+    assert.equal(how, 'native');
+    assert.deepEqual(rel2, []);
+    assert.equal(st2.refused, false);
+    reinjected.length = 0;
+
     // A FIFO nobody reads must fail at once instead of blocking the service.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-volume-'));
     const fifo = path.join(tmp, 'f.fifo');

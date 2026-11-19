@@ -331,11 +331,17 @@ function downloadDiagnostics(res, withComponents) {
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
                 .then(function (out) { var parts = out.split(/(?:^|\n)---\n?/); return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: parts[0] || '', openLog: parts[1] || ''}); }); }); }),
         // tunerLog: the tuner's start and its talk with Samsung's TV client (EFL start, which client was loaded, the first reads, a stall, an
-        // exception); the report keeps fixed shapes only and cuts the channel name off the first read.
+        // exception, its window), then its last show / hide / takeover lines; the report keeps fixed shapes only and cuts the channel name
+        // off the first read. tunerThreads: each thread of the running tuner as name|state|kernel wait (and the kernel stack's function
+        // names for a thread stuck in D): which thread stops, and where, when the start stalls (S95B, 2022).
         tuner: later(function () { return tuner.status().then(function (d) {
-            return agentExecute('echo ' + Buffer.from("grep -E '^\\+[0-9]+ms (elm_init |tvs: |tvs worker: |start )' " + tunerModule.LOG_FILE + ' | head -n 30').toString('base64') + ' | base64 -d | sh', 5000)
+            var log = tunerModule.LOG_FILE, pid = tunerModule.PID_FILE;
+            return agentExecute('echo ' + Buffer.from("grep -E '^\\+[0-9]+ms (elm_init |tvs: |tvs worker: |start |window up |elm_win_add |pipe failed)' " + log + " | head -n 30; " +
+                "grep -E '^\\+[0-9]+ms (shown$|hidden$|not shown|takeover: |resume: )' " + log + " | tail -n 8; echo ---; " +
+                "p=$(cat " + pid + " 2>/dev/null); [ -n \"$p\" ] && for t in /proc/$p/task/*; do s=$(sed 's/.*) //' $t/stat | cut -d' ' -f1); k=''; " +
+                "[ \"$s\" = D ] && k=$(sed 's/.*] //' $t/stack 2>/dev/null | cut -d+ -f1 | head -n 8 | tr '\\n' ' '); echo \"$(cat $t/comm)|$s|$(cat $t/wchan 2>/dev/null)|$k\"; done; true").toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
-                .then(function (tunerLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: tunerLog}); }); }); }),
+                .then(function (out) { var parts = out.split(/(?:^|\n)---\n?/); return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: parts[0] || '', tunerThreads: parts[1] || ''}); }); }); }),
         input: later(function () {
             var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '', prevHelperLog = '', subtype = '', now = Date.now();
             // What the restore loop is waiting on, read before the commands below: paused by the Remapper, the service's input stopped, a
@@ -358,7 +364,8 @@ function downloadDiagnostics(res, withComponents) {
                     keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null,
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
                     selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, remoconSubtype: subtype.trim(), loop: loop, history: history,
-                    recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; })};
+                    recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; }),
+                    volumeRoute: volumeRoute ? {route: volumeRoute.route, errno: volumeRoute.errno, ageSeconds: Math.round((Date.now() - volumeRoute.at) / 1000)} : null};
             });
         }),
         quickWins: later(function () { return wins.read().then(function (d) { return keyGuides.read().then(function (k) { d.wins.keyguides = k; return d; }, function () { return d; }); }); }),
@@ -985,8 +992,13 @@ var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var volumeKeys=require('./volume-keys.js');
 // The glass volume pill is on when the dock (or the custom launcher) runs and the user switched it on.
 function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true};}
-var volumeRepeat=volumeKeys.repeater({reinject:function(key){var c=volumeKeys.reinjectCommand(key);return c?agentExecute(c,5000):Promise.resolve();}});
 var keyRouting=require('./key-routing.js');
+// volumeRoute (diagnostics): which way the last Vol / 123 key went to the launcher (its FIFO opened by the service, or written by the root
+// agent once the service was refused), or back to Samsung, with the service's errno for its own open. In memory only.
+var volumeRoute=null;
+var volumeRepeat=volumeKeys.repeater({reinject:function(key){var c=volumeKeys.reinjectCommand(key);return c?agentExecute(c,5000):Promise.resolve();},
+    relay:function(word){var c=keyRouting.dockWordCommand(word);return c?agentExecute(c,5000).then(function(r){if(!r||r.exit_code||r.timed_out)throw new Error('launcher not reading');}):Promise.reject(new Error('bad word'));},
+    route:function(how,errno){volumeRoute={route:how,errno:errno,at:Date.now()};}});
 // Every stop of the bridge (asked for, or the helper went away on its own) ends a volume repeat: its release will never come.
 // Once a helper holds the remote, its forwarding node is new: the launcher and the tuner are told to watch it now, not at their next 3 s scan.
 // bridgeTiming (GET /status remoteBridge): how long after the root agent connected the remote bridge was listening again,

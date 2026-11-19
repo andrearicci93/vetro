@@ -98,11 +98,21 @@ function dockEvents(text){return String(text||'').split('\n').map(function(l){re
 // silent TV service, and an exception's type (its message can hold paths). Milliseconds since the start are kept.
 var TUNER_EVENT_RES=[/^start pid=\d{1,7}(?: [a-z]{1,12})?$/,/^elm_init (?:start|done)$/,/^tvs: client \/(?:usr|opt\/usr)\/[A-Za-z0-9_.\/-]{1,160}\.dll \d{1,4}(?:\.\d{1,6}){1,3}$/,
     /^tvs: (?:current|list|source) r=-?\d{1,6}[A-Za-z0-9 =\[\]:.,-]{0,80}$/,/^tvs: the window system is not up after \d{1,3} s, reading the TV anyway$/,/^tvs: no answer from the TV service after \d{1,3} s$/,
-    /^tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception$/];
+    /^tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception$/,
+    // Its window and whether it shows: the engine, a failed window or pipe, then the last show / hide / takeover lines (Samsung's app ids
+    // and states, no paths: a line with a '/' or a quote is dropped).
+    /^window up engine=[a-z_]{1,24}$/,/^(?:elm_win_add failed|pipe failed|shown|hidden)$/,/^not shown: no channel list yet, Samsung's live TV keeps the screen$/,
+    /^(?:takeover|resume): [A-Za-z0-9 .,()>_=-]{1,160}$/];
 function tunerEvents(text){return String(text||'').split('\n').map(function(l){
         var m=/^\+(\d{1,7})ms (.*)$/.exec(l.trim());if(!m)return null;
-        var body=m[2].replace(/ -> .*$/,'').replace(/^(tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception)[:\s].*$/,'$1').trim();
-        return TUNER_EVENT_RES.some(function(re){return re.test(body);})?{ms:+m[1],line:body}:null;}).filter(Boolean).slice(0,24);}
+        var body=m[2].replace(/^(tvs: .*?) -> .*$/,'$1').replace(/^(tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception)[:\s].*$/,'$1').trim();
+        return TUNER_EVENT_RES.some(function(re){return re.test(body);})?{ms:+m[1],line:body}:null;}).filter(Boolean).slice(0,40);}
+// The tuner's threads, one "name|state|wait|stack" line each (main.js): the thread's name, its state letter, the kernel function it waits
+// in, and for a thread stuck in D the function names of its kernel stack. Kernel and thread names only, nothing of the user's.
+function tunerThreads(text){return String(text||'').split('\n').map(function(l){var f=l.split('|');if(f.length<3)return null;
+        var name=f[0].trim(),state=f[1].trim(),wait=f[2].trim(),stack=String(f[3]||'').trim().split(/\s+/).filter(function(x){return /^[A-Za-z_][A-Za-z0-9_.]{0,63}$/.test(x);}).slice(0,8);
+        if(!/^[A-Za-z0-9 ._:#()-]{1,16}$/.test(name)||!/^[RSDTtZXIKWP]$/.test(state))return null;
+        return {name:name,state:state,wait:/^[A-Za-z_][A-Za-z0-9_.]{0,63}$/.test(wait)?wait:null,stack:stack.length?stack:null};}).filter(Boolean).slice(0,64);}
 // The firmware section: each item as the TV said it, cut down to what it may be. Numbers in a range, yes/no, or a word from a fixed list.
 function intIn(v,min,max){var n=/^-?\d{1,9}$/.test(String(v||''))?+v:NaN;return Number.isFinite(n)&&n>=min&&n<=max?n:null;}
 function bit(v){return v==='1'||v==='true'||v==='True'?true:v==='0'||v==='false'||v==='False'?false:null;}
@@ -172,7 +182,7 @@ var projectors = {
          clientVersions:list(d.clientVersions,5).filter(function(v){return typeof v==='string'&&/^\d+(?:\.\d+){0,3}$/.test(v);}),
          clientFiles:list(d.clientFiles,12).filter(function(v){return typeof v==='string'&&CLIENT_FILE_RE.test(v)&&v.indexOf('..')<0;}),
          clientElsewhere:list(d.clientElsewhere,6).filter(function(v){return typeof v==='string'&&CLIENT_PATH_RE.test(v)&&v.indexOf('..')<0;}),
-         events:tunerEvents(d.tunerLog)});},
+         events:tunerEvents(d.tunerLog),threads:tunerThreads(d.tunerThreads)});},
     // What differs between firmware generations (the root app, Samsung's Home and its picture mode, the sound output, the screen and its
     // saver, the remote key guides, the .NET runtime, which of Samsung's apps exist, how many input helpers run). See firmwareSection().
     firmware:firmwareSection,
@@ -209,7 +219,11 @@ var projectors = {
         {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
             if(TYPED_KEY(e.code))return {code:null,key:null,scan:null,typed:true,held:e.decision==='blocked',woke:e.decision==='wake'};
             return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
-                held:e.decision==='blocked',woke:e.decision==='wake'};})});}
+                held:e.decision==='blocked',woke:e.decision==='wake'};}),
+            // volumeRoute: which way the last held Vol / 123 key went: the launcher's FIFO opened by the service (dock), written by the root
+            // agent after the service was refused (agent), or given back to Samsung (native); errno: the service's own open, as a code.
+            volumeRoute:d.volumeRoute&&typeof d.volumeRoute==='object'?{route:choice(d.volumeRoute.route,['dock','agent','native']),
+                errno:/^E[A-Z0-9]{1,15}$/.test(d.volumeRoute.errno)?d.volumeRoute.errno:null,ageSeconds:Number.isInteger(d.volumeRoute.ageSeconds)&&d.volumeRoute.ageSeconds>=0?Math.min(d.volumeRoute.ageSeconds,9999999):null}:null});}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
 var SLOW = {startup: 4, components: 3};

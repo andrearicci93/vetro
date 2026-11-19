@@ -46,18 +46,26 @@ function wants(event, flags) {
     return !!event && event.decision === 'blocked' && (event.action === 'down' || event.action === 'repeat' || event.action === 'up') && enabled(event.code, flags);
 }
 
-// opts.write(path, text) -> throws on failure; opts.reinject(nativeKey) -> Promise
+// opts.write(path, text) -> throws on failure; opts.relay(word) -> Promise, the same word written by the root agent (rejects when
+// the launcher does not read); opts.reinject(nativeKey) -> Promise; opts.route(how, errno) is told which way each key went;
+// opts.state {refused} is kept between keys (the repeater gives one).
 function handle(event, opts) {
-    var key = KEYS[String(event.code)];
+    var key = KEYS[String(event.code)], note = opts.route || function () {}, state = opts.state || {}, err = null;
     // Non-blocking open: a FIFO nobody reads fails at once (ENXIO) instead of freezing the service.
     var write = opts.write || function (p, t) {
         var fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
         try { fs.writeSync(fd, t); } finally { fs.closeSync(fd); }
     };
-    try { write(opts.fifo || FIFO, key.word + '\n'); return Promise.resolve('dock'); }
-    catch (e) {
-        return Promise.resolve(opts.reinject(key.native)).then(function () { return 'native'; });
+    function native() { return Promise.resolve(opts.reinject(key.native)).then(function () { note('native', err); return 'native'; }); }
+    if (!state.refused) {
+        try { write(opts.fifo || FIFO, key.word + '\n'); note('dock', null); return Promise.resolve('dock'); }
+        catch (e) { err = e && /^E[A-Z0-9]{1,15}$/.test(e.code) ? e.code : 'EOTHER'; }
+        // ENXIO / ENOENT: nobody reads, the launcher is down or starting. EACCES / EPERM: the service may not open the root-made FIFO
+        // (on the 2022+ exports no Vol or 123 ever reached the launcher while the root agent's words did): from then on the agent writes.
+        if (err === 'ENXIO' || err === 'ENOENT' || !opts.relay) return native();
+        if (err === 'EACCES' || err === 'EPERM') state.refused = true;
     }
+    return Promise.resolve(opts.relay(key.word)).then(function () { note('agent', err); return 'agent'; }, native);
 }
 
 // The remote may send no auto-repeat for a held key (Bluetooth remotes often do not), so a press starts its own
@@ -67,6 +75,7 @@ var DELAY_MS = 380, INTERVAL_MS = 90, MAX_MS = 8000;
 
 function repeater(opts) {
     var timer = null, started = 0, pending = false;
+    if (!opts.state) opts.state = {refused: false};
     function stop() { if (timer) { clearTimeout(timer); clearInterval(timer); timer = null; } }
     function send(event) { return handle(event, opts).catch(function () {}); }
     return {
