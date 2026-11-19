@@ -50,6 +50,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 - **Apps you don't use: switch them off or delete them.** Disable has a switch for Netflix, Prime Video, YouTube, Apple TV, Disney+, Spotify, Xbox, GeForce NOW, Amazon Luna, Samsung Health, the Internet browser and Gallery, with their background services. The new **Uninstall** tab deletes the same apps and the e-Manual (21 to 124 MB). Each TV only lists the apps it has and allows removing.
 - **Samsung TV Plus** is one switch (the app and the two services behind it, about 25 MB).
+- **Vision AI** (2024 and later TVs that have it). Holding Home, or the AI button of the newer remotes, opens Samsung's AI screens (Click to Search, the AI companion); turning off Bixby does not stop it. The new switch on the Disable tab turns those apps off, so nothing opens. A short Home press works as before, and the Vision AI row of Samsung's Home stays.
 - **Hide remote key guides** (TV control). 2024 and later TVs show a picture of the remote ("Press Volume: Mute", play / pause) again after every power-on; the switch marks those guides as seen now and after each boot. Read from the Tizen 9 firmware; not yet tried on such a TV.
 - **Keep removed apps removed** is now on the Uninstall tab.
 - **Uninstalling no longer leaves a dead tile.** Vetro now also removes the Home line, the registry row and the icon that `pkgcmd` leaves behind, and **Rebuild app list** clears old ones.

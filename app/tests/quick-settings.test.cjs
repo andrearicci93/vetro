@@ -139,3 +139,11 @@ function harness(opts){
  assert.ok(off.startsWith('touch /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl stop --no-block/.test(off));
  assert.ok(on.startsWith('rm -f /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl start --no-block/.test(on));
  assert.throws(()=>quick.servicesCommand(['x; reboot'],true),/Invalid service/);}
+// Vision AI: the apps that answer the AI key (held Home, the AI button), shown only where they are; Samsung Home's Vision AI row,
+// live translation and the AI picture and sound settings stay out of it.
+{const g=quick.find('vision-ai');
+ assert.equal(g.section,'memory');assert.equal(g.onlyInstalled,true);
+ assert.ok(g.ids.includes('com.samsung.tv.AICompanionUI')&&g.ids.includes('com.samsung.tv.ai-discovery-ui'));
+ ['com.samsung.tv.visionairow','com.samsung.tv.ai-interpreter-service','org.tizen.aitech_daemon_service','com.samsung.tv.coba.setting.aitech'].forEach(id=>assert.ok(!g.ids.includes(id),id));
+ assert.equal(quick.state(g,[{appId:'org.tizen.tv-viewer',disabled:false}]).status,'unavailable','a TV without the apps');
+ assert.equal(quick.state(g,g.ids.slice(0,3).map(id=>({appId:id,disabled:true,onboot:false,autorestart:false}))).status,'off');}

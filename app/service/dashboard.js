@@ -955,7 +955,8 @@ function renderQuick(){
   d?switchMarkup('data-dns-switch',dnsOn,quickBusy||uiOperationBusy.dns||dnsNoDomains&&!dnsOn,'Enable DNS blocking'):'',
   dnsNoDomains?'<div class="quick-actions"><button data-quick-open="dns">Add domains</button></div>':'');
  // Ambient: screend, Samsung’s screen daemon, is stopped around the kill so that it does not start the app again.
- paint($('quickMemory'),hbbtvItem()+winItem('multiscreen')+winItem('ambient')+winItem('airplay')+quickGroups.filter(function(g){return g.section==='memory'}).map(function(g){return groupItem(g)}).join(''));
+ // A group marked onlyInstalled (Vision AI: 2024 and later TVs only) shows only on a TV that has its apps.
+ paint($('quickMemory'),hbbtvItem()+winItem('multiscreen')+winItem('ambient')+winItem('airplay')+quickGroups.filter(function(g){return g.section==='memory'&&!(g.onlyInstalled&&quickState(g,inventory).status==='unavailable')}).map(function(g){return groupItem(g)}).join(''));
  // Apps you don't use: only the ones on this TV; none on it, no group.
  var appGroups=quickGroups.filter(function(g){return g.section==='apps'&&quickState(g,inventory).status!=='unavailable'});
  $('quickAppsGroup').hidden=!appGroups.length;paint($('quickApps'),appGroups.map(function(g){return groupItem(g,true)}).join(''));

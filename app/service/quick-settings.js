@@ -42,6 +42,14 @@ var GROUPS = [
         description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Stops Samsung TV Plus and its background services. Frees about 25 MB.',
         ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
         services: ['slive-provider-daemon', 'bms']},
+    // Vision AI (2024 and later TVs): holding Home for a second sends the AI key, the key of the AI button on 2025 remotes,
+    // and these apps answer it with Click to Search or the AI companion. Bixby and the voice apps play no part in it. With them off
+    // the key opens nothing; a short Home press is unchanged. Kept on: the Vision AI row of Samsung's Home (visionairow), live
+    // translation and the AI picture and sound settings. Most TVs have none of these apps, so the switch only shows where they are.
+    {id: 'vision-ai', label: 'Vision AI', section: 'memory', onlyInstalled: true,
+        description: 'Holding Home, or pressing the remote’s AI button, no longer opens Samsung’s AI screens (Click to Search and the AI companion). Nothing opens in their place.',
+        ids: ['com.samsung.tv.AICompanionAgent', 'com.samsung.tv.AICompanionUI', 'com.samsung.tv.AICompanionUILauncher', 'com.samsung.tv.AICompanionUINotice',
+            'com.samsung.tv.ai-discovery-ui', 'com.samsung.tv.ai-discovery-service', 'com.samsung.tv.ai-discovery-sceneanalyzer', 'com.samsung.tv.download-content']},
     // Apps that come with the TV and that Samsung's own Apps screen does not let you delete. One switch each (section
     // "apps", the second group of the Disable tab): the app is disabled like any member of a group, and the same switch,
     // or Restore the TV, enables it again. The ids are the Q80A's; a TV without the app does not show its switch. The row
