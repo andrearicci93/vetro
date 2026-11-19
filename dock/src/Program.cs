@@ -1884,8 +1884,11 @@ namespace Launcher
             if (Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
             {
                 string native = key == Command.VolUp ? "XF86AudioRaiseVolume" : key == Command.VolDown ? "XF86AudioLowerVolume" : "XF86AudioMute";
-                Log("volume: sound on output " + output + ", key passed to Samsung rc=" + Libc.system(KeyTool + native));
-                return;
+                int rc = Libc.system(KeyTool + native);
+                Log("volume: sound on output " + output + ", key passed to Samsung rc=" + rc);
+                // input_keyevent is only known on 2021 firmware: if it is missing or refuses, Vetro changes the TV's level itself, as before,
+                // rather than leaving Vol dead.
+                if (rc == 0) return;
             }
             int volume;
             if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }

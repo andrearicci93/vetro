@@ -22,13 +22,13 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 - **New apps show up without a restart.** An app installed from Samsung's store, TV-Store or Apps2Samsung appears in the row and in All apps the next time you open the launcher; an app you remove or switch off goes away the same way.
 - **The remote works right after standby** ([#219](https://github.com/andrearicci93/vetro/issues/219), idea and first version by BirikuSistema). A Bluetooth remote coming back from standby could wait up to 3 seconds before Home answered; now it is picked up at once.
 - **The Live TV tile switches to the TV input**, so the tuner comes back after an app.
-- **Samsung Home opens from the launcher on Tizen 9** (thanks to pponce for the fix and the S95C test, #170, #169).
+- **Samsung Home opens from the launcher on 2022 and later TVs** ([#210](https://github.com/andrearicci93/vetro/issues/210), [#170](https://github.com/andrearicci93/vetro/issues/170), [#169](https://github.com/andrearicci93/vetro/issues/169); thanks to pponce for the first fix and the S95C test). The pill no longer starts Samsung's Home components package, which shows nothing; it asks Samsung's Home the way the TV's own Home key does. Read from the 2022 and 2024 firmware, not yet tried on those TVs.
 - Holding OK no longer ends a move by itself, a Home press during start-up opens the launcher when it is ready, and the launcher does no work while nothing moves.
 
 ### Control center
 
 - **Down on the apps row opens up to three cards side by side.** **Task manager** (running apps by memory; OK switches, hold OK closes; by [zabique](https://github.com/zabique), [#172](https://github.com/andrearicci93/vetro/pull/172)), **Audio output** (TV speakers or a paired Bluetooth device), **Picture mode** and **Sleep timer** (Samsung's own settings). Each card has its own switch on the Launcher tab and is off until you turn it on. If you had the Task manager on, it is your only card.
-- **Turn off screen, keep the sound.** The last row of the Audio output card switches the picture off while the sound plays on (Samsung's own Picture Off); any key except volume and power brings it back.
+- **Turn off screen, keep the sound.** The last row of the Audio output card switches the picture off while the sound plays on (Samsung's own Picture Off); any key except volume and power brings it back. Tried on a Q80A.
 - **A Shard can add its own card**, for example the scenes of a smart home. The launcher never runs the Shard's code: it asks Vetro, which asks the Shard with a time limit. [Guide](app/docs/plugins.md#adding-a-card-to-the-control-center-controlcenter).
 
 ### Live TV (Vetro TV Tuner)
@@ -88,13 +88,12 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Fixes
 
-- **Samsung Home opens from the launcher on 2022 and later TVs** ([#210](https://github.com/andrearicci93/vetro/issues/210), [#170](https://github.com/andrearicci93/vetro/issues/170)). The pill no longer starts Samsung's Home components package, which shows nothing; it asks Samsung's Home the way the TV's own Home key does.
-- **The TV powers on into the Vetro launcher** on 2022 and later TVs ([#206](https://github.com/andrearicci93/vetro/issues/206)). With the launcher on, those TVs started in Live TV every time; Vetro now opens its launcher once at power-on.
-- **The Audio output card shows optical and HDMI receivers.** "TV speakers" was ticked while the sound went to an optical output or a receiver; that output now has its own ticked row, and Vol goes to Samsung while it plays, so the level that changes is the one you hear.
-- **Picture mode on Samsung's Home picture.** The mode a TV reports while Samsung's Home has been on screen was read as Filmmaker Mode; it now ticks nothing and any mode can be chosen. Eco and Adaptive Picture are listed where the TV offers them.
-- **The remote interception reconnects after a reinstall or update.** A remote helper left from an earlier start kept the remote and every new one was refused; it is now ended before a new start, and a busy remote is tried again for a moment.
-- **Live TV on Tizen 9 reads programmes and the TV guide** (the TV client of 2024 firmware changed one call).
-- **The screen comes back after Picture Off with the remote interception on.** A key passed on by Vetro moved the TV back to "on" but left the panel dark (seen on a Q80A); Vetro now turns the picture on itself and drops that key, as Samsung does.
+- **The Vetro launcher at power-on** on 2022 and later TVs ([#206](https://github.com/andrearicci93/vetro/issues/206)). With the launcher on, those TVs started in Live TV every time; Vetro now opens its launcher once at power-on. Read from the 2022 and 2024 firmware, not yet tried on those TVs.
+- **The Audio output card shows optical and HDMI receivers.** "TV speakers" was ticked while the sound went to an optical output or a receiver; that output now has its own ticked row, and Vol goes to Samsung while it plays, so the level that changes is the one you hear. Output numbers read from the firmware; not yet tried with an optical or HDMI output.
+- **Picture mode on Samsung's Home picture.** The mode some 2022 and later TVs report (327705) was read as Filmmaker Mode; the firmware names it Samsung's Home picture, so the card now ticks nothing and any mode can be chosen. Eco and Adaptive Picture are listed where the TV offers them. Not yet tried on those TVs.
+- **A remote helper left from an earlier start no longer blocks the interception.** It kept the remote and every new one was refused (the likely cause on an S95B); it is now ended before a new start, and a busy remote is tried again for a moment. The cleanup was tried on a Q80A with a frozen helper.
+- **Live TV on Tizen 9: programmes and the TV guide.** The TV client of 2024 firmware changed one call the tuner makes, which would leave them empty. Found in the firmware, not yet tried on a Tizen 9 TV.
+- **The screen comes back after Picture Off with the remote interception on.** A key passed on by Vetro moved the TV back to "on" but left the panel dark (seen on a Q80A); Vetro now turns the picture on itself and drops that key, as Samsung does. Tried on a Q80A.
 - **Home Assistant no longer reconnects every 10 seconds** ([#199](https://github.com/andrearicci93/vetro/issues/199), [#213](https://github.com/andrearicci93/vetro/issues/213)).
 - **Removing Vetro is never blocked by a restore step**, and HbbTV can be turned back on where the TV has no HbbTV service app ([#212](https://github.com/andrearicci93/vetro/issues/212)).
 - **MQTT on TVs with Node 4.4** ([#77](https://github.com/andrearicci93/vetro/issues/77)).
