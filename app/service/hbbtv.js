@@ -48,7 +48,7 @@ function listed(id){return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*
 function stopOf(id){return 'if '+listed(id)+'; then app_launcher -t '+id+' || true; i=0; while '+listed(id)+' && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done; fi';}
 var STOP=DISABLE_SVC+'\n'+stopOf(SERVICE)+'\n'+stopOf(APP);
 function wrap(s){return 'echo '+Buffer.from(s).toString('base64')+' | base64 -d | sh';}
-function check(r){if(r.exit_code||r.timed_out)throw execError.failed(r,r.stderr||r.stdout||'HbbTV unavailable');return r.stdout||'';}
+function check(r){if(!r||r.exit_code!==0||r.timed_out)throw execError.failed(r,(r&&(r.stderr||r.stdout))||'HbbTV unavailable');return r.stdout||'';}
 function Control(execute,storage){this.execute=execute;this.fs=storage||fs;this.busy=false;}
 Control.prototype.read=function(){var self=this;
  var script='vconftool get '+KEY+' 2>&1\necho __FLAG__\n[ -e '+FLAG+' ] && echo 1 || echo 0\necho __RUN__\n'+listed(APP)+' && echo 1 || echo 0\necho __SVC__\n'+listed(SERVICE)+' && echo 1 || echo 0\necho __DIS__\n'+DISABLED+' && echo 1 || echo 0\necho __ABS__\n'+ABSENT+' && echo 1 || echo 0';

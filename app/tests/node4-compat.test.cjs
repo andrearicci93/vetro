@@ -84,13 +84,15 @@ function wgt(xml) {
     Object.defineProperty(Buffer, 'from', { value: realFrom, configurable: true, writable: true });
   }
 
-  // 6. crypto.timingSafeEqual and Number.isInteger — absent on Node 4.4.
-  const realSafeEqual = crypto.timingSafeEqual, realIsInteger = Number.isInteger;
+  // 6. crypto.timingSafeEqual, Number.isInteger, Number.isSafeInteger, latin1 Buffer & fs.constants — absent on Node 4.4.
+  const realSafeEqual = crypto.timingSafeEqual, realIsInteger = Number.isInteger, realIsSafeInteger = Number.isSafeInteger;
   delete crypto.timingSafeEqual;
   delete Number.isInteger;
+  delete Number.isSafeInteger;
   try {
     assert.equal(typeof crypto.timingSafeEqual, 'undefined', 'this Node still had timingSafeEqual');
     assert.equal(typeof Number.isInteger, 'undefined', 'this Node still had Number.isInteger');
+    assert.equal(typeof Number.isSafeInteger, 'undefined', 'this Node still had Number.isSafeInteger');
     compat.install();
     assert.ok(crypto.timingSafeEqual(Buffer.from('abc'), Buffer.from('abc')), 'equal frames verify');
     assert.ok(!crypto.timingSafeEqual(Buffer.from('abc'), Buffer.from('abd')), 'a different frame is rejected');
@@ -99,9 +101,30 @@ function wgt(xml) {
     assert.equal(Number.isInteger(-3), true);
     assert.equal(Number.isInteger(3.5), false);
     assert.equal(Number.isInteger('3'), false);
+    assert.equal(Number.isSafeInteger(9007199254740991), true);
+    assert.equal(Number.isSafeInteger(9007199254740992), false);
+    assert.equal(Number.isSafeInteger(3.5), false);
+    assert.equal(Number.isSafeInteger('3'), false);
   } finally {
     crypto.timingSafeEqual = realSafeEqual;
     Number.isInteger = realIsInteger;
+    Number.isSafeInteger = realIsSafeInteger;
+  }
+  {
+    const seen = [];
+    function FakeBuf(val) { this.v = val; }
+    FakeBuf.isBuffer = Buffer.isBuffer;
+    FakeBuf.isEncoding = function (e) { return e !== 'latin1' && Buffer.isEncoding(e); };
+    FakeBuf.alloc = Buffer.alloc; FakeBuf.from = Buffer.from;
+    FakeBuf.byteLength = function (s, enc) { seen.push('len:' + enc); return Buffer.byteLength(s, enc); };
+    FakeBuf.prototype.toString = function (enc) { seen.push('str:' + enc); return String(this.v); };
+    const fakeFs = {};
+    compat.install({ Buffer: FakeBuf, fs: fakeFs });
+    assert.equal(FakeBuf.byteLength('hi', 'latin1'), 2);
+    assert.equal(new FakeBuf('hi').toString('latin1'), 'hi');
+    assert.deepEqual(seen, ['len:binary', 'str:binary']);
+    assert.equal(typeof fakeFs.constants.O_WRONLY, 'number');
+    assert.equal(typeof fakeFs.constants.O_NONBLOCK, 'number');
   }
 
   // 7. package-info read(): the callback-fs path that replaced fs.promises.

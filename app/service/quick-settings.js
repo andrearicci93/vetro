@@ -244,13 +244,13 @@ function apply(groupId, off, deps) {
         function services() {
             if (!group.services) return Promise.resolve();
             return deps.execute(servicesCommand(group.services, off), 30000).then(function (r) {
-                result.services = {off: off, ok: !r.exit_code && !r.timed_out};
+                result.services = {off: off, ok: !!r && r.exit_code === 0 && !r.timed_out};
             }, function () { result.services = {off: off, ok: false}; });
         }
         if (!off) return services().then(function () { return restoreFlagsFor(result, deps); });
         // A disabled flag does not end processes that are already running.
         return services().then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
-            if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
+            if (!r || r.exit_code !== 0 || r.timed_out) throw new Error('running apps unreadable');
             var ids = running(r.stdout).filter(function (id) { return result.state.installed.indexOf(id) >= 0; });
             if (!ids.length) return result;
             return deps.execute(stopCommand(ids), 30000).then(function (k) {

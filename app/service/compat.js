@@ -6,6 +6,7 @@
 // Node is unaffected. `install` takes an optional {Promise, Buffer} for tests.
 
 var crypto = require('crypto');
+var fs = require('fs');
 
 function acceptsString(BufferRef) {
     try { return BufferRef.from('a').toString() === 'a'; } catch (error) { return false; }
@@ -16,6 +17,7 @@ function install(env) {
     var PromiseRef = target.Promise || Promise;
     var BufferRef = target.Buffer || Buffer;
     var NumberRef = target.Number || Number;
+    var FsRef = target.fs || fs;
 
     if (typeof PromiseRef.prototype.finally !== 'function') {
         PromiseRef.prototype.finally = function (callback) {
@@ -66,6 +68,7 @@ function install(env) {
                 }
                 // Not `new Buffer(value)`: on a modern runtime that constructor
                 // delegates back to Buffer.from and would recurse.
+                if (encoding === 'latin1') encoding = 'binary';
                 var size = BufferRef.byteLength(value, encoding);
                 var buffer = typeof BufferRef.allocUnsafe === 'function'
                     ? BufferRef.allocUnsafe(size)
@@ -91,13 +94,40 @@ function install(env) {
         };
     }
 
+    if (typeof BufferRef.isEncoding === 'function' && !BufferRef.isEncoding('latin1')) {
+        var origToString = BufferRef.prototype.toString;
+        BufferRef.prototype.toString = function (encoding, start, end) {
+            if (encoding === 'latin1') encoding = 'binary';
+            return origToString.call(this, encoding, start, end);
+        };
+        var origByteLength = BufferRef.byteLength;
+        BufferRef.byteLength = function (string, encoding) {
+            if (encoding === 'latin1') encoding = 'binary';
+            return origByteLength.call(BufferRef, string, encoding);
+        };
+    }
+
+    if (!FsRef.constants) {
+        var base = {};
+        try { base = require('constants') || {}; } catch (e) {}
+        FsRef.constants = Object.assign({}, base);
+    }
+    if (typeof FsRef.constants.O_WRONLY !== 'number') FsRef.constants.O_WRONLY = 1;
+    if (typeof FsRef.constants.O_NONBLOCK !== 'number') FsRef.constants.O_NONBLOCK = 2048;
+
     if (typeof NumberRef.isInteger !== 'function') {
         NumberRef.isInteger = function (value) {
             return typeof value === 'number' && isFinite(value) && Math.floor(value) === value;
         };
     }
 
-    return { Promise: PromiseRef, Buffer: BufferRef };
+    if (typeof NumberRef.isSafeInteger !== 'function') {
+        NumberRef.isSafeInteger = function (value) {
+            return typeof value === 'number' && isFinite(value) && Math.floor(value) === value && Math.abs(value) <= 9007199254740991;
+        };
+    }
+
+    return { Promise: PromiseRef, Buffer: BufferRef, fs: FsRef };
 }
 
 module.exports = { install: install, acceptsString: acceptsString };

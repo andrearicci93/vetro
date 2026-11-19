@@ -119,7 +119,7 @@ var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000, FIRMWARE_
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function check(r) {
-    if (r.exit_code || r.timed_out) throw execError.failed(r, r.stderr || r.stdout || 'TV unavailable');
+    if (!r || r.exit_code !== 0 || r.timed_out) throw execError.failed(r, (r && (r.stderr || r.stdout)) || 'TV unavailable');
     return r.stdout || '';
 }
 function running(id) { return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*' + id.replace(DOT_RE, '\\.') + '[[:space:]]"'; }
@@ -315,7 +315,7 @@ Wins.prototype.firmware = function (on) {
     function lock(before) {
         var svc = before.fwService !== null ? '\n' + fwSet(FWSERVICE, 0) : '';
         return self.execute(wrap(fwMaskScript(true) + '\n' + fwSet(AUTOUPDATE, 0) + svc + '\ntrue'), 30000).then(function (r) {
-            if (r.exit_code || r.timed_out) throw Error('The TV refused the update lock');
+            if (!r || r.exit_code !== 0 || r.timed_out) throw Error('The TV refused the update lock');
         });
     }
     function undo() {
@@ -453,7 +453,7 @@ Wins.prototype.bootFirmware = function (mine, id, did) {
     function chosen() { return self.changing !== 'firmware' && self.load().firmware; }
     function pass() {
         if (!chosen()) return Promise.resolve(false);
-        return self.execute(wrap(fwMaskScript(true)), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
+        return self.execute(wrap(fwMaskScript(true)), 30000).then(function (r) { return !!r && r.exit_code === 0 && !r.timed_out; }, function () { return false; });
     }
     return pass().then(function (first) {
         return self.sleep(FIRMWARE_RETRY_MS).then(pass).then(function (second) {
@@ -473,7 +473,7 @@ Wins.prototype.bootAirplay = function (mine, did) {
         if (!chosen()) return Promise.resolve();
         return self.execute(wrap(AIRPLAY_WEB_RUNNING + ' && echo up || echo down'), 8000).then(function (r) {
             if (!chosen()) return;
-            if (UP_RE.test(r.stdout || '') && !r.exit_code) {
+            if (UP_RE.test((r && r.stdout) || '') && r && !r.timed_out && r.exit_code === 0) {
                 return self.execute(wrap(AIRPLAY_WEB_STOP + '\nsleep 1\ntrue'), 12000).then(function () { if (chosen()) did.push('airplay'); });
             }
             if (++n >= BOOT_POLLS) return null;
@@ -497,7 +497,7 @@ Wins.prototype.bootTelemetry = function (mine, id, did) {
     // true only if the stop really ran: a command that came back with an error or a timeout is not a pass, and neither a rejection.
     function pass() {
         if (!chosen()) return Promise.resolve(false);
-        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
+        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { return !!r && r.exit_code === 0 && !r.timed_out; }, function () { return false; });
     }
     return pass().then(function (first) {
         return self.sleep(TELEMETRY_RETRY_MS).then(pass).then(function (second) {
@@ -516,7 +516,7 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
         if (self.changing === 'ambient' || !self.load().ambient) return Promise.resolve();
         return self.execute(wrap(running(AMBIENT_ID) + ' && echo up || echo down'), 8000).then(function (r) {
             if (self.changing === 'ambient' || !self.load().ambient) return;
-            if (UP_RE.test(r.stdout || '') && !r.exit_code) {
+            if (UP_RE.test((r && r.stdout) || '') && r && !r.timed_out && r.exit_code === 0) {
                 return self.execute(wrap(AMBIENT_OFF + '\nsleep 1\ntrue'), 15000).then(function (r) {
                     check(r);
                     if (!self.load().ambient) return;
