@@ -9,7 +9,7 @@ namespace Launcher.Core
     /// </summary>
     internal static class IconPrep
     {
-        public const int MaxSide = 256;
+        public const int MaxSide = DockLayout.FocusIcon;
         public const int MinSide = 32;
 
         /// <summary>Below this share of opaque pixels an icon is a loose logo, not a filled tile.</summary>
@@ -41,7 +41,7 @@ namespace Launcher.Core
         /// <summary>Returns the finished icon: <see cref="SideFor"/> x <see cref="SideFor"/> pixels.</summary>
         public static uint[] Prepare(uint[] src, int w, int h, int maxSide = MaxSide)
         {
-            if (w <= 0 || h <= 0 || src == null || src.Length < w * h) throw new ArgumentException("bad icon size");
+            if (w <= 0 || h <= 0 || src == null || (long)src.Length < (long)w * h) throw new ArgumentException("bad icon size");
             // Big pictures (some apps ship a full-screen banner as their icon) are first brought down by whole halvings.
             int side = SideFor(w, h, maxSide);
             while (Math.Max(w, h) >= 2 * side && w > 1 && h > 1) { src = Halve(src, w, h); w = (w + 1) / 2; h = (h + 1) / 2; }
@@ -81,7 +81,7 @@ namespace Launcher.Core
         /// </summary>
         public static int DominantColor(uint[] src, int w, int h)
         {
-            if (w <= 0 || h <= 0 || src == null || src.Length < w * h) return -1;
+            if (w <= 0 || h <= 0 || src == null || (long)src.Length < (long)w * h) return -1;
             const int n = 48;
             uint[] s = Scale(src, w, h, n, n);
             double r = 0, g = 0, b = 0, wt = 0;
