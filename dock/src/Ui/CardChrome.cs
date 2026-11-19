@@ -10,8 +10,8 @@ namespace Launcher.Ui
     /// What every Control center card shares, in the material of the dock's bar (and of the 123 pad): a light rim and the slate sheet for
     /// the panel, no drop shadow, a header (title, then a quieter line beside it), a divider, the key hint at the foot and one ice capsule
     /// (pill_cap) under the selected row. Only the card that has the focus shows its capsule and a bright hint; the others keep their
-    /// rows as they are, so Left and Right read as moving between cards. The rows themselves belong to the card (<see cref="TaskPanel"/>,
-    /// <see cref="AudioCard"/>).
+    /// rows as they are, so Left and Right read as moving between cards. A list longer than the card scrolls and shows a thin capsule bar
+    /// (track and thumb) in the gutter right of the rows. The rows themselves belong to the card (<see cref="TaskPanel"/>, <see cref="AudioCard"/>).
     /// </summary>
     internal abstract class CardChrome
     {
@@ -24,7 +24,7 @@ namespace Launcher.Ui
         protected readonly Action<string> _log;
         private readonly string _tag;
 
-        protected IntPtr _clip, _listClip, _rim, _bg, _plate;
+        protected IntPtr _clip, _listClip, _rim, _bg, _plate, _track, _thumb;
         protected IntPtr _title, _sub, _empty;
         // The footer: pictures of the remote's keys (res/key_*.png, the dashboard's set) and short words, in one centred line.
         protected const int FootKey = 34, FootInner = 8, FootGroup = 40;
@@ -33,14 +33,14 @@ namespace Launcher.Ui
         private readonly List<bool> _footKey = new List<bool>();
         private readonly List<int> _footGap = new List<int>();   // space after each part
         private readonly List<int> _footW = new List<int>(), _footH = new List<int>();   // each part's size, measured when it is made
-        private int _chromeKey = -1, _plateAlpha = -1;
+        private int _chromeKey = -1, _plateAlpha = -1, _barKey = -1;
         // Every text is measured when it is set (a text's width, and its line height, which is not the same for an empty text), never per
         // frame. _version moves on with every change of a text or of the rows, so a placement made for the old ones is not kept.
         private int _version, _titleW, _titleAsc, _subH, _subAsc, _emptyW, _emptyH, _footTotal;
         private bool _clipPlaced;
         // What the panel, the capsule and the rows were last placed for: a frame with the same values (the card at rest, or another card's
         // selection moving) moves and resizes nothing.
-        private PlaceKey _chromeAt, _plateAt;
+        private PlaceKey _chromeAt, _plateAt, _barAt;
 
         protected CardChrome(IntPtr win, TaskLayout layout, string assets, Action<string> log, string tag)
         {
@@ -106,6 +106,9 @@ namespace Launcher.Ui
             _bg = Slice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
             // The selection: the 123 pad's ice capsule, its ends fully round (border_scale = half the plate's height / border).
             _plate = Slice("pill_cap", Design.CapSlice, (TaskLayout.RowH - 8) / 2.0 / Design.CapSlice);
+            // The scroll bar: the same capsule picture, its ends as round as the bar is wide. Transparent until a list is longer than the card.
+            _track = Slice("pill_cap", Design.CapSlice, TaskLayout.ScrollW / 2.0 / Design.CapSlice);
+            _thumb = Slice("pill_cap", Design.CapSlice, TaskLayout.ScrollW / 2.0 / Design.CapSlice);
 
             _title = Text(FontBold, 30);
             Efl.evas_object_text_text_set(_title, title);
@@ -315,6 +318,21 @@ namespace Launcher.Ui
             if (!_plateAt.Same(slide, n, rows, _version, c.SelPos, c.Scroll)) Place(_plate, _layout.Plate(c.SelPos, c.Scroll, n, slide));
             int pa = n > 0 && focused && capsule ? (int)Math.Round(a * Design.FocusFillAlpha) : 0;
             if (pa != _plateAlpha) { _plateAlpha = pa; TintRgb(_plate, pa, Design.RingColor); }
+
+            // Scroll bar, only while the list is longer than the card. Placed again only when the card slides, its rows change or it scrolls.
+            bool bar = _layout.Scrolls(n);
+            if (bar && !_barAt.Same(slide, n, rows, _version, 0f, c.Scroll))
+            {
+                Place(_track, _layout.ScrollTrack(n, slide));
+                Place(_thumb, _layout.ScrollThumb(c.Scroll, n, slide));
+            }
+            int bk = bar ? a * 2 + (focused ? 1 : 0) : -2;
+            if (bk != _barKey)
+            {
+                _barKey = bk;
+                TintRgb(_track, bar ? (int)Math.Round(a * Design.ScrollTrackAlpha) : 0, Design.ShellBorderColor);
+                TintRgb(_thumb, bar ? (int)Math.Round(a * (focused ? Design.ScrollThumbAlpha : Design.ScrollThumbAlpha / 2)) : 0, Design.RingColor);
+            }
             return a;
         }
     }

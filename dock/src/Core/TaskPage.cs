@@ -8,8 +8,8 @@ namespace Launcher.Core
     /// Geometry of one card of the Control center (the Task manager, the Audio output...): a glass panel with a header, a list of rows and a key
     /// hint, standing on the same bottom line as the dock's bar. Up to <see cref="MaxCards"/> cards stand side by side, centred in one window;
     /// a single card is <see cref="WideW"/> wide (the Task manager as it always was), two or three are <see cref="NarrowW"/> each. A card is as
-    /// tall as its rows (up to <see cref="MaxRows"/>), or as <see cref="ShowRows"/> when the host evens the cards out; the window is sized once
-    /// for the tallest panel, so closing an app never resizes the window.
+    /// tall as its rows (up to <see cref="MaxRows"/>; a longer list scrolls, with a thin bar on the card's right), or as <see cref="ShowRows"/>
+    /// when the host evens the cards out; the window is sized once for the tallest panel, so closing an app never resizes the window.
     /// </summary>
     internal sealed class TaskLayout
     {
@@ -21,7 +21,11 @@ namespace Launcher.Core
         public const int PadTop = 18;
         public const int HeaderH = 70;
         public const int RowH = 76;
-        public const int MaxRows = 7;
+        /// <summary>
+        /// Rows a card shows at most; more scroll. Five, the Picture mode and Sleep timer lists: cards side by side all stand this tall, so
+        /// nothing changes size while the Control center is open (a sixth running app used to grow every card by a row).
+        /// </summary>
+        public const int MaxRows = 5;
         public const int MinRows = 2;          // the empty state still reads as a panel
         public const int FooterH = 54;
         public const int PadBottom = 10;
@@ -115,6 +119,35 @@ namespace Launcher.Core
             b.Y = ListTop(count, slide) + (int)Math.Round((pos - scroll) * RowH) + 4;
             b.H = RowH - 8;
             return b;
+        }
+
+        /// <summary>The scroll bar: a capsule this wide in the gutter between the selection plate and the card's right side, never shorter than ScrollMinThumb.</summary>
+        public const int ScrollW = 4, ScrollMinThumb = 28;
+
+        /// <summary>A list longer than the card: it scrolls and shows the bar.</summary>
+        public bool Scrolls(int count) { return count > Rows(count); }
+
+        /// <summary>The bar's track: centred in the gutter right of the plates, from the first plate's top to the last one's bottom.</summary>
+        public Box ScrollTrack(int count, int slide)
+        {
+            Box b;
+            b.W = ScrollW;
+            b.X = PanelX + PanelW - PlateInset / 2 - ScrollW / 2;
+            b.Y = ListTop(count, slide) + 4;
+            b.H = Rows(count) * RowH - 8;
+            return b;
+        }
+
+        /// <summary>The bar's thumb: as tall as the share of the list on screen, as far down as the list is scrolled.</summary>
+        public Box ScrollThumb(float scroll, int count, int slide)
+        {
+            Box t = ScrollTrack(count, slide);
+            int rows = Rows(count), hidden = Math.Max(0, count - rows);
+            int h = count > 0 ? Math.Max(ScrollMinThumb, Math.Min(t.H, t.H * rows / count)) : t.H;
+            float f = hidden == 0 ? 0f : Math.Max(0f, Math.Min(1f, scroll / hidden));
+            t.Y += (int)Math.Round((t.H - h) * f);
+            t.H = h;
+            return t;
         }
 
         public int IconX { get { return PanelX + PadX + 10; } }

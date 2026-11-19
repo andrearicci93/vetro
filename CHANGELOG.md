@@ -28,6 +28,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 ### Control center
 
 - **Down on the apps row opens up to three cards side by side.** **Task manager** (running apps by memory; OK switches, hold OK closes; by [zabique](https://github.com/zabique), [#172](https://github.com/andrearicci93/vetro/pull/172)), **Audio output** (TV speakers or a paired Bluetooth device), **Picture mode** and **Sleep timer** (Samsung's own settings). Each card has its own switch on the Launcher tab and is off until you turn it on. If you had the Task manager on, it is your only card.
+- **Cards that hold still.** A card shows five rows and scrolls past them, with a thin scroll bar on its right; cards side by side keep one height while the Control center is open; the Task manager sets its order (biggest first) when it opens instead of re-sorting every 1.5 s, which swapped apps of about the same size back and forth.
 - **Turn off screen, keep the sound.** The last row of the Audio output card switches the picture off while the sound plays on (Samsung's own Picture Off); any key except volume and power brings it back. Tried on a Q80A.
 - **A Shard can add its own card**, for example the scenes of a smart home. The launcher never runs the Shard's code: it asks Vetro, which asks the Shard with a time limit. [Guide](app/docs/plugins.md#adding-a-card-to-the-control-center-controlcenter).
 

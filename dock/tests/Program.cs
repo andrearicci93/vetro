@@ -1605,7 +1605,7 @@ namespace Launcher.Tests
                 T.True(tl.WinY >= 0, "tallest panel fits on a 1080p screen");
                 T.True(tl.Panel(1, 0).H < p.H, "a short list makes a shorter panel");
                 T.Eq(tl.Panel(0, 0).H, TaskLayout.PanelH(TaskLayout.MinRows), "empty list keeps two rows of room");
-                T.Eq(TaskLayout.ScrollFor(8, 0, 10), 2f, "scroll follows the selection down");
+                T.Eq(TaskLayout.ScrollFor(8, 0, 10), (float)(8 - TaskLayout.MaxRows + 1), "scroll follows the selection down");
                 T.Eq(TaskLayout.ScrollFor(1, 2, 10), 1f, "and back up");
             });
 
@@ -1684,6 +1684,33 @@ namespace Launcher.Tests
                     }
                 T.Eq(tl.Plate(2.5f, 1, 7, 0).Y, tl.RowTop(1, 0, 7, 0) + TaskLayout.RowH / 2 + 4, "plate between two rows while it moves, scrolled by one");
                 T.True(TaskLayout.RowH - 8 <= 2 * Design.CapSlice, "plate no taller than the capsule picture: the ends stay fully round");
+            });
+
+            T.Run("control center: five rows at most, a longer list scrolls with a bar in the gutter right of the rows", () =>
+            {
+                T.Eq(TaskLayout.MaxRows, 5, "five rows: a sixth running app no longer grows the card");
+                foreach (int cards in new[] { 1, 3 })
+                {
+                    var tl = new TaskLayout(1920, 1080, 1612, DockLayout.HintH, cards, 0);
+                    T.True(!tl.Scrolls(5) && tl.Scrolls(6), "the bar shows from the sixth row, cards=" + cards);
+                    Box panel = tl.Panel(9, 0), list = tl.ListClip(9, 0), track = tl.ScrollTrack(9, 0), plate = tl.Plate(0, 0, 9, 0);
+                    T.Eq(panel.H, TaskLayout.PanelH(TaskLayout.MaxRows), "nine apps: the card stays five rows tall, cards=" + cards);
+                    T.True(track.X >= plate.X + plate.W + 2 && track.X + track.W <= panel.X + panel.W - 2, "the bar sits in the gutter, clear of the plate and the card's side, cards=" + cards);
+                    T.Eq(track.Y, plate.Y, "the track starts where the first plate does");
+                    T.Eq(track.Y + track.H, list.Y + list.H - 4, "and ends where the last plate does");
+                    Box top = tl.ScrollThumb(0, 9, 0), end = tl.ScrollThumb(4, 9, 0), mid = tl.ScrollThumb(2, 9, 0);
+                    T.Eq(top.Y, track.Y, "not scrolled: the thumb at the top");
+                    T.Eq(end.Y + end.H, track.Y + track.H, "scrolled to the end: the thumb at the bottom");
+                    T.True(mid.Y > top.Y && mid.Y + mid.H < end.Y + end.H, "half way: in between");
+                    T.Eq(top.H, track.H * 5 / 9, "the thumb is the share of the list on screen");
+                    T.True(tl.ScrollThumb(0, 400, 0).H == TaskLayout.ScrollMinThumb, "never shorter than the minimum");
+                    T.Eq(tl.ScrollThumb(99, 9, 0).Y, end.Y, "a scroll past the end stays at the end");
+                    T.True(TaskLayout.ScrollW / 2.0 <= Design.CapSlice, "the bar's ends stay round");
+                }
+                var t = new TaskController();
+                t.Open(1f); t.SetCount(9);
+                for (int i = 0; i < 8; i++) { t.Key("Down"); for (int f = 0; f < 20; f++) t.Tick(1 / 60.0); }
+                T.True(Math.Abs(t.Scroll - 4) < 0.001f, "the last of nine rows scrolls the list by four");
             });
 
             T.Run("control center: which cards, in which order, and Left/Right between them", () =>
@@ -1942,7 +1969,7 @@ namespace Launcher.Tests
                 var many = new StringBuilder("status\tok\n");
                 for (int i = 0; i < 10; i++) many.Append("row\tr" + i + "\tRow " + i + "\t\t0\n");
                 st = ShardCard.Parse(many.ToString());
-                T.Eq(st.Rows.Count, TaskLayout.MaxRows, "at most seven rows");
+                T.Eq(st.Rows.Count, ShardCard.MaxRows, "at most seven rows (plugins.md); the card shows five and scrolls");
                 T.Eq(st.Rows[6].Id, "r6", "the first seven");
                 st = ShardCard.Parse("status\tok\nrow\ta b\tSpace\t\t0\nrow\ta'b\tQuote\t\t0\nrow\t\tEmpty\t\t0\nrow\tok\tGood\t\t0\nrow\tok\tAgain\t\t1\nrow\tn\t\t\t0\nrow\tt\tTick\t\tyes\n");
                 T.Eq(st.Rows.Count, 1, "rows with a bad id, a repeated id, no label or a bad tick dropped");

@@ -159,7 +159,7 @@ module.exports = function (ctx) {
   It is **not a permission**, so `permissions` stays `[]` or `["exec"]`, and an older Vetro ignores the key and loads the Shard as before (it simply has no card).
 - **`card()`** returns `{ rows, note?, choosable? }`. A row is `{ id, label, value?, ticked? }`: `id` is your own name for it (1–40 characters of `A-Z a-z 0-9 . _ -`; it is
   what `cardSelect` gets back), `label` is what people read, `value` a short state after it (`Living room · on`), `ticked: true` marks the current one.
-- **Vetro cleans what you return, you are not trusted with the screen.** At most **7 rows** (the rest is dropped), `label` up to **40** characters, `value` up to **24**, `note` up to **80** (longer is cut).
+- **Vetro cleans what you return, you are not trusted with the screen.** At most **7 rows** (the rest is dropped; the card shows five at a time and scrolls), `label` up to **40** characters, `value` up to **24**, `note` up to **80** (longer is cut).
   Control characters, tabs and line breaks become spaces; a row without a usable `id` or `label`, or with an `id` already used, is dropped. Nothing is an error towards the launcher: it gets
   the cleaned rows, or "Not available". Your Shard never runs in the launcher: the launcher asks Vetro (`GET /plugins/launcher/api/card`, `POST …/card-select`, text lines, same sign-in rule as the other routes of the launcher),
   and Vetro asks you.

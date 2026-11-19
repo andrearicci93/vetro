@@ -15,8 +15,8 @@ namespace Launcher.Core
     internal static class ShardCard
     {
         public const int MaxTitle = 24, MaxNote = 80, MaxRowLabel = 40, MaxValue = 24, MaxRowId = 40;
-        /// <summary>A card that is read for the first time reserves this many rows beside the others, so the cards do not grow when it answers.</summary>
-        public const int ReserveRows = 4;
+        /// <summary>Rows a Shard may send (plugins.md promises seven); the card shows <see cref="TaskLayout.MaxRows"/> of them and scrolls.</summary>
+        public const int MaxRows = 7;
 
         /// <summary>A Shard's id, as the service names it: a lower-case letter, then 1 to 31 lower-case letters, digits or "-".</summary>
         public static bool ValidId(string id)
@@ -121,7 +121,7 @@ namespace Launcher.Core
                     case "result": if (f.Length >= 2) result = f[1].Trim(); break;
                     case "row":
                         // Exactly id, label, value, ticked: a label or a value with a tab in it would shift the fields, so the row is dropped.
-                        if (f.Length != 5 || rows.Count == TaskLayout.MaxRows) break;
+                        if (f.Length != 5 || rows.Count == MaxRows) break;
                         string id = f[1], label = Cut(Clean(f[2]), MaxRowLabel), value = Cut(Clean(f[3]), MaxValue);
                         if (!ValidRowId(id) || ids.Contains(id) || label.Length == 0 || (f[4] != "0" && f[4] != "1")) break;
                         ids.Add(id);

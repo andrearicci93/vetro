@@ -482,23 +482,16 @@ namespace Launcher
             foreach (ChoiceCard c in _choiceCards) if (c != null) c.SetVisible(on);
         }
 
-        /// <summary>The rows a choice card keeps free beside the others while it reads, so the cards do not grow when the answer comes.</summary>
-        private static int ReserveRows(CardKind k)
-        {
-            return k == CardKind.Sleep ? SleepTimer.Minutes.Length : k == CardKind.Shard ? ShardCard.ReserveRows : 5;
-        }
-
-        /// <summary>Draws every card; side by side they are as tall as the tallest one, and only the focused one shows its capsule.</summary>
+        /// <summary>
+        /// Draws every card; only the focused one shows its capsule. Side by side they always stand <see cref="TaskLayout.MaxRows"/> rows tall,
+        /// whatever their lists hold: an app that starts or ends, a Bluetooth device that connects or a choice card's answer used to grow or
+        /// shrink every card while the Control center was open. A longer list scrolls. A single card is as tall as its own list.
+        /// </summary>
         private static void ApplyCards()
         {
             if (_cards.Length > 1)
             {
-                int rows = 0;
-                if (HasCard(CardKind.Tasks)) rows = Math.Max(rows, TaskLayout.VisibleRows(_taskPanel.Count));
-                if (HasCard(CardKind.Audio)) rows = Math.Max(rows, TaskLayout.VisibleRows(_audioCard.Count));
-                // A choice card reserves its rows while it reads, so the cards do not grow when the answer comes.
-                for (int i = 0; i < _choiceCards.Length; i++)
-                    if (_choiceCards[i] != null) rows = Math.Max(rows, TaskLayout.VisibleRows(Math.Max(_choiceCards[i].Count, ReserveRows(_cards[i].Kind))));
+                const int rows = TaskLayout.MaxRows;
                 if (HasCard(CardKind.Tasks)) _taskPanel.Layout.ShowRows = rows;
                 if (HasCard(CardKind.Audio)) _audioCard.Layout.ShowRows = rows;
                 foreach (ChoiceCard c in _choiceCards) if (c != null) c.Layout.ShowRows = rows;
@@ -788,7 +781,7 @@ namespace Launcher
         }
 
         /// <summary>
-        /// A new look from the worker. The order only changes when asked (opening, a new sort, after a close):
+        /// A new look from the worker (every 1.5 s while the card is open). The order only changes when asked (opening, after a close):
         /// rows that jump on their own every refresh would be hard to point at. New apps go to the end.
         /// </summary>
         private static void ApplySnapshot(TaskSnapshot s)
@@ -808,9 +801,9 @@ namespace Launcher
                 }
             }
             List<RunningApp> list;
-            // The sort waits for real figures; a first look without any is shown by name meanwhile. While the user
-            // has not moved, every full look is sorted again (the figures change); once they move, rows stay put.
-            if (!s.Partial && !_taskUserMoved) _taskResort = true;
+            // The sort waits for real figures; a first look without any is shown by name meanwhile. Then the rows stay put until the
+            // next opening or close: sorting every look again swapped two apps of about the same size back and forth every 1.5 s,
+            // which read as the card flickering.
             if (_taskResort && (!s.Partial || _taskApps.Count == 0))
             {
                 list = s.Apps;

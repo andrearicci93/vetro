@@ -152,7 +152,7 @@
     <div class="bar"><div class="seg" role="group" aria-label="Sfondo" id="bdSeg"><button type="button" data-bd="video" aria-pressed="true">Video</button><button type="button" data-bd="black" aria-pressed="false">Nero</button><button type="button" data-bd="light" aria-pressed="false">Chiaro</button><button type="button" data-bd="grid" aria-pressed="false">Scacchi</button></div></div>
     <div class="screens">
       <div><h3>Dock</h3><p class="muted">Barra in basso, centrata su 960, pannello con raggio 40 senza ombra. “Source” sopra, “Task manager” sotto. Le icone tengono anello ghiaccio e alone. Sorgente: <code>Design.cs</code>, <code>Layout.cs</code>.</p><div class="tv-stage"><div class="tv-canvas" id="s-dock"></div></div></div>
-      <div><h3>Control center</h3><p class="muted">Giù sul Dock. Una card sola (qui il Task manager) è larga 880 px; due o tre stanno affiancate, 520 px ciascuna a 32 px di distanza, alte quanto la più lunga, e Sinistra / Destra passa dall’una all’altra (<code>dock.html?view=tasks</code>). Fondo sulla linea della barra del Dock; solo la card col fuoco mostra la capsula ghiaccio, con il testo in ardesia. Nessun ordinamento: le app più grandi in alto.</p><div class="tv-stage"><div class="tv-canvas" id="s-tasks"></div></div></div>
+      <div><h3>Control center</h3><p class="muted">Giù sul Dock. Una card sola (qui il Task manager) è larga 880 px; due o tre stanno affiancate, 520 px ciascuna a 32 px di distanza, sempre alte 5 righe, e Sinistra / Destra passa dall’una all’altra (<code>dock.html?view=tasks</code>). Una card mostra al massimo 5 righe: una lista più lunga scorre con la selezione e mostra una barra a capsula di 4 px nello spazio a destra delle righe (binario bianco .14, cursore ghiaccio .6). Fondo sulla linea della barra del Dock; solo la card col fuoco mostra la capsula ghiaccio, con il testo in ardesia. Nessun ordinamento a mano: le app più grandi in alto, ordine fissato all’apertura.</p><div class="tv-stage"><div class="tv-canvas" id="s-tasks"></div></div></div>
       <div><h3>Volume bar</h3><p class="muted">Verticale al bordo sinistro, centrata in altezza; livello in Luce. Stessa materia, capsula.</p><div class="tv-stage"><div class="tv-canvas" id="s-volume"></div></div></div>
       <div><h3>osd 123</h3><p class="muted">La capsula da cui viene la materia di tutto l’OSD: cerchio ghiaccio sulla cifra scelta, “Done” in una <code>pill_chip</code>.</p><div class="tv-stage"><div class="tv-canvas" id="s-pad123"></div></div></div>
       <div><h3>Tuner · Banner</h3><p class="muted">Angolo in basso a sinistra, sul velo, 4 secondi. Il numero grande (peso 200) poggia sulla base della seconda riga; “N min left” segue la testina e l’orario che toccherebbe sparisce.</p><div class="tv-stage"><div class="tv-canvas" id="s-banner"></div></div></div>
@@ -286,20 +286,26 @@
 
   /* ---------- Task manager ---------- */
   screens.tasks = function (c) {
-    var rows = [['Samsung TV Plus', '#1674fb', '0.1%', '382 MB'], ['YouTube', '#c2364a', '5.7%', '239 MB'], ['Stremio', '#8a52d6', '4.1%', '170 MB'], ['NOW', '#1fa971', '2.3%', '95 MB'], ['Apple TV', '#5f6f86', '2.7%', '53 MB']];
-    var PX = 520, PW = px('--vetro-tv-tasks-w'), RH = px('--vetro-tv-tasks-row-h'), H = 18 + 70 + rows.length * RH + 54 + 10, PY = 994 - H, LT = PY + 88;
+    var rows = [['Samsung TV Plus', '#1674fb', '0.1%', '382 MB'], ['YouTube', '#c2364a', '5.7%', '239 MB'], ['Stremio', '#8a52d6', '4.1%', '170 MB'], ['NOW', '#1fa971', '2.3%', '95 MB'], ['Apple TV', '#5f6f86', '2.7%', '53 MB'], ['RaiPlay', '#2a6fd6', '0.4%', '41 MB']];
+    var MAXR = 5, shown = Math.min(MAXR, rows.length);   // TaskLayout.MaxRows: a sixth app scrolls, the bar shows
+    var PX = 520, PW = px('--vetro-tv-tasks-w'), RH = px('--vetro-tv-tasks-row-h'), H = 18 + 70 + shown * RH + 54 + 10, PY = 994 - H, LT = PY + 88;
     Tv.panel(c, PX, PY, PW, H, px('--vetro-tv-panel-radius'));
     T(c, 'Running apps', PX + 34, PY + 26, 30, 1, 600);
     T(c, '822 MB of memory free', PX + 233, PY + 33, 22, .6);
     Tv.cap(c, PX + 16, LT + 4, PW - 32, RH - 8);
-    rows.forEach(function (r, i) {
+    if (rows.length > MAXR) {
+      var TH = shown * RH - 8, th = Math.max(28, Math.floor(TH * shown / rows.length));
+      mk(c, 'cap rest', PX + PW - 10, LT + 4, 4, TH, { '--r': '2px', 'background': 'rgba(255, 255, 255, .14)' });
+      mk(c, 'cap rest', PX + PW - 10, LT + 4, 4, th, { '--r': '2px', 'background': 'rgba(228, 242, 255, .6)' });
+    }
+    rows.slice(0, shown).forEach(function (r, i) {
       var y = LT + i * RH, on = i === 0;
       tile(c, r[1], r[0][0], PX + 34, y + 12, 52);
       T(c, r[0], PX + 108, y + 22, 27, on ? 'ink' : .85, 600, 464);
       T(c, r[2], PX + 692, y + 24, 24, on ? 'ink' : .59, 500, 120, true);
       T(c, r[3], PX + 842, y + 24, 24, on ? 'ink' : .85, 500, 140, true);
     });
-    var fy = LT + rows.length * RH + 14, groups = [[['ok'], 'open', ''], [['ok'], 'close', 'Hold'], [['up', 'back'], 'return', '']], fw = 0;
+    var fy = LT + shown * RH + 14, groups = [[['ok'], 'open', ''], [['ok'], 'close', 'Hold'], [['up', 'back'], 'return', '']], fw = 0;
     groups.forEach(function (g) { fw += (g[2] ? Tv.textW(g[2], 21, 500) + 18 : 0) + g[0].length * 34 + (g[0].length - 1) * 2 + 8 + Tv.textW(g[1], 21, 500) + 40; });
     var x = Math.round(960 - (fw - 40) / 2);
     groups.forEach(function (g) {

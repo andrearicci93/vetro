@@ -52,6 +52,8 @@ namespace Launcher.Core
         public const int RingW = 2;
         /// <summary>The focus mark: an ice-white ring, clearly apart from the sheet and from the icons' own rim.</summary>
         public const int RingColor = 0xE4F2FF;
+        /// <summary>A Control center card's scroll bar: the track in the rim's white, the thumb in the capsule's ice (half as bright on a card without the focus).</summary>
+        public const float ScrollTrackAlpha = 0.14f, ScrollThumbAlpha = 0.6f;
         /// <summary>The selected icon rises by this many pixels.</summary>
         public const int Lift = 4;
 
