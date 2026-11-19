@@ -30,7 +30,7 @@ function setupScript() {
         '[ -d "$SRC/ssl/certs" ] || { echo nocobalt; exit 0; }',
         // DIR belongs to root: the user the TV apps run as cannot swap a file for a link that a root command below would follow.
         // Only cache/ is theirs (the downloaded script, verified by hash on every read).
-        'mkdir -p "$D"; chown root:root "$D"; chmod 755 "$D"; cd "$D"',
+        '[ -L "$D" ] && rm -f "$D"; mkdir -p "$D"; chown root:root "$D"; chmod 755 "$D"; cd "$D"',
         'for f in ca.key ca.crt ca.cnf ca.srl leaf.key leaf.crt leaf.csr leaf.ext content.stamp cache "$C"; do [ -L "$f" ] && rm -f "$f"; done',
         'if [ -f ca.key ] && [ ! -O ca.key ]; then rm -rf ca.key ca.crt leaf.key leaf.crt leaf.csr ca.srl "$C" content.stamp; fi',
         'rm -rf content',                                     // where the copy used to be (before the path had to be short)

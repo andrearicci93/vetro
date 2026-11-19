@@ -58,6 +58,17 @@ const { PassThrough } = require('stream');
   assert.doesNotMatch(client.buildRequest({ method: 'GET', path: '/', headers: {} }, 0), /content-length/);
 }
 
+// --- sandbox UI (no confirm()), setup symlink guard & fetchBuffer abort
+{
+  assert.ok(setup.setupScript().includes('[ -L "$D" ] && rm -f "$D"; mkdir -p "$D"'), 'setup removes $D symlink before mkdir');
+  const ytFactory = require(path.join(dir, 'index.js'));
+  const yt = ytFactory({ config: { get: () => ({ tile: false, port: 0 }), set: () => {} }, execute: () => Promise.resolve({ exit_code: 0, stdout: 'ready\n' }) });
+  let ui = '';
+  yt.route({ method: 'GET' }, { writeHead() {}, end(s) { ui = s; } }, 'ui');
+  assert.doesNotMatch(ui, /\bconfirm\(/, 'sandboxed iframe UI must not use window.confirm');
+  assert.match(ui, /document\.hidden/);
+}
+
 // --- the page rewrite
 {
   assert.equal(inject.isTvPage('/tv'), true);

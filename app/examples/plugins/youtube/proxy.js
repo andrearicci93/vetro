@@ -41,11 +41,12 @@ function createProxy(opts) {
     }
 
     function handle(req, res) {
-        var abortUpstream = null;
-        res.on('error', function () { /* the app went away */ });
-        req.on('error', function () { if (abortUpstream) abortUpstream(); });
-        res.on('close', function () { if (abortUpstream) abortUpstream(); });
-        var fail = function () { try { if (!res.headersSent) res.writeHead(502, { 'content-length': 0 }); res.end(); } catch (e) { drop(res.socket || req.socket); } };
+        var abortUpstream = null, cleanupPipe = null;
+        function teardown() { if (cleanupPipe) cleanupPipe(); if (abortUpstream) abortUpstream(); }
+        res.on('error', teardown);
+        req.on('error', teardown);
+        res.on('close', teardown);
+        var fail = function () { try { if (!res.headersSent) res.writeHead(502, { 'content-length': 0 }); if (!res.finished) res.end(); } catch (e) { drop(res.socket || req.socket); } };
 
         var host = String(req.headers.host || '').replace(/:\d+$/, '').toLowerCase();
         if (!inject.MITM_HOSTS[host]) { res.writeHead(421, { 'content-length': 0 }); res.end(); return; }
@@ -58,7 +59,7 @@ function createProxy(opts) {
         }
         var tv = req.method === 'GET' && inject.isTvPage(req.url) && !!opts.script();
         var chunks = [], size = 0, over = false;
-        req.on('data', function (c) { size += c.length; if (size > MAX_BODY) { over = true; return; } chunks.push(c); });
+        req.on('data', function (c) { size += c.length; if (size > MAX_BODY) { over = true; chunks = []; return; } chunks.push(c); });
         req.on('end', guard(function () {
             if (over) { res.writeHead(413, { 'content-length': 0 }); res.end(); return; }
             var h = client.request({ host: host, method: req.method, path: req.url, headers: req.headers, identity: tv }, Buffer.concat(chunks), guard(function (err, r) {
@@ -66,7 +67,8 @@ function createProxy(opts) {
                 var type = String(r.headers['content-type'] || '');
                 if (!tv || r.status !== 200 || type.indexOf('text/html') < 0) {
                     res.writeHead(r.status, inject.passHeaders(r.headers));
-                    r.body.on('error', function () { drop(res.socket); });
+                    cleanupPipe = function () { r.body.unpipe(res); };
+                    r.body.on('error', function () { if (cleanupPipe) cleanupPipe(); drop(res.socket); });
                     r.body.pipe(res);
                     return;
                 }
@@ -151,9 +153,11 @@ function createProxy(opts) {
             c.pipe(up); up.pipe(c);
             c.resume();
         }));
-        up.on('error', function () { drop(c); });
-        c.on('close', function () { drop(up); });
-        up.on('close', function () { drop(c); });
+        function cleanup() { try { c.unpipe(up); } catch (e) {} try { up.unpipe(c); } catch (e) {} drop(up); drop(c); }
+        up.on('error', cleanup);
+        c.on('error', cleanup);
+        c.on('close', cleanup);
+        up.on('close', cleanup);
     }
 
     return {

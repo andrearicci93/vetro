@@ -107,9 +107,10 @@ function request(opts, body, cb) {
     body = body || bytes(0);
     var sock = null, head = bytes(0), headDone = false, dech = null, settled = false, ended = false;
     var expect = -1, got = 0, paused = false, blocked = false, bodyless = false;
+    var timeoutMs = opts.timeout || 30000;
     var payload = new PassThrough();
     payload.on('error', function () { /* the reader went away */ });
-    payload.on('drain', function () { blocked = false; if (paused) { paused = false; try { sock.resume(); } catch (e) { /* closed */ } } });
+    payload.on('drain', function () { blocked = false; if (paused) { paused = false; try { sock.setTimeout(timeoutMs); sock.resume(); } catch (e) { /* closed */ } } });
     function kill() { try { if (sock) sock.destroy(); } catch (x) { /* closed */ } }
     function complete() { if (ended) return; ended = true; try { payload.end(); } catch (e) { /* closed */ } }
     function broken(e) { if (ended) return; ended = true; try { payload.emit('error', e); } catch (x) { /* nobody listens */ } try { payload.end(); } catch (y) { /* closed */ } }
@@ -131,7 +132,7 @@ function request(opts, body, cb) {
             got += n;
             if (got >= expect) { complete(); kill(); return; }
         } else sink.write(d);
-        if (blocked && !paused && !ended) { paused = true; try { sock.pause(); } catch (e) { /* closed */ } }
+        if (blocked && !paused && !ended) { paused = true; try { sock.setTimeout(0); sock.pause(); } catch (e) { /* closed */ } }
     }
     function closed() {
         if (!headDone) { fail(new Error('closed before a response')); return; }
@@ -141,7 +142,7 @@ function request(opts, body, cb) {
     }
     try { sock = tls.connect({ host: opts.host, port: opts.port || 443, servername: opts.host }); }
     catch (e) { setImmediate(function () { fail(e); }); return { abort: function () {} }; }
-    sock.setTimeout(opts.timeout || 30000, guard(function () {
+    sock.setTimeout(timeoutMs, guard(function () {
         if (paused) return;                                  // waiting for the reader, not for the server
         fail(new Error('timeout talking to ' + opts.host));
     }));
@@ -180,12 +181,18 @@ function request(opts, body, cb) {
 
 // GET host/path and collect the body (at most maxBytes). cb(err, buffer, status)
 function fetchBuffer(host, path, maxBytes, cb) {
-    request({ host: host, method: 'GET', path: path, headers: { host: host, 'user-agent': 'vetro-youtube-plugin' }, identity: true }, null, function (err, r) {
-        if (err) return cb(err);
-        var parts = [], size = 0, done = false;
-        function finish(e) { if (done) return; done = true; if (e) cb(e); else cb(null, Buffer.concat(parts), r.status); }
+    var done = false, req = null;
+    function finish(e, parts, status) {
+        if (done) return;
+        done = true;
+        if (e && req) req.abort();
+        if (e) cb(e); else cb(null, Buffer.concat(parts), status);
+    }
+    req = request({ host: host, method: 'GET', path: path, headers: { host: host, 'user-agent': 'vetro-youtube-plugin' }, identity: true }, null, function (err, r) {
+        if (err) return finish(err);
+        var parts = [], size = 0;
         r.body.on('data', function (c) { size += c.length; if (size > maxBytes) { finish(new Error('response too large')); return; } parts.push(c); });
-        r.body.on('end', function () { finish(null); });
+        r.body.on('end', function () { finish(null, parts, r.status); });
         r.body.on('error', finish);
     });
 }

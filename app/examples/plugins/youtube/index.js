@@ -38,7 +38,8 @@ var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" conte
     'function $(i){return document.getElementById(i)}' +
     'function say(t,bad){var m=$("msg");m.textContent=t;m.className=bad?"err":""}' +
     'function post(p,b){return fetch(p,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(b||{})}).then(function(r){return r.json()})}' +
-    'var busy=false;' +
+    'var busy=false,cleanArmed=false,cleanReset=0;' +
+    'function resetClean(){cleanArmed=false;clearTimeout(cleanReset);$("clean").textContent="Remove certificate and files";}' +
     'function show(d){$("s_setup").textContent=d.setup==="ready"?"ready":d.setup==="working"?"setting up…":d.setup==="nocobalt"?"Samsung YouTube not found":d.setup==="error"?"error: "+d.error:"not made yet";' +
     '$("s_script").textContent=d.script==="ready"?"TizenTube "+d.scriptVersion:d.script==="error"?"error: "+d.scriptError:"not downloaded yet";' +
     '$("s_proxy").textContent=d.proxy==="up"?"listening on "+d.proxyAddress:d.proxyError?"error: "+d.proxyError:"stopped";' +
@@ -46,11 +47,13 @@ var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" conte
     'if(!busy){$("tile").checked=!!d.tileOn}' +
     '$("tilenote").textContent=d.tileState==="on"?"On.":d.tileState==="waiting"?"Waiting: "+d.tileNote:d.tileState==="unsupported"||d.tileState==="error"?d.tileNote:""}' +
     'function poll(){fetch("status").then(function(r){return r.json()}).then(show).catch(function(){})}' +
-    '$("open").onclick=function(){say("Preparing and starting… the first time takes up to a minute.");post("open").then(function(d){say(d.ok?(d.warning||"YouTube is starting on the TV."):d.error,!d.ok||!!d.warning);poll()})};' +
-    '$("close").onclick=function(){post("close").then(function(){say("YouTube closed.");poll()})};' +
-    '$("tile").onchange=function(){busy=true;var on=$("tile").checked;say(on?"Preparing…":"Switching off…");post("tile",{on:on}).then(function(d){busy=false;say(d.ok?"":d.error,!d.ok);poll()},function(){busy=false})};' +
-    '$("clean").onclick=function(){if(!confirm("Remove the certificate, the downloaded script and the copy of YouTube’s files?"))return;post("cleanup").then(function(d){say(d.ok?"Removed.":d.error,!d.ok);poll()})};' +
-    'poll();setInterval(poll,3000);' +
+    'function fail(e){say(e&&e.message||"Request failed",true)}' +
+    '$("open").onclick=function(){say("Preparing and starting… the first time takes up to a minute.");post("open").then(function(d){say(d.ok?(d.warning||"YouTube is starting on the TV."):d.error,!d.ok||!!d.warning);poll()}).catch(fail)};' +
+    '$("close").onclick=function(){post("close").then(function(){say("YouTube closed.");poll()}).catch(fail)};' +
+    '$("tile").onchange=function(){busy=true;var on=$("tile").checked;say(on?"Preparing…":"Switching off…");post("tile",{on:on}).then(function(d){busy=false;say(d.ok?"":d.error,!d.ok);poll()},function(e){busy=false;fail(e)})};' +
+    '$("clean").onclick=function(){if(!cleanArmed){cleanArmed=true;$("clean").textContent="Click again to remove files";clearTimeout(cleanReset);cleanReset=setTimeout(resetClean,5000);return;}resetClean();post("cleanup").then(function(d){say(d.ok?"Removed.":d.error,!d.ok);poll()}).catch(fail)};' +
+    'document.addEventListener("visibilitychange",function(){if(!document.hidden)poll()});' +
+    'poll();setInterval(function(){if(!document.hidden)poll()},3000);' +
     '</script></body>';
 
 module.exports = function (ctx) {
@@ -158,8 +161,8 @@ module.exports = function (ctx) {
                     if (state === 'error' || state === 'raced' || state === 'patched' || state === 'stuck') {
                         log('row restore: ' + state);
                         // The flags are still there. Try again soon, a few times; the direct:// fallback keeps YouTube opening meanwhile.
-                        if (restoreTries++ < 5 && !retryTimer) {
-                            retryTimer = setTimeout(function () { retryTimer = null; reconcile(); }, 5000);
+                        if (alive && restoreTries++ < 5 && !retryTimer) {
+                            retryTimer = setTimeout(function () { retryTimer = null; if (alive) reconcile(); }, 5000);
                             if (retryTimer.unref) retryTimer.unref();
                         }
                     } else restoreTries = 0;
@@ -210,6 +213,8 @@ module.exports = function (ctx) {
         // A first run does nothing until the page asks.
         start: function () {
             alive = true;
+            restoreTries = 0;
+            if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
             if (timer) clearInterval(timer);
             timer = setInterval(function () { try { tick(); } catch (e) { log('tick: ' + e.message); } }, TICK_MS);
             if (timer.unref) timer.unref();
@@ -217,13 +222,13 @@ module.exports = function (ctx) {
             ready.then(function () { return tileOn && !(readLeaf() && script.load() && contentThere()) ? prepare().catch(function (e) { log('start: ' + e.message); }) : null; })
                 .then(function () { return reconcile(); }).catch(function (e) { log('start: ' + e.message); });
         },
-        // Puts the row back first: with the plugin off nothing is there to answer the proxy. A YouTube that is open keeps running
-        // (its proxy list falls back to a direct connection), so nothing is closed here.
+        // Stops accepting new proxy traffic right away (YouTube falls back to direct://) and puts the tile row back.
         stop: function () {
             alive = false;
             if (timer) { clearInterval(timer); timer = null; }
-            // The proxy stays up until the row is back (a YouTube started in between still finds it), then stops listening.
-            // Resolves when that is done, so the fallback timer never outlives the stop.
+            if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+            proxy.close();
+            // Resolves once the row is restored or timeout elapses, so a fallback timer never outlives stop().
             return new Promise(function (resolve) {
                 var done = false, late = null;
                 var shut = function () {
