@@ -242,8 +242,17 @@ Restore.prototype.run = function () {
             }],
             ['tuner', function () { return d.tuner.disable().then(function () { return 'Tuner off; Samsung\u2019s tuner is on screen again.'; }); }],
             ['plugins', function () {
-                plan._data.third.forEach(function (p) { d.plugins.setEnabled(p.id, false); });
-                return 'Switched off: ' + plan._data.third.map(function (p) { return p.name || p.id; }).join(', ') + '.';
+                var errs = [], off = [];
+                plan._data.third.forEach(function (p) {
+                    try {
+                        d.plugins.setEnabled(p.id, false);
+                        off.push(p.name || p.id);
+                    } catch (e) {
+                        errs.push((p.name || p.id) + ': ' + ((e && e.message) || String(e)));
+                    }
+                });
+                if (errs.length) throw new Error(errs.join(' · ') + (off.length ? ' · Switched off: ' + off.join(', ') : ''));
+                return 'Switched off: ' + off.join(', ') + '.';
             }],
             ['remote', function () { return Promise.resolve(d.input.off()).then(function () { return 'The remapper no longer listens to the remote.'; }); }],
             ['mqtt', function () { return Promise.resolve(d.mqtt.off()).then(function () { return 'The bridge is off.'; }); }],
@@ -318,7 +327,7 @@ Restore.prototype.runComponents = function () {
         var ids = provenComponents(x[0].apps, led).filter(function (id) { return groupIds.indexOf(id) < 0; });
         if (!ids.length) return 'Nothing to switch on.';
         return d.execute(quickSettings.command(ids, false), 90000).then(function (r) {
-            if (r.timed_out) throw new Error('The TV did not finish in time');
+            if (!r || r.timed_out) throw new Error('The TV did not finish in time');
             d.invalidate();
             return d.inventory(true);
         }).then(function (after) {
@@ -352,7 +361,7 @@ Restore.prototype.runHbbtv = function () {
     var d = this.d;
     return d.hbbtv.read().then(function (s) { return d.hbbtv.change(false, s.value); }).then(function () {
         try { d.wins.remember('hbbtv', false); } catch (e) { /* the choice is only used at the next boot */ }
-        if (d.afterHbbtv) d.afterHbbtv();
+        if (d.afterHbbtv) { try { d.afterHbbtv(); } catch (e) {} }
         return 'HbbTV is back on.';
     });
 };
@@ -369,7 +378,7 @@ Restore.prototype.runFlags = function (rows) {
     });
     if (!lines.length) return Promise.resolve('Nothing to put back.');
     return d.execute(wrap(lines.join('\n')), 60000).then(function (r) {
-        if (r.timed_out) throw new Error('The TV did not finish in time');
+        if (!r || r.timed_out) throw new Error('The TV did not finish in time');
         var codes = quickSettings.exitCodes(r.stdout);
         var bad = rows.filter(function (x) { return codes[x.appId] !== 0; }).map(function (x) { return x.appId; });
         d.invalidate();

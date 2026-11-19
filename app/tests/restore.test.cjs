@@ -197,6 +197,12 @@ function tv(start) {
   t.deps.pairing={status:()=>({disabled:pairingDisabled}),restore:()=>{pairingDisabled=false;return {disabled:false};}};
   r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='pairing').state,'changed');
   await assert.rejects(r.eraseData(),/Dashboard pairing/);res=await r.run();assert.equal(pairingDisabled,false);assert.equal(res.complete,true);
+  t = tv({plugins:[{id:'launcher',bundled:true,enabled:true},{id:'bad',name:'Bad',bundled:false,enabled:true},{id:'good',name:'Good',bundled:false,enabled:true}]});
+  t.deps.plugins.setEnabled=(id,on)=>{t.s.order.push('plugin:'+id);if(id==='bad')throw new Error('plugin locked');t.s.plugins.find(p=>p.id===id).enabled=on;};
+  r = new Restore(t.deps);res=await r.run();
+  assert.equal(res.steps.find(s=>s.id==='plugins').status,'failed');
+  assert.match(res.steps.find(s=>s.id==='plugins').message,/Bad: plugin locked/);
+  assert.equal(t.s.plugins.find(p=>p.id==='good').enabled,false,'second third-party plugin is still disabled when the first throws');
   t = tv();let tunerOn=true;
   t.deps.tuner={readState:()=>({enabled:tunerOn}),disable:async()=>{t.s.order.push('tuner');tunerOn=false;return {enabled:false};}};
   r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='tuner').state,'changed');
