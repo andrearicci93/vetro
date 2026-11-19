@@ -62,6 +62,7 @@ function choice(v, allowed) { return allowed.indexOf(v) >= 0 ? v : null; }
 var CLIENT_FILE_RE=/^[A-Za-z0-9_.-]{1,40}(?:\/[A-Za-z0-9_.-]{1,80}){0,3}$/;
 // A copy of the client elsewhere in the firmware (/usr/apps/<Samsung app>/..., /usr/share/dotnet.tizen/...): Samsung paths only.
 var CLIENT_PATH_RE=/^\/(?:usr|opt\/usr)\/[A-Za-z0-9_.\/-]{1,200}\.dll$/;
+var KEY_NAME_RE=/^[A-Z][A-Z0-9_]{1,31}$/, SCAN_RE=/^0x[0-9A-F]{8}$/;
 var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
     'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
     'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError','error'];
@@ -122,7 +123,13 @@ var projectors = {
     // The remote interception, in counts and yes/no only (remote names can be personal): whether it is on and holds a remote, whether the
     // saved remote is among the remotes now, how many input nodes share its name (a Bluetooth remote can split its keys over several)
     // and how many remotes there are to choose from. With Vetro UI's two key switches, this says why the volume bar or the pad stay away.
-    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','selectableCount']));}
+    // recentKeys: the last key presses the interception saw on the remote it holds (code, Linux key name, scan code, held back or passed
+    // on), so a report taken right after pressing Vol+, Vol-, Mute and 123 shows which codes a remote really sends (the SolarCell's volume
+    // is not 66/67/68) and whether they reach the node Vetro holds at all. Codes of remote buttons only, at most 30.
+    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','selectableCount']),
+        {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
+            return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
+                held:e.decision==='blocked'};})});}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
 var SLOW = {startup: 4, components: 3};

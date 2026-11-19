@@ -297,7 +297,8 @@ function downloadDiagnostics(res, withComponents) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
-                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem};
+                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem,
+                    recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; })};
             });
         }),
         quickWins: later(function () { return wins.read(); }),
