@@ -134,7 +134,7 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                 // remote grabbed: every new helper then fails EVIOCGRAB with EBUSY and the interception never connects (S95B on 1720.7,
                 // static analysis 2026-11-19). Before a filter start any other filter helper is ended; observers (listen) are left alone.
                 // The pattern does not rely on the argument separators: the Q80A's tr leaves the NULs and the shell drops them.
-                var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
+                var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill -9 "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
                 var command=stale+'umask 077; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
                 self.execute(command,5000,active).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
