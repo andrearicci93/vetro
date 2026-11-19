@@ -365,7 +365,7 @@ function fwHookInstallScript() {
         'if grep -q ' + FW_HOOK_MARK + ' "$F" 2>/dev/null; then echo "vetro-hook: installed"; exit 0; fi\n' +
         'S=$(sha256sum "$F" 2>/dev/null | cut -d" " -f1); OK=0\n' +
         '[ "$S" = "' + FW_HOOK_SHA + '" ] && OK=1\n' +
-        'if [ $OK -eq 0 ] && [ "$(wc -l < "$F")" -le 8 ] && head -n 1 "$F" | grep -q "^#!/bin/bash" && grep -q /proc/target_version "$F" && [ "$(wc -c < "$F")" -le 4096 ]; then OK=1; fi\n' +
+        'if [ $OK -eq 0 ] && [ "$(wc -l < "$F")" -le 8 ] && head -1 "$F" | grep -q "^#!/bin/bash" && grep -q /proc/target_version "$F" && [ "$(wc -c < "$F")" -le 4096 ]; then OK=1; fi\n' +
         'if [ $OK -eq 0 ]; then echo "vetro-hook: unknown parseinfo"; exit 0; fi\n' +
         'if [ -f "$B" ] && [ -n "$S" ] && [ "$(sha256sum "$B" 2>/dev/null | cut -d" " -f1)" = "$S" ]; then :; else cp -p "$F" "$B" || { echo "vetro-hook: backup failed"; exit 0; }; fi\n' +
         'echo ' + body + ' | base64 -d > "$F.vetro" && chmod 755 "$F.vetro" && mv "$F.vetro" "$F" && echo "vetro-hook: installed" || echo "vetro-hook: write failed"\n' +
