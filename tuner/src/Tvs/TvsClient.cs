@@ -263,7 +263,7 @@ namespace Tuner.Tvs
                 int size = (int)(uint)_bufType.GetMethod("GetFullBufferSize").Invoke(outBuf, null);
                 if (size <= 0 || size > 65536) return new string[0];
                 var reply = new byte[size];
-                _bufType.GetMethod("ReadConcatenated").Invoke(outBuf, new object[] { reply, size, 0 });
+                ReadConcatenated(outBuf, reply, size);
                 return GuideText.Texts(reply);
             }
             finally { ((IDisposable)inBuf).Dispose(); ((IDisposable)outBuf).Dispose(); ((IDisposable)fmt).Dispose(); }
@@ -313,10 +313,25 @@ namespace Tuner.Tvs
                 int size = (int)(uint)_bufType.GetMethod("GetFullBufferSize").Invoke(outBuf, null);
                 if (size <= 0 || size > 1 << 20) return false;
                 var reply = new byte[size];
-                _bufType.GetMethod("ReadConcatenated").Invoke(outBuf, new object[] { reply, size, 0 });
+                ReadConcatenated(outBuf, reply, size);
                 return GuideReply.Parse(reply, keepDescription, out events);
             }
             finally { ((IDisposable)inBuf).Dispose(); ((IDisposable)outBuf).Dispose(); ((IDisposable)fmt).Dispose(); }
+        }
+
+        /// <summary>
+        /// <c>MessageBuffer.ReadConcatenated(byte[], offset/length...)</c>: (byte[], int, int) in the client of 2021-22 (1.1.12, 1.1.41), (byte[], uint, uint)
+        /// in Tizen 9's 1.3.15, where boxed ints made Invoke throw and left the Banner's programme, Info and the guide empty. The two numbers are converted
+        /// to whatever the method declares (found statically in the 1.3.15 client of a 2024 firmware, not yet run on a Tizen 9 TV).
+        /// </summary>
+        private void ReadConcatenated(object buffer, byte[] reply, int size)
+        {
+            MethodInfo m = _bufType.GetMethod("ReadConcatenated");
+            ParameterInfo[] p = m.GetParameters();
+            object[] args = { reply, size, 0 };
+            for (int i = 1; i < args.Length && i < p.Length; i++)
+                if (p[i].ParameterType != typeof(int)) args[i] = Convert.ChangeType(args[i], p[i].ParameterType, System.Globalization.CultureInfo.InvariantCulture);
+            m.Invoke(buffer, args);
         }
 
         /// <summary>Where the TV takes its channels from: "Antenna", "Cable" or "Satellite" ("" when it cannot be read). Same call as the probe's `tvmode`.</summary>
