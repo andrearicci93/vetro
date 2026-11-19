@@ -31,8 +31,13 @@ for name in filter(None, paths):
 # Check the actual standalone WGT file list through its builder, not just source paths.
 cmd = "console.log(JSON.stringify(require('./app/build.cjs').collectFiles().map(f=>decodeURIComponent(f.uri))))"
 files = __import__('json').loads(subprocess.check_output(['node', '-e', cmd], cwd=root))
+PRIVILEGED_SERVICES = (
+    'service/sdb.js', 'service/root-agent.js', 'service/adb.js', 'service/tar.js',
+    'service/debloat-commands.js', 'service/sdb-tunnel.js', 'service/root-preflight.js',
+    'service/root-preflight-capture.js', 'service/retry-policy.js',
+)
 for name in files:
-    if name.startswith('payload/') or name in ('service/sdb.js', 'service/root-agent.js', 'service/adb.js', 'service/tar.js'):
+    if name.startswith('payload/') or name in PRIVILEGED_SERVICES:
         problems.append('Privileged implementation in app-only package: ' + name)
 platform = (root/'app/service/platform.js').read_text()
 if 'app-only' not in platform:

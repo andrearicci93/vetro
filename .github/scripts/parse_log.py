@@ -24,7 +24,7 @@ SIGNATURES = {
 }
 
 
-SECTIONS = ('platform', 'device', 'inventory', 'settings', 'catalog', 'monitor', 'startup', 'network', 'dns', 'mqtt', 'privacy', 'hbbtv', 'launcher', 'quickWins', 'components', 'probe', 'serviceApis')
+SECTIONS = ('platform', 'device', 'inventory', 'settings', 'catalog', 'monitor', 'startup', 'network', 'dns', 'mqtt', 'privacy', 'hbbtv', 'launcher', 'quickWins', 'factoryTest', 'components', 'probe', 'serviceApis')
 STATUSES = ('unavailable', 'timeout')
 REASONS = {
     'no-root-agent': 'no root agent connected',
@@ -76,7 +76,7 @@ def analyze(text):
     try:
         report = json.loads(text)
     except json.JSONDecodeError:
-        if text.lstrip().startswith(('{', '[')):
+        if text.lstrip().startswith('{'):
             raise ValueError('Invalid JSON report') from None
         report = None
     if report is None:
@@ -252,7 +252,7 @@ def issue_matches(issue):
 
 
 def report_text(body):
-    links = re.findall(r'https://github\.com/[^\s<>)\]]+', body)
+    links = [url.rstrip('.,;:!?') for url in re.findall(r'https://github\.com/[^\s<>)\]]+', body)]
     attachments = list(dict.fromkeys(url for url in links if attachment_url(url)))
     if len(attachments) == 1:
         return download(attachments[0])
@@ -279,7 +279,7 @@ def post_comment(issue, body):
     for page in range(1, 6):
         comments = api(base + f'?per_page=100&page={page}', token)
         for comment in comments:
-            if comment.get('user', {}).get('login') == 'github-actions[bot]' and comment.get('body', '').startswith(MARKER):
+            if (comment.get('user') or {}).get('login') == 'github-actions[bot]' and (comment.get('body') or '').startswith(MARKER):
                 api(f'/repos/{repo}/issues/comments/{int(comment["id"])}', token, 'PATCH', {'body': body})
                 return
         if len(comments) < 100:

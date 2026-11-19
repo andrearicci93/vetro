@@ -144,9 +144,19 @@ class ParserTests(unittest.TestCase):
         calls=[]
         def api(path, token, method='GET', data=None):
             calls.append((path,method,data))
-            return [{'id':12,'user':{'login':'human'},'body':p.MARKER},{'id':13,'user':{'login':'github-actions[bot]'},'body':p.MARKER}] if method=='GET' else {}
+            return [{'id':11,'user':None,'body':None},{'id':12,'user':{'login':'human'},'body':p.MARKER},{'id':13,'user':{'login':'github-actions[bot]'},'body':p.MARKER}] if method=='GET' else {}
         with patch.dict('os.environ', {'GITHUB_REPOSITORY':'owner/repo','GITHUB_TOKEN':'fixture'}),patch.object(p,'api',api):p.post_comment({'number':1},p.MARKER+' report')
         self.assertEqual(calls[-1][1],'PATCH')
         self.assertTrue(calls[-1][0].endswith('/13'))
+
+    def test_factory_test_section_bracketed_logs_and_url_punctuation(self):
+        s = p.markdown(p.analyze(self.report(factoryTest={'ok': True})))
+        self.assertNotIn('unrecognised', s)
+        r = p.analyze('[2026-11-19] uid=0 ECONNREFUSED')
+        self.assertEqual(r['findings'][0][1], 'Legacy text; no structured compatibility evidence')
+        seen = []
+        with patch.object(p, 'download', side_effect=lambda u: seen.append(u) or 'ok'):
+            self.assertEqual(p.report_text('See https://github.com/user-attachments/files/123/report.json.'), 'ok')
+        self.assertEqual(seen, ['https://github.com/user-attachments/files/123/report.json'])
 
 if __name__ == '__main__':unittest.main()
