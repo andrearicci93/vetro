@@ -14,10 +14,12 @@ const out = screen.build({version: '0.3.5', port: 8099, platform: {mode: 'tv-int
   input: {policy: {connected: true}, preference: {enabled: true}}, launcher: {installed: true, enabled: true, running: false, failures: 4, error: true},
   meminfo: 'MemAvailable: 153600 kB\n', interfaces: {}});
 assert.deepEqual(out, {version: '0.3.5', port: 8099, address: null, root: {mode: 'tv-integration', connected: true},
-  input: {enabled: true, connected: true, restarting: false}, launcher: {installed: true, enabled: true, running: false, failures: 4, hasError: true}, memory: {availableMb: 150}});
+  input: {enabled: true, connected: true, restarting: false, dropping: false}, launcher: {installed: true, enabled: true, running: false, failures: 4, hasError: true}, memory: {availableMb: 150}});
 // A start of the bridge under way: "Reconnecting" on the TV screen, never while it holds the remote (Q70C photos, 2026-11-19).
 const again = p => screen.build({version: '0.7.0', port: 8099, platform: {mode: 'tv-integration', agent: {connected: true}}, input: p, launcher: {}, meminfo: null, interfaces: {}}).input;
-assert.deepEqual(again({policy: {connected: false}, preference: {enabled: true}, restarting: true}), {enabled: true, connected: false, restarting: true});
+assert.deepEqual(again({policy: {connected: false}, preference: {enabled: true}, restarting: true}), {enabled: true, connected: false, restarting: true, dropping: false});
+assert.equal(again({policy: {connected: false}, preference: {enabled: true}, dropping: true}).dropping, true, 'a helper lost again and again is reported');
+assert.equal(again({policy: {connected: true}, preference: {enabled: true}, dropping: true}).dropping, false, 'not while it holds the remote');
 assert.equal(again({policy: {connected: true}, preference: {enabled: true}, restarting: true}).restarting, false);
 assert.equal(again({policy: {connected: false}, preference: {enabled: true}}).restarting, false);
 

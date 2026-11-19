@@ -386,6 +386,8 @@ function checks(d) {
   if (!d || !root) out.push(['na', 'Remote input', d ? 'Needs root' : 'Unknown', null, 'input ?']);
   else if (!d.input.enabled) out.push(['off', 'Remote input', 'Off', null, 'input off']);
   else if (d.input.connected) out.push(['ok', 'Remote input', 'Filtering', null, 'input ok']);
+  else if (d.input.dropping) out.push(['bad', 'Remote input', 'Keeps dropping', 'Vetro takes the remote and loses it again. Send a diagnostic report from the dashboard.', 'INPUT DROPS', 'bad']);
+  else if (d.input.restarting) out.push(['na', 'Remote input', 'Reconnecting', 'Vetro is taking the remote again. If this stays, open this screen again in a minute.', 'input wait']);
   else out.push(['bad', 'Remote input', 'Remote not found', 'The saved remote is not connected. Open Remapper in the dashboard.', 'INPUT LOST', 'bad']);
   l = d && d.launcher;
   if (!d) out.push(['na', 'Launcher', 'Unknown', null, 'launcher ?']);
@@ -829,7 +831,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
 /* demo data for the comparison page: the page believes the service answered */
 if(/[?&]demo/.test(location.search)||true){report.settings={realModel:'QE55Q80A',firmware:'T-NKM2DEUC-2310.0'};controls={canControl:true,update:{configured:true,version:'0.7.0'}};focus=1;view='main';
-var FAKE={version:'0.7.0',address:'192.168.1.40',port:8099,root:{connected:true},input:{enabled:true,connected:true},launcher:{enabled:true,running:true,installed:true},memory:{availableMb:900}};
+/* ?input=restarting | dropping | lost: the Remote input states while Vetro is not holding the remote */
+var INPUT_STATE=(location.search.match(/[?&]input=(restarting|dropping|lost)/)||[])[1];
+var FAKE={version:'0.7.0',address:'192.168.1.40',port:8099,root:{connected:true},input:{enabled:true,connected:!INPUT_STATE,restarting:INPUT_STATE==='restarting',dropping:INPUT_STATE==='dropping'},launcher:{enabled:true,running:true,installed:true},memory:{availableMb:900}};
 render=function(){renderMain(FAKE)};renderDetails=function(){renderMain(FAKE)};setInterval(function(){try{renderMain(FAKE)}catch(e){}},300);}
 </script>
 <script type="module">import { Service } from 'wrt:service'; window.a2sService = Service;</script>

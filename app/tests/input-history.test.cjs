@@ -74,5 +74,14 @@ const kinds = () => JSON.parse(JSON.stringify(c.inputHistory)).map(e => e.kind +
     assert.ok(JSON.stringify(p).indexOf('/home/') < 0);
     assert.equal(JSON.stringify(p.loop), JSON.stringify({paused: true, lifecycle: true, restoring: false, faultPauseSeconds: 0, retryWaitSeconds: 25, retryFailures: 12, tokenCount: 4, mode: 'filter'}));
     assert.equal(p.prevHelperError, 'IOException: remote input device disconnected');
-    console.log('PASS input history: lost and restored helpers, a failed Intercept unpauses the loop and keeps its reason, the report keeps fixed words');
+    // The TV screen: a start under way reads "Reconnecting"; a helper lost twice in two minutes reads as a loop, whatever comes after.
+    const screen = async () => JSON.parse(JSON.stringify(await c.screenSummary())).input;
+    assert.equal((await screen()).connected, true);
+    c.dock.readState = () => ({enabled: false});
+    c.inputHistory.length = 0;
+    bridge.current = {mode: 'off', connected: false}; c.inputNote('stop', 'keys');
+    assert.deepEqual(await screen(), {enabled: true, connected: false, restarting: true, dropping: false}, 'a stop a moment ago: Reconnecting');
+    c.inputNote('lost', 'input helper disconnected; original keys released'); c.inputNote('lost', 'input helper disconnected; original keys released');
+    assert.deepEqual(await screen(), {enabled: true, connected: false, restarting: false, dropping: true}, 'lost twice in two minutes: Keeps dropping');
+    console.log('PASS input history: lost and restored helpers, a failed Intercept unpauses the loop and keeps its reason, the report keeps fixed words, the TV screen tells a restart from a loop');
 })().catch(e => { console.error(e); process.exitCode = 1; });

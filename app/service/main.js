@@ -212,8 +212,11 @@ function screenSummary() {
     var checkLauncher = launcherState.enabled && p.agent.connected ? dock.runningNow().then(function (r) { return r.running; }, function () { return null; }) : Promise.resolve(null);
     return checkLauncher.then(function (running) {
         // restarting: a start of the remote bridge is under way and none has failed yet (the TV screen says "Reconnecting", not "not found").
-        var lastTurn = inputHistory[inputHistory.length - 1], restarting = !inputError && (inputRestoring || !!(lastTurn && Date.now() - lastTurn.at < 15000 && /^(?:stop|lost|ended|restore|agent)$/.test(lastTurn.kind)));
-        return require('./screen-status.js').build({version: buildInfo.version, port: PORT, platform: p, input: Object.assign(inputSnapshot(), {restarting: restarting}),
+        // dropping: a helper was lost twice or more in two minutes, a loop to report rather than a start to wait for.
+        var now = Date.now(), lastTurn = inputHistory[inputHistory.length - 1];
+        var drops = inputHistory.filter(function (e) { return (e.kind === 'lost' || e.kind === 'ended') && now - e.at < 120000; }).length;
+        var restarting = !inputError && drops < 2 && (inputRestoring || !!(lastTurn && now - lastTurn.at < 15000 && /^(?:stop|lost|ended|restore|agent)$/.test(lastTurn.kind)));
+        return require('./screen-status.js').build({version: buildInfo.version, port: PORT, platform: p, input: Object.assign(inputSnapshot(), {restarting: restarting, dropping: drops >= 2}),
             launcher: {installed: dock.installed(), enabled: launcherState.enabled, running: running, failures: dock.failures, error: !!dock.lastError},
             meminfo: tryReadRaw('/proc/meminfo'), interfaces: os.networkInterfaces()});
     });
