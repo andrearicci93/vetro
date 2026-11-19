@@ -65,6 +65,10 @@ function build(folder) {
     const built = buildBundle(privatePem);
     // Check what was just written exactly as a TV would.
     updater.verifyBundle(built.raw, publicPem);
+    // And that a TV still on 0.5.0 can apply it: its updater runs everything as one script of at most 64 KiB.
+    const parsed = JSON.parse(built.raw), shipped = Object.keys(parsed.files).map(n => ({ name: n, data: Buffer.from(parsed.files[n], 'base64') }));
+    const tooBig = require('./update-size.cjs').measure(shipped).filter(r => r.margin <= 0);
+    if (tooBig.length) throw new Error('A TV on 0.5.0 could not apply this bundle: ' + tooBig.map(r => r.build + ' ' + r.bytes + ' bytes').join(', ') + ' (limit 65536)');
     const keyInPackage = require('../app/service/update-key.js');
     if (keyInPackage && keyInPackage.trim() !== publicPem.trim()) throw new Error('This key does not match app/service/update-key.js: TVs would refuse the bundle');
     if (!require('../app/service/plugin-key.js')) console.warn('Warning: app/service/plugin-key.js has no key, so unsigned plugins require Developer mode (this is a different key from the update key)');
