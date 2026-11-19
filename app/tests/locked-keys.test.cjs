@@ -21,7 +21,8 @@ class Bridge {
 const service = load(root, {dependencies: {
     fs: {readFileSync: p => p.endsWith('vetro-remap.json') ? disk : '', existsSync: () => false, writeFileSync: (p, s) => { pending = s; }, renameSync() { disk = pending; }, unlinkSync() {}},
     './physical-input.js': {Bridge},
-    './platform.js': {start() {}, status: () => ({agent: {connected: true}}), execute: cmd => { commands.push(cmd); return Promise.resolve({exit_code: 0, stdout: ''}); }}
+    // The root agent's word for the launcher (key-routing dockWordCommand) fails as on a TV whose launcher is down: no pid, no pipe.
+    './platform.js': {start() {}, status: () => ({agent: {connected: true}}), execute: cmd => { commands.push(cmd); return Promise.resolve({exit_code: /tvlauncher\.fifo \] && \( exec 3<>/.test(cmd) ? 1 : 0, stdout: ''}); }}
 }, setInterval: () => ({unref() {}})});
 service.context.dock.readState = () => ({enabled: true, volumePill: true, numberPad: true, customApp: null});
 function request(method, url) {
@@ -37,6 +38,7 @@ const settle = () => new Promise(r => setTimeout(r, 40));
     // The launcher's FIFO is not there (a computer, or the launcher down): the held key goes back to the TV by name, the shortcut does not run.
     physical.onEvent({code: 68, action: 'down', decision: 'blocked'}); physical.onEvent({code: 68, action: 'up', decision: 'blocked'}); await settle();
     physical.onEvent({code: 140, action: 'down', decision: 'blocked'}); physical.onEvent({code: 140, action: 'up', decision: 'blocked'}); await settle();
+    assert.ok(commands.some(c => /tvlauncher\.fifo \] && \( exec 3<>\/home\/owner\/tvlauncher\.fifo && echo 'volup'/.test(c)), 'the service could not open the FIFO (ENOENT here): the root agent tried');
     assert.ok(commands.includes('/usr/bin/input_keyevent XF86AudioRaiseVolume'), 'Vol+ held for the volume bar, sent back by name with the launcher down');
     assert.ok(commands.includes('/usr/bin/input_keyevent XF86More'), '123 held for the osd 123, sent back as XF86More (its name on 6.0, 6.5 and 9) with the launcher down');
     assert.ok(!commands.some(c => /example\.(vol|pad)/.test(c)), 'a shortcut on a locked key does not run (Overridden by Vetro UI)');

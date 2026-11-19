@@ -51,18 +51,26 @@ const {Dock} = require('../service/dock.js');
     assert.equal(how, 'agent');
     assert.deepEqual(relayed, ['volup', 'pad']);
     assert.equal(opens, 1, 'not opened again once refused');
-    assert.deepEqual(routes, [['agent', 'EACCES'], ['agent', null]]);
+    assert.deepEqual(routes, [['agent', 'EACCES'], ['agent', 'EACCES']], 'the reason stays in the report once the agent writes');
     assert.deepEqual(reinjected, []);
     // The agent finds no launcher reading: the key goes back to Samsung.
     how = await vk.handle(down, Object.assign({}, viaAgent, {relay: async () => { throw new Error('launcher not reading'); }}));
     assert.equal(how, 'native');
     assert.deepEqual(reinjected, ['XF86AudioRaiseVolume']);
-    // ENOENT (the launcher is starting): back to Samsung, and the service's own open is still tried next time.
-    const st2 = {refused: false}, rel2 = [];
-    how = await vk.handle(down, {write: () => { const e = new Error('gone'); e.code = 'ENOENT'; throw e; }, relay: async w => { rel2.push(w); }, reinject: () => {}, state: st2});
-    assert.equal(how, 'native');
-    assert.deepEqual(rel2, []);
+    // ENOENT (the launcher starting, or a service that sees the path differently from root): the agent tries, whose check sends the
+    // key back to Samsung when no launcher reads; not sticky, the service's own open is tried again next time.
+    const st2 = {refused: false}, rel2 = [], r2 = [];
+    const gone = () => { const e = new Error('gone'); e.code = 'ENOENT'; throw e; };
+    how = await vk.handle(down, {write: gone, relay: async w => { rel2.push(w); }, reinject: () => {}, route: (h, e) => r2.push([h, e]), state: st2});
+    assert.equal(how, 'agent');
+    assert.deepEqual(rel2, ['volup']);
+    assert.deepEqual(r2, [['agent', 'ENOENT']]);
     assert.equal(st2.refused, false);
+    const back = [];
+    how = await vk.handle(down, {write: gone, relay: async () => { throw new Error('launcher not reading'); }, reinject: k => back.push(k), route: (h, e) => r2.push([h, e]), state: st2});
+    assert.equal(how, 'native');
+    assert.deepEqual(back, ['XF86AudioRaiseVolume']);
+    assert.deepEqual(r2[1], ['native', 'ENOENT']);
     reinjected.length = 0;
 
     // A FIFO nobody reads must fail at once instead of blocking the service.

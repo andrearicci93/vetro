@@ -50,7 +50,7 @@ function wants(event, flags) {
 // the launcher does not read); opts.reinject(nativeKey) -> Promise; opts.route(how, errno) is told which way each key went;
 // opts.state {refused} is kept between keys (the repeater gives one).
 function handle(event, opts) {
-    var key = KEYS[String(event.code)], note = opts.route || function () {}, state = opts.state || {}, err = null;
+    var key = KEYS[String(event.code)], note = opts.route || function () {}, state = opts.state || {}, err = state.refused ? state.errno || null : null;
     // Non-blocking open: a FIFO nobody reads fails at once (ENXIO) instead of freezing the service.
     var write = opts.write || function (p, t) {
         var fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
@@ -60,10 +60,11 @@ function handle(event, opts) {
     if (!state.refused) {
         try { write(opts.fifo || FIFO, key.word + '\n'); note('dock', null); return Promise.resolve('dock'); }
         catch (e) { err = e && /^E[A-Z0-9]{1,15}$/.test(e.code) ? e.code : 'EOTHER'; }
-        // ENXIO / ENOENT: nobody reads, the launcher is down or starting. EACCES / EPERM: the service may not open the root-made FIFO
-        // (on the 2022+ exports no Vol or 123 ever reached the launcher while the root agent's words did): from then on the agent writes.
-        if (err === 'ENXIO' || err === 'ENOENT' || !opts.relay) return native();
-        if (err === 'EACCES' || err === 'EPERM') state.refused = true;
+        // ENXIO: nobody reads the FIFO, the launcher is down. Anything else goes through the root agent (on the 2022+ exports no Vol or
+        // 123 ever reached the launcher while the agent's words did; why is not known: EACCES under Smack, or ENOENT if the service sees
+        // the path differently from root), whose own check gives the key back to Samsung when no launcher reads. EACCES / EPERM stick.
+        if (err === 'ENXIO' || !opts.relay) return native();
+        if (err === 'EACCES' || err === 'EPERM') { state.refused = true; state.errno = err; }
     }
     return Promise.resolve(opts.relay(key.word)).then(function () { note('agent', err); return 'agent'; }, native);
 }
