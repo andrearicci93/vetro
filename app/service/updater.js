@@ -14,6 +14,7 @@
 var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
+var atomicFile = require('./atomic-file.js');
 // Regular expressions compiled once at module load, not on every call.
 var SAFE_PATH_RE = /^[A-Za-z0-9_.\/-]+$/;
 var SHA256_RE = /^[0-9a-f]{64}$/;
@@ -59,9 +60,7 @@ function rmrf(target) {
 }
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; } }
 function writeJson(file, value) {
-    var temp = file + '.tmp';
-    fs.writeFileSync(temp, JSON.stringify(value) + '\n');
-    fs.renameSync(temp, file);
+    atomicFile.write(fs, file, JSON.stringify(value) + '\n');
 }
 function sq(v) { if (!SAFE_PATH_RE.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
 

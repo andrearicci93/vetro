@@ -253,7 +253,7 @@ Tuner.prototype.startScript = function (quiet) {
 Tuner.prototype.stopLines = function () {
     return 'systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
-        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + CONTROL;
+        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + CONTROL + ' ' + CONTROL + '.shown';
 };
 
 // Right after a boot the TV is still starting dozens of services, so a start that is slow but alive is not a failure: it

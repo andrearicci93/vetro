@@ -106,7 +106,7 @@ function cleanScript(packageId, widgetIds, options) {
         lines.push(
             'sqlite3 -readonly "$WAS" ".mode insert widgetinfo" "SELECT * FROM widgetinfo WHERE id IN (' + inList + ');" > "$K/widgetinfo-' + packageId + '.sql" 2>/dev/null',
             // The row goes only when the package manager has no app of that id either.
-            'sqlite3 -bail "$WAS" "ATTACH \'$PKG\' AS p; BEGIN IMMEDIATE; DELETE FROM widgetinfo WHERE id IN (' + inList + ') AND tizen_id NOT IN (SELECT app_id FROM p.package_app_info); SELECT \'ROW \'||changes(); COMMIT;" 2>/dev/null || echo "ROW failed"'
+            'sqlite3 -bail -cmd ".timeout 5000" "$WAS" "ATTACH \'$PKG\' AS p; BEGIN IMMEDIATE; DELETE FROM widgetinfo WHERE id IN (' + inList + ') AND tizen_id NOT IN (SELECT app_id FROM p.package_app_info); SELECT \'ROW \'||changes(); COMMIT;" 2>/dev/null || echo "ROW failed"'
         );
         widgetIds.forEach(function (w) {
             lines.push('if [ -d "$ICONS/' + w + '" ]; then rm -f "$ICONS/' + w + '"/*.png; rmdir "$ICONS/' + w + '" 2>/dev/null && echo "ICON ' + w + '"; fi');

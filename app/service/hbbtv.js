@@ -28,7 +28,7 @@ var ABS_SET_RE = /__ABS__\s*1/;
 // service (ug-hbbtv-efl.xml), although its package database has it off and the service stayed down in the test
 // above, so the disable is a safeguard there. Like the brake file, a system app's disable is not trusted to survive
 // a reboot: enforce puts it back after each boot.
-var fs=require('fs'),KEY='db/menu/system/data-service',FILE='/opt/usr/home/owner/share/vetro-hbbtv.json';
+var fs=require('fs'),atomicFile=require('./atomic-file.js'),KEY='db/menu/system/data-service',FILE='/opt/usr/home/owner/share/vetro-hbbtv.json';
 var APP='org.tizen.hbbtv',SERVICE='org.tizen.hbbtv-service',FLAG='/tmp/hbbtv_do-not-relaunch',RUNFLAG='/tmp/hbbtv_app_running';
 var DB='/opt/dbspace/.pkgmgr_parser.db';
 var DISABLED='sqlite3 -readonly '+DB+' "SELECT app_disable FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q true';
@@ -67,7 +67,7 @@ Control.prototype.change=function(off,expected){var self=this;if(typeof off!=='b
  function why(a){return a.running?'the app is still running':a.serviceRunning?(a.serviceDisabled?'its service is still running':'its service is still running and could not be disabled'):!a.serviceDisabled?'its service could not be disabled':a.flag?'the menu value was not kept':'the brake file was not kept';}
  return this.read().then(function(s){if(s.value!==expected)throw Error('Value changed; refresh before editing');previous=s;
   if(off){if(s.off)return Object.assign(s,{changed:false});
-   if(s.value>0&&!s.valueOff){var tmp=FILE+'.tmp';self.fs.writeFileSync(tmp,JSON.stringify({value:s.value})+'\n',{mode:0o600});self.fs.renameSync(tmp,FILE);}
+   if(s.value>0&&!s.valueOff){atomicFile.write(self.fs,FILE,JSON.stringify({value:s.value})+'\n',{mode:0o600});}
    return disable().then(function(){return self.read();}).then(function(after){if(!after.off)throw Error('HbbTV is not fully off: '+why(after));return Object.assign(after,{changed:true});})
     .catch(function(e){return putBack(previous).then(function(){return self.read();}).then(function(restored){throw Error(e.message+' · '+(restored.value===previous.value?'previous state restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});}
   var target=s.restoreValue;

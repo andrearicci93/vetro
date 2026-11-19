@@ -87,9 +87,7 @@ function pairingOn() { return pairingChoice === 'on' || (pairingChoice === 'auto
 function pairingMode() { return {enabled: pairingOn(), disabled: !pairingOn(), mode: pairingChoice, tvSeen: tvSeen}; }
 function setPairingEnabled(enabled) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid pairing mode');
-    var tmp = MODE_PATH + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({enabled: enabled, disabled: !enabled}) + '\n', {mode: 384});
-    fs.renameSync(tmp, MODE_PATH);
+    atomicFile.write(fs, MODE_PATH, JSON.stringify({enabled: enabled, disabled: !enabled}) + '\n', {mode: 384});
     var read = loadMode();
     if (read !== (enabled ? 'on' : 'off')) throw new Error('Pairing mode was not confirmed');
     pairingChoice = read;

@@ -47,6 +47,7 @@
 //
 // HbbTV has its own module (hbbtv.js) because its menu value must be restored exactly.
 var execError = require('./exec-error.js');
+var atomicFile = require('./atomic-file.js');
 var fs = require('fs');
 // Regular expressions compiled once at module load, not on every call.
 var DOT_RE = /\./g;
@@ -211,9 +212,8 @@ Wins.prototype.load = function () {
     } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null}; }
 };
 Wins.prototype.save = function (patch) {
-    var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
-    this.fs.writeFileSync(tmp, JSON.stringify(next) + '\n', {mode: 0o600});
-    this.fs.renameSync(tmp, this.file);
+    var next = Object.assign(this.load(), patch);
+    atomicFile.write(this.fs, this.file, JSON.stringify(next) + '\n', {mode: 0o600});
     return next;
 };
 // Used by the HbbTV route, which does the work itself and only needs the choice remembered for the next boot.

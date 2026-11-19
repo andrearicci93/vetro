@@ -732,13 +732,17 @@ function componentAction(p) {
                         p.action==='uninstall'?!after.registryError&&!after.apps.some(function(x){return x.packageId===a.packageId}):
                         !results[1].processes.some(function(x){return x.appId===p.appId});
                     // Removed on purpose and gone: put it on the list so Samsung's sync does not bring it back (switch on only).
-                    if(verified&&p.action==='uninstall'&&keepRemoved.enabled()){try{keepRemoved.change('add',[a.packageId]);keepRemoved.check().catch(function(){});}catch(e){/* Vetro's own packages are refused */}}
+                    var syncDone = Promise.resolve();
+                    if(verified&&p.action==='uninstall'&&keepRemoved.enabled()){try{keepRemoved.change('add',[a.packageId]);syncDone=keepRemoved.check().catch(function(){});}catch(e){/* Vetro's own packages are refused */}}
                     // `pkgcmd -u` leaves the Home line, the registry row and the icon folder (Samsung's own uninstaller removes them and tells the Home).
                     // Cleaned here, then the launcher rebuilds its list, or its tile stays until the next start and does not open.
-                    var afterUninstall=verified&&p.action==='uninstall'?homeCleanup.clean(agentExecute,a.packageId,widgetIds).then(function(c){
-                        cleanup=c;invalidateInventory();
-                        launcherFollow();
-                    }):Promise.resolve();
+                    var afterUninstall=syncDone.then(function(){
+                        if(!verified||p.action!=='uninstall')return;
+                        return homeCleanup.clean(agentExecute,a.packageId,widgetIds).then(function(c){
+                            cleanup=c;invalidateInventory();
+                            launcherFollow();
+                        });
+                    });
                     return afterUninstall.then(function(){
                     return {ok:verified,verified:verified,action:p.action,appId:p.appId,packageId:a.packageId,changed:p.action==='flags'?a[p.flag]!==p.enabled:undefined,
                         error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps,factoryTest:factoryResult,cleanup:cleanup};
@@ -861,7 +865,8 @@ function handleFactoryTest(req,res) {
     if(req.method==='GET')return factoryTest.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     readJsonBody(req,res,function(p){
         if(p.action!=='reset')return serveJson(res,{error:'Invalid factory test action'},400);
-        factoryTest.reset().then(function(d){serveJson(res,Object.assign({ok:true},d));}).catch(function(e){serveJson(res,{ok:false,error:e.message},e.message.indexOf('in progress')>=0?409:503);});
+        if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
+        Promise.resolve().then(function(){return factoryTest.reset();}).then(function(d){debloatBusy=false;serveJson(res,Object.assign({ok:true},d));}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.message.indexOf('in progress')>=0?409:503);});
     });
 }
 function handleRestore(req,res) {
@@ -889,7 +894,8 @@ function handleLeftovers(req,res) {
         if(p.action!=='clear')return serveJson(res,{error:'Invalid leftovers action'},400);
         // The platform stages packages in this folder while it installs them.
         if(installPending)return serveJson(res,{ok:false,error:'An installation is in progress; try again when it finishes'},409);
-        leftovers.clear().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
+        if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
+        Promise.resolve().then(function(){return leftovers.clear();}).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},503);});
     });
 }
 function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);});}
@@ -1192,17 +1198,17 @@ var server = http.createServer(function (req, res) {
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
         if (url === '/debloat') return handleDebloatAction(req, res);
-        if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
+        if (url === '/dns') return readJsonBody(req,res,function(p){if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);if(p.action!=='observe'&&p.action!=='apply')return serveJson(res,{error:'Invalid filter action'},503);debloatBusy=true;Promise.resolve().then(function(){return p.action==='observe'?dnsFilter.observe():dnsFilter.apply(p.enabled,p.domains);}).then(function(d){debloatBusy=false;serveJson(res,d)}).catch(function(e){debloatBusy=false;serveJson(res,{error:e.message},503)});});
         if (url === '/pairing-mode') return handlePairingMode(req,res);
         if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
         if (url === '/keep-removed') return handleKeepRemoved(req,res);
         if (url === '/restore') return handleRestore(req,res);
         if (url === '/factory-test') return handleFactoryTest(req,res);
-        if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
+        if (url === '/hbbtv') return readJsonBody(req,res,function(p){if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;Promise.resolve().then(function(){return hbbtv.change(p.off,p.expected);}).then(function(d){debloatBusy=false;privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
         if (url === '/tuner') return plugins.dispatch('tuner', req, res, 'action', serveJson);
-        if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():p.action==='clean'?homeCleanup.sweep(agentExecute):homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
+        if (url === '/home-order') return readJsonBody(req,res,function(p){if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;Promise.resolve().then(function(){return p.action==='restore'?homeOrder.restore():p.action==='clean'?homeCleanup.sweep(agentExecute):homeOrder.write(p.entries);}).then(function(d){debloatBusy=false;serveJson(res,d)}).catch(function(e){debloatBusy=false;serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/components/action') return handleComponentAction(req,res);
