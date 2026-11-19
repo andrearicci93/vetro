@@ -16,7 +16,8 @@ fs.writeFileSync(path.join(bin, 'vconftool'), [
     '#!/bin/sh',
     'K=' + JSON.stringify(keys),
     'if [ "$1" = get ]; then f="$K/$(echo "$2" | tr / _)"; [ -f "$f" ] || exit 1; read t v < "$f";',
-    '  [ "$t" = bool ] && T=Bool || T=Int32; echo "$2, value = $v ($T)"; exit 0; fi',
+    // A bool prints as the TV prints it, "True (Boolean)" / "False (Boolean)" (the preview12 code looked for "(Bool)" and digits).
+    '  if [ "$t" = bool ]; then [ "$v" = 1 ] && v=True || v=False; T=Boolean; else T=Int32; fi; echo "$2, value = $v ($T)"; exit 0; fi',
     'if [ "$1" = set ]; then shift; [ "$1" = -f ] && shift; [ "$1" = -t ] || exit 2; t=$2; k=$3; v=$4; echo "$t $v" > "$K/$(echo "$k" | tr / _)"; exit 0; fi',
     'exit 3'
 ].join('\n'), {mode: 0o755});

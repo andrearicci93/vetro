@@ -45,8 +45,9 @@ function devices(text) {
     });
 }
 // hooks (optional): onConnect(status) once a helper is connected and holds the remote (the forwarding node now exists), and
-// onStop() whenever the bridge stops for any reason (asked, the helper disconnected, a bad frame), so a key that was held
-// down at that moment never keeps acting (the volume repeat waits for a release that will not come).
+// onStop(lost) whenever the bridge stops for any reason (asked, the helper disconnected, a bad frame), so a key that was held
+// down at that moment never keeps acting (the volume repeat waits for a release that will not come). lost is null when the stop
+// was asked for, else {reason, connected}: the error that ended it and whether a helper was holding the remote at that moment.
 function Bridge(execute, onEvent, hooks) {
     this.execute = execute; this.onEvent = onEvent; this.current = {mode:'off',connected:false};
     this.events = []; this.server = null; this.socket = null; this.generation = 0; this.lastError=null; this.cancel=null;
@@ -60,15 +61,15 @@ Bridge.prototype.inventory = function () {
     });
 };
 Bridge.prototype.status = function () {return {policy:this.current,events:this.events.slice(-30),error:this.lastError};};
-Bridge.prototype.stop = function () {
+Bridge.prototype.stop = function (reason) {
     ++this.generation;
-    var cancel=this.cancel, socket=this.socket, server=this.server;
+    var cancel=this.cancel, socket=this.socket, server=this.server, connected=!!this.current.connected;
     this.cancel=null; this.socket=null; this.server=null;
     this.current = {mode:'off',connected:false};
     if(cancel)cancel();
     if(socket)socket.destroy();
     if(server)server.close();
-    callHook(this.hooks.onStop);
+    callHook(this.hooks.onStop,reason?{reason:reason,connected:connected}:null);
 };
 // list (optional): the device list the caller has just read (restoreInput, Vetro UI), so it is not read a second time.
 Bridge.prototype.start = function (device, mode, tokens, list) {
@@ -87,7 +88,7 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
         return new Promise(function(resolve,reject){
             var settled=false, timer, server, connection=null;
             function active(){return generation===self.generation && self.server===server;}
-            function fail(e){if(generation!==self.generation)return; self.lastError=e.message;if(!settled){settled=true;clearTimeout(timer);reject(e);}self.stop();}
+            function fail(e){if(generation!==self.generation)return; self.lastError=e.message;if(!settled){settled=true;clearTimeout(timer);reject(e);}self.stop(e.message);}
             self.cancel=function(){if(!settled){settled=true;clearTimeout(timer);reject(new Error('input request cancelled'));}};
             timer=setTimeout(function(){fail(new Error('native input helper did not connect'));},12000);
             server=net.createServer(function(socket){
@@ -135,7 +136,9 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                 // static analysis 2026-11-19). Before a filter start any other filter helper is ended; observers (listen) are left alone.
                 // The pattern does not rely on the argument separators: the Q80A's tr leaves the NULs and the shell drops them.
                 var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill -9 "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
-                var command=stale+'umask 077; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
+                // The last helper's words are kept one start longer (vetro-input.prev.log): a helper that ended on its own (the remote went
+                // away, an exception) is followed within seconds by a new start, whose log would otherwise replace them.
+                var command=stale+'umask 077; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
                 self.execute(command,5000,active).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
         });

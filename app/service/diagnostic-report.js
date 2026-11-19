@@ -66,7 +66,15 @@ var INPUT_ERRORS={'Saved physical remote is unavailable':'saved-remote-missing',
     'unexpected input helper identity':'helper-identity','input helper launch failed':'helper-launch-failed','input helper disconnected; original keys released':'helper-disconnected',
     'select a unique physical remote device':'remote-not-unique','input inventory unavailable':'inventory-unavailable','no root agent connected':'no-root',
     'invalid input authentication':'helper-auth','invalid input sequence':'helper-sequence','invalid input event':'helper-event','oversized input frame':'helper-frame',
-    'input listener closed before launch':'listener-closed','no physical remote devices found':'no-remotes'};
+    'input listener closed before launch':'listener-closed','no physical remote devices found':'no-remotes','input request cancelled':'cancelled',
+    'Replaced by a newer input request':'superseded','input action queue exceeded':'action-queue','remote-input host sent unexpected data':'host-data'};
+// The remote bridge's history (main.js inputHistory): each turn as a fixed word, with how many seconds before the export it happened.
+var INPUT_STOPS=['quick','rules','lifecycle','auto-off','vetro-ui','listen-idle','request','keys','other'];
+function inputTurn(e){
+    if(!e||!Number.isInteger(e.secondsAgo)||e.secondsAgo<0)return null;
+    var w=e.why, word=e.kind==='connected'?choice(w,['filter','observe']):e.kind==='lost'||e.kind==='ended'||e.kind==='failed'?inputErrorCode(w)||'other'
+        :e.kind==='stop'?choice(w,INPUT_STOPS):e.kind==='agent'?choice(w,['up','down']):e.kind==='request'?choice(w,['filter','observe','off']):e.kind==='restore'?'':null;
+    return word===null?null:{secondsAgo:e.secondsAgo,event:e.kind+(word?' '+word:'')};}
 function inputErrorCode(v){return typeof v==='string'&&v?(Object.prototype.hasOwnProperty.call(INPUT_ERRORS,v)?INPUT_ERRORS[v]:'other'):null;}
 function helperError(text){var lines=String(text||'').split('\n').map(function(l){return l.replace(/\/dev\/input\/[A-Za-z0-9_-]{1,32}/g,'<node>').trim();}).filter(function(l){return HELPER_ERROR_RE.test(l);});
     return lines.length?lines[lines.length-1]:null;}
@@ -76,7 +84,7 @@ var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .<>:-]{1,100}$/;
 // (the "outputs: <device>" lines are not in the list), an exception message passes only without slashes or quotes.
 var DOCK_EVENT_RES=[/^command (?:Show|Hide|Toggle|VolUp|VolDown|VolMute|Pad|Rescan|Reload)$/,/^volume: (?:the level cannot be read|level change refused|pill ready|elm_win_add failed)$/,
     /^pad: (?:ready|elm_win_add failed)$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
-    /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^launch com\.samsung\.tv\.csfs rc=-?\d{1,6}$/,/^launch via HbbTV (?:request \d{1,6} ms|failed)$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/];
+    /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^outputs: (?:UseTv TV speakers|UseExternal [A-Za-z ()+-]{1,30}) (?:ok|refused \([A-Za-z0-9 .,:=_-]{0,80}\))$/,/^launch com\.samsung\.tv\.csfs rc=-?\d{1,6}$/,/^launch via HbbTV (?:request \d{1,6} ms|failed)$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/];
 // A launch through the HbbTV app (#200) keeps only its outcome and timing: which app it was is the user's business.
 function dockEvents(text){return String(text||'').split('\n').map(function(l){return l.replace(/^\d{2}:\d{2}:\d{2}\.\d{3} /,'').trim()
         .replace(/^launch [A-Za-z0-9_.-]{1,120} via HbbTV request (\d{1,6}) ms$/,'launch via HbbTV request $1 ms').replace(/^launch via HbbTV failed: .*$/,'launch via HbbTV failed');})
@@ -179,9 +187,14 @@ var projectors = {
     // on, or used to turn the screen back on after Picture Off: woke), so a report taken right after pressing Vol+, Vol-, Mute and 123 shows which codes a remote really sends (the SolarCell's volume
     // is not 66/67/68) and whether they reach the node Vetro holds at all. Codes of remote buttons only, at most 30.
     // failure: the service's last reason for not holding the remote, as a fixed word; helperError: the input helper's last exception, its type
-    // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out.
+    // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out; prevHelperError: the
+    // same for the helper before it (why a helper that held the remote ended).
     input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','savedNodePresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','keyedSameNameCount','selectableCount']),
-        {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog)},
+        {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog),prevHelperError:helperError(d.prevHelperLog)},
+        // loop: what the 5 s restore loop is waiting on; history: the bridge's last turns (connected, lost, ended before connecting, a restore
+        // tried or failed, a stop and who asked, the root agent up or down, a Remapper request), newest last.
+        {loop:d.loop&&typeof d.loop==='object'?Object.assign(flags(d.loop,['paused','lifecycle','restoring']),numbers(d.loop,['faultPauseSeconds','retryWaitSeconds','retryFailures','tokenCount']),{mode:choice(d.loop.mode,['off','filter','observe'])}):null,
+            history:list(d.history,24).map(inputTurn).filter(Boolean)},
         {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
             return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
                 held:e.decision==='blocked',woke:e.decision==='wake'};})});}

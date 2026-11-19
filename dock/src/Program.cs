@@ -1665,13 +1665,34 @@ namespace Launcher
             if (!listed) Log("outputs: no Bluetooth list (" + AudioOutputs.LastError + ")");
             int selection;
             if (!Sound.TryGetSpeakerSelection(out selection)) selection = -1;
-            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection, true);
+            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection, true, LastExternal(selection));
             string note = !listed ? "Bluetooth is off" : !OutputPickerModel.HasDevices(entries) ? "No paired speakers" : "";
             _audioCard.SetEntries(entries, note);
             _audioCtl.SetCount(entries.Count);
             if (!keepSelection) _audioCtl.Select(_audioCard.ActiveRow);
             Log("outputs: speaker selection " + selection + ", " + entries.Count + " rows, read in "
                 + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+        }
+
+        // The external output (optical, a receiver...) last seen playing, kept in a file beside the service's lists (vetro-dock-output, which
+        // Restore the TV erases with the other vetro-* files) so that after a choice of the TV speakers (or a restart of the launcher) the
+        // card still offers it. Written only when it changes.
+        private static int _lastExternal = -2;
+        private static int LastExternal(int selection)
+        {
+            string lists = string.IsNullOrEmpty(_appsPath) ? null : Path.GetDirectoryName(_appsPath);
+            string file = Path.Combine(string.IsNullOrEmpty(lists) ? (_dir ?? "/home/owner") : lists, "vetro-dock-output");
+            if (_lastExternal == -2)
+            {
+                _lastExternal = -1;
+                try { int saved; if (int.TryParse(File.ReadAllText(file).Trim(), out saved) && OutputPickerModel.CanChooseAgain(saved)) _lastExternal = saved; } catch (Exception) { }
+            }
+            if (OutputPickerModel.CanChooseAgain(selection) && selection != _lastExternal)
+            {
+                _lastExternal = selection;
+                try { File.WriteAllText(file, selection.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch (Exception) { }
+            }
+            return _lastExternal;
         }
 
         /// <summary>OK on the Audio output card: the sound goes to the selected row; the row says so until the list is read again.</summary>
@@ -1860,6 +1881,9 @@ namespace Launcher
             if (what != OutputAction.Connect && _selectBtTimer != IntPtr.Zero) { Efl.ecore_timer_del(_selectBtTimer); _selectBtTimer = IntPtr.Zero; }
             if (what == OutputAction.UseTv) ok = Sound.TrySetSpeakerSelection(Sound.SpeakerTv);
             else if (what == OutputAction.UseBluetooth) ok = Sound.TrySetSpeakerSelection(Sound.SpeakerBluetooth);
+            // Back to optical or a receiver: the value Samsung's own list selects for it (set_speaker_selection with that output's number; static
+            // reading of the 2021 list, the switch back to the TV speakers was seen working on a Tizen 9 S95C).
+            else if (what == OutputAction.UseExternal) ok = Sound.TrySetSpeakerSelection(e.Selection);
             else
             {
                 ok = AudioOutputs.TryConnect(e.Address);
@@ -1878,8 +1902,8 @@ namespace Launcher
         private static void VolumeKey(Command key)
         {
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
-            // On an optical, HDMI or Wi-Fi output the level that counts is the external device's: the key goes back to Samsung, which
-            // shows that device's level (the TV's own level would change and nothing would be heard).
+            // On a receiver on HDMI the level that counts is the receiver's: the key goes back to Samsung, which passes it on over HDMI-CEC
+            // (the TV's own level would change and nothing would be heard). Optical stays with Vetro (OutputPickerModel.VetroSetsLevel).
             int output;
             if (Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
             {

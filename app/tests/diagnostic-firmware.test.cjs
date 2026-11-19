@@ -92,6 +92,11 @@ function request() {
         assert.deepEqual(lv.events, ['launch com.samsung.tv.csfs rc=0', 'screen: off ok', 'launch via HbbTV request 42 ms', 'launch via HbbTV failed']);
         assert.ok(JSON.stringify(lv).indexOf('svtplay') < 0, 'the HbbTV launches keep no app id');
         assert.equal(JSON.stringify(lv.bootTimeline), JSON.stringify({serviceStart: 95.2, agentSeen: null, shownAtPowerOn: 140.1}));
+        // The Audio card's switches by output name; a Bluetooth address or a free error text never passes.
+        const out = report.projectors.launcher({keyLog: ['10:00:00.000 outputs: UseTv TV speakers ok', '10:00:01.000 outputs: UseExternal Optical ok',
+            '10:00:02.000 outputs: UseExternal Optical refused (rc -22)', '10:00:03.000 outputs: Connect AA:BB:CC:DD:EE:FF ok',
+            '10:00:04.000 outputs: UseExternal Optical refused (/home/owner/x)'].join('\n')}).events;
+        assert.deepEqual(out, ['outputs: UseTv TV speakers ok', 'outputs: UseExternal Optical ok', 'outputs: UseExternal Optical refused (rc -22)']);
 
         // Input: the keyed same-name nodes and whether the saved node is still there.
         const inp = report.projectors.input({keyedSameNameCount: 2, savedNodePresent: false});

@@ -23,6 +23,8 @@ namespace Launcher.Core
         public bool Active;
         /// <summary>A Bluetooth device the TV is connected to (whether or not the sound goes there).</summary>
         public bool Connected;
+        /// <summary>An external output: its speaker-selection value (1 optical, 2 receiver...), the one to select again; -1 for the other rows.</summary>
+        public int Selection = -1;
     }
 
     /// <summary>
@@ -78,21 +80,38 @@ namespace Launcher.Core
         }
 
         /// <summary>
-        /// Whether Vetro's volume bar should change the level itself: the TV speakers, Bluetooth headphones and wired headphones follow the TV's
-        /// level. On an optical, HDMI, Wi-Fi or combined output the level is the external device's (Samsung shows that device's level), so the
-        /// key goes back to Samsung. Unknown (-1) stays with Vetro, as before.
+        /// Whether Vetro's volume bar changes the level itself. Only a receiver on HDMI (2, and TV + receiver and the centre mode: 8, 12, 17)
+        /// sends the key back to Samsung, which passes it to the receiver over HDMI-CEC (static reading, not tried on a TV). Everything else
+        /// stays with Vetro, optical included, as up to the 0.6.9 preview8: handing the key to Samsung on preview10-12 took Vetro's bar away
+        /// from an S95C on optical (export of 2026-11-19). Whether a TV level change moves what an optical soundbar plays is not known yet.
+        /// Unknown (-1) stays with Vetro.
         /// </summary>
         public static bool VetroSetsLevel(int selection)
         {
-            return selection < 0 || selection == 0 || IsBluetoothSelection(selection) || selection == 13;
+            return !(selection == 2 || selection == 8 || selection == 12 || selection == 17);
+        }
+
+        /// <summary>
+        /// An external output that the Audio output card offers again once the sound has gone elsewhere: optical, a receiver, the combined
+        /// and centre modes, line out. Not the Wi-Fi speakers (Samsung's own list never selects 4 by this call), Sound Share, Auracast or the
+        /// headphone outputs, which come and go with their device.
+        /// </summary>
+        public static bool CanChooseAgain(int selection)
+        {
+            switch (selection)
+            {
+                case 1: case 2: case 8: case 9: case 11: case 12: case 14: case 17: case 18: return true;
+                default: return false;
+            }
         }
 
         /// <summary>
         /// The rows for a list of paired devices: TV speakers, then the audio devices, connected first, then by name. <paramref name="selection"/> is
         /// the TV's sound output (<c>sound_manager_get_speaker_selection</c>, -1 when unknown): the sound is on the connected device only when
-        /// it says Bluetooth (or is unknown, then a connected device is assumed to be playing).
+        /// it says Bluetooth (or is unknown, then a connected device is assumed to be playing). <paramref name="lastExternal"/> is the external
+        /// output the launcher last saw playing (-1 for none): while the sound is elsewhere it stays in the list, so it can be chosen again.
         /// </summary>
-        public static List<OutputEntry> Build(IEnumerable<BondedDevice> paired, int selection = -1, bool screenOff = false)
+        public static List<OutputEntry> Build(IEnumerable<BondedDevice> paired, int selection = -1, bool screenOff = false, int lastExternal = -1)
         {
             var devices = new List<BondedDevice>();
             if (paired != null) foreach (BondedDevice d in paired) if (IsAudio(d)) devices.Add(d);
@@ -105,10 +124,12 @@ namespace Launcher.Core
             bool anyConnected = devices.Exists(d => d.Connected);
             bool onBluetooth = anyConnected && (selection < 0 || IsBluetoothSelection(selection));
             // Another output (optical, a receiver on HDMI...) plays: it gets its own ticked row, and the TV speakers are not ticked (an S95C
-            // on optical showed "TV speakers" ticked). It cannot be chosen from here: it is already the one playing.
+            // on optical showed "TV speakers" ticked). Once the sound has gone to the TV speakers or a device, that output keeps its row,
+            // not ticked, so it can be chosen again (the same S95C lost its Optical row after choosing TV speakers).
             string external = ExternalName(selection);
             rows.Add(new OutputEntry { Kind = OutputKind.TvSpeaker, Label = TvLabel, Active = !onBluetooth && external == null });
-            if (external != null) rows.Add(new OutputEntry { Kind = OutputKind.External, Label = external, Active = true });
+            if (external != null) rows.Add(new OutputEntry { Kind = OutputKind.External, Label = external, Active = true, Selection = selection });
+            else if (selection >= 0 && CanChooseAgain(lastExternal)) rows.Add(new OutputEntry { Kind = OutputKind.External, Label = ExternalName(lastExternal), Selection = lastExternal });
             bool first = true;
             foreach (BondedDevice d in devices)
             {
@@ -124,16 +145,17 @@ namespace Launcher.Core
         /// <summary>Whether the list has a Bluetooth device in it (the header says "No paired speakers" when it has none).</summary>
         public static bool HasDevices(List<OutputEntry> rows) { return rows != null && rows.Exists(r => r.Kind == OutputKind.Bluetooth); }
 
-        /// <summary>What the system has to do for a row: nothing (already playing), send the sound to the TV speakers or to a device that is already connected, connect the device first, or turn the screen off.</summary>
+        /// <summary>What the system has to do for a row: nothing (already playing), send the sound to the TV speakers, back to an external output or to a device that is already connected, connect the device first, or turn the screen off.</summary>
         public static OutputAction ActionFor(OutputEntry choice)
         {
             if (choice == null) return OutputAction.None;
             if (choice.Kind == OutputKind.ScreenOff) return OutputAction.ScreenOff;
             if (choice.Active) return OutputAction.None;
             if (choice.Kind == OutputKind.TvSpeaker) return OutputAction.UseTv;
+            if (choice.Kind == OutputKind.External) return CanChooseAgain(choice.Selection) ? OutputAction.UseExternal : OutputAction.None;
             return choice.Connected ? OutputAction.UseBluetooth : OutputAction.Connect;
         }
     }
 
-    internal enum OutputAction { None, UseTv, UseBluetooth, Connect, ScreenOff }
+    internal enum OutputAction { None, UseTv, UseBluetooth, Connect, ScreenOff, UseExternal }
 }

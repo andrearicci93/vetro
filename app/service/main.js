@@ -63,7 +63,7 @@ var nativeBuild = buildInfo.version + (buildInfo.sourceRevision ? '+' + buildInf
 var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port: function () { return PORT; },
     // Vol/123 switched, or the launcher mode changed: the bridge restarts with the new key list, and Vetro UI turns the
     // remote interception on (or back off, if it had turned it on itself) when its keys need it.
-    onVolumeChange: function () { stopInput(); return vetroUiInput(); },
+    onVolumeChange: function () { stopInput('keys'); return vetroUiInput(); },
     onMotionChange: function () { tuner.writeFeatures(); },
     home: {
         restore: function () { return applySamsungHome(false); }
@@ -98,13 +98,14 @@ var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter})
 var keyGuides=(function(){
     var FILE='/opt/usr/home/owner/share/vetro-key-guides.json', KEYS=['memory/volume-app/key_guide_status','memory/tv-viewer/key_guide_status','db/tv-viewer/key_guide_status'];
     function chosen(){try{return JSON.parse(fs.readFileSync(FILE,'utf8')).on===true;}catch(e){return false;}}
-    // One line per key that exists: K|<key>|<value>; a bool reads "... = 1 (Bool)" or "... = 0 (Bool)".
+    // One line per key that exists: K|<key>|<value>. vconftool prints a bool as "... = True (Boolean)" (seen on the Q80A); looking for
+    // "(Bool)" and digits found no key at all, and the switch read "unknown" on a Tizen 9 S95C (preview12 export).
     function script(value){return KEYS.map(function(k){var memory=k.indexOf('memory/')===0;
-        return 'o=$(vconftool get '+k+' 2>/dev/null); case "$o" in *"(Bool)"*) t=bool;; *"(Int32)"*) t=int;; *) t=;; esac; '+
+        return 'o=$(vconftool get '+k+' 2>/dev/null); case "$o" in *"(Bool)"*|*"(Boolean)"*) t=bool;; *"(Int32)"*) t=int;; *) t=;; esac; '+
             'if [ -n "$t" ]; then '+(value===null||(value===0&&!memory)?'':'vconftool set -f -t $t '+k+' '+value+' >/dev/null 2>&1; ')+
-            'echo "K|'+k+'|$(vconftool get '+k+' 2>/dev/null | sed -n "s/.*= \\([0-9]*\\) .*/\\1/p")"; fi';}).join('\n')+'\ntrue';}
+            'echo "K|'+k+'|$(vconftool get '+k+' 2>/dev/null | sed -n "s/.*= \\([A-Za-z0-9]*\\) .*/\\1/p")"; fi';}).join('\n')+'\ntrue';}
     function run(value){return agentExecute('echo '+Buffer.from(script(value)).toString('base64')+' | base64 -d | sh',15000).then(function(r){
-        var keys={};String(r&&r.stdout||'').split('\n').forEach(function(l){var f=l.split('|');if(f[0]==='K'&&f.length===3)keys[f[1]]=f[2]==='1';});return keys;});}
+        var keys={};String(r&&r.stdout||'').split('\n').forEach(function(l){var f=l.split('|');if(f[0]==='K'&&f.length===3)keys[f[1]]=f[2]==='1'||f[2]==='True'||f[2]==='true';});return keys;});}
     function status(keys){var names=Object.keys(keys);if(!names.length)return {status:'unknown'};
         var on=chosen(),done=names.every(function(k){return keys[k];});return {status:!on?'off':done?'on':'partial',keys:names.length};}
     return {
@@ -320,7 +321,7 @@ function downloadDiagnostics(res, withComponents) {
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         // keyLog: the launcher's log lines about the keys it is handed (Vol, Mute, 123), their windows and the Audio card; the report keeps fixed shapes only.
         launcher: later(function () { return dock.status().then(function (d) {
-            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|fifo: |screen: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24').toString('base64') + ' | base64 -d | sh', 5000)
+            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|outputs: Use(Tv|External) |fifo: |screen: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24').toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
                 .then(function (keyLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: keyLog}); }); }); }),
         // tunerLog: the tuner's start and its talk with Samsung's TV client (EFL start, which client was loaded, the first reads, a stall, an
@@ -330,9 +331,16 @@ function downloadDiagnostics(res, withComponents) {
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
                 .then(function (tunerLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: tunerLog}); }); }); }),
         input: later(function () {
-            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '';
-            // The helper's own last words (it writes them to /tmp/vetro-input.log, root only): why it could not hold the remote.
-            return agentExecute('tail -n 2 /tmp/vetro-input.log 2>/dev/null', 5000).then(function (r) { helperLog = r && r.stdout || ''; }, function () {}).then(function () {
+            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '', prevHelperLog = '', now = Date.now();
+            // What the restore loop is waiting on, read before the commands below: paused by the Remapper, the service's input stopped, a
+            // start in progress, a pause after a fault or failed tries, no key to hold.
+            var loop = {paused: inputPaused, lifecycle: inputLifecycleActive, restoring: inputRestoring, faultPauseSeconds: Math.max(0, Math.ceil((inputFaultUntil - now) / 1000)),
+                retryWaitSeconds: Math.max(0, Math.ceil((inputRetryAt - now) / 1000)), retryFailures: inputFailures, tokenCount: inputTokens().length, mode: snap.policy && snap.policy.mode};
+            var history = inputHistory.map(function (e) { return {secondsAgo: Math.round((now - e.at) / 1000), kind: e.kind, why: e.why}; });
+            // The helper's own last words (it writes them to /tmp/vetro-input.log, root only): why it could not hold the remote. The helper
+            // before it (vetro-input.prev.log) says why that one ended.
+            return agentExecute('tail -n 2 /tmp/vetro-input.log 2>/dev/null; echo ---; tail -n 2 /tmp/vetro-input.prev.log 2>/dev/null', 5000).then(function (r) {
+                var parts = String(r && r.stdout || '').split(/(?:^|\n)---\n?/); helperLog = parts[0] || ''; prevHelperLog = parts[1] || ''; }, function () {}).then(function () {
                 return physical.inventory();
             }).then(function (all) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
@@ -342,7 +350,7 @@ function downloadDiagnostics(res, withComponents) {
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
                     keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null,
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
-                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog,
+                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, loop: loop, history: history,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; })};
             });
         }),
@@ -832,7 +840,7 @@ function restoreOptions() { return {
     wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock, tuner: tuner,
     plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
     input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
-        off: function(){stopInput();inputPaused=false;saveInputPreference({enabled:false});}},
+        off: function(){stopInput('quick');inputPaused=false;saveInputPreference({enabled:false});}},
     mqtt: {enabled: function(){var c=require('./mqtt-bridge.js').readConfig();return !!c&&c.enabled!==false&&!!c.host;},
         off: function(){var m=require('./mqtt-bridge.js'),c=Object.assign({},m.readConfig(),{enabled:false});m.saveConfig(c);bridge.configure(c);}},
     // Pairing is not a Restore item since the republished 0.5.0: off is the default, and Restore must not switch off a protection the owner turned on.
@@ -939,7 +947,7 @@ function handleRemap(req, res) {
         var rules;
         try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
-        stopInput(); inputPaused=false; inputFaultUntil=0; inputRetryReset();
+        stopInput('rules'); inputPaused=false; inputFaultUntil=0; inputRetryReset();
         remapStore.rules = rules;
         bridge.setTopics(rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
         serveJson(res, { ok: true, persisted: saveRemap(), rules: rules });
@@ -977,8 +985,14 @@ var keyRouting=require('./key-routing.js');
 // bridgeTiming (GET /status remoteBridge): how long after the root agent connected the remote bridge was listening again,
 // for the first connect of this run and for the last one (a wake). In memory only.
 var bridgeTiming={first:null,last:null}, bridgeWait=null;
-var physicalHooks={onStop:function(){volumeRepeat.stop();},
+// inputHistory (diagnostics): the last turns of the remote bridge in this run, with when they happened: a helper connected or lost, a
+// restore tried or failed, a stop and who asked, the root agent coming and going, a request from the Remapper. In memory only; the
+// report keeps fixed words (diagnostic-report.js). A "connected" followed seconds later by a "lost" is a helper that does not stay.
+var inputHistory=[];
+function inputNote(kind,why){inputHistory.push({at:Date.now(),kind:kind,why:why==null?null:String(why)});if(inputHistory.length>24)inputHistory.shift();}
+var physicalHooks={onStop:function(lost){volumeRepeat.stop();if(lost)inputNote(lost.connected?'lost':'ended',lost.reason);},
     onConnect:function(status){
+        inputNote('connected',status&&status.policy&&status.policy.mode);
         if(bridgeWait&&status&&status.policy&&status.policy.mode==='filter'){bridgeWait.bridgeMs=Date.now()-bridgeWait.agentAt;bridgeTiming[bridgeTiming.first?'last':'first']=bridgeWait;bridgeWait=null;}
         if(status&&status.policy&&status.policy.mode==='filter')agentExecute(keyRouting.rescanCommand(),5000).catch(function(){});}};
 var physical=new PhysicalInput(agentExecute,function(event){
@@ -1012,7 +1026,7 @@ function inputRetryFailed(){if(++inputFailures>=INPUT_RETRY_FAST)inputRetryAt=Da
 function pauseInputFault(message){inputError=message;inputFaultUntil=Date.now()+INPUT_FAULT_PAUSE_MS;physical.stop();}
 var inputLifecycleActive=true, inputGeneration=0;
 function startInputLifecycle(){inputLifecycleActive=true;}
-function stopInputLifecycle(){inputLifecycleActive=false;stopInput();}
+function stopInputLifecycle(){inputLifecycleActive=false;stopInput('lifecycle');}
 if(typeof module!=='undefined'){
     module.exports.onStart=startInputLifecycle;module.exports.onRequest=startInputLifecycle;
     module.exports.onStop=stopInputLifecycle;module.exports.onExit=stopInputLifecycle;
@@ -1034,7 +1048,7 @@ function vetroUiInput(){
     if(!wants){
         vetroUiInputProblem=null;
         var own=remapStore.rules.some(function(r){return r.enabled&&r.trigger.type==='physical';});
-        if(pref.enabled&&pref.auto&&!own){try{saveInputPreference({enabled:false});}catch(e){}stopInput();}
+        if(pref.enabled&&pref.auto&&!own){try{saveInputPreference({enabled:false});}catch(e){}stopInput('auto-off');}
         return Promise.resolve(false);
     }
     if(inputPreference().enabled)return Promise.resolve(true);
@@ -1045,7 +1059,7 @@ function vetroUiInput(){
         var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:null;
         if(!device)throw new Error(candidates.length?'More than one remote was found: choose yours in the Remapper and turn the interception on there.':'No remote was found to listen to.');
         var still=keyFlags();if(!still.volume&&!still.pad)return null;   // switched off again while the remotes were being listed
-        stopInput();
+        stopInput('vetro-ui');
         return physical.start(device.node,'filter',inputTokens(),list);
     }).then(function(status){
         if(!status)return false;
@@ -1054,10 +1068,10 @@ function vetroUiInput(){
     }).catch(function(e){vetroUiInputProblem=e.message;return false;});
 }
 function restoreInput(){
-    if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput();inputPaused=false;}
+    if(inputPaused&&Date.now()-inputSeenAt>INPUT_LISTEN_IDLE_MS){stopInput('listen-idle');inputPaused=false;}
     var preference=inputPreference(),generation=inputGeneration;
     if(!inputLifecycleActive||!preference.enabled||inputPaused||Date.now()<inputFaultUntil||Date.now()<inputRetryAt||inputRestoring||physical.status().policy.connected||!platform.status().agent.connected||!inputTokens().length)return;
-    inputRestoring=true;
+    inputRestoring=true;inputNote('restore');
     physical.inventory().then(function(list){
         if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||Date.now()<inputFaultUntil||inputPreference()!==preference)return;
         var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
@@ -1066,9 +1080,9 @@ function restoreInput(){
         var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
         if(!device)throw new Error('Saved physical remote is unavailable');
         return physical.start(device.node,'filter',inputTokens(),list);
-    }).then(function(){if(generation===inputGeneration){inputError=null;inputRetryReset();}}).catch(function(e){if(generation===inputGeneration){inputError=e.message;inputRetryFailed();}}).finally(function(){if(generation===inputGeneration)inputRestoring=false;});
+    }).then(function(){if(generation===inputGeneration){inputError=null;inputRetryReset();}}).catch(function(e){inputNote('failed',e.message);if(generation===inputGeneration){inputError=e.message;inputRetryFailed();}}).finally(function(){if(generation===inputGeneration)inputRestoring=false;});
 }
-function stopInput(){volumeRepeat.stop();++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
+function stopInput(why){inputNote('stop',why||'other');volumeRepeat.stop();++inputGeneration;inputRestoring=false;inputObservers.forEach(function(b){b.stop();});inputObservers=[];physical.stop();}
 function inputSnapshot(){
     if(!inputObservers.length)return Object.assign({},physical.status(),{preference:inputPreference()});
     var events=[],connected=false,errors=[];
@@ -1085,12 +1099,12 @@ function handleInput(req,res){
         if(!inputLifecycleActive)return serveJson(res,{error:'Service input is stopped'},503);
         var tokens=inputTokens();
         inputError=null;inputFaultUntil=0;
-        if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput();return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
+        if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput('request');return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
         if(p.mode!=='observe'&&p.mode!=='filter')return serveJson(res,{error:'invalid input mode'},400);
         if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
-        inputPaused=true;
+        inputPaused=true;inputNote('request',p.mode);
         if(p.mode==='observe'&&p.device==='auto'){
-            stopInput();var observerGeneration=inputGeneration;return physical.inventory().then(function(list){
+            stopInput('request');var observerGeneration=inputGeneration;return physical.inventory().then(function(list){
                 if(!inputLifecycleActive)throw new Error('Input request cancelled');
                 if(observerGeneration!==inputGeneration)throw superseded();
                 var candidates=list.filter(function(d){return d.selectable;});
@@ -1098,10 +1112,10 @@ function handleInput(req,res){
                 inputObservers=candidates.map(function(){return new PhysicalInput(agentExecute,function(){});});
                 return Promise.all(candidates.map(function(d,i){return inputObservers[i].start(d.node,'observe',[]).catch(function(e){return {error:e.message};});}));
             }).then(function(){if(observerGeneration!==inputGeneration)throw superseded();var s=inputSnapshot();if(!s.policy.connected)throw new Error(s.error||'input helpers unavailable');serveJson(res,{ok:true,status:s});})
-            .catch(function(e){if(inputLifecycleActive&&observerGeneration!==inputGeneration)e=superseded();else stopInput();serveJson(res,{ok:false,error:e.message},e.superseded?409:503);});
+            .catch(function(e){if(inputLifecycleActive&&observerGeneration!==inputGeneration)e=superseded();else stopInput('request');serveJson(res,{ok:false,error:e.message},e.superseded?409:503);});
         }
         if(p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
-        stopInput();var requestGeneration=inputGeneration;
+        stopInput('request');var requestGeneration=inputGeneration;
         physical.start(p.device,p.mode,tokens).then(function(status){
             if(!inputLifecycleActive)throw new Error('Input request cancelled');
             if(requestGeneration!==inputGeneration)throw superseded();
@@ -1110,6 +1124,9 @@ function handleInput(req,res){
         }).catch(function(e){
             // physical.start fails with its own "cancelled" error when a newer request stopped it: that is the same case.
             if(inputLifecycleActive&&requestGeneration!==inputGeneration)e=superseded();else physical.stop();
+            // A failed "Intercept" or listen left the restore loop paused (no error, nothing tried) until the Remapper had been closed for 5
+            // minutes: the saved choice, if there is one, is tried again by the 5 s loop, and the reason is kept for the diagnostics.
+            if(!e.superseded){inputNote('failed',e.message);inputPaused=false;if(p.mode==='filter')inputError=e.message;}
             serveJson(res,{ok:false,error:e.message},e.superseded?409:503);
         });
     });
@@ -1288,6 +1305,7 @@ startListening();
 // queue, ahead of the launcher's and the tuner's checks (their plugins look at the agent every 2 s), instead of waiting for
 // its next 5 s round. The app-only adapter has no onAgent.
 if(typeof platform.onAgent==='function')platform.onAgent(function(up){
+    inputNote('agent',up?'up':'down');
     if(!up){bridgeWait=null;return;}
     bridgeWait={agentAt:Date.now(),bridgeMs:null};
     inputRetryReset();
