@@ -10,10 +10,11 @@ function tv(start){
  function runHook(sh){
   if(sh.includes('sha256sum')){
    if(!s.parseinfo)return 'vetro-hook: no parseinfo\n';
-   if(s.parseinfo.includes('VETRO_UPDATE_LOCK_HOOK'))return 'vetro-hook: installed\n';
+   const h=/\nH=([A-Za-z0-9+/=]+)\n/.exec(sh),body=h?Buffer.from(h[1],'base64').toString():'';
+   if(s.parseinfo.includes('VETRO_UPDATE_LOCK_HOOK')){if(s.parseinfo!==body){s.parseinfo=body;s.hookUpgrades=(s.hookUpgrades||0)+1;}return 'vetro-hook: installed\n';}
    if(!s.hookAccept)return 'vetro-hook: unknown parseinfo\n';
    if(!s.parseinfoBak)s.parseinfoBak=s.parseinfo;
-   const m=/echo ([A-Za-z0-9+/=]+) \| base64 -d/.exec(sh);s.parseinfo=m?Buffer.from(m[1],'base64').toString():'';s.hookInstalled=true;
+   s.parseinfo=body;s.hookInstalled=true;
    return 'vetro-hook: installed\n';
   }
   if(sh.includes('vetro-hook: restored')){
@@ -29,7 +30,7 @@ function tv(start){
   if(sh.startsWith('vconftool get'))return {exit_code:0,stdout:'value = '+(sh.includes(qw.FWSERVICE)?s.fwsvc:s.autoupdate)+' (Int32)\n'};
   const set=/vconftool set -f -t int (\S+) (-?\d+)/.exec(sh);if(set&&/^vconftool set/.test(sh)){if(s.failSet)return {exit_code:1,stderr:'denied',stdout:''};const v=Number(set[2]);
    if(set[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=v;}else if(s.keep||v===1)s.autoupdate=v;return {exit_code:0,stdout:''};}
-  if(/^set \+e\nfor u in /.test(sh)){for(const u of qw.FWUNITS){if(!s.maskFails)s.fwMasked[u]=true;s.fwActive[u]=false;}s.markers=false;s.maskRuns=(s.maskRuns||0)+1;if(!s.failSet)for(const m of sh.matchAll(/vconftool set -f -t int (\S+) (-?\d+)/g)){if(m[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=Number(m[2]);}else if(s.keep||Number(m[2])===1)s.autoupdate=Number(m[2]);}return {exit_code:0,stdout:runHook(sh)};}
+  if(/^set \+e\nsystemctl mask --runtime /.test(sh)){for(const u of qw.FWUNITS){if(!s.maskFails)s.fwMasked[u]=true;s.fwActive[u]=false;}s.markers=false;s.maskRuns=(s.maskRuns||0)+1;if(!s.failSet)for(const m of sh.matchAll(/vconftool set -f -t int (\S+) (-?\d+)/g)){if(m[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=Number(m[2]);}else if(s.keep||Number(m[2])===1)s.autoupdate=Number(m[2]);}return {exit_code:0,stdout:runHook(sh)};}
   if(/^set \+e\nsystemctl unmask/.test(sh)){s.fwMasked={};for(const u of ['swu-auto-upgrade.timer','swu-verifier-tv.service','was-background-update.path','fw-update-service.path','vdsystem-update-manager.timer','appbinary-manager.service'])s.fwActive[u]=true;s.unmaskRuns=(s.unmaskRuns||0)+1;return {exit_code:0,stdout:runHook(sh)};}
   if(sh.includes('vetro-hook:')||sh.includes('sha256sum'))return {exit_code:0,stdout:runHook(sh)};
   if(sh.includes('touch '+qw.MULTISCREEN_FLAG)){s.ms=true;if(/app_launcher -t com.samsung.tv.multiscreen/.test(sh))s.msRun=false;}
@@ -64,9 +65,9 @@ const noWait=()=>Promise.resolve();
  assert.equal((await w.apply('firmware',true)).changed,false,'already locked');
  r=await w.apply('firmware',false);assert.equal(t.s.autoupdate,1);assert.equal(t.s.fwsvc,1);assert.equal(r.changed,true);
  assert.deepEqual(Object.keys(t.s.fwMasked),[],'all masks removed');assert.equal((await w.read()).wins.firmware.status,'off');
- assert.ok(t.s.calls.some(c=>c.includes('systemctl mask --runtime $u')&&c.includes('swu-auto-upgrade.timer')),'the OTA scheduler is masked');
- assert.ok(t.s.calls.some(c=>c.includes('systemctl mask --runtime $u')&&c.includes('was-background-update.service')),'the app/package updater is masked');
- assert.ok(t.s.calls.some(c=>c.includes('systemctl mask --runtime $u')&&c.includes('appbinary-manager.service')),'the EMP updater is masked');
+ assert.ok(t.s.calls.some(c=>/systemctl mask --runtime [^|]*swu-auto-upgrade\.timer[^|]* \|\| for u in /.test(c)),'the OTA scheduler is masked');
+ assert.ok(t.s.calls.some(c=>/systemctl mask --runtime [^|]*was-background-update\.service[^|]* \|\| for u in /.test(c)),'the app/package updater is masked');
+ assert.ok(t.s.calls.some(c=>/systemctl mask --runtime [^|]*appbinary-manager\.service[^|]* \|\| for u in /.test(c)),'the EMP updater is masked');
  assert.ok(t.s.calls.every(c=>!/\/usr\/lib|\/etc\/systemd/.test(c)),'nothing on the read-only image is written');
  // A TV that cannot mask: the lock fails and the switches it touched are put back
  t=tv({maskFails:true});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});
@@ -80,6 +81,8 @@ const noWait=()=>Promise.resolve();
  t=tv();w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});r=await w.apply('firmware',true);
  assert.ok(t.s.calls.every(c=>!/systemctl mask (?!--runtime)/.test(c)),'no persistent mask');
  const stops=t.s.calls.join('\n').split('\n').filter(l=>l.includes('systemctl stop')).join('\n');
+ assert.ok(t.s.calls.filter(c=>/systemctl mask --runtime/.test(c)&&/systemctl stop/.test(c)).every(c=>c.indexOf('systemctl mask --runtime')<c.indexOf('systemctl stop')),'masked before the stops, so a timer cannot start its unit again');
+ assert.ok(/systemctl mask --runtime [^"]*swu-verifier-tv\.timer[^"]* >\/dev\/null 2>&1 \|\| for u in /.test(t.s.parseinfo)&&t.s.parseinfo.indexOf('mask --runtime')<t.s.parseinfo.indexOf('stop --no-block'),'the boot hook masks all units in one call, before its stop');
  assert.ok(/swu-auto-upgrade\.timer/.test(stops)&&/swu-core-tv\.service/.test(stops)&&/swu-service\.service/.test(stops)&&!/bootmode-system-update/.test(stops),'the installers are stopped, the boot-mode oneshot is left to the mask');
  // Early lock: the AT-HUB script is replaced by the awk one, the vendor original is kept and restored on Off
  assert.equal(r.hook,true);assert.equal(t.s.hookInstalled,true);assert.equal(t.s.parseinfoBak,PARSEINFO);

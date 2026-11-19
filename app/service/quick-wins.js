@@ -305,9 +305,12 @@ function fwStoppable() { return FWUNITS.filter(function (u) { return FW_NOSTOP.i
 function fwMaskScript(stop) {
     // --runtime only: a plain mask would be written to /etc and outlive Vetro (and Restore), so a TV whose /etc is writable could
     // never update again. A unit that cannot be masked at runtime shows in the readback as not masked.
+    // Masks first, then the stops, so a timer cannot start its unit again in between. One mask call for all units: each call reloads
+    // systemd (~2 s at boot on the Q80A, 16 calls took 12.5 -> 39.3 s and swu-verifier-tv ran meanwhile); systemd 244 masks a unit
+    // this firmware lacks with a warning and rc 0, and the per-unit loop is only the fallback.
     return 'set +e\n' +
+        'systemctl mask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1 || for u in ' + FWUNITS.join(' ') + '; do systemctl mask --runtime $u >/dev/null 2>&1; done\n' +
         (stop ? 'for u in ' + fwStoppable().join(' ') + '; do systemctl stop --no-block $u >/dev/null 2>&1; done\n' : '') +
-        'for u in ' + FWUNITS.join(' ') + '; do systemctl mask --runtime $u >/dev/null 2>&1; done\n' +
         'rm -f ' + FWMARKERS.join(' ') + ' 2>/dev/null\n' +
         'true';
 }
@@ -338,8 +341,8 @@ function fwHookScript() {
         '        close("' + FILE + '")\n' +
         '    }\n' +
         '    if (lock) {\n' +
+        '        system("/usr/bin/systemctl mask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1 || for u in ' + FWUNITS.join(' ') + '; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
         '        system("/usr/bin/systemctl stop --no-block ' + fwStoppable().join(' ') + ' >/dev/null 2>&1")\n' +
-        '        system("for u in ' + FWUNITS.join(' ') + '; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
         '        system("/bin/rm -f ' + FWMARKERS.join(' ') + ' >/dev/null 2>&1")\n' +
         '    }\n' +
         '    repo = ""; model = ""\n' +
@@ -361,14 +364,18 @@ function fwHookInstallScript() {
     return 'set +e\n' +
         'F=' + FW_HOOK + '\n' +
         'B=' + FW_HOOK_BAK + '\n' +
+        'H=' + body + '\n' +
         'if [ ! -f "$F" ]; then echo "vetro-hook: no parseinfo"; exit 0; fi\n' +
-        'if grep -q ' + FW_HOOK_MARK + ' "$F" 2>/dev/null; then echo "vetro-hook: installed"; exit 0; fi\n' +
+        // Our own hook from an earlier Vetro is brought up to this one (the backup of the vendor script is already there).
+        'if grep -q ' + FW_HOOK_MARK + ' "$F" 2>/dev/null; then echo "$H" | base64 -d > "$F.vetro" && ' +
+        'if [ "$(sha256sum "$F.vetro" | cut -d" " -f1)" = "$(sha256sum "$F" | cut -d" " -f1)" ]; then rm -f "$F.vetro"; else chmod 755 "$F.vetro" && mv "$F.vetro" "$F"; fi; ' +
+        'echo "vetro-hook: installed"; exit 0; fi\n' +
         'S=$(sha256sum "$F" 2>/dev/null | cut -d" " -f1); OK=0\n' +
         '[ "$S" = "' + FW_HOOK_SHA + '" ] && OK=1\n' +
         'if [ $OK -eq 0 ] && [ "$(wc -l < "$F")" -le 8 ] && head -1 "$F" | grep -q "^#!/bin/bash" && grep -q /proc/target_version "$F" && [ "$(wc -c < "$F")" -le 4096 ]; then OK=1; fi\n' +
         'if [ $OK -eq 0 ]; then echo "vetro-hook: unknown parseinfo"; exit 0; fi\n' +
         'if [ -f "$B" ] && [ -n "$S" ] && [ "$(sha256sum "$B" 2>/dev/null | cut -d" " -f1)" = "$S" ]; then :; else cp -p "$F" "$B" || { echo "vetro-hook: backup failed"; exit 0; }; fi\n' +
-        'echo ' + body + ' | base64 -d > "$F.vetro" && chmod 755 "$F.vetro" && mv "$F.vetro" "$F" && echo "vetro-hook: installed" || echo "vetro-hook: write failed"\n' +
+        'echo "$H" | base64 -d > "$F.vetro" && chmod 755 "$F.vetro" && mv "$F.vetro" "$F" && echo "vetro-hook: installed" || echo "vetro-hook: write failed"\n' +
         'true';
 }
 // Only puts back our own replacement, so a script the owner or a firmware update changed is left alone.
