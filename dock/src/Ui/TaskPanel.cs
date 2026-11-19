@@ -18,6 +18,7 @@ namespace Launcher.Ui
             public RunningApp App;
             public IntPtr Icon, Initials, Name, Cpu, Mem;
             public string CpuText, MemText;
+            public string IconKey;   // its icon's key in Dock.Icons, null without one
             public bool ShownClosing;
             public int Alpha = -1;
             public int NameW, ValueH, NameH;
@@ -133,34 +134,28 @@ namespace Launcher.Ui
             r.MemW = Efl.evas_object_text_horiz_advance_get(r.Mem);
         }
 
-        /// <summary>The app's own icon from the registry, rounded like the dock's (IconPrep). False when it cannot be used.</summary>
+        /// <summary>
+        /// The app's own icon from the registry, rounded like the dock's (IconPrep). False when it cannot be used. It comes from the dock's
+        /// <see cref="Dock.Icons"/> when it was finished before at this side: an app that closes and starts again, or the rows made while the
+        /// cards come in, then only copy pixels.
+        /// </summary>
         private bool LoadIcon(Row r)
         {
             string path = r.App.IconPath;
             if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
             try
             {
-                Efl.evas_object_image_file_set(r.Icon, path, null);
-                if (Efl.evas_object_image_load_error_get(r.Icon) != Efl.EvasLoadErrorNone) return false;
-                int w, h;
-                Efl.evas_object_image_size_get(r.Icon, out w, out h);
-                if (w <= 0 || h <= 0 || w > 2048 || h > 2048) return false;
-                IntPtr data = Efl.evas_object_image_data_get(r.Icon, false);
-                if (data == IntPtr.Zero) return false;
-                uint[] src = Dock.ReadPixels(data, Efl.evas_object_image_stride_get(r.Icon), w, h);
+                string why;
                 // Drawn at IconSize (52): twice that is all the picture needs, a quarter of the work of the dock's 256.
-                uint[] done = IconPrep.Prepare(src, w, h, 2 * TaskLayout.IconSize);
-                int side = IconPrep.SideFor(w, h, 2 * TaskLayout.IconSize);
-                Efl.evas_object_image_alpha_set(r.Icon, true);
-                Efl.evas_object_image_size_set(r.Icon, side, side);
-                IntPtr dst = Efl.evas_object_image_data_get(r.Icon, true);
-                if (dst == IntPtr.Zero) return false;
-                Dock.WritePixels(dst, Efl.evas_object_image_stride_get(r.Icon), done, side);
-                Efl.evas_object_image_data_set(r.Icon, dst);
-                Efl.evas_object_image_data_update_add(r.Icon, 0, 0, side, side);
-                return true;
+                return Dock.PutRegistryIcon(r.Icon, path, 2 * TaskLayout.IconSize, false, out r.IconKey, out why) != null;
             }
-            catch (Exception ex) { _log("tasks: icon " + r.App.AppId + ": " + ex.Message); return false; }
+            catch (Exception ex) { r.IconKey = null; _log("tasks: icon " + r.App.AppId + ": " + ex.Message); return false; }
+        }
+
+        /// <summary>The rows still show their icons: they stay in <see cref="Dock.Icons"/> through the next sweep.</summary>
+        public void KeepIcons()
+        {
+            foreach (Row r in _rows) Dock.Icons.Keep(r.IconKey);
         }
 
         private static void DeleteRow(Row r)

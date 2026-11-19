@@ -555,7 +555,8 @@ namespace Launcher
                 if (CardsActive) { ResetIdle(); return; }
                 LeaveTasks(false);   // it was fading out: the dock comes back on the apps row
             }
-            // Lists Vetro wrote while a tile was being moved or the Control center was open: read now, before the dock comes in.
+            // Lists Vetro wrote while a tile was being moved or the Control center was open are read once the dock has gone
+            // (ReloadWhenHidden); a Home pressed before that reads them now, before the dock comes in.
             if (_reloadPending && !_ctl.IsActive) ReloadLists();
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
@@ -598,13 +599,33 @@ namespace Launcher
             Log("lists: the package database changed, asking Vetro rc=" + Libc.system(cmd));
         }
 
+        // A reload that waited for a moved tile, a held OK or the Control center runs a moment after the dock has gone, not in front of its
+        // next entrance: the frame that hides the window and the launch go first. If the dock comes back before, ShowDock reads the lists.
+        private const double ReloadAfterHideSeconds = 0.5;
+        private static IntPtr _reloadTimer;
+        private static readonly Efl.TaskCb ReloadAfterHideCb = OnReloadAfterHide;
+
+        private static void ReloadWhenHidden()
+        {
+            if (!_reloadPending || _reloadTimer != IntPtr.Zero) return;
+            _reloadTimer = Efl.ecore_timer_add(ReloadAfterHideSeconds, ReloadAfterHideCb, IntPtr.Zero);
+        }
+
+        private static byte OnReloadAfterHide(IntPtr data)
+        {
+            _reloadTimer = IntPtr.Zero;
+            try { if (_reloadPending && !_dockMapped && !DockActive) ReloadLists(); }
+            catch (Exception ex) { Log("lists after hide: " + ex); }
+            return 0;
+        }
+
         /// <summary>What an entry of a page is known by across a reload: its row key, or its slug.</summary>
         private static string EntryKey(AppEntry e) { return e.RowKey ?? "slug:" + e.Slug; }
 
         /// <summary>
-        /// Vetro wrote the three lists again (see <see cref="ListWatch"/>): they are read again and, when they differ from what the pages show,
-        /// all three pages are made again, the window resized for them. On screen the same page stays, its focus on the same entry. While the
-        /// user moves a tile, holds OK or has the Control center open it waits for the next time the dock comes on screen.
+        /// Vetro wrote the three lists again (see <see cref="ListWatch"/>): they are read again and the pages whose list differs from what
+        /// they show are made again (all three, the window resized for them, when the window's size changes). On screen the same page stays,
+        /// its focus on the same entry. While the user moves a tile, holds OK or has the Control center open it waits until the dock has gone.
         /// </summary>
         private static void ReloadLists()
         {
@@ -612,36 +633,76 @@ namespace Launcher
             if (_moveIndex >= 0 || _rowOkTimer != IntPtr.Zero || _tasksOn) { _reloadPending = true; Log("lists: reload waits until the dock is free"); return; }
             _reloadPending = false;
             AppEntry[] apps = LoadApps(_appsPath), inputs = LoadList(_inputsPath, Catalog.BuiltInInputs), all = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
-            if (ListWatch.Same(apps, _apps) && ListWatch.Same(inputs, _inputs) && ListWatch.Same(all, _allApps)) { Log("lists: read again, nothing changed"); return; }
+            bool sameApps = ListWatch.Same(apps, _apps), sameInputs = ListWatch.Same(inputs, _inputs), sameAll = ListWatch.Same(all, _allApps);
+            if (sameApps && sameInputs && sameAll) { Log("lists: read again, nothing changed"); return; }
             ProbeBegin("lists reload");
             long t0 = Stopwatch.GetTimestamp();
             bool shown = _ctl.IsActive, onAll = _ctl == _allCtl, onInputs = _ctl == _inputsCtl;
             AppEntry[] before = onAll ? _allApps : onInputs ? _inputs : _apps;
             int at = _ctl.FocusTarget, inputsCurrent = _inputsDock.CurrentIndex;
             string key = at >= 0 && at < before.Length ? EntryKey(before[at]) : null;
-            _appsDock.Destroy(); _inputsDock.Destroy(); _allDock.Destroy();
+            // The pages as they are: one whose list did not change is kept, with its controller and its place.
+            Dock appsDock = _appsDock, inputsDock = _inputsDock, allDock = _allDock, dockBefore = _dock;
+            Controller appsCtl = _appsCtl, inputsCtl = _inputsCtl, allCtl = _allCtl, ctlBefore = _ctl;
+            DockLayout appsLayout = _appsLayout, inputsLayout = _inputsLayout, allLayout = _allLayout;
+            bool editableBefore = _sourcesEditable;
             _apps = apps; _inputs = inputs; _allApps = all;
             PageLayouts();
-            BuildPages();
-            MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+            // The window keeps its size: an unchanged list is laid out exactly as before (as in RebuildPages), so its page is kept. An
+            // installed app usually changes All apps alone, and making the apps row and Sources again prepared every icon of them for nothing.
+            bool sameWindow = _appsLayout.WinX == appsLayout.WinX && _appsLayout.WinY == appsLayout.WinY && _appsLayout.WinW == appsLayout.WinW && _appsLayout.WinH == appsLayout.WinH;
+            bool keepApps = sameWindow && sameApps, keepAll = sameWindow && sameAll;
+            // Sources' hint says whether its inputs can go in the row, which depends on the row too.
+            bool keepInputs = sameWindow && sameInputs && RowEdit.CanAddFrom(_inputs, _apps) == editableBefore;
+            if (keepApps || keepInputs || keepAll)
+            {
+                if (keepApps) { _appsLayout = appsLayout; _appsCtl = appsCtl; _appsDock = appsDock; }
+                else { appsDock.Destroy(); BuildAppsPage(); }
+                if (keepInputs) { _inputsLayout = inputsLayout; _inputsCtl = inputsCtl; _inputsDock = inputsDock; }
+                else { inputsDock.Destroy(); BuildInputsPage(); }
+                if (keepAll) { _allLayout = allLayout; _allCtl = allCtl; _allDock = allDock; }
+                else { allDock.Destroy(); BuildAllPage(); }
+            }
+            else
+            {
+                appsDock.Destroy(); inputsDock.Destroy(); allDock.Destroy();
+                BuildPages();
+                MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+            }
             if (inputsCurrent < _inputs.Length) _inputsDock.CurrentIndex = inputsCurrent;   // the input in use still says so
             MarkInRow();
             MarkSources();
-            if (shown)
+            if (onAll ? keepAll : onInputs ? keepInputs : keepApps)
             {
-                Controller ctl = onAll ? _allCtl : onInputs ? _inputsCtl : _appsCtl;
-                AppEntry[] page = onAll ? _allApps : onInputs ? _inputs : _apps;
-                int focus = -1;
-                for (int i = 0; key != null && i < page.Length; i++) if (EntryKey(page[i]) == key) { focus = i; break; }
-                ActivatePage(ctl, onAll ? _allDock : onInputs ? _inputsDock : _appsDock);
-                ctl.SetFocus(focus >= 0 ? focus : Math.Max(0, Math.Min(at, page.Length - 1)));
-                _ctl.Rise(1f);
-                StartClock();
-                StartAnimator();
-                ResetIdle();
+                // The page in use was kept: it goes on untouched (an entrance under way included), and a new page beside it stays hidden.
+                _ctl = ctlBefore; _dock = dockBefore;
+                if (_appsDock != _dock) _appsDock.SetVisible(false);
             }
+            else
+            {
+                // As after a start: the apps row is the page at rest (a kept row was hidden while another page was in use).
+                _ctl = _appsCtl; _dock = _appsDock;
+                _dock.SetVisible(true);
+                if (shown)
+                {
+                    Controller ctl = onAll ? _allCtl : onInputs ? _inputsCtl : _appsCtl;
+                    AppEntry[] page = onAll ? _allApps : onInputs ? _inputs : _apps;
+                    int focus = -1;
+                    for (int i = 0; key != null && i < page.Length; i++) if (EntryKey(page[i]) == key) { focus = i; break; }
+                    ActivatePage(ctl, onAll ? _allDock : onInputs ? _inputsDock : _appsDock);
+                    ctl.SetFocus(focus >= 0 ? focus : Math.Max(0, Math.Min(at, page.Length - 1)));
+                    _ctl.Rise(1f);
+                    StartClock();
+                    StartAnimator();
+                    ResetIdle();
+                }
+            }
+            KeepIconsInUse();
             _dock.Apply(_ctl);
-            Log("lists: read again, pages made for " + _apps.Length + " tiles, " + _allApps.Length + " on All apps, in "
+            string made = keepApps || keepInputs || keepAll
+                ? (keepApps ? "" : " apps row") + (keepInputs ? "" : " Sources") + (keepAll ? "" : " All apps")
+                : " all three";
+            Log("lists: read again, made again:" + made + "; " + _apps.Length + " tiles, " + _allApps.Length + " on All apps, in "
                 + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
             ProbeHandlerDone();
         }
@@ -1023,16 +1084,46 @@ namespace Launcher
         /// <summary>The pages' objects (the apps row on screen, the other two hidden).</summary>
         private static void BuildPages()
         {
+            BuildAppsPage();
+            BuildInputsPage();
+            BuildAllPage();
+            _dock = _appsDock;
+        }
+
+        /// <summary>The apps row's objects, shown (a new Dock is visible until hidden).</summary>
+        private static void BuildAppsPage()
+        {
             _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
             _appsDock.Build();
+        }
+
+        /// <summary>The Sources page's objects, hidden. Its hint depends on the row (<see cref="RowEdit.CanAddFrom"/>).</summary>
+        private static void BuildInputsPage()
+        {
             _sourcesEditable = RowEdit.CanAddFrom(_inputs, _apps);
             _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, Dock.KeyHint(_sourcesEditable), false);
             _inputsDock.Build();
             _inputsDock.SetVisible(false);
+        }
+
+        /// <summary>All apps' objects, hidden.</summary>
+        private static void BuildAllPage()
+        {
             _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, Dock.KeyHint(true), false);
             _allDock.Build();
             _allDock.SetVisible(false);
-            _dock = _appsDock;
+        }
+
+        /// <summary>
+        /// After a build of the pages: the icon cache keeps what the three pages and the Task manager's rows show now, and lets go of the
+        /// icons of apps no page shows any more.
+        /// </summary>
+        private static void KeepIconsInUse()
+        {
+            _appsDock.KeepIcons(); _inputsDock.KeepIcons(); _allDock.KeepIcons();
+            if (_taskPanel != null) _taskPanel.KeepIcons();
+            int gone = Dock.Icons.Sweep();
+            if (gone > 0) Log("icons: " + gone + " no longer shown let go, " + Dock.Icons.Count + " kept");
         }
 
         /// <summary>
@@ -1043,7 +1134,7 @@ namespace Launcher
         private static void RebuildPages(AppEntry[] apps, int focus)
         {
             ProbeBegin("row rebuild");
-            long t0 = Stopwatch.GetTimestamp();   // how long a rebuild takes on a TV (the icons are prepared again) is not known yet
+            long t0 = Stopwatch.GetTimestamp();   // how long a rebuild takes on a TV (its icons come from Dock.Icons now) is not known yet
             bool onAll = _ctl == _allCtl, onInputs = _ctl == _inputsCtl;
             int allFocus = _allCtl.FocusTarget, inputsFocus = _inputsCtl.FocusTarget, inputsCurrent = _inputsDock.CurrentIndex;
             Dock inputsDock = _inputsDock, allDock = _allDock;
@@ -1060,8 +1151,7 @@ namespace Launcher
                 // three pages at each change froze the launcher for a moment, and All apps lost its place.
                 _inputsLayout = inputsLayout; _allLayout = allLayout; _inputsCtl = inputsCtl; _allCtl = allCtl;
                 _inputsDock = inputsDock; _allDock = allDock;
-                _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
-                _appsDock.Build();
+                BuildAppsPage();
                 if (onAll) { _appsDock.SetVisible(false); _ctl = _allCtl; _dock = _allDock; }
                 else if (onInputs) { _appsDock.SetVisible(false); _ctl = _inputsCtl; _dock = _inputsDock; }
                 else { _ctl = _appsCtl; _dock = _appsDock; _appsCtl.SetFocus(focus); }
@@ -1078,6 +1168,7 @@ namespace Launcher
             }
             MarkInRow();
             MarkSources();
+            KeepIconsInUse();
             _ctl.Rise(1f);
             _dock.Apply(_ctl);
             Log("row: pages rebuilt for " + _apps.Length + " tiles in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
@@ -1385,6 +1476,7 @@ namespace Launcher
                         if (chosen != null) Launch(chosen);
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
+                        ReloadWhenHidden();
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     ProbeTick(now, !more);
@@ -1404,6 +1496,7 @@ namespace Launcher
                     if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
                     if (_hideFor123) _hideFor123 = false;
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId);
+                    ReloadWhenHidden();
                 }
                 else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
                 if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
@@ -1896,6 +1989,8 @@ namespace Launcher
         }
 
         private static int _levelBeforeMute;
+        // Vol passed on to a receiver: waited for until input_keyevent has worked once, then started in the background (see KeyToolRun).
+        private static readonly KeyToolRun VolumePassOn = new KeyToolRun();
         private static void VolumeKey(Command key)
         {
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
@@ -1905,15 +2000,18 @@ namespace Launcher
             if (Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
             {
                 string native = key == Command.VolUp ? "XF86AudioRaiseVolume" : key == Command.VolDown ? "XF86AudioLowerVolume" : "XF86AudioMute";
-                int rc = Libc.system(KeyTool + native);
-                Log("volume: sound on output " + output + ", key passed to Samsung rc=" + rc);
+                bool detached = VolumePassOn.Works;
+                int rc = Libc.system(VolumePassOn.Command(KeyTool + native));
+                Log("volume: sound on output " + output + ", key passed to Samsung" + (detached ? " in the background" : "") + " rc=" + rc);
                 // input_keyevent is only known on 2021 firmware: if it is missing or refuses, Vetro changes the TV's level itself, as before,
                 // rather than leaving Vol dead.
-                if (rc == 0) return;
+                if (VolumePassOn.Passed(rc, detached)) return;
             }
             int volume;
             if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }
             bool muted = SamsungMuted();
+            // Waited for on purpose: it runs once per mute (the key ends Samsung's mute, so a held Vol does not repeat it), and it must reach
+            // Samsung before the level is set below.
             if (muted) { Log("unmute key rc=" + Libc.system(KeyTool + "XF86AudioMute")); muted = false; }
             int target = volume;
             if (key == Command.VolMute)
@@ -1955,9 +2053,10 @@ namespace Launcher
                         Log("command " + c);
                         switch (c)
                         {
-                            case Command.Show: _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
+                            // As with the remote's Home (RawHome): an open osd 123 closes, or it stayed drawn under the Dock until its idle time.
+                            case Command.Show: ClosePad(); _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
-                            case Command.Toggle: _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
+                            case Command.Toggle: ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
                             case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
                             case Command.Pad: TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
@@ -2022,10 +2121,13 @@ namespace Launcher
         private static IntPtr _guardTimer;
         private static readonly Efl.TaskCb GuardSpawnCb = OnGuardSpawn;
 
+        /// <summary>The osd 123 fades out if it is open (Home and the fifo's show and toggle: the Dock must not open over it).</summary>
+        private static void ClosePad() { if (_pad != null && _pad.IsShown) _pad.Close(); }
+
         /// <summary>The Home key read from the input device: the dock opens or closes (or the custom launcher's app opens), and the guard is armed.</summary>
         private static void RawHome()
         {
-            if (_pad != null && _pad.IsShown) _pad.Close();
+            ClosePad();
             double now = Efl.ecore_time_get();
             // The focused dock also gets XF86Home through evas and hides itself: count it once.
             if (now - _lastHome < HomeDebounceSeconds) return;

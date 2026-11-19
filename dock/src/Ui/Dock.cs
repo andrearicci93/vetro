@@ -40,6 +40,7 @@ namespace Launcher.Ui
         private readonly IntPtr[] _icon;
         private readonly IntPtr[] _initials;       // placeholder letters for icons that failed to load
         private readonly int[] _initialsW, _initialsH;   // their size, measured once (the letters never change)
+        private readonly string[] _iconKey;        // each registry icon's key in Icons (null: a pre-made icon or none)
         private int _moving = -1;                  // the tile being moved (hold OK): its name reads "‹  Name  ›"
 
         private readonly Box[] _iconBox;
@@ -82,6 +83,7 @@ namespace Launcher.Ui
             _initials = new IntPtr[items.Length];
             _initialsW = new int[items.Length];
             _initialsH = new int[items.Length];
+            _iconKey = new string[items.Length];
             _iconBox = new Box[items.Length];
             _iconAlpha = new int[items.Length];
             _glowRgb = new int[items.Length];
@@ -379,6 +381,7 @@ namespace Launcher.Ui
             int m = _initialsW[i]; _initialsW[i] = _initialsW[j]; _initialsW[j] = m;
             m = _initialsH[i]; _initialsH[i] = _initialsH[j]; _initialsH[j] = m;
             int g = _glowRgb[i]; _glowRgb[i] = _glowRgb[j]; _glowRgb[j] = g;
+            string k = _iconKey[i]; _iconKey[i] = _iconKey[j]; _iconKey[j] = k;
             _iconBox[i].W = _iconBox[j].W = -1; _iconAlpha[i] = _iconAlpha[j] = -1;
             _hlRgb = _hlRgb2 = -1;
             _fader.Invalidate();
@@ -484,29 +487,76 @@ namespace Launcher.Ui
         {
             try
             {
-                Efl.evas_object_image_file_set(img, e.IconPath, null);
-                if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) { _log("registry icon not loadable: " + e.Slug); return false; }
-                int w, h;
-                Efl.evas_object_image_size_get(img, out w, out h);
-                if (w <= 0 || h <= 0 || w > 2048 || h > 2048) { _log("registry icon has odd size " + w + "x" + h + ": " + e.Slug); return false; }
-                IntPtr data = Efl.evas_object_image_data_get(img, false);
-                if (data == IntPtr.Zero) { _log("registry icon has no pixels: " + e.Slug); return false; }
-                uint[] src = ReadPixels(data, Efl.evas_object_image_stride_get(img), w, h);
-                int hue = IconPrep.DominantColor(src, w, h);
-                if (hue >= 0) _glowRgb[idx] = hue;
-                uint[] done = IconPrep.Prepare(src, w, h);
-                int side = IconPrep.SideFor(w, h);
-                Efl.evas_object_image_alpha_set(img, true);
-                Efl.evas_object_image_size_set(img, side, side);
-                IntPtr dst = Efl.evas_object_image_data_get(img, true);
-                if (dst == IntPtr.Zero) { _log("registry icon: no write buffer: " + e.Slug); return false; }
-                WritePixels(dst, Efl.evas_object_image_stride_get(img), done, side);
-                Efl.evas_object_image_data_set(img, dst);
-                Efl.evas_object_image_data_update_add(img, 0, 0, side, side);
+                string why;
+                PreparedIcon p = PutRegistryIcon(img, e.IconPath, IconPrep.MaxSide, true, out _iconKey[idx], out why);
+                if (p == null) { _log("registry icon " + why + ": " + e.Slug); return false; }
+                if (p.Hue >= 0) _glowRgb[idx] = p.Hue;
                 if (DumpIconsTo != null) _log("dump " + e.Slug + ": " + (Efl.evas_object_image_save(img, Path.Combine(DumpIconsTo, e.Slug + ".png"), null, "compress=5") ? "ok" : "failed"));
                 return true;
             }
-            catch (Exception ex) { _log("registry icon error (" + e.Slug + "): " + ex.Message); return false; }
+            catch (Exception ex) { _iconKey[idx] = null; _log("registry icon error (" + e.Slug + "): " + ex.Message); return false; }
+        }
+
+        /// <summary>
+        /// The registry icons already finished, shared by the three pages and the Task manager's rows (which ask for a smaller side). A page made
+        /// again takes its icons from here; the launcher sweeps it after each build of the pages (see <see cref="KeepIcons"/>).
+        /// </summary>
+        internal static readonly IconCache Icons = new IconCache(IconCache.DefaultMax);
+
+        /// <summary>The key of <paramref name="path"/> in <see cref="Icons"/>, or null when the file cannot be looked at from here (it is then never cached:
+        /// EFL still decides whether it loads, as before).</summary>
+        private static string IconKey(string path, int maxSide)
+        {
+            try
+            {
+                var file = new FileInfo(path);
+                return file.Exists ? IconCache.Key(path, file.LastWriteTimeUtc.Ticks, file.Length, maxSide) : null;
+            }
+            catch (Exception) { return null; }
+        }
+
+        /// <summary>
+        /// Puts the registry icon at <paramref name="path"/>, finished at <paramref name="maxSide"/>, into <paramref name="img"/>. The same file
+        /// finished at the same side before comes from <see cref="Icons"/>: only its pixels are copied into the new image object, with no PNG
+        /// decoded and no IconPrep run. <paramref name="glow"/>: take the glow colour too (the dock; the Task manager has no glow).
+        /// Returns null, with the reason in <paramref name="why"/> and <paramref name="key"/> null, when the icon cannot be used: the image
+        /// object is then left unspecified and the caller draws its fallback.
+        /// </summary>
+        internal static PreparedIcon PutRegistryIcon(IntPtr img, string path, int maxSide, bool glow, out string key, out string why)
+        {
+            key = null; why = null;
+            string k = IconKey(path, maxSide);
+            PreparedIcon p;
+            if (!Icons.TryGet(k, out p))
+            {
+                Efl.evas_object_image_file_set(img, path, null);
+                if (Efl.evas_object_image_load_error_get(img) != Efl.EvasLoadErrorNone) { why = "not loadable"; return null; }
+                int w, h;
+                Efl.evas_object_image_size_get(img, out w, out h);
+                if (w <= 0 || h <= 0 || w > 2048 || h > 2048) { why = "has odd size " + w + "x" + h; return null; }
+                IntPtr data = Efl.evas_object_image_data_get(img, false);
+                if (data == IntPtr.Zero) { why = "has no pixels"; return null; }
+                uint[] src = ReadPixels(data, Efl.evas_object_image_stride_get(img), w, h);
+                int hue = glow ? IconPrep.DominantColor(src, w, h) : -1;
+                p = new PreparedIcon(IconPrep.Prepare(src, w, h, maxSide), IconPrep.SideFor(w, h, maxSide), hue);
+                Icons.Put(k, p);
+            }
+            // Written into the object's own buffer: the cached pixels are only read, so every page that shows the icon can copy them again.
+            Efl.evas_object_image_alpha_set(img, true);
+            Efl.evas_object_image_size_set(img, p.Side, p.Side);
+            IntPtr dst = Efl.evas_object_image_data_get(img, true);
+            if (dst == IntPtr.Zero) { why = "has no write buffer"; return null; }
+            WritePixels(dst, Efl.evas_object_image_stride_get(img), p.Pixels, p.Side);
+            Efl.evas_object_image_data_set(img, dst);
+            Efl.evas_object_image_data_update_add(img, 0, 0, p.Side, p.Side);
+            key = k;
+            return p;
+        }
+
+        /// <summary>This page still shows its registry icons: they stay in <see cref="Icons"/> through the next sweep (a page that was not made again).</summary>
+        public void KeepIcons()
+        {
+            foreach (string k in _iconKey) Icons.Keep(k);
         }
 
         /// <summary>Takes the glow colour from an icon that was loaded from a file (the dock's own icons).</summary>

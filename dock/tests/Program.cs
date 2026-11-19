@@ -1075,6 +1075,89 @@ namespace Launcher.Tests
                 T.True(threw, "a buffer smaller than the size is refused");
             });
 
+            T.Run("icon cache: a page made again copies finished icons; what no page shows goes at the sweep", () =>
+            {
+                const string p = "/opt/usr/apps/x/shared/res/icon.png";
+                string k = IconCache.Key(p, 100, 2000, IconPrep.MaxSide);
+                T.Eq(IconCache.Key(p, 100, 2000, IconPrep.MaxSide), k, "the same file at the same side: the same key");
+                T.True(IconCache.Key(p, 101, 2000, IconPrep.MaxSide) != k, "a newer date (an app update wrote its icon again): another key");
+                T.True(IconCache.Key(p, 100, 2001, IconPrep.MaxSide) != k, "another length: another key");
+                T.True(IconCache.Key(p, 100, 2000, 104) != k, "the Task manager's side (2 x 52): another key");
+                T.True(IconCache.Key("/opt/usr/apps/y/shared/res/icon.png", 100, 2000, IconPrep.MaxSide) != k, "another file: another key");
+                T.True(IconCache.Key(null, 1, 1, 1) == null && IconCache.Key("", 1, 1, 1) == null, "no path: no key");
+
+                var c = new IconCache(8);
+                PreparedIcon got;
+                T.True(!c.TryGet(k, out got) && got == null, "an empty cache has nothing");
+                T.True(!c.TryGet(null, out got), "a null key is never found");
+                var icon = new PreparedIcon(new uint[4], 2, 0x3366CC);
+                c.Put(k, icon);
+                c.Put(null, icon);
+                T.Eq(c.Count, 1, "a null key is not stored");
+                T.True(c.TryGet(k, out got) && got == icon, "stored: the same pixels come back");
+                T.Eq(got.Hue, 0x3366CC, "with the glow colour taken when it was made");
+                T.True(!c.TryGet(IconCache.Key(p, 101, 2000, IconPrep.MaxSide), out got), "a newer file is a miss");
+
+                // A build of the pages: what was asked for, stored or kept stays, the rest goes.
+                string a = IconCache.Key("/a.png", 1, 1, IconPrep.MaxSide), b = IconCache.Key("/b.png", 1, 1, IconPrep.MaxSide), t = IconCache.Key("/a.png", 1, 1, 104);
+                c.Put(a, icon); c.Put(b, icon); c.Put(t, icon);
+                T.Eq(c.Sweep(), 0, "a sweep right after the build drops nothing: all were used in it");
+                T.Eq(c.Count, 4, "four kept");
+                c.TryGet(a, out got);          // a page made again asks for it
+                c.Keep(t);                     // a Task manager row still shows it
+                c.Keep(IconCache.Key("/never.png", 1, 1, 1));
+                c.Keep(null);
+                T.Eq(c.Count, 4, "keeping an unknown or null key adds nothing");
+                T.Eq(c.Sweep(), 2, "the next sweep drops the two nothing used (b and the first icon)");
+                T.True(c.TryGet(a, out got) && c.TryGet(t, out got), "the one asked for and the one kept stay");
+                T.True(!c.TryGet(b, out got) && !c.TryGet(k, out got), "the others went");
+                c.Put(k, icon);
+                T.Eq(c.Sweep(), 0, "stored since the last sweep: kept");
+
+                // Bounded between two sweeps: a full cache drops the icon used longest ago.
+                var small = new IconCache(3);
+                string[] ks = { "/1", "/2", "/3", "/4", "/5" };
+                small.Put(ks[0], icon); small.Put(ks[1], icon);
+                small.Sweep();                                 // round 1: both were used in round 0
+                small.TryGet(ks[1], out got);                  // used again in round 1
+                small.Put(ks[2], icon);
+                small.Put(ks[3], icon);                        // full: /1, the one used longest ago, goes
+                T.Eq(small.Count, 3, "never more than the bound");
+                T.True(!small.TryGet(ks[0], out got), "the icon used longest ago made room");
+                T.True(small.TryGet(ks[1], out got) && small.TryGet(ks[2], out got) && small.TryGet(ks[3], out got), "the recent ones stay");
+                small.Put(ks[3], icon);
+                T.Eq(small.Count, 3, "storing a key again replaces it, nothing is dropped");
+                small.Put(ks[4], icon);
+                T.Eq(small.Count, 3, "still bounded when every entry was used in the same round");
+                bool refused = false;
+                try { new IconCache(0); } catch (ArgumentOutOfRangeException) { refused = true; }
+                T.True(refused, "a cache must hold at least one icon");
+                T.True(IconCache.DefaultMax * IconPrep.MaxSide * IconPrep.MaxSide * 4L <= 8L * 1024 * 1024, "the default bound is at most 8 MB of dock icons");
+            });
+
+            T.Run("vol on a receiver: input_keyevent is waited for until it has worked, then runs in the background", () =>
+            {
+                const string line = "/usr/bin/input_keyevent XF86AudioRaiseVolume";
+                var run = new KeyToolRun();
+                T.True(!run.Works, "not known to work before the first call");
+                T.Eq(run.Command(line), line, "the first call is waited for: its exit code decides the fallback");
+                T.True(!run.Passed(127, false), "the tool missing (127): not passed, Vetro sets the level itself");
+                T.Eq(run.Command(line), line, "still waited for after a failure");
+                T.True(!run.Passed(1, false), "the tool refusing: not passed");
+                T.True(!run.Works, "a missing or refusing tool never goes to the background");
+                T.Eq(run.Command(line), line, "so every press keeps the fallback");
+                T.True(run.Passed(0, false), "the tool answered 0: passed");
+                T.True(run.Works, "known to work from now on");
+                T.Eq(run.Command(line), line + " >/dev/null 2>&1 &", "the next press is started in the background (nothing waited for)");
+                T.Eq(run.Command(line), line + KeyToolRun.Detach, "the suffix ListWatch uses");
+                T.True(run.Passed(0, true), "a background start that worked: passed");
+                T.True(!run.Passed(-1, true), "the shell could not even start: not passed, the level is set by Vetro");
+                T.True(run.Works, "a failed background start does not undo what the tool proved");
+                var other = new KeyToolRun();
+                other.Passed(0, true);
+                T.True(!other.Works, "a 0 from a background start proves nothing about the tool");
+            });
+
             T.Run("design: ring and glow share the icon's corner rule", () =>
             {
                 // One rule for every shape: the radius is a percentage of the side, so it grows with the icon.

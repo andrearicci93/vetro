@@ -20,7 +20,9 @@ namespace Launcher.Native
         private const string Lib = "libcapi-network-bluetooth.so.0";
         private const int ProfileA2dp = 2;
 
+        // The C callback returns a C99 bool (one byte); a plain bool would be marshalled as a 4-byte BOOL.
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        [return: MarshalAs(UnmanagedType.U1)]
         private delegate bool BondedCb(IntPtr deviceInfo, IntPtr userData);
 
         [DllImport(Lib, EntryPoint = "bt_initialize")] private static extern int BtInitialize();
