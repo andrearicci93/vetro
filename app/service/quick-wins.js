@@ -3,7 +3,16 @@
 // or stops the TV from changing itself. Verified against the Q80A firmware (T-NKM2DEUC-2301.1)
 // by reading its files; the effect of each change on a running TV has not been measured.
 //
-//   firmware  Support > Software Update > Auto update. A vconf int: 1 = on, 0 = off.
+//   firmware  Not just "Auto update". The menu value (db/menu/support/softwareupdate/autoupdate) is read by the
+//             SWU daemons, but it does not stop the background loop: SWUAutoUpgrade still chooses a background
+//             strategy when it is 0, and three other services never look at it at all (app/package updates,
+//             EMP/app-binary updates, VD system components). So this win blocks the whole update stack while it is
+//             on: the SWU units, the Web App Service background updater, the EMP/app-binary manager, the VD system
+//             update manager, the preview updater and the boot-time staged-image apply; it also turns the two vconf
+//             switches off and removes the download markers. Masking is --runtime (the rootfs is mounted ro) and is
+//             re-applied after every boot. swu-standalone.* is left alone: it is the USB recovery path.
+//             Evidence: topics/firmware-update-channels.md in the private wiki (dump + live Q80A, 2026-11-19);
+//             not tried on a TV. A firmware update that lands anyway replaces everything this win did.
 //   multiscreen  Samsung's own unit com.samsung.tv.multiscreen.service has ConditionPathExists=! on
 //             .../data/disable_preloading, so that file stops the preload at boot. The first Multi View
 //             after that starts cold. Nothing is replaced: removing the file puts everything back.
@@ -49,6 +58,19 @@ var BTIME_RE = /^btime (\d+)$/m;
 
 var FILE = '/opt/usr/home/owner/share/vetro-quick-wins.json';
 var AUTOUPDATE = 'db/menu/support/softwareupdate/autoupdate';
+// Every service that can change the TV's own software. SWU: OTA/OTN firmware (timer, path, verifier, downloader,
+// installer). was-background-update: app/package updates pushed in the background. fw-update-service and
+// appbinary-manager: app-binary (EMP) downloads. vdsystem-update-manager: VD system components. preview-updater:
+// Samsung's preview app. bootmode-system-update: applies an already staged image at boot.
+var FWUNITS = ['swu-auto-upgrade.timer', 'swu-auto-upgrade.path', 'swu-auto-upgrade.service',
+    'swu-verifier-tv.timer', 'swu-verifier-tv.service', 'swu-core-tv.service', 'swu-service.service',
+    'was-background-update.path', 'was-background-update.service', 'fw-update-service.path', 'fw-update-service.service',
+    'appbinary-manager.service', 'vdsystem-update-manager.timer', 'vdsystem-update-manager.service',
+    'com.samsung.tv.preview-updater.service', 'bootmode-system-update.service'];
+// Present on 6.0 and later; missing keys stay untouched.
+var FWSERVICE = 'db/fw-update-service/service_onoff';
+// Files the update stacks look at before they download or install. All on tmpfs; removing them is harmless.
+var FWMARKERS = ['/tmp/fw_update_ready', '/tmp/.fw_download_ready', '/run/user/5001/.swu-auto-upgrade-launch'];
 var MULTISCREEN_ID = 'com.samsung.tv.multiscreen';
 var MULTISCREEN_FLAG = '/home/owner/apps_rw/com.samsung.tv.multiscreen/data/disable_preloading';
 var AMBIENT_ID = 'org.tizen.ambientapp';
@@ -93,7 +115,7 @@ var AIRPLAY_OFF = 'set -e\ntouch ' + AIRPLAY_FLAGS.join(' ') + '\n' +
 var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS[1] + '.service >/dev/null 2>&1\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl start --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\nsleep 1\ntrue';
 var IDS = ['firmware', 'multiscreen', 'ambient', 'telemetry', 'airplay'];
-var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000;
+var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000, FIRMWARE_RETRY_MS = 30000;
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function check(r) {
@@ -109,6 +131,8 @@ function stop(id) {
 
 var READ = [
     'echo "AU|$(vconftool get ' + AUTOUPDATE + ' 2>&1)"',
+    'echo "FWS|$(vconftool get ' + FWSERVICE + ' 2>&1)"',
+    'systemctl show -p Id -p LoadState -p ActiveState ' + FWUNITS.join(' ') + ' 2>/dev/null | awk -F= \'/^Id=/{id=$2} /^LoadState=/{l=$2} /^ActiveState=/{print "LS|" id "|" l "|" $2}\'',
     '[ -e ' + MULTISCREEN_FLAG + ' ] && echo "MS|1" || echo "MS|0"',
     running(MULTISCREEN_ID) + ' && echo "MR|1" || echo "MR|0"',
     running(AMBIENT_ID) + ' && echo "AR|1" || echo "AR|0"',
@@ -124,11 +148,13 @@ var READ = [
 
 // Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
-    var out = {autoupdate: null, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
+    var out = {autoupdate: null, fwService: null, fwUnits: {}, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
         airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
+        else if (f[0] === 'FWS') { var n = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (n) out.fwService = Number(n[1]); }
+        else if (f[0] === 'LS' && f[1]) out.fwUnits[f[1]] = {load: f[2] || '', active: f[3] || ''};
         else if (f[0] === 'MS') out.multiscreenFlag = f[1] === '1';
         else if (f[0] === 'MR') out.multiscreenRunning = f[1] === '1';
         else if (f[0] === 'AR') out.ambientRunning = f[1] === '1';
@@ -175,11 +201,14 @@ Wins.prototype.load = function () {
         var o = JSON.parse(this.fs.readFileSync(this.file, 'utf8'));
         return {
             hbbtv: o.hbbtv === true, ambient: o.ambient === true, telemetry: o.telemetry === true, telemetryDns: o.telemetryDns === true, airplay: o.airplay === true,
+            firmware: o.firmware === true,
             telemetryBoot: typeof o.telemetryBoot === 'string' ? o.telemetryBoot : null,
             autoupdatePrevious: Number.isInteger(o.autoupdatePrevious) && o.autoupdatePrevious > 0 ? o.autoupdatePrevious : null,
+            fwServicePrevious: Number.isInteger(o.fwServicePrevious) ? o.fwServicePrevious : null,
+            firmwareBoot: typeof o.firmwareBoot === 'string' ? o.firmwareBoot : null,
             ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null
         };
-    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, telemetryBoot: null, autoupdatePrevious: null, ambientBoot: null}; }
+    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null}; }
 };
 Wins.prototype.save = function (patch) {
     var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
@@ -201,7 +230,7 @@ Wins.prototype.read = function () {
     var dnsAsked = mine.telemetry && self.dns ? self.dns.status().then(function (d) { return !!(d.enabled && d.applied && d.domains.indexOf(TELEMETRY_HOST) >= 0); }, function () { return null; }) : null;
     return read.then(function (r) {
         var s = parse(check(r));
-        var firmware = s.autoupdate === null ? {status: 'unknown'} : {status: s.autoupdate === 0 ? 'on' : 'off', value: s.autoupdate};
+        var firmware = s.autoupdate === null ? {status: 'unknown'} : fwState(s);
         var multiscreen = s.multiscreenFlag === null ? {status: 'unknown'} : {status: s.multiscreenFlag ? 'on' : 'off', running: s.multiscreenRunning === true};
         var ambient = s.ambientRunning === null ? {status: 'unknown'}
             : {status: !mine.ambient ? 'off' : s.ambientRunning ? 'partial' : 'on', running: s.ambientRunning, chosen: mine.ambient};
@@ -229,27 +258,90 @@ Wins.prototype.apply = function (id, on) {
     return task.then(function (result) { self.busy = false; self.changing = null; return result; }, function (e) { self.busy = false; self.changing = null; throw e; });
 };
 
-// Auto update: readback after the write, and the previous value is put back if the TV does not confirm it.
+// The units cannot be renamed (the rootfs is mounted ro) and a plain "disable" is overridden by their targets, so they
+// are masked at runtime: /run/systemd/system is tmpfs, systemd honours it at once, and the mask is gone on reboot
+// (bootFirmware puts it back). swu-standalone stays out of the list: it is the USB recovery path.
+function fwState(s) {
+    var known = 0, masked = 0, running = 0;
+    FWUNITS.forEach(function (u) {
+        var x = s.fwUnits && s.fwUnits[u];
+        if (!x || !x.load || x.load === 'not-found') return;
+        known++;
+        if (x.load === 'masked') masked++;
+        if (x.active === 'active' || x.active === 'activating') running++;
+    });
+    // No service_onoff key means this TV has no EMP/app-binary service: that half is then not required.
+    var serviceOk = s.fwService === null || s.fwService === 0;
+    var on = s.autoupdate === 0 && serviceOk && (known === 0 || masked === known);
+    var off = s.autoupdate !== 0 && masked === 0;
+    return {status: s.autoupdate === null ? 'unknown' : on ? 'on' : off ? 'off' : 'partial',
+        value: s.autoupdate, masked: masked, units: known, running: running};
+}
+
+function fwMaskScript(stop) {
+    var stopLine = stop ? 'systemctl stop --no-block $u >/dev/null 2>&1; ' : '';
+    return 'set +e\n' +
+        'for u in ' + FWUNITS.join(' ') + '; do ' + stopLine +
+        'systemctl mask --runtime $u >/dev/null 2>&1 || systemctl mask $u >/dev/null 2>&1; done\n' +
+        'rm -f ' + FWMARKERS.join(' ') + ' 2>/dev/null\n' +
+        'true';
+}
+function fwUnmaskScript() {
+    return 'set +e\n' +
+        'systemctl unmask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1\n' +
+        'systemctl reset-failed ' + FWUNITS.join(' ') + ' >/dev/null 2>&1\n' +
+        // Start again what the boot sequence would have started; the rest comes back through D-Bus when needed.
+        'systemctl start --no-block swu-auto-upgrade.timer swu-verifier-tv.service was-background-update.path ' +
+        'fw-update-service.path vdsystem-update-manager.timer appbinary-manager.service >/dev/null 2>&1\n' +
+        'true';
+}
+function fwSet(key, value) {
+    return 'vconftool set -f -t int ' + key + ' ' + value + ' >/dev/null 2>&1';
+}
+
+// One read for the values that must be remembered, then the lock or the undo, then a readback. A failure on the way
+// in puts the previous switches and masks back; the error says what happened.
 Wins.prototype.firmware = function (on) {
     var self = this;
-    function get() {
-        return self.execute(wrap('vconftool get ' + AUTOUPDATE + ' 2>&1'), 6000).then(function (r) {
-            var m = VCONF_INT32_RE.exec(check(r));
-            if (!m) throw Error('Auto update setting unreadable');
-            return Number(m[1]);
+    function current() { return self.execute(wrap(READ), 15000).then(function (r) { return parse(check(r)); }); }
+    function setKey(key, value) { return self.execute(wrap(fwSet(key, value)), 6000); }
+    function lock(before) {
+        var svc = before.fwService !== null ? '\n' + fwSet(FWSERVICE, 0) : '';
+        return self.execute(wrap(fwMaskScript(true) + '\n' + fwSet(AUTOUPDATE, 0) + svc + '\ntrue'), 30000).then(function (r) {
+            if (r.exit_code || r.timed_out) throw Error('The TV refused the update lock');
         });
     }
-    function set(v) { return self.execute(wrap('vconftool set -f -t int ' + AUTOUPDATE + ' ' + v), 6000).then(check); }
-    return get().then(function (before) {
-        var target = on ? 0 : (self.load().autoupdatePrevious || 1);
-        if (before === target || (!on && before > 0)) return {id: 'firmware', changed: false, value: before};
-        if (on && before > 0) self.save({autoupdatePrevious: before});
-        return set(target).then(get).then(function (after) {
-            if (after !== target) throw Error('The TV did not keep the new value');
-            return {id: 'firmware', changed: true, previous: before, value: after};
+    function undo() {
+        var mine = self.load(), auto = mine.autoupdatePrevious || 1;
+        return self.execute(wrap(fwUnmaskScript()), 30000).then(function () { return setKey(AUTOUPDATE, auto); }).then(function () {
+            return mine.fwServicePrevious !== null ? setKey(FWSERVICE, mine.fwServicePrevious) : null;
+        });
+    }
+    return current().then(function (before) {
+        var state = fwState(before);
+        if (on ? state.status === 'on' : state.status === 'off')
+            return {id: 'firmware', changed: false, status: state.status, value: before.autoupdate};
+        if (on) self.save({firmware: true, autoupdatePrevious: before.autoupdate > 0 ? before.autoupdate : self.load().autoupdatePrevious,
+            fwServicePrevious: before.fwService});
+        else self.save({firmware: false, firmwareBoot: null});
+        return (on ? lock(before) : undo()).then(current).then(function (after) {
+            var st = fwState(after);
+            if (on && st.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
+            if (!on && st.status === 'on') throw Error('The TV did not end the lock');
+            return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate};
         }).catch(function (e) {
-            return set(before).then(get).then(function (restored) {
-                throw Error(e.message + ' · ' + (restored === before ? 'previous value restored' : 'restore not confirmed'));
+            // Put the switches back the way they were found: undo if the lock failed, lock again if the undo failed.
+            var back = on
+                ? self.execute(wrap(fwUnmaskScript()), 30000).then(function () {
+                    return setKey(AUTOUPDATE, before.autoupdate).then(function () {
+                        return before.fwService !== null && before.fwService !== undefined ? setKey(FWSERVICE, before.fwService) : null;
+                    });
+                })
+                : self.execute(wrap(fwMaskScript(true) + '\n' + fwSet(AUTOUPDATE, 0) + '\ntrue'), 30000);
+            return back.then(function () { return current(); }).then(function (now) {
+                var restored = now.autoupdate === before.autoupdate && (before.fwService === null || now.fwService === before.fwService) &&
+                    (on ? fwState(now).masked === fwState(before).masked : fwState(now).status === fwState(before).status);
+                throw Error(e.message + (restored ? ' · previous state restored' : ' · restore not confirmed'));
             }, function () { throw Error(e.message + ' · restore not confirmed'); });
         });
     });
@@ -328,7 +420,29 @@ Wins.prototype.airplay = function (on) {
 Wins.prototype.boot = function (hbbtv) {
     var self = this, mine = this.load(), did = [], id = this.bootId();
     var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function () {}) : Promise.resolve();
-    return Promise.all([start, self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, did)]).then(function () { return did; });
+    return Promise.all([start, self.bootFirmware(mine, id, did), self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, did)]).then(function () { return did; });
+};
+
+// Runtime masks live in /run, so after a boot the update units are free again: the lock is applied once per boot,
+// before the SWU timer (OnActiveSec=120) and the background updater can do anything. No vconf write: that persisted.
+Wins.prototype.bootFirmware = function (mine, id, did) {
+    var self = this;
+    if (!mine.firmware || (id && mine.firmwareBoot === id)) return Promise.resolve();
+    // bootLock (as soon as the agent is up) and boot (after the launcher) can both arrive: one run is enough.
+    if (self.fwBootBusy) return Promise.resolve();
+    self.fwBootBusy = true;
+    function chosen() { return self.changing !== 'firmware' && self.load().firmware; }
+    function pass() {
+        if (!chosen()) return Promise.resolve(false);
+        return self.execute(wrap(fwMaskScript(true)), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
+    }
+    return pass().then(function (first) {
+        return self.sleep(FIRMWARE_RETRY_MS).then(pass).then(function (second) {
+            if (!(first || second) || !chosen()) return;
+            did.push('firmware');
+            if (id) self.save({firmwareBoot: id});
+        });
+    }).then(function (v) { self.fwBootBusy = false; return v; }, function (e) { self.fwBootBusy = false; throw e; });
 };
 
 Wins.prototype.bootAirplay = function (mine, did) {
@@ -352,6 +466,9 @@ Wins.prototype.bootAirplay = function (mine, did) {
     }
     return poll();
 };
+
+// The update units can start before the launcher is ready, so this half runs as soon as the root agent is up.
+Wins.prototype.bootLock = function () { var did = []; return this.bootFirmware(this.load(), this.bootId(), did).then(function () { return did; }); };
 
 // Some of these services start a minute or more after the TV answers, so the stop is repeated once.
 Wins.prototype.bootTelemetry = function (mine, id, did) {
@@ -398,5 +515,5 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
     return poll();
 };
 
-module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, FILE: FILE, AUTOUPDATE: AUTOUPDATE, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
+module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, FILE: FILE, AUTOUPDATE: AUTOUPDATE, FWSERVICE: FWSERVICE, FWUNITS: FWUNITS, FWMARKERS: FWMARKERS, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
     AIRPLAY_FLAGS: AIRPLAY_FLAGS, AIRPLAY_UNITS: AIRPLAY_UNITS, currentBoot: currentBoot};

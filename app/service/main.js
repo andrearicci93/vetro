@@ -1420,6 +1420,8 @@ var tvStateTimer=setInterval(function(){
 // service cannot look into): its status read (a root command of about ten processes) is skipped at every boot.
 var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRestoreAttempts>BOOT_RETRIES){clearInterval(dnsRestoreTimer);return}if(typeof dnsFilter.neverUsed==='function'&&dnsFilter.neverUsed()){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
 
+// The update lock does not wait for the launcher: the SWU timer and the background updater can start before it.
+var lockBootAttempts=0;var lockBootTimer=setInterval(function(){if(++lockBootAttempts>BOOT_RETRIES){clearInterval(lockBootTimer);return}if(platform.status().agent.connected){clearInterval(lockBootTimer);wins.bootLock().catch(function(){})}},5000);if(lockBootTimer.unref)lockBootTimer.unref();
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
 var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){});keyGuides.boot().catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();

@@ -170,7 +170,7 @@ Restore.prototype.plan = function () {
         [['telemetry', 'Viewing-data and usage-log services', w && w.telemetry && w.telemetry.status !== 'off', 'Starts them again and lifts the DNS block Vetro added for the usage-log host.'],
             ['ambient', 'Ambient autostart', w && w.ambient && w.ambient.status !== 'off', 'Lets Samsung’s own start of the screen saver run again.'],
             ['multiscreen', 'Multi View autostart', w && w.multiscreen && w.multiscreen.status === 'on', 'Removes the preload file, so Multi View loads at boot again.'],
-            ['firmware', 'Automatic firmware updates', w && w.firmware && w.firmware.status === 'on', 'Puts the automatic update value back to what it was.'],
+            ['firmware', 'Firmware and software updates', w && w.firmware && w.firmware.status !== 'off', 'Unmasks the update services and puts the automatic update value back to what it was.'],
             ['airplay', 'AirPlay receiver', w && w.airplay && w.airplay.status !== 'off', 'Removes the do-not-start files, so the AirPlay receiver can start again.']
         ].filter(function (c) {
             // A TV without the AirPlay receiver has nothing to put back, so it gets no row.
@@ -263,7 +263,7 @@ Restore.prototype.run = function () {
             ['win-telemetry', function () { return self.runWin('telemetry', 'Services started again; the DNS block Vetro added is lifted.'); }],
             ['win-ambient', function () { return self.runWin('ambient', 'Samsung’s own Ambient start runs again.'); }],
             ['win-multiscreen', function () { return self.runWin('multiscreen', 'The preload file is removed.'); }],
-            ['win-firmware', function () { return self.runWin('firmware', 'Automatic update value put back.'); }],
+            ['win-firmware', function () { return self.runWin('firmware', 'Update lock removed and the automatic update value put back.'); }],
             ['win-airplay', function () { return self.runWin('airplay', 'The AirPlay receiver can start again.'); }],
             ['keep-removed', function () { return self.runKeepRemoved(); }],
             ['hbbtv', function () { return self.runHbbtv(); }],

@@ -66,7 +66,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(tracking,/Disable advertising and tracking services/);assert.match(tracking,/Partly done · 2 of 3 components still enabled/,'the Smart Hub ad agent (role keep) is not a member');
  assert.doesNotMatch(tracking,/coba\.adagent/);
  assert.match(voice,/Disable all voice assistants/);assert.match(voice,/Partly done · 4 of 5 components still enabled/,'the assistant hub is a member of the all-in switch');
- assert.match(el('quickControl').innerHTML,/Disable automatic firmware update/);assert.doesNotMatch(el('quickControl').innerHTML,/data-win-switch="firmware" checked/);
+ assert.match(el('quickControl').innerHTML,/Block firmware and software updates/);assert.doesNotMatch(el('quickControl').innerHTML,/data-win-switch="firmware" checked/);
  assert.doesNotMatch(html,/quick wins applied|quickScore/,'no progress counter');
  assert.doesNotMatch(html,/quickPrivacy|Disable viewing-data tracking/,'one Advertising and tracking section: the ACR switch is covered by the all-in switch');
  assert.equal((tracking.match(/data-quick-toggle=/g)||[]).length,1,'a single tracking group switch');
@@ -84,7 +84,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  // The new wins go through their own route, one at a time, and read the state back
  const fw={dataset:{winSwitch:'firmware'},checked:true};await el('quick').onchange({target:fw});await tick();await tick();
  assert.deepEqual(calls.find(c=>c.url==='/wins'&&c.body).body,{id:'firmware',on:true});
- assert.match(sandbox.operationEntries[0].message,/Auto update off; value 1 → 0 read back/);assert.equal(sandbox.operationEntries[0].resultLabel,'State read back');
+ assert.match(sandbox.operationEntries[0].message,/Updates blocked: the firmware, app, app-binary and system updaters are stopped and masked/);assert.equal(sandbox.operationEntries[0].resultLabel,'State read back');
  // The Disable tab: AirPlay is a win like the others. Keep removed apps removed is one global switch with its list, in General
  assert.match(html,/id="qtab-memory"[^>]*>Disable</);assert.doesNotMatch(html,/>Free memory</);assert.match(html,/Disable what you don’t use/);
  assert.match(el('quickMemory').innerHTML,/<h3>Disable AirPlay<\/h3>/);assert.match(el('quickMemory').innerHTML,/data-win-switch="airplay"(?! checked)/,'AirPlay running: its switch is off');

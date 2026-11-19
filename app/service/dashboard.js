@@ -869,8 +869,8 @@ var winCopy={
   detail:'Stops the receiver and AirPlay app and prevents the receiver from starting at boot. Turning this off restarts the receiver. Method by zabique.'},
  keyguides:{title:'Hide remote key guides',desc:'Stops the picture of the remote that pops up on Vol, Play and other keys (\u201cPress Volume: Mute\u201d), now and after every restart.',
   detail:'Samsung\u2019s volume and TV apps show the guide until they note it was seen; on 2024 and later TVs that note is lost at every power-on. Vetro marks the guides as seen now and after each restart. Switch off to let Samsung show them again.'},
- firmware:{title:'Disable automatic firmware update',desc:'A firmware update can remove root access, so install updates yourself.',
-  detail:'Turns off automatic firmware updates and restores the previous setting when switched off.'}
+ firmware:{title:'Block firmware and software updates',desc:'Samsung can patch the TV over several update services; this stops and masks all of them. A patch can remove root access.',
+  detail:'Blocks the whole update stack while it is on, not just the menu toggle: OTA firmware (SWU/OTN: auto-upgrade, verifier, downloader and installer), Web App Service background app/package updates, EMP/app-binary downloads, VD system components, the preview updater and the boot-time apply of an already staged image. The units are stopped and masked at runtime (the firmware image is read-only) and the lock is applied again after every restart; the auto-update and EMP switches are turned off and the download markers removed. USB recovery (swu-standalone) is left working. Turning it off unmasks the units and restores the previous auto-update value. A firmware update that lands anyway replaces everything this does.'}
 };
 function fileSize(n){return n==null?'—':n<1048576?number(n/1024,0)+' KiB':number(n/1048576,1)+' MiB'}
 function chip(text,kind){return '<span class="state-chip '+(kind||'')+'">'+esc(text)+'</span>'}
@@ -895,9 +895,10 @@ function groupItem(g,compact){
 function winItem(id){
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
- if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · Auto update is off':id==='keyguides'?'Done · the guides count as seen':'Done · Multi View starts when you open it','on');
+ if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · updates are blocked':id==='keyguides'?'Done · the guides count as seen':'Done · Multi View starts when you open it','on');
  if(id==='telemetry'&&st==='on'&&w.dnsBlocked===false)state+=chip('Uploads can resume · turn on Enable DNS blocking','partial');
  if(st==='partial'&&id==='keyguides')state=chip('Partly done · a guide can still show','partial');
+ else if(st==='partial'&&id==='firmware')state=chip('Partly done · some update services are still reachable','partial');
  else if(st==='partial')state=chip(id==='telemetry'?'Partly done · '+w.running+' service'+(w.running===1?'':'s')+' started again':'Partly done · Samsung started it again','partial');
  if(st==='off'&&w.running)state=chip('Running now','');
  var control=quickData.wins&&st&&st!=='unknown'?switchMarkup('data-win-switch="'+id+'"',st==='on',busy,c.title):'';
@@ -1076,7 +1077,7 @@ function setHbbtv(on){
 var winsBusy=false;
 function winMessage(id,on,d){
  if(d.changed===false)return winCopy[id].title+': already in the requested state.';
- if(id==='firmware')return 'Auto update '+(on?'off':'on')+'; value '+d.previous+' → '+d.value+' read back from the TV.';
+ if(id==='firmware')return on?'Updates blocked: the firmware, app, app-binary and system updaters are stopped and masked, and the lock is applied again after every restart.':('Updates allowed again: the updaters are unmasked'+(d.previous!=null?' and the auto-update value '+d.previous+' is back':'')+'.');
  if(id==='keyguides')return 'Remote key guides '+(on?'hidden: they count as seen now and after every restart.':'back: Samsung shows them again.');
  if(id==='airplay')return 'AirPlay '+(on?'disabled: the receiver stays off after a restart.':'back on: the receiver has restarted.');
  if(id==='multiscreen')return 'Multi View autostart '+(on?'disabled: Multi View is stopped':'back on')+' (read back). '+(on?'Multi View still opens on demand.':'It loads again at the next restart.');

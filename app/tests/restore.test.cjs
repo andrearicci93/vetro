@@ -184,7 +184,7 @@ function tv(start) {
   t = tv(); r = new Restore(t.deps); await r.run();
   t.deps.wins.read = async () => ({wins:{firmware:{status:'unknown'},multiscreen:{status:'off'},ambient:{status:'off'},telemetry:{status:'off'}}});
   plan = await r.publicPlan();assert.equal(plan.items.find(i => i.id === 'win-firmware').state, 'unknown');
-  await assert.rejects(r.eraseData(), /Automatic firmware updates/);
+  await assert.rejects(r.eraseData(), /Firmware and software updates/);
   t = tv(); r = new Restore(t.deps); await r.run();
   t.deps.dock.readState = () => ({enabled:false,autorunWas:1});
   plan = await r.publicPlan();assert.equal(plan.items.find(i => i.id === 'launcher').state, 'changed');
