@@ -191,11 +191,20 @@ process.on('exit', code => { if (code === 0 && !finished) { console.error('FAIL 
     assert.equal(el('dnsDomains').value, 'saved.example');
     // The switch: the TV saved the filter but did not apply it. The page must say what the TV holds.
     sandbox.quickData.dns = {enabled: false, applied: false, domains: ['saved.example'], resolvers: []};
+    // The viewing-data switch added a host to the saved list after the page read it: the switch sends the list the TV holds.
+    response['GET /dns'] = {enabled: false, applied: false, domains: ['saved.example', 'lcprd1.samsungcloudsolution.net'], resolvers: []};
     response['POST /dns'] = {enabled: true, applied: false, domains: ['saved.example'], resolvers: []};
+    calls.length = 0;
     await sandbox.setDns(true);
+    assert.deepEqual(posted('/dns')[0].p.domains, ['saved.example', 'lcprd1.samsungcloudsolution.net'], 'the DNS switch does not drop a host saved behind the page');
     assert.equal(latest().state, 'warning');
     assert.equal(sandbox.quickData.dns.enabled, true, 'the page shows the saved-but-not-applied state, not the old one');
-    delete response['POST /dns'];
+    response['GET /dns'] = {};
+    calls.length = 0;
+    await sandbox.setDns(true);
+    assert.equal(posted('/dns').length, 0, 'an unreadable list is not replaced by the copy the page holds');
+    assert.equal(latest().state, 'warning');
+    delete response['POST /dns']; delete response['GET /dns'];
     console.log('PASS the domain box keeps unsaved edits, and an unapplied filter is shown as it is');
 
     // --- Older answers do not replace newer ones ------------------------------------------------------------------------------
@@ -221,6 +230,74 @@ process.on('exit', code => { if (code === 0 && !finished) { console.error('FAIL 
     sandbox.drawMonitor({ts: later - 1000, memory: {}, cpu: {cores: []}, network: [], processes: [], processCount: 0});
     assert.equal(sandbox.liveData.ts, later, 'a sample older than the one shown is dropped');
     console.log('PASS late answers and older samples do not replace newer data');
+
+    // --- Quick wins: a firmware lock that is only partly undone is said as it is, and a failed change reads the switches again ---
+    response['POST /wins'] = {id: 'firmware', changed: true, status: 'partial', value: 1, previous: 0};
+    response['GET /wins'] = {wins: {firmware: {status: 'partial', value: 1, masked: 3, units: 15, running: 0}}};
+    await sandbox.setWin('firmware', false);
+    assert.equal(latest().state, 'warning', 'a partial undo is not reported as done');
+    assert.match(latest().message, /3 of 15 update services blocked/);
+    assert.doesNotMatch(latest().message, /unmasked/);
+    sandbox.renderQuick();
+    assert.match(el('quickControl').innerHTML, /Partly done · 3 of 15 update services blocked/);
+    delete response['POST /wins']; delete response['GET /wins'];
+    fault['POST /wins'] = 'offline'; calls.length = 0;
+    await sandbox.setWin('ambient', true);
+    assert.ok(calls.some(c => c.url === '/wins' && !c.p), 'a failed change reads the switches again');
+    delete fault['POST /wins'];
+    fault['POST /quick'] = 'offline'; calls.length = 0;
+    await sandbox.applyQuick('tracking-all', true);
+    assert.ok(fetched('/apps').length > 0, 'a failed group switch reads the app list again');
+    delete fault['POST /quick'];
+    console.log('PASS a partial quick win is a warning, and a failed switch reads the TV again');
+
+    // --- Keep removed apps: saved but not applied keeps the switch On, with a warning ----------------------------------------------
+    sandbox.quickData.keep = {enabled: false, packages: []};
+    response['POST /keep-removed'] = {ok: false, enabled: true, packages: ['example.pkg'], last: {source: {error: 'the list is read-only'}}};
+    await sandbox.setKeep('enable');
+    assert.equal(sandbox.quickData.keep.enabled, true, 'the switch shows what the service saved');
+    assert.equal(latest().state, 'warning');
+    assert.equal(latest().resultLabel, 'Saved, not applied');
+    assert.match(latest().message, /the list is read-only/);
+    response['POST /keep-removed'] = {ok: false, error: 'App change already in progress'};
+    await sandbox.setKeep('disable');
+    assert.equal(sandbox.quickData.keep.enabled, true, 'a refused change leaves the switch as it was');
+    assert.match(latest().message, /Result not confirmed: App change already in progress/);
+    delete response['POST /keep-removed'];
+    console.log('PASS Keep removed apps shows a saved-but-not-applied switch as On');
+
+    // --- Vetro UI: turning on the Volume bar from the Overview asks about a clashing shortcut in the On-screen displays tab ------
+    const volumeCode = sandbox.uiKeysOf('volume')[0].code;
+    sandbox.dockData = {installed: true, mode: 'vetro', enabled: true, running: true, volumePill: false, numberPad: false, entries: []};
+    sandbox.uiRules = [{id: 'physical_' + volumeCode, enabled: true, trigger: {type: 'physical', value: volumeCode}, actions: [{type: 'launch', appId: 'example.app'}]}];
+    sandbox.uiTab = 'overview'; calls.length = 0;
+    sandbox.osdToggle('volumePill', true);
+    assert.equal(sandbox.uiTab, 'osd', 'the confirmation is shown, not drawn in a hidden tab');
+    assert.equal(sandbox.osdAsk, 'volumePill');
+    assert.match(el('osd').innerHTML, /data-osd-confirm="volumePill"/);
+    assert.equal(posted('/dock').length, 0, 'nothing changes before the confirmation');
+    sandbox.osdAsk = null; sandbox.uiTab = 'overview'; sandbox.uiRules = null; sandbox.dockData = null;
+    console.log('PASS the Overview opens the On-screen displays tab to confirm a shortcut clash');
+
+    // --- Launcher, Custom launcher tab: Retry on the Samsung Home switch reads the app list -----------------------------------------
+    calls.length = 0;
+    el('dock').onclick({target: {closest: () => ({dataset: {appsRetry: ''}})}});
+    assert.ok(fetched('/apps').length > 0, 'Retry in the Custom launcher tab is not a dead button');
+    await tick();
+    console.log('PASS Retry in the Custom launcher tab reads the app list again');
+
+    // --- Remapper: listening ends by itself after the live limit, even in a hidden tab --------------------------------------------
+    const every1500 = () => intervals.filter(i => i.ms === 1500).forEach(i => i.fn());
+    sandbox.currentPanel = 'remote'; sandbox.inputListening = true; sandbox.inputPreferenceState = null; sandbox.listenSince = Date.now(); calls.length = 0;
+    every1500(); await tick();
+    assert.equal(posted('/input').length, 0, 'within the limit listening goes on');
+    sandbox.inputListening = true; sandbox.listenSince = Date.now() - sandbox.LIVE_MS - 1; sandbox.document.hidden = true; calls.length = 0;   // the read above found listening off
+    every1500(); await tick();
+    const ended = posted('/input');
+    assert.equal(ended.length, 1, 'after the limit the page stops listening');
+    assert.equal(ended[0].p.mode, 'off', 'and gives the remote back to the saved choice');
+    sandbox.document.hidden = false; sandbox.inputListening = false; sandbox.listenSince = 0; sandbox.currentPanel = 'quick'; calls.length = 0;
+    console.log('PASS listening in the Remapper stops after the live limit');
 
     // --- Plugins page: the 5 s refresh leaves the page alone while the file chooser is open ----------------------------------
     sandbox.currentPanel = 'plugins'; sandbox.pluginBusy = false; calls.length = 0;

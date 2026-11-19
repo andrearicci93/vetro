@@ -647,9 +647,12 @@ function activate() {
       if (controls && controls.tiles) controls.tiles[id] = r.data.tile;   // the controls may have been read again (and failed) meanwhile
       toast(TILES.filter(function (x) { return x.id === id; })[0].words[r.data.tile.state === 'on' || r.data.tile.state === 'part' ? 0 : 1]);
     } else { toast(failText(r)); loadControls(); }
+    if (running) return;   // the checks started again meanwhile: they hold the screen and draw it when they end
     if (id === 'launcher') rereadScreen(); else render(lastScreen, false);
-  }, function (e) { busy[id] = false; toast(e.message); loadControls(); if (view === 'main' && lastScreen) render(lastScreen, false); });
+  }, function (e) { busy[id] = false; toast(e.message); loadControls(); if (!running && view === 'main' && lastScreen) render(lastScreen, false); });
 }
+// An Update step that answers while the checks run again leaves the "Checking" screen alone; the checks draw the tile when they end.
+function redrawIdle() { if (!running) render(lastScreen, false); }
 function updateStep(step, ms) { return call('POST', '/screen/control', {id: 'update', step: step}, ms); }
 function activateUpdate() {
   var p = upd.phase;
@@ -659,16 +662,16 @@ function activateUpdate() {
     upd.phase = 'run'; render(lastScreen, false);
     updateStep('apply', 130000).then(function (r) {
       if (r.status === 200 && r.data && r.data.ok) { waitForVersion(upd.version, 0); return; }
-      upd.phase = 'error'; upd.error = failText(r); render(lastScreen, false); toast(upd.error);
-    }, function (e) { upd.phase = 'error'; upd.error = e.message; render(lastScreen, false); toast(e.message); });
+      upd.phase = 'error'; upd.error = failText(r); redrawIdle(); toast(upd.error);
+    }, function (e) { upd.phase = 'error'; upd.error = e.message; redrawIdle(); toast(e.message); });
     return;
   }
   upd.phase = 'checking'; render(lastScreen, false);
   updateStep('check', 70000).then(function (r) {
     if (r.status === 200 && r.data && r.data.ok) { upd.phase = r.data.phase; upd.version = r.data.version; upd.error = null; }
     else { upd.phase = 'error'; upd.error = failText(r); toast(upd.error); }
-    render(lastScreen, false);
-  }, function (e) { upd.phase = 'error'; upd.error = e.message; render(lastScreen, false); toast(e.message); });
+    redrawIdle();
+  }, function (e) { upd.phase = 'error'; upd.error = e.message; redrawIdle(); toast(e.message); });
 }
 // After an update the service restarts. Once it reports the new version this screen is reloaded to get the new page too.
 function waitForVersion(v, tries) {

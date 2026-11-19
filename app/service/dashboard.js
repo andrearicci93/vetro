@@ -475,7 +475,7 @@ ${tunerPage.css}</style></head><body>
 
 <section id="plugins" hidden><div id="pluginTabs" class="tabs" role="tablist" aria-label="Vetro Shards" hidden></div><div id="pluginsBody" class="stack" role="tabpanel" aria-labelledby="ptab-manage"><div class="panel"><p class="notice">Reading…</p></div></div><div id="pluginPage" role="tabpanel" hidden><iframe id="pluginFrame" class="plugin-frame" title="Vetro Shard page" sandbox="allow-scripts"></iframe></div></section>
 <section id="vetroui" hidden>${tunerPage.defs}<div id="uiTabs" class="tabs" role="tablist" aria-label="Vetro UI"><button type="button" role="tab" id="utab-overview" data-ui-tab="overview" aria-controls="uiPanel-overview" aria-selected="true" tabindex="0">Overview</button><button type="button" role="tab" id="utab-launcher" data-ui-tab="launcher" aria-controls="uiPanel-launcher" aria-selected="false" tabindex="-1">Launcher</button><button type="button" role="tab" id="utab-tuner" data-ui-tab="tuner" aria-controls="uiPanel-tuner" aria-selected="false" tabindex="-1">Live TV</button><button type="button" role="tab" id="utab-osd" data-ui-tab="osd" aria-controls="uiPanel-osd" aria-selected="false" tabindex="-1">On-screen displays</button></div><div id="uiPanel-overview" role="tabpanel" aria-labelledby="utab-overview"><div id="uiOverview" class="stack"><div class="panel"><p class="notice">Reading…</p></div></div></div><div id="uiPanel-launcher" role="tabpanel" aria-labelledby="utab-launcher" hidden><div id="dock"><div id="dockTabs" class="tabs subtabs" role="tablist" aria-label="Launcher"><button type="button" role="tab" id="dtab-vetro" data-dock-tab="vetro" aria-controls="dockBody" aria-selected="true" tabindex="0">Vetro launcher</button><button type="button" role="tab" id="dtab-cards" data-dock-tab="cards" aria-controls="dockCards" aria-selected="false" tabindex="-1">Control center</button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom" aria-controls="dockCustom" aria-selected="false" tabindex="-1">Custom launcher</button></div><div id="dockBody" role="tabpanel" aria-labelledby="dtab-vetro"><div class="panel"><p class="notice">Reading…</p></div></div><div id="dockCards" role="tabpanel" aria-labelledby="dtab-cards" hidden><div class="panel"><p class="notice">Reading…</p></div></div><div id="dockCustom" role="tabpanel" aria-labelledby="dtab-custom" hidden><div class="panel"><p class="notice">Reading…</p></div></div></div></div><div id="uiPanel-tuner" role="tabpanel" aria-labelledby="utab-tuner" hidden><div id="tuner" class="stack"><div class="dock-layout"><div class="dock-left panel"><h3>Preview</h3><p class="section-note">Sample channels.</p><div id="tunerShow"></div></div><div class="stack ui-side"><div id="tunerBody" class="quick-group"><p class="notice">Reading…</p></div><section class="quick-group tuner-static" aria-labelledby="tunerKeysTitle"><h2 class="section-title" id="tunerKeysTitle">${sectionIcon('keys')}Remote buttons</h2>${tunerPage.keysMarkup()}</section></div></div></div></div><div id="uiPanel-osd" role="tabpanel" aria-labelledby="utab-osd" hidden><div id="osd" class="stack"><div class="panel"><p class="notice">Reading…</p></div></div></div></section>
-<section id="remote" hidden><div class="layout"><div class="box"><h2>Step 1 · Listen to the remote</h2><p class="notice">Select a device, start listening and press a key. Keys keep working normally.</p><label class="field"><span>Physical device</span><select id="device"><option value="">Loading…</option></select></label><div class="row"><button id="observe" class="primary">Start listening</button></div><div id="keyEvent" role="status" aria-live="polite">No key captured</div><p id="inputStatus" class="muted" aria-live="polite">Interception off</p></div>
+<section id="remote" hidden><div class="layout"><div class="box"><h2>Step 1 · Listen to the remote</h2><p class="notice">Select a device, start listening and press a key. Keys keep working normally. Listening stops after 2 minutes.</p><label class="field"><span>Physical device</span><select id="device"><option value="">Loading…</option></select></label><div class="row"><button id="observe" class="primary">Start listening</button></div><div id="keyEvent" role="status" aria-live="polite">No key captured</div><p id="inputStatus" class="muted" aria-live="polite">Interception off</p></div>
 <div class="box"><h2>Step 2 · Create a shortcut</h2><label class="field"><span>Captured key code</span><input id="inputCode" type="number" min="0" max="767" placeholder="Press a key while listening"></label><label class="field"><span>Action</span><select id="ruleAction"><option value="launch">Open app</option><option value="key">Send key</option></select></label><label class="field" id="targetAppField"><span>App to open</span><select id="targetApp"><option value="">Select an app…</option></select></label><label class="field" id="targetKeyField" hidden><span>Key to send</span><select id="targetKey"><option value="">Select a key…</option>${keyOptions()}</select></label><div class="row"><button id="saveRule" class="primary">Save shortcut</button></div><label class="switch"><input id="filter" type="checkbox" role="switch"><span>Remote interception</span></label><p class="notice">Saved on the TV and restored when Vetro starts. Listening pauses interception.</p></div></div><div class="box"><h2>Shortcuts</h2><div id="rules">No shortcuts yet. Capture a key and choose what it does.</div></div></section></div></main><div id="overlay" class="overlay" hidden></div><aside id="detail" class="drawer" role="dialog" aria-modal="true" aria-label="Details" hidden></aside><div id="feedback" role="status" hidden></div><div id="actionToast" aria-hidden="true" hidden></div><dialog id="aboutDialog" class="about" aria-labelledby="aboutTitle"><div class="about-body">
 <div class="about-top"><div class="about-brand"><img src="/icon.png" alt="" width="44" height="44"><div><h2 id="aboutTitle">About Vetro</h2><small id="aboutVersion"></small></div></div><button type="button" id="aboutClose" aria-label="Close About Vetro">Close</button></div>
 <p class="about-lead"><strong>A TV manager for Samsung Tizen.</strong></p>
@@ -501,7 +501,7 @@ function say(s){$('feedback').textContent=s;$('feedback').hidden=false;clearTime
 var API_TIMEOUT_MS=120000;
 function api(url,body){var ac=typeof AbortController==='function'?new AbortController():null,timer=ac?setTimeout(function(){ac.abort()},API_TIMEOUT_MS):null,opts=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};if(ac)opts.signal=ac.signal;
  function done(){if(timer)clearTimeout(timer)}
- return fetch(url,opts).then(function(r){return r.json().then(function(d){if(!r.ok||d.ok===false)throw Error(d.error||'Action failed');return d})}).then(function(d){done();return d},function(e){done();if(e&&e.name==='AbortError')throw Error('The TV did not answer in time');throw e})}
+ return fetch(url,opts).then(function(r){return r.json().then(function(d){if(!r.ok||d.ok===false){var e=Error(d.error||'Action failed');e.data=d;throw e}return d})}).then(function(d){done();return d},function(e){done();if(e&&e.name==='AbortError')throw Error('The TV did not answer in time');throw e})}
 function bytes(n){return n==null?'Unavailable':n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB'}
 function icon(a){var initial=(a.name||a.appId||'').trim().slice(0,1).toUpperCase(),fallback=a.show?'<span>'+esc(initial)+'</span>':'<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m12 3 8 4v10l-8 4-8-4V7Z M4 7l8 4 8-4 M12 11v10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>';return '<span class="icon">'+fallback+(a.iconPath?'<img alt="" loading="lazy" src="/apps/icon?appId='+encodeURIComponent(a.appId)+'" onerror="this.remove()">':'')+'</span>';}
 
@@ -568,8 +568,10 @@ $('ruleAction').onchange=function(){$('targetAppField').hidden=this.value!=='lau
 $('saveRule').onclick=function(){var code=$('inputCode').value,sends=$('ruleAction').value==='key',id=sends?$('targetKey').value:$('targetApp').value;if(!KEY_CODE_RE.test(code)||+code>767||!id){say('Enter a key code from 0 to 767 and select '+(sends?'a key to send.':'an app.'));return}code=String(+code);var held=reservedKeys.filter(function(k){return k.code===code})[0];if(held&&!confirm('Key '+code+' ('+held.label+') is used by Vetro UI ('+held.name+'). Vetro UI comes first: this shortcut will not run while the '+held.name.toLowerCase()+' is on. Save it anyway?'))return;var tkey=remapTuner?UI_TUNER_KEYS.filter(function(k){return k.code===code})[0]:null;if(tkey&&!confirm('Key '+code+' is '+tkey.label+' for Vetro’s live TV. With this shortcut the key '+(sends?'sends '+SEND_KEY_LABELS[id]:'opens the app')+' and never reaches the tuner. Save it anyway?'))return;var next=rules.filter(function(r){return !(r.trigger.type==='physical'&&r.trigger.value===code)});next.push({id:'physical_'+code,enabled:true,trigger:{type:'physical',value:code},actions:[sends?{type:'key',key:id}:{type:'launch',appId:id}]});return saveRuleSet(next,'Save shortcut',this)};
 function policy(mode,device){return runUiOperation('rules',mode==='off'?'Stop interception':mode==='observe'?'Listen to remote':'Remote interception','Physical remote',mode==='observe'?$('observe'):$('filter'),function(mark){return api('/input',{device:device||$('device').value,mode:mode}).then(function(d){var p=d.status&&d.status.policy;if(!p||p.mode!==mode)throw Error('Remote mode not confirmed');lastSeq=0;pollInput();return {state:mode!=='off'&&!p.connected?'warning':'success',resultLabel:'State read',message:mode==='off'?'Interception stopped. Remote keys work normally.':!p.connected?'Mode requested. Check the device connection before testing keys.':mode==='observe'?'Listening. Keys work normally. Press a remote key to test.':'Interception on. Test a saved shortcut. This setting survives a restart.'}})})}
 // Stopping capture returns to the saved choice: mode off would also save interception as off.
-$('observe').onclick=function(){if(!inputListening)return policy('observe');var pref=inputPreferenceState;return pref&&pref.enabled&&(pref.node||pref.device)?policy('filter',pref.node||pref.device):policy('off')};$('filter').onchange=function(){if(!this.checked&&reservedKeys.some(function(k){return k.live})&&!confirm('The volume bar or the 123 pad of Vetro UI use the remote interception. Without it Vol, Mute and 123 go back to Samsung’s own bar and pad. Turn it off anyway?')){this.checked=true;return}return policy(this.checked?'filter':'off').then(function(){return pollInput()})};
-var polling=false,inputListening=false,inputPreferenceState=null;function pollInput(){if(polling)return;polling=true;return api('/input').then(function(d){var value=$('device').value, options=d.devices.filter(function(x){return x.selectable});if(options.map(function(x){return x.node}).join('|')!==lastDevice){lastDevice=options.map(function(x){return x.node}).join('|');$('device').innerHTML=options.length?'<option value="auto">Detect automatically (listen only)</option>'+options.map(function(x){return '<option value="'+esc(x.node)+'">'+esc(x.name)+' · '+esc(x.node)+'</option>'}).join(''):'<option value="">No compatible device</option>';if(options.some(function(x){return x.node===value}))$('device').value=value}var p=d.status.policy;inputListening=p.mode==='observe';inputPreferenceState=d.status.preference||null;$('observe').textContent=inputListening?'Stop listening':'Start listening';if(!uiOperationBusy.rules)$('filter').checked=d.status.preference?d.status.preference.enabled:p.mode==='filter';if(p.node&&options.some(function(x){return x.node===p.node}))$('device').value=p.node;$('inputStatus').textContent=d.error||d.status.error|| (p.mode==='off'?(d.status.preference&&d.status.preference.enabled?'Interception enabled · waiting for remote':'Interception off'):(p.mode==='observe'?'Listening':'Interception')+' · '+p.device+(p.connected?' · connected':' · connecting…'));var down=d.status.events.filter(function(e){return e.action==='down'}), event=down[down.length-1];if(event&&event.node+':'+event.sequence!==lastSeq){lastSeq=event.node+':'+event.sequence;$('device').value=event.node;$('keyEvent').textContent=(event.key||'Key')+' · '+event.code;$('keyEvent').className='has-key';$('inputCode').value=event.code}}).catch(function(e){$('inputStatus').textContent=e.message}).finally(function(){polling=false})}
+function listenStopBody(){var pref=inputPreferenceState;return pref&&pref.enabled&&(pref.node||pref.device)?{device:pref.node||pref.device,mode:'filter'}:{device:$('device').value,mode:'off'}}
+$('observe').onclick=function(){if(!inputListening)return policy('observe');var b=listenStopBody();return policy(b.mode,b.device)};$('filter').onchange=function(){if(!this.checked&&reservedKeys.some(function(k){return k.live})&&!confirm('The volume bar or the 123 pad of Vetro UI use the remote interception. Without it Vol, Mute and 123 go back to Samsung’s own bar and pad. Turn it off anyway?')){this.checked=true;return}return policy(this.checked?'filter':'off').then(function(){return pollInput()})};
+// Listening pauses the remote interception (and with it Vetro UI's Volume bar and 123 pad): it ends by itself after LIVE_MS, and when the page goes away.
+var polling=false,inputListening=false,inputPreferenceState=null,listenSince=0;function pollInput(){if(polling)return;polling=true;return api('/input').then(function(d){var value=$('device').value, options=d.devices.filter(function(x){return x.selectable});if(options.map(function(x){return x.node}).join('|')!==lastDevice){lastDevice=options.map(function(x){return x.node}).join('|');$('device').innerHTML=options.length?'<option value="auto">Detect automatically (listen only)</option>'+options.map(function(x){return '<option value="'+esc(x.node)+'">'+esc(x.name)+' · '+esc(x.node)+'</option>'}).join(''):'<option value="">No compatible device</option>';if(options.some(function(x){return x.node===value}))$('device').value=value}var p=d.status.policy;inputListening=p.mode==='observe';listenSince=inputListening?listenSince||Date.now():0;inputPreferenceState=d.status.preference||null;$('observe').textContent=inputListening?'Stop listening':'Start listening';if(!uiOperationBusy.rules)$('filter').checked=d.status.preference?d.status.preference.enabled:p.mode==='filter';if(p.node&&options.some(function(x){return x.node===p.node}))$('device').value=p.node;$('inputStatus').textContent=d.error||d.status.error|| (p.mode==='off'?(d.status.preference&&d.status.preference.enabled?'Interception enabled · waiting for remote':'Interception off'):(p.mode==='observe'?'Listening':'Interception')+' · '+p.device+(p.connected?' · connected':' · connecting…'));var down=d.status.events.filter(function(e){return e.action==='down'}), event=down[down.length-1];if(event&&event.node+':'+event.sequence!==lastSeq){lastSeq=event.node+':'+event.sequence;$('device').value=event.node;$('keyEvent').textContent=(event.key||'Key')+' · '+event.code;$('keyEvent').className='has-key';$('inputCode').value=event.code}}).catch(function(e){$('inputStatus').textContent=e.message}).finally(function(){polling=false})}
 function k(key){api('/control',{key:key}).catch(function(e){say(e.message)})}
 function setConnection(on){var c=$('connection');c.textContent=on?'Connected':'Not connected';c.className=on?'is-on':''}
 api('/status').then(function(d){if(d.app&&d.app.version)$('appVersion').textContent='Vetro '+d.app.version;setConnection(!!(d.agent&&d.agent.connected))}).catch(function(){setConnection(false)});
@@ -741,7 +743,8 @@ function runComponentAction(a,p){
   inventoryNeedsRefresh=true;if(p.action==='stop'&&String(a.appId).slice(-8)==='AgingApp')loadFactoryTest();
   operationUpdate(entry,'warning',verified?outcome+' State confirmed, but the view could not refresh: '+e.message+'. Refresh the view; do not repeat the command.':'Result not confirmed: '+e.message+'. The command may have taken effect. Refresh the state before trying again.');
   return false;
- }).finally(function(){componentBusy=false;unlock();if(selected&&!$('detail').hidden){var fresh=inventory.find(function(r){return r.appId===a.appId});if(fresh)detail(fresh.appId);}operationUpdate(entry,entry.state,entry.message)});
+ }).finally(function(){componentBusy=false;unlock();if(p.action==='uninstall'){delete quickReadAt.keep;delete quickReadAt.uninstall;}   // Quick settings reads its Keep removed count and Uninstall list again
+  if(selected&&!$('detail').hidden){var fresh=inventory.find(function(r){return r.appId===a.appId});if(fresh)detail(fresh.appId);}operationUpdate(entry,entry.state,entry.message)});
 }
 function confirmComponentAction(a,p,label,message,trigger){
  if(componentBusy)return;
@@ -892,14 +895,22 @@ function groupItem(g,compact){
  var confirm=quickConfirm===g.id&&!homeLocked?'<div class="inline-confirm" role="group" aria-label="Confirm '+esc(title)+'"><p><strong>'+esc(title)+'?</strong> '+esc(confirmText)+'</p><div class="row"><button data-quick-cancel>Cancel</button><button class="primary" data-quick-confirm="'+esc(g.id)+'">'+esc(title)+'</button></div></div>':'';
  return quickItem(g.id,title,compact?'':g.description,state,switchMarkup('data-quick-toggle="'+esc(g.id)+'"',done,disabled,compact?'Disable '+g.label:title),list,confirm);
 }
+// What a switch in the partial state still lacks. The firmware lock: units masked out of the update units found, and the Auto update value.
+function winPartial(id,w){
+ if(id==='keyguides')return 'a guide can still show';
+ if(id==='telemetry')return w.running+' service'+(w.running===1?'':'s')+' started again';
+ if(id!=='firmware')return 'Samsung started it again';
+ var n=w.masked,m=w.units;
+ if(m>0&&n>0&&n<m)return n+' of '+m+' update services blocked';
+ if(m>0&&!n)return 'no update service blocked'+(w.value===0?', Auto update is off':'');
+ return w.value?'Auto update is on':'some update services are still reachable';
+}
 function winItem(id){
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
  if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · updates are blocked':id==='keyguides'?'Done · the guides count as seen':'Done · Multi View starts when you open it','on');
  if(id==='telemetry'&&st==='on'&&w.dnsBlocked===false)state+=chip('Uploads can resume · turn on Enable DNS blocking','partial');
- if(st==='partial'&&id==='keyguides')state=chip('Partly done · a guide can still show','partial');
- else if(st==='partial'&&id==='firmware')state=chip('Partly done · some update services are still reachable','partial');
- else if(st==='partial')state=chip(id==='telemetry'?'Partly done · '+w.running+' service'+(w.running===1?'':'s')+' started again':'Partly done · Samsung started it again','partial');
+ if(st==='partial')state=chip('Partly done · '+winPartial(id,w),'partial');
  if(st==='off'&&w.running)state=chip('Running now','');
  var control=quickData.wins&&st&&st!=='unknown'?switchMarkup('data-win-switch="'+id+'"',st==='on',busy,c.title):'';
  return quickItem(id,c.title,c.desc,state,control,'<details><summary>What this changes</summary><p>'+esc(c.detail)+'</p></details>');
@@ -937,7 +948,8 @@ var keepBusy=false;
 function setKeep(action,packages){
  if(quickBusy||winsBusy||keepBusy)return;keepBusy=true;renderQuick();
  var label=action==='enable'?'Keep removed apps removed':action==='disable'?'Undo · Keep removed apps removed':'Allow removed app again';
- return runUiOperation('keep',label,'Quick settings',null,function(mark){return api('/keep-removed',{action:action,packages:packages}).then(function(d){
+ // The service answers {ok:false, enabled, packages} when the switch was saved but Samsung's list was not updated: api() throws on it, the state is in e.data.
+ return runUiOperation('keep',label,'Quick settings',null,function(mark){return api('/keep-removed',{action:action,packages:packages}).then(null,function(e){var d=e&&e.data;if(!d||typeof d.enabled!=='boolean')throw e;if(!Array.isArray(d.packages))d.packages=quickData.keep&&quickData.keep.packages||[];d.ok=false;return d}).then(function(d){
   quickData.keep=d;quickReadAt.keep=Date.now();
   var message=action==='enable'?'On: apps you remove from now on stay off the TV.':action==='disable'?'Off: the ids Vetro added are taken out of Samsung’s list; the saved list of apps is kept.':'Allowed again: Samsung may install '+String((packages||[])[0]||'this app')+' again.';
   if(d.ok===false){var why=d.last&&d.last.source&&d.last.source.error||d.error||'Samsung’s list could not be updated';return {state:'warning',resultLabel:'Saved, not applied',message:message+' But '+why+'.'};}
@@ -1056,6 +1068,7 @@ function loadQuick(force){
 function applyQuick(id,off){
  if(id==='samsung-home'&&launcherEnabled!==false)return;
  var g=quickGroups.filter(function(x){return x.id===id})[0];if(!g||quickBusy||winsBusy)return;quickBusy=true;quickConfirm=null;renderQuick();
+ var read=false;   // a change that fails, or whose app list did not come back, reads the list again: the switch must show what the TV has
  return runUiOperation('quick',(off?'Disable ':'Enable ')+g.label,'Quick settings',null,function(mark){return api('/quick',{id:id,off:off}).then(function(d){
   var n=d.changed.length,parts=[g.label+(off?' disabled.':' enabled.'),n?n+' component'+(n===1?'':'s')+' '+(off?'disabled':'enabled')+'; the TV registry confirms it.':'Already in the requested state.'];
   if(off&&d.flagsCleared&&d.flagsCleared.length)parts.push('Start at boot and restart cleared on '+d.flagsCleared.length+' component'+(d.flagsCleared.length===1?'':'s')+'.');
@@ -1067,8 +1080,8 @@ function applyQuick(id,off){
   if(off&&g.microphone&&n)parts.push('Check Home and the remote before relying on this change.');
   if(off&&g.confirm&&n)parts.push('Map the Home key to your other launcher with the Remapper.');
   var message=parts.join(' ');mark(message,'Registry confirmed');
-  return loadApps(false,true).then(function(){if(bootData)loadStartup();return {state:d.stopFailed.length||(d.flagsNotRestored&&d.flagsNotRestored.length)?'warning':'success',resultLabel:'Registry confirmed',message:message}});
- })}).finally(function(){quickBusy=false;renderQuick();});
+  return loadApps(false,true).then(function(){read=true;if(bootData)loadStartup();return {state:d.stopFailed.length||(d.flagsNotRestored&&d.flagsNotRestored.length)?'warning':'success',resultLabel:'Registry confirmed',message:message}});
+ })}).finally(function(){quickBusy=false;renderQuick();if(!read)loadApps(true);});
 }
 function setHbbtv(on){
  if(!hbbtvData||settingBusy)return;var off=!on,expected=hbbtvData.value;settingBusy=true;renderQuick();
@@ -1077,7 +1090,7 @@ function setHbbtv(on){
 var winsBusy=false;
 function winMessage(id,on,d){
  if(d.changed===false)return winCopy[id].title+': already in the requested state.';
- if(id==='firmware')return on?'Updates blocked: the firmware, app, app-binary and system updaters are stopped and masked, and the lock is applied again after every restart.':('Updates allowed again: the updaters are unmasked'+(d.previous!=null?' and the auto-update value '+d.previous+' is back':'')+'.');
+ if(id==='firmware')return on?'Updates blocked: the firmware, app, app-binary and system updaters are stopped and masked, and the lock is applied again after every restart.':('Updates allowed again: the updaters are unmasked'+(d.value!=null?'; Auto update is '+(d.value?'on':'off')+' in the TV menu':'')+'.');
  if(id==='keyguides')return 'Remote key guides '+(on?'hidden: they count as seen now and after every restart.':'back: Samsung shows them again.');
  if(id==='airplay')return 'AirPlay '+(on?'disabled: the receiver stays off after a restart.':'back on: the receiver has restarted.');
  if(id==='multiscreen')return 'Multi View autostart '+(on?'disabled: Multi View is stopped':'back on')+' (read back). '+(on?'Multi View still opens on demand.':'It loads again at the next restart.');
@@ -1085,14 +1098,22 @@ function winMessage(id,on,d){
 }
 function setWin(id,on){
  if(quickBusy||winsBusy||!winCopy[id])return;winsBusy=true;renderQuick();
+ // Success is said only when the TV reports the state asked for; a partial or unknown state is a warning. A change that fails reads the switches again.
+ // The viewing-data switch also adds or removes a host in the saved DNS list: that list is read again too.
+ var want=on?'on':'off',read=false;
  return runUiOperation('wins',(on?'':'Undo · ')+winCopy[id].title,'Quick settings',null,function(mark){return api('/wins',{id:id,on:on}).then(function(d){
-  var message=winMessage(id,on,d);mark(message,'State read back');
-  return api('/wins').then(function(w){winsSeq++;quickData.wins=w;quickReadAt.wins=Date.now();return {resultLabel:'State read back',message:message}});
- })}).finally(function(){winsBusy=false;renderQuick();});
+  if(!d.status||d.status===want)mark(winMessage(id,on,d),'State read back');
+  return api('/wins').then(function(w){winsSeq++;quickData.wins=w;quickReadAt.wins=Date.now();read=true;
+   var now=w.wins&&w.wins[id]||{},st=d.status||now.status;
+   if(!st||st===want)return {resultLabel:'State read back',message:winMessage(id,on,d)};
+   return {state:'warning',resultLabel:st==='partial'?'Partly done':'Not confirmed',message:winCopy[id].title+': '+(st==='partial'?'partly done · '+winPartial(id,now.status?now:d):st==='unknown'?'the state could not be read back':'the TV did not keep the change')+'.'};
+  });
+ })}).finally(function(){winsBusy=false;renderQuick();if(!read)loadWins();if(id==='telemetry'){delete quickReadAt.dns;loadQuickDns();}});
 }
 function setDns(on){
- var d=quickData.dns;if(!d||uiOperationBusy.dns)return;
- return runUiOperation('dns',on?'Turn on DNS blocking':'Turn off DNS blocking','TV hosts',null,function(mark){return api('/dns',{action:'apply',enabled:on,domains:d.domains}).then(function(r){if(r.enabled!==on||on&&!r.applied){if(Array.isArray(r.domains)&&Array.isArray(r.resolvers))dnsState(r);throw Error('Filter state not confirmed');}dnsState(r);var message='DNS blocking '+(on?'on · '+r.domains.length+' domains applied on the TV.':'off.');mark(message,'State read back');return {resultLabel:'State read back',message:message}})}).finally(function(){if(quickData.dns)dnsState(quickData.dns);else renderQuick();});
+ if(!quickData.dns||uiOperationBusy.dns)return;
+ // The saved list can change behind the page (the viewing-data switch adds a host to it): send the list the TV holds now.
+ return runUiOperation('dns',on?'Turn on DNS blocking':'Turn off DNS blocking','TV hosts',null,function(mark){return api('/dns').then(function(now){if(!Array.isArray(now.domains)||!Array.isArray(now.resolvers))throw Error('Filter state unreadable');quickData.dns=now;quickReadAt.dns=Date.now();return api('/dns',{action:'apply',enabled:on,domains:now.domains})}).then(function(r){if(r.enabled!==on||on&&!r.applied){if(Array.isArray(r.domains)&&Array.isArray(r.resolvers))dnsState(r);throw Error('Filter state not confirmed');}dnsState(r);var message='DNS blocking '+(on?'on · '+r.domains.length+' domains applied on the TV.':'off.');mark(message,'State read back');return {resultLabel:'State read back',message:message}})}).finally(function(){if(quickData.dns)dnsState(quickData.dns);else renderQuick();});
 }
 function clearLeftovers(){
  if(quickBusy||winsBusy)return;
@@ -1185,7 +1206,7 @@ function uninstallApp(id){
  var ac=typeof AbortController==='function'?new AbortController():null,timer=ac?setTimeout(function(){ac.abort()},Math.max(API_TIMEOUT_MS,total*60000+30000)):null;
  return runUiOperation('uninstall','Uninstall '+label,'Quick settings',null,function(mark){
   return fetch('/quick/uninstall',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id}),signal:ac?ac.signal:undefined}).then(function(res){return res.json().then(function(d){return {ok:res.ok,d:d||{}}})}).then(function(x){
-   var d=x.d;answered=true;if(Array.isArray(d.items))uninstallView.items=d.items;
+   var d=x.d;if(Array.isArray(d.items)){answered=true;uninstallView.items=d.items;}
    if(x.ok&&d.ok){var m=label+' uninstalled.';uninstallView.result={id:id,label:label,ok:true};mark(m,'Uninstalled');return {resultLabel:'Uninstalled',message:m}}
    var n=Array.isArray(d.removed)?d.removed.length:0,part=n?'Part of it was removed ('+n+' of '+total+').':'',error=d.error||'The uninstall failed.';
    uninstallView.result={id:id,label:label,ok:false,error:error,part:part};
@@ -1194,7 +1215,8 @@ function uninstallApp(id){
    var error=e&&e.name==='AbortError'?'The TV timed out. Check the refreshed list before retrying.':e.message;
    uninstallView.result={id:id,label:label,ok:false,error:error,part:''};throw Error(error);
   });
- }).finally(function(){if(timer)clearTimeout(timer);uninstallView.busy=null;quickBusy=false;renderQuick();if(!answered)loadUninstall();
+ // The answer carries the list as it is afterwards; without it the list is read again. The Keep removed count can change too.
+ }).finally(function(){if(timer)clearTimeout(timer);uninstallView.busy=null;quickBusy=false;renderQuick();if(!answered)loadUninstall();loadKeep();
   Promise.resolve(loadApps(true)).catch(function(){});Promise.resolve(loadDock()).catch(function(){});});
 }
 // Holding Enter on Uninstall must not go on to confirm: a repeated key never presses the confirmation.
@@ -1583,7 +1605,7 @@ function osdConflictMarkup(name){
 }
 function osdToggle(name,on,confirmed){
  var label=(on?'Turn on the ':'Turn off the ')+(name==='volumePill'?'volume bar':'number pad');
- if(on&&!confirmed&&uiConflicts(uiRules||[],uiKeysOf(name==='volumePill'?'volume':'pad')).length){osdAsk=name;renderUi();if(uiTab!=='osd'&&uiTab!=='overview')showUiTab('osd');var q=document.querySelector('[data-osd-confirm]');if(q)q.focus();return}
+ if(on&&!confirmed&&uiConflicts(uiRules||[],uiKeysOf(name==='volumePill'?'volume':'pad')).length){osdAsk=name;renderUi();if(uiTab!=='osd')showUiTab('osd');var q=document.querySelector('[data-osd-confirm]');if(q)q.focus();return}
  osdAsk=null;
  return Promise.resolve(setDock(name,label,{on:!!on})).then(loadUiInput);
 }
@@ -1767,7 +1789,7 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.launcherSwitch!=null){launcherSwitchAsk=ds.launcherSwitch;renderDock();var q=document.querySelector('[data-launcher-switch-confirm]');if(q)q.focus();return}
  if(ds.launcherSwitchCancel!=null){launcherSwitchAsk=null;renderDock();return}
  if(ds.launcherSwitchConfirm!=null)return switchLauncher(launcherSwitchAsk);
- if(ds.quickCancel!=null||ds.quickConfirm!=null||ds.quickApp!=null)return $('quick').onclick(e);
+ if(ds.quickCancel!=null||ds.quickConfirm!=null||ds.quickApp!=null||ds.appsRetry!=null)return $('quick').onclick(e);   // the Samsung Home switch of the Custom launcher tab
  if(ds.customCancel!=null){customConfirm=false;renderCustom();var sw=document.querySelector('[data-custom-switch]');if(sw)sw.focus();return}
  if(ds.customConfirm!=null||ds.customChange!=null){var id=customChosen;if(!id)return;return setDock('enableCustom',ds.customChange!=null?'Change the custom launcher app':'Turn on the custom launcher',{appId:id})}
  if(ds.dockCancel!=null){dockConfirm=false;renderDock();var s=document.querySelector('[data-dock-switch]');if(s)s.focus();return}
@@ -1829,5 +1851,8 @@ $('rollbackUpdate').onclick=function(){updateBusy=true;updateButtons();updateTex
 // The live countdown is not drawn while the page is hidden; it is right again as soon as the page shows.
 document.addEventListener('visibilitychange',function(){if(!document.hidden)liveStatus()});
 // The shortcut list is read when the Remapper or Home Assistant opens (both read it again there), not at start.
-var bootUpdate=loadUpdate();loadApps();liveStatus();loadQuick();Promise.all([bootUpdate,loadPlugins()]).then(autoNotices);setInterval(autoNotices,AUTO_EVERY);setInterval(function(){if(currentPanel==='remote'&&inputListening&&!document.hidden)pollInput()},1500);setInterval(function(){if(liveUntil){if(Date.now()>=liveUntil)liveUntil=0;if(!document.hidden)liveStatus();}if(currentPanel==='dashboard'||currentPanel==='processes'||currentPanel==='apps')pollMonitor()},1000);
+// Listening ends after LIVE_MS even in a hidden tab (a forgotten tab is how it stays on); a stop that fails is tried again LIVE_MS later.
+function listenExpired(){if(!inputListening||!(listenSince>0)||Date.now()-listenSince<LIVE_MS||uiOperationBusy.rules)return;listenSince=Date.now();return Promise.resolve($('observe').onclick()).then(function(ok){if(ok)say('Listening stopped after 2 minutes. Start it again to capture another key.')})}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('pagehide',function(){if(!inputListening)return;try{fetch('/input',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(listenStopBody()),keepalive:true}).catch(function(){})}catch(e){}});
+var bootUpdate=loadUpdate();loadApps();liveStatus();loadQuick();Promise.all([bootUpdate,loadPlugins()]).then(autoNotices);setInterval(autoNotices,AUTO_EVERY);setInterval(function(){listenExpired();if(currentPanel==='remote'&&inputListening&&!document.hidden)pollInput()},1500);setInterval(function(){if(liveUntil){if(Date.now()>=liveUntil)liveUntil=0;if(!document.hidden)liveStatus();}if(currentPanel==='dashboard'||currentPanel==='processes'||currentPanel==='apps')pollMonitor()},1000);
 </script></body></html>`;};
