@@ -292,12 +292,15 @@ function downloadDiagnostics(res, withComponents) {
         launcher: later(function () { return dock.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         tuner: later(function () { return tuner.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
         input: later(function () {
-            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags();
-            return physical.inventory().then(function (all) {
+            var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '';
+            // The helper's own last words (it writes them to /tmp/vetro-input.log, root only): why it could not hold the remote.
+            return agentExecute('tail -n 2 /tmp/vetro-input.log 2>/dev/null', 5000).then(function (r) { helperLog = r && r.stdout || ''; }, function () {}).then(function () {
+                return physical.inventory();
+            }).then(function (all) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
-                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem,
+                    selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; })};
             });
         }),

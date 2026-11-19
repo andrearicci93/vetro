@@ -62,6 +62,15 @@ function choice(v, allowed) { return allowed.indexOf(v) >= 0 ? v : null; }
 var CLIENT_FILE_RE=/^[A-Za-z0-9_.-]{1,40}(?:\/[A-Za-z0-9_.-]{1,80}){0,3}$/;
 // A copy of the client elsewhere in the firmware (/usr/apps/<Samsung app>/..., /usr/share/dotnet.tizen/...): Samsung paths only.
 var CLIENT_PATH_RE=/^\/(?:usr|opt\/usr)\/[A-Za-z0-9_.\/-]{1,200}\.dll$/;
+var INPUT_ERRORS={'Saved physical remote is unavailable':'saved-remote-missing','native input helper did not connect':'helper-did-not-connect',
+    'unexpected input helper identity':'helper-identity','input helper launch failed':'helper-launch-failed','input helper disconnected; original keys released':'helper-disconnected',
+    'select a unique physical remote device':'remote-not-unique','input inventory unavailable':'inventory-unavailable','no root agent connected':'no-root',
+    'invalid input authentication':'helper-auth','invalid input sequence':'helper-sequence','invalid input event':'helper-event','oversized input frame':'helper-frame',
+    'input listener closed before launch':'listener-closed','no physical remote devices found':'no-remotes'};
+function inputErrorCode(v){return typeof v==='string'&&v?(Object.prototype.hasOwnProperty.call(INPUT_ERRORS,v)?INPUT_ERRORS[v]:'other'):null;}
+function helperError(text){var lines=String(text||'').split('\n').map(function(l){return l.replace(/\/dev\/input\/[A-Za-z0-9_-]{1,32}/g,'<node>').trim();}).filter(function(l){return HELPER_ERROR_RE.test(l);});
+    return lines.length?lines[lines.length-1]:null;}
+var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .<>:-]{1,100}$/;
 var KEY_NAME_RE=/^[A-Z][A-Z0-9_]{1,31}$/, SCAN_RE=/^0x[0-9A-F]{8}$/;
 var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
     'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
@@ -126,7 +135,10 @@ var projectors = {
     // recentKeys: the last key presses the interception saw on the remote it holds (code, Linux key name, scan code, held back or passed
     // on), so a report taken right after pressing Vol+, Vol-, Mute and 123 shows which codes a remote really sends (the SolarCell's volume
     // is not 66/67/68) and whether they reach the node Vetro holds at all. Codes of remote buttons only, at most 30.
+    // failure: the service's last reason for not holding the remote, as a fixed word; helperError: the input helper's last exception, its type
+    // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out.
     input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','selectableCount']),
+        {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog)},
         {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
             return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
                 held:e.decision==='blocked'};})});}
