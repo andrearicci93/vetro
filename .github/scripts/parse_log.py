@@ -24,7 +24,7 @@ SIGNATURES = {
 }
 
 
-SECTIONS = ('platform', 'device', 'inventory', 'settings', 'catalog', 'monitor', 'startup', 'network', 'dns', 'mqtt', 'privacy', 'hbbtv', 'launcher', 'quickWins', 'components', 'probe', 'serviceApis')
+SECTIONS = ('platform', 'device', 'inventory', 'settings', 'catalog', 'monitor', 'startup', 'network', 'dns', 'mqtt', 'privacy', 'hbbtv', 'launcher', 'tuner', 'input', 'quickWins', 'firmware', 'factoryTest', 'components', 'probe', 'serviceApis')
 STATUSES = ('unavailable', 'timeout')
 REASONS = {
     'no-root-agent': 'no root agent connected',

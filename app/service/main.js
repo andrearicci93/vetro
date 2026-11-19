@@ -320,10 +320,15 @@ function downloadDiagnostics(res, withComponents) {
         // The collector treats a truthy "error" as an unreadable section; the launcher keeps its last error there.
         // keyLog: the launcher's log lines about the keys it is handed (Vol, Mute, 123), their windows and the Audio card; the report keeps fixed shapes only.
         launcher: later(function () { return dock.status().then(function (d) {
-            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|fifo: )' " + dockModule.LOG_FILE + ' | tail -n 24').toString('base64') + ' | base64 -d | sh', 5000)
+            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|fifo: |screen: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24').toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
                 .then(function (keyLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: keyLog}); }); }); }),
-        tuner: later(function () { return tuner.status().then(function (d) { return Object.assign({}, d, {error: null, hasError: !!d.error}); }); }),
+        // tunerLog: the tuner's start and its talk with Samsung's TV client (EFL start, which client was loaded, the first reads, a stall, an
+        // exception); the report keeps fixed shapes only and cuts the channel name off the first read.
+        tuner: later(function () { return tuner.status().then(function (d) {
+            return agentExecute('echo ' + Buffer.from("grep -E '^\\+[0-9]+ms (elm_init |tvs: |tvs worker: |start )' " + tunerModule.LOG_FILE + ' | head -n 30').toString('base64') + ' | base64 -d | sh', 5000)
+                .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
+                .then(function (tunerLog) { return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: tunerLog}); }); }); }),
         input: later(function () {
             var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '';
             // The helper's own last words (it writes them to /tmp/vetro-input.log, root only): why it could not hold the remote.
@@ -331,13 +336,49 @@ function downloadDiagnostics(res, withComponents) {
                 return physical.inventory();
             }).then(function (all) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
+                // Which of the same-name nodes advertise keys (what restoreInput chooses among), and whether the node saved with the choice is
+                // still one of them: a remote whose nodes were renumbered after a reboot, with several keyed ones, cannot be picked again.
+                var keyed = named ? named.filter(function (d) { try { return d.selectable && KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/' + d.node.split('/').pop() + '/device/capabilities/key', 'utf8')); } catch (e) { return false; } }) : null;
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
+                    keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null,
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
                     selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; })};
             });
         }),
-        quickWins: later(function () { return wins.read(); }),
+        quickWins: later(function () { return wins.read().then(function (d) { return keyGuides.read().then(function (k) { d.wins.keyguides = k; return d; }, function () { return d; }); }); }),
+        // What differs between firmware generations and the open questions of the 0.6.9 previews, read as root in one go: one line per item,
+        // "name|value", every value cut down to a number, a yes/no or a fixed word by the report (diagnostic-report.js FIRMWARE). No paths, names
+        // or text of the user's: the app in front is reported as a kind (Samsung's Home, live TV, Vetro, another app).
+        firmware: later(function () {
+            var v = function (k) { return '$(vconftool get ' + k + ' 2>/dev/null | sed -n "s/.*value = \\(.*\\) (.*)$/\\1/p" | head -n 1)'; };
+            var has = function (p) { return '$([ -e ' + p + ' ] && echo 1 || echo 0)'; };
+            var lines = [
+                'rootApp|' + has('/usr/bin/get_root_app'), 'rootColdBoot|' + v('db/appfw/is_root_cold_boot'), 'homeApp|' + v('db/appfw/home_appid'),
+                'autoStart|' + v('db/menu/smart_hub/ontvsetting/auto_start'), 'appBooting|' + v('db/menu/app_booting'),
+                'firstscreenState|' + v('memory/volt/firstscreen_state'), 'showStatus|' + v('memory/eden/show_status'),
+                'front|' + v('memory/appfw/current_fullscreen_appid'), 'homeShown|' + v('memory/avoc/home_shown'),
+                'pictureMode|$(busctl --timeout=3 call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl GetPictureMode i 1 2>/dev/null)',
+                'speakerSelection|' + v('file/private/sound/feature/SpeakerSelection'), 'displayState|' + v('memory/pm/state'),
+                'autoProtection|' + v('db/menu/system/auto_protection_time'), 'screensaverOn|' + v('memory/window_system/screensaver_on_off'),
+                'screensaverRunning|$(pgrep -f glscreensaver >/dev/null 2>&1 && echo 1 || echo 0)',
+                'guideVolume|' + v('memory/volume-app/key_guide_status'), 'guideViewer|' + v('memory/tv-viewer/key_guide_status'),
+                'guideViewerDb|' + v('db/tv-viewer/key_guide_status'), 'settingsMenuGuide|' + v('db/menu/settings_menu_guide'), 'oobStatus|' + v('db/btapp/oob_status'),
+                'netcoreapp|$(readlink /usr/share/dotnet.tizen/netcoreapp 2>/dev/null)', 'inputKeyevent|' + has('/usr/bin/input_keyevent'),
+                'volumeApp|$([ -d /usr/apps/org.tizen.volume-app ] || [ -d /opt/usr/apps/org.tizen.volume-app ] && echo 1 || echo 0)',
+                'functionOsd|$([ -d /usr/apps/org.tizen.function-osd ] || [ -d /opt/usr/apps/org.tizen.function-osd ] && echo 1 || echo 0)',
+                'quicklaunch|$([ -d /usr/apps/com.samsung.tv.quicklaunch ] || [ -d /opt/usr/apps/com.samsung.tv.quicklaunch ] && echo 1 || echo 0)',
+                'hbbtvApp|$([ -d /usr/apps/org.tizen.hbbtv ] || [ -d /opt/usr/apps/org.tizen.hbbtv ] && echo 1 || echo 0)',
+                'inputHelpers|$(ps -eo args 2>/dev/null | grep -c "[S]amsungTvRemoteInputAgent.dll")',
+                'uptime|$(cut -d. -f1 /proc/uptime 2>/dev/null)'
+            ];
+            var script = lines.map(function (l) { var i = l.indexOf('|'); return 'echo "' + l.slice(0, i) + '|' + l.slice(i + 1) + '"'; }).join('\n');
+            return agentExecute('echo ' + Buffer.from(script).toString('base64') + ' | base64 -d | sh', 15000).then(function (r) {
+                var out = {};
+                String(r && r.stdout || '').split('\n').forEach(function (l) { var i = l.indexOf('|'); if (i > 0) out[l.slice(0, i)] = l.slice(i + 1).trim(); });
+                return out;
+            });
+        }),
         factoryTest: later(function () { return factoryTest.read(); }),
         // Opt-in: the manifests of the components the catalog does not know. Without the box ticked the section says so.
         components: withComponents

@@ -76,9 +76,38 @@ var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .<>:-]{1,100}$/;
 // (the "outputs: <device>" lines are not in the list), an exception message passes only without slashes or quotes.
 var DOCK_EVENT_RES=[/^command (?:Show|Hide|Toggle|VolUp|VolDown|VolMute|Pad|Rescan|Reload)$/,/^volume: (?:the level cannot be read|level change refused|pill ready|elm_win_add failed)$/,
     /^pad: (?:ready|elm_win_add failed)$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
-    /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/];
-function dockEvents(text){return String(text||'').split('\n').map(function(l){return l.replace(/^\d{2}:\d{2}:\d{2}\.\d{3} /,'').trim();})
+    /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^launch com\.samsung\.tv\.csfs rc=-?\d{1,6}$/,/^launch via HbbTV (?:request \d{1,6} ms|failed)$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/];
+// A launch through the HbbTV app (#200) keeps only its outcome and timing: which app it was is the user's business.
+function dockEvents(text){return String(text||'').split('\n').map(function(l){return l.replace(/^\d{2}:\d{2}:\d{2}\.\d{3} /,'').trim()
+        .replace(/^launch [A-Za-z0-9_.-]{1,120} via HbbTV request (\d{1,6}) ms$/,'launch via HbbTV request $1 ms').replace(/^launch via HbbTV failed: .*$/,'launch via HbbTV failed');})
     .filter(function(l){return DOCK_EVENT_RES.some(function(re){return re.test(l);});}).slice(-16);}
+// The tuner's own log, only its start and its talk with Samsung's TV client, in fixed shapes: EFL's start, which client copy was loaded
+// (a firmware path and a version), the first reads with their timings (the channel name after "->" is cut), the window-system wait, a
+// silent TV service, and an exception's type (its message can hold paths). Milliseconds since the start are kept.
+var TUNER_EVENT_RES=[/^start pid=\d{1,7}(?: [a-z]{1,12})?$/,/^elm_init (?:start|done)$/,/^tvs: client \/(?:usr|opt\/usr)\/[A-Za-z0-9_.\/-]{1,160}\.dll \d{1,4}(?:\.\d{1,6}){1,3}$/,
+    /^tvs: (?:current|list|source) r=-?\d{1,6}[A-Za-z0-9 =\[\]:.,-]{0,80}$/,/^tvs: the window system is not up after \d{1,3} s, reading the TV anyway$/,/^tvs: no answer from the TV service after \d{1,3} s$/,
+    /^tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception$/];
+function tunerEvents(text){return String(text||'').split('\n').map(function(l){
+        var m=/^\+(\d{1,7})ms (.*)$/.exec(l.trim());if(!m)return null;
+        var body=m[2].replace(/ -> .*$/,'').replace(/^(tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception)[:\s].*$/,'$1').trim();
+        return TUNER_EVENT_RES.some(function(re){return re.test(body);})?{ms:+m[1],line:body}:null;}).filter(Boolean).slice(0,24);}
+// The firmware section: each item as the TV said it, cut down to what it may be. Numbers in a range, yes/no, or a word from a fixed list.
+function intIn(v,min,max){var n=/^-?\d{1,9}$/.test(String(v||''))?+v:NaN;return Number.isFinite(n)&&n>=min&&n<=max?n:null;}
+function bit(v){return v==='1'||v==='true'||v==='True'?true:v==='0'||v==='false'||v==='False'?false:null;}
+function frontKind(v){if(typeof v!=='string'||!v)return null;if(/^com\.samsung\.tv\.(?:csfs|home\.media|home\.sidebar|coba\.)/.test(v))return 'samsung-home';
+    if(v==='org.tizen.tv-viewer')return 'tv-viewer';if(/^vetrotvapp(?:\.|$)/.test(v))return 'vetro';return 'other';}
+function firmwareSection(d){
+    var pm=/^ii (\d{1,7}) (-?\d{1,4})$/.exec(String(d.pictureMode||'')),nc=/(\d{1,2}\.\d{1,2}\.\d{1,3})\/?$/.exec(String(d.netcoreapp||''));
+    return {rootApp:bit(d.rootApp),rootColdBoot:intIn(d.rootColdBoot,0,9),homeApp:d.homeApp?(['com.samsung.tv.csfs','org.tizen.tv-viewer'].indexOf(d.homeApp)>=0?d.homeApp:'other'):null,
+        autoStart:intIn(d.autoStart,0,9),appBooting:intIn(d.appBooting,0,9),firstscreenState:intIn(d.firstscreenState,-9,99),
+        showStatus:d.showStatus?choice(d.showStatus,['full','partial','none'])||'other':null,front:frontKind(d.front),homeShown:intIn(d.homeShown,-9,9),
+        pictureMode:pm?+pm[1]:null,pictureModeResult:pm?+pm[2]:null,speakerSelection:intIn(d.speakerSelection,-1,99),displayState:intIn(d.displayState,0,9),
+        autoProtection:intIn(d.autoProtection,-1,999),screensaverOn:intIn(d.screensaverOn,-9,9),screensaverRunning:bit(d.screensaverRunning),
+        keyGuides:{volume:bit(d.guideVolume),viewer:bit(d.guideViewer),viewerDb:intIn(d.guideViewerDb,0,9)!==null?intIn(d.guideViewerDb,0,9)>0:bit(d.guideViewerDb),
+            settingsMenuGuide:bit(d.settingsMenuGuide),oobStatus:intIn(d.oobStatus,-9,99)},
+        dotnetRuntime:nc?nc[1]:null,inputKeyevent:bit(d.inputKeyevent),volumeApp:bit(d.volumeApp),functionOsd:bit(d.functionOsd),quicklaunch:bit(d.quicklaunch),
+        hbbtvApp:bit(d.hbbtvApp),inputHelpers:intIn(d.inputHelpers,0,99),uptimeMinutes:intIn(d.uptime,0,99999999)!==null?Math.round(+d.uptime/60):null};
+}
 var KEY_NAME_RE=/^[A-Z][A-Z0-9_]{1,31}$/, SCAN_RE=/^0x[0-9A-F]{8}$/;
 var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','preflight-failed','runtime-unsupported','runtime-probe-failed',
     'capabilities-probe-failed','dotnet-capabilities-missing','launcher-capabilities-missing','tar-probe-failed','tar-unsupported','agent-disconnected','agent-timeout',
@@ -118,7 +147,8 @@ var projectors = {
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
-         cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog)});},
+         cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog),
+         bootTimeline:d.bootTimeline&&typeof d.bootTimeline==='object'?numbers(d.bootTimeline,['serviceStart','agentSeen','shownAtPowerOn']):null});},
     // Vetro TV Tuner: states and counts only. The error text and the log tail stay out. `prerequisites` says which of the four things
     // the tuner needs exist on this TV (the firmware's dotnet, Samsung's TV client, tvs-daemon, Samsung's live TV app) and `clientVersions`
     // the version folders of that client (numbers only), so a report from another TV shows what is different there.
@@ -126,8 +156,12 @@ var projectors = {
         {prerequisites:d.prerequisites?flags(d.prerequisites,['dotnet','client','tvs','viewer']):null,
          clientVersions:list(d.clientVersions,5).filter(function(v){return typeof v==='string'&&/^\d+(?:\.\d+){0,3}$/.test(v);}),
          clientFiles:list(d.clientFiles,12).filter(function(v){return typeof v==='string'&&CLIENT_FILE_RE.test(v)&&v.indexOf('..')<0;}),
-         clientElsewhere:list(d.clientElsewhere,6).filter(function(v){return typeof v==='string'&&CLIENT_PATH_RE.test(v)&&v.indexOf('..')<0;})});},
-    quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
+         clientElsewhere:list(d.clientElsewhere,6).filter(function(v){return typeof v==='string'&&CLIENT_PATH_RE.test(v)&&v.indexOf('..')<0;}),
+         events:tunerEvents(d.tunerLog)});},
+    // What differs between firmware generations (the root app, Samsung's Home and its picture mode, the sound output, the screen and its
+    // saver, the remote key guides, the .NET runtime, which of Samsung's apps exist, how many input helpers run). See firmwareSection().
+    firmware:firmwareSection,
+    quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient','telemetry','airplay','keyguides'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});out.screen=screenProgress(d);return out;},
     // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
     components:function(d){return {requested:true,complete:boolean(d.complete),packageCount:numeric(d.packageCount),totalUnknown:numeric(d.totalUnknown),truncated:boolean(d.truncated),
@@ -146,7 +180,7 @@ var projectors = {
     // is not 66/67/68) and whether they reach the node Vetro holds at all. Codes of remote buttons only, at most 30.
     // failure: the service's last reason for not holding the remote, as a fixed word; helperError: the input helper's last exception, its type
     // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out.
-    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','selectableCount']),
+    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','savedNodePresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','keyedSameNameCount','selectableCount']),
         {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog)},
         {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
             return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
