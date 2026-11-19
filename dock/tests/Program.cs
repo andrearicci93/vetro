@@ -1739,6 +1739,16 @@ namespace Launcher.Tests
                 T.Eq(s.WinX + s.RimBox(0).X + s.RimBox(0).W, 1254, "and ends at 1254");
             });
 
+            T.Run("layout: 3+ pinned system pills expand PillH and keep Pages WinH equal", () =>
+            {
+                DockLayout apps, inputs, all;
+                DockLayout.Pages(14, 11, 5, 20, 18, 1920, 1080, true, out apps, out inputs, out all);
+                T.Eq(inputs.WinH, apps.WinH, "inputs page matches 3-pill apps WinH");
+                T.Eq(all.WinH, apps.WinH, "all-apps page matches 3-pill apps WinH");
+                T.True(apps.PillTop(11) >= apps.Top + DockLayout.PadTop, "first pill fits inside top padding");
+                T.True(apps.PillTop(13) + DockLayout.PillItemH <= apps.Top + apps.PillH - DockLayout.PadBottom, "third pill fits inside bottom padding");
+            });
+
             T.Run("tasks: the selection plate covers row 0 and the rows follow it, one row height apart", () =>
             {
                 var tl = new TaskLayout(1920, 1080, 1612, DockLayout.HintH);
