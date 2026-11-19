@@ -12,7 +12,7 @@ const MAP = {
     pad_bs: 'backspace', pad_colors: 'palette', pad_back: 'caret-left', pad_ttx: 'article', pad_timer: 'clock', pad_info: 'info',
     vol_icon_0: 'speaker-simple-slash', vol_icon_1: 'speaker-simple-low', vol_icon_2: 'speaker-simple-high',
     // The Audio output card's icons (Control center)
-    out_tv: 'television-simple', out_bt: 'bluetooth', out_check: 'check'
+    out_tv: 'television-simple', out_bt: 'bluetooth', out_check: 'check', out_screen_off: 'eye-slash'
 };
 const out = path.join(__dirname, '..', 'res');
 // Glyphs moved down (+) or up (-), in the 256 grid's units, so that their ink is centred in the picture: the television

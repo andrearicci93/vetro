@@ -217,6 +217,10 @@ namespace Launcher.Tests
                 T.True(OutputPickerModel.Build(paired, 6)[1].Active && OutputPickerModel.Build(paired, -1)[1].Active, "6 reads as Bluetooth; unknown with a connected device assumes it plays");
                 T.True(OutputPickerModel.Build(null, 5)[0].Active, "Bluetooth selected but nothing connected: the TV plays");
                 T.Eq(OutputPickerModel.Build(null).Count, 1, "no list: only the TV speakers");
+                var withOff = OutputPickerModel.Build(paired, 5, true);
+                T.Eq(withOff[withOff.Count - 1].Kind, OutputKind.ScreenOff, "Turn off screen is the last row");
+                T.True(!withOff[withOff.Count - 1].Active && withOff[1].Active, "the screen row is never ticked and does not move the tick");
+                T.True(!OutputPickerModel.HasDevices(OutputPickerModel.Build(null, -1, true)) && OutputPickerModel.HasDevices(withOff), "the screen row is not a paired speaker");
             });
 
             T.Run("audio output: what a choice does", () =>
@@ -230,6 +234,7 @@ namespace Launcher.Tests
                 rows[0].Active = false;
                 T.Eq(OutputPickerModel.ActionFor(rows[0]), OutputAction.UseTv, "the TV speakers: select them");
                 T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
+                T.Eq(OutputPickerModel.ActionFor(new OutputEntry { Kind = OutputKind.ScreenOff, Label = "x" }), OutputAction.ScreenOff, "the last row turns the screen off");
             });
         }
     }

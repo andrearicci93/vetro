@@ -28,6 +28,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 ### Control center
 
 - **Down on the apps row opens up to three cards side by side.** **Task manager** (running apps by memory; OK switches, hold OK closes; by [zabique](https://github.com/zabique), [#172](https://github.com/andrearicci93/vetro/pull/172)), **Audio output** (TV speakers or a paired Bluetooth device), **Picture mode** and **Sleep timer** (Samsung's own settings). Each card has its own switch on the Launcher tab and is off until you turn it on. If you had the Task manager on, it is your only card.
+- **Turn off screen, keep the sound.** The last row of the Audio output card switches the picture off while the sound plays on (Samsung's own Picture Off); any key except volume and power brings it back.
 - **A Shard can add its own card**, for example the scenes of a smart home. The launcher never runs the Shard's code: it asks Vetro, which asks the Shard with a time limit. [Guide](app/docs/plugins.md#adding-a-card-to-the-control-center-controlcenter).
 
 ### Live TV (Vetro TV Tuner)
@@ -87,6 +88,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Fixes
 
+- **The screen comes back after Picture Off with the remote interception on.** A key passed on by Vetro moved the TV back to "on" but left the panel dark (seen on a Q80A); Vetro now turns the picture on itself and drops that key, as Samsung does.
 - **Home Assistant no longer reconnects every 10 seconds** ([#199](https://github.com/andrearicci93/vetro/issues/199), [#213](https://github.com/andrearicci93/vetro/issues/213)).
 - **Removing Vetro is never blocked by a restore step**, and HbbTV can be turned back on where the TV has no HbbTV service app ([#212](https://github.com/andrearicci93/vetro/issues/212)).
 - **MQTT on TVs with Node 4.4** ([#77](https://github.com/andrearicci93/vetro/issues/77)).

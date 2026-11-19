@@ -7,7 +7,8 @@ namespace Launcher.Ui
 {
     /// <summary>
     /// The Audio output card of the Control center: the TV speakers and the paired Bluetooth devices that can play sound
-    /// (<see cref="OutputPickerModel.Build"/>), the one playing now ticked. OK sends the sound there; while the system switches, the row
+    /// (<see cref="OutputPickerModel.Build"/>), the one playing now ticked, and last "Turn off screen" (Picture Off: the sound stays, any key
+    /// but volume and power brings the picture back). OK sends the sound there; while the system switches, the row
     /// says so ("Switching…", "Connecting…", "Not available") until the host reads the list again. The panel, header, hint and capsule
     /// are <see cref="CardChrome"/>'s.
     /// </summary>
@@ -57,7 +58,7 @@ namespace Launcher.Ui
             }
             for (int i = 0; i < _entries.Count; i++)
             {
-                string glyph = _entries[i].Kind == OutputKind.TvSpeaker ? "out_tv" : "out_bt";
+                string glyph = _entries[i].Kind == OutputKind.TvSpeaker ? "out_tv" : _entries[i].Kind == OutputKind.ScreenOff ? "out_screen_off" : "out_bt";
                 if (i >= _rows.Count) _rows.Add(new Row { Icon = RowIcon(glyph, Glyph), Text = RowText(FontBold, 27), Check = RowIcon("out_check", Glyph) });
                 else Efl.evas_object_image_file_set(_rows[i].Icon, System.IO.Path.Combine(_assets, glyph + ".png"), null);
                 Efl.evas_object_text_ellipsis_set(_rows[i].Text, 1.0);

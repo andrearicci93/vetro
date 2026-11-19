@@ -44,6 +44,12 @@ internal static class SamsungTvRemoteInputAgent
     private const uint UiGetSysName = 0x8040552c;
     // Marks Vetro's own forwarding device; must match FORWARDED_PHYS in app/service/physical-input.js.
     private const string ForwardedPhys = "vetro-forwarded-remote";
+    // Picture Off (screen off, sound on). deviced keeps its display state in memory/pm/state: 1 with the screen on, 3 while
+    // it is off (read on a Q80A, fw 2310.0; the key is in deviced on Tizen 6.0, 6.5 and 9).
+    private const string DisplayStateKey = "memory/pm/state";
+    private const int DisplayStateOff = 3;
+    private const string ScreenOnCommand = "--timeout=3 call org.tizen.system.deviced /Org/Tizen/System/DeviceD/Display "
+        + "org.tizen.system.deviced.display ChangeState s lcdon";
     private const int UinputUserDeviceSize = 1116;
     private const int UinputNameBytes = 80;
 
@@ -493,6 +499,7 @@ internal static class SamsungTvRemoteInputAgent
         int valueOffset = codeOffset + 2;
         Dictionary<int, string> keyNames = ReadKeyNames();
         Dictionary<ushort, bool> pressedBlocked = new Dictionary<ushort, bool>();
+        HashSet<ushort> pressedWake = new HashSet<ushort>();
         long sequence = 0;
         int? scanCode = null;
         byte[] buffer = new byte[eventSize];
@@ -563,7 +570,25 @@ internal static class SamsungTvRemoteInputAgent
                     key = "";
                 }
                 bool block = false;
-                if (type == EventKey)
+                // With the screen off, Samsung turns it back on at the first key that is not a volume or power key and drops
+                // that key. A key re-emitted through uinput only moves deviced's state back to "lcdon" and leaves the panel
+                // dark (Q80A, 2026-11-19), so while this agent holds the remote it does the same itself: the key (down,
+                // repeats and up) goes nowhere, not even to a shortcut, and deviced is asked for "lcdon".
+                bool wake = false;
+                if (filter && type == EventKey)
+                {
+                    if (value == 1 && !KeepsScreenOff(code) && ScreenIsOff())
+                    {
+                        pressedWake.Add(code);
+                        TurnScreenOn();
+                    }
+                    wake = pressedWake.Contains(code);
+                    if (wake && value == 0)
+                    {
+                        pressedWake.Remove(code);
+                    }
+                }
+                if (type == EventKey && !wake)
                 {
                     bool first = blocked.Contains(code.ToString())
                         || (!string.IsNullOrEmpty(key) && blocked.Contains(key));
@@ -584,6 +609,7 @@ internal static class SamsungTvRemoteInputAgent
                 }
                 if (filter
                     && !block
+                    && !wake
                     && (type == EventKey || type == EventSynchronization))
                 {
                     forwarder.Forward(buffer);
@@ -610,7 +636,7 @@ internal static class SamsungTvRemoteInputAgent
                                     code,
                                     value,
                                     key,
-                                    block,
+                                    wake ? "wake" : block ? "blocked" : "native",
                                     scanCode))));
                     if (value == 0)
                     {
@@ -635,7 +661,7 @@ internal static class SamsungTvRemoteInputAgent
         ushort code,
         int value,
         string key,
-        bool blocked,
+        string decision,
         int? scanCode)
     {
         long seconds = IntPtr.Size == 8
@@ -662,7 +688,7 @@ internal static class SamsungTvRemoteInputAgent
             + ",\"type_name\":\"EV_KEY\""
             + ",\"key\":\"" + EscapeJson(key) + "\""
             + ",\"action\":\"" + ActionName(value) + "\""
-            + ",\"decision\":\"" + (blocked ? "blocked" : "native") + "\""
+            + ",\"decision\":\"" + decision + "\""
             + (scanCode.HasValue
                 ? ",\"scan_code\":" + scanCode.Value
                     + ",\"scan_code_hex\":\"0x"
@@ -680,6 +706,52 @@ internal static class SamsungTvRemoteInputAgent
                     + "\""
                 : "")
             + "}";
+    }
+
+    // Keys that leave the screen off in Samsung's Picture Off: volume and mute (66-68 on Samsung remotes, 113-115 on others)
+    // and the power and sleep keys of tizen_key_layout.txt.tv.
+    private static bool KeepsScreenOff(ushort code)
+    {
+        switch (code)
+        {
+            case 66: case 67: case 68: case 113: case 114: case 115:
+            case 112: case 116: case 142: case 352: case 353: case 374:
+            case 449: case 463: case 523: case 531:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool ScreenIsOff()
+    {
+        int state;
+        return VconfGetInt(DisplayStateKey, out state) == 0 && state == DisplayStateOff;
+    }
+
+    private static void TurnScreenOn()
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                using (System.Diagnostics.Process process = new System.Diagnostics.Process())
+                {
+                    process.StartInfo.FileName = "/usr/bin/busctl";
+                    process.StartInfo.Arguments = ScreenOnCommand;
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.RedirectStandardError = true;
+                    process.Start();
+                    process.StandardOutput.ReadToEnd();
+                    process.StandardError.ReadToEnd();
+                    process.WaitForExit(5000);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        });
     }
 
     private static int ReadCurrentSourceType()

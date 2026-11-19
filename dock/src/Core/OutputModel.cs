@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Launcher.Core
 {
-    internal enum OutputKind { TvSpeaker, Bluetooth }
+    internal enum OutputKind { TvSpeaker, Bluetooth, ScreenOff }
 
     /// <summary>A Bluetooth device the TV is paired with, as the system reports it (no EFL, no P/Invoke: the list is built from this).</summary>
     internal sealed class BondedDevice
@@ -14,7 +14,7 @@ namespace Launcher.Core
         public int MajorClass;
     }
 
-    /// <summary>One row of the Audio output list.</summary>
+    /// <summary>One row of the Audio output list (the last one can be the "Turn off screen" action rather than an output).</summary>
     internal sealed class OutputEntry
     {
         public OutputKind Kind;
@@ -34,6 +34,8 @@ namespace Launcher.Core
     internal static class OutputPickerModel
     {
         public const string TvLabel = "TV speakers";
+        /// <summary>The last row: the screen goes off, the sound stays (Samsung's Picture Off); any key but volume and power brings the picture back.</summary>
+        public const string ScreenOffLabel = "Turn off screen";
         private const int MajorAudioVideo = 4;
 
         /// <summary>Whether a paired device is something to play sound on (headphones, a speaker, a soundbar), not a keyboard or a phone.</summary>
@@ -51,7 +53,7 @@ namespace Launcher.Core
         /// the TV's sound output (<c>sound_manager_get_speaker_selection</c>, -1 when unknown): the sound is on the connected device only when
         /// it says Bluetooth (or is unknown, then a connected device is assumed to be playing).
         /// </summary>
-        public static List<OutputEntry> Build(IEnumerable<BondedDevice> paired, int selection = -1)
+        public static List<OutputEntry> Build(IEnumerable<BondedDevice> paired, int selection = -1, bool screenOff = false)
         {
             var devices = new List<BondedDevice>();
             if (paired != null) foreach (BondedDevice d in paired) if (IsAudio(d)) devices.Add(d);
@@ -72,17 +74,23 @@ namespace Launcher.Core
                 if (d.Connected) first = false;
                 rows.Add(new OutputEntry { Kind = OutputKind.Bluetooth, Label = string.IsNullOrEmpty(d.Name) ? d.Address : d.Name, Address = d.Address, Active = plays, Connected = d.Connected });
             }
+            if (screenOff) rows.Add(new OutputEntry { Kind = OutputKind.ScreenOff, Label = ScreenOffLabel });
             return rows;
         }
 
-        /// <summary>What the system has to do for a row: nothing (already playing), send the sound to the TV speakers or to a device that is already connected, or connect the device first.</summary>
+        /// <summary>Whether the list has a Bluetooth device in it (the header says "No paired speakers" when it has none).</summary>
+        public static bool HasDevices(List<OutputEntry> rows) { return rows != null && rows.Exists(r => r.Kind == OutputKind.Bluetooth); }
+
+        /// <summary>What the system has to do for a row: nothing (already playing), send the sound to the TV speakers or to a device that is already connected, connect the device first, or turn the screen off.</summary>
         public static OutputAction ActionFor(OutputEntry choice)
         {
-            if (choice == null || choice.Active) return OutputAction.None;
+            if (choice == null) return OutputAction.None;
+            if (choice.Kind == OutputKind.ScreenOff) return OutputAction.ScreenOff;
+            if (choice.Active) return OutputAction.None;
             if (choice.Kind == OutputKind.TvSpeaker) return OutputAction.UseTv;
             return choice.Connected ? OutputAction.UseBluetooth : OutputAction.Connect;
         }
     }
 
-    internal enum OutputAction { None, UseTv, UseBluetooth, Connect }
+    internal enum OutputAction { None, UseTv, UseBluetooth, Connect, ScreenOff }
 }

@@ -142,7 +142,7 @@ var projectors = {
     // saved remote is among the remotes now, how many input nodes share its name (a Bluetooth remote can split its keys over several)
     // and how many remotes there are to choose from. With Vetro UI's two key switches, this says why the volume bar or the pad stay away.
     // recentKeys: the last key presses the interception saw on the remote it holds (code, Linux key name, scan code, held back or passed
-    // on), so a report taken right after pressing Vol+, Vol-, Mute and 123 shows which codes a remote really sends (the SolarCell's volume
+    // on, or used to turn the screen back on after Picture Off: woke), so a report taken right after pressing Vol+, Vol-, Mute and 123 shows which codes a remote really sends (the SolarCell's volume
     // is not 66/67/68) and whether they reach the node Vetro holds at all. Codes of remote buttons only, at most 30.
     // failure: the service's last reason for not holding the remote, as a fixed word; helperError: the input helper's last exception, its type
     // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out.
@@ -150,7 +150,7 @@ var projectors = {
         {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog)},
         {recentKeys:list(d.recentKeys,30).filter(function(e){return e&&Number.isInteger(e.code)&&e.code>=0&&e.code<=767;}).map(function(e){
             return {code:e.code,key:typeof e.key==='string'&&KEY_NAME_RE.test(e.key)?e.key:null,scan:typeof e.scan_code_hex==='string'&&SCAN_RE.test(e.scan_code_hex)?e.scan_code_hex:null,
-                held:e.decision==='blocked'};})});}
+                held:e.decision==='blocked',woke:e.decision==='wake'};})});}
 };
 // The startup listing needs about 13-17 s of systemctl work on a Q80A and more on slower TVs.
 var SLOW = {startup: 4, components: 3};

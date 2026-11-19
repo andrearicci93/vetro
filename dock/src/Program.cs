@@ -1665,8 +1665,8 @@ namespace Launcher
             if (!listed) Log("outputs: no Bluetooth list (" + AudioOutputs.LastError + ")");
             int selection;
             if (!Sound.TryGetSpeakerSelection(out selection)) selection = -1;
-            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection);
-            string note = !listed ? "Bluetooth is off" : entries.Count == 1 ? "No paired speakers" : "";
+            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection, true);
+            string note = !listed ? "Bluetooth is off" : !OutputPickerModel.HasDevices(entries) ? "No paired speakers" : "";
             _audioCard.SetEntries(entries, note);
             _audioCtl.SetCount(entries.Count);
             if (!keepSelection) _audioCtl.Select(_audioCard.ActiveRow);
@@ -1682,6 +1682,7 @@ namespace Launcher
             OutputEntry e = _audioCard.EntryAt(_audioCtl.Selected);
             OutputAction what = OutputPickerModel.ActionFor(e);
             if (what == OutputAction.None) return;
+            if (what == OutputAction.ScreenOff) { TurnScreenOff(); return; }
             bool ok = false;
             try { ok = OutputAction_(what, e); } catch (Exception ex) { Log("outputs: " + ex.Message); }
             _audioCard.SetBusy(_audioCtl.Selected, ok ? (what == OutputAction.Connect ? "Connecting…" : "Switching…") : "Not available");
@@ -1689,6 +1690,33 @@ namespace Launcher
             CancelAudioReread();
             // A switch shows at once; a connection takes a few seconds more (the device is selected 2.5 s after it, see OnSelectBluetooth).
             _audioReread = Efl.ecore_timer_add(what == OutputAction.Connect ? 4.5 : 1.2, AudioRereadCb, IntPtr.Zero);
+        }
+
+        // "Turn off screen" on the Audio output card: Samsung's Picture Off, a deviced display state (lcdoff), the same one its Settings item
+        // uses. The sound keeps playing; the first key that is not a volume or power key brings the picture back (Samsung's tvctx-manager does
+        // it, or Vetro's input helper when it holds the remote: a key it passes on through uinput would leave the panel dark). The Control center
+        // closes first, and the screen goes off once it has gone, off the main loop. Tried on a Q80A (fw 2310.0) on 2026-11-19.
+        private const string ScreenOffCommand = "busctl --timeout=3 call org.tizen.system.deviced /Org/Tizen/System/DeviceD/Display "
+            + "org.tizen.system.deviced.display ChangeState s lcdoff";
+        private static readonly Efl.TaskCb ScreenOffCb = OnScreenOff;
+        private static IntPtr _screenOffTimer;
+
+        private static void TurnScreenOff()
+        {
+            HideDock();
+            if (_screenOffTimer != IntPtr.Zero) Efl.ecore_timer_del(_screenOffTimer);
+            _screenOffTimer = Efl.ecore_timer_add(0.5, ScreenOffCb, IntPtr.Zero);
+        }
+
+        private static byte OnScreenOff(IntPtr data)
+        {
+            _screenOffTimer = IntPtr.Zero;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                string reply = Shell.Read(ScreenOffCommand).Trim();
+                Log("screen: off " + (reply == "i 0" ? "ok" : "refused (" + (reply.Length == 0 ? "no answer" : reply) + ")"));
+            });
+            return 0;
         }
 
         // The Picture mode, Sleep timer and Shard cards: read off the main loop when the Control center opens, set the same way. While a read
