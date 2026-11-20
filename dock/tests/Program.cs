@@ -1739,6 +1739,16 @@ namespace Launcher.Tests
                 T.Eq(s.WinX + s.RimBox(0).X + s.RimBox(0).W, 1254, "and ends at 1254");
             });
 
+            T.Run("layout: 3+ pinned system pills expand PillH and keep Pages WinH equal", () =>
+            {
+                DockLayout apps, inputs, all;
+                DockLayout.Pages(14, 11, 5, 20, 18, 1920, 1080, true, out apps, out inputs, out all);
+                T.Eq(inputs.WinH, apps.WinH, "inputs page matches 3-pill apps WinH");
+                T.Eq(all.WinH, apps.WinH, "all-apps page matches 3-pill apps WinH");
+                T.True(apps.PillTop(11) >= apps.Top + DockLayout.PadTop, "first pill fits inside top padding");
+                T.True(apps.PillTop(13) + DockLayout.PillItemH <= apps.Top + apps.PillH - DockLayout.PadBottom, "third pill fits inside bottom padding");
+            });
+
             T.Run("tasks: the selection plate covers row 0 and the rows follow it, one row height apart", () =>
             {
                 var tl = new TaskLayout(1920, 1080, 1612, DockLayout.HintH);
@@ -2072,6 +2082,61 @@ namespace Launcher.Tests
             {
                 T.True(Design.PanelRadius <= Design.SheetSlice && Design.PanelRadius + Design.ShellBorderW <= Design.RimSlice, "border scales of at most 1: corners are never drawn from a stretched picture");
                 T.True(2 * Design.PanelRadius <= new DockLayout(5, 1920, 1080).PillH, "the bar's corners meet at most in the middle of its sides");
+            });
+
+            T.Run("catalog: leading UTF-8 BOM on comment or entry line", () =>
+            {
+                CatalogResult c1 = Catalog.Parse("\uFEFF# comment\nyoutube\tYouTube\tcom.youtube.app\n");
+                T.Eq(c1.Problems.Length, 0, "BOM before comment produces no problems");
+                T.Eq(c1.Entries.Length, 1, "one entry parsed after BOM comment");
+                T.Eq(c1.Entries[0].Slug, "youtube", "slug clean");
+                CatalogResult c2 = Catalog.Parse("\uFEFFnetflix\tNetflix\torg.netflix.app\n");
+                T.Eq(c2.Problems.Length, 0, "BOM before entry produces no problems");
+                T.Eq(c2.Entries.Length, 1, "entry parsed with leading BOM stripped");
+                T.Eq(c2.Entries[0].Slug, "netflix", "BOM stripped from first field");
+            });
+
+            T.Run("icon blur: single-pass 4-channel box blur matches 4-pass reference", () =>
+            {
+                const int side = 16, radius = 2;
+                uint[] actual = new uint[side * side], expected = new uint[side * side];
+                for (int y = 0; y < side; y++)
+                    for (int x = 0; x < side; x++)
+                    {
+                        uint a = (uint)(80 + ((x * 13 + y * 7) & 0x7F));
+                        uint r = (uint)((x * 19 + y * 5) & 0xFF);
+                        uint g = (uint)((x * 3 + y * 23) & 0xFF);
+                        uint b = (uint)(((side - x) * 11 + y * 17) & 0xFF);
+                        uint px = (a << 24) | (r << 16) | (g << 8) | b;
+                        actual[y * side + x] = px;
+                        expected[y * side + x] = px;
+                    }
+                IconPrep.Blur(actual, side, radius);
+                // Direct mathematical box blur reference across all 4 ARGB channels (no sliding-window underflow)
+                var tmp = new uint[expected.Length];
+                int n = 2 * radius + 1;
+                Action<uint[], uint[], bool> refPass = (src, dst, horiz) =>
+                {
+                    for (int line = 0; line < side; line++)
+                        for (int i = 0; i < side; i++)
+                        {
+                            long sa = 0, sr = 0, sg = 0, sb = 0;
+                            for (int k = -radius; k <= radius; k++)
+                            {
+                                int c = Math.Max(0, Math.Min(side - 1, i + k));
+                                uint p = src[horiz ? line * side + c : c * side + line];
+                                sa += (p >> 24) & 0xFF;
+                                sr += (p >> 16) & 0xFF;
+                                sg += (p >> 8) & 0xFF;
+                                sb += p & 0xFF;
+                            }
+                            int idx = horiz ? line * side + i : i * side + line;
+                            dst[idx] = ((uint)(sa / n) << 24) | ((uint)(sr / n) << 16) | ((uint)(sg / n) << 8) | (uint)(sb / n);
+                        }
+                };
+                for (int p = 0; p < 3; p++) { refPass(expected, tmp, true); refPass(tmp, expected, false); }
+                for (int i = 0; i < actual.Length; i++)
+                    T.Eq(actual[i], expected[i], "blur pixel " + i);
             });
 
             Console.WriteLine();

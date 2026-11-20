@@ -59,19 +59,51 @@ namespace Launcher.Ui
         [DllImport(AppManager)] private static extern int app_info_get_package(IntPtr info, out IntPtr package);
         private const int ComponentUiApp = 0;   // APP_INFO_APP_COMPONENT_TYPE_UI_APP
 
-        public TaskSource(AppEntry[] catalog, Action<string> log)
+        public TaskSource(AppEntry[] catalog, Action<string> log) : this(catalog, null, log) { }
+
+        public TaskSource(AppEntry[] catalog, AppEntry[] allApps, Action<string> log)
         {
             _log = log;
-            foreach (AppEntry e in catalog)
-            {
-                if (e.AppId == null || e.IsSystem) continue;
-                if (!_catalogLabels.ContainsKey(e.AppId)) _catalogLabels[e.AppId] = e.Label;
-                if (e.IconPath != null && !_catalogIcons.ContainsKey(e.AppId)) _catalogIcons[e.AppId] = e.IconPath;
-            }
+            IndexCatalogLocked(catalog);
+            IndexCatalogLocked(allApps);
             int hz = 100, page = 4096;
             try { hz = sysconf(ScClkTck); page = sysconf(ScPageSize); } catch (Exception) { }
             _hz = hz > 0 ? hz : 100;
             _pageKb = page >= 1024 ? page / 1024 : 4;
+        }
+
+        private void IndexCatalogLocked(AppEntry[] catalog)
+        {
+            if (catalog == null) return;
+            foreach (AppEntry e in catalog)
+            {
+                if (e == null || e.AppId == null || e.IsSystem) continue;
+                if (!_catalogLabels.ContainsKey(e.AppId)) _catalogLabels[e.AppId] = e.Label;
+                if (e.IconPath != null && !_catalogIcons.ContainsKey(e.AppId)) _catalogIcons[e.AppId] = e.IconPath;
+            }
+        }
+
+        /// <summary>Updates the label/icon lookup tables when the dock reloads its lists, and invalidates cached store icons.</summary>
+        public void UpdateCatalog(AppEntry[] apps, AppEntry[] allApps)
+        {
+            lock (_gate)
+            {
+                _catalogLabels.Clear();
+                _catalogIcons.Clear();
+                IndexCatalogLocked(apps);
+                IndexCatalogLocked(allApps);
+                _storeIcons = null;
+            }
+        }
+
+        internal bool TryGetCatalog(string appId, out string label, out string icon)
+        {
+            lock (_gate)
+            {
+                bool hasLabel = _catalogLabels.TryGetValue(appId, out label);
+                bool hasIcon = _catalogIcons.TryGetValue(appId, out icon);
+                return hasLabel || hasIcon;
+            }
         }
 
         public bool Busy { get { lock (_gate) return _busy; } }
@@ -84,15 +116,12 @@ namespace Launcher.Ui
                 if (_busy) return;
                 _busy = true;
             }
-            var t = new Thread(() =>
+            ThreadPool.QueueUserWorkItem(_ =>
             {
                 try { Take(); }
                 catch (Exception ex) { _log("tasks: " + ex.Message); }
-                lock (_gate) _busy = false;
+                finally { lock (_gate) _busy = false; }
             });
-            t.IsBackground = true;
-            t.Name = "tasks";
-            t.Start();
         }
 
         /// <summary>The newest look, or null. A full look replaces a partial one that was not picked up yet.</summary>
@@ -118,33 +147,50 @@ namespace Launcher.Ui
         private void Take()
         {
             long t0 = Stopwatch.GetTimestamp();
-            var running = Tasks.ParseStatus(Run("/usr/bin/app_launcher", "-S"));
+            var running = Tasks.ParseStatus(Shell.Read("/usr/bin/app_launcher -S", 4 * 1024 * 1024));
             long tStatus = Ms(t0);
             LookUp(running);
             long tInfo = Ms(t0);
 
             // Step one: the apps, with their names and icons; memory and CPU still unknown.
-            var users = new List<KeyValuePair<string, int>>();
             var quick = new TaskSnapshot { Partial = true };
             foreach (var r in running)
             {
                 AppInfo info;
                 lock (_gate) _infos.TryGetValue(r.Key, out info);
                 if (!Tasks.IsUserApp(r.Key, info)) continue;
-                users.Add(r);
                 quick.Apps.Add(NewApp(r, info));
             }
             Publish(quick);
 
+            if (quick.Apps.Count == 0)
+            {
+                _prevTicks.Clear();
+                _prevStamp = 0;
+                Publish(new TaskSnapshot { AvailableKb = MemAvailable() });
+                return;
+            }
+
             // Step two: the process trees.
             var procs = new Dictionary<int, ProcSample>();
-            foreach (string dir in Directory.GetDirectories("/proc"))
+            foreach (string dir in Directory.EnumerateDirectories("/proc"))
             {
-                int pid;
-                if (!int.TryParse(Path.GetFileName(dir), NumberStyles.None, CultureInfo.InvariantCulture, out pid)) continue;
+                int nameStart = dir.LastIndexOf('/') + 1;
+                if (nameStart <= 0 || nameStart >= dir.Length) continue;
+                char first = dir[nameStart];
+                if (first < '1' || first > '9') continue;
+                int pid = 0;
+                bool digits = true;
+                for (int i = nameStart; i < dir.Length; i++)
+                {
+                    char c = dir[i];
+                    if (c < '0' || c > '9') { digits = false; break; }
+                    pid = pid * 10 + (c - '0');
+                }
+                if (!digits || pid <= 0) continue;
                 int p, pp; long ticks;
                 if (Tasks.ParseStat(ReadSmall(dir + "/stat"), out p, out pp, out ticks))
-                    procs[pid] = new ProcSample { Pid = pid, PPid = pp, Ticks = ticks };
+                    procs[pid] = new ProcSample(pid, pp, ticks);
             }
             var children = Tasks.ChildMap(procs.Values);
             long tProc = Ms(t0);
@@ -153,25 +199,29 @@ namespace Launcher.Ui
             double seconds = _prevStamp == 0 ? 0 : (stamp - _prevStamp) / (double)Stopwatch.Frequency;
             var ticksNow = new Dictionary<int, long>();
             var full = new TaskSnapshot();
-            foreach (var r in users)
+            for (int i = 0; i < quick.Apps.Count; i++)
             {
-                if (!procs.ContainsKey(r.Value)) continue;   // gone in the meantime
-                AppInfo info;
-                lock (_gate) _infos.TryGetValue(r.Key, out info);
+                RunningApp q = quick.Apps[i];
+                if (!procs.ContainsKey(q.Pid)) continue;   // gone in the meantime
                 long mem = 0, ticks = 0;
-                foreach (int pid in Tasks.Tree(r.Value, children))
+                foreach (int pid in Tasks.Tree(q.Pid, children))
                 {
                     ProcSample s;
                     if (procs.TryGetValue(pid, out s)) ticks += s.Ticks;
                     mem += Tasks.PrivateKbFromStatm(ReadSmall("/proc/" + pid + "/statm"), _pageKb);
                     mem += Tasks.SwapKbFromStatus(ReadSmall("/proc/" + pid + "/status"));
                 }
-                ticksNow[r.Value] = ticks;
+                ticksNow[q.Pid] = ticks;
                 long before;
-                RunningApp app = NewApp(r, info);
-                app.MemoryKb = mem;
-                app.CpuPercent = seconds > 0.2 && _prevTicks.TryGetValue(r.Value, out before) ? Tasks.CpuPercent(before, ticks, seconds, _hz) : -1;
-                full.Apps.Add(app);
+                full.Apps.Add(new RunningApp
+                {
+                    AppId = q.AppId,
+                    Pid = q.Pid,
+                    Label = q.Label,
+                    IconPath = q.IconPath,
+                    MemoryKb = mem,
+                    CpuPercent = seconds > 0.2 && _prevTicks.TryGetValue(q.Pid, out before) ? Tasks.CpuPercent(before, ticks, seconds, _hz) : -1
+                });
             }
             _prevTicks = ticksNow;
             _prevStamp = stamp;
@@ -186,7 +236,7 @@ namespace Launcher.Ui
         private RunningApp NewApp(KeyValuePair<string, int> r, AppInfo info)
         {
             string label;
-            _catalogLabels.TryGetValue(r.Key, out label);
+            lock (_gate) _catalogLabels.TryGetValue(r.Key, out label);
             return new RunningApp { AppId = r.Key, Pid = r.Value, Label = Tasks.DisplayName(r.Key, info, label), IconPath = IconFor(r.Key, info) };
         }
 
@@ -194,13 +244,19 @@ namespace Launcher.Ui
         private string IconFor(string appId, AppInfo info)
         {
             if (!string.IsNullOrEmpty(info.Icon) && File.Exists(info.Icon)) return info.Icon;
-            if (_storeIcons == null) _storeIcons = LoadStoreIcons();
+            Dictionary<string, string> store;
+            lock (_gate) store = _storeIcons;
+            if (store == null)
+            {
+                store = LoadStoreIcons();
+                lock (_gate) { if (_storeIcons == null) _storeIcons = store; else store = _storeIcons; }
+            }
             string icon;
             int dot = appId.IndexOf('.');
-            if (_storeIcons.TryGetValue(appId, out icon)) return icon;
-            if (info.Package != null && _storeIcons.TryGetValue(info.Package, out icon)) return icon;
-            if (dot > 0 && _storeIcons.TryGetValue(appId.Substring(0, dot), out icon)) return icon;
-            if (_catalogIcons.TryGetValue(appId, out icon)) return icon;
+            if (store.TryGetValue(appId, out icon)) return icon;
+            if (info.Package != null && store.TryGetValue(info.Package, out icon)) return icon;
+            if (dot > 0 && store.TryGetValue(appId.Substring(0, dot), out icon)) return icon;
+            lock (_gate) if (_catalogIcons.TryGetValue(appId, out icon)) return icon;
             return null;
         }
 
@@ -289,7 +345,7 @@ namespace Launcher.Ui
         private static string TakeString(int rc, IntPtr p)
         {
             if (p == IntPtr.Zero) return null;
-            string s = rc == 0 ? Marshal.PtrToStringAnsi(p) : null;
+            string s = rc == 0 ? Marshal.PtrToStringUTF8(p) : null;
             free(p);
             return s;
         }
@@ -300,7 +356,7 @@ namespace Launcher.Ui
             var sb = new StringBuilder("for id in");
             foreach (string id in ids) sb.Append(' ').Append(id);   // ParseStatus only keeps plain app ids
             sb.Append("; do echo \"@@ $id\"; /usr/bin/pkginfo --app \"$id\" 2>/dev/null; done");
-            string output = Run("/bin/sh", null, sb.ToString());
+            string output = Shell.Read(sb.ToString(), 4 * 1024 * 1024);
             string current = null;
             var block = new StringBuilder();
             foreach (string line in (output + "\n@@ \n").Split('\n'))
@@ -318,54 +374,21 @@ namespace Launcher.Ui
                 }
                 else block.Append(line).Append('\n');
             }
+            lock (_gate)
+            {
+                foreach (string id in ids)
+                    if (!_infos.ContainsKey(id)) _infos[id] = null;
+            }
         }
 
         private static long MemAvailable()
         {
-            string m = ReadSmall("/proc/meminfo");
-            int at = m.IndexOf("MemAvailable:", StringComparison.Ordinal);
-            if (at < 0) return -1;
-            int end = m.IndexOf('\n', at);
-            long kb;
-            return long.TryParse((end < 0 ? m.Substring(at + 13) : m.Substring(at + 13, end - at - 13)).Replace("kB", "").Trim(), out kb) ? kb : -1;
+            return Tasks.MemAvailableFromMeminfo(ReadSmall("/proc/meminfo"));
         }
 
         private static string ReadSmall(string path)
         {
             try { return File.ReadAllText(path); } catch (Exception) { return ""; }
-        }
-
-        [DllImport("libc", SetLastError = true)] private static extern IntPtr popen(string command, string mode);
-        [DllImport("libc")] private static extern int pclose(IntPtr stream);
-        [DllImport("libc")] private static extern UIntPtr fread(byte[] buffer, UIntPtr size, UIntPtr count, IntPtr stream);
-
-        /// <summary>
-        /// Output of a command, through libc's popen rather than System.Diagnostics.Process: EFL installs its own
-        /// SIGCHLD handler, which can reap the child before .NET sees it exit, and Process.WaitForExit then sat out
-        /// its whole timeout (measured: 8 s for a 20 ms command). popen only needs the pipe to close.
-        /// Only fixed program paths and plain app ids ever reach the command line.
-        /// </summary>
-        private string Run(string file, string args, string shellScript = null)
-        {
-            string cmd = shellScript ?? (file + (args != null ? " " + args : ""));
-            IntPtr f = IntPtr.Zero;
-            try
-            {
-                f = popen(cmd + " 2>/dev/null", "r");
-                if (f == IntPtr.Zero) { _log("tasks: popen failed for " + file + " errno=" + Marshal.GetLastWin32Error()); return ""; }
-                var buf = new byte[16384];
-                var ms = new MemoryStream();
-                while (true)
-                {
-                    int n = (int)fread(buf, (UIntPtr)1, (UIntPtr)buf.Length, f);
-                    if (n <= 0) break;
-                    ms.Write(buf, 0, n);
-                    if (ms.Length > 4 * 1024 * 1024) break;   // nothing we run prints that much
-                }
-                return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
-            }
-            catch (Exception ex) { _log("tasks: " + file + ": " + ex.Message); return ""; }
-            finally { if (f != IntPtr.Zero) pclose(f); }   // ECHILD if ecore reaped it first: harmless
         }
     }
 }

@@ -219,8 +219,9 @@ namespace Launcher.Core
         {
             Count = count < 0 ? 0 : count;
             int max = Math.Max(0, Count - 1);
-            if (Selected > max) { Selected = max; _from = SelPos; _runT = 0; }
             if (SelPos > max) SelPos = max;
+            if (Selected > max) { Selected = max; _from = SelPos; _runT = 0; }
+            else if (_from > max) { _from = SelPos; _runT = 0; }
             Scroll = TaskLayout.ScrollFor(SelPos, Scroll, Count);
         }
 
@@ -259,7 +260,7 @@ namespace Launcher.Core
         /// <summary>Puts the selection on row <paramref name="index"/> at once (the same app moved after a refresh).</summary>
         public void Select(int index)
         {
-            if (index < 0 || index >= Count || index == Selected) return;
+            if (index < 0 || index >= Count || (index == Selected && SelPos == index)) return;
             Selected = index; SelPos = index; _from = index; _runT = 0;
             Scroll = TaskLayout.ScrollFor(SelPos, Scroll, Count);
         }

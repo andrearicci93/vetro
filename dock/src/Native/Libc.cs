@@ -29,8 +29,10 @@ namespace Launcher.Native
         [DllImport(C, SetLastError = true)] public static extern int unlink(string path);
         [DllImport(C, SetLastError = true)] public static extern int kill(int pid, int sig);
         [DllImport(C, SetLastError = true)] public static extern int chmod(string path, uint mode);
+        [DllImport(C, SetLastError = true)] public static extern int setxattr(string path, string name, byte[] value, UIntPtr size, int flags);
         [DllImport(C)] public static extern int system(string command);
         [DllImport(C, SetLastError = true)] public static extern int inotify_init1(int flags);
         [DllImport(C, SetLastError = true)] public static extern int inotify_add_watch(int fd, string path, uint mask);
+        [DllImport(C)] public static extern void free(IntPtr ptr);
     }
 }

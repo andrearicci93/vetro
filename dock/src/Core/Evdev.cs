@@ -75,21 +75,26 @@ namespace Launcher.Core
         private static readonly string[] Remote = { "smart control", "rc device", "mcirb" };
         private static readonly string[] Excluded = { "keyboard", "mouse", "panel" };
 
-        private static bool Any(string lower, string[] words)
+        private static bool Any(string text, int start, int len, string[] words)
         {
-            foreach (string w in words) if (lower.IndexOf(w, StringComparison.Ordinal) >= 0) return true;
+            foreach (string w in words) if (text.IndexOf(w, start, len, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
         }
 
         // "event" followed by digits only, as a whole word of the Handlers line.
-        private static string EventNode(string handlers)
+        private static string EventNode(string text, int start, int end)
         {
-            foreach (string t in handlers.Split(' '))
+            int i = start;
+            while (i < end)
             {
-                if (t.Length <= 5 || !t.StartsWith("event", StringComparison.Ordinal)) continue;
+                while (i < end && text[i] == ' ') i++;
+                int tokStart = i;
+                while (i < end && text[i] != ' ') i++;
+                int tokLen = i - tokStart;
+                if (tokLen <= 5 || string.CompareOrdinal(text, tokStart, "event", 0, 5) != 0) continue;
                 bool digits = true;
-                for (int i = 5; i < t.Length; i++) if (t[i] < '0' || t[i] > '9') { digits = false; break; }
-                if (digits) return "/dev/input/" + t;
+                for (int k = tokStart + 5; k < i; k++) if (text[k] < '0' || text[k] > '9') { digits = false; break; }
+                if (digits) return "/dev/input/" + text.Substring(tokStart, tokLen);
             }
             return null;
         }
@@ -98,25 +103,51 @@ namespace Launcher.Core
         public static List<string> RemoteNodes(string procBusInputDevices)
         {
             var nodes = new List<string>();
-            string name = null, node = null;
-            foreach (string raw in (procBusInputDevices ?? "").Replace("\r", "").Split('\n'))
+            if (string.IsNullOrEmpty(procBusInputDevices)) return nodes;
+            int nameStart = -1, nameLen = 0;
+            string node = null;
+            int pos = 0, total = procBusInputDevices.Length;
+            while (pos < total)
             {
-                string line = raw.TrimEnd();
-                if (line.Length == 0) { Flush(nodes, name, node); name = null; node = null; continue; }
-                if (line.StartsWith("N: Name=\"", StringComparison.Ordinal) && line.EndsWith("\"", StringComparison.Ordinal) && line.Length >= 10)
-                    name = line.Substring(9, line.Length - 10);
-                else if (line.StartsWith("H: Handlers=", StringComparison.Ordinal))
-                    node = EventNode(line.Substring(12));
+                int nl = procBusInputDevices.IndexOf('\n', pos);
+                int lineEnd = nl < 0 ? total : nl;
+                while (lineEnd > pos && (procBusInputDevices[lineEnd - 1] == '\r' || procBusInputDevices[lineEnd - 1] == ' ' || procBusInputDevices[lineEnd - 1] == '\t'))
+                    lineEnd--;
+                int lineLen = lineEnd - pos;
+                if (lineLen == 0)
+                {
+                    Flush(nodes, procBusInputDevices, nameStart, nameLen, node);
+                    nameStart = -1; nameLen = 0; node = null;
+                }
+                else if (lineLen >= 10 && string.CompareOrdinal(procBusInputDevices, pos, "N: Name=\"", 0, 9) == 0 && procBusInputDevices[lineEnd - 1] == '"')
+                {
+                    nameStart = pos + 9;
+                    nameLen = lineLen - 10;
+                }
+                else if (lineLen >= 12 && string.CompareOrdinal(procBusInputDevices, pos, "H: Handlers=", 0, 12) == 0)
+                {
+                    node = EventNode(procBusInputDevices, pos + 12, lineEnd);
+                }
+                if (nl < 0) break;
+                pos = nl + 1;
             }
-            Flush(nodes, name, node);
+            Flush(nodes, procBusInputDevices, nameStart, nameLen, node);
             return nodes;
         }
 
-        private static void Flush(List<string> into, string name, string node)
+        private static void Flush(List<string> into, string text, int nameStart, int nameLen, string node)
         {
-            if (name == null || node == null) return;
-            string lower = name.ToLowerInvariant();
-            if (Any(lower, Remote) && !Any(lower, Excluded)) into.Add(node);
+            if (nameStart < 0 || node == null) return;
+            if (Any(text, nameStart, nameLen, Remote) && !Any(text, nameStart, nameLen, Excluded)) into.Add(node);
+        }
+
+        /// <summary>Drops disconnected device paths from <paramref name="openFailed"/> so stale failures never defeat InputScanGate.</summary>
+        public static void PruneFailed(HashSet<string> openFailed, IList<string> presentNodes)
+        {
+            if (openFailed == null || openFailed.Count == 0) return;
+            if (presentNodes == null || presentNodes.Count == 0) { openFailed.Clear(); return; }
+            var present = new HashSet<string>(presentNodes, StringComparer.Ordinal);
+            openFailed.RemoveWhere(n => !present.Contains(n));
         }
     }
 }

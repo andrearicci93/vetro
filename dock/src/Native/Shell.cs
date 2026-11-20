@@ -16,7 +16,7 @@ namespace Launcher.Native
         [DllImport("libc")] private static extern int pclose(IntPtr stream);
         [DllImport("libc")] private static extern UIntPtr fread(byte[] buffer, UIntPtr size, UIntPtr count, IntPtr stream);
 
-        public static string Read(string command)
+        public static string Read(string command, int maxBytes = 256 * 1024)
         {
             IntPtr f = IntPtr.Zero;
             try
@@ -30,7 +30,7 @@ namespace Launcher.Native
                     int n = (int)fread(buf, (UIntPtr)1, (UIntPtr)buf.Length, f);
                     if (n <= 0) break;
                     ms.Write(buf, 0, n);
-                    if (ms.Length > 256 * 1024) break;
+                    if (ms.Length > maxBytes) break;
                 }
                 return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
             }

@@ -41,7 +41,7 @@ namespace Launcher.Ui
         public bool Request(ChoiceRow row = null)
         {
             lock (_gate) { if (_busy) return false; _busy = true; }
-            var t = new Thread(() =>
+            ThreadPool.QueueUserWorkItem(_ =>
             {
                 ChoiceState st = null;
                 try
@@ -65,11 +65,8 @@ namespace Launcher.Ui
                     }
                 }
                 catch (Exception ex) { _log(_name + ": " + ex.Message); }
-                lock (_gate) { _ready = st ?? new ChoiceState { Note = "Not available", Choosable = false }; _busy = false; }
+                finally { lock (_gate) { _ready = st ?? new ChoiceState { Note = "Not available", Choosable = false }; _busy = false; } }
             });
-            t.IsBackground = true;
-            t.Name = _name;
-            t.Start();
             return true;
         }
 

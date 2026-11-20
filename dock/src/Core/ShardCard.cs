@@ -149,6 +149,11 @@ namespace Launcher.Core
         // Control characters (a stray tab or CR in a text) read as spaces, ends trimmed.
         private static string Clean(string s)
         {
+            if (string.IsNullOrEmpty(s)) return "";
+            bool dirty = char.IsWhiteSpace(s[0]) || char.IsWhiteSpace(s[s.Length - 1]);
+            for (int i = 0; i < s.Length && !dirty; i++)
+                if (char.IsControl(s[i])) dirty = true;
+            if (!dirty) return s;
             var sb = new StringBuilder(s.Length);
             foreach (char c in s) sb.Append(char.IsControl(c) ? ' ' : c);
             return sb.ToString().Trim();

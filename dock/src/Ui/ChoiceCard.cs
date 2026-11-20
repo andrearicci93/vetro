@@ -14,7 +14,7 @@ namespace Launcher.Ui
     {
         private const int Glyph = 40;
 
-        private sealed class Row { public IntPtr Text, Check; public int Key = -1, TextH; }
+        private sealed class Row { public IntPtr Text, Check; public string Label; public int Key = -1, TextH; }
 
         private readonly List<Row> _rows = new List<Row>();
         private ChoiceState _state = new ChoiceState { Choosable = false };
@@ -58,11 +58,22 @@ namespace Launcher.Ui
             }
             for (int i = 0; i < _state.Rows.Count; i++)
             {
-                if (i >= _rows.Count) _rows.Add(new Row { Text = RowText(FontBold, 27), Check = RowIcon("out_check", Glyph) });
-                Efl.evas_object_text_ellipsis_set(_rows[i].Text, 1.0);
-                Efl.evas_object_text_text_set(_rows[i].Text, _state.Rows[i].Label);
-                _rows[i].TextH = Efl.evas_object_text_vert_advance_get(_rows[i].Text);
-                _rows[i].Key = -1;
+                Row r;
+                if (i >= _rows.Count)
+                {
+                    r = new Row { Text = RowText(FontBold, 27), Check = RowIcon("out_check", Glyph) };
+                    Efl.evas_object_text_ellipsis_set(r.Text, 1.0);
+                    _rows.Add(r);
+                }
+                else r = _rows[i];
+                string label = _state.Rows[i].Label;
+                if (r.Label != label)
+                {
+                    r.Label = label;
+                    Efl.evas_object_text_text_set(r.Text, label);
+                    r.TextH = Efl.evas_object_text_vert_advance_get(r.Text);
+                }
+                r.Key = -1;
             }
             SetSub(_state.Note ?? "");
             if (_state.Rows.Count == 0) SetEmpty(_state.Note.Length > 0 ? _state.Note : _reading);
@@ -77,10 +88,12 @@ namespace Launcher.Ui
         {
             if (row < 0 || row >= _rows.Count) return;
             _busyRow = row;
-            Efl.evas_object_text_text_set(_rows[row].Text, text);
-            _rows[row].TextH = Efl.evas_object_text_vert_advance_get(_rows[row].Text);
+            Row r = _rows[row];
+            r.Label = text;
+            Efl.evas_object_text_text_set(r.Text, text);
+            r.TextH = Efl.evas_object_text_vert_advance_get(r.Text);
             Changed();
-            _rows[row].Key = -1;
+            r.Key = -1;
         }
 
         public void Apply(TaskController c, bool focused)

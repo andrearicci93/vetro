@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Launcher.Core;
 using Launcher.Native;
@@ -13,6 +14,8 @@ namespace Launcher.Ui
     /// </summary>
     internal sealed class TaskPanel : CardChrome
     {
+        private const double ClosingTimeoutSeconds = 6.0;
+
         private sealed class Row
         {
             public RunningApp App;
@@ -20,10 +23,16 @@ namespace Launcher.Ui
             public string CpuText, MemText;
             public string IconKey;   // its icon's key in Dock.Icons, null without one
             public bool ShownClosing;
+            public long ClosingAt;
             public int Alpha = -1;
             public int NameW, ValueH, NameH;
             // Measured when the texts are set (never per frame): the right-aligned figures' widths and every line height.
             public int CpuW, CpuH, MemW, InitialsW, InitialsH;
+        }
+
+        internal static bool KeepClosing(bool wasClosing, int oldPid, int newPid, long closingAt, long now, long timeoutTicks)
+        {
+            return wasClosing && oldPid == newPid && (closingAt == 0 || now - closingAt < timeoutTicks);
         }
 
         private readonly List<Row> _rows = new List<Row>();
@@ -62,12 +71,15 @@ namespace Launcher.Ui
                 _rows.RemoveAt(i);
             }
             _rows.Clear();
+            long now = Stopwatch.GetTimestamp();
+            long closingLimit = (long)(ClosingTimeoutSeconds * Stopwatch.Frequency);
             foreach (RunningApp a in apps)
             {
                 Row r;
                 if (_byId.TryGetValue(a.AppId, out r))
                 {
-                    a.Closing = a.Closing || (r.App.Closing && r.App.Pid == a.Pid);   // still closing until it is gone
+                    a.Closing = a.Closing || KeepClosing(r.App.Closing, r.App.Pid, a.Pid, r.ClosingAt, now, closingLimit);
+                    if (!a.Closing) r.ClosingAt = 0;
                     r.App = a;
                 }
                 else { r = NewRow(a); _byId[a.AppId] = r; }
@@ -86,6 +98,7 @@ namespace Launcher.Ui
             Row r;
             if (app == null || !_byId.TryGetValue(app.AppId, out r)) return;
             r.App.Closing = true;
+            r.ClosingAt = Stopwatch.GetTimestamp();
             UpdateRowText(r);
             Changed();
             r.Alpha = -1;

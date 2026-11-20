@@ -124,7 +124,7 @@ namespace Launcher
         private static IntPtr _rescanTimer;
         private static readonly Efl.TaskCb RescanCb = OnRescan;
         private const double RescanSeconds = 3.0;
-        private const int EAgain = 11;
+        private const int EAgain = 11, EIntr = 4;
         private static readonly byte[] InputBuf = new byte[16 * 32];
         private static readonly List<int> InputPresses = new List<int>();
 
@@ -270,6 +270,7 @@ namespace Launcher
                 {
                     File.Delete(_pidPath);
                     Libc.unlink(_fifoPath);
+                    if (_guardFile != null) Libc.unlink(_guardFile);
                 }
                 if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, false, null);
                 if (_pad != null && _pad.IsOnScreen) OverlayFlag.Mark(OverlayFlag.PadPath, false, null);
@@ -277,11 +278,17 @@ namespace Launcher
             catch (Exception) { }
         }
 
+        private static readonly byte[] SmackStar = { (byte)'*' };
+
         private static void SetupFifo()
         {
             Libc.unlink(_fifoPath);
             if (Libc.mkfifo(_fifoPath, 438u) != 0) { Log("mkfifo failed: " + Marshal.GetLastWin32Error()); return; }
             Libc.chmod(_fifoPath, 438u);   // 0666: it only accepts show/hide/toggle
+            // On Tizen 9 SMACK enforcing, /home/owner transmutes new files to User::Home (rxl-only for User::Pkg::vetrotvapp),
+            // blocking wrt-service from writing volume/123 commands to the FIFO. Labeling the FIFO "*" (matching /tmp) lets
+            // the unprivileged service write directly; safely ignored on non-SMACK systems.
+            Libc.setxattr(_fifoPath, "security.SMACK64", SmackStar, (UIntPtr)SmackStar.Length, 0);
             // O_RDWR keeps a writer open ourselves, so the descriptor never reports EOF when a client disconnects.
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
@@ -348,6 +355,7 @@ namespace Launcher
                 for (int round = 0; round < 8 && (long)Libc.read(_inotifyFd, InotifyBuf, (UIntPtr)InotifyBuf.Length) > 0; round++) { }
                 ScanGate.Force();
                 if (_inotifyTimer == IntPtr.Zero) _inotifyTimer = Efl.ecore_timer_add(InotifyDelaySeconds, InotifyLookCb, IntPtr.Zero);
+                else Efl.ecore_timer_reset(_inotifyTimer);
             }
             catch (Exception ex) { Log("input: inotify: " + ex.Message); }
             return 1;
@@ -368,6 +376,7 @@ namespace Launcher
             try { nodes = InputDevices.RemoteNodes(File.ReadAllText("/proc/bus/input/devices")); }
             catch (Exception ex) { if (!_listFailed) Log("input: cannot list devices: " + ex.Message); _listFailed = true; return 0; }
             _listFailed = false;
+            InputDevices.PruneFailed(_openFailed, nodes);
             int added = 0;
             foreach (string node in nodes)
             {
@@ -457,7 +466,7 @@ namespace Launcher
         // ------------------------------------------------------------------ show / hide
 
         /// <summary>Whichever page is on screen is showing (or coming in).</summary>
-        private static bool DockActive { get { return _tasksOn ? CardsActive : _ctl.IsActive; } }
+        private static bool DockActive { get { return _tasksOn ? CardsActive : _ctl != null && _ctl.IsActive; } }
 
         // ------------------------------------------------------------------ Control center cards
 
@@ -518,6 +527,7 @@ namespace Launcher
         // ------------------------------------------------------------------ Vetro TV Tuner
 
         private const string TunerPipe = "/tmp/vetro-tuner.ctl";
+        private static readonly byte[] ResumeBytes = System.Text.Encoding.ASCII.GetBytes("resume\n");
         private static bool _padFromDock;   // the osd 123 was opened over the Dock: its close counts as the Dock's
         private static bool _hideFor123;    // the Dock is going away for Samsung's own 123 pad: the tuner must not come back over it
 
@@ -534,8 +544,7 @@ namespace Launcher
             if (fd < 0) return;
             try
             {
-                byte[] b = System.Text.Encoding.ASCII.GetBytes("resume\n");
-                Libc.write(fd, b, (UIntPtr)b.Length);
+                Libc.write(fd, ResumeBytes, (UIntPtr)ResumeBytes.Length);
                 Log("tuner: resume (" + why + ")");
             }
             finally { Libc.close(fd); }
@@ -547,6 +556,8 @@ namespace Launcher
         private static void ShowDock()
         {
             if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
+            if (_screenOffTimer != IntPtr.Zero) { Efl.ecore_timer_del(_screenOffTimer); _screenOffTimer = IntPtr.Zero; }
+            if (_premapTimer != IntPtr.Zero) { Efl.ecore_timer_del(_premapTimer); _premapTimer = IntPtr.Zero; }
             _pendingLaunch = null;
             // A key chosen just before the dock closed must not be sent into the dock that opens again.
             CancelPendingKey();
@@ -605,6 +616,13 @@ namespace Launcher
         private static IntPtr _reloadTimer;
         private static readonly Efl.TaskCb ReloadAfterHideCb = OnReloadAfterHide;
 
+        private static void CancelReloadTimer()
+        {
+            if (_reloadTimer == IntPtr.Zero) return;
+            Efl.ecore_timer_del(_reloadTimer);
+            _reloadTimer = IntPtr.Zero;
+        }
+
         private static void ReloadWhenHidden()
         {
             if (!_reloadPending || _reloadTimer != IntPtr.Zero) return;
@@ -630,12 +648,14 @@ namespace Launcher
         private static void ReloadLists()
         {
             if (_homeLaunch != null || _appsDock == null) return;
-            if (_moveIndex >= 0 || _rowOkTimer != IntPtr.Zero || _tasksOn) { _reloadPending = true; Log("lists: reload waits until the dock is free"); return; }
+            if (_moveIndex >= 0 || _rowOkTimer != IntPtr.Zero || _tasksOn || _ctl.Phase == Phase.Hiding) { _reloadPending = true; Log("lists: reload waits until the dock is free"); return; }
             _reloadPending = false;
+            CancelReloadTimer();
             AppEntry[] apps = LoadApps(_appsPath), inputs = LoadList(_inputsPath, Catalog.BuiltInInputs), all = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
             bool sameApps = ListWatch.Same(apps, _apps), sameInputs = ListWatch.Same(inputs, _inputs), sameAll = ListWatch.Same(all, _allApps);
             if (sameApps && sameInputs && sameAll) { Log("lists: read again, nothing changed"); return; }
             ProbeBegin("lists reload");
+            CancelHintTimer();
             long t0 = Stopwatch.GetTimestamp();
             bool shown = _ctl.IsActive, onAll = _ctl == _allCtl, onInputs = _ctl == _inputsCtl;
             AppEntry[] before = onAll ? _allApps : onInputs ? _inputs : _apps;
@@ -647,6 +667,7 @@ namespace Launcher
             DockLayout appsLayout = _appsLayout, inputsLayout = _inputsLayout, allLayout = _allLayout;
             bool editableBefore = _sourcesEditable;
             _apps = apps; _inputs = inputs; _allApps = all;
+            if (_taskSource != null) _taskSource.UpdateCatalog(_apps, _allApps);
             PageLayouts();
             // The window keeps its size: an unchanged list is laid out exactly as before (as in RebuildPages), so its page is kept. An
             // installed app usually changes All apps alone, and making the apps row and Sources again prepared every icon of them for nothing.
@@ -711,16 +732,19 @@ namespace Launcher
         {
             if (_moveIndex >= 0) FinishMove(true);   // leaving while a tile is being moved keeps where it is now
             CancelRowOk();
+            CancelHintTimer();
             _pendingLaunch = null;
             CancelIdle();
             StopClock();
             if (_tasksOn)
             {
                 StopTaskTimers();
+                CancelTaskOk();
+                CancelAudioReread();
                 if (HideCards()) StartAnimator();
                 return;
             }
-            if (_ctl.Hide()) StartAnimator();
+            if (_ctl != null && _ctl.Hide()) StartAnimator();
         }
 
         // ------------------------------------------------------------------ task manager page
@@ -735,16 +759,20 @@ namespace Launcher
         private static void OpenTasks()
         {
             ProbeBegin("control center");
+            CancelRowOk();
             float pop = Math.Min(_ctl.Presence, 0.55f);
             _ctl.Vanish();
             _dock.SetVisible(false);
             MoveWindow(_taskLayout.WinX, _taskLayout.WinY, _taskLayout.WinW, _taskLayout.WinH);
             _tasksOn = true;
             _cardFocus = 0;
+            System.Threading.Volatile.Write(ref _pictureChecks, null);
             OpenCards(pop);
             if (HasCard(CardKind.Tasks))
             {
                 _taskUserMoved = false;
+                TaskSnapshot ready = _taskSource.TryTake();
+                if (ready != null) ApplySnapshot(ready);
                 _tasksCtl.SetCount(_taskPanel.Count);
                 RefreshTasks(true);
                 if (_taskRefresh == IntPtr.Zero) _taskRefresh = Efl.ecore_timer_add(TaskRefreshSeconds, TaskRefreshCb, IntPtr.Zero);
@@ -754,6 +782,7 @@ namespace Launcher
                 // The Bluetooth list is asked on the main loop (calls to another process, of unknown length on a TV): after the
                 // cards have come in, not in front of their first frame. Meanwhile the card shows what it showed last time
                 // ("Reading…" the first time).
+                _audioCard.ClearBusy();
                 _audioCtl.SetCount(_audioCard.Count);
                 if (_audioCard.Count > 0) _audioCtl.Select(_audioCard.ActiveRow);
                 CancelAudioReread();
@@ -766,6 +795,8 @@ namespace Launcher
                 if (choice == null) continue;
                 // A card that already has its rows keeps them while the TV is asked again (the answer replaces them in place);
                 // only the first time is there nothing to show but "Reading…".
+                ChoiceState ready = _choiceSrcs[i].TryTake();
+                if (ready != null) choice.SetState(ready);
                 if (choice.Count == 0) { choice.Clear(); _cardCtl[i].SetCount(0); }
                 else { choice.ClearBusy(); _cardCtl[i].SetCount(choice.Count); _cardCtl[i].Select(choice.ActiveRow); }
                 _choiceFresh[i] = true;
@@ -805,6 +836,13 @@ namespace Launcher
         {
             if (_taskRefresh != IntPtr.Zero) { Efl.ecore_timer_del(_taskRefresh); _taskRefresh = IntPtr.Zero; }
             if (_taskPoll != IntPtr.Zero) { Efl.ecore_timer_del(_taskPoll); _taskPoll = IntPtr.Zero; }
+            CancelTaskCloseTimers();
+        }
+
+        private static void CancelTaskCloseTimers()
+        {
+            if (_taskCloseTimer1 != IntPtr.Zero) { Efl.ecore_timer_del(_taskCloseTimer1); _taskCloseTimer1 = IntPtr.Zero; }
+            if (_taskCloseTimer2 != IntPtr.Zero) { Efl.ecore_timer_del(_taskCloseTimer2); _taskCloseTimer2 = IntPtr.Zero; }
         }
 
         private static bool _taskResort, _taskUserMoved;
@@ -898,7 +936,7 @@ namespace Launcher
             switch (ctl.Key(key))
             {
                 case TaskAction.Moved:
-                    if (card == CardKind.Tasks) _taskUserMoved = true;
+                    if (card == CardKind.Tasks) { _taskUserMoved = true; CancelTaskOk(); }
                     StartAnimator();
                     ResetIdle();
                     break;
@@ -958,7 +996,7 @@ namespace Launcher
             if (_taskOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_taskOkTimer); _taskOkTimer = IntPtr.Zero; }
             RunningApp app = _taskOkApp;
             _taskOkApp = null;
-            if (_tasksOn && _tasksCtl.IsActive) OpenTaskApp(app);
+            if (_tasksOn && _tasksCtl.IsActive && FocusedCard == CardKind.Tasks && _taskPanel != null && _taskPanel.AppAt(_tasksCtl.Selected) == app) OpenTaskApp(app);
         }
 
         private static byte OnTaskOkHold(IntPtr data)
@@ -966,7 +1004,8 @@ namespace Launcher
             _taskOkTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
             try
             {
-                if (TaskOk.Fire() == HoldResult.Hold && _tasksOn && _tasksCtl.IsActive) CloseTaskApp(_taskOkApp);
+                if (TaskOk.Fire() == HoldResult.Hold && _tasksOn && _tasksCtl.IsActive && FocusedCard == CardKind.Tasks && _taskPanel != null && _taskPanel.AppAt(_tasksCtl.Selected) == _taskOkApp)
+                    CloseTaskApp(_taskOkApp);
             }
             catch (Exception ex) { Log("tasks hold: " + ex); }
             return 0;
@@ -985,6 +1024,7 @@ namespace Launcher
             if (app == null || app.Closing) return;
             AppEntry e = null;
             foreach (AppEntry a in _apps) if (a.AppId == app.AppId) { e = a; break; }
+            if (e == null && _allApps != null) foreach (AppEntry a in _allApps) if (a.AppId == app.AppId) { e = a; break; }
             if (e == null) e = new AppEntry(app.AppId, app.Label ?? app.AppId, app.AppId, null);
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             Log("tasks: open " + app.AppId);
@@ -1000,8 +1040,9 @@ namespace Launcher
                 _taskSource.Close(app.AppId);
                 ApplyCards();
                 // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
-                Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
-                Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
+                CancelTaskCloseTimers();
+                _taskCloseTimer1 = Efl.ecore_timer_add(0.9, TaskAfterCloseCb, (IntPtr)1);
+                _taskCloseTimer2 = Efl.ecore_timer_add(2.6, TaskAfterCloseCb, (IntPtr)2);
             }
             ResetIdle();
         }
@@ -1014,10 +1055,13 @@ namespace Launcher
             return true;
         }
 
+        private static IntPtr _taskCloseTimer1, _taskCloseTimer2;
         private static readonly Efl.TaskCb TaskAfterCloseCb = OnTaskAfterClose;
 
         private static byte OnTaskAfterClose(IntPtr data)
         {
+            if (data == (IntPtr)1) _taskCloseTimer1 = IntPtr.Zero;
+            else if (data == (IntPtr)2) _taskCloseTimer2 = IntPtr.Zero;
             try { if (_tasksOn) RefreshTasks(true); }
             catch (Exception ex) { Log("tasks after close: " + ex); }
             return 0;
@@ -1039,6 +1083,7 @@ namespace Launcher
         private static void SelectPage(Controller ctl, Dock dock)
         {
             if (ctl == _ctl) return;
+            CancelRowOk();
             ctl.AdoptVisibility(_ctl, 0.55f);
             ActivatePage(ctl, dock);
             _dock.Apply(_ctl);
@@ -1256,6 +1301,7 @@ namespace Launcher
             _moveBefore = (AppEntry[])_apps.Clone();
             _appsDock.MovingIndex = index;
             _appsDock.SetHints(MoveHint, "Take out", false);   // Down takes the tile out now, not to the Control center
+            if (_dock == _appsDock) _appsDock.Apply(_appsCtl);
             Log("row: moving " + _apps[index].RowKey);
             StartAnimator();
             ResetIdle();
@@ -1289,6 +1335,8 @@ namespace Launcher
                 case "Return":
                 case "KP_Enter":
                 case "Select":
+                    RowOk.Press();
+                    RowOk.Fire();
                     FinishMove(true);
                     return;
                 case "Escape":
@@ -1323,6 +1371,7 @@ namespace Launcher
             _moveBefore = null;
             _appsDock.MovingIndex = -1;
             _appsDock.SetHints(null, null, true);
+            if (_dock == _appsDock) _appsDock.Apply(_appsCtl);
             StartAnimator();
             if (changed) SendRow();
         }
@@ -1349,9 +1398,11 @@ namespace Launcher
             Log("row: " + (added ? "added " : "took out ") + e.RowKey + (sources ? " from Sources" : " from All apps"));
             RebuildPages(next, 0);
             // A hint left on the other page by a hold a moment ago goes back to its own words now.
-            if (_hintTimer != IntPtr.Zero) { Efl.ecore_timer_del(_hintTimer); _hintTimer = IntPtr.Zero; HintDock(_hintOnSources).SetHints(null, null, true); }
+            CancelHintTimer();
             _hintOnSources = sources;
-            HintDock(sources).SetHints(added ? "Added to the row" : "Taken out of the row", null, false);
+            Dock hintDock = HintDock(sources);
+            hintDock.SetHints(added ? "Added to the row" : "Taken out of the row", null, false);
+            if (_dock == hintDock) _dock.Apply(_ctl);
             _hintTimer = Efl.ecore_timer_add(2.5, HintBackCb, IntPtr.Zero);
             SendRow();
         }
@@ -1360,13 +1411,27 @@ namespace Launcher
         private static bool _hintOnSources;   // which page shows "Added to the row" now: Sources, or All apps
         private static readonly Efl.TaskCb HintBackCb = OnHintBack;
         private static Dock HintDock(bool sources) { return sources ? _inputsDock : _allDock; }
+
+        private static void CancelHintTimer()
+        {
+            if (_hintTimer == IntPtr.Zero) return;
+            Efl.ecore_timer_del(_hintTimer);
+            _hintTimer = IntPtr.Zero;
+            Dock d = HintDock(_hintOnSources);
+            if (d != null) d.SetHints(null, null, true);
+        }
         private static byte OnHintBack(IntPtr data)
         {
             _hintTimer = IntPtr.Zero;
             try
             {
-                HintDock(_hintOnSources).SetHints(null, null, true);
-                if (_ctl == (_hintOnSources ? _inputsCtl : _allCtl)) StartAnimator();
+                Dock hintDock = HintDock(_hintOnSources);
+                hintDock.SetHints(null, null, true);
+                if (_ctl == (_hintOnSources ? _inputsCtl : _allCtl))
+                {
+                    if (_dock == hintDock) _dock.Apply(_ctl);
+                    StartAnimator();
+                }
             }
             catch (Exception ex) { Log("hint: " + ex.Message); }
             return 0;
@@ -1413,7 +1478,7 @@ namespace Launcher
             _clockTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
             try
             {
-                if (_ctl.IsActive) { StartClock(); _dock.Apply(_ctl); }
+                if (_ctl != null && _ctl.IsActive) { StartClock(); _dock.Apply(_ctl); }
                 else if (_tasksOn && CardsActive) StartClock();
             }
             catch (Exception ex) { Log("clock: " + ex.Message); }
@@ -1648,6 +1713,7 @@ namespace Launcher
                     if (IsOkKey(key) && FocusedCard == CardKind.Tasks) TaskOkDown(); else OnTaskKey(key);
                     return;
                 }
+                if (_ctl == null) return;
                 if (_moveIndex >= 0)
                 {
                     // The OK that started the move is still held: its auto-repeat must not be read as the OK that ends it
@@ -1722,6 +1788,7 @@ namespace Launcher
                 _pad = new NumberPad(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH,
                     delegate (PadResult kind, string what)
                     {
+                        if (DockActive) { _hideFor123 = true; HideDock(); }
                         string cmd = kind == PadResult.Send ? NumberPadModel.SendCommand(what, KeyTool) : NumberPadModel.SendKeyCommand(what, KeyTool);
                         Log("pad: sending " + what + " rc=" + Libc.system(cmd));
                     },
@@ -1734,7 +1801,7 @@ namespace Launcher
                         if (fromDock && !sent) ResumeTuner("osd 123 closed after the dock");
                     });
             bool opening = !_pad.IsShown;
-            if (opening) _padFromDock = _dockMapped;
+            if (opening) { _padFromDock = _dockMapped; CancelRowOk(); CancelTaskOk(); }
             if (_perf && opening)
             {
                 if (_padProbe == null) _padProbe = new OpenProbe();
@@ -1768,18 +1835,25 @@ namespace Launcher
         // Restore the TV erases with the other vetro-* files) so that after a choice of the TV speakers (or a restart of the launcher) the
         // card still offers it. Written only when it changes.
         private static int _lastExternal = -2;
-        private static int LastExternal(int selection)
+        private static string LastExternalFile()
         {
             string lists = string.IsNullOrEmpty(_appsPath) ? null : Path.GetDirectoryName(_appsPath);
-            string file = Path.Combine(string.IsNullOrEmpty(lists) ? (_dir ?? "/home/owner") : lists, "vetro-dock-output");
+            return Path.Combine(string.IsNullOrEmpty(lists) ? (_dir ?? "/home/owner") : lists, "vetro-dock-output");
+        }
+
+        private static int LastExternal(int selection)
+        {
+            string file = null;
             if (_lastExternal == -2)
             {
                 _lastExternal = -1;
+                file = LastExternalFile();
                 try { int saved; if (int.TryParse(File.ReadAllText(file).Trim(), out saved) && OutputPickerModel.CanChooseAgain(saved)) _lastExternal = saved; } catch (Exception) { }
             }
             if (OutputPickerModel.CanChooseAgain(selection) && selection != _lastExternal)
             {
                 _lastExternal = selection;
+                if (file == null) file = LastExternalFile();
                 try { File.WriteAllText(file, selection.ToString(System.Globalization.CultureInfo.InvariantCulture)); } catch (Exception) { }
             }
             return _lastExternal;
@@ -1852,15 +1926,18 @@ namespace Launcher
                     if (src == null) continue;
                     bool was = src.Busy;               // read before the take: an answer that lands between the two is taken at the next tick, not lost
                     ChoiceState st = src.TryTake();
-                    if (st != null && _tasksOn)
+                    if (st != null)
                     {
                         ChoiceCard card = _choiceCards[i];
                         TaskController ctl = _cardCtl[i];
                         card.SetState(st);
                         ctl.SetCount(card.Count);
                         if (_choiceFresh[i]) { ctl.Select(card.ActiveRow); _choiceFresh[i] = false; }
-                        ApplyCards();
-                        StartAnimator();
+                        if (_tasksOn)
+                        {
+                            ApplyCards();
+                            StartAnimator();
+                        }
                     }
                     busy |= was;
                 }
@@ -1890,6 +1967,10 @@ namespace Launcher
             StartChoicePoll();
         }
 
+        // Cached offered picture-mode check answer for the current Control Center session (cleared on OpenTasks),
+        // so selecting a picture mode runs 2 busctl calls instead of 24 while falling back if the signal changed.
+        private static string _pictureChecks;
+
         /// <summary>
         /// What reads (and sets) the choice card <paramref name="card"/>; null for the Task manager and the Audio output. A Shard's card asks
         /// the Vetro service with curl (never the Shard itself): the read, and a choice that answers the card's new state, so one call each.
@@ -1899,9 +1980,41 @@ namespace Launcher
             switch (card.Kind)
             {
                 case CardKind.Picture:
-                    return new ChoiceSource("picture mode", () => PictureModes.Build(Shell.Read(PictureModes.GetCommand()), Shell.Read(PictureModes.CheckCommand())), PictureModes.SetCommand, Log);
+                    return new ChoiceSource("picture mode", () =>
+                    {
+                        string get = Shell.Read(PictureModes.GetCommand());
+                        List<int> cur = PictureModes.Numbers(get);
+                        if (cur.Count < 2 || cur[1] != 0 || cur[0] < 0) return PictureModes.Build(get, "");
+                        int mode = cur[0];
+                        if (mode != PictureModes.NewHome && Array.IndexOf(PictureModes.Candidates, mode) < 0)
+                            return new ChoiceState
+                            {
+                                Rows = new List<ChoiceRow> { new ChoiceRow { Label = PictureModes.Name(mode) ?? "Another mode", Value = mode, Active = true } },
+                                Note = "Set in Samsung's menu",
+                                Choosable = false
+                            };
+                        string checks = System.Threading.Volatile.Read(ref _pictureChecks);
+                        if (checks != null)
+                        {
+                            ChoiceState cached = PictureModes.Build(get, checks);
+                            if (PictureModes.CacheCovers(cached, mode)) return cached;
+                        }
+                        string fresh = Shell.Read(PictureModes.CheckCommand());
+                        if (!string.IsNullOrEmpty(fresh)) System.Threading.Volatile.Write(ref _pictureChecks, fresh);
+                        return PictureModes.Build(get, fresh);
+                    }, PictureModes.SetCommand, Log);
                 case CardKind.Sleep:
-                    return new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);
+                    return new ChoiceSource("sleep timer", () =>
+                    {
+                        try
+                        {
+                            int idx;
+                            if (Efl.vconf_get_int(SleepTimer.IndexKey, out idx) == 0 && idx == 0)
+                                return SleepTimer.Build(SleepTimer.IndexKey + ", value = 0 (Int32)");
+                        }
+                        catch (Exception) { }
+                        return SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand()));
+                    }, SleepTimer.SetCommand, Log);
                 case CardKind.Shard:
                     string id = card.ShardId, name = "shard card " + id;
                     // The port is read when the command is made: --service-port is taken after the cards.
@@ -1930,7 +2043,7 @@ namespace Launcher
         private static byte OnAudioReread(IntPtr data)
         {
             _audioReread = IntPtr.Zero;
-            try { if (_tasksOn && HasCard(CardKind.Audio)) { bool select = _audioSelectActive; _audioSelectActive = false; ReadOutputs(!select); ApplyCards(); StartAnimator(); } }
+            try { if (_tasksOn && _audioCtl.IsActive && HasCard(CardKind.Audio)) { bool select = _audioSelectActive; _audioSelectActive = false; ReadOutputs(!select); ApplyCards(); StartAnimator(); } }
             catch (Exception ex) { Log("outputs: " + ex.Message); }
             return 0;
         }
@@ -1953,7 +2066,19 @@ namespace Launcher
             {
                 bool ok = Sound.TrySetSpeakerSelection(Sound.SpeakerBluetooth);
                 Log("outputs: select Bluetooth after the connection " + (ok ? "ok" : "refused"));
-                if (!ok && ++_selectBtTries < 2) _selectBtTimer = Efl.ecore_timer_add(SelectBtDelay, SelectBtCb, IntPtr.Zero);
+                if (!ok && ++_selectBtTries < 2)
+                {
+                    _selectBtTimer = Efl.ecore_timer_add(SelectBtDelay, SelectBtCb, IntPtr.Zero);
+                    if (_tasksOn && _audioCtl.IsActive && HasCard(CardKind.Audio))
+                    {
+                        CancelAudioReread();
+                        _audioReread = Efl.ecore_timer_add(SelectBtDelay + 1.0, AudioRereadCb, IntPtr.Zero);
+                    }
+                }
+                else if (ok && _audioReread == IntPtr.Zero && _tasksOn && _audioCtl.IsActive && HasCard(CardKind.Audio))
+                {
+                    _audioReread = Efl.ecore_timer_add(0.5, AudioRereadCb, IntPtr.Zero);
+                }
             }
             catch (Exception ex) { Log("outputs: select Bluetooth: " + ex.Message); }
             return 0;
@@ -1997,7 +2122,7 @@ namespace Launcher
             // On a receiver on HDMI the level that counts is the receiver's: the key goes back to Samsung, which passes it on over HDMI-CEC
             // (the TV's own level would change and nothing would be heard). Optical stays with Vetro (OutputPickerModel.VetroSetsLevel).
             int output;
-            if (Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
+            if (HasKeyTool && Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
             {
                 string native = key == Command.VolUp ? "XF86AudioRaiseVolume" : key == Command.VolDown ? "XF86AudioLowerVolume" : "XF86AudioMute";
                 bool detached = VolumePassOn.Works;
@@ -2009,14 +2134,21 @@ namespace Launcher
             }
             int volume;
             if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }
-            bool muted = SamsungMuted();
+            bool wasMuted = SamsungMuted();
             // Waited for on purpose: it runs once per mute (the key ends Samsung's mute, so a held Vol does not repeat it), and it must reach
             // Samsung before the level is set below.
-            if (muted) { Log("unmute key rc=" + Libc.system(KeyTool + "XF86AudioMute")); muted = false; }
+            bool unmuted = false;
+            if (wasMuted && HasKeyTool)
+            {
+                int urc = Libc.system(KeyTool + "XF86AudioMute");
+                Log("unmute key rc=" + urc);
+                unmuted = urc == 0;
+            }
             int target = volume;
             if (key == Command.VolMute)
             {
-                if (volume > 0) { _levelBeforeMute = volume; target = 0; }
+                if (unmuted && volume > 0) _levelBeforeMute = 0;
+                else if (volume > 0) { _levelBeforeMute = volume; target = 0; }
                 else target = _levelBeforeMute > 0 ? _levelBeforeMute : 10;
             }
             else
@@ -2059,7 +2191,7 @@ namespace Launcher
                             case Command.Toggle: ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
                             case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
                             case Command.Pad: TogglePad(); break;
-                            case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
+                            case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) { ScanGate.Force(); WatchNewNodes(); } break;
                             case Command.Reload: ReloadLists(); break;
                         }
                     }
@@ -2074,12 +2206,17 @@ namespace Launcher
             try
             {
                 int index = (int)data;
-                if (index < 0 || index >= _inputFds.Count || _inputFds[index] < 0) return 1;
+                if (index < 0 || index >= _inputFds.Count || _inputFds[index] < 0) return 0;
                 for (int round = 0; round < 8; round++)
                 {
                     long n = (long)Libc.read(_inputFds[index], InputBuf, (UIntPtr)InputBuf.Length);
-                    if (n < 0 && Marshal.GetLastWin32Error() != EAgain) { DropNode(index); break; }
-                    if (n <= 0) break;
+                    if (n == 0) { DropNode(index); return 0; }
+                    if (n < 0)
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        if (err != EAgain && err != EIntr) { DropNode(index); return 0; }
+                        break;
+                    }
                     InputPresses.Clear();
                     InputReleases.Clear();
                     _inputReaders[index].Feed(InputBuf, (int)n, InputPresses, InputReleases);
@@ -2154,14 +2291,28 @@ namespace Launcher
                 for (int round = 0; round < 64; round++)
                 {
                     long n = (long)Libc.read(_inputFds[index], InputBuf, (UIntPtr)InputBuf.Length);
-                    if (n <= 0) break;
+                    if (n == 0) { DropNode(index); break; }
+                    if (n < 0)
+                    {
+                        int err = Marshal.GetLastWin32Error();
+                        if (err != EAgain && err != EIntr) DropNode(index);
+                        break;
+                    }
                     InputPresses.Clear();
                     InputReleases.Clear();
                     _inputReaders[index].Feed(InputBuf, (int)n, InputPresses, InputReleases);
-                    if (InputPresses.Contains(_homeCode)) home = true;
+                    if (_homeCode > 0 && InputPresses.Contains(_homeCode)) home = true;
                 }
             }
             if (!home) return;
+            if (DockActive)
+            {
+                double now = Efl.ecore_time_get();
+                _lastHome = now;
+                _lastRawHome = now;
+                ArmGuard();
+                return;
+            }
             Log("home pressed while the launcher was starting: answered now");
             RawHome();
         }
@@ -2292,7 +2443,9 @@ namespace Launcher
             finally { if (ac != IntPtr.Zero) Efl.app_control_destroy(ac); }
         }
 
-        private const string KeyTool = "/usr/bin/input_keyevent ";
+        private const string KeyToolPath = "/usr/bin/input_keyevent";
+        private const string KeyTool = KeyToolPath + " ";
+        private static readonly bool HasKeyTool = File.Exists(KeyToolPath);
         private static readonly Efl.TaskCb KeyTimerCb = OnKeyTimer;
         private static AppEntry _pendingKey;
         private static IntPtr _keyTimer;
@@ -2325,6 +2478,12 @@ namespace Launcher
         {
             if (e.Key != null)
             {
+                if (!HasKeyTool)
+                {
+                    if (e.AppId != null) LaunchApp(e);
+                    else Log("key " + e.Key + " skipped (no input_keyevent)");
+                    return;
+                }
                 CancelPendingKey();   // two quick activations: the first timer must not fire with the second entry
                 _pendingKey = e;
                 _keyTimer = Efl.ecore_timer_add(0.30, KeyTimerCb, IntPtr.Zero);
@@ -2377,8 +2536,7 @@ namespace Launcher
                 Log("launch failed: " + e.AppId);
                 if (e.FallbackAppId != null && SendLaunch(e.FallbackAppId)) { Log("launch " + e.FallbackAppId + " (fallback)"); return; }
                 // Last resort: the platform's command line launcher.
-                Process.Start(new ProcessStartInfo("/usr/bin/app_launcher", "-s " + (e.FallbackAppId ?? e.AppId)) { UseShellExecute = false });
-                Log("launch via app_launcher: " + (e.FallbackAppId ?? e.AppId));
+                Log("launch via app_launcher: " + e.AppId + " rc=" + Libc.system(SystemLaunch.Command(e.AppId, e.FallbackAppId)));
             }
             catch (Exception ex) { Log("launch error: " + ex.Message); }
         }
@@ -2432,15 +2590,16 @@ namespace Launcher
         /// </summary>
         private static int GetHome()
         {
+            IntPtr id = IntPtr.Zero;
             try
             {
-                IntPtr id;
                 int rc = Efl.app_operation_get_current_app("http://tizen.org/appcontrol/operation/main", out id);
                 Console.WriteLine("rc=" + rc);
                 Console.WriteLine("home=" + (id == IntPtr.Zero ? "(null)" : Marshal.PtrToStringAnsi(id)));
                 return rc == 0 ? 0 : 1;
             }
             catch (Exception ex) { Console.WriteLine("get-home failed: " + ex.Message); return 2; }
+            finally { if (id != IntPtr.Zero) Libc.free(id); }
         }
 
         private static int Main(string[] args)
@@ -2485,36 +2644,22 @@ namespace Launcher
                 Log("screen reported " + sw + "x" + sh + ", layout " + screenW + "x" + screenH);
                 _pillScreenW = screenW; _pillScreenH = screenH;
 
-                _appsPath = Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv");
-                _inputsPath = Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv");
-                _allAppsWatch = Arg(args, "--all-apps");
-                _allAppsPath = _allAppsWatch ?? Path.Combine(AppContext.BaseDirectory, "res", "allapps.tsv");
-                _apps = LoadApps(_appsPath);
-                _inputs = LoadList(_inputsPath, Catalog.BuiltInInputs);
-                // One window for both pages: as wide as the wider of the two, the other is centred in it.
-                // With the task manager on, the apps page also shows a "Task manager" hint under the bar: both pages
-                // get the extra band so the shared window keeps one height, and the task panel ends where the bar does.
-                // --cards tasks,audio: the Control center's cards, in that order (Vetro writes it from the dashboard); without it the older
-                // switch: the Task manager alone unless --no-tasks. No cards: Down does nothing and there is no hint under the bar.
-                _cards = ControlCenter.Parse(Arg(args, "--cards"), Flag(args, "--no-tasks"));
-                bool tasks = _cards.Length > 0;
-                _allApps = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
                 _screenW = screenW; _screenH = screenH;
                 _res = Path.Combine(AppContext.BaseDirectory, "res");
-                DockLayout layout = PageLayouts();
-                int band = tasks ? DockLayout.HintH : 0;
-                _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, band, Math.Max(1, _cards.Length), 0);
-                _tasksCtl = new TaskController();
-                _audioCtl = new TaskController();
-                _cardCtl = new TaskController[_cards.Length];
-                _choiceSrcs = new ChoiceSource[_cards.Length];
-                for (int i = 0; i < _cards.Length; i++)
+
+                string guard = Arg(args, "--kill-on-home");
+                if (guard != null)
                 {
-                    CardKind kind = _cards[i].Kind;
-                    _cardCtl[i] = kind == CardKind.Tasks ? _tasksCtl : kind == CardKind.Audio ? _audioCtl : new TaskController();
-                    _choiceSrcs[i] = ChoiceSourceFor(_cards[i]);
+                    _guardApps = HomeGuard.Parse(guard);
+                    if (_guardApps != null) { _guardFile = "/tmp/tvlauncher.guard"; Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
+                    else Log("guard: bad app id ignored");
                 }
-                _taskSource = new TaskSource(_apps, Log);
+                string homeLaunch = Arg(args, "--home-launch");
+                if (homeLaunch != null)
+                {
+                    _homeLaunch = HomeLaunch.Parse(homeLaunch);
+                    Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
+                }
 
                 Efl.elm_win_title_set(_win, "tvlauncher");
                 Efl.elm_win_alpha_set(_win, true);
@@ -2525,54 +2670,79 @@ namespace Launcher
                 // Without this hint the compositor may ignore our geometry for a notification window.
                 Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
                 Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
-                Efl.evas_object_move(_win, layout.WinX, layout.WinY);
-                Efl.evas_object_resize(_win, layout.WinW, layout.WinH);
-                Log("window " + layout.WinW + "x" + layout.WinH + " at " + layout.WinX + "," + layout.WinY + " notification-level=" + level);
 
-                string guard = Arg(args, "--kill-on-home");
-                if (guard != null)
+                DockLayout layout = null;
+                int band = 0;
+                if (_homeLaunch == null)
                 {
-                    _guardApps = HomeGuard.Parse(guard);
-                    if (_guardApps != null) { _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
-                    else Log("guard: bad app id ignored");
+                    _appsPath = Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv");
+                    _inputsPath = Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv");
+                    _allAppsWatch = Arg(args, "--all-apps");
+                    _allAppsPath = _allAppsWatch ?? Path.Combine(AppContext.BaseDirectory, "res", "allapps.tsv");
+                    _apps = LoadApps(_appsPath);
+                    _inputs = LoadList(_inputsPath, Catalog.BuiltInInputs);
+                    // One window for both pages: as wide as the wider of the two, the other is centred in it.
+                    // With the task manager on, the apps page also shows a "Task manager" hint under the bar: both pages
+                    // get the extra band so the shared window keeps one height, and the task panel ends where the bar does.
+                    // --cards tasks,audio: the Control center's cards, in that order (Vetro writes it from the dashboard); without it the older
+                    // switch: the Task manager alone unless --no-tasks. No cards: Down does nothing and there is no hint under the bar.
+                    _cards = ControlCenter.Parse(Arg(args, "--cards"), Flag(args, "--no-tasks"));
+                    bool tasks = _cards.Length > 0;
+                    _allApps = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
+                    layout = PageLayouts();
+                    band = tasks ? DockLayout.HintH : 0;
+                    _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, band, Math.Max(1, _cards.Length), 0);
+                    _tasksCtl = new TaskController();
+                    _audioCtl = new TaskController();
+                    _cardCtl = new TaskController[_cards.Length];
+                    _choiceSrcs = new ChoiceSource[_cards.Length];
+                    for (int i = 0; i < _cards.Length; i++)
+                    {
+                        CardKind kind = _cards[i].Kind;
+                        _cardCtl[i] = kind == CardKind.Tasks ? _tasksCtl : kind == CardKind.Audio ? _audioCtl : new TaskController();
+                        _choiceSrcs[i] = ChoiceSourceFor(_cards[i]);
+                    }
+                    if (HasCard(CardKind.Tasks)) _taskSource = new TaskSource(_apps, _allApps, Log);
+                    Efl.evas_object_move(_win, layout.WinX, layout.WinY);
+                    Efl.evas_object_resize(_win, layout.WinW, layout.WinH);
+                    Log("window " + layout.WinW + "x" + layout.WinH + " at " + layout.WinX + "," + layout.WinY + " notification-level=" + level);
                 }
-                string homeLaunch = Arg(args, "--home-launch");
-                if (homeLaunch != null)
-                {
-                    _homeLaunch = HomeLaunch.Parse(homeLaunch);
-                    Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
-                }
+                else _cards = new CardSpec[0];
+
                 // The remote is opened now, before the pages and the warm-up: a Home pressed meanwhile waits in the node's buffer and is answered
                 // when the loop starts (DrainStartupInput). The fifo is still made after the warm-up: until it has a reader the service sends the
                 // volume and 123 keys to the TV itself, and they must not wait for the start-up instead.
                 SetupInput(args);
 
-                string res = Path.Combine(AppContext.BaseDirectory, "res");
+                string res = _res;
                 string dumpIcons = Arg(args, "--dump-icons");
                 if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
                 // Only what this run can show is built: in custom launcher mode the dock is never drawn (no pages, no cards), and of the
                 // Control center only the cards --cards names. Every use of a card is behind HasCard or the list of cards.
-                if (_homeLaunch == null) BuildPages();
-                int cardsN = Math.Max(1, _cards.Length);
-                if (HasCard(CardKind.Tasks))
+                if (_homeLaunch == null)
                 {
-                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Tasks)), res, Log);
-                    _taskPanel.Build();
-                }
-                if (HasCard(CardKind.Audio))
-                {
-                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Audio)), res, Log);
-                    _audioCard.Build();
-                }
-                _choiceCards = new ChoiceCard[_cards.Length];
-                for (int i = 0; i < _cards.Length; i++)
-                {
-                    CardSpec spec = _cards[i];
-                    if (spec.Kind != CardKind.Picture && spec.Kind != CardKind.Sleep && spec.Kind != CardKind.Shard) continue;
-                    string tag = spec.Kind == CardKind.Picture ? "picture" : spec.Kind == CardKind.Sleep ? "sleep" : "shard " + spec.ShardId;
-                    string reading = spec.Kind == CardKind.Picture ? "Reading the picture modes…" : spec.Kind == CardKind.Sleep ? "Reading the sleep timer…" : "Reading…";
-                    _choiceCards[i] = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, i), res, Log, tag, ControlCenter.Title(spec), reading);
-                    _choiceCards[i].Build();
+                    BuildPages();
+                    int cardsN = Math.Max(1, _cards.Length);
+                    if (HasCard(CardKind.Tasks))
+                    {
+                        _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Tasks)), res, Log);
+                        _taskPanel.Build();
+                    }
+                    if (HasCard(CardKind.Audio))
+                    {
+                        _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Audio)), res, Log);
+                        _audioCard.Build();
+                    }
+                    _choiceCards = new ChoiceCard[_cards.Length];
+                    for (int i = 0; i < _cards.Length; i++)
+                    {
+                        CardSpec spec = _cards[i];
+                        if (spec.Kind != CardKind.Picture && spec.Kind != CardKind.Sleep && spec.Kind != CardKind.Shard) continue;
+                        string tag = spec.Kind == CardKind.Picture ? "picture" : spec.Kind == CardKind.Sleep ? "sleep" : "shard " + spec.ShardId;
+                        string reading = spec.Kind == CardKind.Picture ? "Reading the picture modes…" : spec.Kind == CardKind.Sleep ? "Reading the sleep timer…" : "Reading…";
+                        _choiceCards[i] = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, i), res, Log, tag, ControlCenter.Title(spec), reading);
+                        _choiceCards[i].Build();
+                    }
                 }
                 _dock = _appsDock;
                 // The flags the tuner reads are cleared now (one left by a launcher that was killed), which also runs their first
@@ -2616,6 +2786,8 @@ namespace Launcher
                 Log("elm_run");
                 Efl.elm_run();
                 Log("elm_run returned");
+                CancelReloadTimer();
+                CancelHintTimer();
                 Efl.elm_shutdown();
             }
             catch (Exception ex)

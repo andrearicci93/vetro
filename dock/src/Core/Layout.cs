@@ -61,6 +61,7 @@ namespace Launcher.Core
         /// <summary>Width of the area the apps scroll in; with pinned entries it excludes them and the gap.</summary>
         public readonly int ViewportW;
         public readonly int PillW, PillH, WinW, WinH, WinX, WinY;
+        private readonly int _rowSpanH;
         /// <summary>Number of items that scroll (all of them without a group) and of pinned system entries.</summary>
         public readonly int AppCount, PinnedCount;
         /// <summary>Width of the app strip alone, and of the pinned entries alone.</summary>
@@ -90,13 +91,22 @@ namespace Launcher.Core
         /// screen's centre line. (Sizing the window from a page without its group made it narrower than the apps page, and
         /// Sources, centred in that narrower width, came out half the difference left of centre.)
         /// </summary>
+        private static int SpanFor(int count, int groupStart)
+        {
+            int gs = groupStart > 0 && groupStart < count ? groupStart : -1;
+            int pinned = gs < 0 ? 0 : count - gs;
+            int stackH = pinned > 0 ? pinned * PillItemH + (pinned - 1) * PillItemGap : 0;
+            return stackH > FocusIcon ? stackH : FocusIcon;
+        }
+
         public static void Pages(int apps, int groupStart, int inputs, int screenW, int screenH, bool belowBand,
             out DockLayout appsPage, out DockLayout inputsPage)
         {
-            int windowW = Math.Max(new DockLayout(apps, screenW, screenH, 0, false, groupStart, belowBand).WinW,
-                new DockLayout(inputs, screenW, screenH, 0, true, -1, belowBand).WinW);
-            appsPage = new DockLayout(apps, screenW, screenH, windowW, false, groupStart, belowBand);
-            inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand);
+            int span = Math.Max(SpanFor(apps, groupStart), SpanFor(inputs, -1));
+            int windowW = Math.Max(new DockLayout(apps, screenW, screenH, 0, false, groupStart, belowBand, span).WinW,
+                new DockLayout(inputs, screenW, screenH, 0, true, -1, belowBand, span).WinW);
+            appsPage = new DockLayout(apps, screenW, screenH, windowW, false, groupStart, belowBand, span);
+            inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand, span);
         }
 
         /// <summary>
@@ -106,11 +116,12 @@ namespace Launcher.Core
         public static void Pages(int apps, int groupStart, int inputs, int all, int allGroupStart, int screenW, int screenH, bool belowBand,
             out DockLayout appsPage, out DockLayout inputsPage, out DockLayout allPage)
         {
-            int windowW = Math.Max(Math.Max(new DockLayout(apps, screenW, screenH, 0, false, groupStart, belowBand).WinW,
-                new DockLayout(inputs, screenW, screenH, 0, true, -1, belowBand).WinW), new DockLayout(all, screenW, screenH, 0, true, allGroupStart, belowBand).WinW);
-            appsPage = new DockLayout(apps, screenW, screenH, windowW, false, groupStart, belowBand);
-            inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand);
-            allPage = new DockLayout(all, screenW, screenH, windowW, true, allGroupStart, belowBand);
+            int span = Math.Max(Math.Max(SpanFor(apps, groupStart), SpanFor(inputs, -1)), SpanFor(all, allGroupStart));
+            int windowW = Math.Max(Math.Max(new DockLayout(apps, screenW, screenH, 0, false, groupStart, belowBand, span).WinW,
+                new DockLayout(inputs, screenW, screenH, 0, true, -1, belowBand, span).WinW), new DockLayout(all, screenW, screenH, 0, true, allGroupStart, belowBand, span).WinW);
+            appsPage = new DockLayout(apps, screenW, screenH, windowW, false, groupStart, belowBand, span);
+            inputsPage = new DockLayout(inputs, screenW, screenH, windowW, true, -1, belowBand, span);
+            allPage = new DockLayout(all, screenW, screenH, windowW, true, allGroupStart, belowBand, span);
         }
 
         public DockLayout(int count, int screenW, int screenH, int windowW) : this(count, screenW, screenH, windowW, false, -1) { }
@@ -126,6 +137,9 @@ namespace Launcher.Core
 
         /// <param name="belowBand">Room for a hint under the apps pill as well (see <see cref="BelowBand"/>).</param>
         public DockLayout(int count, int screenW, int screenH, int windowW, bool raised, int groupStart, bool belowBand)
+            : this(count, screenW, screenH, windowW, raised, groupStart, belowBand, 0) { }
+
+        private DockLayout(int count, int screenW, int screenH, int windowW, bool raised, int groupStart, bool belowBand, int minRowSpanH)
         {
             if (count < 1) throw new ArgumentOutOfRangeException("count");
             if (screenW < 640 || screenH < 360) throw new ArgumentOutOfRangeException("screen");
@@ -140,7 +154,9 @@ namespace Launcher.Core
             int maxPill = Math.Min(MaxPillW, screenW - 2 * Margin - 2 * ScreenSideGap);
             PillW = Math.Min(ContentW + 2 * PadX, maxPill);
             ViewportW = PillW - 2 * PadX - fixedW;
-            PillH = PadTop + FocusIcon + LabelRow + PadBottom;
+            int stackH = PinnedCount > 0 ? PinnedCount * PillItemH + (PinnedCount - 1) * PillItemGap : 0;
+            _rowSpanH = Math.Max(Math.Max(stackH, FocusIcon), minRowSpanH);
+            PillH = PadTop + _rowSpanH + LabelRow + PadBottom;
             WinW = PillW + 2 * Margin;
             if (windowW > WinW) { OffsetX = (windowW - WinW) / 2; WinW = windowW; }
             BelowBand = belowBand;
@@ -192,7 +208,7 @@ namespace Launcher.Core
         /// <summary>Window-relative y of the pill's top edge (without the slide).</summary>
         public int Top { get { return Margin + (Raised ? 0 : HintH); } }
 
-        public int RowCenterY { get { return Top + PadTop + FocusIcon / 2; } }
+        public int RowCenterY { get { return Top + PadTop + _rowSpanH / 2; } }
 
         /// <summary>False (--no-motion): the selected icon neither grows nor rises; the glow and the ring alone mark it.</summary>
         public static bool Grow = true;
@@ -299,7 +315,7 @@ namespace Launcher.Core
             return x < min ? min : (x > max ? max : x);
         }
 
-        public int LabelTop(int slide) { return Top + PadTop + FocusIcon + LabelGap + slide; }
+        public int LabelTop(int slide) { return Top + PadTop + _rowSpanH + LabelGap + slide; }
 
         /// <summary>
         /// Window-relative y of the hint capsule: above the pill on the apps page (which points up to the

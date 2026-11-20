@@ -31,8 +31,17 @@ namespace Launcher.Native
         [DllImport(Lib, EntryPoint = "bt_audio_connect")] private static extern int AudioConnect(string address, int profile);
 
         private static bool _initialised, _audioInitialised;
-        private static BondedCb _keep;   // the callback must outlive the call
+        private static readonly BondedCb OnBondedCb = OnBonded;   // static delegate: never collected, zero closure allocations per call
+        private static List<BondedDevice> _collecting;
         public static string LastError = "";
+
+        private static bool OnBonded(IntPtr info, IntPtr user)
+        {
+            if (info == IntPtr.Zero) return true;
+            try { if (_collecting != null) _collecting.Add(Read(info)); }
+            catch (Exception ex) { LastError = "device: " + ex.Message; }
+            return true;
+        }
 
         public static bool TryList(out List<BondedDevice> devices)
         {
@@ -40,15 +49,18 @@ namespace Launcher.Native
             try
             {
                 // A refusal is not kept: right after a boot the Bluetooth service may not be ready, and the launcher lives for weeks.
-                if (!_initialised) { int rc = BtInitialize(); _initialised = rc == 0; if (rc != 0) LastError = "bt_initialize rc=" + rc; }
+                if (!_initialised)
+                {
+                    int rc = BtInitialize();
+                    _initialised = rc == 0;
+                    if (rc != 0) { LastError = "bt_initialize rc=" + rc; return false; }
+                }
                 InitAudio();
                 var found = new List<BondedDevice>();
-                _keep = delegate (IntPtr info, IntPtr user)
-                {
-                    try { found.Add(Read(info)); } catch (Exception ex) { LastError = "device: " + ex.Message; }
-                    return true;
-                };
-                int r = ForeachBonded(_keep, IntPtr.Zero);
+                _collecting = found;
+                int r;
+                try { r = ForeachBonded(OnBondedCb, IntPtr.Zero); }
+                finally { _collecting = null; }
                 if (r != 0) { LastError = "bt_adapter_foreach_bonded_device rc=" + r; return false; }
                 devices = found;
                 return true;
@@ -88,6 +100,6 @@ namespace Launcher.Native
             return d;
         }
 
-        private static string Text(IntPtr s) { return s == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(s); }
+        private static string Text(IntPtr s) { return s == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(s); }
     }
 }

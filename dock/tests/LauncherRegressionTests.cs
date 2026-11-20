@@ -20,6 +20,22 @@ namespace Launcher.Tests
             }
         }
 
+        private static long _allocSink;
+        private static long MeasureMinAlloc(Action body)
+        {
+            for (int w = 0; w < 3; w++) body();
+            long min = long.MaxValue;
+            for (int pass = 0; pass < 3; pass++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                body();
+                long alloc = GC.GetAllocatedBytesForCurrentThread() - before;
+                if (alloc < min) min = alloc;
+                if (min == 0L) break;
+            }
+            return min;
+        }
+
         public static void Run()
         {
             T.Run("raw navigation: immediate presses, delayed echoes, aliases, stale counts and hidden dock", () =>
@@ -80,6 +96,7 @@ namespace Launcher.Tests
                 foreach (string id in ids) T.True(HomeGuard.ShouldCancel(ids, id), "target cancels guard");
                 T.True(HomeGuard.ShouldCancel(ids, "com.samsung.tv.coba.newhome"), "CoBA launcher cancels guard");
                 T.True(!HomeGuard.ShouldCancel(ids, "org.tizen.browser"), "unrelated app does not cancel guard");
+                if (!File.Exists("/bin/sh")) { Console.WriteLine("  SKIP: /bin/sh unavailable"); return; }
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-guard-'" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
                 try
@@ -103,6 +120,7 @@ namespace Launcher.Tests
 
             T.Run("shard card: the shell gives curl the whole URL, '&' and all, as one argument", () =>
             {
+                if (!File.Exists("/bin/sh")) { Console.WriteLine("  SKIP: /bin/sh unavailable"); return; }
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-shard-'" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
                 try
@@ -132,6 +150,7 @@ namespace Launcher.Tests
 
             T.Run("Samsung Home: csfs, with Samsung's Home-key bundle on root-app firmware; the component package is never launched", () =>
             {
+                if (!File.Exists("/bin/sh")) { Console.WriteLine("  SKIP: /bin/sh unavailable"); return; }
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
                 try
@@ -160,6 +179,7 @@ namespace Launcher.Tests
 
             T.Run("ordinary system apps retain error-only fallback and single-target launches", () =>
             {
+                if (!File.Exists("/bin/sh")) { Console.WriteLine("  SKIP: /bin/sh unavailable"); return; }
                 string dir = Path.Combine(Path.GetTempPath(), "vetro-launch-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(dir);
                 try
@@ -258,6 +278,275 @@ namespace Launcher.Tests
                 T.Eq(OutputPickerModel.ActionFor(rows[0]), OutputAction.UseTv, "the TV speakers: select them");
                 T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
                 T.Eq(OutputPickerModel.ActionFor(new OutputEntry { Kind = OutputKind.ScreenOff, Label = "x" }), OutputAction.ScreenOff, "the last row turns the screen off");
+            });
+
+            T.Run("list watch: HbbtvLink changes are detected by ListWatch.Same", () =>
+            {
+                const string svt1 = "https://hbbtv.play.svt.se/v2/index.xhtml";
+                const string svt2 = "https://hbbtv.play.svt.se/v3/index.xhtml";
+                var a = Catalog.Parse("svt\tSVT Play\t5exPmCT0nz.svtplay\t\t\t\t\tapp:5exPmCT0nz.svtplay\t" + svt1 + "\n").Entries;
+                var aSame = Catalog.Parse("svt\tSVT Play\t5exPmCT0nz.svtplay\t\t\t\t\tapp:5exPmCT0nz.svtplay\t" + svt1 + "\n").Entries;
+                var aDiff = Catalog.Parse("svt\tSVT Play\t5exPmCT0nz.svtplay\t\t\t\t\tapp:5exPmCT0nz.svtplay\t" + svt2 + "\n").Entries;
+                var aNone = Catalog.Parse("svt\tSVT Play\t5exPmCT0nz.svtplay\t\t\t\t\tapp:5exPmCT0nz.svtplay\n").Entries;
+                T.True(ListWatch.Same(a, aSame), "identical entries including HbbtvLink match");
+                T.True(!ListWatch.Same(a, aDiff), "changed HbbtvLink triggers reload");
+                T.True(!ListWatch.Same(a, aNone), "removed HbbtvLink triggers reload");
+                T.True(!ListWatch.Same(aNone, a), "added HbbtvLink triggers reload");
+            });
+
+            T.Run("tasks: allocation-free ParseStat handles spaces, nested parens, exact bounds and errors", () =>
+            {
+                int pid, ppid; long ticks;
+                string full = "1234 (Web Process (1)) S 567 567 567 0 -1 4194304 100 0 0 0 321 45 0 0 20 0 12 0 9999 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n";
+                T.True(Tasks.ParseStat(full, out pid, out ppid, out ticks), "full 52-field stat parsed");
+                T.Eq(pid, 1234, "pid"); T.Eq(ppid, 567, "ppid"); T.Eq(ticks, 366L, "utime + stime");
+
+                string exact13 = "42 (app) R 1 0 0 0 0 0 0 0 0 0 10 20";
+                T.True(Tasks.ParseStat(exact13, out pid, out ppid, out ticks), "exact 13 post-comm fields parsed");
+                T.Eq(pid, 42, "exact pid"); T.Eq(ppid, 1, "exact ppid"); T.Eq(ticks, 30L, "exact ticks");
+
+                string short12 = "42 (app) R 1 0 0 0 0 0 0 0 0 0 10";
+                T.True(!Tasks.ParseStat(short12, out pid, out ppid, out ticks), "12 post-comm fields rejected");
+                T.True(pid == 0 && ppid == 0 && ticks == 0, "failed parse leaves outputs zero");
+
+                T.True(!Tasks.ParseStat(null, out pid, out ppid, out ticks), "null rejected");
+                T.True(!Tasks.ParseStat("", out pid, out ppid, out ticks), "empty rejected");
+                T.True(!Tasks.ParseStat("123 no-parens S 1 0 0 0 0 0 0 0 0 0 1 2", out pid, out ppid, out ticks), "missing ')' rejected");
+                T.True(!Tasks.ParseStat("abc (app) S 1 0 0 0 0 0 0 0 0 0 1 2", out pid, out ppid, out ticks), "bad pid rejected");
+                T.True(!Tasks.ParseStat("1 (app) S x 0 0 0 0 0 0 0 0 0 1 2", out pid, out ppid, out ticks), "bad ppid rejected");
+                T.True(!Tasks.ParseStat("1 (app) S 1 0 0 0 0 0 0 0 0 0 x 2", out pid, out ppid, out ticks), "bad utime rejected");
+                T.True(!Tasks.ParseStat("1 (app) S 1 0 0 0 0 0 0 0 0 0 1 x", out pid, out ppid, out ticks), "bad stime rejected");
+                T.True(!Tasks.ParseStat("1 (app) S  1 0 0 0 0 0 0 0 0 0 1 2", out pid, out ppid, out ticks), "double space before ppid rejected");
+
+                // Warm up Tier-1 JIT/OSR and verify zero allocations per ParseStat call.
+                long alloc = MeasureMinAlloc(() =>
+                {
+                    int lp, lpp; long lt, s = 0;
+                    for (int i = 0; i < 10000; i++) { Tasks.ParseStat(full, out lp, out lpp, out lt); s += lt; }
+                    _allocSink = s;
+                });
+                T.Eq(alloc, 0L, "ParseStat allocates 0 bytes over 10000 calls (sink " + _allocSink + ")");
+            });
+
+            T.Run("hold key: consuming a press with Press()+Fire() blocks repeats and release tap", () =>
+            {
+                var h = new HoldKey();
+                T.True(h.Press(), "initial press consumed");
+                T.Eq(h.Fire(), HoldResult.Hold, "marked fired");
+                T.True(!h.Press(), "auto-repeat while still held is ignored");
+                T.Eq(h.Release(), HoldResult.None, "release after move-finish does not fire Tap");
+                T.True(h.Press(), "next fresh press works");
+                T.Eq(h.Release(), HoldResult.Tap, "fresh press taps normally");
+            });
+
+            T.Run("icon prep: int32 BoxPass has no underflow or overflow, and Scale/Rim match direct references", () =>
+            {
+                // Full-white 112x112 with large radius: no int32 overflow.
+                int big = 112;
+                var white = new uint[big * big];
+                for (int i = 0; i < white.Length; i++) white[i] = 0xFFFFFFFFu;
+                IconPrep.Blur(white, big, 16);
+                T.Eq(white[0], 0xFFFFFFFFu, "white corner stays white");
+                T.Eq(white[big * big / 2], 0xFFFFFFFFu, "white center stays white");
+
+                // High-contrast 0xFFFFFFFF -> 0x00000000 step: verifies no uint sliding-window underflow.
+                const int s = 20, rad = 3;
+                uint[] step = new uint[s * s], expected = new uint[s * s];
+                for (int y = 0; y < s; y++)
+                    for (int x = 0; x < s; x++)
+                        step[y * s + x] = expected[y * s + x] = (x < s / 2) ? 0xFFFFFFFFu : 0x00000000u;
+                IconPrep.Blur(step, s, rad);
+                var tmp = new uint[expected.Length];
+                int n = 2 * rad + 1;
+                Action<uint[], uint[], bool> refPass = (src, dst, horiz) =>
+                {
+                    for (int line = 0; line < s; line++)
+                        for (int i = 0; i < s; i++)
+                        {
+                            int sa = 0, sr = 0, sg = 0, sb = 0;
+                            for (int k = -rad; k <= rad; k++)
+                            {
+                                int c = Math.Max(0, Math.Min(s - 1, i + k));
+                                uint p = src[horiz ? line * s + c : c * s + line];
+                                sa += (int)((p >> 24) & 0xFF); sr += (int)((p >> 16) & 0xFF);
+                                sg += (int)((p >> 8) & 0xFF); sb += (int)(p & 0xFF);
+                            }
+                            dst[horiz ? line * s + i : i * s + line] = ((uint)(sa / n) << 24) | ((uint)(sr / n) << 16) | ((uint)(sg / n) << 8) | (uint)(sb / n);
+                        }
+                };
+                for (int p = 0; p < 3; p++) { refPass(expected, tmp, true); refPass(tmp, expected, false); }
+                for (int i = 0; i < step.Length; i++) T.Eq(step[i], expected[i], "step blur pixel " + i);
+
+                // Hoisted Scale matches direct bilinear reference.
+                const int sw = 19, sh = 13, dw = 27, dh = 17;
+                var img = new uint[sw * sh];
+                for (int i = 0; i < img.Length; i++)
+                    img[i] = ((uint)(120 + (i * 7 % 135)) << 24) | ((uint)(i * 13 % 256) << 16) | ((uint)(i * 29 % 256) << 8) | (uint)(i * 43 % 256);
+                uint[] scaled = IconPrep.Scale(img, sw, sh, dw, dh);
+                double sx = sw / (double)dw, sy = sh / (double)dh;
+                for (int y = 0; y < dh; y++)
+                {
+                    double fy = (y + 0.5) * sy - 0.5; int y0 = (int)Math.Floor(fy); double wy = fy - y0;
+                    int ya = Math.Max(0, Math.Min(sh - 1, y0)), yb = Math.Max(0, Math.Min(sh - 1, y0 + 1));
+                    for (int x = 0; x < dw; x++)
+                    {
+                        double fx = (x + 0.5) * sx - 0.5; int x0 = (int)Math.Floor(fx); double wx = fx - x0;
+                        int xa = Math.Max(0, Math.Min(sw - 1, x0)), xb = Math.Max(0, Math.Min(sw - 1, x0 + 1));
+                        uint p00 = img[ya * sw + xa], p10 = img[ya * sw + xb], p01 = img[yb * sw + xa], p11 = img[yb * sw + xb];
+                        uint refPx = 0;
+                        for (int shf = 0; shf <= 24; shf += 8)
+                        {
+                            double top = ((p00 >> shf) & 0xFF) * (1 - wx) + ((p10 >> shf) & 0xFF) * wx;
+                            double bot = ((p01 >> shf) & 0xFF) * (1 - wx) + ((p11 >> shf) & 0xFF) * wx;
+                            refPx |= (uint)Math.Round(top * (1 - wy) + bot * wy) << shf;
+                        }
+                        T.Eq(scaled[y * dw + x], refPx, "scale pixel " + x + "," + y);
+                    }
+                }
+
+                // Hoisted Rim matches direct SDF reference.
+                const int rs = 32, rr = 6;
+                uint[] rimA = new uint[rs * rs], rimRef = new uint[rs * rs];
+                for (int i = 0; i < rimA.Length; i++) rimA[i] = rimRef[i] = 0xFF204060u;
+                IconPrep.Rim(rimA, rs, rr, 1.5f, 0.35f);
+                double half = rs / 2.0, inner = half - rr;
+                for (int y = 0; y < rs; y++)
+                    for (int x = 0; x < rs; x++)
+                    {
+                        double qx = Math.Abs(x + 0.5 - half) - inner, qy = Math.Abs(y + 0.5 - half) - inner;
+                        double outside = Math.Sqrt(Math.Max(qx, 0) * Math.Max(qx, 0) + Math.Max(qy, 0) * Math.Max(qy, 0)) + Math.Min(Math.Max(qx, qy), 0) - rr;
+                        double depth = -outside, cov = Math.Max(0.0, Math.Min(1.0, 1.5f - depth + 0.5));
+                        if (depth >= -0.5 && cov > 0.0)
+                        {
+                            uint p = rimRef[y * rs + x], a = p >> 24;
+                            double wgt = cov * 0.35f;
+                            uint r = (uint)Math.Round(((p >> 16) & 0xFF) * (1 - wgt) + a * wgt);
+                            uint g = (uint)Math.Round(((p >> 8) & 0xFF) * (1 - wgt) + a * wgt);
+                            uint b = (uint)Math.Round((p & 0xFF) * (1 - wgt) + a * wgt);
+                            rimRef[y * rs + x] = (a << 24) | (Math.Min(r, a) << 16) | (Math.Min(g, a) << 8) | Math.Min(b, a);
+                        }
+                    }
+                for (int i = 0; i < rimA.Length; i++) T.Eq(rimA[i], rimRef[i], "rim pixel " + i);
+            });
+
+            T.Run("input devices: PruneFailed removes disconnected nodes so InputScanGate goes quiet again", () =>
+            {
+                var failed = new HashSet<string>(StringComparer.Ordinal) { "/dev/input/event3", "/dev/input/event7" };
+                InputDevices.PruneFailed(failed, new List<string> { "/dev/input/event3", "/dev/input/event4" });
+                T.Eq(failed.Count, 1, "disconnected node pruned, still-present node kept");
+                T.True(failed.Contains("/dev/input/event3"), "still-present failed node kept");
+                InputDevices.PruneFailed(failed, new List<string> { "/dev/input/event4" });
+                T.Eq(failed.Count, 0, "all failed nodes disconnected -> empty set");
+                var gate = new InputScanGate();
+                long t0 = 1_000_000_000L;
+                T.True(gate.ShouldRead(100, t0), "initial scan reads");
+                gate.Read(100, t0, failed.Count == 0);
+                T.True(!gate.ShouldRead(100, t0 + TimeSpan.TicksPerSecond * 5), "clean scan lets gate stay quiet when /dev/input unchanged");
+                gate.Force();
+                T.True(gate.ShouldRead(100, t0 + TimeSpan.TicksPerSecond * 5), "Force() triggers rescan even when /dev/input unchanged");
+            });
+
+            T.Run("tasks: allocation-free PrivateKbFromStatm and SwapKbFromStatus handle edge cases with 0 bytes allocated", () =>
+            {
+                T.Eq(Tasks.PrivateKbFromStatm("1000 400 100 5 0 200 0\n", 4), 1200L, "resident - shared * pageKb");
+                T.Eq(Tasks.PrivateKbFromStatm("  1000 100 150  ", 4), 0L, "shared > resident clamps to 0");
+                T.Eq(Tasks.PrivateKbFromStatm("1000 400", 4), 0L, "too few fields");
+                T.Eq(Tasks.PrivateKbFromStatm("1000  400 100", 4), 0L, "double space rejected like Split");
+                T.Eq(Tasks.PrivateKbFromStatm("", 4), 0L, "empty statm");
+
+                string status = "Name:\tapp\nVmRSS:\t  5000 kB\nVmSwap:\t   1234 kB\nThreads:\t2\n";
+                T.Eq(Tasks.SwapKbFromStatus(status), 1234L, "VmSwap parsed");
+                T.Eq(Tasks.SwapKbFromStatus("VmSwap:   42"), 42L, "VmSwap without kB or trailing newline");
+                T.Eq(Tasks.SwapKbFromStatus("Name:\tapp\nVmRSS:\t5000 kB\n"), 0L, "absent VmSwap");
+                T.Eq(Tasks.SwapKbFromStatus("VmSwap:\tbad kB\n"), 0L, "malformed VmSwap");
+
+                const string statm = "12345 4567 1234 5 0 2000 0\n";
+                long alloc = MeasureMinAlloc(() =>
+                {
+                    long s = 0;
+                    for (int i = 0; i < 10000; i++)
+                    {
+                        s += Tasks.PrivateKbFromStatm(statm, 4);
+                        s += Tasks.SwapKbFromStatus(status);
+                    }
+                    _allocSink = s;
+                });
+                T.Eq(alloc, 0L, "PrivateKbFromStatm + SwapKbFromStatus allocate 0 bytes over 10000 calls (sink " + _allocSink + ")");
+            });
+
+            T.Run("picture modes: cached check answer matches SDR switches and falls back on HDR or unoffered modes", () =>
+            {
+                // Candidates indices: 0=65536 (Dynamic SDR), 3=65537 (Standard SDR), 4=393216 (Standard HDR), 12=65538 (Movie SDR), 20=655360 (Filmmaker SDR)
+                var lines = new string[PictureModes.Candidates.Length];
+                for (int i = 0; i < lines.Length; i++) lines[i] = (i == 0 || i == 3 || i == 12) ? "i 1" : "i 0";
+                string sdrChecks = string.Join("\n", lines) + "\n";
+
+                ChoiceState sdr = PictureModes.Build("ii 65537 0", sdrChecks);
+                T.True(PictureModes.CacheCovers(sdr, 65537), "Standard SDR covered by cached SDR check");
+                T.True(sdr.Rows.Exists(r => r.Active && r.Value == 65537), "Standard SDR active");
+
+                ChoiceState switched = PictureModes.Build("ii 65538 0", sdrChecks);
+                T.True(PictureModes.CacheCovers(switched, 65538), "Movie SDR covered by same cached SDR check (2 busctl instead of 24)");
+                T.True(switched.Rows.Exists(r => r.Active && r.Value == 65538), "Movie SDR active");
+
+                ChoiceState newHome = PictureModes.Build("ii " + PictureModes.NewHome + " 0", sdrChecks);
+                T.True(PictureModes.CacheCovers(newHome, PictureModes.NewHome), "NewHome covered by cached check with choosable list");
+
+                ChoiceState hdrSignal = PictureModes.Build("ii 393216 0", sdrChecks);
+                T.True(!PictureModes.CacheCovers(hdrSignal, 393216), "HDR Standard shares name with SDR Standard but has different Value -> cache miss forces fresh check");
+
+                ChoiceState unoffered = PictureModes.Build("ii 655360 0", sdrChecks);
+                T.True(!PictureModes.CacheCovers(unoffered, 655360), "Unoffered Filmmaker mode sets Choosable=false -> cache miss forces fresh check");
+            });
+
+            T.Run("round 3: zero-alloc CommandBuffer, MemAvailableFromMeminfo, ShardCard.Clean fast-path, and TaskController clamping", () =>
+            {
+                // CommandBuffer zero-allocation verification over 10,000 feeds
+                var cb = new CommandBuffer();
+                byte[] cmdBytes = System.Text.Encoding.ASCII.GetBytes("volup\nVOLDOWN\n  toggle \nunknown\n");
+                for (int i = 0; i < 500; i++) cb.Feed(cmdBytes, cmdBytes.Length);
+                long b0 = GC.GetAllocatedBytesForCurrentThread();
+                int totalCmds = 0;
+                for (int i = 0; i < 10000; i++) totalCmds += cb.Feed(cmdBytes, cmdBytes.Length).Count;
+                long b1 = GC.GetAllocatedBytesForCurrentThread();
+                T.Eq(totalCmds, 30000, "all 3 valid commands decoded per feed");
+                T.Eq(b1 - b0, 0L, "CommandBuffer.Feed allocates 0 bytes over 10000 calls");
+
+                // MemAvailableFromMeminfo edge cases & 0-byte allocation verification
+                string meminfo = "MemTotal:        1536000 kB\nMemFree:          120000 kB\nMemAvailable:     456789 kB\nBuffers:           32000 kB\n";
+                T.Eq(Tasks.MemAvailableFromMeminfo(meminfo), 456789L, "MemAvailable parsed");
+                T.Eq(Tasks.MemAvailableFromMeminfo("MemAvailable: 900"), 900L, "MemAvailable without kB or newline");
+                T.Eq(Tasks.MemAvailableFromMeminfo("MemTotal: 1000 kB\n"), -1L, "absent MemAvailable");
+                T.Eq(Tasks.MemAvailableFromMeminfo(""), -1L, "empty meminfo");
+                for (int i = 0; i < 500; i++) Tasks.MemAvailableFromMeminfo(meminfo);
+                long m0 = GC.GetAllocatedBytesForCurrentThread();
+                long mSink = 0;
+                for (int i = 0; i < 10000; i++) mSink += Tasks.MemAvailableFromMeminfo(meminfo);
+                long m1 = GC.GetAllocatedBytesForCurrentThread();
+                T.Eq(m1 - m0, 0L, "MemAvailableFromMeminfo allocates 0 bytes over 10000 calls (sink " + mSink + ")");
+
+                // TaskController.SetCount & Select mid-animation clamping
+                bool prevInstant = Controller.Instant;
+                try
+                {
+                    Controller.Instant = false;
+                    var tc = new TaskController();
+                    tc.Open(1f);
+                    tc.SetCount(5);
+                    tc.Select(4);
+                    T.Eq(tc.SelPos, 4f, "started at row 4");
+                    tc.Key("Up");
+                    tc.Key("Up");   // Selected = 2, _from = 4, SelPos still 4
+                    tc.Tick(0.03);  // SelPos between 4 and 2
+                    T.True(tc.SelPos > 3f && tc.SelPos < 4f, "mid-animation between 4 and 2");
+                    tc.SetCount(4); // max = 3: SelPos clamped to 3, _from must also clamp so next Tick doesn't jump > 3
+                    T.Eq(tc.SelPos, 3f, "SelPos clamped to max=3");
+                    tc.Tick(0.02);
+                    T.True(tc.SelPos <= 3f && tc.SelPos >= 2f, "next Tick stays within [2..3] after SetCount clamp");
+                    tc.Select(2);   // Selected is already 2, but SelPos > 2 -> Select(2) must snap SelPos to 2 at once
+                    T.Eq(tc.SelPos, 2f, "Select(Selected) snaps mid-animation SelPos immediately");
+                }
+                finally { Controller.Instant = prevInstant; }
             });
         }
     }

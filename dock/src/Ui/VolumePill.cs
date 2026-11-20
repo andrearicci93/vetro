@@ -27,9 +27,9 @@ namespace Launcher.Ui
         private readonly IntPtr[] _icons = new IntPtr[3];
         private IntPtr _animator, _holdTimer;
         private readonly Efl.TaskCb _tick, _holdEnd;
-        private bool _built, _failed, _shown, _muted;
+        private bool _built, _failed, _shown, _muted, _lastMuted;
         private double _shownAt, _until;
-        private int _fillLength, _iconLevel = -1;
+        private int _fillLength, _iconLevel = -1, _lastVolume = -1;
 
         public VolumePill(string assets, Action<string> log, int screenW, int screenH, VolumeEdge edge)
         {
@@ -153,6 +153,9 @@ namespace Launcher.Ui
 
         private void Update(int volume, bool muted)
         {
+            if (volume == _lastVolume && muted == _lastMuted) return;
+            _lastVolume = volume;
+            _lastMuted = muted;
             _muted = muted;
             _fillLength = VolumeModel.FillHeight(volume, muted, _p.Vertical ? _p.TrackH : _p.TrackW);
             int ox = _p.WinX, oy = _p.WinY;
@@ -192,11 +195,7 @@ namespace Launcher.Ui
         }
 
         /// <summary>EFL colours are premultiplied: each channel is scaled by the alpha.</summary>
-        private static void Tint(IntPtr obj, int rgb, double alpha)
-        {
-            int a = (int)Math.Round(Math.Max(0, Math.Min(1, alpha)) * 255);
-            Efl.evas_object_color_set(obj, ((rgb >> 16) & 255) * a / 255, ((rgb >> 8) & 255) * a / 255, (rgb & 255) * a / 255, a);
-        }
+        private static void Tint(IntPtr obj, int rgb, double alpha) { CardChrome.TintAlpha(obj, rgb, alpha); }
 
         private byte Tick(IntPtr data)
         {

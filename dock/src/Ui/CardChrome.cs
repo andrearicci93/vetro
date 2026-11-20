@@ -214,9 +214,9 @@ namespace Launcher.Ui
         /// <summary>The rows will be re-tinted on the next frame (their text or state changed).</summary>
         protected void Retint() { _chromeKey = -1; }
 
-        protected static void Tint(IntPtr o, int a) { Efl.evas_object_color_set(o, a, a, a, a); }
+        internal static void Tint(IntPtr o, int a) { Efl.evas_object_color_set(o, a, a, a, a); }
 
-        protected static void TintText(IntPtr t, int a)
+        internal static void TintText(IntPtr t, int a)
         {
             Tint(t, a);
             Efl.evas_object_text_shadow_color_set(t, 0, 0, 0, 150 * a / 255);
@@ -240,9 +240,15 @@ namespace Launcher.Ui
             Efl.evas_object_text_shadow_color_set(t, 0, 0, 0, 0);
         }
 
-        protected static void TintRgb(IntPtr o, int a, int rgb)
+        internal static void TintRgb(IntPtr o, int a, int rgb)
         {
             Efl.evas_object_color_set(o, ((rgb >> 16) & 0xFF) * a / 255, ((rgb >> 8) & 0xFF) * a / 255, (rgb & 0xFF) * a / 255, a);
+        }
+
+        /// <summary>Premultiplied colour (0xRRGGBB) at normalised opacity (0..1).</summary>
+        internal static void TintAlpha(IntPtr o, int rgb, double alpha)
+        {
+            TintRgb(o, (int)Math.Round(Math.Max(0, Math.Min(1, alpha)) * 255), rgb);
         }
 
         protected static void Place(IntPtr o, Box b) { Efl.evas_object_move(o, b.X, b.Y); Efl.evas_object_resize(o, b.W, b.H); }

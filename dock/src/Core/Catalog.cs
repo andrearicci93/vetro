@@ -217,7 +217,9 @@ namespace Launcher.Core
             var entries = new List<AppEntry>();
             var problems = new List<string>();
             var seen = new HashSet<string>();
-            string[] lines = (text ?? "").Replace("\r", "").Split('\n');
+            string raw = text ?? "";
+            if (raw.Length > 0 && raw[0] == '\uFEFF') raw = raw.Substring(1);
+            string[] lines = raw.Replace("\r", "").Split('\n');
             for (int n = 0; n < lines.Length; n++)
             {
                 string line = lines[n];

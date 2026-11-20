@@ -12,13 +12,13 @@ namespace Launcher.Core
         public string AppId;
         public int Pid;
         public string Label;
-        public string IconPath;
+        public string IconPath = null;
         /// <summary>Private resident memory plus swap of the app and all its child processes (web renderers), in KiB; -1 until measured.</summary>
         public long MemoryKb = -1;
         /// <summary>CPU use of the app's process tree since the previous sample, in percent of one core; -1 until measured.</summary>
         public double CpuPercent = -1;
         /// <summary>True from the moment the user asked to close it until it leaves the list.</summary>
-        public bool Closing;
+        public bool Closing = false;
     }
 
     /// <summary>What pkginfo says about an app (the fields the task manager needs).</summary>
@@ -33,6 +33,7 @@ namespace Launcher.Core
     {
         public int Pid, PPid;
         public long Ticks;      // utime + stime
+        public ProcSample(int pid, int ppid, long ticks) { Pid = pid; PPid = ppid; Ticks = ticks; }
     }
 
     /// <summary>
@@ -157,14 +158,70 @@ namespace Launcher.Core
             int close = text.LastIndexOf(')');
             int open = text.IndexOf(' ');
             if (close < 0 || open <= 0) return false;
-            if (!int.TryParse(text.Substring(0, open), NumberStyles.None, CultureInfo.InvariantCulture, out pid)) return false;
-            string[] f = text.Substring(close + 1).Trim().Split(' ');
-            // f[0] = state (field 3), so field n is f[n - 3].
-            long ut, st;
-            if (f.Length < 13 || !int.TryParse(f[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ppid)) return false;
-            if (!long.TryParse(f[11], NumberStyles.Integer, CultureInfo.InvariantCulture, out ut)) return false;
-            if (!long.TryParse(f[12], NumberStyles.Integer, CultureInfo.InvariantCulture, out st)) return false;
+            long pidL;
+            if (!TryParseLong(text, 0, open, false, out pidL) || pidL > int.MaxValue) return false;
+            int pos = close + 1;
+            int end = text.Length;
+            while (pos < end && char.IsWhiteSpace(text[pos])) pos++;
+            while (end > pos && char.IsWhiteSpace(text[end - 1])) end--;
+            if (pos >= end) return false;
+            // f[0] = state (field 3), so field n is f[n - 3]: ppid = f[1], utime = f[11], stime = f[12].
+            long ppidL = 0, ut = 0, st = 0;
+            bool gotPpid = false, gotUt = false, gotSt = false;
+            int field = 0;
+            while (pos <= end && field <= 12)
+            {
+                int sep = text.IndexOf(' ', pos, end - pos);
+                int tokEnd = sep < 0 ? end : sep;
+                if (field == 1)
+                {
+                    if (!TryParseLong(text, pos, tokEnd, true, out ppidL) || ppidL < int.MinValue || ppidL > int.MaxValue) return false;
+                    gotPpid = true;
+                }
+                else if (field == 11)
+                {
+                    if (!TryParseLong(text, pos, tokEnd, true, out ut)) return false;
+                    gotUt = true;
+                }
+                else if (field == 12)
+                {
+                    if (!TryParseLong(text, pos, tokEnd, true, out st)) return false;
+                    gotSt = true;
+                    break;
+                }
+                if (sep < 0) break;
+                pos = sep + 1;
+                field++;
+            }
+            if (!gotPpid || !gotUt || !gotSt) return false;
+            pid = (int)pidL;
+            ppid = (int)ppidL;
             ticks = ut + st;
+            return true;
+        }
+
+        private static bool TryParseLong(string s, int start, int end, bool allowSign, out long value)
+        {
+            value = 0;
+            if (start >= end) return false;
+            int i = start;
+            bool neg = false;
+            if (allowSign && (s[i] == '-' || s[i] == '+'))
+            {
+                neg = s[i] == '-';
+                i++;
+                if (i >= end) return false;
+            }
+            long acc = 0;
+            for (; i < end; i++)
+            {
+                char c = s[i];
+                if (c < '0' || c > '9') return false;
+                int d = c - '0';
+                if (acc > (long.MaxValue - d) / 10) return false;
+                acc = acc * 10 + d;
+            }
+            value = neg ? -acc : acc;
             return true;
         }
 
@@ -172,9 +229,17 @@ namespace Launcher.Core
         public static long PrivateKbFromStatm(string text, int pageKb)
         {
             if (string.IsNullOrEmpty(text)) return 0;
-            string[] f = text.Trim().Split(' ');
+            int start = 0, end = text.Length;
+            while (start < end && char.IsWhiteSpace(text[start])) start++;
+            while (end > start && char.IsWhiteSpace(text[end - 1])) end--;
+            int sp1 = text.IndexOf(' ', start, end - start);
+            if (sp1 < 0) return 0;
+            int sp2 = text.IndexOf(' ', sp1 + 1, end - (sp1 + 1));
+            if (sp2 < 0) return 0;
+            int sp3 = text.IndexOf(' ', sp2 + 1, end - (sp2 + 1));
+            int end2 = sp3 < 0 ? end : sp3;
             long res, shared;
-            if (f.Length < 3 || !long.TryParse(f[1], out res) || !long.TryParse(f[2], out shared)) return 0;
+            if (!TryParseLong(text, sp1 + 1, sp2, true, out res) || !TryParseLong(text, sp2 + 1, end2, true, out shared)) return 0;
             long priv = res - shared;
             return priv > 0 ? priv * pageKb : 0;
         }
@@ -185,26 +250,54 @@ namespace Launcher.Core
             if (string.IsNullOrEmpty(text)) return 0;
             int at = text.IndexOf("VmSwap:", StringComparison.Ordinal);
             if (at < 0) return 0;
-            int end = text.IndexOf('\n', at);
-            string v = (end < 0 ? text.Substring(at + 7) : text.Substring(at + 7, end - at - 7)).Replace("kB", "").Trim();
+            int pos = at + 7;
+            int end = text.IndexOf('\n', pos);
+            if (end < 0) end = text.Length;
+            while (pos < end && char.IsWhiteSpace(text[pos])) pos++;
+            while (end > pos && char.IsWhiteSpace(text[end - 1])) end--;
+            if (end - pos >= 2 && text[end - 2] == 'k' && text[end - 1] == 'B')
+            {
+                end -= 2;
+                while (end > pos && char.IsWhiteSpace(text[end - 1])) end--;
+            }
             long kb;
-            return long.TryParse(v, out kb) ? kb : 0;
+            return TryParseLong(text, pos, end, true, out kb) ? kb : 0;
+        }
+
+        /// <summary>"MemAvailable:   123456 kB" from /proc/meminfo, in KiB (-1 when absent).</summary>
+        public static long MemAvailableFromMeminfo(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return -1;
+            int at = text.IndexOf("MemAvailable:", StringComparison.Ordinal);
+            if (at < 0) return -1;
+            int pos = at + 13;
+            int end = text.IndexOf('\n', pos);
+            if (end < 0) end = text.Length;
+            while (pos < end && char.IsWhiteSpace(text[pos])) pos++;
+            while (end > pos && char.IsWhiteSpace(text[end - 1])) end--;
+            if (end - pos >= 2 && text[end - 2] == 'k' && text[end - 1] == 'B')
+            {
+                end -= 2;
+                while (end > pos && char.IsWhiteSpace(text[end - 1])) end--;
+            }
+            long kb;
+            return TryParseLong(text, pos, end, true, out kb) ? kb : -1;
         }
 
         /// <summary>All descendants of <paramref name="root"/> (the root included), from a pid -> parent map.</summary>
         public static List<int> Tree(int root, Dictionary<int, List<int>> children)
         {
-            var result = new List<int>();
-            var stack = new Stack<int>();
-            var seen = new HashSet<int>();
-            stack.Push(root);
-            while (stack.Count > 0)
+            var result = new List<int> { root };
+            if (children == null || !children.ContainsKey(root)) return result;
+            for (int i = 0; i < result.Count; i++)
             {
-                int p = stack.Pop();
-                if (!seen.Add(p)) continue;   // a broken /proc snapshot can never make this loop forever
-                result.Add(p);
                 List<int> kids;
-                if (children.TryGetValue(p, out kids)) foreach (int k in kids) stack.Push(k);
+                if (!children.TryGetValue(result[i], out kids)) continue;
+                for (int k = 0; k < kids.Count; k++)
+                {
+                    int c = kids[k];
+                    if (!result.Contains(c)) result.Add(c);   // a broken /proc snapshot can never make this loop forever
+                }
             }
             return result;
         }

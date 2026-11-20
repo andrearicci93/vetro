@@ -282,11 +282,7 @@ namespace Launcher.Ui
 
         // ------------------------------------------------------------------ drawing
 
-        private static void Tint(IntPtr obj, int rgb, double alpha)
-        {
-            int a = (int)Math.Round(Math.Max(0, Math.Min(1, alpha)) * 255);
-            Efl.evas_object_color_set(obj, ((rgb >> 16) & 255) * a / 255, ((rgb >> 8) & 255) * a / 255, (rgb & 255) * a / 255, a);
-        }
+        private static void Tint(IntPtr obj, int rgb, double alpha) { CardChrome.TintAlpha(obj, rgb, alpha); }
 
         private void Apply()
         {
@@ -384,7 +380,12 @@ namespace Launcher.Ui
 
         private void MarkOpen(bool on) { OverlayFlag.Mark(OpenFlag, on, _log); }
 
-        private void ArmIdle() { MarkOpen(true); DisarmIdle(); _idle = Efl.ecore_timer_add(IdleSeconds, _idleCb, IntPtr.Zero); }
+        private void ArmIdle()
+        {
+            MarkOpen(true);
+            if (_idle == IntPtr.Zero) _idle = Efl.ecore_timer_add(IdleSeconds, _idleCb, IntPtr.Zero);
+            else Efl.ecore_timer_reset(_idle);
+        }
         private void DisarmIdle() { if (_idle != IntPtr.Zero) { Efl.ecore_timer_del(_idle); _idle = IntPtr.Zero; } }
         private byte OnIdle(IntPtr data) { _idle = IntPtr.Zero; Close(); return 0; }
     }

@@ -17,41 +17,57 @@ namespace Launcher.Core
     internal sealed class CommandBuffer
     {
         public const int MaxLine = 64;
-        private readonly StringBuilder _line = new StringBuilder();
+        private readonly char[] _line = new char[MaxLine];
+        private readonly List<Command> _result = new List<Command>(4);
+        private int _len;
         private bool _overflow;
 
         public List<Command> Feed(byte[] data, int count)
         {
-            var result = new List<Command>();
+            _result.Clear();
             for (int i = 0; i < count; i++)
             {
                 byte b = data[i];
                 if (b == (byte)'\n')
                 {
-                    if (!_overflow) Emit(result);
-                    _line.Length = 0;
+                    if (!_overflow) Emit(_result);
+                    _len = 0;
                     _overflow = false;
                 }
-                else if (_line.Length >= MaxLine) _overflow = true;
-                else _line.Append((char)b);
+                else if (_len >= MaxLine) _overflow = true;
+                else _line[_len++] = (char)b;
             }
-            return result;
+            return _result;
         }
 
         private void Emit(List<Command> into)
         {
-            switch (_line.ToString().Trim().ToLowerInvariant())
+            int start = 0, end = _len;
+            while (start < end && _line[start] <= ' ') start++;
+            while (end > start && _line[end - 1] <= ' ') end--;
+            int n = end - start;
+            if (n < 3 || n > 7) return;
+            if (Match(start, n, "show")) into.Add(Command.Show);
+            else if (Match(start, n, "hide")) into.Add(Command.Hide);
+            else if (Match(start, n, "toggle")) into.Add(Command.Toggle);
+            else if (Match(start, n, "volup")) into.Add(Command.VolUp);
+            else if (Match(start, n, "voldown")) into.Add(Command.VolDown);
+            else if (Match(start, n, "volmute")) into.Add(Command.VolMute);
+            else if (Match(start, n, "pad")) into.Add(Command.Pad);
+            else if (Match(start, n, "rescan")) into.Add(Command.Rescan);
+            else if (Match(start, n, "reload")) into.Add(Command.Reload);
+        }
+
+        private bool Match(int start, int len, string word)
+        {
+            if (len != word.Length) return false;
+            for (int i = 0; i < len; i++)
             {
-                case "show": into.Add(Command.Show); break;
-                case "hide": into.Add(Command.Hide); break;
-                case "toggle": into.Add(Command.Toggle); break;
-                case "volup": into.Add(Command.VolUp); break;
-                case "voldown": into.Add(Command.VolDown); break;
-                case "volmute": into.Add(Command.VolMute); break;
-                case "pad": into.Add(Command.Pad); break;
-                case "rescan": into.Add(Command.Rescan); break;
-                case "reload": into.Add(Command.Reload); break;
+                char c = _line[start + i];
+                if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+                if (c != word[i]) return false;
             }
+            return true;
         }
     }
 }

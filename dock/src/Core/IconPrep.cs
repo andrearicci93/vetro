@@ -110,11 +110,17 @@ namespace Launcher.Core
             double half = side / 2.0, inner = half - radius;
             int band = (int)Math.Ceiling(width) + radius + 1;
             for (int y = 0; y < side; y++)
+            {
+                double qy = Math.Abs(y + 0.5 - half) - inner;
+                double qyPos2 = qy > 0 ? qy * qy : 0.0;
+                bool yIn = y >= band && y < side - band;
                 for (int x = 0; x < side; x++)
                 {
-                    if (x >= band && x < side - band && y >= band && y < side - band) continue;   // deep inside
-                    double qx = Math.Abs(x + 0.5 - half) - inner, qy = Math.Abs(y + 0.5 - half) - inner;
-                    double outside = Math.Sqrt(Math.Max(qx, 0) * Math.Max(qx, 0) + Math.Max(qy, 0) * Math.Max(qy, 0)) + Math.Min(Math.Max(qx, qy), 0) - radius;
+                    if (yIn && x >= band && x < side - band) { x = side - band - 1; continue; }   // deep inside
+                    double qx = Math.Abs(x + 0.5 - half) - inner;
+                    double outside = qx <= 0
+                        ? (qy <= 0 ? (qx > qy ? qx : qy) : qy) - radius
+                        : (qy <= 0 ? qx : Math.Sqrt(qx * qx + qyPos2)) - radius;
                     double depth = -outside;                                  // > 0 inside the rounded edge
                     double cov = Math.Max(0.0, Math.Min(1.0, width - depth + 0.5));
                     if (depth < -0.5 || cov <= 0.0) continue;
@@ -127,6 +133,7 @@ namespace Launcher.Core
                     uint b = (uint)Math.Round((p & 0xFF) * (1 - wgt) + a * wgt);
                     px[y * side + x] = (a << 24) | (Math.Min(r, a) << 16) | (Math.Min(g, a) << 8) | Math.Min(b, a);
                 }
+            }
         }
 
         /// <summary>2 x 2 box average of premultiplied ARGB; an odd last row or column is averaged on its own.</summary>
@@ -162,18 +169,28 @@ namespace Launcher.Core
         {
             int n = 2 * radius + 1;
             for (int line = 0; line < side; line++)
-                for (int shift = 0; shift <= 24; shift += 8)
+            {
+                int sumB = 0, sumG = 0, sumR = 0, sumA = 0;
+                for (int k = -radius; k <= radius; k++)
                 {
-                    long sum = 0;
-                    for (int k = -radius; k <= radius; k++)
-                        sum += (src[Index(line, Math.Max(0, Math.Min(side - 1, k)), side, horizontal)] >> shift) & 0xFF;
-                    for (int i = 0; i < side; i++)
-                    {
-                        dst[Index(line, i, side, horizontal)] = (dst[Index(line, i, side, horizontal)] & ~(0xFFu << shift)) | ((uint)(sum / n) << shift);
-                        int add = Math.Min(side - 1, i + radius + 1), sub = Math.Max(0, i - radius);
-                        sum += ((src[Index(line, add, side, horizontal)] >> shift) & 0xFF) - ((src[Index(line, sub, side, horizontal)] >> shift) & 0xFF);
-                    }
+                    uint p = src[Index(line, Math.Max(0, Math.Min(side - 1, k)), side, horizontal)];
+                    sumB += (int)(p & 0xFF);
+                    sumG += (int)((p >> 8) & 0xFF);
+                    sumR += (int)((p >> 16) & 0xFF);
+                    sumA += (int)((p >> 24) & 0xFF);
                 }
+                for (int i = 0; i < side; i++)
+                {
+                    dst[Index(line, i, side, horizontal)] =
+                        ((uint)(sumA / n) << 24) | ((uint)(sumR / n) << 16) | ((uint)(sumG / n) << 8) | (uint)(sumB / n);
+                    int add = Math.Min(side - 1, i + radius + 1), sub = Math.Max(0, i - radius);
+                    uint pa = src[Index(line, add, side, horizontal)], ps = src[Index(line, sub, side, horizontal)];
+                    sumB += (int)(pa & 0xFF) - (int)(ps & 0xFF);
+                    sumG += (int)((pa >> 8) & 0xFF) - (int)((ps >> 8) & 0xFF);
+                    sumR += (int)((pa >> 16) & 0xFF) - (int)((ps >> 16) & 0xFF);
+                    sumA += (int)((pa >> 24) & 0xFF) - (int)((ps >> 24) & 0xFF);
+                }
+            }
         }
 
         private static int Index(int line, int i, int side, bool horizontal) { return horizontal ? line * side + i : i * side + line; }
@@ -247,27 +264,38 @@ namespace Launcher.Core
         {
             var dst = new uint[dw * dh];
             double sx = w / (double)dw, sy = h / (double)dh;
+            var xas = new int[dw];
+            var xbs = new int[dw];
+            var wxs = new double[dw];
+            for (int x = 0; x < dw; x++)
+            {
+                double fx = (x + 0.5) * sx - 0.5;
+                int x0 = (int)Math.Floor(fx);
+                wxs[x] = fx - x0;
+                xas[x] = Math.Max(0, Math.Min(w - 1, x0));
+                xbs[x] = Math.Max(0, Math.Min(w - 1, x0 + 1));
+            }
             for (int y = 0; y < dh; y++)
             {
                 double fy = (y + 0.5) * sy - 0.5;
                 int y0 = (int)Math.Floor(fy);
-                double wy = fy - y0;
-                int ya = Math.Max(0, Math.Min(h - 1, y0)), yb = Math.Max(0, Math.Min(h - 1, y0 + 1));
+                double wy = fy - y0, invWy = 1.0 - wy;
+                int rowA = Math.Max(0, Math.Min(h - 1, y0)) * w;
+                int rowB = Math.Max(0, Math.Min(h - 1, y0 + 1)) * w;
+                int dstRow = y * dw;
                 for (int x = 0; x < dw; x++)
                 {
-                    double fx = (x + 0.5) * sx - 0.5;
-                    int x0 = (int)Math.Floor(fx);
-                    double wx = fx - x0;
-                    int xa = Math.Max(0, Math.Min(w - 1, x0)), xb = Math.Max(0, Math.Min(w - 1, x0 + 1));
-                    uint p00 = src[ya * w + xa], p10 = src[ya * w + xb], p01 = src[yb * w + xa], p11 = src[yb * w + xb];
+                    int xa = xas[x], xb = xbs[x];
+                    double wx = wxs[x], invWx = 1.0 - wx;
+                    uint p00 = src[rowA + xa], p10 = src[rowA + xb], p01 = src[rowB + xa], p11 = src[rowB + xb];
                     uint res = 0;
                     for (int shift = 0; shift <= 24; shift += 8)
                     {
-                        double top = ((p00 >> shift) & 0xFF) * (1 - wx) + ((p10 >> shift) & 0xFF) * wx;
-                        double bot = ((p01 >> shift) & 0xFF) * (1 - wx) + ((p11 >> shift) & 0xFF) * wx;
-                        res |= (uint)Math.Round(top * (1 - wy) + bot * wy) << shift;
+                        double top = ((p00 >> shift) & 0xFF) * invWx + ((p10 >> shift) & 0xFF) * wx;
+                        double bot = ((p01 >> shift) & 0xFF) * invWx + ((p11 >> shift) & 0xFF) * wx;
+                        res |= (uint)Math.Round(top * invWy + bot * wy) << shift;
                     }
-                    dst[y * dw + x] = res;
+                    dst[dstRow + x] = res;
                 }
             }
             return dst;

@@ -16,7 +16,7 @@ namespace Launcher.Ui
     {
         private const int Glyph = 40;
 
-        private sealed class Row { public IntPtr Icon, Text, Check; public int Key = -1, TextH; }
+        private sealed class Row { public IntPtr Icon, Text, Check; public string Glyph, Label; public int Key = -1, TextH; }
 
         private readonly List<Row> _rows = new List<Row>();
         private List<OutputEntry> _entries = new List<OutputEntry>();
@@ -60,16 +60,52 @@ namespace Launcher.Ui
             {
                 OutputKind kind = _entries[i].Kind;
                 string glyph = kind == OutputKind.TvSpeaker ? "out_tv" : kind == OutputKind.ScreenOff ? "out_tv" : kind == OutputKind.External ? "vol_icon_2" : "out_bt";
-                if (i >= _rows.Count) _rows.Add(new Row { Icon = RowIcon(glyph, Glyph), Text = RowText(FontBold, 27), Check = RowIcon("out_check", Glyph) });
-                else Efl.evas_object_image_file_set(_rows[i].Icon, System.IO.Path.Combine(_assets, glyph + ".png"), null);
-                Efl.evas_object_text_ellipsis_set(_rows[i].Text, 1.0);
-                Efl.evas_object_text_text_set(_rows[i].Text, _entries[i].Label);
-                _rows[i].TextH = Efl.evas_object_text_vert_advance_get(_rows[i].Text);
-                _rows[i].Key = -1;
+                Row r;
+                if (i >= _rows.Count)
+                {
+                    r = new Row { Icon = RowIcon(glyph, Glyph), Text = RowText(FontBold, 27), Check = RowIcon("out_check", Glyph), Glyph = glyph };
+                    Efl.evas_object_text_ellipsis_set(r.Text, 1.0);
+                    _rows.Add(r);
+                }
+                else
+                {
+                    r = _rows[i];
+                    if (r.Glyph != glyph)
+                    {
+                        r.Glyph = glyph;
+                        Efl.evas_object_image_file_set(r.Icon, System.IO.Path.Combine(_assets, glyph + ".png"), null);
+                    }
+                }
+                string label = _entries[i].Label;
+                if (r.Label != label)
+                {
+                    r.Label = label;
+                    Efl.evas_object_text_text_set(r.Text, label);
+                    r.TextH = Efl.evas_object_text_vert_advance_get(r.Text);
+                }
+                r.Key = -1;
             }
             SetSub(note ?? "");
             Changed();
             Retint();
+        }
+
+        /// <summary>A row left saying "Switching…" or "Connecting…" (the Control center was closed before the reread) gets its own name back.</summary>
+        public void ClearBusy()
+        {
+            if (_busyRow < 0) return;
+            int row = _busyRow;
+            _busyRow = -1;
+            _busyText = null;
+            if (row < _rows.Count && row < _entries.Count)
+            {
+                Row r = _rows[row];
+                r.Label = _entries[row].Label;
+                Efl.evas_object_text_text_set(r.Text, r.Label);
+                r.TextH = Efl.evas_object_text_vert_advance_get(r.Text);
+                r.Key = -1;
+                Changed();
+            }
         }
 
         /// <summary>Row <paramref name="row"/> says what is happening instead of its name, until the next <see cref="SetEntries"/>.</summary>
@@ -77,10 +113,12 @@ namespace Launcher.Ui
         {
             if (row < 0 || row >= _rows.Count) return;
             _busyRow = row; _busyText = text;
-            Efl.evas_object_text_text_set(_rows[row].Text, text);
-            _rows[row].TextH = Efl.evas_object_text_vert_advance_get(_rows[row].Text);
+            Row r = _rows[row];
+            r.Label = text;
+            Efl.evas_object_text_text_set(r.Text, text);
+            r.TextH = Efl.evas_object_text_vert_advance_get(r.Text);
             Changed();
-            _rows[row].Key = -1;
+            r.Key = -1;
         }
 
         public void Apply(TaskController c, bool focused)
