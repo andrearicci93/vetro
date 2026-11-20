@@ -106,6 +106,7 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.doesNotMatch(osdWith({selection: 1, extVolume: -1, mbr: true}, {volumePill: true}), /quick-callout" data-audio-note/, 'no amber: Vetro no longer holds Vol there');
     assert.match(osdWith({selection: 9, extVolume: 0, mbr: false}), /Sound plays on the TV and the optical output\. Vol and Mute pass to Samsung/);
     assert.match(osdWith({selection: 4, extVolume: 0, mbr: false}), /whether a Wi-Fi speaker follows it has not been tried/);
+    assert.match(osdWith({selection: 5, extVolume: 0, mbr: false}), /<p class="notice" data-audio-note>Sound goes to Bluetooth headphones or a speaker\. Vol and Mute pass to Samsung, which sets the level of the Bluetooth device/);
     sandbox.osdShowKey = null; sandbox.dockData = dock;
 
     // The Remapper lists the keys Vetro UI holds, locked, first; the user's shortcut on the same key says it is overridden.

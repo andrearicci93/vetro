@@ -84,13 +84,15 @@ namespace Launcher.Core
         /// optical outputs (1; TV + optical 9, 18; optical centre mode 11) send the key back to Samsung instead: Samsung passes it on over
         /// HDMI-CEC, or to an optical soundbar through its universal remote (IR) or Q-Symphony, while a change of the TV's own level does not
         /// move the soundbar. Seen on three TVs on 2026-11-20: S95C + IR soundbar, S90D + HW-B650 (1) and S90F with Q-Symphony (9) followed
-        /// Vol with Vetro's bar off and not with it on. TV speakers, Bluetooth, Wi-Fi speakers and unknown (-1) stay with Vetro.
+        /// Vol with Vetro's bar off and not with it on. Bluetooth (5, 6) too: headphones follow the level Samsung sends them, not the TV's
+        /// own (LS03B, 2026-11-20: Vetro's Vol did nothing, the headphones' own buttons moved them and brought up Samsung's bar).
+        /// TV speakers, Wi-Fi speakers and unknown (-1) stay with Vetro.
         /// </summary>
         public static bool VetroSetsLevel(int selection)
         {
             switch (selection)
             {
-                case 1: case 2: case 8: case 9: case 11: case 12: case 17: case 18: return false;
+                case 1: case 2: case 5: case 6: case 8: case 9: case 11: case 12: case 17: case 18: return false;
                 default: return true;
             }
         }

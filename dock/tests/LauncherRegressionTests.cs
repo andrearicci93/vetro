@@ -228,7 +228,8 @@ namespace Launcher.Tests
                 T.True(!optical[0].Active && optical[1].Kind == OutputKind.External && optical[1].Label == "Optical" && optical[1].Active, "optical (1): its own ticked row, the TV speakers unticked");
                 T.Eq(OutputPickerModel.ActionFor(optical[1]), OutputAction.None, "the external output that plays cannot be chosen again");
                 T.True(OutputPickerModel.Build(null, 2)[1].Label == "Receiver (HDMI)" && OutputPickerModel.ExternalName(0) == null && OutputPickerModel.ExternalName(5) == null, "route names");
-                T.True(OutputPickerModel.VetroSetsLevel(0) && OutputPickerModel.VetroSetsLevel(5) && OutputPickerModel.VetroSetsLevel(-1) && OutputPickerModel.VetroSetsLevel(4), "Vol stays with Vetro on TV speakers, Bluetooth, unknown, Wi-Fi");
+                T.True(OutputPickerModel.VetroSetsLevel(0) && OutputPickerModel.VetroSetsLevel(-1) && OutputPickerModel.VetroSetsLevel(4), "Vol stays with Vetro on TV speakers, unknown, Wi-Fi");
+                T.True(!OutputPickerModel.VetroSetsLevel(5) && !OutputPickerModel.VetroSetsLevel(6), "Bluetooth headphones get Vol from Samsung (LS03B 2026-11-20)");
                 T.True(!OutputPickerModel.VetroSetsLevel(2) && !OutputPickerModel.VetroSetsLevel(8) && !OutputPickerModel.VetroSetsLevel(12) && !OutputPickerModel.VetroSetsLevel(17), "a receiver on HDMI gets Vol from Samsung");
                 T.True(!OutputPickerModel.VetroSetsLevel(1) && !OutputPickerModel.VetroSetsLevel(9) && !OutputPickerModel.VetroSetsLevel(11) && !OutputPickerModel.VetroSetsLevel(18), "an optical soundbar gets Vol from Samsung (S95C, S90D, S90F 2026-11-20)");
                 // The S95C on optical chose TV speakers and lost its Optical row: the output last seen playing stays, not ticked, and can be chosen again.
