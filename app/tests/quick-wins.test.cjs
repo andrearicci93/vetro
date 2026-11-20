@@ -186,5 +186,16 @@ const noWait=()=>Promise.resolve();
  // Misuse
  await assert.rejects(w.apply('nope',true),/Unknown/);await assert.rejects(w.apply('firmware','yes'),/Invalid/);
  assert.throws(()=>w.remember('firmware',true),/Unknown/);
+ // 0.7.1: telemetry brakes reflected in status, and firmware undo rollback restores FWSERVICE too.
+ t=tv({telBrakes:2,telRun:8});w=new qw.Wins(t.execute,{fs:store(),sleep:noWait});
+ assert.equal((await w.read()).wins.telemetry.status,'partial','leftover telemetry brake files without saved choice read partial');
+ t=tv({telBrakes:1,telRun:0});io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});w.remember('telemetry',true);
+ assert.equal((await w.read()).wins.telemetry.status,'partial','missing telemetry brake files read partial');
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});await w.apply('firmware',true);
+ t.s.calls.length=0;
+ const origExec=t.execute;
+ const wFail=new qw.Wins(async cmd=>{const sh=Buffer.from(cmd.split(' ')[1],'base64').toString();if(/^set \+e\nsystemctl unmask/.test(sh))return {exit_code:0,stdout:''};return origExec(cmd);},{fs:io,sleep:noWait});
+ await assert.rejects(wFail.apply('firmware',false),/did not end the lock.*previous state restored/);
+ assert.equal(t.s.fwsvc,0,'firmware undo rollback restores FWSERVICE to 0');
  console.log('PASS quick wins: auto update, MultiScreen preload, AmbientApp and data-collection services at boot, all reversible');
 })().catch(e=>{console.error(e);process.exitCode=1});

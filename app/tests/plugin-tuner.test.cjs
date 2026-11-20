@@ -62,6 +62,15 @@ const post = body => { const r = res(); host.dispatch('tuner', { method: 'POST',
     await nextTick(150);
     assert.ok(log.filter(x => x === 'supervise:true').length >= 2, 'and again every fifth tick');
 
+    // busy guard: slow supervise() does not re-enter on subsequent ticks
+    let slowCalls = 0, releaseSlow;
+    const origSup = tuner.supervise;
+    tuner.supervise = () => { slowCalls++; return new Promise(r => { releaseSlow = r; }); };
+    await nextTick(260);
+    assert.equal(slowCalls, 1, 'supervise does not overlap while previous round is still pending');
+    if (releaseSlow) releaseSlow('running');
+    tuner.supervise = origSup;
+
     // a bundled plugin has no switch of its own in the host: the tuner's own switch is the only one
     assert.throws(() => host.setEnabled('tuner', false), /use its own switch/);
     console.log('plugin-tuner: ok');

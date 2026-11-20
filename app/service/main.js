@@ -96,8 +96,8 @@ var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter})
 // not yet tried on a Tizen 9 TV. Kept here rather than in quick-wins.js: that file is unchanged since 0.5.0 and the update
 // from 0.5.0 has no room for one more changed file.
 var keyGuides=(function(){
-    var FILE='/opt/usr/home/owner/share/vetro-key-guides.json', KEYS=['memory/volume-app/key_guide_status','memory/tv-viewer/key_guide_status','db/tv-viewer/key_guide_status'];
-    function chosen(){try{return JSON.parse(fs.readFileSync(FILE,'utf8')).on===true;}catch(e){return false;}}
+    var FILE='/opt/usr/home/owner/share/vetro-key-guides.json', KEYS=['memory/volume-app/key_guide_status','memory/tv-viewer/key_guide_status','db/tv-viewer/key_guide_status'], chosenCache=null;
+    function chosen(){if(chosenCache!==null)return chosenCache;try{chosenCache=JSON.parse(fs.readFileSync(FILE,'utf8')).on===true;}catch(e){chosenCache=false;}return chosenCache;}
     // One line per key that exists: K|<key>|<value>. vconftool prints a bool as "... = True (Boolean)" (seen on the Q80A); looking for
     // "(Bool)" and digits found no key at all, and the switch read "unknown" on a Tizen 9 S95C (preview12 export).
     function script(value){return KEYS.map(function(k){var memory=k.indexOf('memory/')===0;
@@ -111,11 +111,17 @@ var keyGuides=(function(){
     return {
         read:function(){return run(null).then(status);},
         apply:function(on){
-            try{atomicFile.write(fs,FILE,JSON.stringify({on:on===true}));}catch(e){return Promise.reject(Error('The setting could not be saved: '+e.message));}
+            try{atomicFile.write(fs,FILE,JSON.stringify({on:on===true}));chosenCache=on===true;}catch(e){return Promise.reject(Error('The setting could not be saved: '+e.message));}
             return run(on?1:0).then(status);},
-        boot:function(){return chosen()?run(1):Promise.resolve(null);}
+        boot:function(){return chosen()?run(1):Promise.resolve(null);},
+        chosen:chosen
     };
 })();
+function hasKeyCapability(d){
+    var name=d&&d.selectable&&typeof d.node==='string'?d.node.split('/').pop():'';
+    if(!/^event\d+$/.test(name))return false;
+    try{return KEY_CAPABILITY_RE.test(fs.readFileSync('/sys/class/input/'+name+'/device/capabilities/key','utf8'));}catch(e){return false;}
+}
 // Apps removed through Vetro stay removed (keep-removed.js; idea and mechanism by zabique, github.com/zabique/vetro).
 var keepRemoved = new (require('./keep-removed.js').KeepRemoved)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
@@ -147,60 +153,88 @@ var BOOT_RETRIES = 60;
 function tryRead(p) { try { return fs.readFileSync(p, 'utf8').trim(); } catch (e) { return null; } }
 function tryReadRaw(p) { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return null; } }
 
-function readTelemetry() {
-    var out = {
-        ts: Math.floor(Date.now() / 1000),
-        boot_id: tryRead('/proc/sys/kernel/random/boot_id'),
-        hostname: tryRead('/etc/hostname'),
-        loadavg: tryRead('/proc/loadavg'),
-        cpu_online: tryRead('/sys/devices/system/cpu/online'),
-        cpu_gov: tryRead('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor'),
-        zram_mm_stat: tryRead('/sys/block/zram0/mm_stat')
-    };
+var telemetryStatic = { boot_id: null, hostname: null, cpu_cores: null, thermalPath: null };
+var telemetryCache = { at: 0, data: null };
+var TELEMETRY_TTL_MS = 1000;
 
-    var up = tryRead('/proc/uptime');
-    if (up) out.uptime_s = parseFloat(up.split(WHITESPACE_RE)[0]);
-    else out.uptime_s = null;
-
-    var cpuinfo = tryReadRaw('/proc/cpuinfo');
-    if (cpuinfo) out.cpu_cores = (cpuinfo.match(PROCESSOR_LINE_RE) || []).length;
-    else out.cpu_cores = null;
-
-    var freq = tryRead('/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq');
-    if (freq) out.cpu_freq_khz = parseInt(freq, 10);
-    else out.cpu_freq_khz = null;
-
-    var meminfo = tryReadRaw('/proc/meminfo');
-    if (meminfo) out.meminfo = meminfo.split('\n').join(';');
-    else out.meminfo = null;
-
-    var stat = tryReadRaw('/proc/stat');
-    if (stat) {
-        out.cpu_stat = (stat.split('\n').filter(function (l) { return CPU_TOTAL_LINE_RE.test(l); })[0] || '').trim();
-        out.cpu_percpu = stat.split('\n').filter(function (l) { return CPU_CORE_LINE_RE.test(l); }).join(';');
-    } else {
-        out.cpu_stat = null;
-        out.cpu_percpu = null;
+function readSoctemp() {
+    var temp = telemetryStatic.thermalPath ? tryRead(telemetryStatic.thermalPath) : null;
+    if (!temp) {
+        ['/sys/class/thermal', '/sys/devices/virtual/thermal'].forEach(function (dir) {
+            if (temp) return;
+            var zones = [];
+            try { zones = fs.readdirSync(dir).filter(function (n) { return THERMAL_ZONE_RE.test(n); }).sort(); } catch (e) { zones = []; }
+            zones.forEach(function (zone) {
+                if (temp) return;
+                var p = dir + '/' + zone + '/temp';
+                var v = tryRead(p);
+                if (v) { temp = v; telemetryStatic.thermalPath = p; }
+            });
+        });
     }
-
-    var temp = null;
-    ['/sys/class/thermal', '/sys/devices/virtual/thermal'].forEach(function (dir) {
-        if (temp) return;
-        var zones = [];
-        try { zones = fs.readdirSync(dir).filter(function (n) { return THERMAL_ZONE_RE.test(n); }).sort(); } catch (e) { zones = []; }
-        zones.forEach(function (zone) { if (!temp) temp = tryRead(dir + '/' + zone + '/temp'); });
-    });
     // Samsung's TVs have no Linux thermal zones (nothing under /sys/class/thermal): the SoC driver exposes the
     // temperature in whole degrees, as <soc>/<name>.thermal/temperature (56 on a Q80A), readable by everyone.
     if (!temp) {
         var soc = '/sys/devices/platform/soc', names = [];
         try { names = fs.readdirSync(soc).filter(function (n) { return THERMAL_DEVICE_RE.test(n); }).sort(); } catch (e) { names = []; }
-        names.forEach(function (n) { if (!temp) temp = tryRead(soc + '/' + n + '/temperature'); });
+        names.forEach(function (n) {
+            if (temp) return;
+            var p = soc + '/' + n + '/temperature';
+            var v = tryRead(p);
+            if (v) { temp = v; telemetryStatic.thermalPath = p; }
+        });
     }
-    if (temp) { var t = parseInt(temp, 10); out.soctemp_c = (t > 1000) ? (t / 1000) : t; }
-    else out.soctemp_c = null;
+    if (!temp) return null;
+    var t = parseInt(temp, 10);
+    return (t > 1000) ? (t / 1000) : t;
+}
 
-    return out;
+function readTelemetry(light) {
+    var now = Date.now();
+    if (!light && telemetryCache.data && now >= telemetryCache.at && (now - telemetryCache.at) < TELEMETRY_TTL_MS) {
+        return Object.assign({}, telemetryCache.data);
+    }
+    if (telemetryStatic.boot_id === null) telemetryStatic.boot_id = tryRead('/proc/sys/kernel/random/boot_id');
+    if (telemetryStatic.hostname === null) telemetryStatic.hostname = tryRead('/etc/hostname');
+    if (telemetryStatic.cpu_cores === null) {
+        var cpuinfo = tryReadRaw('/proc/cpuinfo');
+        if (cpuinfo) telemetryStatic.cpu_cores = (cpuinfo.match(PROCESSOR_LINE_RE) || []).length;
+    }
+
+    var freq = tryRead('/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq');
+    var out = {
+        ts: Math.floor(now / 1000),
+        boot_id: telemetryStatic.boot_id,
+        hostname: telemetryStatic.hostname,
+        loadavg: tryRead('/proc/loadavg'),
+        cpu_cores: telemetryStatic.cpu_cores,
+        cpu_freq_khz: freq ? parseInt(freq, 10) : null,
+        soctemp_c: readSoctemp()
+    };
+    if (light) return out;
+
+    out.cpu_online = tryRead('/sys/devices/system/cpu/online');
+    out.cpu_gov = tryRead('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor');
+    out.zram_mm_stat = tryRead('/sys/block/zram0/mm_stat');
+
+    var up = tryRead('/proc/uptime');
+    out.uptime_s = up ? parseFloat(up.split(WHITESPACE_RE)[0]) : null;
+
+    var meminfo = tryReadRaw('/proc/meminfo');
+    out.meminfo = meminfo ? meminfo.split('\n').join(';') : null;
+
+    var stat = tryReadRaw('/proc/stat');
+    if (stat) {
+        var lines = stat.split('\n');
+        out.cpu_stat = (lines.filter(function (l) { return CPU_TOTAL_LINE_RE.test(l); })[0] || '').trim();
+        out.cpu_percpu = lines.filter(function (l) { return CPU_CORE_LINE_RE.test(l); }).join(';');
+    } else {
+        out.cpu_stat = null;
+        out.cpu_percpu = null;
+    }
+
+    telemetryCache = { at: Date.now(), data: out };
+    return Object.assign({}, out);
 }
 
 // What the TV screen shows. The launcher's pid check is the only root command, and it runs only while the launcher is on.
@@ -251,7 +285,7 @@ function withVary(res, headers) {
     return headers;
 }
 function serveJson(res, obj, code) {
-    if (res.destroyed || res.writableEnded) return;
+    if (res.destroyed || res.writableEnded || res.finished || res.headersSent) return;
     var headers = { 'content-type': 'application/json; charset=utf-8',
         'connection': code === 413 || code === 408 ? 'close' : 'keep-alive' };
     var body = JSON.stringify(obj) + '\n';
@@ -295,6 +329,25 @@ function serveDashboard(req, res) {
     res.end(dashboardCache.gzip);
 }
 
+function readLocalDeviceInfo() {
+    var lines = [], hasVersion = false, hasRelease = false;
+    var prd = tryReadRaw('/etc/prd_info.ini');
+    if (prd) {
+        var inVersion = false, prdLines = prd.split('\n');
+        for (var i = 0; i < prdLines.length; i++) {
+            var l = prdLines[i].replace(/\r$/, '');
+            if (l.charAt(0) === '[') { inVersion = l.indexOf('[Version]') === 0; continue; }
+            if (inVersion && l.indexOf('Version=') === 0) { lines.push(l); hasVersion = true; break; }
+        }
+    }
+    var rel = tryReadRaw('/etc/tizen-release');
+    if (rel) {
+        var first = rel.split('\n')[0].replace(/\r$/, '').trim();
+        if (first) { lines.push('Tizen=' + first); hasRelease = true; }
+    }
+    return lines.length ? { stdout: lines.join('\n') + '\n', both: hasVersion && hasRelease } : null;
+}
+
 var diagnosticPending = null, diagnosticComponents = false;
 function downloadDiagnostics(res, withComponents) {
     // The CPU rate needs a second sample 1.5 s after the first, and the TV runs its commands one after the other:
@@ -311,12 +364,16 @@ function downloadDiagnostics(res, withComponents) {
         // (a few milliseconds, ahead of the slow ones) and gives up after 8 s, so it can only add to the probe.
         device: function () {
             var info = require('./device-info.js');
-            return info.merge(Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt}), agentExecute, 8000, info.httpGet);
+            var local = readLocalDeviceInfo();
+            var execFn = (local && (local.both || !platform.status().agent.connected))
+                ? function () { return Promise.resolve({ exit_code: 0, stdout: local.stdout, stderr: '', timed_out: false }); }
+                : agentExecute;
+            return info.merge(Object.assign({}, state.settings || {}, {receivedAt: state.receivedAt}), execFn, 8000, info.httpGet);
         },
         inventory: later(function () { return inventory(false); }),
         settings: later(function () { return tvSettings.read(); }),
         catalog: later(function () { return menuSettings.load(); }),
-        monitor: function () { return require('./diagnostic-report.js').twoSamples(function (force) { return monitor.snapshot('full', force); }, 1500, 16000).then(function(d){return Object.assign({},d,{telemetry:readTelemetry()});}); },
+        monitor: function () { return require('./diagnostic-report.js').twoSamples(function (force) { return monitor.snapshot('full', force); }, 1500, 16000).then(function(d){return Object.assign({},d,{telemetry:readTelemetry(true)});}); },
         startup: later(function () { return monitor.startup({wait: 45000}); }),
         network: later(function () { return tvSettings.readNetwork(); }),
         dns: later(function () { return dnsFilter.status(); }),
@@ -353,7 +410,7 @@ function downloadDiagnostics(res, withComponents) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
                 // Which of the same-name nodes advertise keys (what restoreInput chooses among), and whether the node saved with the choice is
                 // still one of them: a remote whose nodes were renumbered after a reboot, with several keyed ones, cannot be picked again.
-                var keyed = named ? named.filter(function (d) { try { return d.selectable && KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/' + d.node.split('/').pop() + '/device/capabilities/key', 'utf8')); } catch (e) { return false; } }) : null;
+                var keyed = named ? named.filter(hasKeyCapability) : null;
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
                     keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null,
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
@@ -403,7 +460,7 @@ function downloadDiagnostics(res, withComponents) {
         serviceApis: serviceApiProbe
     }).finally(function () { diagnosticPending = null; });
     return diagnosticPending.then(function (report) {
-        if (res.destroyed || res.writableEnded) return;
+        if (res.destroyed || res.writableEnded || res.finished || res.headersSent) return;
         res.setHeader('Content-Disposition', 'attachment; filename="vetro-diagnostics.json"');
         res.setHeader('Cache-Control', 'no-store');
         serveJson(res, report);
@@ -438,19 +495,30 @@ function handleUpdate(req, res, apply) {
         var task;
         try { task = apply ? updater.apply(body, sha) : Promise.resolve(updater.check(body, sha)); } catch (e) { task = Promise.reject(e); }
         task.then(function (d) { serveJson(res, d); }, function (e) {
-            serveJson(res, {ok: false, error: e.message, code: e.code || null}, e.code === 'busy' ? 409 : 400);
+            var status = e.code === 'busy' || e.code === 'pending' ? 409 : e.code === 'apply-failed' ? 503 : 400;
+            serveJson(res, {ok: false, error: e.message, code: e.code || null}, status);
         });
-    }, 8 * 1024 * 1024);
+    }, 16 * 1024 * 1024);
 }
 
 function readBody(req, cb, maxBytes) {
     maxBytes = maxBytes || 65536;
     var chunks = [], size = 0, finished = false;
     var timer = setTimeout(function () { fail('request body timeout', 408); }, 10000);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+    function cleanup() {
+        clearTimeout(timer);
+        if (typeof req.removeListener === 'function') {
+            req.removeListener('data', onData);
+            req.removeListener('end', onEnd);
+            req.removeListener('aborted', onAborted);
+            req.removeListener('close', onClose);
+        }
+    }
     function finish(body, err) {
         if (finished) return;
         finished = true;
-        clearTimeout(timer);
+        cleanup();
         chunks = [];
         cb(body, err);
     }
@@ -460,17 +528,24 @@ function readBody(req, cb, maxBytes) {
         finish(null, error);
         if (req.resume) req.resume();
     }
-    req.on('data', function (c) {
+    function onData(c) {
         if (finished) return;
-        size += c.length;
+        var buf = Buffer.isBuffer(c) ? c : Buffer.from(String(c), 'utf8');
+        size += buf.length;
         if (size > maxBytes) return fail('request body exceeds ' + (maxBytes / 1024) + ' KiB', 413);
-        chunks.push(c);
-    });
-    req.on('end', function () {
-        if (!finished) finish(Buffer.concat(chunks).toString('utf8'));
-    });
-    req.on('error', function () { fail('bad request body', 400); });
-    req.on('aborted', function () { fail('request aborted', 400); });
+        chunks.push(buf);
+    }
+    function onEnd() {
+        if (!finished) finish(Buffer.concat(chunks, size).toString('utf8'));
+    }
+    function onError() { fail('bad request body', 400); }
+    function onAborted() { fail('request aborted', 400); }
+    function onClose() { fail('request closed', 400); }
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('error', onError);
+    req.on('aborted', onAborted);
+    req.on('close', onClose);
 }
 
 function readJsonBody(req, res, cb, maxBytes) {
@@ -657,7 +732,7 @@ function serviceApiProbe() {
 }
 var REMAP_PATH = '/opt/usr/home/owner/share/vetro-remap.json';
 var remapStore = (function () {
-    try { return JSON.parse(fs.readFileSync(REMAP_PATH, 'utf8')); } catch (e) { return {}; }
+    try { var d = JSON.parse(fs.readFileSync(REMAP_PATH, 'utf8')); return d && typeof d === 'object' && !Array.isArray(d) ? d : {}; } catch (e) { return {}; }
 })();
 try { remapStore.rules = remap.validateRules(remapStore.rules || []); }
 catch (e) { remapStore.rules = []; }
@@ -682,13 +757,13 @@ function handleProbe(req, res) {
     readJsonBody(req, res, function (parsed) {
         try { state = probe.carry(state, probe.sanitize(parsed)); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
-        invalidateInventory();
+        if (!state.carried || state.carried.length < 2) invalidateInventory();
         serveJson(res, { ok: true, persisted: probe.save(state) });
     }, probe.MAX_JSON);
 }
 
 var registryCache = null, registryAt = 0, registryPending = null, registryGeneration = 0, registryPendingGeneration = 0;
-function invalidateInventory() { registryAt = 0; registryCache = null; registryGeneration++; }
+function invalidateInventory() { registryAt = 0; registryCache = null; registryGeneration++; iconCache = Object.create(null); iconCacheOrder = []; }
 function inventory(refresh) {
     if (!refresh && registryCache && Date.now()-registryAt<60000) return Promise.resolve(registryCache);
     if (registryPending) {
@@ -732,13 +807,17 @@ function componentAction(p) {
                         p.action==='uninstall'?!after.registryError&&!after.apps.some(function(x){return x.packageId===a.packageId}):
                         !results[1].processes.some(function(x){return x.appId===p.appId});
                     // Removed on purpose and gone: put it on the list so Samsung's sync does not bring it back (switch on only).
-                    if(verified&&p.action==='uninstall'&&keepRemoved.enabled()){try{keepRemoved.change('add',[a.packageId]);keepRemoved.check().catch(function(){});}catch(e){/* Vetro's own packages are refused */}}
+                    var syncDone = Promise.resolve();
+                    if(verified&&p.action==='uninstall'&&keepRemoved.enabled()){try{keepRemoved.change('add',[a.packageId]);syncDone=keepRemoved.check().catch(function(){});}catch(e){/* Vetro's own packages are refused */}}
                     // `pkgcmd -u` leaves the Home line, the registry row and the icon folder (Samsung's own uninstaller removes them and tells the Home).
                     // Cleaned here, then the launcher rebuilds its list, or its tile stays until the next start and does not open.
-                    var afterUninstall=verified&&p.action==='uninstall'?homeCleanup.clean(agentExecute,a.packageId,widgetIds).then(function(c){
-                        cleanup=c;invalidateInventory();
-                        launcherFollow();
-                    }):Promise.resolve();
+                    var afterUninstall=syncDone.then(function(){
+                        if(!verified||p.action!=='uninstall')return;
+                        return homeCleanup.clean(agentExecute,a.packageId,widgetIds).then(function(c){
+                            cleanup=c;invalidateInventory();
+                            launcherFollow();
+                        });
+                    });
                     return afterUninstall.then(function(){
                     return {ok:verified,verified:verified,action:p.action,appId:p.appId,packageId:a.packageId,changed:p.action==='flags'?a[p.flag]!==p.enabled:undefined,
                         error:verified?null:'Requested state not confirmed; the component may have restarted.',output:r.stdout,apps:after.apps,factoryTest:factoryResult,cleanup:cleanup};
@@ -817,7 +896,8 @@ function handleSdbAccess(req,res) {
         if(typeof p.enabled!=='boolean')return serveJson(res,{error:'Invalid SDB access state'},400);
         if(debloatBusy)return serveJson(res,{error:'App change already in progress'},409);
         if(!platform.setSdbAccess)return serveJson(res,{error:'SDB access is unavailable'},503);
-        platform.setSdbAccess(p.enabled).then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
+        debloatBusy=true;
+        Promise.resolve().then(function(){return platform.setSdbAccess(p.enabled);}).finally(function(){debloatBusy=false;}).then(function(d){serveJson(res,d);},function(e){serveJson(res,{error:e.message},503);});
     });
 }
 function handleWins(req,res) {readJsonBody(req,res,function(p){
@@ -844,7 +924,7 @@ var restoreTvObject = null;
 function restoreTv() { return restoreTvObject || (restoreTvObject = new (require('./restore.js').Restore)(restoreOptions())); }
 function restoreOptions() { return {
     execute: agentExecute, inventory: inventory, invalidate: function(){invalidateInventory();},
-    wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock, tuner: tuner,
+    wins: wins, keyGuides: keyGuides, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock, tuner: tuner,
     plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
     input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
         off: function(){stopInput('quick');inputPaused=false;saveInputPreference({enabled:false});}},
@@ -861,7 +941,8 @@ function handleFactoryTest(req,res) {
     if(req.method==='GET')return factoryTest.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     readJsonBody(req,res,function(p){
         if(p.action!=='reset')return serveJson(res,{error:'Invalid factory test action'},400);
-        factoryTest.reset().then(function(d){serveJson(res,Object.assign({ok:true},d));}).catch(function(e){serveJson(res,{ok:false,error:e.message},e.message.indexOf('in progress')>=0?409:503);});
+        if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
+        Promise.resolve().then(function(){return factoryTest.reset();}).finally(function(){debloatBusy=false;}).then(function(d){serveJson(res,Object.assign({ok:true},d));}).catch(function(e){serveJson(res,{ok:false,error:e.message},e.message.indexOf('in progress')>=0?409:503);});
     });
 }
 function handleRestore(req,res) {
@@ -889,11 +970,17 @@ function handleLeftovers(req,res) {
         if(p.action!=='clear')return serveJson(res,{error:'Invalid leftovers action'},400);
         // The platform stages packages in this folder while it installs them.
         if(installPending)return serveJson(res,{ok:false,error:'An installation is in progress; try again when it finishes'},409);
-        leftovers.clear().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
+        if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
+        Promise.resolve().then(function(){return leftovers.clear();}).finally(function(){debloatBusy=false;}).then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
     });
 }
-function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);});}
-var iconCache = {};
+function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);}).catch(function(e){serveJson(res,{error:e.message},503);});}
+var iconCache = Object.create(null), iconCacheOrder = [], MAX_ICON_CACHE = 100, iconPending = Object.create(null);
+function touchIconOrder(id) {
+    var idx = iconCacheOrder.indexOf(id);
+    if (idx >= 0) iconCacheOrder.splice(idx, 1);
+    iconCacheOrder.push(id);
+}
 // ?appId=... read straight from the query string: the one parameter does not need a URL parser.
 function appIdOf(rawUrl) {
     var m = APP_ID_QUERY_RE.exec(rawUrl || '');
@@ -911,15 +998,20 @@ function handleIcon(req,res) {
         if(req.headers&&req.headers['if-none-match']===icon.etag){res.writeHead(304,headers);return res.end();}
         headers['content-length']=icon.data.length;res.writeHead(200,headers);res.end(icon.data);
     }
-    if(iconCache[id])return send(iconCache[id]);
-    inventory(false).then(function(data){var row=data.apps.find(function(r){return r.appId===id;}), command=AppRegistry.iconCommand(row);
-        if(!command)throw new Error('no readable icon');
-        return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error('icon unavailable');var data=Buffer.from(r.stdout.replace(WHITESPACE_CHAR_RE,''),'base64');
-            var png=data.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), jpg=data[0]===255&&data[1]===216;
-            if((!png&&!jpg)||data.length>262144)throw new Error('unsupported icon');
-            var icon={data:data,mime:png?'image/png':'image/jpeg',etag:iconEtag(data)};if(Object.keys(iconCache).length<100)iconCache[id]=icon;send(icon);
-        });
-    }).catch(function(){serveJson(res,{error:'icon unavailable'},404);});
+    if(iconCache[id]){touchIconOrder(id);return send(iconCache[id]);}
+    var job=iconPending[id];
+    if(!job){
+        job=inventory(false).then(function(data){var row=data.apps.find(function(r){return r.appId===id;}), command=AppRegistry.iconCommand(row);
+            if(!command)throw new Error('no readable icon');
+            return agentExecute(command,10000).then(function(r){if(r.exit_code||r.timed_out)throw new Error('icon unavailable');var data=Buffer.from(r.stdout.replace(WHITESPACE_CHAR_RE,''),'base64');
+                var png=data.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), jpg=data[0]===255&&data[1]===216;
+                if((!png&&!jpg)||data.length>262144)throw new Error('unsupported icon');
+                var icon={data:data,mime:png?'image/png':'image/jpeg',etag:iconEtag(data)};touchIconOrder(id);iconCache[id]=icon;while(iconCacheOrder.length>MAX_ICON_CACHE)delete iconCache[iconCacheOrder.shift()];return icon;
+            });
+        }).finally(function(){if(iconPending[id]===job)delete iconPending[id];});
+        iconPending[id]=job;
+    }
+    job.then(send,function(){serveJson(res,{error:'icon unavailable'},404);});
 }
 function handleLaunch(req,res) {readJsonBody(req,res,function(p){
     if(typeof p.appId!=='string'||! APP_ID_120_RE.test(p.appId))return serveJson(res,{error:'invalid appId'},400);
@@ -1003,11 +1095,12 @@ var physicalHooks={onStop:function(lost){volumeRepeat.stop();if(lost)inputNote(l
         if(bridgeWait&&status&&status.policy&&status.policy.mode==='filter'){bridgeWait.bridgeMs=Date.now()-bridgeWait.agentAt;bridgeTiming[bridgeTiming.first?'last':'first']=bridgeWait;bridgeWait=null;}
         if(status&&status.policy&&status.policy.mode==='filter')agentExecute(keyRouting.rescanCommand(),5000).catch(function(){});}};
 var physical=new PhysicalInput(agentExecute,function(event){
-    if(inputLifecycleActive&&volumeKeys.wants(event,keyFlags())){
+    if(!inputLifecycleActive||!event||event.decision!=='blocked')return;
+    if(volumeKeys.isVolumeCode(event.code)&&volumeKeys.wants(event,keyFlags())){
         volumeRepeat.event(event);
         return;
     }
-    if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
+    if(event.action!=='down')return;
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
@@ -1062,7 +1155,7 @@ function vetroUiInput(){
     if(!inputLifecycleActive||inputPaused||!platform.status().agent.connected){vetroUiInputProblem='The remote interception could not be turned on now (the TV is not connected, or the Remapper is listening). Turn it on in the Remapper.';return Promise.resolve(false);}
     return physical.inventory().then(function(list){
         var candidates=list.filter(function(d){return d.selectable;});
-        var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
+        var keyed=candidates.filter(hasKeyCapability);
         var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:null;
         if(!device)throw new Error(candidates.length?'More than one remote was found: choose yours in the Remapper and turn the interception on there.':'No remote was found to listen to.');
         var still=keyFlags();if(!still.volume&&!still.pad)return null;   // switched off again while the remotes were being listed
@@ -1083,7 +1176,7 @@ function restoreInput(){
     physical.inventory().then(function(list){
         if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||Date.now()<inputFaultUntil||inputPreference()!==preference)return;
         var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
-        var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
+        var keyed=candidates.filter(hasKeyCapability);
         // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
         var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:keyed.find(function(d){return d.node===preference.node;})||null;
         if(!device)throw new Error('Saved physical remote is unavailable');
@@ -1193,17 +1286,17 @@ var server = http.createServer(function (req, res) {
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
         if (url === '/debloat') return handleDebloatAction(req, res);
-        if (url === '/dns') return readJsonBody(req,res,function(p){var task=p.action==='observe'?dnsFilter.observe():p.action==='apply'?dnsFilter.apply(p.enabled,p.domains):Promise.reject(Error('Invalid filter action'));task.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
+        if (url === '/dns') return readJsonBody(req,res,function(p){if(p.action==='observe')return dnsFilter.observe().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});if(p.action!=='apply')return serveJson(res,{error:'Invalid filter action'},400);if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;Promise.resolve().then(function(){return dnsFilter.apply(p.enabled,p.domains);}).finally(function(){debloatBusy=false;}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});});
         if (url === '/pairing-mode') return handlePairingMode(req,res);
         if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
         if (url === '/keep-removed') return handleKeepRemoved(req,res);
         if (url === '/restore') return handleRestore(req,res);
         if (url === '/factory-test') return handleFactoryTest(req,res);
-        if (url === '/hbbtv') return readJsonBody(req,res,function(p){hbbtv.change(p.off,p.expected).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
+        if (url === '/hbbtv') return readJsonBody(req,res,function(p){if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;Promise.resolve().then(function(){return hbbtv.change(p.off,p.expected);}).finally(function(){debloatBusy=false;}).then(function(d){privacy.cached=null;try{wins.remember('hbbtv',d.off);}catch(e){}serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},409);});});
         if (url === '/dock') return plugins.dispatch('launcher', req, res, 'action', serveJson);
         if (url === '/tuner') return plugins.dispatch('tuner', req, res, 'action', serveJson);
-        if (url === '/home-order') return readJsonBody(req,res,function(p){var t=p.action==='restore'?homeOrder.restore():p.action==='clean'?homeCleanup.sweep(agentExecute):homeOrder.write(p.entries);t.then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
+        if (url === '/home-order') return readJsonBody(req,res,function(p){if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;Promise.resolve().then(function(){return p.action==='restore'?homeOrder.restore():p.action==='clean'?homeCleanup.sweep(agentExecute):homeOrder.write(p.entries);}).finally(function(){debloatBusy=false;}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},409)});});
         if (url === '/tv-menu') return readJsonBody(req,res,function(p){menuSettings.write(p.id,p.value).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/tv-settings') return readJsonBody(req,res,function(p){tvSettings.write(p).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{ok:false,error:e.message},409)});});
         if (url === '/components/action') return handleComponentAction(req,res);
@@ -1236,8 +1329,8 @@ var server = http.createServer(function (req, res) {
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/privacy') return privacy.read().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/tv-menu') { var q=MENU_ID_QUERY_RE.exec(req.url||''), menuId=null; try { if(q)menuId=decodeURIComponent(q[1]); } catch(e) { return serveJson(res,{error:'Invalid menu ID'},400); } return (q?menuSettings.read(menuId):menuSettings.load()).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)}); }
-    if (url === '/monitor') { var scope=SCOPE_QUERY_RE.exec(req.url||'');if(scope&&!MONITOR_SCOPE_RE.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full',REFRESH_QUERY_RE.test(req.url)).then(function(d){d.telemetry=readTelemetry();serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
-    if (url === '/startup') return Promise.all([inventory(false),monitor.startup().catch(function(e){return {error:e.message};})]).then(function(d){serveJson(res,{apps:d[0].apps,services:Array.isArray(d[1])?d[1]:[],serviceError:d[1].error||null});});
+    if (url === '/monitor') { var scope=SCOPE_QUERY_RE.exec(req.url||'');if(scope&&!MONITOR_SCOPE_RE.test(scope[1]))return serveJson(res,{error:'Unsupported monitor scope'},400);return monitor.snapshot(scope?scope[1]:'full',REFRESH_QUERY_RE.test(req.url)).then(function(d){d.telemetry=readTelemetry(true);serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);}); }
+    if (url === '/startup') return Promise.all([inventory(false),monitor.startup().catch(function(e){return {error:e.message};})]).then(function(d){serveJson(res,{apps:d[0].apps,services:Array.isArray(d[1])?d[1]:[],serviceError:d[1].error||null});}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/telemetry') return serveJson(res, readTelemetry());
     if (url === '/leftovers') return handleLeftovers(req,res);
     if (url === '/status') return serveJson(res, Object.assign({}, platform.status(), {app: buildInfo, rootCommands: commandStats(Date.now()), remoteBridge: bridgeTiming}));
@@ -1254,7 +1347,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/apps') return handleApps(req, res);
     if (url === '/quick/uninstall') return handleQuickUninstall(req,res);
     if (url === '/blocklist') return handleBlocklist(req, res);
-    if (url === '/tv-settings') return Promise.all([tvSettings.read().catch(function(e){return {items:[],error:e.message}}),dnsFilter.status().catch(function(e){return {error:e.message}}),tvSettings.readNetwork().catch(function(e){return {configurationError:e.message,services:[],interfaces:[],writable:false}})]).then(function(d){serveJson(res,{ts:Date.now(),items:d[0].items,scope:d[0].scope,error:d[0].error||null,network:Object.assign({},d[1],d[2]),device:settings.sanitize(state.settings)});});
+    if (url === '/tv-settings') return Promise.all([tvSettings.read().catch(function(e){return {items:[],error:e.message}}),dnsFilter.status().catch(function(e){return {error:e.message}}),tvSettings.readNetwork().catch(function(e){return {configurationError:e.message,services:[],interfaces:[],writable:false}})]).then(function(d){serveJson(res,{ts:Date.now(),items:d[0].items,scope:d[0].scope,error:d[0].error||null,network:Object.assign({},d[1],d[2]),device:settings.sanitize(state.settings)});}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/settings') return handleSettings(req, res);
     if (url === '/remap') return handleRemap(req, res);
     if (url === '/' || url === '/index.html') return serveDashboard(req, res);
@@ -1289,18 +1382,24 @@ function becomeOwner() {
     platform.start();
     plugins.start();
 }
+var listenRetries = 0;
 function startListening() {
     server.listen(PORT, process.env.VETRO_BIND_HOST || '0.0.0.0');
 }
 server.on('listening', function () {
     console.log('VETRO listening on ' + PORT);
+    listenRetries = 0;
     becomeOwner();
 });
 server.on('error', function (e) {
     if (e && (e.code === 'EADDRINUSE' || e.code === 'EACCES')) {
         var retry = function () {
-            console.error('VETRO cannot listen on port ' + PORT + ' (' + e.code + '): another app holds it. Trying again in ' + Math.round(LISTEN_RETRY_MS / 1000) + ' s. Build with VETRO_PORT=<port> to use another one.');
-            setTimeout(startListening, LISTEN_RETRY_MS);
+            var delay = Math.min(LISTEN_RETRY_MS * Math.pow(2, Math.min(listenRetries, 5)), Math.max(LISTEN_RETRY_MS, 300000));
+            listenRetries++;
+            if (listenRetries <= 3 || listenRetries % 10 === 0) {
+                console.error('VETRO cannot listen on port ' + PORT + ' (' + e.code + '): another app holds it. Trying again in ' + Math.round(delay / 1000) + ' s. Build with VETRO_PORT=<port> to use another one.');
+            }
+            setTimeout(startListening, delay);
         };
         if (e.code !== 'EADDRINUSE') { becomeOwner(); return retry(); }
         if (staleAttempts >= 3) return retry();
@@ -1382,6 +1481,7 @@ function restartNativeAfterUpdate() {
 }
 var updateConfirmAttempts = 0;
 var updateConfirmTimer = setInterval(function () {
+    if (!serviceOwner) return;
     if (++updateConfirmAttempts > 60) { clearInterval(updateConfirmTimer); return; }
     if (!platform.status().agent.connected) return;
     clearInterval(updateConfirmTimer);
@@ -1412,18 +1512,22 @@ process.on('uncaughtException', function (e) {
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.
-var presenceTimer=setInterval(function(){
- if(!bridge.connected)return;
+var presenceBusy=false,presenceTimer=setInterval(function(){
+ if(!bridge.connected||presenceBusy)return;
+ presenceBusy=true;
  presence.read().then(function(d){
-  var fg=d.foreground;if(fg){var row=apps.normalize(state.apps,state.packages).filter(function(a){return a.appId===fg.appId})[0];fg=Object.assign({name:row&&row.name||fg.appId},fg);}
+  var fg=d.foreground;
+  if(fg&&(fg.appId+':'+fg.pid)===bridge.lastPresence)return;
+  if(fg){var lists=[registryCache&&registryCache.apps,state.apps],name=fg.appId;for(var k=0;k<lists.length;k++){var list=lists[k]||[];for(var i=0;i<list.length;i++){if(list[i]&&(list[i].id===fg.appId||list[i].appId===fg.appId)&&list[i].name){name=list[i].name;break;}}if(name!==fg.appId)break;}fg=Object.assign({name:name},fg);}
   bridge.publishPresence(fg);
- }).catch(function(){});
+ }).catch(function(){}).finally(function(){presenceBusy=false;});
 },5000);if(presenceTimer.unref)presenceTimer.unref();
 
 // Native audio/source reads require no foreground UI and never alter the TV.
-var tvStateTimer=setInterval(function(){
- if(!bridge.connected)return;
- tvState.read().then(function(d){bridge.publishTvState(d);}).catch(function(){bridge.publishTvState(null);});
+var tvStateBusy=false,tvStateTimer=setInterval(function(){
+ if(!bridge.connected||tvStateBusy)return;
+ tvStateBusy=true;
+ tvState.read().then(function(d){bridge.publishTvState(d);}).catch(function(){bridge.publishTvState(null);}).finally(function(){tvStateBusy=false;});
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
 
 // Boot tasks below also wait for the launcher (dock.bootSettled(): off, up, or 60 s after the agent connected): the root agent runs
@@ -1431,27 +1535,27 @@ var tvStateTimer=setInterval(function(){
 // Restore only an explicitly saved local domain filter once the adapter is ready.
 // A TV where the filter was never switched on has no filter folder (Filter.neverUsed: only a missing folder counts, not one the
 // service cannot look into): its status read (a root command of about ten processes) is skipped at every boot.
-var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRestoreAttempts>BOOT_RETRIES){clearInterval(dnsRestoreTimer);return}if(typeof dnsFilter.neverUsed==='function'&&dnsFilter.neverUsed()){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
+var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(!serviceOwner)return;if(++dnsRestoreAttempts>BOOT_RETRIES){clearInterval(dnsRestoreTimer);return}if(typeof dnsFilter.neverUsed==='function'&&dnsFilter.neverUsed()){clearInterval(dnsRestoreTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){dnsFilter.restore().then(function(s){if(!s.enabled||s.applied)clearInterval(dnsRestoreTimer)}).catch(function(){})}},5000);if(dnsRestoreTimer.unref)dnsRestoreTimer.unref();
 
 // The update lock does not wait for the launcher: the SWU timer and the background updater can start before it.
-var lockBootAttempts=0;var lockBootTimer=setInterval(function(){if(++lockBootAttempts>BOOT_RETRIES){clearInterval(lockBootTimer);return}if(platform.status().agent.connected){clearInterval(lockBootTimer);wins.bootLock().catch(function(){})}},5000);if(lockBootTimer.unref)lockBootTimer.unref();
+var lockBootAttempts=0;var lockBootTimer=setInterval(function(){if(!serviceOwner)return;if(++lockBootAttempts>BOOT_RETRIES){clearInterval(lockBootTimer);return}if(platform.status().agent.connected){clearInterval(lockBootTimer);wins.bootLock().catch(function(){})}},5000);if(lockBootTimer.unref)lockBootTimer.unref();
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){});keyGuides.boot().catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(!serviceOwner)return;if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){});keyGuides.boot().catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
 
 // Keep removed apps removed: the source fix is written on every change; this is only the safety net, slow, and only
 // while the switch is on. It also runs once when the adapter is up, and once more to take Vetro's ids out if the
 // switch was left off with ids still in Samsung's list.
-var keepRemovedTimer=setInterval(function(){if(platform.status().agent.connected&&!debloatBusy&&keepRemoved.enabled())keepRemoved.check().catch(function(){});},10*60000);if(keepRemovedTimer.unref)keepRemovedTimer.unref();
-var keepRemovedBootAttempts=0;var keepRemovedBootTimer=setInterval(function(){if(++keepRemovedBootAttempts>BOOT_RETRIES){clearInterval(keepRemovedBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(keepRemovedBootTimer);keepRemoved.check().catch(function(){});}},5000);if(keepRemovedBootTimer.unref)keepRemovedBootTimer.unref();
+var keepRemovedTimer=setInterval(function(){if(!serviceOwner)return;if(platform.status().agent.connected&&!debloatBusy&&keepRemoved.enabled())keepRemoved.check().catch(function(){});},10*60000);if(keepRemovedTimer.unref)keepRemovedTimer.unref();
+var keepRemovedBootAttempts=0;var keepRemovedBootTimer=setInterval(function(){if(!serviceOwner)return;if(++keepRemovedBootAttempts>BOOT_RETRIES){clearInterval(keepRemovedBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(keepRemovedBootTimer);keepRemoved.check().catch(function(){});}},5000);if(keepRemovedBootTimer.unref)keepRemovedBootTimer.unref();
 
 // Warm the boot-state cache of the Startup tab (a 12-17 s read on a Q80A, run as a detached job so the root agent is never held up) once
 // the TV has settled, so the first visit to the tab already has it. Not in the first five minutes after a boot (the job is a
 // systemctl listing of every unit, at the lowest priority but still competing with the TV's own start; a visit to the tab in
 // those minutes starts it itself). Then tried for up to 5 minutes until the adapter is connected.
 var STARTUP_WARM_AFTER_S=300;
-var startupWarmAttempts=0;var startupWarmTimer=setInterval(function(){if(os.uptime()<STARTUP_WARM_AFTER_S)return;if(++startupWarmAttempts>30){clearInterval(startupWarmTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(startupWarmTimer);monitor.startup().catch(function(){});}},10000);if(startupWarmTimer.unref)startupWarmTimer.unref();
+var startupWarmAttempts=0;var startupWarmTimer=setInterval(function(){if(!serviceOwner)return;if(os.uptime()<STARTUP_WARM_AFTER_S)return;if(++startupWarmAttempts>30){clearInterval(startupWarmTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(startupWarmTimer);monitor.startup().catch(function(){});}},10000);if(startupWarmTimer.unref)startupWarmTimer.unref();
 
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
 // The two flags come from Vetro's own row of the registry (one query), not from the whole inventory (three queries and a join).
-var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>BOOT_RETRIES){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected||!dock.bootSettled())return;selfStartupBusy=true;AppRegistry.one(agentExecute,'vetrotvapp.svc',{user:false}).then(function(row){return ComponentActions.selfStartup(row?[row]:[]).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
+var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(!serviceOwner)return;if(++selfStartupAttempts>BOOT_RETRIES){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected||!dock.bootSettled())return;selfStartupBusy=true;AppRegistry.one(agentExecute,'vetrotvapp.svc',{user:false}).then(function(row){return ComponentActions.selfStartup(row?[row]:[]).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();

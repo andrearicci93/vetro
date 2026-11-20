@@ -65,7 +65,7 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     const scripts = [];
     dock.execute = async cmd => {
         const script = Buffer.from(/^echo (\S+) \|/.exec(cmd)[1], 'base64').toString(); scripts.push(script);
-        return /ORPHAN \$id/.test(script) ? { exit_code: 0, stdout: 'ORPHAN newslO9NqF.stremio\nREGISTRY 40\n' } : { exit_code: 0, stdout: 'HOME 2\n' };
+        return /ORPHAN /.test(script) ? { exit_code: 0, stdout: 'ORPHAN newslO9NqF.stremio\nREGISTRY 40\n' } : { exit_code: 0, stdout: 'HOME 2\n' };
     };
     let before = log.length;
     r = post('{"action":"refresh"}'); await nextTick(20);
@@ -85,6 +85,50 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     await nextTick(150);
     assert.ok(log.length >= 1 && log.every(l => l === 'supervise:true'), 'then every fifth tick');
     assert.ok(log.length <= 2, 'and not on every tick');
+
+    // busy guard: slow supervise() does not re-enter on subsequent ticks
+    let slowCalls = 0, releaseSlow;
+    const origSup = dock.supervise;
+    dock.supervise = () => { slowCalls++; return new Promise(r => { releaseSlow = r; }); };
+    await nextTick(260);
+    assert.equal(slowCalls, 1, 'supervise does not overlap while previous round is still pending');
+    if (releaseSlow) releaseSlow('running');
+    dock.supervise = origSup;
+
+    // Round 2: icon cache invalidates on action() and setRow() even when appsFile stamp is unchanged
+    {
+        let iconVersion = 1, setRows = 0;
+        const tmpApps = path.join(os.tmpdir(), 'vetro-launcher-apps-' + process.pid + '.tsv');
+        fs.writeFileSync(tmpApps, 'yt\tYouTube\tcom.test.yt\n');
+        dock.appsFile = tmpApps;
+        dock.setRow = () => { setRows++; return Promise.resolve(); };
+        const origIcon = dock.iconFile;
+        dock.iconFile = slug => slug === 'known' ? Buffer.from('PNG' + iconVersion) : null;
+        try {
+            let ic = get('icon', '/dock/icon?slug=known');
+            assert.equal(ic.body.toString(), 'PNG1');
+            iconVersion = 2;
+            // Within 1s stat throttle, cached icon is served without re-reading
+            ic = get('icon', '/dock/icon?slug=known');
+            assert.equal(ic.body.toString(), 'PNG1', 'icon stays cached within 1s throttle');
+            // POST action clears icon cache
+            post('{"action":"refresh"}'); await nextTick(10);
+            ic = get('icon', '/dock/icon?slug=known');
+            assert.equal(ic.body.toString(), 'PNG2', 'action() clears icon cache');
+            // POST row clears icon cache
+            iconVersion = 3;
+            const rr = res(); host.dispatch('launcher', { method: 'POST', url: '/plugins/launcher/api/row', headers: {}, body: '{"row":["app:com.test.yt"]}' }, rr, 'row', json);
+            await nextTick(10);
+            assert.equal(setRows, 1);
+            ic = get('icon', '/dock/icon?slug=known');
+            assert.equal(ic.body.toString(), 'PNG3', 'setRow() clears icon cache');
+        } finally {
+            dock.iconFile = origIcon;
+            delete dock.appsFile;
+            delete dock.setRow;
+            try { fs.unlinkSync(tmpApps); } catch (e) {}
+        }
+    }
 
     // switching the plugin off stops the timer and nothing else
     host.stop();

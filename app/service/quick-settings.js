@@ -1,4 +1,5 @@
 'use strict';
+var disabledLedger = require('./disabled-ledger.js');
 // Regular expressions compiled once at module load, not on every call.
 // (state() is also sent to the dashboard as text, so it keeps its own literals.)
 var EXIT_CODES_RE = /^(\S+) (\d+)$/;
@@ -85,7 +86,7 @@ function find(id) { return GROUPS.filter(function (g) { return g.id === id; })[0
 // "on": every installed member enabled; "off": every one disabled and none of them left on boot or auto-restart.
 // A disabled member that still has a startup flag is "flagged": the group is only partly done until the flag is cleared.
 function state(group, rows) {
-    var byId = {};
+    var byId = Object.create(null);
     (rows || []).forEach(function (r) { byId[r.appId] = r; });
     // This function is also sent to the dashboard as text, so it cannot call anything outside itself.
     var ids = !group.area ? group.ids : (rows || []).filter(function (r) {
@@ -115,20 +116,30 @@ var SQL = 'q() { printf \'.timeout 5000\\n%s\\n\' "$1" | sqlite3 -bail ' + DB + 
 // Clear boot and auto-restart; the previous values are kept in SAVED/<id> so that turning the group back on restores them.
 function clearFlagsCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
-    return wrap(SQL + 'mkdir -p ' + SAVED + '\nfor id in ' + ids.join(' ') + '; do\n' +
-        ' v=$(q "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\'$id\';")\n' +
-        ' case "$v" in *true*) echo "$v" > "' + SAVED + '/$id";; esac\n' +
-        ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'false\',app_autorestart=\'false\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; echo "$id $?"\ndone');
+    if (!ids.length) return wrap('true');
+    var inList = ids.map(function (id) { return "'" + id + "'"; }).join(',');
+    return wrap(SQL + 'CR=$(printf \'\\r\')\nmkdir -p ' + SAVED + '\n' +
+        'rows=$(q "SELECT app_id,app_onboot,app_autorestart FROM package_app_info WHERE app_id IN (' + inList + ');" 2>/dev/null); r=$?\n' +
+        'if [ $r -eq 0 ]; then\n' +
+        ' printf \'%s\\n\' "$rows" | while IFS="|" read -r id on re; do\n' +
+        '  [ -n "$id" ] || continue; re=${re%$CR}\n' +
+        '  case "$on|$re" in *true*) [ -s "' + SAVED + '/$id" ] || echo "$on|$re" > "' + SAVED + '/$id";; esac\n' +
+        ' done\n' +
+        ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'false\',app_autorestart=\'false\' WHERE app_id IN (' + inList + '); COMMIT;" >/dev/null 2>&1; r=$?\n' +
+        'fi\nfor id in ' + ids.join(' ') + '; do echo "$id $r"; done');
 }
 // "<id> 0": put back, "<id> none": nothing had been saved for it, anything else: failed.
 function restoreFlagsCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
-    return wrap(SQL + 'for id in ' + ids.join(' ') + '; do\n' +
-        ' f="' + SAVED + '/$id"\n [ -f "$f" ] || { echo "$id none"; continue; }\n' +
-        ' v=$(cat "$f"); on=${v%%|*}; re=${v##*|}\n' +
+    if (!ids.length) return wrap('true');
+    return wrap(SQL + 'CR=$(printf \'\\r\')\nsql=; todo=\nfor id in ' + ids.join(' ') + '; do\n' +
+        ' f="' + SAVED + '/$id"\n [ -f "$f" ] || continue\n' +
+        ' read -r v < "$f"; v=${v%$CR}; on=${v%%|*}; re=${v##*|}\n' +
         ' case "$on" in true|false) ;; *) on=false;; esac\n case "$re" in true|false) ;; *) re=false;; esac\n' +
-        ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; r=$?\n' +
-        ' [ $r -eq 0 ] && rm -f "$f"; echo "$id $r"\ndone');
+        ' sql="$sql UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\';"\n' +
+        ' todo="$todo $id"\ndone\nr=0\nif [ -n "$todo" ]; then q "BEGIN IMMEDIATE;$sql COMMIT;" >/dev/null 2>&1; r=$?; fi\n' +
+        'for id in ' + ids.join(' ') + '; do\n' +
+        ' f="' + SAVED + '/$id"\n if [ ! -f "$f" ]; then echo "$id none"; else [ $r -eq 0 ] && rm -f "$f"; echo "$id $r"; fi\ndone');
 }
 var SERVICE_DIR = '/opt/usr/share/systemd/system/', SERVICE_RE = /^[a-z0-9-]{1,40}$/;
 // Off: put Samsung's own "do not start" file down and stop the unit. On: take the file away and start it again.
@@ -160,7 +171,8 @@ function restoreFlagsFor(result, deps) {
     var ids = result.state.enabled;
     if (!ids.length) return Promise.resolve(result);
     return deps.execute(restoreFlagsCommand(ids), 60000).then(function (r) {
-        var codes = {};
+        if (!r || r.timed_out) throw new Error('Timed out');
+        var codes = Object.create(null);
         String(r.stdout || '').split('\n').forEach(function (l) { var m = RESTORE_FLAGS_FOR_RE.exec(l.trim()); if (m) codes[m[1]] = m[2]; });
         ids.forEach(function (id) { if (codes[id] === '0') result.flagsRestored.push(id); else if (codes[id] !== 'none') result.flagsNotRestored.push(id); });
         deps.invalidate();
@@ -172,7 +184,7 @@ function restoreFlagsFor(result, deps) {
 }
 
 // deps: execute(cmd, timeoutMs), inventory(refresh) -> {apps, registryError}, invalidate().
-function apply(groupId, off, deps) {
+function apply(groupId, off, deps, options) {
     var group = find(groupId);
     if (!group) return Promise.reject(new Error('Unknown quick setting'));
     if (typeof off !== 'boolean') return Promise.reject(new Error('Invalid state'));
@@ -186,14 +198,14 @@ function apply(groupId, off, deps) {
     function verify(ids, disabled) {
         deps.invalidate();
         return registry(true).then(function (d) {
-            var byId = {};
+            var byId = Object.create(null);
             d.apps.forEach(function (r) { byId[r.appId] = r; });
             return {apps: d.apps, wrong: ids.filter(function (id) { return !byId[id] || byId[id].disabled !== disabled; })};
         });
     }
     var flagTargets = [], clearRan = false;
     function flagsWrong(apps, ids) {
-        var byId = {};
+        var byId = Object.create(null);
         apps.forEach(function (r) { byId[r.appId] = r; });
         return ids.filter(function (id) { return !byId[id] || byId[id].onboot !== false || byId[id].autorestart !== false; });
     }
@@ -201,15 +213,15 @@ function apply(groupId, off, deps) {
         var s = state(group, before.apps);
         if (s.status === 'unavailable') { var missing = new Error('Not installed on this TV'); missing.statusCode = 409; throw missing; }
         if (s.status === 'unknown') throw new Error('App state is unavailable. Refresh the inventory.');
-        targets = off ? s.enabled : s.disabled;
+        targets = off ? s.enabled : (options && Array.isArray(options.onlyIds) ? s.disabled.filter(function (id) { return options.onlyIds.indexOf(id) >= 0; }) : s.disabled);
         // Turning off also clears boot and auto-restart on the members that are off already but still flagged.
-        var byId = {};
+        var byId = Object.create(null);
         before.apps.forEach(function (r) { byId[r.appId] = r; });
         flagTargets = off ? s.enabled.concat(s.flagged).filter(function (id) { return byId[id].onboot === true || byId[id].autorestart === true; }) : [];
         if (!targets.length && !flagTargets.length && off) return before.apps;
         if (!targets.length && !off) return before.apps;
         var step = targets.length ? deps.execute(command(targets, off), 90000).then(function (r) {
-            if (r.timed_out) throw new Error('TV did not finish the change in time');
+            if (!r || r.timed_out) throw new Error('TV did not finish the change in time');
             return verify(targets, off);
         }).then(function (after) {
             if (after.wrong.length) throw new Error('Not confirmed for ' + after.wrong.join(', '));
@@ -219,7 +231,7 @@ function apply(groupId, off, deps) {
             if (!flagTargets.length) return apps;
             clearRan = true;
             return deps.execute(clearFlagsCommand(flagTargets), 60000).then(function (r) {
-                if (r.timed_out) throw new Error('TV did not finish clearing the startup flags in time');
+                if (!r || r.timed_out) throw new Error('TV did not finish clearing the startup flags in time');
                 deps.invalidate();
                 return registry(true);
             }).then(function (d) {
@@ -229,13 +241,14 @@ function apply(groupId, off, deps) {
             });
         }).catch(function (e) {
             // Put every member that was changed back to its previous state: flags first, then the disabled flag.
+            var msg = (e && e.message) || String(e);
             var undo = flagTargets.length && clearRan ? deps.execute(restoreFlagsCommand(flagTargets), 60000) : Promise.resolve();
             return undo.then(function () {
                 return targets.length ? deps.execute(command(targets, !off), 90000).then(function () { return verify(targets, !off); }) : {wrong: []};
             }).then(function (restored) {
-                throw new Error(e.message + ' · ' + (restored.wrong.length ? 'restore not confirmed for ' + restored.wrong.join(', ') : 'previous state restored'));
+                throw new Error(msg + ' · ' + (restored.wrong.length ? 'restore not confirmed for ' + restored.wrong.join(', ') : 'previous state restored'));
             }, function () {
-                throw new Error(e.message + ' · restore not confirmed');
+                throw new Error(msg + ' · restore not confirmed');
             });
         });
     }).then(function (apps) {
@@ -244,17 +257,26 @@ function apply(groupId, off, deps) {
         function services() {
             if (!group.services) return Promise.resolve();
             return deps.execute(servicesCommand(group.services, off), 30000).then(function (r) {
-                result.services = {off: off, ok: !r.exit_code && !r.timed_out};
+                result.services = {off: off, ok: !!r && r.exit_code === 0 && !r.timed_out};
             }, function () { result.services = {off: off, ok: false}; });
         }
-        if (!off) return services().then(function () { return restoreFlagsFor(result, deps); });
+        // Area-based groups record what Vetro disabled in the ledger so Restore never enables firmware-disabled regional apps.
+        // Re-enabling any group (area or fixed) also clears its targets from the ledger so stale entries never linger.
+        function ledgerStep() {
+            if ((off && !group.area) || !targets.length) return Promise.resolve();
+            var cmd = off
+                ? wrap('mkdir -p ' + disabledLedger.DIR + '\ntouch ' + disabledLedger.FILE + '\nfor id in ' + targets.join(' ') + '; do grep -qx -- "$id" ' + disabledLedger.FILE + ' || echo "$id" >> ' + disabledLedger.FILE + '; done\ntrue')
+                : disabledLedger.removeCommand(targets);
+            return deps.execute(cmd, 8000).catch(function () {});
+        }
+        if (!off) return services().then(ledgerStep).then(function () { return restoreFlagsFor(result, deps); });
         // A disabled flag does not end processes that are already running.
-        return services().then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
-            if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
+        return services().then(ledgerStep).then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
+            if (!r || r.exit_code !== 0 || r.timed_out) throw new Error('running apps unreadable');
             var ids = running(r.stdout).filter(function (id) { return result.state.installed.indexOf(id) >= 0; });
             if (!ids.length) return result;
             return deps.execute(stopCommand(ids), 30000).then(function (k) {
-                var codes = exitCodes(k.stdout);
+                var codes = exitCodes(k && k.stdout);
                 ids.forEach(function (id) { (codes[id] === 0 ? result.stopped : result.stopFailed).push(id); });
                 return result;
             });

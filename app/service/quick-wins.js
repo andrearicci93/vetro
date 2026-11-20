@@ -47,6 +47,7 @@
 //
 // HbbTV has its own module (hbbtv.js) because its menu value must be restored exactly.
 var execError = require('./exec-error.js');
+var atomicFile = require('./atomic-file.js');
 var fs = require('fs');
 // Regular expressions compiled once at module load, not on every call.
 var DOT_RE = /\./g;
@@ -119,7 +120,7 @@ var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000, FIRMWARE_
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 function check(r) {
-    if (r.exit_code || r.timed_out) throw execError.failed(r, r.stderr || r.stdout || 'TV unavailable');
+    if (!r || r.exit_code !== 0 || r.timed_out) throw execError.failed(r, (r && (r.stderr || r.stdout)) || 'TV unavailable');
     return r.stdout || '';
 }
 function running(id) { return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*' + id.replace(DOT_RE, '\\.') + '[[:space:]]"'; }
@@ -206,14 +207,14 @@ Wins.prototype.load = function () {
             autoupdatePrevious: Number.isInteger(o.autoupdatePrevious) && o.autoupdatePrevious > 0 ? o.autoupdatePrevious : null,
             fwServicePrevious: Number.isInteger(o.fwServicePrevious) ? o.fwServicePrevious : null,
             firmwareBoot: typeof o.firmwareBoot === 'string' ? o.firmwareBoot : null,
-            ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null
+            ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null,
+            airplayBoot: typeof o.airplayBoot === 'string' ? o.airplayBoot : null
         };
-    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null}; }
+    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null, airplayBoot: null}; }
 };
 Wins.prototype.save = function (patch) {
-    var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
-    this.fs.writeFileSync(tmp, JSON.stringify(next) + '\n', {mode: 0o600});
-    this.fs.renameSync(tmp, this.file);
+    var next = Object.assign(this.load(), patch);
+    atomicFile.write(this.fs, this.file, JSON.stringify(next) + '\n', {mode: 0o600});
     return next;
 };
 // Used by the HbbTV route, which does the work itself and only needs the choice remembered for the next boot.
@@ -235,7 +236,9 @@ Wins.prototype.read = function () {
         var ambient = s.ambientRunning === null ? {status: 'unknown'}
             : {status: !mine.ambient ? 'off' : s.ambientRunning ? 'partial' : 'on', running: s.ambientRunning, chosen: mine.ambient};
         var telemetry = s.telemetryRunning === null ? {status: 'unknown'}
-            : {status: !mine.telemetry ? 'off' : s.telemetryRunning ? 'partial' : 'on', running: s.telemetryRunning, brakes: s.telemetryBrakes, chosen: mine.telemetry};
+            : {status: !mine.telemetry ? (s.telemetryBrakes > 0 ? 'partial' : 'off')
+                : (s.telemetryRunning || (s.telemetryBrakes !== null && s.telemetryBrakes < TELEMETRY_BRAKES.length)) ? 'partial' : 'on',
+               running: s.telemetryRunning, brakes: s.telemetryBrakes, chosen: mine.telemetry};
         // on: the flag files are there and nothing of the receiver runs; partial: the files are there but something runs.
         var airplay = s.airplayPresent !== true || s.airplayFlag === null ? {status: 'unknown'}
             : {status: !s.airplayFlag ? 'off' : (s.airplayService || s.airplayWeb) ? 'partial' : 'on',
@@ -315,7 +318,7 @@ Wins.prototype.firmware = function (on) {
     function lock(before) {
         var svc = before.fwService !== null ? '\n' + fwSet(FWSERVICE, 0) : '';
         return self.execute(wrap(fwMaskScript(true) + '\n' + fwSet(AUTOUPDATE, 0) + svc + '\ntrue'), 30000).then(function (r) {
-            if (r.exit_code || r.timed_out) throw Error('The TV refused the update lock');
+            if (!r || r.exit_code !== 0 || r.timed_out) throw Error('The TV refused the update lock');
         });
     }
     function undo() {
@@ -356,7 +359,7 @@ Wins.prototype.firmware = function (on) {
                         return before.fwService !== null && before.fwService !== undefined ? setKey(FWSERVICE, before.fwService) : null;
                     });
                 })
-                : self.execute(wrap(fwMaskScript(true) + '\n' + fwSet(AUTOUPDATE, 0) + '\ntrue'), 30000);
+                : self.execute(wrap(fwMaskScript(true) + '\n' + fwSet(AUTOUPDATE, 0) + (before.fwService !== null ? '\n' + fwSet(FWSERVICE, 0) : '') + '\ntrue'), 30000);
             return back.then(function () { return current(); }).then(function (now) {
                 var restored = now.autoupdate === before.autoupdate && (before.fwService === null || now.fwService === before.fwService) &&
                     (on ? fwState(now).masked === fwState(before).masked : fwState(now).status === fwState(before).status);
@@ -424,7 +427,7 @@ Wins.prototype.telemetry = function (on) {
 // the files and starts the receiver again. Credit: zabique (see the header).
 Wins.prototype.airplay = function (on) {
     var self = this;
-    this.save({airplay: on});
+    this.save(on ? {airplay: true} : {airplay: false, airplayBoot: null});
     return this.execute(wrap(on ? AIRPLAY_OFF : AIRPLAY_ON), 20000).then(check).then(function () { return self.read(); }).then(function (state) {
         var st = state.wins.airplay.status;
         if (on && st !== 'on') throw Error(st === 'partial' ? 'AirPlay was started again right away; it is stopped again at the next boot' : 'The TV did not keep the change');
@@ -439,7 +442,7 @@ Wins.prototype.airplay = function (on) {
 Wins.prototype.boot = function (hbbtv) {
     var self = this, mine = this.load(), did = [], id = this.bootId();
     var start = mine.hbbtv && hbbtv ? hbbtv.enforce().then(function (r) { if (r && r.stopped) did.push('hbbtv'); }, function () {}) : Promise.resolve();
-    return Promise.all([start, self.bootFirmware(mine, id, did), self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, did)]).then(function () { return did; });
+    return Promise.all([start, self.bootFirmware(mine, id, did), self.bootTelemetry(mine, id, did), self.bootAmbient(mine, id, did), self.bootAirplay(mine, id, did)]).then(function () { return did; });
 };
 
 // Runtime masks live in /run, so after a boot the update units are free again: the lock is applied once per boot,
@@ -453,7 +456,7 @@ Wins.prototype.bootFirmware = function (mine, id, did) {
     function chosen() { return self.changing !== 'firmware' && self.load().firmware; }
     function pass() {
         if (!chosen()) return Promise.resolve(false);
-        return self.execute(wrap(fwMaskScript(true)), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
+        return self.execute(wrap(fwMaskScript(true)), 30000).then(function (r) { return !!r && r.exit_code === 0 && !r.timed_out; }, function () { return false; });
     }
     return pass().then(function (first) {
         return self.sleep(FIRMWARE_RETRY_MS).then(pass).then(function (second) {
@@ -464,17 +467,24 @@ Wins.prototype.bootFirmware = function (mine, id, did) {
     }).then(function (v) { self.fwBootBusy = false; return v; }, function (e) { self.fwBootBusy = false; throw e; });
 };
 
-Wins.prototype.bootAirplay = function (mine, did) {
+Wins.prototype.bootAirplay = function (mine, id, did) {
     var self = this;
-    if (!mine.airplay) return Promise.resolve();
-    var n = 0;
+    if (!mine.airplay || (id && mine.airplayBoot === id)) return Promise.resolve();
+    var n = 0, sawOk = false;
     function chosen() { return self.changing !== 'airplay' && self.load().airplay; }
     function poll() {
         if (!chosen()) return Promise.resolve();
         return self.execute(wrap(AIRPLAY_WEB_RUNNING + ' && echo up || echo down'), 8000).then(function (r) {
             if (!chosen()) return;
-            if (UP_RE.test(r.stdout || '') && !r.exit_code) {
-                return self.execute(wrap(AIRPLAY_WEB_STOP + '\nsleep 1\ntrue'), 12000).then(function () { if (chosen()) did.push('airplay'); });
+            var ok = !!r && !r.timed_out && r.exit_code === 0;
+            if (ok) sawOk = true;
+            if (ok && UP_RE.test(r.stdout || '')) {
+                return self.execute(wrap(AIRPLAY_WEB_STOP + '\nsleep 1\ntrue'), 12000).then(function (stopRes) {
+                    if (stopRes && !stopRes.timed_out && stopRes.exit_code === 0 && chosen()) {
+                        did.push('airplay');
+                        if (id) self.save({airplayBoot: id});
+                    }
+                });
             }
             if (++n >= BOOT_POLLS) return null;
             return self.sleep(BOOT_POLL_MS).then(poll);
@@ -483,7 +493,9 @@ Wins.prototype.bootAirplay = function (mine, did) {
             return self.sleep(BOOT_POLL_MS).then(poll);
         });
     }
-    return poll();
+    return poll().then(function () {
+        if (id && sawOk && chosen() && self.load().airplayBoot !== id) self.save({airplayBoot: id});
+    });
 };
 
 // The update units can start before the launcher is ready, so this half runs as soon as the root agent is up.
@@ -497,7 +509,7 @@ Wins.prototype.bootTelemetry = function (mine, id, did) {
     // true only if the stop really ran: a command that came back with an error or a timeout is not a pass, and neither a rejection.
     function pass() {
         if (!chosen()) return Promise.resolve(false);
-        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
+        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { return !!r && r.exit_code === 0 && !r.timed_out; }, function () { return false; });
     }
     return pass().then(function (first) {
         return self.sleep(TELEMETRY_RETRY_MS).then(pass).then(function (second) {
@@ -516,7 +528,7 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
         if (self.changing === 'ambient' || !self.load().ambient) return Promise.resolve();
         return self.execute(wrap(running(AMBIENT_ID) + ' && echo up || echo down'), 8000).then(function (r) {
             if (self.changing === 'ambient' || !self.load().ambient) return;
-            if (UP_RE.test(r.stdout || '') && !r.exit_code) {
+            if (UP_RE.test((r && r.stdout) || '') && r && !r.timed_out && r.exit_code === 0) {
                 return self.execute(wrap(AMBIENT_OFF + '\nsleep 1\ntrue'), 15000).then(function (r) {
                     check(r);
                     if (!self.load().ambient) return;

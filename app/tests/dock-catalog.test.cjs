@@ -97,6 +97,10 @@ assert.equal(ytNoCobalt.entries.length, 1, 'no Cobalt app: the row stays out');
 assert.equal(ytNoCobalt.skipped[0].reason, 'Not installed');
 const ytShort = catalog.build(Object.assign({}, ytGone, {installedCount: 3}));
 assert.equal(ytShort.entries.length, 1, 'a short package list is not trusted: the row stays out');
+// Same fallback when the wrapper package was uninstalled but its widgetinfo row remained in webappservice.db
+const ytStaleReg = catalog.build(Object.assign({}, ytGone, {registry: Object.assign({'111299001912': {title: 'YouTube', appId: '9Ur5IzDKqV.TizenYouTube', hidden: false}}, ytGone.registry)}));
+assert.equal(ytStaleReg.entries[0].appId, 'com.samsung.tv.cobalt-yt', 'stale wrapper registry row still falls back to Cobalt YouTube');
+assert.equal(ytStaleReg.skipped.length, 0);
 
 // load(): one read of the Home data, one check that the icon files exist; errors are explicit
 (async function () {
@@ -121,6 +125,10 @@ assert.equal(ytShort.entries.length, 1, 'a short package list is not trusted: th
     const bare = await catalog.load(run({exit_code: 0, stdout: OUTPUT}, p => p !== missing && p !== alt));
     assert.ok(bare.tsv.includes('tvplus\tSamsung TV Plus\torg.tizen.tv-viewer\t\t\t\t\tlive:TVPLUS\n'), 'neither icon exists: TV Plus keeps a generic one');
     assert.ok(bare.skipped.some(x => x.item === 'tvplus' && /Icon file missing/.test(x.reason)));
+    // Missing HDMI source icon appearing in both Home row and Sources is reported once per slug
+    const hdmiRaw = ['F|csfs', 'O|s/source.layer.hdmi@HDMI1', 'S|' + Buffer.from(JSON.stringify({HDMI1: {SourceType: 13, EditName: 'PS5', IconPath: '/usr/apps/com.samsung.tv.theme-resource/shared/res/missing.png'}})).toString('base64')].join('\n');
+    const hdmiLoaded = await catalog.load(run({exit_code: 0, stdout: hdmiRaw}, () => false), {showHomeSources: true, useSourceImages: true});
+    assert.equal(hdmiLoaded.skipped.filter(x => x.item === 'in-hdmi1').length, 1, 'missing HDMI source icon is not reported twice');
     assert.ok(ok.tsv.includes('/opt/share/webappservice/apps_icon/all/aaa/224x224.png'), 'icons that exist stay');
     // If the existence check itself fails, the paths stay (the dock copes with an unloadable file)
     const lenient = await catalog.load(async cmd => {

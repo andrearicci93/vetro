@@ -31,6 +31,9 @@ var TARGET_SYSTEM_RE = /^(?:sys|key|panel):/;
 var TARGET_PANEL_RE = /^panel:/;
 var TARGET_SOURCE_RE = /^source:/;
 var SLUG_RE = /^[a-z0-9_-]{1,40}$/;
+var LEGACY_SOURCE_RE = /^source:(?:13|14|15|16)$/;
+var SHOWN_RE = /shown/;
+var PNG_MAGIC = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 var SHARE = '/opt/usr/home/owner/share';
 var STATE_FILE = SHARE + '/vetro-dock.json';
@@ -62,6 +65,7 @@ var RETRY_FIRST_MS = 30000;
 var RETRY_BOOT_MS = 10000;                            // first retry inside the boot window: the TV is still busy, not broken
 var BOOT_GATE_MS = 60000;                             // other boot tasks wait for the dock at most this long after the agent connects
 var RETRY_MAX_MS = 300000;
+var QUICK_DEATH_MS = 60000;
 // Nothing opens the chosen app but the headless process, so one that keeps failing to start must not leave the Home
 // key dead: after this many failed tries (about 12 minutes of back-off) the service turns the mode off and Samsung's
 // Home answers the key again. A start the agent could not attempt does not count.
@@ -95,7 +99,7 @@ function legacySourceUsage(file, images) {
         if (fs.statSync(file).size > 65536) return false;
         return fs.readFileSync(file, 'utf8').split('\n').some(function (line) {
             var fields = line.split('\t');
-            return /^source:(?:13|14|15|16)$/.test(fields[2] || '') && (!images || !!fields[4]);
+            return LEGACY_SOURCE_RE.test(fields[2] || '') && (!images || !!fields[4]);
         });
     } catch (e) { return false; }
 }
@@ -123,6 +127,9 @@ function Dock(options) {
     // The one-time migration of the two source options reads both lists; it is read once, and only when a state lacks them.
     this.legacySources = null;
     this.stateCache = null;       // the parsed state file and the stat it was read at (readState)
+    this.entriesCache = null;
+    this.inputsCache = null;
+    this.lastStartAt = 0;
     this.cheapBroken = false;     // the cheap check said "not ours" for a pid the full probe found running: probe in full from then on
     this.changes = 0;             // counts starts and stops: the supervision goes back to its short interval when it moves
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -144,6 +151,7 @@ function Dock(options) {
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
+    this.refreshAfter = 0;
     this.shards = null;            // the plugin host, once setShards() has been called
     this.shardTimer = null;
     this.lastShardLaunch = null;
@@ -230,7 +238,7 @@ Dock.prototype.readState = function () {
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { this.stateCache = null; return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, lastCards: [], build: null, buildPid: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
 };
 
@@ -379,9 +387,9 @@ Dock.prototype.bootSettled = function () {
 };
 
 Dock.prototype.statusNow = function () {
-    var self = this, state = this.readState();
+    var self = this, state = this.readState(), shards = this.cardShards();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state, shards), cardChoices: this.cardChoices(shards), cardShards: shards, cardsPaused: this.cardsPaused(state, shards), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -409,15 +417,16 @@ Dock.prototype.cardShards = function () {
     return out;
 };
 // What can be switched on now: the four cards of Vetro and one for each running Shard that has one.
-Dock.prototype.cardChoices = function () { return CARDS.concat(Object.keys(this.cardShards())); };
+Dock.prototype.cardChoices = function (shards) { return CARDS.concat(Object.keys(shards || this.cardShards())); };
 // The saved cards the launcher shows now: a Shard's card only while that Shard runs.
-Dock.prototype.cardsEffective = function (state) {
-    var shards = this.cardShards();
+Dock.prototype.cardsEffective = function (state, shards) {
+    shards = shards || this.cardShards();
     return (state || this.readState()).cards.filter(function (c) { return CARDS.indexOf(c) >= 0 || Object.prototype.hasOwnProperty.call(shards, c); });
 };
 // Saved Shard cards that are not shown now, with the label the Shard gave and why: [{card, label, why}].
-Dock.prototype.cardsPaused = function (state) {
-    var self = this, shards = this.cardShards();
+Dock.prototype.cardsPaused = function (state, shards) {
+    var self = this;
+    shards = shards || this.cardShards();
     return (state || this.readState()).cards.filter(function (c) { return SHARD_CARD_RE.test(c) && !Object.prototype.hasOwnProperty.call(shards, c); }).map(function (c) {
         var id = SHARD_CARD_RE.exec(c)[1], st = null;
         try { st = self.shards && self.shards.status(id); } catch (e) { st = null; }
@@ -427,7 +436,7 @@ Dock.prototype.cardsPaused = function (state) {
 // The value of the launcher's --cards: "tasks,shard:home-assistant:Home=20Assistant" ('' when no card shows).
 Dock.prototype.cardsArg = function (state) {
     var shards = this.cardShards();
-    return this.cardsEffective(state).map(function (c) { return SHARD_CARD_RE.test(c) ? c + ':' + hexLabel(shards[c]) : c; }).join(',');
+    return this.cardsEffective(state, shards).map(function (c) { return SHARD_CARD_RE.test(c) ? c + ':' + hexLabel(shards[c]) : c; }).join(',');
 };
 // True when the launcher that runs was started with the cards it should show now.
 Dock.prototype.cardsShown = function () {
@@ -444,31 +453,34 @@ Dock.prototype.cardsShown = function () {
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
-    var state = this.readState();
+    var state = this.readState(), port = servicePort(this.port), cards = !state.customApp ? this.cardsArg(state) : '';
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         (!state.customApp && fs.existsSync(this.allAppsFile) ? ' --all-apps ' + q(this.allAppsFile) : '') +
         ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
-        (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
+        (port ? ' --service-port ' + port : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
-        (!state.customApp && this.cardsArg(state) ? ' --cards ' + this.cardsArg(state) : ' --no-tasks');
+        (cards ? ' --cards ' + cards : ' --no-tasks');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
         'cd ' + q(this.dir),
-        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
+        'systemd-run --unit=' + UNIT + ' --collect --no-block -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
-        env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 &',
+        '{ ' + env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
         PREVIEW_OFF,
         'echo started'
     ].join('\n');
 };
 
 // The dock ignores SIGTERM, so it takes kill -9; only a pid that is really our dll is touched.
+// --no-block avoids blocking on Tizen 9 systemd/SMACK D-Bus JobRemoved; poll is-active text so deactivating still waits.
 Dock.prototype.stopLines = function () {
-    return 'systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
+    return 'systemctl stop --no-block ' + UNIT + '.service >/dev/null 2>&1; ' +
+        'i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active ' + UNIT + '.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; ' +
+        'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
         '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE;
 };
@@ -491,11 +503,18 @@ Dock.prototype.catalogOptions = function (state, row) {
         intercepted: this.shards ? this.shards.intercepted() : {}, row: row === undefined ? state.row : row, appStore: state.appStore};
 };
 // Writes the three lists the launcher reads. Returns true when one of them is not what was there before.
-Dock.prototype.saveLists = function (c) {
+Dock.prototype.saveLists = function (c, touch) {
     var files = [[this.appsFile, c.tsv], [this.inputsFile, c.inputsTsv], [this.allAppsFile, c.allAppsTsv]];
-    var changed = files.some(function (f) { try { return fs.readFileSync(f[0], 'utf8') !== f[1]; } catch (e) { return true; } });
-    try { files.forEach(function (f) { atomicFile.write(fs, f[0], f[1]); }); }
-    catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
+    var changed = false, now = touch ? new Date() : null;
+    try {
+        files.forEach(function (f) {
+            var same = false;
+            try { same = fs.readFileSync(f[0], 'utf8') === f[1]; } catch (e) {}
+            if (!same) { atomicFile.write(fs, f[0], f[1]); changed = true; }
+            else if (now) { try { fs.utimesSync(f[0], now, now); } catch (e) { atomicFile.write(fs, f[0], f[1]); } }
+        });
+    } catch (e) { throw new Error('The app list could not be saved: ' + e.message); }
+    this.entriesCache = null; this.inputsCache = null;
     this.lastCatalog = {count: c.count, skipped: c.skipped, at: this.now(), appStore: c.appStore || 'samsung', tvStoreInstalled: !!c.tvStoreInstalled};
     return changed;
 };
@@ -567,12 +586,16 @@ Dock.prototype.otherBuild = function (state, p) {
 // The saved list is rebuilt once the TV has settled: in the first minutes Samsung's Home may still
 // be rewriting its own row, and a half-written read must not replace the good list.
 Dock.prototype.refreshCatalogLater = function () {
-    if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S) return;
+    if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S || (this.refreshAfter && this.now() < this.refreshAfter)) return Promise.resolve();
     this.refreshPending = false;
+    this.refreshAfter = 0;
     var self = this;
     // The running launcher is told too: these lists may also hold an app installed meanwhile, and once they are written the launcher's
     // own check (its lists newer than the package database) would not ask for them any more.
-    this.writeCatalog().then(function () { return self.tellReload(); }).catch(function () {});
+    return this.writeCatalog().then(function () { return self.tellReload(); }).catch(function () {
+        self.refreshPending = true;
+        self.refreshAfter = self.now() + 60000;
+    });
 };
 
 // Plugins that claim an app's tile (manifest "intercepts"). `host` is the plugin host: intercepted() says which apps are claimed,
@@ -634,7 +657,8 @@ Dock.prototype.openEntry = function (slug) {
     return asked.then(null, function (e) { return {handled: false, reason: String(e && e.message || e)}; }).then(function (r) {
         if (r && r.handled) { self.lastShardLaunch = {slug: slug, appId: entry.appId, via: r.plugin, reason: null, at: self.now()}; return {ok: true, via: r.plugin}; }
         var reason = r && r.reason || 'The plugin did not start it';
-        return self.execute('app_launcher -s ' + entry.appId, 15000).then(function () {
+        return self.execute('app_launcher -s ' + entry.appId, 15000).then(function (execRes) {
+            if (execRes && (execRes.exit_code || execRes.timed_out)) throw new Error(execRes.timed_out ? 'App launch timed out' : (execRes.stderr || 'App launch failed'));
             self.lastShardLaunch = {slug: slug, appId: entry.appId, via: null, reason: reason, at: self.now()};
             return {ok: true, via: null, reason: reason};
         });
@@ -652,10 +676,9 @@ Dock.prototype.hasSavedApps = function () {
 // remember that it is on. If anything fails nothing has changed.
 Dock.prototype.enable = function () {
     var self = this;
-    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
     if (!this.installed()) return Promise.reject(new Error('The dock files are not in this Vetro package'));
     if (this.readState().customApp) return Promise.reject(new Error('Turn off the custom launcher before turning on the Vetro launcher'));
-    this.busy = true; this.lastError = null;
+    this.lastError = null;
     return this.launch().then(function () {
         self.patchState({enabled: true, since: self.now()});
         self.failures = 0; self.nextTry = 0;
@@ -669,7 +692,7 @@ Dock.prototype.enable = function () {
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.stopDock().catch(function () {}).then(function () { throw e; });
-    }).finally(function () { self.busy = false; });
+    });
 };
 
 Dock.prototype.stopDock = function () {
@@ -684,26 +707,24 @@ Dock.prototype.stopDock = function () {
 // Turn the dock off. The setting goes first, so a failed stop cannot bring it back by itself.
 Dock.prototype.disable = function () {
     var self = this;
-    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
-    this.busy = true; this.lastError = null;
+    this.lastError = null;
     try { this.patchState({enabled: false}); }
-    catch (e) { this.busy = false; return Promise.reject(e); }
+    catch (e) { return Promise.reject(e); }
     return this.stopDock().then(function () {
         return self.restoreAutorun().catch(function (e) { self.lastError = 'The launcher is off, but Autorun Smart Hub was not put back: ' + e.message; });
-    }).then(function () { return self.status(); })
-        .finally(function () { self.busy = false; });
+    }).then(function () { return self.status(); });
 };
 
 // Rebuild the app list and restart: after installing or removing an app.
-Dock.prototype.refresh = function () {
+Dock.prototype.refresh = function (keepBusy) {
     var self = this;
-    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    if (!keepBusy && this.busy) return Promise.reject(new Error('Another dock change is in progress'));
     var state = this.readState();
     if (!state.enabled && !state.customApp) return Promise.reject(new Error('The dock is off'));
     this.busy = true; this.lastError = null;
     return this.launch().then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message; throw e;
-    }).finally(function () { self.busy = false; });
+    }).finally(function () { if (!keepBusy) self.busy = false; });
 };
 
 // For a setting that restarts the launcher. When the restart is not seen in time, the setting is put back (undo) only if
@@ -711,13 +732,15 @@ Dock.prototype.refresh = function () {
 // back would leave the saved setting and the running process disagreeing, under an error that nothing clears.
 Dock.prototype.refreshOr = function (undo) {
     var self = this;
-    return this.refresh().catch(function (e) {
+    if (this.busy) return Promise.reject(new Error('Another dock change is in progress'));
+    this.busy = true;
+    return this.refresh(true).catch(function (e) {
         return self.runningNow().then(function (p) { return !!p.running; }, function () { return false; }).then(function (running) {
             if (running) { self.lastError = null; return self.status(); }
             try { undo(); } catch (e2) {}
             throw e;
         });
-    });
+    }).finally(function () { self.busy = false; });
 };
 
 // After a self-update: the launcher is started again with the new files, unless the supervision has already done it
@@ -776,12 +799,11 @@ Dock.prototype.requireCustomParts = function () {
 Dock.prototype.enableCustom = function (appId) {
     var self = this, before = this.readState();
     if (typeof appId !== 'string' || !APP_ID_RE.test(appId)) return Promise.reject(new Error('Choose an app from the list'));
-    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     var missing = this.requireCustomParts();
     if (missing) return Promise.reject(missing);
     if (before.enabled) return Promise.reject(new Error('Turn off the Vetro launcher before turning on the custom launcher'));
     if (before.customApp === appId) return this.status();
-    this.busy = true; this.lastError = null;
+    this.lastError = null;
     var changing = !!before.customApp;
     return this.appCheck(appId, true).then(function (c) {
         if (!c || c.ok !== true) throw new Error((c && c.reason) || 'This app cannot be used as a launcher');
@@ -800,7 +822,7 @@ Dock.prototype.enableCustom = function (appId) {
     }).then(function () { return self.status(); }).catch(function (e) {
         self.lastError = e.message;
         return self.undoCustomStart(before).then(function () { throw e; });
-    }).finally(function () { self.busy = false; });
+    });
 };
 
 // A start that failed half way: back to the state before it.
@@ -820,10 +842,9 @@ Dock.prototype.undoCustomStart = function (before) {
 // options.keepHome leaves that to the caller (Restore the TV does it as its next step).
 Dock.prototype.disableCustom = function (options) {
     var self = this, state = this.readState();
-    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     if (!state.customApp) return this.status();
-    this.busy = true; this.lastError = null;
-    return this.leaveCustom(options).then(function () { return self.status(); }).finally(function () { self.busy = false; });
+    this.lastError = null;
+    return this.leaveCustom(options).then(function () { return self.status(); });
 };
 
 Dock.prototype.leaveCustom = function (options) {
@@ -860,14 +881,24 @@ function parseTsv(text) {
             system: TARGET_SYSTEM_RE.test(target), panel: TARGET_PANEL_RE.test(target), source: TARGET_SOURCE_RE.test(target) ? +target.slice(7) : null};
     }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }
+function readTsvCached(cache, file) {
+    try {
+        var st = fs.statSync(file);
+        var key = file + ':' + st.ino + ':' + st.size + ':' + (st.mtimeMs !== undefined ? st.mtimeMs : +st.mtime);
+        if (cache && cache.key === key) return cache;
+        return {key: key, value: parseTsv(fs.readFileSync(file, 'utf8'))};
+    } catch (e) { return null; }
+}
 Dock.prototype.entries = function () {
-    try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
+    this.entriesCache = readTsvCached(this.entriesCache, this.appsFile);
+    return this.entriesCache ? this.entriesCache.value.slice() : [];
 };
 Dock.prototype.inputListPath = function () {
     return fs.existsSync(this.inputsFile) ? this.inputsFile : path.join(this.dir, 'res', 'inputs.tsv');
 };
 Dock.prototype.inputEntries = function () {
-    try { return parseTsv(fs.readFileSync(this.inputListPath(), 'utf8')); } catch (e) { return []; }
+    this.inputsCache = readTsvCached(this.inputsCache, this.inputListPath());
+    return this.inputsCache ? this.inputsCache.value.slice() : [];
 };
 
 // Like Fix TizenTube, source switches save a boolean and rebuild the launcher list.
@@ -902,7 +933,10 @@ Dock.prototype.setFixTizenTube = function (on) {
     var state = this.readState();
     try { this.patchState({fixTizenTube: on}); }
     catch (e) { return Promise.reject(e); }
-    if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });   // the preview follows the choice
+    if (!state.enabled) {
+        this.busy = true;
+        return this.writeCatalog().catch(function () {}).then(function () { return self.status(); }).finally(function () { self.busy = false; });   // the preview follows the choice
+    }
     return this.refreshOr(function () { self.patchState({fixTizenTube: state.fixTizenTube}); });
 };
 
@@ -916,7 +950,10 @@ Dock.prototype.setAppStore = function (store) {
     if (state.appStore === store) return this.status();
     try { this.patchState({appStore: store}); }
     catch (e) { return Promise.reject(e); }
-    if (!state.enabled) return this.writeCatalog().catch(function () {}).then(function () { return self.status(); });
+    if (!state.enabled) {
+        this.busy = true;
+        return this.writeCatalog().catch(function () {}).then(function () { return self.status(); }).finally(function () { self.busy = false; });
+    }
     return this.refreshOr(function () { self.patchState({appStore: state.appStore}); });
 };
 
@@ -975,24 +1012,28 @@ function shardCardText(card, extra) {
         var note = extra && extra.note || card.note;
         if (note) lines.push('note\t' + note);
         lines.push('choosable\t' + (card.choosable ? 1 : 0));
-        card.rows.forEach(function (r) { lines.push('row\t' + r.id + '\t' + r.label + '\t' + r.value + '\t' + (r.ticked ? 1 : 0)); });
+        (Array.isArray(card.rows) ? card.rows : []).forEach(function (r) { lines.push('row\t' + r.id + '\t' + r.label + '\t' + r.value + '\t' + (r.ticked ? 1 : 0)); });
     }
     return lines.join('\n') + '\n';
 }
 
 Dock.prototype.shardCardRead = function (id) {
+    var self = this;
     if (!this.shards || typeof this.shards.cardOf !== 'function') return Promise.resolve(shardCardText({ok: false, reason: 'Plugins are not available'}));
-    return Promise.resolve(this.shards.cardOf(id)).then(null, function (e) { return {ok: false, reason: String(e && e.message || e)}; }).then(function (card) { return shardCardText(card); });
+    return new Promise(function (resolve) { resolve(self.shards.cardOf(id)); }).then(null, function (e) { return {ok: false, reason: String(e && e.message || e)}; }).then(function (card) { return shardCardText(card); });
 };
 
 Dock.prototype.shardCardSelect = function (id, rowId) {
     var self = this;
     if (!this.shards || typeof this.shards.selectCard !== 'function') return Promise.resolve(shardCardText({ok: false, reason: 'Plugins are not available'}, {result: 'fail'}));
-    return Promise.resolve(this.shards.selectCard(id, rowId)).then(null, function (e) { return {ok: false, note: String(e && e.message || e), card: null}; }).then(function (r) {
+    return new Promise(function (resolve) { resolve(self.shards.selectCard(id, rowId)); }).then(null, function (e) { return {ok: false, note: String(e && e.message || e), card: null}; }).then(function (r) {
         if (r && r.unavailable) return shardCardText(r, {result: 'fail'});
         var note = r && r.note || (r && r.ok ? '' : 'It did not work');
         // Without a card after a failed action, the card is read again: the rows must still be on screen.
-        return (r && r.card ? Promise.resolve(r.card) : self.shards.cardOf(id)).then(function (card) { return shardCardText(card, {result: r && r.ok ? 'ok' : 'fail', note: note}); });
+        var reread = r && r.card ? Promise.resolve(r.card) : typeof self.shards.cardOf === 'function'
+            ? new Promise(function (resolve) { resolve(self.shards.cardOf(id)); }).then(null, function (e) { return {ok: false, reason: String(e && e.message || e)}; })
+            : Promise.resolve({ok: false, reason: 'Plugins are not available'});
+        return reread.then(function (card) { return shardCardText(card, {result: r && r.ok ? 'ok' : 'fail', note: note}); });
     });
 };
 
@@ -1067,7 +1108,7 @@ Dock.prototype.relist = function (followUp) {
     this.busy = true; this.relistPending = false;
     var changed = false;
     return catalog.load(this.execute, this.catalogOptions(state)).then(function (c) {
-        changed = self.saveLists(c);
+        changed = self.saveLists(c, true);
     }).finally(function () {
         self.busy = false;
     }).then(function () {
@@ -1111,12 +1152,14 @@ Dock.prototype.keysChanged = function () {
 ['enable', 'disable', 'enableCustom', 'disableCustom'].forEach(function (name) {
     var inner = Dock.prototype[name];
     Dock.prototype[name] = function () {
-        var self = this;
-        return inner.apply(this, arguments).then(function (status) {
+        var self = this, args = arguments;
+        if (this.busy) return Promise.reject(new Error(name === 'enable' || name === 'disable' ? 'Another dock change is in progress' : 'Another launcher change is in progress'));
+        this.busy = true;
+        return Promise.resolve().then(function () { return inner.apply(self, args); }).then(function (status) {
             return self.keysChanged().then(function () { return status; });
         }, function (error) {
             return self.keysChanged().then(function () { throw error; });
-        });
+        }).finally(function () { self.busy = false; });
     };
 });
 
@@ -1172,7 +1215,7 @@ Dock.prototype.iconFile = function (slug) {
     for (var i = 0; i < files.length; i++) {
         try {
             var data = fs.readFileSync(files[i]);
-            if (data.length <= 1048576 && data.slice(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return data;
+            if (data.length <= 1048576 && data.slice(0, 8).equals(PNG_MAGIC)) return data;
         } catch (e) { /* next */ }
     }
     return null;
@@ -1183,11 +1226,13 @@ Dock.prototype.iconFile = function (slug) {
 // it. Never during the boot window (the Q80A stalls without it), and only once: opening it again from the dock is deliberate.
 Dock.prototype.closeHomeOnce = function (samsungHome) {
     if (this.homeClosed || this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
-    this.homeClosed = true;
     // Only the run of the service that came up with the TV does it: after a later restart (an update, a crash) a Samsung
     // Home on screen is one the user opened from the launcher, and closing it would take it away from them.
-    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) return Promise.resolve();
-    return this.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) { this.homeClosed = true; return Promise.resolve(); }
+    var self = this;
+    return this.execute(HOME_KILL.map(function (id) { return 'app_launcher -k ' + id; }).join('; ') + '; true', 8000).then(function (r) {
+        if (r && !r.exit_code && !r.timed_out) self.homeClosed = true;
+    }).catch(function () {});
 };
 
 // The Vetro launcher at power-on (#206; the owner's choice of 2026-11-19). Firmware that boots through a "root app" (2022 and later:
@@ -1199,12 +1244,16 @@ Dock.prototype.closeHomeOnce = function (samsungHome) {
 var POWER_ON_WINDOW_S = 420;
 Dock.prototype.showAtPowerOn = function (state) {
     if (this.powerOnShown || !state || state.customApp || state.enabled !== true || this.serviceStart >= BOOT_WINDOW_S || this.uptime() > POWER_ON_WINDOW_S) return Promise.resolve();
-    this.powerOnShown = true;
     var line = '[ -e /usr/bin/get_root_app ] || exit 0; ' +
         'case "$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)" in *"value = org.tizen.tv-viewer ("*) ;; *) exit 0;; esac; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo show >&3 ) && echo shown; fi; true';
     var self = this;
-    return this.execute(wrap(line), 6000).then(function (r) { if (r && /shown/.test(r.stdout || '')) self.mark('shownAtPowerOn'); }).catch(function () {});
+    return this.execute(wrap(line), 6000).then(function (r) {
+        if (r && !r.exit_code && !r.timed_out) {
+            self.powerOnShown = true;
+            if (SHOWN_RE.test(r.stdout || '')) self.mark('shownAtPowerOn');
+        }
+    }).catch(function () {});
 };
 
 // Called every few seconds by the service, and at once when the root agent connects. Starts the
@@ -1236,10 +1285,17 @@ Dock.prototype.supervise = function (agentConnected) {
         var oldLists = p.running && !custom && !self.relisted && self.uptime() >= BOOT_WINDOW_S && self.hasSavedApps() && !fs.existsSync(self.allAppsFile);
         if (stale || oldLists) {
             self.relisted = true; self.refreshPending = false;
-            return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
+            return self.launch(false).then(function () { self.lastStartAt = self.now(); self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
         }
-        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return self.showAtPowerOn(state); }).then(function () { return 'running'; }); }
-        return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); self.refreshCatalogLater(); return 'started'; });
+        var age = self.lastStartAt ? self.now() - self.lastStartAt : Infinity;
+        if (p.running) {
+            if (age >= QUICK_DEATH_MS) self.failures = 0;
+            if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; }
+            self.up();
+            return self.closeHomeOnce(p.samsungHome).then(function () { return self.showAtPowerOn(state); }).then(function () { return self.refreshCatalogLater(); }).then(function () { return 'running'; });
+        }
+        if (age < QUICK_DEATH_MS) { self.lastStartAt = 0; throw new Error('The dock stopped ' + Math.round(age / 1000) + ' s after it started.'); }
+        return self.launch(true).then(function () { self.lastStartAt = self.now(); self.superviseFailed = false; self.lastError = null; self.up(); return self.refreshCatalogLater().then(function () { return self.showAtPowerOn(state); }).then(function () { return 'started'; }); });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;
     }).catch(function (e) {

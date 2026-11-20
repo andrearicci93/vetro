@@ -242,5 +242,82 @@ h3.start();
 
     // wrong field types are refused, not crashed on later
     assert.throws(() => new PluginHost({ dir: tmp() }).register({ id: 'typed', apiVersion: 1, permissions: {}, create: () => ({}) }), /permissions/);
+    // /plugins/resume returns structured 500 JSON when persisting state fails
+    const hFail = new PluginHost({ dir: tmp(), stableMs: 10 });
+    hFail._writeState = () => { throw new Error('disk full'); };
+    const rFail = res();
+    assert.equal(hFail.handle({ method: 'POST', headers: {} }, rFail, '/plugins/resume', json), true);
+    assert.equal(rFail.code, 500);
+    assert.equal(rFail.body.ok, false);
+
+    // Round 2: non-object create() fails cleanly; cross-site Origin on session API returns 403
+    {
+        const hr2 = new PluginHost({ dir: tmp(), external: false, stableMs: 10 })
+            .register(def('bad-ret', { create: () => true }))
+            .register(def('arr-ret', { create: () => [] }))
+            .register(def('sess-ok', { create: () => ({ route(req, r) { json(r, { ok: true }); return true; } }) }));
+        hr2.start();
+        assert.equal(hr2.status('bad-ret').state, 'failed');
+        assert.match(hr2.status('bad-ret').lastError, /must return an object/);
+        assert.equal(hr2.status('arr-ret').state, 'failed');
+        let rs = res();
+        hr2.handle({ method: 'POST', headers: {} }, rs, '/plugins/sess-ok/session', json);
+        const sessPath = rs.body.path;
+        rs = res();
+        hr2.handle({ method: 'GET', headers: { host: '192.168.1.10:8099', origin: 'http://evil.example' } }, rs, sessPath, json);
+        assert.equal(rs.code, 403, 'cross-site origin on session route refused');
+        rs = res();
+        hr2.handle({ method: 'GET', headers: { host: '192.168.1.10:8099', origin: 'null' } }, rs, sessPath, json);
+        assert.equal(rs.code, 200, 'sandboxed iframe null origin allowed');
+        rs = res();
+        hr2.handle({ method: 'GET', headers: { host: '192.168.1.10:8099', origin: 'http://192.168.1.10:8099' } }, rs, sessPath, json);
+        assert.equal(rs.code, 200, 'same-origin allowed');
+        hr2.stop();
+    }
+
+    // /plugins/<id> only allows GET; GET /plugins reads plugins.json once; _halt clears cardJobs & launch checks active instance
+    {
+        const pdir = tmp();
+        let resolveCard, resolveLaunch;
+        const hp = new PluginHost({ dir: pdir, external: false, stableMs: 10 })
+            .register(def('alpha', {
+                controlCenter: { label: 'Alpha' },
+                intercepts: [{ appId: 'org.example.app', label: 'Example' }],
+                create() {
+                    return {
+                        card() { return new Promise(r => { resolveCard = r; }); },
+                        cardSelect() { return { ok: true }; },
+                        launch() { return new Promise(r => { resolveLaunch = r; }); }
+                    };
+                }
+            }))
+            .register(def('beta', { create() { return {}; } }));
+        hp.start();
+        let rr = res(); hp.handle({ method: 'POST', headers: {} }, rr, '/plugins/alpha', json);
+        assert.equal(rr.code, 405, '/plugins/<id> refuses non-GET methods');
+        rr = res(); hp.handle({ method: 'GET', headers: {} }, rr, '/plugins/alpha', json);
+        assert.equal(rr.code, 200);
+        // GET /plugins reads plugins.json once regardless of plugin count
+        let stateReads = 0; const realRead = fs.readFileSync;
+        fs.readFileSync = function (p) { if (String(p).endsWith('plugins.json')) stateReads++; return realRead.apply(fs, arguments); };
+        try {
+            rr = res(); hp.handle({ method: 'GET', headers: {} }, rr, '/plugins', json);
+            assert.equal(rr.code, 200);
+            assert.equal(stateReads, 1, 'GET /plugins reads plugins.json once, not N+1 times: ' + stateReads);
+        } finally { fs.readFileSync = realRead; }
+        // In-flight card() and launch() are isolated when plugin is stopped & restarted
+        const oldCard = hp.cardOf('alpha');
+        const oldLaunch = hp.launch('org.example.app');
+        hp.setEnabled('alpha', false);
+        assert.equal(hp.cardJobs.alpha, undefined, '_halt clears cardJobs');
+        hp.setEnabled('alpha', true);
+        resolveLaunch(true);
+        assert.equal((await oldLaunch).handled, false, 'launch() does not claim handled after plugin was stopped');
+        const newCard = hp.cardOf('alpha');
+        assert.notEqual(newCard, oldCard, 'restarted plugin does not reuse old in-flight card job');
+        resolveCard({ rows: [{ id: 'a', label: 'A' }] });
+        assert.equal((await newCard).ok, true);
+        hp.stop();
+    }
     console.log('plugin-host: ok');
 })().catch(e => { console.error(e); process.exit(1); });

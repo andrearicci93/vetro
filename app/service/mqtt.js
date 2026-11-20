@@ -118,10 +118,10 @@ MqttClient.prototype._connectPacket = function () {
     if (this.username) {
         flags |= 0x80;
         payload.push(encodeString(this.username));
-    }
-    if (this.password) {
-        flags |= 0x40;
-        payload.push(encodeString(this.password));
+        if (this.password) {
+            flags |= 0x40;
+            payload.push(encodeString(this.password));
+        }
     }
     var varHeader = Buffer.concat([
         encodeString('MQTT'),
@@ -136,7 +136,7 @@ MqttClient.prototype._teardown = function () {
     if (this._pingTimer) { clearInterval(this._pingTimer); this._pingTimer = null; }
 };
 
-MqttClient.prototype._fail=function(message){this._emit('error',new Error(message));this.close();this._emit('close',{});};
+MqttClient.prototype._fail=function(message){this._emit('error',new Error(message));this.close(false);this._emit('close',{});};
 MqttClient.prototype._drain=function(){
  while(this._buffer.length>=2){var type=this._buffer[0]>>4,flags=this._buffer[0]&15,value=0,multiplier=1,idx=1,digit;
   do{if(idx>=this._buffer.length)return;if(idx>4)throw Error('Malformed MQTT length');digit=this._buffer[idx++];value+=(digit&127)*multiplier;multiplier*=128;}while(digit&128);
@@ -200,7 +200,7 @@ MqttClient.prototype._handle = function (type, flags, body) {
         case 9:
             if(body.length!==3)throw Error('Malformed MQTT SUBACK');
             var id=body.readUInt16BE(0),topic=this._subscriptions[id];delete this._subscriptions[id];
-            if(topic)this._emit('subscribed',{topic:topic,accepted:body[2]===0});
+            if(topic)this._emit('subscribed',{topic:topic,accepted:body[2]<=2});
             break;
         case 11: break; // UNSUBACK
     }
@@ -248,8 +248,8 @@ MqttClient.prototype.unsubscribe = function (topic) {
     return this;
 };
 
-MqttClient.prototype.close = function () {
-    var connected=this._connected;
+MqttClient.prototype.close = function (graceful) {
+    var connected=this._connected&&graceful!==false;
     this._teardown();
     var socket = this._socket;
     this._socket = null;

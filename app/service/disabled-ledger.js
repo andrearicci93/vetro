@@ -19,15 +19,16 @@ function addCommand(id) {
     return wrap('mkdir -p ' + DIR + '\ntouch ' + FILE + '\ngrep -qx -- "' + id + '" ' + FILE + ' || echo "' + id + '" >> ' + FILE + '\ntrue');
 }
 function removeCommand(ids) {
-    ids = [].concat(ids);
+    ids = ids == null ? [] : [].concat(ids);
     ids.forEach(function (id) { if (!valid(id)) throw new Error('Invalid app ID'); });
+    if (!ids.length) return wrap('true');
     // Rewritten through a temporary file: no sed -i on the busybox of older firmware.
     return wrap('[ -f ' + FILE + ' ] || exit 0\n' + 'grep -v -x -F -e ' + ids.map(function (id) { return '"' + id + '"'; }).join(' -e ') + ' ' + FILE +
-        ' > ' + FILE + '.tmp; mv -f ' + FILE + '.tmp ' + FILE + '\ntrue');
+        ' > ' + FILE + '.tmp\nrc=$?\nif [ "$rc" -le 1 ]; then mv -f ' + FILE + '.tmp ' + FILE + '; else rm -f ' + FILE + '.tmp; exit $rc; fi\ntrue');
 }
 function readCommand() { return wrap('cat ' + FILE + ' 2>/dev/null; true'); }
 function parse(text) {
-    var seen = {}, out = [];
+    var seen = Object.create(null), out = [];
     String(text || '').split('\n').forEach(function (l) {
         l = l.trim();
         if (valid(l) && !seen[l]) { seen[l] = true; out.push(l); }

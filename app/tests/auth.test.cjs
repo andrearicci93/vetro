@@ -199,5 +199,74 @@ const tv = {ip: '127.0.0.1', headers: {origin: 'null', host: '127.0.0.1:8099'}};
     } finally { crypto.timingSafeEqual = real; }
   }
 
+  // Concurrent /auth/pair requests before body finishes cannot overwrite pending, oversized body returns 413, and error/close guards prevent crashes.
+  auth._reset();
+  {
+    const mkReq = () => {
+      const req = new EventEmitter();
+      Object.assign(req, {method: 'POST', url: '/auth/pair', socket: {remoteAddress: '192.168.1.20'}, headers: {host: '192.168.1.10:8099'}});
+      return req;
+    };
+    let r1Res, r2Res;
+    const p1 = new Promise(resolve => { r1Res = {writeHead(c) { this.c = c; }, end(t) { resolve({code: this.c, body: JSON.parse(t)}); }}; });
+    const p2 = new Promise(resolve => { r2Res = {writeHead(c) { this.c = c; }, end(t) { resolve({code: this.c, body: JSON.parse(t)}); }}; });
+    const req1 = mkReq(), req2 = mkReq();
+    let launches = 0;
+    assert.equal(auth.gate(req1, r1Res, '/auth/pair', {onPair: () => launches++}), true);
+    assert.equal(auth.gate(req2, r2Res, '/auth/pair', {onPair: () => launches++}), true);
+    req1.emit('data', Buffer.from(JSON.stringify({name: 'First'}))); req1.emit('end');
+    req2.emit('data', Buffer.from(JSON.stringify({name: 'Second'}))); req2.emit('end');
+    const [a, b] = await Promise.all([p1, p2]);
+    assert.equal(a.code, 200); assert.equal(b.code, 429); assert.equal(launches, 1);
+
+    auth._reset();
+    const big = await call('POST', '/auth/confirm', {body: {name: 'x'.repeat(3000)}});
+    assert.equal(big.code, 413);
+
+    {
+      const req = new EventEmitter();
+      let destroyed = 0, popped = 0;
+      Object.assign(req, {method: 'POST', url: '/auth/pair', socket: {remoteAddress: '192.168.1.20'},
+        headers: {host: '192.168.1.10:8099', origin: 'http://192.168.1.10:8099'},
+        destroy() { destroyed++; req.emit('close'); }});
+      const code = await new Promise(resolve => {
+        let c;
+        const r = {writeHead(x) { c = x; }, end() { resolve(c); }};
+        auth.gate(req, r, '/auth/pair', {onPair: () => popped++});
+        req.emit('data', Buffer.alloc(2100, 65));
+      });
+      assert.equal(code, 413);
+      assert.equal(destroyed, 1);
+      assert.equal(popped, 0);
+      assert.equal(auth.pendingLive(), false);
+    }
+  }
+
+  // Expired sessions persisted on disk are ignored on load and never returned by /auth/devices or signOut.
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-auth-exp-'));
+    const store = path.join(dir, 'auth.json');
+    const liveKey = '1'.repeat(64), deadKey = '2'.repeat(64);
+    const crypto = require('crypto');
+    const h = k => crypto.createHash('sha256').update(k).digest('hex');
+    fs.writeFileSync(store + '.mode', JSON.stringify({enabled: true}));
+    fs.writeFileSync(store, JSON.stringify({sessions: [
+      {hash: h(liveKey), name: 'Live', created: Date.now() - 1000, seen: Date.now(), expires: Date.now() + 60000},
+      {hash: h(deadKey), name: 'Expired', created: Date.now() - 90000, seen: Date.now() - 80000, expires: Date.now() - 1000}
+    ]}));
+    const prevPath = process.env.VETRO_AUTH_PATH;
+    process.env.VETRO_AUTH_PATH = store;
+    delete require.cache[require.resolve('../service/auth.js')];
+    const freshAuth = require('../service/auth.js');
+    process.env.VETRO_AUTH_PATH = prevPath;
+    const req = new EventEmitter();
+    Object.assign(req, {method: 'GET', url: '/auth/devices', socket: {remoteAddress: '192.168.1.20'},
+      headers: {host: '192.168.1.10:8099', authorization: 'Bearer ' + liveKey}});
+    let devicesBody;
+    const res = {writeHead() {}, end(t) { devicesBody = JSON.parse(t); }};
+    assert.equal(freshAuth.gate(req, res, '/auth/devices', {}), true);
+    assert.deepEqual(devicesBody.devices.map(d => d.name), ['Live'], 'expired sessions are filtered out');
+  }
+
   console.log('PASS auth: TV widget passes, LAN pairs with a TV-only code, one pairing at a time, cookie/bearer keys (any host name), rebinding and cross-site refused, sign-out, app-only open, 20-key limit, save failures reported, Node 4 fallback');
 })().catch(e => { console.error(e); process.exitCode = 1; });

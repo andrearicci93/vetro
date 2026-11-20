@@ -27,6 +27,12 @@ check('stalled body returns 408', () => {
 check('aborted body settles immediately', () => {
   const r = bodyCase(req => req.emit('aborted')); assert.equal(r.result.error.statusCode, 400);
 });
+check('closed body settles immediately', () => {
+  const r = bodyCase(req => req.emit('close')); assert.equal(r.calls, 1); assert.equal(r.result.error.statusCode, 400);
+});
+check('multibyte utf8 string chunk respects byte limit', () => {
+  const r = bodyCase(req => req.emit('data', 'ą'.repeat(32769))); assert.equal(r.calls, 1); assert.equal(r.result.error.statusCode, 413);
+});
 check('fragmented valid body survives', () => {
   const r = bodyCase(req => { req.emit('data', Buffer.from('a')); req.emit('data', Buffer.from('b')); req.emit('end'); });
   assert.equal(r.calls, 1); assert.equal(r.result.body, 'ab'); assert.equal(r.result.error, undefined);

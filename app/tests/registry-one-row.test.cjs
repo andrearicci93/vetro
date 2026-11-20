@@ -34,14 +34,14 @@ sql(userDb, "CREATE TABLE package_app_info_for_uid (app_id TEXT, uid INTEGER, is
 const commands = [];
 async function execute(cmd) {
     commands.push(cmd);
-    const r = cp.spawnSync('sh', ['-c', cmd.split('/opt/dbspace/').join(tmp + '/')], {encoding: 'utf8'});
+    const r = cp.spawnSync('sh', ['-c', cmd.split('/opt/dbspace/').join(tmp.split(path.sep).join('/') + '/')], {encoding: 'utf8'});
     return {exit_code: r.status, stdout: r.stdout, stderr: r.stderr, timed_out: false};
 }
 
 (async function () {
     try {
         const all = await registry.load(execute, {apps: [], packages: []});
-        assert.equal(commands.length, 3, 'the whole inventory is three reads');
+        assert.equal(commands.length, 1, 'the whole inventory is one combined read');
         for (const id of ['vetrotvapp.svc', 'com.example.launcher', 'com.example.off', 'com.samsung.tv.csfs']) {
             commands.length = 0;
             const row = await registry.one(execute, id), full = all.apps.find(a => a.appId === id);

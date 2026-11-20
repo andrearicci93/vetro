@@ -80,19 +80,24 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     assert.equal(s.enabled, true); assert.equal(s.running, true);
     assert.ok(f.tuner.readState().since > 0);
     const line = f.tv.started;
-    assert.match(line, /systemd-run --unit=vetro-tuner --collect/);
+    assert.match(line, /systemd-run --unit=vetro-tuner --collect --no-block/);
     assert.match(line, /dotnet vetro-tuner\.dll --resident --notif --control \/tmp\/vetro-tuner\.ctl --log \/home\/owner\/vetro-tuner\.log --pid-file \/home\/owner\/vetro-tuner\.pid --takeover org\.tizen\.tv-viewer/);
     for (const test of ['--seconds', '--hold', '--backdrop', '--shm', '--close-target']) assert.ok(!line.includes(test), test + ' is not on the launch line');
     assert.ok(line.includes("WorkingDirectory='" + f.tuner.dir + "'"), 'the folder with the res/ pictures is the working directory');
     assert.ok(line.includes('KillSignal=SIGKILL'));
-    assert.ok(line.indexOf('systemctl stop vetro-tuner') < line.indexOf('systemd-run'), 'an old process is stopped before the new start');
+    assert.ok(line.indexOf('systemctl stop --no-block vetro-tuner.service') >= 0 &&
+        line.indexOf('systemctl stop --no-block vetro-tuner.service') < line.indexOf('systemd-run'), 'an old process is stopped non-blockingly before the new start');
+    assert.ok(line.includes('systemctl is-active vetro-tuner.service 2>/dev/null') && line.includes('active|activating|deactivating|reloading') && line.includes('systemctl reset-failed vetro-tuner.service'),
+        'unit stop polls is-active states including deactivating and resets failed unit state');
+    assert.ok(/systemd-run [^\n]*\|\| \{ [^\n]*setsid nohup \/usr\/bin\/dotnet [^\n]*<\/dev\/null >\/dev\/null 2>&1 & \}/.test(line),
+        'the detached start remains as a braced fallback');
 
     // Samsung's tuner is never disabled, uninstalled, closed or changed by turning the tuner on or off.
     s = await f.tuner.disable();
     assert.equal(s.enabled, false); assert.equal(s.running, false);
     for (const cmd of f.tv.scripts) {
         const text = decode(cmd);
-        assert.ok(!/pkgcmd|app_launcher|aul_test|org\.tizen\.tv-viewer.*(-D|disable|kill|-u)/.test(text.replace(/--takeover org\.tizen\.tv-viewer/, '')), 'no command touches Samsung’s tuner: ' + text.split('\n').pop());
+        assert.ok(!/pkgcmd|app_launcher|aul_test|org\.tizen\.tv-viewer.*(-D|disable|kill|-u)/.test(text.replace(/--takeover org\.tizen\.tv-viewer/g, '')), 'no command touches Samsung’s tuner: ' + text.split('\n').pop());
     }
 
     // A start that never shows up: the error is told, the process stopped again, and the setting stays off.
@@ -249,7 +254,7 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     // the programme. A start asked for from the dashboard, or of a tuner that was not running, shows it as ever.
     f = fixture();
     assert.ok(!f.tuner.startScript().includes('--quiet'));
-    assert.ok(f.tuner.startScript(true).endsWith(' --quiet </dev/null >/dev/null 2>&1 &\necho started'), 'on both ways of starting it');
+    assert.ok(f.tuner.startScript(true).endsWith(' --quiet </dev/null >/dev/null 2>&1 & }\necho started'), 'on both ways of starting it');
     assert.equal(f.tuner.startScript(true).split(' --quiet').length, 3);
     const startLines = [], run = f.tuner.execute;
     f.tuner.execute = async (cmd, ms) => { const text = Buffer.from(cmd.split(' ')[1], 'base64').toString(); if (text.includes('systemd-run')) startLines.push(text.includes(' --quiet')); return run(cmd, ms); };
@@ -262,6 +267,26 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     f.tv.pid = 5151; f.tuner.startedHere = false;
     await f.tuner.restartAfterUpdate();
     assert.deepEqual(startLines, [false, false, true, true], 'another build, and after an update');
+
+    // stateCache & writeFeatures no-op when unchanged.
+    {
+        const cf = fixture();
+        cf.tuner.writeState({enabled: true, since: 12});
+        const origRead = fs.readFileSync, origWrite = fs.writeFileSync;
+        let stateReads = 0, featWrites = 0;
+        fs.readFileSync = function (p) { if (p === cf.tuner.stateFile) stateReads++; return origRead.apply(fs, arguments); };
+        try {
+            assert.equal(cf.tuner.readState().enabled, true);
+            assert.equal(cf.tuner.readState().enabled, true);
+            assert.equal(stateReads, 1, 'unchanged tuner state file parsed once');
+        } finally { fs.readFileSync = origRead; }
+        cf.tuner.writeFeatures();
+        fs.writeFileSync = function (p) { if (String(p).indexOf(cf.tuner.featuresFile) === 0) featWrites++; return origWrite.apply(fs, arguments); };
+        try {
+            cf.tuner.writeFeatures();
+            assert.equal(featWrites, 0, 'unchanged features file is not rewritten');
+        } finally { fs.writeFileSync = origWrite; }
+    }
 
     console.log('tuner: ok');
 })().catch(e => { console.error(e); process.exit(1); });

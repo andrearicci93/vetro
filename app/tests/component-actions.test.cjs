@@ -9,5 +9,7 @@ const unknown=ops.availability({appId:'probe.ui',packageId:'probe'},[],[]);asser
 const shared=ops.availability({...rows[0],packageId:'shared'},[{appId:'vetrotvapp.svc',packageId:'shared'}],[]);assert.equal(shared.uninstall.allowed,false);
 const own=[{appId:'vetrotvapp.app',onboot:false,autorestart:false},{appId:'vetrotvapp.svc',onboot:false,autorestart:true}],fix=ops.selfStartup(own).map(c=>Buffer.from(c.split(' ')[1],'base64').toString());
 assert.equal(fix.length,1,'only the flag that is off');assert.ok(fix[0].includes("app_onboot='true'")&&fix[0].includes("app_id='vetrotvapp.svc'")&&!fix[0].includes('vetrotvapp.app'));
+assert.ok(!fix[0].includes('startup-backups'),'Vetro own startup fix must not create a startup backup');
+assert.ok(script.includes('".timeout 5000"')&&script.includes('$backup.tmp')&&script.includes('[ ! -s "$backup" ]'),'atomic backup with timeout');
 assert.deepEqual(ops.selfStartup([{appId:'vetrotvapp.svc',onboot:true,autorestart:true}]),[]);assert.deepEqual(ops.selfStartup([]),[]);assert.throws(()=>ops.validate({action:'flags',appId:'vetrotvapp.svc',flag:'onboot',enabled:false},own),/Protected/,'users still cannot change Vetro');
 console.log('PASS component actions: exact installed targets, protected components, removable packages, independent persistent flags and Vetro\'s own startup flags');

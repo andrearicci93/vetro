@@ -25,6 +25,9 @@ var atomicFile = require('./atomic-file.js');
 var QUOTE_RE = /'/g;
 var PROBE_TUNER_RE = /^tuner=(\d+)$/m;
 var PROBE_FLAG_RE = /^(client|tvs|dotnet|viewer)=([01])$/gm;       // stateful: reset lastIndex before each use
+var CLIENT_VER_RE = /^clientver=(.*)$/m;
+var CLIENT_DLL_RE = /^clientdll=(.*)$/m;
+var CLIENT_ELSE_RE = /^clientelse=(.*)$/m;
 var LOG_SPLIT = 'log:\n';
 
 var SHARE = '/opt/usr/home/owner/share';
@@ -84,6 +87,7 @@ function Tuner(options) {
     this.build = options.build || null;         // this Vetro build: a tuner started by another one is restarted (supervise)
     this.noMotion = options.noMotion || null;   // the launcher's Reduce motion setting: the tuner follows it
     this.cheapBroken = false;                   // as for the launcher: the full probe found running a pid the cheap check did not
+    this.stateCache = null;
     this.changes = 0;                           // counts starts and stops: the supervision goes back to its short interval when it moves
     // First start of this service run, in seconds since the TV booted (as the launcher's bootTimeline): serviceStart, agentSeen,
     // startIssued, startCallMs (how long the start script took), startTimedOut, running. Kept in memory, shown with the status.
@@ -101,19 +105,29 @@ Tuner.prototype.installed = function () {
     catch (e) { return false; }
 };
 
+Tuner.prototype.readStateFile = function () {
+    var st = fs.statSync(this.stateFile);
+    var key = st.ino + ':' + st.size + ':' + (st.mtimeMs !== undefined ? st.mtimeMs : +st.mtime);
+    if (this.stateCache && this.stateCache.key === key) return this.stateCache.value;
+    var value = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+    this.stateCache = {key: key, value: value};
+    return value;
+};
+
 Tuner.prototype.readState = function () {
     try {
-        var s = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
+        var s = this.readStateFile();
         // A state saved by a test build may still list parts switched off one by one ("off"): those switches are gone, and
         // the tuner is whole again (the list is not read, and the next save drops it).
         var state = {enabled: !!s && s.enabled === true, since: s && typeof s.since === 'number' ? s.since : null};
         if (s && typeof s.build === 'string') state.build = s.build;   // the Vetro build that last started the tuner
         if (s && typeof s.buildPid === 'number') state.buildPid = s.buildPid;   // and the process it started
         return state;
-    } catch (e) { return {enabled: false, since: null}; }
+    } catch (e) { this.stateCache = null; return {enabled: false, since: null}; }
 };
 
 Tuner.prototype.writeState = function (state) {
+    this.stateCache = null;
     try { atomicFile.write(fs, this.stateFile, JSON.stringify(state)); }
     catch (e) { throw new Error('The tuner setting could not be saved: ' + e.message); }
 };
@@ -131,7 +145,9 @@ Tuner.prototype.writeFeatures = function () {
     var still = false;
     try { still = !!(this.noMotion && this.noMotion()); } catch (e) { /* unreadable launcher state: motion stays on */ }
     if (still) lines.push('motion=0');
-    try { atomicFile.write(fs, this.featuresFile, lines.join('\n') + (lines.length ? '\n' : '')); }
+    var text = lines.join('\n') + (lines.length ? '\n' : '');
+    try { if (fs.readFileSync(this.featuresFile, 'utf8') === text) return; } catch (e) {}
+    try { atomicFile.write(fs, this.featuresFile, text); }
     catch (e) { throw new Error('The tuner switches could not be saved: ' + e.message); }
 };
 
@@ -166,8 +182,8 @@ Tuner.prototype.probe = function () {
         PROBE_FLAG_RE.lastIndex = 0;
         while ((m = PROBE_FLAG_RE.exec(out))) flags[m[1]] = m[2] === '1';
         var tail = out.split(LOG_SPLIT)[1];
-        var versions = /^clientver=(.*)$/m.exec(out), dlls = /^clientdll=(.*)$/m.exec(out);
-        var elsewhere = /^clientelse=(.*)$/m.exec(out);
+        var versions = CLIENT_VER_RE.exec(out), dlls = CLIENT_DLL_RE.exec(out);
+        var elsewhere = CLIENT_ELSE_RE.exec(out);
         if (elsewhere) self._clientElsewhere = elsewhere[1].split(',').filter(function (v) { return v.length > 0; }).slice(0, 6);
         return {running: !!pid, pid: pid ? +pid[1] : null, client: flags.client === true, tvs: flags.tvs === true,
             dotnet: flags.dotnet === true, viewer: flags.viewer === true,
@@ -238,15 +254,14 @@ Tuner.prototype.status = function () {
 // quiet: this start replaces a tuner that was running (an update, another build), so its Banner does not come up by itself.
 Tuner.prototype.startScript = function (quiet) {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0';
-    var state = this.readState();
     var args = DLL + ' --resident --notif --control ' + CONTROL + ' --log ' + LOG_FILE + ' --pid-file ' + PID_FILE +
         ' --takeover ' + TARGET_APP + ' --features ' + q(this.featuresFile) + (quiet ? ' --quiet' : '');
     return [
         this.stopLines(),
         'cd ' + q(this.dir),
-        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
+        'systemd-run --unit=' + UNIT + ' --collect --no-block -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
-        env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 &',
+        '{ ' + env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
         'echo started'
     ].join('\n');
 };
@@ -254,9 +269,11 @@ Tuner.prototype.startScript = function (quiet) {
 // The process is killed outright; only a pid that is really our dll is touched. The control pipe goes with it, so a
 // stale one cannot make a dashboard command look like it worked.
 Tuner.prototype.stopLines = function () {
-    return 'systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
+    return 'systemctl stop --no-block ' + UNIT + '.service >/dev/null 2>&1; ' +
+        'i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active ' + UNIT + '.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; ' +
+        'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
-        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + CONTROL;
+        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + CONTROL + ' ' + CONTROL + '.shown';
 };
 
 // Right after a boot the TV is still starting dozens of services, so a start that is slow but alive is not a failure: it

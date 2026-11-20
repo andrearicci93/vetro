@@ -9,6 +9,8 @@ var LABEL_CONTROL_RE = /[\u0000-\u001f\u007f|]/g;
 var LABEL_SPACES_RE = /\s+/g;
 var YOUTUBE_ICON_RE = /^youtube$/i;
 var TRAILING_TABS_RE = /\t+$/;
+var HDMI_PORT_RE = /^HDMI[1-4]$/;
+var HDMI_ENTRY_RE = /^s\/source\.layer\.hdmi@HDMI[1-4]$/;
 // --- HbbTV-link apps (#200), by genesai (PR #211); kept in this file because the update from 0.5.0 has no room for a new one ---
 var hbbtvLink = (function () {
 // Apps that are only a doorway to a broadcaster's HbbTV service (#200). SVT Play (5exPmCT0nz.svtplay) is one: its
@@ -43,7 +45,7 @@ function launchArgs(link) {
 // needs no catalog of its own. It only ever reaches app_launcher as a quoted variable, never as shell text.
 function launchCommand(appId) {
     if (!APP_ID_RE.test(String(appId || ''))) throw new Error('invalid appId');
-    return 'L=$(sqlite3 -readonly ' + PKGMGR_DB + ' "SELECT md_value FROM package_app_app_metadata WHERE app_id=\'' + appId +
+    return 'L=$(sqlite3 -readonly -cmd ".timeout 5000" ' + PKGMGR_DB + ' "SELECT md_value FROM package_app_app_metadata WHERE app_id=\'' + appId +
         '\' AND md_key=\'' + HBBTV_METADATA_KEY + '\' LIMIT 1;" 2>/dev/null | head -n 1); ' +
         'case "$L" in http://*|https://*) /usr/bin/app_launcher -s ' + HBBTV_APP + ' ' + launchArgs('"$L"').join(' ') + ';; ' +
         '*) /usr/bin/app_launcher -s ' + appId + ';; esac';
@@ -124,24 +126,18 @@ function script() {
         'B=' + ORDER_DIR + '; M=' + ORDER_DIR_NEW_HOME + '; F=none',
         'if [ -s "$B/.appLayerCache.1" ] || [ -s "$B/.appLayerCache.2" ]; then F=csfs; elif [ -s "$M/.appLayerCache.1" ] || [ -s "$M/.appLayerCache.2" ]; then B=$M; F=media; fi',
         'echo "F|$F"',
-        '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
+        '{ if [ -s "$B/.appLayerCache.1" ]; then cat "$B/.appLayerCache.1"; elif [ -s "$B/.appLayerCache.2" ]; then cat "$B/.appLayerCache.2"; fi; } 2>/dev/null | sed "s/^/O|/"',
         'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
         '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
         // app_featured last: 1 downloaded, 2 Samsung's partners; what Samsung's own Apps screen lists, so All apps lists them too.
         // The column is only confirmed on the Q80A (Tizen 6.0): where it is missing sqlite refuses the whole query, so the
         // 0.5.0 query runs instead (five fields, featured unknown: All apps then lists every registry app, the row is the same).
-        'sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden||\'|\'||ifnull(app_featured,0) FROM widgetinfo;" 2>/dev/null' +
-        ' || sqlite3 -readonly /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
-        'for d in ' + ICON_ROOT + '*/; do id=$(basename "$d"); for s in ' + sizes + '; do',
+        'sqlite3 -readonly -cmd ".timeout 5000" /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden||\'|\'||ifnull(app_featured,0) FROM widgetinfo;" 2>/dev/null' +
+        ' || sqlite3 -readonly -cmd ".timeout 5000" /opt/dbspace/.webappservice.db "SELECT \'R|\'||hex(id)||\'|\'||hex(title)||\'|\'||hex(tizen_id)||\'|\'||is_hidden FROM widgetinfo;" 2>/dev/null',
+        'for d in ' + ICON_ROOT + '*/; do id=${d%/}; id=${id##*/}; for s in ' + sizes + '; do',
         '  if [ -f "$d$s.png" ]; then echo "I|$id|$d$s.png"; break; fi; done; done',
-        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\';" 2>/dev/null',
-        // Every app the package manager knows. Samsung's web app registry above keeps a row for an app removed with pkgcmd,
-        // so a tile built from it alone would stay in the dock and not open.
-        // The third field says whether the app is disabled (Quick settings → Disable, or Apps and processes): a disabled app
-        // cannot start, so it gets no tile. An older reader of these lines (two fields) is not affected: it is this file.
-        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'A|\'||hex(app_id)||\'|\'||ifnull(app_disable,\'false\') FROM package_app_info;" 2>/dev/null',
-        // #200: apps that are only an HbbTV link (SVT Play) are opened by sending that link to the HbbTV app.
-        'sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db "SELECT \'L|\'||hex(app_id)||\'|\'||hex(md_value) FROM package_app_app_metadata WHERE md_key=\'' + hbbtvLink.METADATA_KEY + '\';" 2>/dev/null',
+        // Package icons, every installed app (with its disabled flag), and HbbTV links (#200), in one read-only sqlite3 call.
+        'sqlite3 -readonly -cmd ".timeout 5000" /opt/dbspace/.pkgmgr_parser.db "SELECT \'P|\'||hex(a.app_id)||\'|\'||hex(l.app_icon) FROM package_app_info a JOIN package_app_localized_info l ON l.app_id=a.app_id WHERE l.app_icon != \'\'; SELECT \'A|\'||hex(app_id)||\'|\'||ifnull(app_disable,\'false\') FROM package_app_info; SELECT \'L|\'||hex(app_id)||\'|\'||hex(md_value) FROM package_app_app_metadata WHERE md_key=\'' + hbbtvLink.METADATA_KEY + '\';" 2>/dev/null',
         'true'
     ].join('\n');
 }
@@ -176,8 +172,9 @@ function parse(text) {
                 var icon = unhex(f[2]), id = unhex(f[1]);
                 if (iconOk(icon) && !out.packageIcons[id]) out.packageIcons[id] = icon;
             } else if (f[0] === 'A' && (f.length === 2 || f.length === 3)) {
-                out.installed[unhex(f[1])] = true;
-                if (f[2] === 'true') out.disabled[unhex(f[1])] = true;
+                var app = unhex(f[1]);
+                out.installed[app] = true;
+                if (f[2] === 'true') out.disabled[app] = true;
                 out.installedCount++;
             } else if (f[0] === 'L' && f.length === 3) {
                 var link = unhex(f[2]).trim(), linkApp = unhex(f[1]);
@@ -242,7 +239,8 @@ function youtubeIcon(parsed) {
 
 function build(parsed, options) {
     options = options || {};
-    var entries = [], skipped = [], slugs = {}, inputs = sourceEntries(parsed, options), seenPorts = {}, inputSlugs = {};
+    var entries = [], skipped = [], slugs = Object.create(null), inputs = sourceEntries(parsed, options), seenPorts = Object.create(null), inputSlugs = Object.create(null);
+    var ytIcon = undefined;
     // An input's tile in the row is drawn with the launcher's own picture of that slug (res/icons/in-hdmi2.png): an app whose name
     // happens to slug the same way gets another one, so the input never loses its picture.
     inputs.forEach(function (source) { inputSlugs[source.slug] = true; });
@@ -251,7 +249,7 @@ function build(parsed, options) {
         while (slugs[slug] || RESERVED_SLUGS.indexOf(slug) >= 0 || (!input && inputSlugs[slug])) slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
         var made = {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null, key: key || (appId ? 'app:' + appId : null)};
-        if (appId && parsed.hbbtvLinks && parsed.hbbtvLinks[appId]) made.hbbtvLink = parsed.hbbtvLinks[appId];
+        if (appId && parsed.hbbtvLinks && Object.prototype.hasOwnProperty.call(parsed.hbbtvLinks, appId)) made.hbbtvLink = parsed.hbbtvLinks[appId];
         return made;
     }
     function add(slug, label, appId, icon, key) {
@@ -259,16 +257,23 @@ function build(parsed, options) {
         entries.push(e);
         return e;
     }
+    function applyTizenTube(entry) {
+        if (!options.fixTizenTube || !TIZENTUBE.test(entry.appId)) return entry;
+        entry.killFirst = COBALT_YOUTUBE;
+        if (ytIcon === undefined) ytIcon = youtubeIcon(parsed);
+        if (ytIcon) entry.icon = ytIcon; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
+        return entry;
+    }
     // A registry row without a package behind it is a leftover of an uninstall that did not go through Samsung's own path.
     // The package list is only trusted when it came back whole: a short answer must not empty the dock.
-    function uninstalled(reg) { return parsed.installedCount >= MIN_PACKAGES && !parsed.installed[reg.appId]; }
+    function uninstalled(reg) { return parsed.installedCount >= MIN_PACKAGES && !Object.prototype.hasOwnProperty.call(parsed.installed || {}, reg.appId); }
     var offApps = parsed.disabled || {};   // apps disabled on the TV: no tile (a caller that built `parsed` by hand may not have the list)
     parsed.order.forEach(function (item) {
         if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: item, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
         var kind = item.slice(0, item.indexOf('@')), ident = item.slice(item.indexOf('@') + 1);
         if (kind === 's/source.layer.hdmi') {
             if (options.showHomeSources !== true) return;
-            if (!/^HDMI[1-4]$/.test(ident)) { skipped.push({item: item, reason: 'Unknown HDMI source'}); return; }
+            if (!HDMI_PORT_RE.test(ident)) { skipped.push({item: item, reason: 'Unknown HDMI source'}); return; }
             if (seenPorts[ident]) return;
             seenPorts[ident] = true;
             var source = inputs[+ident.slice(4)];
@@ -277,15 +282,15 @@ function build(parsed, options) {
             return;
         }
         if (kind === 's/livetv') {
-            var live = LIVE[ident];
+            var live = Object.prototype.hasOwnProperty.call(LIVE, ident) ? LIVE[ident] : null;
             if (!live) { skipped.push({item: item, reason: 'Unknown live source'}); return; }
             var liveEntry = add(live.slug, live.label, live.target || VIEWER, live.iconPackage && parsed.packageIcons[live.iconPackage], 'live:' + ident);
             if (live.altIcon) liveEntry.altIcon = live.altIcon;
             return;
         }
         if (kind !== 'd/webapp') { skipped.push({item: item, reason: 'Unsupported entry'}); return; }
-        var reg = parsed.registry[ident];
-        if (!reg && ident === OFFICIAL_YOUTUBE_ROW && parsed.installedCount >= MIN_PACKAGES && parsed.installed[COBALT_YOUTUBE]) {
+        var reg = Object.prototype.hasOwnProperty.call(parsed.registry, ident) ? parsed.registry[ident] : null;
+        if ((!reg || (!reg.hidden && uninstalled(reg))) && ident === OFFICIAL_YOUTUBE_ROW && parsed.installedCount >= MIN_PACKAGES && parsed.installed[COBALT_YOUTUBE]) {
             add('youtube', 'YouTube', COBALT_YOUTUBE, parsed.icons[ident]);
             return;
         }
@@ -293,39 +298,34 @@ function build(parsed, options) {
         if (reg.hidden) { skipped.push({item: item, reason: 'Hidden in the registry'}); return; }
         if (!APP_ID.test(reg.appId)) { skipped.push({item: item, reason: 'Unusable app id'}); return; }
         if (uninstalled(reg)) { skipped.push({item: item, reason: 'Not installed'}); return; }
-        if (offApps[reg.appId]) { skipped.push({item: item, reason: 'Disabled'}); return; }
-        var entry = add(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[ident] || parsed.packageIcons[reg.appId]);
-        if (options.fixTizenTube && TIZENTUBE.test(reg.appId)) {
-            entry.killFirst = COBALT_YOUTUBE;
-            var yt = youtubeIcon(parsed);
-            if (yt) entry.icon = yt; else skipped.push({item: entry.slug, reason: 'No YouTube icon found; the app\'s own icon is used'});
-        }
+        if (Object.prototype.hasOwnProperty.call(offApps, reg.appId) && offApps[reg.appId]) { skipped.push({item: item, reason: 'Disabled'}); return; }
+        applyTizenTube(add(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[ident] || parsed.packageIcons[reg.appId]));
     });
     // Without a csfs row (the 2022 Home), the row above is at best the "recent" strip: every other visible
     // app of the registry follows, by title, so the dock shows the same apps as the Home's app list.
     if (parsed.rowFrom !== 'csfs') {
-        var present = {}, inOrder = {};
+        var present = Object.create(null), inOrder = Object.create(null);
         entries.forEach(function (e) { present[e.appId] = true; });
         parsed.order.forEach(function (item) { if (item.indexOf('d/webapp@') === 0) inOrder[item.slice(9)] = true; });
         Object.keys(parsed.registry).filter(function (id) { return !inOrder[id]; }).map(function (id) { return {id: id, reg: parsed.registry[id]}; })
-            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !uninstalled(x.reg) && !offApps[x.reg.appId] && !present[x.reg.appId] && !/^vetrotvapp(\.|$)/.test(x.reg.appId); })
+            .filter(function (x) { return !x.reg.hidden && APP_ID.test(x.reg.appId) && !uninstalled(x.reg) && !(Object.prototype.hasOwnProperty.call(offApps, x.reg.appId) && offApps[x.reg.appId]) && !present[x.reg.appId] && !VETRO_APP.test(x.reg.appId); })
             .sort(function (a, b) { return a.reg.title.localeCompare(b.reg.title); })
             .forEach(function (x) {
                 if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: x.reg.appId, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
                 present[x.reg.appId] = true;
-                add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]);
+                applyTizenTube(add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]));
             });
     }
     // Every app the user can put in the row (the All apps page): Samsung's row as it is, then each visible app of the registry
     // that Samsung's own Apps screen would list (app_featured 1 or 2, installed, not hidden, not Vetro), one entry per key.
     var samsungKeys = entries.map(function (e) { return e.key; });
-    var pool = {}, poolList = [];
+    var pool = Object.create(null), poolList = [];
     entries.forEach(function (e) { if (e.key && !pool[e.key]) { pool[e.key] = e; poolList.push(e); } });
     Object.keys(parsed.registry).forEach(function (id) {
         var reg = parsed.registry[id], key = 'app:' + reg.appId;
-        if (reg.hidden || pool[key] || !APP_ID.test(reg.appId) || VETRO_APP.test(reg.appId) || uninstalled(reg) || offApps[reg.appId]) return;
+        if (reg.hidden || pool[key] || !APP_ID.test(reg.appId) || VETRO_APP.test(reg.appId) || uninstalled(reg) || (Object.prototype.hasOwnProperty.call(offApps, reg.appId) && offApps[reg.appId])) return;
         if (reg.featured !== null && reg.featured !== undefined && reg.featured !== 1 && reg.featured !== 2) return;
-        var e = make(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[id] || parsed.packageIcons[reg.appId], key);
+        var e = applyTizenTube(make(slugify(reg.title), cleanLabel(reg.title, reg.appId), reg.appId, parsed.icons[id] || parsed.packageIcons[reg.appId], key));
         pool[key] = e; poolList.push(e);
     });
     // Every input of the Sources page can be put in the row (hold OK there), whether or not it is on Samsung's row and whatever
@@ -342,7 +342,7 @@ function build(parsed, options) {
     // holds that they have not placed (a newly installed app arrives at the end), without the ones they took out; custom names.
     var row = options.row && typeof options.row === 'object' ? options.row : null;
     if (row) {
-        var hidden = {}, used = {}, out = [];
+        var hidden = Object.create(null), used = Object.create(null), out = [];
         (Array.isArray(row.hidden) ? row.hidden : []).forEach(function (k) { hidden[k] = true; });
         // exact: the row is the order and nothing else (the launcher sent it whole); every other tile of Samsung's row is taken out.
         if (row.exact) entries.forEach(function (e) { if ((row.order || []).indexOf(e.key) < 0) hidden[e.key] = true; });
@@ -406,15 +406,18 @@ function existing(execute, built) {
     if (!paths.length) return Promise.resolve(built);
     var script = 'for p in ' + paths.map(function (p) { return "'" + p + "'"; }).join(' ') + '; do [ -f "$p" ] && echo "OK|$p"; done; true';
     return execute(wrap(script), 10000).then(function (r) {
-        if (r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; }); return built; }
-        var ok = {};
+        if (!r || r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; }); return built; }
+        var ok = Object.create(null), skippedMissing = Object.create(null);
         String(r.stdout || '').split('\n').forEach(function (l) { if (l.indexOf('OK|') === 0) ok[l.slice(3).trim()] = true; });
         all.forEach(function (e) {
             if (e.altIcon) {
                 if (!(e.icon && ok[e.icon]) && ok[e.altIcon]) e.icon = e.altIcon;
                 delete e.altIcon;
             }
-            if (e.icon && !ok[e.icon]) { built.skipped.push({item: e.slug, reason: 'Icon file missing; a generic icon is used'}); e.icon = null; }
+            if (e.icon && !ok[e.icon]) {
+                if (!skippedMissing[e.slug]) { skippedMissing[e.slug] = true; built.skipped.push({item: e.slug, reason: 'Icon file missing; a generic icon is used'}); }
+                e.icon = null;
+            }
         });
         return built;
     }, function () { all.forEach(function (e) { delete e.altIcon; }); return built; });
@@ -425,12 +428,12 @@ function existing(execute, built) {
 function load(execute, options) {
     options = options || {};
     return execute(wrap(script()), 20000).then(function (r) {
-        if (r.exit_code || r.timed_out) throw new Error(r.stderr || 'Home data unavailable');
+        if (!r || r.exit_code || r.timed_out) throw new Error((r && r.stderr) || 'Home data unavailable');
         var parsed = parse(r.stdout);
         if (!parsed.order.length && parsed.rowFrom === 'csfs') throw new Error('The Home row is empty or unreadable');
         if (!parsed.order.length && !Object.keys(parsed.registry).length) throw new Error('The Home row and the app registry are empty or unreadable');
         var built = build(parsed, options);
-        var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return /^s\/source\.layer\.hdmi@HDMI[1-4]$/.test(entry); });
+        var filteredSources = options.showHomeSources !== true && parsed.order.some(function (entry) { return HDMI_ENTRY_RE.test(entry); });
         if (!built.entries.length && !filteredSources) throw new Error('None of the Home row apps could be matched in the registry');
         return existing(execute, built).then(function (b) {
             return {tsv: tsv(b), inputsTsv: inputsTsv(b), allAppsTsv: allAppsTsv(b), count: b.entries.length, skipped: b.skipped, samsungKeys: b.samsungKeys, rowKeys: b.entries.map(function (e) { return e.key; }),

@@ -212,5 +212,28 @@ function tv(start) {
   assert.ok(t.s.order.indexOf('tuner')>t.s.order.indexOf('launcher')&&t.s.order.indexOf('tuner')<t.s.order.indexOf('plugin:hello'),'the tuner goes off right after the launcher');
   t = tv();t.deps.tuner={readState:()=>({enabled:false}),disable:async()=>{throw new Error('must not run');}};
   r = new Restore(t.deps);plan=await r.publicPlan();assert.equal(plan.items.find(i=>i.id==='tuner').state,'clean');
+  // 0.7.1: parseFlags ignores vetrotvapp.*, area groups ignore firmware-disabled regional apps unless proven by ledger/quick-flags, and optional keyGuides restores hidden key guides.
+  assert.deepEqual(parseFlags('SF|vetrotvapp.svc|false|true|true|true\nSF|a.b|true|false|false|false'), [{appId: 'a.b', backup: 'true|false', current: 'false|false'}]);
+  t = tv({launcher: false, plugins: [{id: 'launcher', bundled: true, enabled: true}], remote: false, mqtt: false,
+    apps: [{appId: 'com.samsung.tv.regional-voice', packageId: 'com.samsung.tv.regional-voice', area: 'voice', role: 'optional', disabled: true, system: true},
+      {appId: 'com.samsung.tv.user-voice', packageId: 'com.samsung.tv.user-voice', area: 'voice', role: 'optional', disabled: true, system: true}],
+    ledger: ['com.samsung.tv.user-voice'], wins: {firmware: 'off', multiscreen: 'off', ambient: 'off', telemetry: 'off'}, hbbtvOff: false, dnsOn: false, home: {backups: 0, same: 0}, flags: [], aging: 0});
+  r = new Restore(t.deps); plan = await r.publicPlan();
+  assert.equal(plan.items.find(i => i.id === 'groups').count, 1, 'only proven area-group member, not firmware-disabled regional app');
+  res = await r.run();
+  assert.equal(t.s.apps.find(a => a.appId === 'com.samsung.tv.user-voice').disabled, false, 'proven area-group member restored');
+  assert.equal(t.s.apps.find(a => a.appId === 'com.samsung.tv.regional-voice').disabled, true, 'firmware-disabled regional app untouched');
+  assert.equal(res.complete, true);
+  // Optional keyGuides
+  t = tv(); let kgStatus = 'on';
+  t.deps.keyGuides = {read: async () => ({status: kgStatus, keys: 2}), apply: async on => { assert.equal(on, false); t.s.order.push('key-guides'); kgStatus = 'off'; return {status: 'off', keys: 2}; }};
+  r = new Restore(t.deps); plan = await r.publicPlan();
+  assert.equal(plan.items.find(i => i.id === 'key-guides').state, 'changed');
+  res = await r.run();
+  assert.equal(kgStatus, 'off'); assert.equal(res.steps.find(s => s.id === 'key-guides').status, 'done'); assert.equal(res.complete, true);
+  // Unknown keyGuides (TV without keys) gets no row
+  t = tv(); t.deps.keyGuides = {read: async () => ({status: 'unknown'}), apply: async () => { throw Error('must not run'); }};
+  r = new Restore(t.deps); plan = await r.publicPlan();
+  assert.equal(plan.items.find(i => i.id === 'key-guides'), undefined);
   console.log('restore: ok');
 })().catch(e => { console.error(e); process.exit(1); });

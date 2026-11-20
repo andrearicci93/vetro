@@ -16,6 +16,13 @@ assert.equal(messages.length,1);assert.equal(messages[0].retained,true);assert.e
 assert.ok(socket.writes.some(b=>b.equals(Buffer.from([0x40,2,0,7]))));
 const sub=socket.writes.find(b=>(b[0]>>4)===8),id=sub.readUInt16BE(2);
 socket.emit('data',Buffer.from([0x90,3,id>>8,id&255,0]));assert.equal(subscriptions[0].accepted,true);
+c.subscribe('in1');const sub1=socket.writes[socket.writes.length-1],id1=sub1.readUInt16BE(2);
+socket.emit('data',Buffer.from([0x90,3,id1>>8,id1&255,1]));assert.equal(subscriptions[1].accepted,true,'SUBACK QoS 1 accepted');
+c.subscribe('in2');const sub2=socket.writes[socket.writes.length-1],id2=sub2.readUInt16BE(2);
+socket.emit('data',Buffer.from([0x90,3,id2>>8,id2&255,0x80]));assert.equal(subscriptions[2].accepted,false,'SUBACK 0x80 refused');
+// Password without username must not set Password Flag (MQTT 3.1.1 [MQTT-3.1.2-22]).
+const pwOnly=new Client({host:'broker',password:'secret'})._connectPacket();
+assert.equal(pwOnly[9]&0xc0,0,'password flag omitted when username is absent');
 c.unsubscribe('in');const unsub=socket.writes[socket.writes.length-1];assert.equal(unsub[0],0xa2);socket.emit('data',Buffer.from([0xb0,2,unsub[2],unsub[3]]));
 c.publish('state','ready',{retain:true});assert.equal(socket.writes[socket.writes.length-1][0],0x31);
 // Fragmented message is delivered once, after the complete payload arrives.

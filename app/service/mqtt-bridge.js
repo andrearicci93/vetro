@@ -61,7 +61,7 @@ function MqttBridge(getTelemetry,onMessage) {
     this.publishTimer = null;
     this.reconnectTimer = null;
     this.running = false;
-    this.discovered = false;this.discoveryTopics=[];this.availabilityTopic=null;this.lastPresence=null;this.legacyIdentity=legacyIdentity();this.identity=null;
+    this.discovered = false;this.discoveryTopics=[];this.availabilityTopic=null;this.lastPresence=null;this.lastTvState={};this.legacyIdentity=legacyIdentity();this.identity=null;
 }
 
 MqttBridge.prototype._publishTelemetry = function () {
@@ -160,11 +160,14 @@ MqttBridge.prototype.publishTvState = function(d) {
         muted:typeof d.muted==='boolean'?(d.muted?'ON':'OFF'):null,
         source:typeof d.source==='string'&&TV_SOURCE_RE.test(d.source)?d.source:null};
     var self=this;
+    if(!this.lastTvState)this.lastTvState={};
     Object.keys(values).forEach(function(key){
         var value=values[key],available=value!==null;
+        if(Object.prototype.hasOwnProperty.call(self.lastTvState,key)&&self.lastTvState[key]===value)return;
         if(available)self.publish(prefix+'/'+key,String(value),{retain:true});
         self.publish(prefix+'/'+key+'/availability',available?'online':'offline',{retain:true});
         if(!available)self.publish(prefix+'/'+key,'',{retain:true});
+        self.lastTvState[key]=value;
     });
 };
 
@@ -232,7 +235,7 @@ MqttBridge.prototype._connect = function () {
         if (!self.running || self.client !== client) return;
         self.connected=true;self.state='connected';self.connectedAt=Date.now();self.lastError=null;self.event('connected','MQTT connection confirmed');
         self.subscriptions=self.topics.map(function(t){client.subscribe(t);return {topic:t,status:'pending'};});
-        self.discovered = false;self.lastPresence = null;self.publish(self.availabilityTopic,'online',{retain:true});
+        self.discovered = false;self.lastPresence = null;self.lastTvState = {};self.publish(self.availabilityTopic,'online',{retain:true});
         self._publishTelemetry();
         self._discover();
     });
@@ -262,7 +265,7 @@ MqttBridge.prototype.stopClient = function () {
     if(client&&this.connected){try{this.discoveryTopics.forEach(function(t){client.publish(t,'',{retain:true});});if(this.availabilityTopic)client.publish(this.availabilityTopic,'offline',{retain:true});}catch(e){this.lastError=String(e.message||e);}}
     this.discoveryTopics=[];
     this.client = null;this.connected=false;this.state='disabled';this.retryAt=null;this.subscriptions=[];
-    this.discovered = false;
+    this.discovered = false;this.lastTvState = {};
     if (client) { try { client.close(); } catch (e) {} }
 };
 
@@ -278,7 +281,7 @@ MqttBridge.prototype.stop = function () {
 MqttBridge.prototype.event=function(type,message){this.events.push({ts:Date.now(),type:type,message:message});if(this.events.length>50)this.events.shift();};
 MqttBridge.prototype.status=function(){return {identity:this.identity,identityPersistent:!!(this.config&&this.config.clientId)||this.legacyIdentity.persistent,availabilityTopic:this.availabilityTopic,state:this.state,connected:this.connected,lastError:this.lastError,connectedAt:this.connectedAt,retryAt:this.retryAt,lastMessageAt:this.lastMessageAt,lastPublishAt:this.lastPublishAt,sent:this.sent,received:this.received,subscriptions:this.subscriptions.slice(),events:this.events.slice()};};
 MqttBridge.prototype.configure=function(cfg){this.config=cfg;this._connect();};
-MqttBridge.prototype.setTopics=function(topics){var next=[],seen={};(topics||[]).forEach(function(t){if(t&&!seen[t]){seen[t]=true;next.push(t);}});next.sort();if(JSON.stringify(next)===JSON.stringify(this.topics))return;var prev=this.topics||[];this.topics=next;if(this.connected&&this.client){var client=this.client,self=this;prev.forEach(function(t){if(!seen[t]&&typeof client.unsubscribe==='function')client.unsubscribe(t);});this.subscriptions=this.subscriptions.filter(function(s){return !!seen[s.topic];});next.forEach(function(t){if(prev.indexOf(t)<0){self.subscriptions.push({topic:t,status:'pending'});client.subscribe(t);}});return;}if(this.running&&this.config)this._connect();};
+MqttBridge.prototype.setTopics=function(topics){var next=[],seen={};(topics||[]).forEach(function(t){if(t&&!seen[t]){seen[t]=true;next.push(t);}});next.sort();if(JSON.stringify(next)===JSON.stringify(this.topics))return;var prev=this.topics||[];this.topics=next;if(this.connected&&this.client){var client=this.client,self=this;prev.forEach(function(t){if(!seen[t]&&typeof client.unsubscribe==='function')client.unsubscribe(t);});this.subscriptions=this.subscriptions.filter(function(s){return !!seen[s.topic];});next.forEach(function(t){if(prev.indexOf(t)<0){self.subscriptions.push({topic:t,status:'pending'});client.subscribe(t);}});return;}if(this.running&&this.config&&this.config.enabled!==false&&!this.client&&!this.reconnectTimer)this._connect();};
 MqttBridge.prototype.publish=function(topic,payload,opts){if(!this.connected||!this.client)throw Error('MQTT disconnected');this.client.publish(topic,payload,opts);this.sent++;this.lastPublishAt=Date.now();};
 
 function parseMeminfo(s) {

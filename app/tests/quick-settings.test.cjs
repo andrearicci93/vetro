@@ -22,6 +22,7 @@ function harness(opts){
  return {calls,disabled,flags,saved,deps:{invalidate(){},inventory(){registryCalls++;if(opts.registryError&&registryCalls>1)return Promise.resolve({apps:[],registryError:'x'});return Promise.resolve({apps:alexa.map(id=>({appId:id,disabled:disabled.has(id),onboot:flags[id].onboot,autorestart:flags[id].autorestart}))});},
   execute(cmd){const s=decode(cmd);calls.push(s);
    if(s==='app_launcher -S')return Promise.resolve({exit_code:0,stdout:(opts.running||[]).map((id,i)=>'\t'+id+' ('+(100+i)+')').join('\n')});
+   if(/disabled-by-vetro/.test(s))return Promise.resolve({exit_code:0,stdout:''});
    if(/quick-flags/.test(s)){const ids=idsOf(s),clear=/app_onboot=\'false\',app_autorestart=\'false\'/.test(s);
     const out=ids.map(id=>{if(clear){if(opts.flagStuck===id)return id+' 0';if(flags[id].onboot||flags[id].autorestart)saved[id]=Object.assign({},flags[id]);flags[id]={onboot:false,autorestart:false};return id+' 0';}
      if(saved[id]){flags[id]=saved[id];delete saved[id];return id+' 0';}return id+' none';});
@@ -35,7 +36,7 @@ function harness(opts){
  let r=await quick.apply('alexa',true,h.deps);
  assert.deepEqual(r.changed,alexa.slice(0,3),'only enabled members are changed');assert.equal(r.state.status,'off');assert.deepEqual(r.stopped,[alexa[0]],'running members are stopped');
  assert.equal(h.calls.filter(c=>/pkgcmd/.test(c)).length,1,'one script for the whole group');
- h=harness({disabled:alexa});r=await quick.apply('alexa',false,h.deps);assert.equal(r.state.status,'on');assert.ok(!h.calls.includes('app_launcher -S'),'enabling stops nothing');
+ h=harness({disabled:alexa});r=await quick.apply('alexa',false,h.deps);assert.equal(r.state.status,'on');assert.ok(!h.calls.includes('app_launcher -S'),'enabling stops nothing');assert.ok(h.calls.some(c=>/disabled-by-vetro/.test(c)),'re-enabling a fixed group removes stale ledger entries');
  h=harness({disabled:[],stuck:alexa[1]});
  await assert.rejects(quick.apply('alexa',true,h.deps),/Not confirmed for com.samsung.tv.alexa-fullscreen-app · previous state restored/);
  assert.equal(h.disabled.size,0,'rollback re-enables every changed member');
@@ -88,10 +89,12 @@ function harness(opts){
   const live=new Set(['t.one']),sent=[];
   const deps={invalidate(){},inventory(){return Promise.resolve({apps:trk.map(r=>({...r,disabled:r.appId==='t.one'?!live.has('t.one')?true:false:r.disabled})).map(r=>r.appId==='t.one'?{...r,disabled:!live.has('t.one')}:r)});},
    execute(cmd){const c=decode(cmd);sent.push(c);if(c==='app_launcher -S')return Promise.resolve({exit_code:0,stdout:'\tt.one (7)\n\tother (8)\n'});
+    if(/disabled-by-vetro/.test(c))return Promise.resolve({exit_code:0,stdout:''});
     if(/quick-flags/.test(c)){const fi=/for id in (.*?);\s*do/.exec(c)[1].split(' ');return Promise.resolve({exit_code:0,stdout:fi.map(id=>id+' 0').join('\n')});}
     const m=/for id in (.*); do (pkgcmd (-D|-A)|app_launcher -k)/.exec(c);const ids=m[1].split(' ');if(m[2]==='pkgcmd -D')ids.forEach(id=>{if(id==='t.one')live.delete(id);});return Promise.resolve({exit_code:0,stdout:ids.map(id=>id+' 0').join('\n')});}};
   const r=await quick.apply('tracking-all',true,deps);
   assert.deepEqual(r.changed,['t.one']);assert.deepEqual(r.stopped,['t.one'],'only running members of the group are stopped, not other apps');assert.equal(r.state.status,'off');
+  assert.ok(sent.some(c=>/disabled-by-vetro/.test(c)&&/for id in t\.one;/.test(c)),'area group records disabled targets in ledger');
  }
  {
   // The separate ACR switch was removed because the all-in switch covers its components: pin that down, with the

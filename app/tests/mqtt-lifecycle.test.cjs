@@ -13,6 +13,8 @@ const bridge = new context.module.exports.MqttBridge(() => ({}));
 bridge.start(); assert.equal(timers.size, 2);
 bridge.start(); assert.equal(timers.size, 2, 'start must be idempotent');
 const previous = bridge.client;
+bridge.setTopics(['vetro/cmd']);
+assert.equal(bridge.client, previous, 'setTopics while connecting does not abort in-flight connection');
 bridge._connect();
 assert.equal(timers.size, 2, 'replacing a client must not schedule its reconnect');
 previous.emit('close');

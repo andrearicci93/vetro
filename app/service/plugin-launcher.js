@@ -20,20 +20,24 @@
 // Plain ES5, like every module the TV loads.
 
 // ?slug=... read straight from the query string: the one parameter does not need a URL parser.
+var crypto = require('crypto');
+var fs = require('fs');
 var homeCleanup = require('./home-cleanup.js');
 
 var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
 var PLUGIN_QUERY_RE = /[?&]plugin=([^&#]*)/, ROW_QUERY_RE = /[?&]row=([^&#]*)/;
+var PLUS_RE = /\+/g;
 function queryOf(re, rawUrl) {
     var m = re.exec(rawUrl || '');
     if (!m) return undefined;
     try { return decodeURIComponent(m[1].replace(PLUS_RE, ' ')); } catch (e) { return undefined; }
 }
-var PLUS_RE = /\+/g;
 function slugOf(rawUrl) {
-    var m = SLUG_QUERY_RE.exec(rawUrl || '');
-    if (!m) return undefined;
-    try { return decodeURIComponent(m[1].replace(PLUS_RE, ' ')); } catch (e) { return undefined; }
+    return queryOf(SLUG_QUERY_RE, rawUrl);
+}
+function fileStamp(file) {
+    if (!file) return '';
+    try { var st = fs.statSync(file); return (st.ino || 0) + ':' + st.size + ':' + (st.mtimeMs !== undefined ? st.mtimeMs : st.mtime.getTime()); } catch (e) { return 'missing'; }
 }
 
 var TICK_MS = 2000;          // how often the supervision looks at the root agent
@@ -62,16 +66,53 @@ function definition(dock, options) {
         description: 'The minimal launcher that replaces Samsung\'s Home while it is switched on.',
         permissions: ['exec'],     // it runs root commands through the agent; a label, as for every plugin
         create: function (ctx) {
-            var vetro = ctx.vetro, timer = null, agentWas = false, ticks = 0, streak = 0, seenChanges = dock.changes;
+            var vetro = ctx.vetro, timer = null, agentWas = false, ticks = 0, streak = 0, seenChanges = dock.changes, busy = false;
+            var iconCache = Object.create(null), iconCacheCount = 0, iconCacheStamp = '', filesStamp = '', filesStampAt = 0;
+
+            function listStamp() {
+                if (!dock.appsFile) return null;
+                var now = Date.now();
+                if (!filesStampAt || now - filesStampAt >= 1000 || now < filesStampAt) {
+                    filesStamp = fileStamp(dock.appsFile) + '|' + fileStamp(dock.inputsFile);
+                    filesStampAt = now;
+                }
+                return String(dock.changes || 0) + '|' + String(dock.reloadedAt || 0) + '|' + filesStamp;
+            }
+            function clearIcons() { iconCache = Object.create(null); iconCacheCount = 0; iconCacheStamp = ''; filesStamp = ''; filesStampAt = 0; }
+            function cachedIcon(slug) {
+                if (!slug) return null;
+                var stamp = listStamp();
+                if (stamp !== null) {
+                    if (stamp !== iconCacheStamp) { clearIcons(); iconCacheStamp = stamp; }
+                    if (Object.prototype.hasOwnProperty.call(iconCache, slug)) return iconCache[slug];
+                    var png = dock.iconFile(slug);
+                    if (!png) return null;
+                    var entry = { png: png, etag: '"' + crypto.createHash('sha1').update(png).digest('hex').slice(0, 20) + '"' };
+                    if (iconCacheCount >= 120) { clearIcons(); iconCacheStamp = stamp; }
+                    iconCache[slug] = entry; iconCacheCount++;
+                    return entry;
+                }
+                var data = dock.iconFile(slug);
+                if (!data) { delete iconCache[slug]; return null; }
+                var prev = iconCache[slug];
+                if (prev && prev.png.length === data.length && prev.png.equals(data)) return prev;
+                var next = { png: data, etag: '"' + crypto.createHash('sha1').update(data).digest('hex').slice(0, 20) + '"' };
+                if (iconCacheCount >= 120) clearIcons();
+                if (!prev) iconCacheCount++;
+                iconCache[slug] = next;
+                return next;
+            }
 
             function tick() {
                 var up = !!vetro.agentConnected(), edge = up && !agentWas;
                 agentWas = up;
                 if (edge || dock.changes !== seenChanges) { seenChanges = dock.changes; streak = 0; }
+                if (busy) { if (edge) ticks = ROUND_TICKS; return; }
                 if (edge || ++ticks >= roundTicks(streak)) {
                     ticks = 0;
-                    Promise.resolve(dock.supervise(up)).then(function (result) { streak = result === 'running' ? streak + 1 : 0; },
-                        function () { streak = 0; /* the next round tries again */ });
+                    busy = true;
+                    Promise.resolve(dock.supervise(up)).then(function (result) { busy = false; streak = result === 'running' ? streak + 1 : 0; },
+                        function () { busy = false; streak = 0; /* the next round tries again */ });
                 }
             }
 
@@ -88,6 +129,7 @@ function definition(dock, options) {
             }
 
             function action(p) {
+                if (!p || typeof p !== 'object' || Array.isArray(p)) return Promise.reject(new Error('Invalid dock action'));
                 if (p.action === 'enable') return dock.enable();
                 if (p.action === 'disable') return dock.disable();
                 if (p.action === 'refresh') return rebuild();
@@ -110,7 +152,7 @@ function definition(dock, options) {
                 // switch (POST api/action), which also handles Samsung's autorun, so stopping here never kills it.
                 start: function () {
                     if (timer) return;
-                    agentWas = false; ticks = 0; streak = 0;
+                    agentWas = false; ticks = 0; streak = 0; busy = false;
                     timer = timers.setInterval(tick, tickMs);
                     if (timer && timer.unref) timer.unref();
                 },
@@ -131,7 +173,7 @@ function definition(dock, options) {
                     if (sub === 'action' && req.method === 'POST') {
                         streak = 0;
                         vetro.readJson(req, res, function (p) {
-                            action(p).then(function (d) { vetro.json(res, d); })
+                            action(p).then(function (d) { clearIcons(); vetro.json(res, d); })
                                 .catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
                         });
                         return true;
@@ -158,7 +200,7 @@ function definition(dock, options) {
                     // The launcher sends its row after the user moved a tile, took one out or added one from All apps (row keys in order).
                     if (sub === 'row' && req.method === 'POST') {
                         vetro.readJson(req, res, function (p) {
-                            dock.setRow(p && p.row).then(function () { vetro.json(res, { ok: true }); })
+                            dock.setRow(p && p.row).then(function () { clearIcons(); vetro.json(res, { ok: true }); })
                                 .catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
                         });
                         return true;
@@ -166,21 +208,21 @@ function definition(dock, options) {
                     // The launcher came on screen and found the package manager's database newer than its lists (an app was installed or
                     // removed). It does not wait: the lists are read again here and the launcher is told to reload them when they changed.
                     if (sub === 'relist' && req.method === 'POST') {
+                        clearIcons();
                         vetro.json(res, { ok: true }, 202);
                         dock.relist().catch(function () { /* the next time the launcher comes on screen it asks again */ });
                         return true;
                     }
                     if (sub === 'icon' && req.method === 'GET') {
-                        var png = dock.iconFile(slugOf(req.url));
-                        if (!png) { vetro.json(res, { error: 'icon unavailable' }, 404); return true; }
+                        var icon = cachedIcon(slugOf(req.url));
+                        if (!icon) { vetro.json(res, { error: 'icon unavailable' }, 404); return true; }
                         // A tile's picture can change when the list is rebuilt, so it stays a minute in the browser; after that the
                         // browser asks again with the ETag and an unchanged picture is a 304 without the image.
-                        var etag = '"' + require('crypto').createHash('sha1').update(png).digest('hex').slice(0, 20) + '"';
-                        var headers = { 'content-type': 'image/png', 'cache-control': 'private, max-age=60', 'etag': etag, 'X-Content-Type-Options': 'nosniff' };
-                        if (req.headers && req.headers['if-none-match'] === etag) { res.writeHead(304, headers); res.end(); return true; }
-                        headers['content-length'] = png.length;
+                        var headers = { 'content-type': 'image/png', 'cache-control': 'private, max-age=60', 'etag': icon.etag, 'X-Content-Type-Options': 'nosniff' };
+                        if (req.headers && req.headers['if-none-match'] === icon.etag) { res.writeHead(304, headers); res.end(); return true; }
+                        headers['content-length'] = icon.png.length;
                         res.writeHead(200, headers);
-                        res.end(png);
+                        res.end(icon.png);
                         return true;
                     }
                     return false;

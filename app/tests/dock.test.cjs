@@ -68,10 +68,13 @@ function fixture(options) {
     assert.ok(f.tv.started.includes('TVLAUNCHER_DIR=/home/owner') && f.tv.started.includes('WAYLAND_DISPLAY=wayland-0') && f.tv.started.includes('setsid nohup /usr/bin/dotnet'));
     assert.ok(f.tv.started.indexOf('kill -9') < f.tv.started.indexOf('setsid'), 'a previous dock is stopped before the new one starts');
     assert.ok(/tr "\\0" " " < \/proc\/\$p\/cmdline/.test(f.tv.started) && f.tv.started.includes('grep -q tvlauncher-dotnet.dll'), 'only a pid that is our dll is killed');
-    assert.ok(/systemd-run --unit=vetro-dock --collect .*-p KillSignal=SIGKILL .*\/usr\/bin\/env HOME=\/home\/owner .*\/usr\/bin\/dotnet tvlauncher-dotnet\.dll/.test(f.tv.started),
+    assert.ok(/systemd-run --unit=vetro-dock --collect --no-block .*-p KillSignal=SIGKILL .*\/usr\/bin\/env HOME=\/home\/owner .*\/usr\/bin\/dotnet tvlauncher-dotnet\.dll/.test(f.tv.started),
         'the dock runs as its own systemd unit, outside the root agent\'s cgroup (sdbd stops at standby and kills it): ' + f.tv.started);
-    assert.ok(f.tv.started.indexOf('systemctl stop vetro-dock.service') < f.tv.started.indexOf('systemd-run'), 'a previous unit is stopped first');
-    assert.ok(/systemd-run [^\n]*\|\| [^\n]*setsid nohup \/usr\/bin\/dotnet/.test(f.tv.started), 'the detached start remains as the fallback');
+    assert.ok(f.tv.started.indexOf('systemctl stop --no-block vetro-dock.service') >= 0 &&
+        f.tv.started.indexOf('systemctl stop --no-block vetro-dock.service') < f.tv.started.indexOf('systemd-run'), 'a previous unit is stopped non-blockingly first');
+    assert.ok(f.tv.started.includes('systemctl is-active vetro-dock.service 2>/dev/null') && f.tv.started.includes('active|activating|deactivating|reloading') && f.tv.started.includes('systemctl reset-failed vetro-dock.service'),
+        'unit stop polls is-active states including deactivating and resets failed unit state');
+    assert.ok(/systemd-run [^\n]*\|\| \{ [^\n]*setsid nohup \/usr\/bin\/dotnet [^\n]*<\/dev\/null >\/dev\/null 2>&1 & \}/.test(f.tv.started), 'the detached start remains as a braced fallback');
     assert.equal(f.tv.csfs, false, 'Samsung Home closed once the dock is up');
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.tmp, 'state.json'), 'utf8')).enabled, true);
     assert.equal(f.tv.scripts[f.tv.scripts.length - 1].startsWith('echo '), true);
@@ -546,6 +549,54 @@ function fixture(options) {
         t.dock.leaveCustom = async () => { throw new Error('no agent'); };
         assert.equal(await t.dock.giveUpCustom('the app is gone.'), 'failed');
         assert.equal(told, 2);
+    }
+
+    // 0.7.1 regressions: readState() fallback fields, quick-death back-off, closeHomeOnce kills all HOME_KILL & retries on error, showAtPowerOn after boot start, TSV cache.
+    {
+        const broken = fixture();
+        fs.writeFileSync(broken.dock.stateFile, '{not json');
+        const st = broken.dock.readState();
+        assert.deepEqual(st.lastCards, []);
+        assert.equal(st.build, null);
+        assert.equal(st.buildPid, null);
+
+        // Quick-death back-off: a dock that dies within QUICK_DEATH_MS counts as failed instead of resetting failures.
+        const qd = fixture({running: false});
+        fs.writeFileSync(qd.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
+        assert.equal(await qd.dock.supervise(true), 'started');
+        qd.tv.running = false;
+        qd.tv.clock += 5000;
+        assert.equal(await qd.dock.supervise(true), 'failed');
+        assert.match(qd.dock.lastError, /stopped 5 s after it started/);
+        assert.equal(qd.dock.failures, 1);
+
+        // closeHomeOnce kills all HOME_KILL apps and retries if execute failed.
+        const ch = fixture({running: true});
+        ch.dock.patchState({enabled: true});
+        ch.dock.serviceStart = 50; ch.dock.uptime = () => 400;
+        let killAttempts = 0;
+        const origExec = ch.dock.execute;
+        ch.dock.execute = async cmd => {
+            if (/^app_launcher -k /.test(cmd)) {
+                killAttempts++;
+                assert.ok(cmd.includes('com.samsung.tv.home.sidebar') && cmd.includes('com.samsung.tv.home.media'), 'kills all HOME_KILL apps');
+                if (killAttempts === 1) return {exit_code: 1, stdout: '', stderr: 'busy'};
+                ch.tv.csfs = false; return {exit_code: 0, stdout: ''};
+            }
+            return origExec(cmd);
+        };
+        await ch.dock.supervise(true);
+        assert.equal(ch.dock.homeClosed, undefined, 'failed closeHomeOnce does not mark homeClosed');
+        await ch.dock.supervise(true);
+        assert.equal(ch.dock.homeClosed, true);
+        assert.equal(killAttempts, 2);
+
+        // showAtPowerOn fires right after boot start too (not only on the next running round).
+        const po = fixture({running: false});
+        po.dock.patchState({enabled: true});
+        po.dock.serviceStart = 50; po.dock.uptime = () => 120; po.tv.rootApp = true;
+        assert.equal(await po.dock.supervise(true), 'started');
+        assert.equal(po.tv.powerOnShows, 1, 'showAtPowerOn ran right after boot start');
     }
 
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');

@@ -35,20 +35,23 @@ function definition(tuner, options) {
         description: 'Watch live TV with Vetro’s own tuner on screen instead of Samsung’s. Samsung’s tuner is covered while this is on, never removed.',
         permissions: ['exec'],     // it runs root commands through the agent; a label, as for every plugin
         create: function (ctx) {
-            var vetro = ctx.vetro, timer = null, agentWas = false, ticks = 0, streak = 0, seenChanges = tuner.changes;
+            var vetro = ctx.vetro, timer = null, agentWas = false, ticks = 0, streak = 0, seenChanges = tuner.changes, busy = false;
 
             function tick() {
                 var up = !!vetro.agentConnected(), edge = up && !agentWas;
                 agentWas = up;
                 if (edge || tuner.changes !== seenChanges) { seenChanges = tuner.changes; streak = 0; }
+                if (busy) { if (edge) ticks = ROUND_TICKS; return; }
                 if (edge || ++ticks >= roundTicks(streak)) {
                     ticks = 0;
-                    Promise.resolve(tuner.supervise(up)).then(function (result) { streak = result === 'running' ? streak + 1 : 0; },
-                        function () { streak = 0; /* the next round tries again */ });
+                    busy = true;
+                    Promise.resolve(tuner.supervise(up)).then(function (result) { busy = false; streak = result === 'running' ? streak + 1 : 0; },
+                        function () { busy = false; streak = 0; /* the next round tries again */ });
                 }
             }
 
             function action(p) {
+                if (!p || typeof p !== 'object' || Array.isArray(p)) return Promise.reject(new Error('Invalid tuner action'));
                 if (p.action === 'enable') return tuner.enable();
                 if (p.action === 'disable') return tuner.disable();
                 if (p.action === 'show' || p.action === 'hide' || p.action === 'toggle' || p.action === 'guide') return tuner.command(p.action);
@@ -58,7 +61,7 @@ function definition(tuner, options) {
             return {
                 start: function () {
                     if (timer) return;
-                    agentWas = false; ticks = 0; streak = 0;
+                    agentWas = false; ticks = 0; streak = 0; busy = false;
                     timer = timers.setInterval(tick, tickMs);
                     if (timer && timer.unref) timer.unref();
                 },

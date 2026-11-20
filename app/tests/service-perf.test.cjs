@@ -39,10 +39,10 @@ function boot() {
         './platform.js': {start() {}, onAgent(fn) { agentListener = fn; }, status: () => ({agent: {connected}, timing: {firstConnect: null, reconnect: null, losses: 0}}),
             execute: cmd => {
                 commands.push(cmd);
+                if (cmd.includes("WHERE a.app_id='vetrotvapp.svc'")) return Promise.resolve({exit_code: 0, stdout: hex(['vetrotvapp.svc', 'vetrotvapp', 'false', 'true', 'false', 'false', 'false', 'true', 'true', '']) + '\n'});
+                if (cmd.includes('FROM package_app_info a')) return Promise.resolve({exit_code: 0, stdout: Array.from({length: 40}, (x, i) => registryRow(i)).join('\n') + '\n__VETRO_DEPS__\n__VETRO_DEPS_RC__0\n__VETRO_USER__\n'});
                 if (cmd.includes('package_dependency_info')) return Promise.resolve({exit_code: 0, stdout: ''});
                 if (cmd.includes('SELECT hex(app_id),hex(is_disabled)')) return Promise.resolve({exit_code: 0, stdout: ''});
-                if (cmd.includes("WHERE a.app_id='vetrotvapp.svc'")) return Promise.resolve({exit_code: 0, stdout: hex(['vetrotvapp.svc', 'vetrotvapp', 'false', 'true', 'false', 'false', 'false', 'true', 'true', '']) + '\n'});
-                if (cmd.includes('FROM package_app_info a')) return Promise.resolve({exit_code: 0, stdout: Array.from({length: 40}, (x, i) => registryRow(i)).join('\n') + '\n'});
                 if (cmd.includes('base64 "/usr/apps/')) return Promise.resolve({exit_code: 0, stdout: PNG.toString('base64') + '\n'});
                 return Promise.resolve({exit_code: 0, stdout: ''});
             }}},
@@ -168,6 +168,6 @@ function json(res) { return JSON.parse(res.headers['content-encoding'] === 'gzip
     assert.equal(again.code, 304); assert.equal(again.body, undefined);
     status = json(await request(service, 'GET', '/status'));
     assert.equal(status.rootCommands.perMinute.length, 10);
-    assert.ok(status.rootCommands.perMinute[0] >= 4 && status.rootCommands.lastTenMinutes === status.rootCommands.perMinute.reduce((a, b) => a + b, 0), JSON.stringify(status.rootCommands));
+    assert.ok(status.rootCommands.perMinute[0] >= 2 && status.rootCommands.lastTenMinutes === status.rootCommands.perMinute.reduce((a, b) => a + b, 0), JSON.stringify(status.rootCommands));
     console.log('PASS answers: JSON over 1 KB gzipped only when asked, icons with an ETag (304), root commands per minute in /status');
 })().catch(e => { console.error(e); process.exit(1); });

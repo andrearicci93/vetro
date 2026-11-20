@@ -28,14 +28,14 @@ var ABS_SET_RE = /__ABS__\s*1/;
 // service (ug-hbbtv-efl.xml), although its package database has it off and the service stayed down in the test
 // above, so the disable is a safeguard there. Like the brake file, a system app's disable is not trusted to survive
 // a reboot: enforce puts it back after each boot.
-var fs=require('fs'),KEY='db/menu/system/data-service',FILE='/opt/usr/home/owner/share/vetro-hbbtv.json';
+var fs=require('fs'),atomicFile=require('./atomic-file.js'),KEY='db/menu/system/data-service',FILE='/opt/usr/home/owner/share/vetro-hbbtv.json';
 var APP='org.tizen.hbbtv',SERVICE='org.tizen.hbbtv-service',FLAG='/tmp/hbbtv_do-not-relaunch',RUNFLAG='/tmp/hbbtv_app_running';
 var DB='/opt/dbspace/.pkgmgr_parser.db';
-var DISABLED='sqlite3 -readonly '+DB+' "SELECT app_disable FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q true';
+var DISABLED='sqlite3 -readonly -cmd ".timeout 5000" '+DB+' "SELECT app_disable FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q true';
 // Not every firmware has the service app: of the 41 rooted TVs in the community reports, 24 (2023 and later) list org.tizen.hbbtv
 // but not org.tizen.hbbtv-service. There is nothing to disable there, and the plain stop was always enough. Absent only
 // counts when the registry answers "0 rows"; an unreadable registry is not "absent", so Off is not claimed on a guess.
-var ABSENT='sqlite3 -readonly '+DB+' "SELECT count(*) FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q "^0$"';
+var ABSENT='sqlite3 -readonly -cmd ".timeout 5000" '+DB+' "SELECT count(*) FROM package_app_info WHERE app_id=\''+SERVICE+'\';" 2>/dev/null | grep -q "^0$"';
 // Disabling also ends a running service. read() checks the result afterwards, so the tool's exit code is not trusted.
 var DISABLE_SVC='if ! '+ABSENT+'; then pkgcmd -D -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true; fi';
 var ENABLE_SVC='if '+DISABLED+'; then pkgcmd -A -t app -n '+SERVICE+' --global >/dev/null 2>&1 || true; fi';
@@ -48,7 +48,7 @@ function listed(id){return 'app_launcher -S 2>/dev/null | grep -q "^[[:space:]]*
 function stopOf(id){return 'if '+listed(id)+'; then app_launcher -t '+id+' || true; i=0; while '+listed(id)+' && [ $i -lt 10 ]; do sleep 0.5; i=$((i+1)); done; fi';}
 var STOP=DISABLE_SVC+'\n'+stopOf(SERVICE)+'\n'+stopOf(APP);
 function wrap(s){return 'echo '+Buffer.from(s).toString('base64')+' | base64 -d | sh';}
-function check(r){if(r.exit_code||r.timed_out)throw execError.failed(r,r.stderr||r.stdout||'HbbTV unavailable');return r.stdout||'';}
+function check(r){if(!r||r.exit_code!==0||r.timed_out)throw execError.failed(r,(r&&(r.stderr||r.stdout))||'HbbTV unavailable');return r.stdout||'';}
 function Control(execute,storage){this.execute=execute;this.fs=storage||fs;this.busy=false;}
 Control.prototype.read=function(){var self=this;
  var script='vconftool get '+KEY+' 2>&1\necho __FLAG__\n[ -e '+FLAG+' ] && echo 1 || echo 0\necho __RUN__\n'+listed(APP)+' && echo 1 || echo 0\necho __SVC__\n'+listed(SERVICE)+' && echo 1 || echo 0\necho __DIS__\n'+DISABLED+' && echo 1 || echo 0\necho __ABS__\n'+ABSENT+' && echo 1 || echo 0';
@@ -67,7 +67,7 @@ Control.prototype.change=function(off,expected){var self=this;if(typeof off!=='b
  function why(a){return a.running?'the app is still running':a.serviceRunning?(a.serviceDisabled?'its service is still running':'its service is still running and could not be disabled'):!a.serviceDisabled?'its service could not be disabled':a.flag?'the menu value was not kept':'the brake file was not kept';}
  return this.read().then(function(s){if(s.value!==expected)throw Error('Value changed; refresh before editing');previous=s;
   if(off){if(s.off)return Object.assign(s,{changed:false});
-   if(s.value>0&&!s.valueOff){var tmp=FILE+'.tmp';self.fs.writeFileSync(tmp,JSON.stringify({value:s.value})+'\n',{mode:0o600});self.fs.renameSync(tmp,FILE);}
+   if(s.value>0&&!s.valueOff){atomicFile.write(self.fs,FILE,JSON.stringify({value:s.value})+'\n',{mode:0o600});}
    return disable().then(function(){return self.read();}).then(function(after){if(!after.off)throw Error('HbbTV is not fully off: '+why(after));return Object.assign(after,{changed:true});})
     .catch(function(e){return putBack(previous).then(function(){return self.read();}).then(function(restored){throw Error(e.message+' · '+(restored.value===previous.value?'previous state restored':'restore not confirmed'));},function(){throw Error(e.message+' · restore not confirmed');});});}
   var target=s.restoreValue;

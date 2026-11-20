@@ -87,9 +87,7 @@ function pairingOn() { return pairingChoice === 'on' || (pairingChoice === 'auto
 function pairingMode() { return {enabled: pairingOn(), disabled: !pairingOn(), mode: pairingChoice, tvSeen: tvSeen}; }
 function setPairingEnabled(enabled) {
     if (typeof enabled !== 'boolean') throw new Error('Invalid pairing mode');
-    var tmp = MODE_PATH + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({enabled: enabled, disabled: !enabled}) + '\n', {mode: 384});
-    fs.renameSync(tmp, MODE_PATH);
+    atomicFile.write(fs, MODE_PATH, JSON.stringify({enabled: enabled, disabled: !enabled}) + '\n', {mode: 384});
     var read = loadMode();
     if (read !== (enabled ? 'on' : 'off')) throw new Error('Pairing mode was not confirmed');
     pairingChoice = read;
@@ -107,7 +105,10 @@ function markTvSeen() {
 
 // A missing file just means nothing is paired yet; any other failure is logged, since it signs everyone out.
 function load() {
-    try { var d = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')); return Array.isArray(d.sessions) ? d.sessions : []; }
+    try {
+        var d = JSON.parse(fs.readFileSync(STORE_PATH, 'utf8')), now = Date.now();
+        return Array.isArray(d.sessions) ? d.sessions.filter(function (s) { return s && s.expires > now; }) : [];
+    }
     catch (e) {
         if (e.code !== 'ENOENT') console.error('Sign-in: could not read ' + STORE_PATH + ' (' + e.message + '); every device must pair again');
         return [];
@@ -118,7 +119,7 @@ function save() {
     try { atomicFile.write(fs, STORE_PATH, JSON.stringify({sessions: sessions}), {mode: 384}); return null; }
     catch (e) { console.error('Sign-in: could not save ' + STORE_PATH + ' (' + e.message + ')'); return e.message; }
 }
-function live(now) { return sessions.filter(function (s) { return s.expires > now; }); }
+function live(now) { return sessions.filter(function (s) { return s && s.expires > now; }); }
 var FULL = 'This TV already has ' + MAX_SESSIONS + ' paired devices. Sign one out, or use Sign out all devices, before pairing another.';
 function hash(key) { return crypto.createHash('sha256').update(key).digest('hex'); }
 // Constant-time compare. crypto.timingSafeEqual is missing on Node 4.4 (Tizen 5.5), so fall back to XOR.
@@ -234,23 +235,67 @@ function sessionOf(req) {
 }
 
 function body(req, cb) {
-    var data = '';
-    req.on('data', function (c) { data += c; if (data.length > 2048) req.destroy(); });
-    req.on('end', function () { var p; try { p = JSON.parse(data || '{}'); } catch (e) { p = {}; } cb(p && typeof p === 'object' ? p : {}); });
+    var chunks = [], total = 0, finished = false;
+    var timer = setTimeout(function () {
+        done({status: 408, message: 'Request timed out'});
+        if (typeof req.destroy === 'function') req.destroy();
+    }, 10000);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+    function done(err, val) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        req.removeListener('data', onData);
+        req.removeListener('end', onEnd);
+        req.removeListener('aborted', onAbort);
+        req.removeListener('close', onClose);
+        cb(err, val);
+    }
+    function onData(c) {
+        var buf = Buffer.isBuffer(c) ? c : Buffer.from(String(c), 'utf8');
+        total += buf.length;
+        if (total > 2048) {
+            done({status: 413, message: 'Request too large'});
+            if (typeof req.destroy === 'function') req.destroy();
+            return;
+        }
+        chunks.push(buf);
+    }
+    function onEnd() {
+        var p;
+        try { p = JSON.parse(Buffer.concat(chunks, total).toString('utf8') || '{}'); } catch (e) { p = {}; }
+        done(null, p && typeof p === 'object' && !Array.isArray(p) ? p : {});
+    }
+    function onAbort() { done({status: 400, message: 'Request aborted'}); }
+    function onErr() { done({status: 400, message: 'Request failed'}); }
+    function onClose() { done({status: 400, message: 'Request closed'}); }
+    req.on('data', onData);
+    req.on('end', onEnd);
+    req.on('aborted', onAbort);
+    req.on('error', onErr);
+    req.on('close', onClose);
 }
 
-function startPair(req, res, onPair) {
-    var now = Date.now();
+function checkPairSlot(req, res, now) {
     // A waiting code is never replaced, not even for the browser that asked for it: that browser resumes it (see /auth/state).
     if (pending && pending.expires > now) {
         var left = Math.ceil((pending.expires - now) / 1000);
-        return json(res, 429, {error: ownsPending(req, now) ? 'The code is already on the TV screen. Enter it, or wait ' + left + ' seconds for a new one.' :
+        json(res, 429, {error: ownsPending(req, now) ? 'The code is already on the TV screen. Enter it, or wait ' + left + ' seconds for a new one.' :
             'Another device is pairing right now. Try again in ' + left + ' seconds.', expiresIn: left, mine: ownsPending(req, now)});
+        return false;
     }
-    if (now - lastPairAt < 10000) return json(res, 429, {error: 'Wait a few seconds and try again'});
-    if (live(now).length >= MAX_SESSIONS) return json(res, 409, {error: FULL});
-    lastPairAt = now;
-    body(req, function (p) {
+    if (now - lastPairAt < 10000) { json(res, 429, {error: 'Wait a few seconds and try again'}); return false; }
+    if (live(now).length >= MAX_SESSIONS) { json(res, 409, {error: FULL}); return false; }
+    return true;
+}
+
+function startPair(req, res, onPair) {
+    if (!checkPairSlot(req, res, Date.now())) return;
+    body(req, function (err, p) {
+        if (err) return json(res, err.status || 400, {error: err.message});
+        var now = Date.now();
+        if (!checkPairSlot(req, res, now)) return;
+        lastPairAt = now;
         var name = String(p.name || 'Browser').replace(PAIR_NAME_CHARS_RE, '').slice(0, 40) || 'Browser';
         pending = {id: crypto.randomBytes(16).toString('hex'), code: String(1000000 + crypto.randomBytes(4).readUInt32BE(0) % 1000000).slice(1),
             name: name, expires: now + CODE_MS, tries: 0};
@@ -261,7 +306,8 @@ function startPair(req, res, onPair) {
 }
 
 function confirmPair(req, res) {
-    body(req, function (p) {
+    body(req, function (err, p) {
+        if (err) return json(res, err.status || 400, {error: err.message});
         var now = Date.now();
         var pid = p.id || pairIdOf(req);
         if (!pending || pending.expires < now) return json(res, 410, {error: 'This code expired; start again'});
@@ -284,7 +330,7 @@ function confirmPair(req, res) {
 }
 
 function signOut(res, all, current) {
-    sessions = all ? [] : sessions.filter(function (s) { return s !== current; });
+    sessions = all ? [] : live(Date.now()).filter(function (s) { return s !== current; });
     save();
     json(res, 200, {ok: true, signedIn: sessions.length}, {'set-cookie': COOKIE + '=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict'});
 }
@@ -315,8 +361,8 @@ function gate(req, res, url, options) {
     if (url === '/auth/pending' && req.method === 'GET') {
         if (!local) return refuse(req, res, url, 403, {error: 'TV apps only: this request did not come from the TV itself',
             pending: !!(pending && pending.expires > Date.now())});
-        var live = pending && pending.expires > Date.now();
-        return json(res, 200, live ? {code: pending.code, name: pending.name, expiresIn: Math.round((pending.expires - Date.now()) / 1000)} : {code: null},
+        var pendingNow = pending && pending.expires > Date.now();
+        return json(res, 200, pendingNow ? {code: pending.code, name: pending.name, expiresIn: Math.round((pending.expires - Date.now()) / 1000)} : {code: null},
             {'Access-Control-Allow-Origin': 'null'}), true;
     }
 
@@ -351,7 +397,7 @@ function gate(req, res, url, options) {
     if (url === '/auth/signout' && req.method === 'POST') return signOut(res, false, s), true;
     if (url === '/auth/signout-all' && req.method === 'POST') return signOut(res, true), true;
     if (url === '/auth/devices' && req.method === 'GET') {
-        return json(res, 200, {devices: sessions.map(function (x) { return {name: x.name, created: x.created, seen: x.seen, current: x === s}; })}), true;
+        return json(res, 200, {devices: live(Date.now()).map(function (x) { return {name: x.name, created: x.created, seen: x.seen, current: x === s}; })}), true;
     }
     return false;
 }

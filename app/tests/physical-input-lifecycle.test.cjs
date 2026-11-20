@@ -103,5 +103,23 @@ function fixture(options={}){
         current.socket.emit('data',Buffer.from(current.event(1)+current.event(2)));
         assert.equal(f.events.length,1);assert.equal(f.bridge.status().policy.mode,'off');
     }
+    // Two concurrent start() calls while inventory() is pending: the older one must be cancelled before launching.
+    {
+        const invQueue=[];
+        const f=fixture();
+        f.bridge.inventory=()=>new Promise(resolve=>invQueue.push(resolve));
+        const older=f.bridge.start('Smart Control','observe',[]);
+        const newer=f.bridge.start('Smart Control','filter',['63']);
+        const oldRejected=assert.rejects(older,/cancelled/);
+        invQueue[0]([{name:'Smart Control',node:'/dev/input/event4',selectable:true,unique:true}]);
+        await oldRejected;
+        assert.equal(f.servers.length,0,'older concurrent start never creates a listener');
+        invQueue[1]([{name:'Smart Control',node:'/dev/input/event4',selectable:true,unique:true}]);
+        await flush();
+        const server=f.servers[0];server.listening();const current=f.peer(server);current.auth();
+        await newer;
+        assert.equal(f.bridge.status().policy.mode,'filter');
+        f.bridge.stop();
+    }
     console.log('PASS physical input lifecycle: cancelled listeners and peers cannot launch, authenticate or dispatch into a replacement session');
 })().catch(error=>{console.error(error);process.exitCode=1;});

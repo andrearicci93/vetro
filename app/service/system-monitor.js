@@ -77,15 +77,19 @@ var UNITS_CACHE = '/tmp/vetro-unit-files.txt';
 var UNITS_LOCK = '/tmp/vetro-unit-files.lock';
 var UNITS_CACHE_MAX_AGE = 600;
 var UNITS_AGE_RE = /^AGE\|(\d+)$/;
-var UNITS_READ = 'a=999999; [ -f ' + UNITS_CACHE + ' ] && a=$(( $(date +%s) - $(stat -c %Y ' + UNITS_CACHE + ') )); echo "AGE|$a"; [ -f ' + UNITS_CACHE + ' ] && cat ' + UNITS_CACHE + '; ' +
- 'if [ "$a" -gt ' + UNITS_CACHE_MAX_AGE + ' ]; then l=' + UNITS_LOCK + '; if [ ! -e $l ] || [ $(( $(date +%s) - $(stat -c %Y $l) )) -gt 180 ]; then touch $l; ' +
- "setsid sh -c 'nice -n 19 " + UNITS_FILES + ' > ' + UNITS_CACHE + '.tmp 2>/dev/null && mv -f ' + UNITS_CACHE + '.tmp ' + UNITS_CACHE + "; rm -f $0' " + UNITS_LOCK + ' >/dev/null 2>&1 </dev/null & fi; fi; true';
+var UNITS_READ = 'a=999999; [ -f ' + UNITS_CACHE + ' ] && a=$(( $(date +%s) - $(stat -c %Y ' + UNITS_CACHE + ' 2>/dev/null || echo 0) )); [ "$a" -lt 0 ] && a=999999; echo "AGE|$a"; [ -f ' + UNITS_CACHE + ' ] && cat ' + UNITS_CACHE + '; ' +
+ 'if [ "$a" -gt ' + UNITS_CACHE_MAX_AGE + ' ]; then l=' + UNITS_LOCK + '; la=999999; [ -n "$l" ] && [ -e "$l" ] && la=$(( $(date +%s) - $(stat -c %Y "$l" 2>/dev/null || echo 0) )); if [ ! -e "$l" ] || [ "$la" -lt 0 ] || [ "$la" -gt 180 ]; then touch "$l"; ' +
+ "setsid sh -c 'nice -n 19 " + UNITS_FILES + ' > ' + UNITS_CACHE + '.tmp 2>/dev/null && mv -f ' + UNITS_CACHE + '.tmp ' + UNITS_CACHE + ' || rm -f ' + UNITS_CACHE + ".tmp; rm -f $0' " + UNITS_LOCK + ' >/dev/null 2>&1 </dev/null & fi; fi; true';
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 // options.wait: poll the cache for up to that many ms when the job has not produced it yet (the diagnostic report).
 Monitor.prototype.startup=function(options){var self=this,wait=options&&options.wait||0;
  // Complete listings stay a minute; one without boot states is only kept briefly so the next call picks them up.
- if(this.units&&Date.now()-this.unitsAt<(this.unitsComplete?60000:3000))return Promise.resolve(this.units);
- if(this.unitsPending)return this.unitsPending;
+ if(this.units&&(!wait||this.unitsComplete)&&Date.now()-this.unitsAt<(this.unitsComplete?60000:3000))return Promise.resolve(this.units);
+ if(this.unitsPending){
+  if(!wait)return this.unitsPending;
+  var waitDeadline=Date.now()+wait;
+  return this.unitsPending.then(function(u){var remain=waitDeadline-Date.now();return !self.unitsComplete&&remain>0?self.startup({wait:remain}):u;});
+ }
  this.unitsPending=this.execute(UNITS_RUNNING,15000).then(function(r){if(r.exit_code||r.timed_out)throw execError.failed(r,'service inventory unavailable');
   var deadline=Date.now()+wait;
   function read(){

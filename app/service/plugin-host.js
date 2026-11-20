@@ -19,6 +19,7 @@
 var fs = require('fs');
 var crypto = require('crypto');
 var path = require('path');
+var atomicFile = require('./atomic-file.js');
 // Regular expressions compiled once at module load, not on every call.
 var PLUGIN_PATH_RE = /^\/plugins(?:\/([^\/]+)(?:\/(.*))?)?$/;
 var SESSION_SUB_RE = /^s\//;
@@ -37,7 +38,7 @@ var CARD_READ_MS = 3000, CARD_ACTION_MS = 10000;
 var TEXT_CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 var LAUNCH_MS = 120000;
 var SAFE_AFTER = 2;
-var RESERVED = ['install', 'resume', 'developer'];
+var RESERVED = ['install', 'resume', 'developer', 'constructor', 'toString', 'valueOf', 'hasOwnProperty', 'prototype', '__proto__'];
 var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
 var BUNDLE_MAX_FILES = 20, BUNDLE_MAX_BYTES = 512 * 1024;
 var FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/;
@@ -64,10 +65,6 @@ function checkControlCenter(cc, who) {
     if (cc == null) return;
     if (typeof cc !== 'object' || Array.isArray(cc)) throw new Error(who + 'controlCenter must be an object with a label');
     if (typeof cc.label !== 'string' || !cc.label.trim() || cc.label.length > 24 || CONTROL_RE.test(cc.label)) throw new Error(who + 'controlCenter.label must be 1-24 characters of plain text');
-}
-
-function copyControlCenter(cc) {
-    return cc ? { label: cc.label } : null;
 }
 
 function copyIntercepts(list) {
@@ -158,21 +155,26 @@ PluginHost.API_VERSION = API_VERSION;
 
 PluginHost.prototype._file = function (name) { return path.join(this.dir, name); };
 
+function toNullMap(obj) {
+    var out = Object.create(null);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
+    Object.keys(obj).forEach(function (k) { if (k !== '__proto__') out[k] = obj[k]; });
+    return out;
+}
+
 PluginHost.prototype._readState = function () {
     try {
         var s = JSON.parse(fs.readFileSync(this._file('plugins.json'), 'utf8'));
-        return { enabled: s && typeof s.enabled === 'object' && s.enabled || {}, suspended: !!(s && s.suspended),
-            developer: !!(s && s.developer), trust: s && typeof s.trust === 'object' && s.trust || {} };
-    } catch (e) { return { enabled: {}, suspended: false, developer: false, trust: {} }; }
+        return { enabled: toNullMap(s && s.enabled), suspended: !!(s && s.suspended),
+            developer: !!(s && s.developer), trust: toNullMap(s && s.trust) };
+    } catch (e) { return { enabled: Object.create(null), suspended: false, developer: false, trust: Object.create(null) }; }
 };
 
 PluginHost.prototype._writeState = function (state) {
     try {
         fs.mkdirSync(this.dir);
-    } catch (e) { /* already there */ }
-    var temp = this._file('plugins.json.tmp');
-    fs.writeFileSync(temp, JSON.stringify(state) + '\n');
-    fs.renameSync(temp, this._file('plugins.json'));
+    } catch (e) { if (e.code !== 'EEXIST') throw e; }
+    atomicFile.write(fs, this._file('plugins.json'), JSON.stringify(state) + '\n');
 };
 
 // Plugins come from folders, never from the network: whoever puts one there has
@@ -284,9 +286,6 @@ PluginHost.prototype.install = function (raw, expectedSha256, signature) {
     if (existing) {
         delete this.entries[id];
         this.order.splice(at, 1);
-        var state = this._readState();
-        state.enabled[id] = false;
-        this._writeState(state);
     }
     try {
         this._loadFolder(id, target);
@@ -299,9 +298,10 @@ PluginHost.prototype.install = function (raw, expectedSha256, signature) {
     }
     if (at >= 0) this.order.splice(at, 0, this.order.pop());
     var after = this._readState();
+    if (existing) after.enabled[id] = false;
     after.trust[id] = trust;
     this._writeState(after);
-    return { id: id, sha256: sha, updated: !!existing, trust: trust, plugin: this.status(id) };
+    return { id: id, sha256: sha, updated: !!existing, trust: trust, plugin: this.status(id, after) };
 };
 
 // Where a bundle comes from, as far as it can be shown: 'registry' (the plugin list's key signed this exact id, version
@@ -384,9 +384,7 @@ PluginHost.prototype._context = function (entry) {
             set: function (value) {
                 try { fs.mkdirSync(host.dir); } catch (e) { /* exists */ }
                 try { fs.mkdirSync(dir); } catch (e) { /* exists */ }
-                var temp = path.join(dir, 'config.json.tmp');
-                fs.writeFileSync(temp, JSON.stringify(value) + '\n', { mode: 384 });
-                fs.renameSync(temp, path.join(dir, 'config.json'));
+                atomicFile.write(fs, path.join(dir, 'config.json'), JSON.stringify(value) + '\n', { mode: 384 });
             }
         },
         execute: function (cmd, timeout) {
@@ -427,7 +425,7 @@ PluginHost.prototype._fail = function (entry, e) {
 // opens that plugin's routes and nothing else, expires, and ends when the plugin is switched off.
 PluginHost.prototype._openSession = function (id) {
     var now = Date.now(), set = this.sessions[id] || (this.sessions[id] = Object.create(null));
-    Object.keys(set).forEach(function (t) { if (set[t] < now) delete set[t]; });
+    Object.keys(set).forEach(function (t) { if (set[t] <= now) delete set[t]; });
     var live = Object.keys(set);
     if (live.length >= SESSION_MAX) delete set[live[0]];
     var token = crypto.randomBytes(16).toString('hex');
@@ -442,6 +440,8 @@ PluginHost.prototype._sessionOk = function (id, token) {
 
 PluginHost.prototype._halt = function (entry) {
     delete this.sessions[entry.def.id];
+    delete this.cardJobs[entry.def.id];
+    entry.cardError = null;
     var inst = entry.instance;
     entry.instance = null;
     try { if (inst && inst.stop) inst.stop(); } catch (e) { /* already failing */ }
@@ -473,6 +473,9 @@ PluginHost.prototype._startEntry = function (entry) {
     if (entry.instance) return;
     try {
         entry.instance = entry.def.create(this._context(entry));
+        if (!entry.instance || typeof entry.instance !== 'object' || Array.isArray(entry.instance)) {
+            throw new Error('entry file must return an object');
+        }
         if (entry.instance.start) entry.instance.start();
         entry.state = 'running';
         entry.errors = 0;
@@ -529,20 +532,20 @@ PluginHost.prototype.intercepted = function () {
 PluginHost.prototype.launch = function (appId) {
     var host = this, ids = this._claimants(appId);
     if (ids.length !== 1) return Promise.resolve({ handled: false, reason: ids.length ? 'Several plugins claim ' + appId : 'No plugin claims ' + appId });
-    var entry = this.entries[ids[0]];
-    if (typeof entry.instance.launch !== 'function') return Promise.resolve({ handled: false, reason: ids[0] + ' has no launch()' });
+    var entry = this.entries[ids[0]], inst = entry.instance;
+    if (!inst || typeof inst.launch !== 'function') return Promise.resolve({ handled: false, reason: ids[0] + ' has no launch()' });
     return new Promise(function (resolve) {
         var done = false, timer = null;
         function finish(result) {
             if (done) return;
             done = true;
             if (timer) clearTimeout(timer);
-            resolve(result);
+            resolve(entry.instance !== inst ? { handled: false, reason: ids[0] + ' was switched off' } : result);
         }
         timer = setTimeout(function () { finish({ handled: false, reason: ids[0] + ' did not answer in time' }); }, host.launchMs || LAUNCH_MS);
         if (timer.unref) timer.unref();
         var out;
-        try { out = entry.instance.launch(appId); }
+        try { out = inst.launch(appId); }
         catch (e) { entry.lastError = String(e && e.message || e); finish({ handled: false, reason: entry.lastError }); return; }
         Promise.resolve(out).then(function (r) {
             finish(r === false ? { handled: false, reason: ids[0] + ' declined' } : { handled: true, plugin: ids[0] });
@@ -703,7 +706,7 @@ PluginHost.prototype.start = function () {
             if (held.def.bundled) { if (state.enabled[held.def.id] !== false) this._startEntry(held); continue; }
             if (held.state !== 'invalid') held.state = 'suspended';
         }
-        return this.list();
+        return this.list(state);
     }
     try {
         fs.mkdirSync(this.dir);
@@ -719,7 +722,7 @@ PluginHost.prototype.start = function () {
     var host = this;
     this.stableTimer = setTimeout(function () { host.markStable(); }, this.stableMs);
     if (this.stableTimer.unref) this.stableTimer.unref();
-    return this.list();
+    return this.list(state);
 };
 
 // How many starts in a row ended before they were stable: 0 without a marker. A marker of an older Vetro (a bare time) or
@@ -756,7 +759,7 @@ PluginHost.prototype.setEnabled = function (id, on) {
     var state = this._readState();
     state.enabled[id] = !!on;
     this._writeState(state);
-    if (this.safeMode) return this.status(id);
+    if (this.safeMode) return this.status(id, state);
     if (on) {
         entry.errors = 0;
         this._startEntry(entry);
@@ -764,7 +767,7 @@ PluginHost.prototype.setEnabled = function (id, on) {
         this._halt(entry);
         entry.state = 'stopped';
     }
-    return this.status(id);
+    return this.status(id, state);
 };
 
 // Leaves safe mode and starts the paused plugins now (#190: it used to only clear the flag and wait for a restart of
@@ -796,14 +799,14 @@ PluginHost.prototype.get = function (id) {
     return entry && entry.instance || null;
 };
 
-PluginHost.prototype.status = function (id) {
+PluginHost.prototype.status = function (id, st) {
     var entry = this.entries[id];
     if (!entry) return null;
     var detail = null;
     if (entry.instance && entry.instance.status) {
         detail = this._guard(entry, function () { return entry.instance.status(); }, true) || null;
     }
-    var st = this._readState(), enabled = st.enabled[id];
+    var state = st || this._readState(), enabled = state.enabled[id];
     return {
         id: id,
         name: entry.def.name || id,
@@ -817,7 +820,7 @@ PluginHost.prototype.status = function (id) {
         controlCenter: entry.def.controlCenter ? { label: entry.def.controlCenter.label, error: entry.cardError || null } : null,
         interceptConflicts: this._conflictsOf(id),
         bundled: !!entry.def.bundled,
-        trust: entry.def.bundled ? 'bundled' : st.trust[id] || 'folder',
+        trust: entry.def.bundled ? 'bundled' : state.trust[id] || 'folder',
         enabled: enabled == null ? entry.defaultEnabled : enabled,
         state: entry.state,
         errors: entry.errors,
@@ -826,9 +829,9 @@ PluginHost.prototype.status = function (id) {
     };
 };
 
-PluginHost.prototype.list = function () {
-    var out = [];
-    for (var i = 0; i < this.order.length; i++) out.push(this.status(this.order[i]));
+PluginHost.prototype.list = function (st) {
+    var state = st || this._readState(), out = [];
+    for (var i = 0; i < this.order.length; i++) out.push(this.status(this.order[i], state));
     return out;
 };
 
@@ -861,9 +864,10 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
     if (!id) {
         if (req.method !== 'GET') json(res, { error: 'Method not allowed' }, 405);
         else {
-            var all = this.list();      // once: every status() call counts an error from a plugin whose status() throws
+            var st = this._readState();
+            var all = this.list(st);      // once: every status() call counts an error from a plugin whose status() throws
             json(res, { apiVersion: API_VERSION, safeMode: this.safeMode, dir: this.dir, registry: this.registry,
-                signed: !!this.registryKey, developer: this._readState().developer && this.developerAllowed(), developerAllowed: this.developerAllowed(),
+                signed: !!this.registryKey, developer: st.developer && this.developerAllowed(), developerAllowed: this.developerAllowed(),
                 plugins: all.filter(function (p) { return !p.bundled; }), bundled: all.filter(function (p) { return p.bundled; }) });
         }
         return true;
@@ -932,10 +936,17 @@ PluginHost.prototype.handle = function (req, res, pathname, json, readBody) {
         return true;
     }
     if (sub === undefined || sub === '') {
-        json(res, this.status(id));
+        if (req.method !== 'GET') json(res, { error: 'Method not allowed' }, 405);
+        else json(res, this.status(id));
         return true;
     }
     if (sub !== undefined && SESSION_SUB_RE.test(sub)) {
+        var origin = req.headers && req.headers.origin;
+        var host = req.headers && req.headers.host;
+        if (origin && origin !== 'null' && (!host || (origin !== 'http://' + host && origin !== 'https://' + host))) {
+            json(res, { error: 'Cross-site request refused' }, 403);
+            return true;
+        }
         var scoped = SESSION_API_RE.exec(sub);
         if (!scoped || !this._sessionOk(id, scoped[1])) { json(res, { error: 'This plugin page has expired: open it again from the dashboard' }, 401); return true; }
         sub = scoped[2];

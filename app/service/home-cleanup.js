@@ -25,18 +25,29 @@ var BACKUP_DIR = '/opt/usr/home/owner/share/vetro-uninstall-backup';
 var PROTECTED_ROWS = ['111299001912'];
 var ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var HEX_RE = /^(?:[a-fA-F0-9]{2})*$/;
+var DOTS_ONLY_RE = /^\.+$/;
+var DOT_RE = /[.]/g;
+var SKIP_INSTALLED_RE = /^SKIP installed/;
+var HOME_LINES_RE = /^HOME (\d+)$/;
+var HOME_PENDING_RE = /^HOME pending$/;
+var ROW_COUNT_RE = /^ROW (\d+)$/;
+var ROW_FAILED_RE = /^ROW failed/;
+var ICON_PREFIX_RE = /^ICON /;
+var SIGNAL_PREFIX_RE = /^SIGNAL /;
+var ORPHAN_LINE_RE = /^ORPHAN (\S+)$/;
+var REGISTRY_LINE_RE = /^REGISTRY (\d+)$/;
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 // An id goes into a shell script between single quotes and into an extended regex: only plain ids, and never "." or "..".
-function validId(id) { return typeof id === 'string' && ID_RE.test(id) && !/^\.+$/.test(id); }
-function reEscape(s) { return s.replace(/[.]/g, '\\.'); }
+function validId(id) { return typeof id === 'string' && ID_RE.test(id) && !DOTS_ONLY_RE.test(id); }
+function reEscape(s) { return s.replace(DOT_RE, '\\.'); }
 
 // --- before the uninstall -----------------------------------------------------------------------------------------------
 
 function learnScript(packageId, db) {
     // packageId is a plain id (validId): no quote can get into the statement.
     var p = "'" + packageId + "'";
-    return 'sqlite3 -readonly ' + (db || WAS_DB) + ' "SELECT hex(id) FROM widgetinfo WHERE pkgname=' + p + ' OR tizen_id=' + p +
+    return 'sqlite3 -readonly -cmd ".timeout 5000" ' + (db || WAS_DB) + ' "SELECT hex(id) FROM widgetinfo WHERE pkgname=' + p + ' OR tizen_id=' + p +
         ' OR substr(tizen_id,1,' + (packageId.length + 1) + ")='" + packageId + ".';\" 2>/dev/null; true";
 }
 
@@ -94,7 +105,7 @@ function cleanScript(packageId, widgetIds, options) {
     var inList = widgetIds.map(function (w) { return "'" + w + "'"; }).join(',');
     var lines = [prelude(options),
         // An app that is still installed is never touched.
-        'if [ "$(sqlite3 -readonly "$PKG" "SELECT count(*) FROM package_app_info WHERE package=\'' + packageId + '\';" 2>/dev/null)" != 0 ]; then echo "SKIP installed"; exit 0; fi',
+        'if [ "$(sqlite3 -readonly -cmd ".timeout 5000" "$PKG" "SELECT count(*) FROM package_app_info WHERE package=\'' + packageId + '\';" 2>/dev/null)" != 0 ]; then echo "SKIP installed"; exit 0; fi',
         'P=\'' + pattern + '\''];
     widgetIds.forEach(function (w) {
         lines.push('if command -v vconftool >/dev/null 2>&1; then vconftool set -f -t string memory/was/app_uninstall \'' + w + '\' >/dev/null 2>&1; vconftool set -f -t int memory/was/app_change 1 >/dev/null 2>&1; echo "SIGNAL \'' + w + '\'"; fi');
@@ -104,9 +115,9 @@ function cleanScript(packageId, widgetIds, options) {
     );
     if (widgetIds.length) {
         lines.push(
-            'sqlite3 -readonly "$WAS" ".mode insert widgetinfo" "SELECT * FROM widgetinfo WHERE id IN (' + inList + ');" > "$K/widgetinfo-' + packageId + '.sql" 2>/dev/null',
+            'sqlite3 -readonly -cmd ".timeout 5000" "$WAS" ".mode insert widgetinfo" "SELECT * FROM widgetinfo WHERE id IN (' + inList + ');" > "$K/widgetinfo-' + packageId + '.sql" 2>/dev/null',
             // The row goes only when the package manager has no app of that id either.
-            'sqlite3 -bail "$WAS" "ATTACH \'$PKG\' AS p; BEGIN IMMEDIATE; DELETE FROM widgetinfo WHERE id IN (' + inList + ') AND tizen_id NOT IN (SELECT app_id FROM p.package_app_info); SELECT \'ROW \'||changes(); COMMIT;" 2>/dev/null || echo "ROW failed"'
+            'sqlite3 -bail -cmd ".timeout 5000" "$WAS" "ATTACH \'$PKG\' AS p; BEGIN IMMEDIATE; DELETE FROM widgetinfo WHERE id IN (' + inList + ') AND tizen_id NOT IN (SELECT app_id FROM p.package_app_info); SELECT \'ROW \'||changes(); COMMIT;" 2>/dev/null || echo "ROW failed"'
         );
         widgetIds.forEach(function (w) {
             lines.push('if [ -d "$ICONS/' + w + '" ]; then rm -f "$ICONS/' + w + '"/*.png; rmdir "$ICONS/' + w + '" 2>/dev/null && echo "ICON ' + w + '"; fi');
@@ -120,13 +131,13 @@ function parseResult(text) {
     var out = {skipped: false, home: 'none', homeLines: 0, rows: 0, rowFailed: false, icons: 0, signals: 0};
     String(text || '').split('\n').forEach(function (l) {
         var m;
-        if (/^SKIP installed/.test(l)) out.skipped = true;
-        else if ((m = /^HOME (\d+)$/.exec(l))) { out.homeLines += +m[1]; out.home = out.homeLines ? 'removed' : 'none'; }
-        else if (/^HOME pending$/.test(l)) out.home = 'pending';
-        else if ((m = /^ROW (\d+)$/.exec(l))) out.rows += +m[1];
-        else if (/^ROW failed/.test(l)) out.rowFailed = true;
-        else if (/^ICON /.test(l)) out.icons++;
-        else if (/^SIGNAL /.test(l)) out.signals++;
+        if (SKIP_INSTALLED_RE.test(l)) out.skipped = true;
+        else if ((m = HOME_LINES_RE.exec(l))) { out.homeLines += +m[1]; out.home = out.homeLines ? 'removed' : 'none'; }
+        else if (HOME_PENDING_RE.test(l)) out.home = 'pending';
+        else if ((m = ROW_COUNT_RE.exec(l))) out.rows += +m[1];
+        else if (ROW_FAILED_RE.test(l)) out.rowFailed = true;
+        else if (ICON_PREFIX_RE.test(l)) out.icons++;
+        else if (SIGNAL_PREFIX_RE.test(l)) out.signals++;
     });
     return out;
 }
@@ -138,7 +149,7 @@ function clean(execute, packageId, widgetIds, options) {
     return execute(wrap(cleanScript(packageId, ids, options)), 30000).then(function (r) {
         if (!r || r.exit_code || r.timed_out) return {error: (r && (r.stderr || r.stdout)) || 'Cleanup did not finish'};
         return parseResult(r.stdout);
-    }, function (e) { return {error: e.message}; });
+    }, function (e) { return {error: (e && e.message) || String(e)}; });
 }
 
 // --- leftovers of earlier uninstalls ------------------------------------------------------------------------------------
@@ -146,15 +157,15 @@ function clean(execute, packageId, widgetIds, options) {
 // Home lines whose app is known nowhere: no registry row with that id, no registry app id, no package or app of that id.
 function orphansScript(options) {
     return prelude(options) + [
-        'F=; for d in $HOMES; do if [ -f "$d/' + CACHES[0] + '" ]; then F="$d/' + CACHES[0] + '"; break; fi; done',
-        '[ -n "$F" ] && grep "^d/webapp@" "$F" | sed "s/^d\\/webapp@//" | sort -u | while read id; do',
-        ' case "$id" in *[!A-Za-z0-9_.-]*|""|.|..) continue;; esac',
-        ' a=$(sqlite3 -readonly "$WAS" "SELECT count(*) FROM widgetinfo WHERE id=\'$id\' OR tizen_id=\'$id\' OR pkgname=\'$id\';" 2>/dev/null)',
-        ' b=$(sqlite3 -readonly "$PKG" "SELECT count(*) FROM package_app_info WHERE app_id=\'$id\' OR package=\'$id\';" 2>/dev/null)',
-        ' [ "$a" = 0 ] && [ "$b" = 0 ] && echo "ORPHAN $id"',
-        'done',
+        'F=; for d in $HOMES; do for f in ' + CACHES.join(' ') + '; do if [ -s "$d/$f" ]; then F="$d/$f"; break 2; fi; done; done',
+        'W=$(sqlite3 -readonly -cmd ".timeout 5000" "$WAS" "SELECT \'REGISTRY \'||count(*) FROM widgetinfo; SELECT id FROM widgetinfo UNION SELECT tizen_id FROM widgetinfo UNION SELECT pkgname FROM widgetinfo;" 2>/dev/null); rw=$?',
+        'P=$(sqlite3 -readonly -cmd ".timeout 5000" "$PKG" "SELECT app_id FROM package_app_info UNION SELECT package FROM package_app_info;" 2>/dev/null); rp=$?',
+        'n=; [ "$rw" = 0 ] && n=$(printf \'%s\\n\' "$W" | tr -d \'\\r\' | sed -n \'1s/^REGISTRY //p\')',
+        'if [ "$rw" = 0 ] && [ "$rp" = 0 ] && [ -n "$F" ]; then',
+        ' { printf \'%s\\n%s\\n\' "$W" "$P" | tr -d \'\\r\' | sed \'s/^/K /\'; tr -d \'\\r\' < "$F" | sed -n \'s/^d\\/webapp@/C /p\' | sort -u; } | awk \'/^K /{k[substr($0,3)]=1;next} /^C /{id=substr($0,3); if(id ~ /^[A-Za-z0-9_.-]+$/ && id!="." && id!=".." && !(id in k)) print "ORPHAN " id}\'',
+        'fi',
         // A failed read prints nothing, which would look like "no leftovers": say whether the registry could be read at all.
-        'n=$(sqlite3 -readonly "$WAS" "SELECT count(*) FROM widgetinfo;" 2>/dev/null); echo "REGISTRY ${n:-unreadable}"',
+        'echo "REGISTRY ${n:-unreadable}"',
         'true'
     ].join('\n');
 }
@@ -163,8 +174,8 @@ function parseOrphans(text) {
     var out = {orphans: [], registryRows: null};
     String(text || '').split('\n').forEach(function (l) {
         var m;
-        if ((m = /^ORPHAN (\S+)$/.exec(l)) && validId(m[1])) out.orphans.push(m[1]);
-        else if ((m = /^REGISTRY (\d+)$/.exec(l))) out.registryRows = +m[1];
+        if ((m = ORPHAN_LINE_RE.exec(l)) && validId(m[1])) out.orphans.push(m[1]);
+        else if ((m = REGISTRY_LINE_RE.exec(l))) out.registryRows = +m[1];
     });
     return out;
 }

@@ -54,13 +54,14 @@ function Restore(deps) { this.d = deps; }
 
 // --- reading ---------------------------------------------------------------------------------------------
 
-var HOME_SCRIPT = homeOrder.PICK_DIR + 'n=0; same=0\nfor f in ' + homeOrder.FILES.join(' ') + '; do\n' +
+var HOME_SCRIPT = homeOrder.PICK_DIR.replace(/-f /g, '-s ') + 'n=0; same=0\nfor f in ' + homeOrder.FILES.join(' ') + '; do\n' +
     ' if [ -f "$D/$f.vetro-bak" ]; then n=$((n+1)); if [ -f "$D/$f" ] && cmp -s "$D/$f" "$D/$f.vetro-bak"; then same=$((same+1)); fi; fi\ndone\necho "HO|$n|$same"\ntrue';
 
 var FLAGS_SCRIPT = 'for f in ' + BACKUPS + '/*; do\n [ -f "$f" ] || continue\n id=${f##*/}\n case "$id" in *[!A-Za-z0-9_.-]*) continue;; esac\n' +
     ' b=$(cat "$f" 2>/dev/null)\n' +
     ' c=$(printf \'.timeout 5000\\n%s\\n\' "SELECT app_onboot,app_autorestart FROM package_app_info WHERE app_id=\'$id\';" | sqlite3 -readonly ' + DB + ' 2>/dev/null)\n' +
-    ' echo "SF|$id|$b|$c"\ndone\ntrue';
+    ' echo "SF|$id|$b|$c"\ndone\n' +
+    'for f in /home/owner/share/vetro/quick-flags/*; do\n [ -f "$f" ] || continue\n echo "QF|${f##*/}"\ndone\ntrue';
 
 function parseHome(text) {
     var m = HOME_LINE_RE.exec(String(text || ''));
@@ -73,10 +74,18 @@ function parseFlags(text) {
         var f = l.replace(CR_END_RE, '').split('|');
         if (f[0] !== 'SF' || f.length < 4) return;
         var id = f[1], backup = f[2] + '|' + f[3], current = f.slice(4).join('|');
-        if (!ID.test(id) || !FLAG_PAIR_RE.test(backup)) return;
+        if (!ID.test(id) || VETRO_ID_RE.test(id) || !FLAG_PAIR_RE.test(backup)) return;
         rows.push({appId: id, backup: backup, current: FLAG_PAIR_RE.test(current) ? current : null});
     });
     return rows;
+}
+function parseQuickFlags(text) {
+    var ids = [];
+    String(text || '').split('\n').forEach(function (l) {
+        var f = l.replace(CR_END_RE, '').split('|');
+        if (f[0] === 'QF' && f.length === 2 && ID.test(f[1]) && !VETRO_ID_RE.test(f[1])) ids.push(f[1]);
+    });
+    return unique(ids);
 }
 
 // Components that Vetro may switch on again outside the Quick settings groups.
@@ -89,11 +98,14 @@ function provenComponents(apps, ledgerIds) {
     }).map(function (a) { return a.appId; });
 }
 
-function groupMembers(apps) {
-    var ids = [];
+function groupMembers(apps, areaProven) {
+    var ids = [], known = Object.create(null);
+    (areaProven || []).forEach(function (id) { known[id] = true; });
     quickSettings.GROUPS.forEach(function (g) {
         var s = quickSettings.state(g, apps);
-        if (s.status === 'off' || s.status === 'partial') ids = ids.concat(s.disabled);
+        if (s.status === 'off' || s.status === 'partial') {
+            ids = ids.concat(g.area ? s.disabled.filter(function (id) { return known[id]; }) : s.disabled);
+        }
     });
     return unique(ids);
 }
@@ -107,7 +119,7 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.hbbtv.read(); }),
         attempt(function () { return d.dns.status(); }),
         attempt(function () { return d.execute(wrap(HOME_SCRIPT), 8000).then(function (r) { return parseHome(out(r, 'Home order check')); }); }),
-        attempt(function () { return d.execute(wrap(FLAGS_SCRIPT), 15000).then(function (r) { return parseFlags(out(r, 'Startup flags check')); }); }),
+        attempt(function () { return d.execute(wrap(FLAGS_SCRIPT), 15000).then(function (r) { var raw = out(r, 'Startup flags check'); return {flags: parseFlags(raw), quickFlags: parseQuickFlags(raw)}; }); }),
         attempt(function () { return d.execute(ledger.readCommand(), 8000).then(function (r) { return ledger.parse(out(r, 'Ledger read')); }); }),
         attempt(function () { return d.plugins.list(); }),
         attempt(function () { return d.dock.readState(); }),
@@ -117,9 +129,10 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.pairing ? d.pairing.status() : null; }),
         attempt(function () { return d.factoryTest ? d.factoryTest.read() : {present: false, active: false}; }),
         attempt(function () { return d.keepRemoved ? d.keepRemoved.state() : null; }),
-        attempt(function () { return d.tuner ? d.tuner.readState() : null; })
+        attempt(function () { return d.tuner ? d.tuner.readState() : null; }),
+        attempt(function () { return d.keyGuides ? d.keyGuides.read() : null; })
     ]).then(function (x) {
-        var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13], keep = x[14];
+        var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13], keep = x[14], keyGuides = x[16];
         var items = [];
         function add(id, label, detail, read, extra) {
             var item = {id: id, label: label, detail: detail, state: 'clean'};
@@ -158,7 +171,8 @@ Restore.prototype.plan = function () {
             if (!x[12].error) flag(it, x[12].value.disabled);
         }
 
-        var groupIds = apps.error ? [] : groupMembers(apps.value);
+        var areaProven = unique((led.error ? [] : led.value).concat(flags.error ? [] : flags.value.quickFlags));
+        var groupIds = apps.error ? [] : groupMembers(apps.value, areaProven);
         it = add('groups', 'Quick settings groups', 'Switches on the components of the advertising, tracking and voice groups, with their start at boot and restart as they were. A group is Vetro’s own, so its components are switched on even if the firmware had them off.', apps);
         if (!apps.error) flag(it, groupIds.length > 0, groupIds.length);
 
@@ -184,6 +198,11 @@ Restore.prototype.plan = function () {
             if (!wins.error && (!win || win.status === 'unknown')) { item.state = 'unknown'; item.error = 'Quick win state unavailable'; }
             else if (!wins.error) flag(item, !!c[2]);
         });
+
+        if (d.keyGuides && (keyGuides.error || (keyGuides.value && keyGuides.value.status !== 'unknown'))) {
+            it = add('key-guides', 'Remote key guides', 'Lets Samsung’s own remote key guide banners appear again.', keyGuides);
+            if (!keyGuides.error) flag(it, keyGuides.value.status !== 'off');
+        }
 
         if (d.keepRemoved) {
             it = add('keep-removed', 'Keep removed apps removed', 'Takes the store ids Vetro added out of Samsung’s list of removed apps, so Samsung may install them again. The list of apps stays saved; Samsung’s own entries are not touched.', keep);
@@ -213,13 +232,14 @@ Restore.prototype.plan = function () {
         it = add('factory-test', 'Factory colour test', 'Sets db/FactoryApp/Aging back to 0, so the TV stops starting Samsung’s colour test (AgingApp) at every boot. Restart the TV afterwards.', factory);
         if (!factory.error) flag(it, factory.value.active === true);
 
-        var changedFlags = flags.error ? [] : flags.value.filter(function (r) { return r.current !== r.backup; });
+        var flagRows = flags.error ? [] : flags.value.flags;
+        var changedFlags = flagRows.filter(function (r) { return r.current !== r.backup; });
         it = add('startup-flags', 'Start at boot and restart', 'Puts back the start-at-boot and restart values you changed in Apps and processes.', flags);
         if (!flags.error) flag(it, changedFlags.length > 0, changedFlags.length);
 
         return {ok: true, ts: Date.now(), items: items, notes: NOTES.slice(),
             pending: items.filter(function (i) { return i.state === 'changed'; }).length,
-            _data: {groupIds: groupIds, compIds: compIds, third: third, flags: flags.error ? [] : flags.value}};
+            _data: {groupIds: groupIds, compIds: compIds, areaProven: areaProven, third: third, flags: flagRows}};
     });
 };
 
@@ -235,7 +255,7 @@ Restore.prototype.run = function () {
     var self = this, d = this.d, steps = [];
     function record(item, status, message) { steps.push({id: item.id, label: item.label, status: status, message: message || ''}); }
     return this.plan().then(function (plan) {
-        var byId = {};
+        var byId = Object.create(null);
         plan.items.forEach(function (i) { byId[i.id] = i; });
         var order = [
             ['launcher', function () {
@@ -259,15 +279,16 @@ Restore.prototype.run = function () {
             }],
             ['remote', function () { return Promise.resolve(d.input.off()).then(function () { return 'The remapper no longer listens to the remote.'; }); }],
             ['mqtt', function () { return Promise.resolve(d.mqtt.off()).then(function () { return 'The bridge is off.'; }); }],
-            ['pairing', function () { var s=d.pairing.restore();if(s.disabled)throw new Error('Pairing is still disabled');return 'Pairing required again; unpaired devices must sign in.'; }],
-            ['sdb', function () { return d.sdb.off().then(function(s){if(s.enabled||s.active)throw new Error('SDB LAN access is still on');return 'SDB LAN access off; network clients disconnected.';}); }],
-            ['groups', function () { return self.runGroups(); }],
-            ['components', function () { return self.runComponents(); }],
+            ['pairing', function () { var s=d.pairing.restore();if(!s||s.disabled)throw new Error('Pairing is still disabled');return 'Pairing required again; unpaired devices must sign in.'; }],
+            ['sdb', function () { return d.sdb.off().then(function(s){if(!s||s.enabled||s.active)throw new Error('SDB LAN access is still on');return 'SDB LAN access off; network clients disconnected.';}); }],
+            ['groups', function () { return self.runGroups(plan._data.areaProven); }],
+            ['components', function () { return self.runComponents(plan._data.areaProven); }],
             ['win-telemetry', function () { return self.runWin('telemetry', 'Services started again; the DNS block Vetro added is lifted.'); }],
             ['win-ambient', function () { return self.runWin('ambient', 'Samsung’s own Ambient start runs again.'); }],
             ['win-multiscreen', function () { return self.runWin('multiscreen', 'The preload file is removed.'); }],
             ['win-firmware', function () { return self.runWin('firmware', 'Update lock removed and the automatic update value put back.'); }],
             ['win-airplay', function () { return self.runWin('airplay', 'The AirPlay receiver can start again.'); }],
+            ['key-guides', function () { return d.keyGuides.apply(false).then(function () { return 'Remote key guides can appear again.'; }); }],
             ['keep-removed', function () { return self.runKeepRemoved(); }],
             ['hbbtv', function () { return self.runHbbtv(); }],
             ['dns', function () {
@@ -298,8 +319,9 @@ Restore.prototype.run = function () {
     });
 };
 
-Restore.prototype.runGroups = function () {
-    var d = this.d, total = 0, errors = [];
+Restore.prototype.runGroups = function (areaProven) {
+    var d = this.d, total = 0, errors = [], known = Object.create(null);
+    (areaProven || []).forEach(function (id) { known[id] = true; });
     var deps = {execute: d.execute, inventory: d.inventory, invalidate: d.invalidate};
     return d.inventory(true).then(function (r) {
         if (r.registryError) throw new Error('App registry unavailable');
@@ -308,11 +330,13 @@ Restore.prototype.runGroups = function () {
             return chain.then(function () {
                 var s = quickSettings.state(g, apps);
                 if (s.status !== 'off' && s.status !== 'partial') return;
-                return quickSettings.apply(g.id, false, deps).then(function (res) {
+                var onlyIds = g.area ? s.disabled.filter(function (id) { return known[id]; }) : null;
+                if (g.area && !onlyIds.length) return;
+                return quickSettings.apply(g.id, false, deps, onlyIds ? {onlyIds: onlyIds} : null).then(function (res) {
                     total += res.changed.length;
                     if (res.apps) apps = res.apps;
                     if (res.flagsNotRestored && res.flagsNotRestored.length) errors.push(g.label + ': startup flags not put back for ' + res.flagsNotRestored.join(', '));
-                }, function (e) { errors.push(g.label + ': ' + e.message); });
+                }, function (e) { errors.push(g.label + ': ' + ((e && e.message) || String(e))); });
             });
         }, Promise.resolve());
     }).then(function () {
@@ -321,26 +345,29 @@ Restore.prototype.runGroups = function () {
     });
 };
 
-Restore.prototype.runComponents = function () {
+Restore.prototype.runComponents = function (areaProven) {
     var d = this.d;
-    return Promise.all([d.inventory(true), d.execute(ledger.readCommand(), 8000)]).then(function (x) {
-        if (x[0].registryError) throw new Error('App registry unavailable');
-        var led = ledger.parse(out(x[1], 'Ledger read'));
-        var groupIds = groupMembers(x[0].apps);
-        var ids = provenComponents(x[0].apps, led).filter(function (id) { return groupIds.indexOf(id) < 0; });
-        if (!ids.length) return 'Nothing to switch on.';
-        return d.execute(quickSettings.command(ids, false), 90000).then(function (r) {
-            if (!r || r.timed_out) throw new Error('The TV did not finish in time');
-            d.invalidate();
-            return d.inventory(true);
-        }).then(function (after) {
-            var byId = {};
-            after.apps.forEach(function (a) { byId[a.appId] = a; });
-            var wrong = ids.filter(function (id) { return !byId[id] || byId[id].disabled !== false; });
-            var good = ids.filter(function (id) { return wrong.indexOf(id) < 0; });
-            return (good.length ? d.execute(ledger.removeCommand(good), 8000).catch(function () {}) : Promise.resolve()).then(function () {
-                if (wrong.length) throw new Error('Not confirmed for ' + wrong.join(', '));
-                return ids.length + ' component' + (ids.length === 1 ? '' : 's') + ' switched on.';
+    return d.inventory(true).then(function (inv) {
+        if (inv.registryError) throw new Error('App registry unavailable');
+        return d.execute(ledger.readCommand(), 8000).then(function (ledRes) {
+            var led = ledger.parse(out(ledRes, 'Ledger read'));
+            var groupIds = groupMembers(inv.apps, unique(led.concat(areaProven || [])));
+            var ids = provenComponents(inv.apps, led).filter(function (id) { return groupIds.indexOf(id) < 0; });
+            if (!ids.length) return 'Nothing to switch on.';
+            return d.execute(quickSettings.command(ids, false), 90000).then(function (r) {
+                if (!r || r.timed_out) throw new Error('The TV did not finish in time');
+                d.invalidate();
+                return d.inventory(true);
+            }).then(function (after) {
+                if (!after || after.registryError || !Array.isArray(after.apps)) throw new Error('App registry unavailable');
+                var byId = Object.create(null);
+                after.apps.forEach(function (a) { byId[a.appId] = a; });
+                var wrong = ids.filter(function (id) { return !byId[id] || byId[id].disabled !== false; });
+                var good = ids.filter(function (id) { return wrong.indexOf(id) < 0; });
+                return (good.length ? d.execute(ledger.removeCommand(good), 8000).catch(function () {}) : Promise.resolve()).then(function () {
+                    if (wrong.length) throw new Error('Not confirmed for ' + wrong.join(', '));
+                    return ids.length + ' component' + (ids.length === 1 ? '' : 's') + ' switched on.';
+                });
             });
         });
     });
@@ -354,7 +381,7 @@ Restore.prototype.runKeepRemoved = function () {
     var k = this.d.keepRemoved;
     k.setEnabled(false);
     return k.check().then(function (r) {
-        if (r.source && r.source.error) throw new Error(r.source.error);
+        if (!r || (r.source && r.source.error)) throw new Error((r && r.source && r.source.error) || 'Samsung’s list could not be updated');
         if (k.state().owned > 0) throw new Error('Samsung’s list still holds ids Vetro added');
         return 'Samsung’s list no longer holds the apps Vetro added; the saved list of apps is kept.';
     });
@@ -383,7 +410,7 @@ Restore.prototype.runFlags = function (rows) {
     return d.execute(wrap(lines.join('\n')), 60000).then(function (r) {
         if (!r || r.timed_out) throw new Error('The TV did not finish in time');
         var codes = quickSettings.exitCodes(r.stdout);
-        var bad = rows.filter(function (x) { return codes[x.appId] !== 0; }).map(function (x) { return x.appId; });
+        var bad = rows.filter(function (x) { return !Object.prototype.hasOwnProperty.call(codes, x.appId) || codes[x.appId] !== 0; }).map(function (x) { return x.appId; });
         d.invalidate();
         if (bad.length) throw new Error('Could not put back the startup flags of ' + bad.join(', '));
         return 'Startup flags put back on ' + rows.length + ' component' + (rows.length === 1 ? '' : 's') + '.';

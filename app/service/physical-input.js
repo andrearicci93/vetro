@@ -50,19 +50,19 @@ function devices(text) {
 // was asked for, else {reason, connected}: the error that ended it and whether a helper was holding the remote at that moment.
 function Bridge(execute, onEvent, hooks) {
     this.execute = execute; this.onEvent = onEvent; this.current = {mode:'off',connected:false};
-    this.events = []; this.server = null; this.socket = null; this.generation = 0; this.lastError=null; this.cancel=null;
+    this.events = []; this.server = null; this.socket = null; this.generation = 0; this.startSeq = 0; this.lastError=null; this.cancel=null;
     this.hooks = hooks || {};
 }
 function callHook(fn, arg){if(typeof fn==='function'){try{fn(arg);}catch(e){}}}
 Bridge.prototype.inventory = function () {
     return this.execute('cat /proc/bus/input/devices',10000).then(function(r){
-        if (r.exit_code || r.timed_out) throw new Error('input inventory unavailable');
+        if (!r || r.exit_code || r.timed_out) throw new Error('input inventory unavailable');
         return devices(r.stdout);
     });
 };
 Bridge.prototype.status = function () {return {policy:this.current,events:this.events.slice(-30),error:this.lastError};};
 Bridge.prototype.stop = function (reason) {
-    ++this.generation;
+    ++this.generation; ++this.startSeq;
     var cancel=this.cancel, socket=this.socket, server=this.server, connected=!!this.current.connected;
     this.cancel=null; this.socket=null; this.server=null;
     this.current = {mode:'off',connected:false};
@@ -78,9 +78,9 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
     if (mode!=='observe' && mode!=='filter') return Promise.reject(new Error('invalid input mode'));
     if (!Array.isArray(tokens) || tokens.some(function(t){return !KEY_CODE_RE.test(t) || +t>767;})) return Promise.reject(new Error('invalid input codes'));
     if (mode==='filter' && !tokens.length) return Promise.reject(new Error('save a physical rule before enabling interception'));
-    var requestGeneration=self.generation;
+    var reqSeq=++self.startSeq, requestGeneration=self.generation;
     return (Array.isArray(list) ? Promise.resolve(list) : self.inventory()).then(function(list){
-        if(requestGeneration!==self.generation)throw new Error('input request cancelled');
+        if(reqSeq!==self.startSeq||requestGeneration!==self.generation)throw new Error('input request cancelled');
         var selected=list.find(function(d){return (d.node===device || d.unique && d.name===device) && d.selectable;});
         if (!selected) throw new Error('select a unique physical remote device');
         self.stop(); self.events=[]; self.lastError=null; var generation=self.generation, secret=crypto.randomBytes(32), nonce=crypto.randomBytes(32), seq=0, authenticated=false;
@@ -102,7 +102,9 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                     var split;
                     while((split=buffer.indexOf('\n'))>=0){
                         if(!active()||self.socket!==socket){socket.destroy();return;}
-                        var line=buffer.slice(0,split);buffer=buffer.slice(split+1);var last=line.lastIndexOf('\t'), payload=line.slice(0,last), mac=line.slice(last+1);
+                        var line=buffer.slice(0,split);buffer=buffer.slice(split+1);var last=line.lastIndexOf('\t');
+                        if(last<0){fail(new Error('invalid input authentication'));return;}
+                        var payload=line.slice(0,last), mac=line.slice(last+1);
                         var expected=crypto.createHmac('sha256',secret).update(nonce).update(Buffer.from([0])).update(payload).digest();
                         if(!MAC_HEX_RE.test(mac)||!crypto.timingSafeEqual(expected,Buffer.from(mac,'hex'))){fail(new Error('invalid input authentication'));return;}
                         var fields=payload.split('\t');
@@ -135,11 +137,11 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                 // remote grabbed: every new helper then fails EVIOCGRAB with EBUSY and the interception never connects (S95B on 1720.7,
                 // static analysis 2026-11-19). Before a filter start any other filter helper is ended; observers (listen) are left alone.
                 // The pattern does not rely on the argument separators: the Q80A's tr leaves the NULs and the shell drops them.
-                var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill -9 "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
+                var stale='for d in /proc/[0-9]*; do c=; read -r c < "$d/cmdline" 2>/dev/null; case "$c" in /usr/bin/dotnet*) case "$(tr \'\\0\' \' \' < "$d/cmdline" 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*) kill -9 "${d#/proc/}" 2>/dev/null;; esac;; esac; done; ';
                 // The last helper's words are kept one start longer (vetro-input.prev.log): a helper that ended on its own (the remote went
                 // away, an exception) is followed within seconds by a new start, whose log would otherwise replace them.
-                var command=stale+'umask 077; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
-                self.execute(command,5000,active).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
+                var command=stale+'umask 077; rm -f /tmp/vetro-input-*.token; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
+                self.execute(command,5000,active).then(function(r){if(!r||r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
         });
     });
