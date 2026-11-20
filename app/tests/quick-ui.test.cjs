@@ -30,7 +30,7 @@ const sandbox={document:{getElementById:el,querySelectorAll:()=>[],querySelector
   else if(url==='/hbbtv')data={value:19,off:true,valueOff:true,flag:true,running:false,serviceRunning:false,serviceDisabled:true,canRestore:true,restoreValue:20};
   else if(url==='/keep-removed'&&!body)data={enabled:true,packages:['org.tizen.primevideo','MCmYXNxgcu'],last:{source:{ids:['1'],changed:false,error:null}},history:[]};
   else if(url==='/keep-removed'){keepPost=body;data={ok:true,enabled:body.action==='enable'?true:body.action==='disable'?false:true,packages:body.action==='allow'?['MCmYXNxgcu']:['org.tizen.primevideo','MCmYXNxgcu'],last:{source:{ids:[],changed:true,error:null}},history:[]};}
-  else if(url==='/wins'&&!body)data={ts:1,wins:{firmware:{status:'off',value:1},multiscreen:{status:'on',running:false},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:'on',running:0,brakes:3,chosen:true,dnsBlocked:false},airplay:{status:'off',running:true}}};
+  else if(url==='/wins'&&!body)data={ts:1,wins:{firmware:{status:'off',value:1},quickboot:{status:'off'},multiscreen:{status:'on',running:false},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:'on',running:0,brakes:3,chosen:true,dnsBlocked:false},airplay:{status:'off',running:true}}};
   else if(url==='/wins')data={id:body.id,changed:true,status:body.on?'on':'off',previous:1,value:body.on?0:1};
   else if(url==='/dns')data={enabled:false,applied:false,domains:[],resolvers:[]};
   else if(url==='/leftovers'&&!body)data={files:[{name:'old.wgt',size:2048,isPackage:true},{name:'device-profile.xml',size:10,isPackage:false}],packageBytes:2048,storageBefore:{availableBytes:1048576*900},errors:[],
@@ -67,6 +67,8 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.doesNotMatch(tracking,/coba\.adagent/);
  assert.match(voice,/Disable all voice assistants/);assert.match(voice,/Partly done · 4 of 5 components still enabled/,'the assistant hub is a member of the all-in switch');
  assert.match(el('quickControl').innerHTML,/Block firmware and software updates/);assert.doesNotMatch(el('quickControl').innerHTML,/data-win-switch="firmware" checked/);
+ assert.match(html,/Essential settings/);assert.doesNotMatch(html,/Firmware updates<\/h2>/,'the section is now Essential settings');
+ assert.match(el('quickControl').innerHTML,/<h3>Quick boot<\/h3>/);assert.match(el('quickControl').innerHTML,/Experimental · may not work on this TV/);assert.match(el('quickControl').innerHTML,/data-win-switch="quickboot"/);
  assert.doesNotMatch(html,/quick wins applied|quickScore/,'no progress counter');
  assert.doesNotMatch(html,/quickPrivacy|Disable viewing-data tracking/,'one Advertising and tracking section: the ACR switch is covered by the all-in switch');
  assert.equal((tracking.match(/data-quick-toggle=/g)||[]).length,1,'a single tracking group switch');

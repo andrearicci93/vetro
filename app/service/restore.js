@@ -174,6 +174,7 @@ Restore.prototype.plan = function () {
             ['ambient', 'Ambient autostart', w && w.ambient && w.ambient.status !== 'off', 'Lets Samsung’s own start of the screen saver run again.'],
             ['multiscreen', 'Multi View autostart', w && w.multiscreen && w.multiscreen.status === 'on', 'Removes the preload file, so Multi View loads at boot again.'],
             ['firmware', 'Firmware and software updates', w && w.firmware && (w.firmware.status !== 'off' || (autoSaved && w.firmware.value === 0)), 'Unmasks the update services and puts the automatic update value back to what it was.'],
+            ['quickboot', 'Quick boot (experimental)', w && w.quickboot && w.quickboot.status !== 'off', 'Removes the four early boot markers, so the TV starts with its normal boot step again.'],
             ['airplay', 'AirPlay receiver', w && w.airplay && w.airplay.status !== 'off', 'Removes the do-not-start files, so the AirPlay receiver can start again.']
         ].filter(function (c) {
             // A TV without the AirPlay receiver has nothing to put back, so it gets no row.
@@ -267,6 +268,7 @@ Restore.prototype.run = function () {
             ['win-ambient', function () { return self.runWin('ambient', 'Samsung’s own Ambient start runs again.'); }],
             ['win-multiscreen', function () { return self.runWin('multiscreen', 'The preload file is removed.'); }],
             ['win-firmware', function () { return self.runWin('firmware', 'Update lock removed and the automatic update value put back.'); }],
+            ['win-quickboot', function () { return self.runWin('quickboot', 'Quick boot off; the normal boot step is back.'); }],
             ['win-airplay', function () { return self.runWin('airplay', 'The AirPlay receiver can start again.'); }],
             ['keep-removed', function () { return self.runKeepRemoved(); }],
             ['hbbtv', function () { return self.runHbbtv(); }],

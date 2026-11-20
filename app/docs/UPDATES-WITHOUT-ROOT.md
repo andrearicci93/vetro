@@ -15,7 +15,7 @@ Turning Auto update off leaves all four able to run. The background loop still s
 
 ## What Vetro does with root, and what it cannot do without
 
-With root, Quick settings → General → **Block firmware and software updates** stops and masks those update services and sets Auto update off. The block lasts until the next boot, so Vetro applies it again after every restart. Turning the switch off puts everything back. The USB recovery path is left alone.
+With root, Quick settings → General → **Essential settings** → **Block firmware and software updates** stops and masks those update services and sets Auto update off. The block lasts until the next boot, so Vetro applies it again after every restart. Turning the switch off puts everything back. The USB recovery path is left alone.
 
 Without root, Vetro cannot stop or mask any of these services, and the dashboard shows **Root required** instead of the switch. The only reliable block is then the network.
 

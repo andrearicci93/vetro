@@ -26,7 +26,7 @@ function tv(start){
  const execute=async cmd=>{const sh=Buffer.from(cmd.split(' ')[1],'base64').toString();s.calls.push(sh);
   if(sh.includes('echo "AU|'))return {exit_code:0,stdout:'AU|value = '+s.autoupdate+' (Int32)\nFWS|value = '+s.fwsvc+' (Int32)\n'+
    qw.FWUNITS.map(u=>'LS|'+u+'|'+(s.fwMasked[u]?'masked':'loaded')+'|'+(s.fwMasked[u]?'inactive':s.fwActive[u]?'active':'inactive')).join('\n')+
-   '\nMS|'+(s.ms?1:0)+'\nMR|'+(s.msRun?1:0)+'\nAR|'+(s.ambRun?1:0)+'\nTB|'+(s.telBrakes||0)+'\nTR|'+s.telRun+'\nAP|'+(s.apPresent?1:0)+'\nAF|'+(s.apFlag?1:0)+'\nAS|'+(s.apSvc?'active':'inactive')+'\nAW|'+(s.apWeb?1:0)+'\n'};
+   '\nMS|'+(s.ms?1:0)+'\nMR|'+(s.msRun?1:0)+'\nAR|'+(s.ambRun?1:0)+'\nTB|'+(s.telBrakes||0)+'\nTR|'+s.telRun+'\nAP|'+(s.apPresent?1:0)+'\nAF|'+(s.apFlag?1:0)+'\nAS|'+(s.apSvc?'active':'inactive')+'\nAW|'+(s.apWeb?1:0)+'\nQB|'+(s.parseinfo&&s.parseinfo.includes('VETRO_UPDATE_LOCK_HOOK')?1:0)+'\n'};
   if(sh.startsWith('vconftool get'))return {exit_code:0,stdout:'value = '+(sh.includes(qw.FWSERVICE)?s.fwsvc:s.autoupdate)+' (Int32)\n'};
   const set=/vconftool set -f -t int (\S+) (-?\d+)/.exec(sh);if(set&&/^vconftool set/.test(sh)){if(s.failSet)return {exit_code:1,stderr:'denied',stdout:''};const v=Number(set[2]);
    if(set[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=v;}else if(s.keep||v===1)s.autoupdate=v;return {exit_code:0,stdout:''};}
@@ -50,9 +50,9 @@ function store(){let data=null;return {readFileSync(){if(data===null)throw Error
 const noWait=()=>Promise.resolve();
 (async()=>{
  // Reading
- assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null});
- assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null});
- assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null},'what cannot be read stays unknown');
+ assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
+ assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
+ assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null},'what cannot be read stays unknown');
  let t=tv(),io=store(),w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'boot-1'});
  let st=await w.read();assert.deepEqual([st.wins.firmware.status,st.wins.multiscreen.status,st.wins.ambient.status],['off','off','off']);assert.equal(st.wins.telemetry.status,'off');
 
@@ -118,6 +118,22 @@ const noWait=()=>Promise.resolve();
  t.s.fwMasked={};const beforeMasks=t.s.maskRuns;assert.deepEqual(await w.boot(null),[]);assert.equal(t.s.maskRuns,beforeMasks,'once per boot');
  bid='fw-b2';t.s.fwMasked={};fwDid=await w.boot(null);assert.ok(fwDid.includes('firmware'),'next boot: again');
 
+ // Quick boot: the four markers at ~10 s, only while chosen; it shares the AT-HUB hook with the firmware lock
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
+ r=await w.apply('quickboot',true);assert.equal(r.status,'on');assert.equal(r.hook,true);assert.equal(t.s.hookInstalled,true);
+ assert.equal(JSON.parse(io.data).quickboot,true);assert.ok(/graphical.target.done/.test(t.s.parseinfo)&&/quickboot/.test(t.s.parseinfo));
+ r=await w.apply('quickboot',false);assert.equal(r.status,'off');assert.equal(t.s.hookInstalled,false);assert.equal(JSON.parse(io.data).quickboot,false);
+ // With the update lock on, turning quick boot off keeps the shared hook; turning the lock off last removes it
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});await w.apply('firmware',true);await w.apply('quickboot',true);
+ r=await w.apply('quickboot',false);assert.equal(r.status,'off');assert.equal(t.s.hookInstalled,true,'the update lock still needs the hook');
+ r=await w.apply('firmware',false);assert.equal(t.s.hookInstalled,false,'both off: the vendor script is back');
+ // A TV without the AT-HUB script cannot use quick boot; the failed choice is not kept
+ t=tv({parseinfo:null});io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
+ await assert.rejects(w.apply('quickboot',true),/not available/);assert.equal(JSON.parse(io.data).quickboot,false);
+ // At boot quick boot installs the hook without masking the update units; the firmware win does both
+ t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'qb-b1',skipAmbient:true});
+ await w.apply('quickboot',true);t.s.fwMasked={};t.s.parseinfo=PARSEINFO;t.s.hookInstalled=false;
+ const qbDid=await w.boot(null);assert.ok(qbDid.includes('quickboot'));assert.equal(t.s.hookInstalled,true);assert.deepEqual(Object.keys(t.s.fwMasked),[],'quick boot alone does not mask updates');
  // MultiScreen: one file, owned by the app's group, the app is stopped now, nothing is replaced
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
  r=await w.apply('multiscreen',true);assert.equal(r.status,'on');assert.equal(t.s.ms,true);assert.equal(t.s.msRun,false);
@@ -203,7 +219,7 @@ const noWait=()=>Promise.resolve();
  w.remember('telemetry',true);w.busy=true;w.changing='firmware';
  assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
  // AirPlay (idea by zabique): the flag files keep the receiver down; partial while something still runs; boot stops the web app
- assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false}));
+ assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null}));
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'ap-1',skipAmbient:true});
  assert.equal((await w.read()).wins.airplay.status,'off');
  r=await w.apply('airplay',true);assert.equal(r.status,'on');assert.equal(JSON.parse(io.data).airplay,true);
