@@ -89,6 +89,9 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  assert.doesNotMatch(html.slice(html.indexOf('<section id="diagnostics"'),html.indexOf('<section id="plugins"')),/id="updateVersion"/);
  assert.match(sandbox.previewMarkup({entries:[]}),/slug=allapps/);assert.match(sandbox.previewMarkup({entries:[]}),/slug=samsunghome/);
  assert.match(sandbox.previewMarkup({entries:[],noMotion:true}),/lp-reduced/);
+ assert.equal(require('../service/dashboard.js')(),html,'dashboard HTML is memoized');
+ assert.ok(html.includes('UI_GUIDE_SCENE=TUNER_SLIDES[1].svg'),'guide scene reuses TUNER_SLIDES[1].svg');
+ assert.ok(html.includes('(ix.shell||1)>(updateState.shell||1)'),'shell comparison defaults missing shell to 1');
  console.log('PASS dashboard states: disabled/running independence, startup mixtures, unknown and stale samples, package expansion');
 })().catch(e=>{console.error(e);process.exitCode=1});
 

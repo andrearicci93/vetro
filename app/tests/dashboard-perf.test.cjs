@@ -128,9 +128,9 @@ async function tvPage() {
   Object.defineProperty(screen, 'innerHTML', {get() { return this._h; }, set(v) {
     count.screen++; this._h = v; this.firstChild = {};
     if (!/class="tiles"/.test(v)) { this.children = []; return; }
-    const tiles = [...v.matchAll(/<div class="(tile(?: [a-z ]+)?)">/g)].map(m => { const t = mk(); t._c = m[1]; return t; });
+    const tiles = [...v.matchAll(/<div class="(tile(?: [a-z ]+)?)"[^>]*>/g)].map(m => { const t = mk(); t._c = m[1]; return t; });
     const hero = {}; Object.defineProperty(hero, 'outerHTML', {set() { count.hero++; }});
-    const diag = {_c: /<div class="(diag[^"]*)">/.exec(v)[1], children: [{}, {innerHTML: ''}, {innerHTML: ''}]};
+    const diag = {_c: /<div class="(diag[^"]*)"[^>]*>/.exec(v)[1], children: [{}, {innerHTML: ''}, {innerHTML: ''}]};
     Object.defineProperty(diag, 'className', {get() { return this._c; }, set(x) { this._c = x; }});
     this.children = [hero, {lastChild: {innerHTML: ''}}, {children: tiles}, diag, {}];
   }});
@@ -169,8 +169,8 @@ async function tvPage() {
   const now = tiles().map(t => t.className), strip = screen.children[3].className;
   context.mainDrawn = null; context.render(context.lastScreen, false);
   assert.equal(count.screen, base.screen + 1);
-  assert.deepEqual([...screen.innerHTML.matchAll(/<div class="(tile(?: [a-z ]+)?)">/g)].map(m => m[1]), now, 'the tile classes equal a full drawing');
-  assert.equal(/<div class="(diag[^"]*)">/.exec(screen.innerHTML)[1], strip);
+  assert.deepEqual([...screen.innerHTML.matchAll(/<div class="(tile(?: [a-z ]+)?)"[^>]*>/g)].map(m => m[1]), now, 'the tile classes equal a full drawing');
+  assert.equal(/<div class="(diag[^"]*)"[^>]*>/.exec(screen.innerHTML)[1], strip);
   // The pairing check and the PIN countdown: nothing drawn when nothing changed, nothing done while hidden
   const poll = intervals.find(i => i.ms === 2000), pinTick = intervals.find(i => i.ms === 1000 && /paintPairing/.test(String(i.f)));
   const p0 = count.pin, x0 = sent.length; poll.f(); poll.f(); pinTick.f();

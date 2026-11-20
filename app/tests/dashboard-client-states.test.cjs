@@ -56,6 +56,7 @@ process.on('exit', code => { if (code === 0 && !finished) { console.error('FAIL 
     sandbox.drawMonitor({ts: Date.now(), scope: 'summary', memory: {}, cpu: {cores: []}, network: []});
     sandbox.renderProcesses();
     assert.match(el('processRows').innerHTML, /data-process="7"/, 'the process list survives a summary sample');
+    assert.match(el('topProcesses').innerHTML, /example/, 'the overview top processes table keeps the last full sample across summary polls');
     assert.doesNotThrow(() => el('processRows').onclick({target: {closest: () => ({dataset: {process: '7'}})}}), 'a click on a row after a summary sample does not throw');
     console.log('PASS the process list keeps the last full sample when a summary sample arrives');
 
@@ -307,6 +308,15 @@ process.on('exit', code => { if (code === 0 && !finished) { console.error('FAIL 
     await tick();
     assert.equal(fetched('/plugins').length, 0, 'no rebuild while the file input has focus');
     sandbox.document.activeElement = null;
+    calls.length = 0;
+    let releasePlugins;
+    gates['GET /plugins'] = [new Promise(r => releasePlugins = r)];
+    const p1 = sandbox.pollPlugins(), p2 = sandbox.pollPlugins();
+    assert.equal(p1, p2, 'concurrent plugin polls coalesce onto the in-flight request');
+    releasePlugins(); await p1;
+    assert.equal(fetched('/plugins').length, 1, 'only one /plugins request is sent while a poll is open');
+    delete gates['GET /plugins'];
+    calls.length = 0;
     intervals.forEach(i => i.fn());
     await tick();
     assert.ok(fetched('/plugins').length > 0, 'the refresh runs again afterwards');

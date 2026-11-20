@@ -21,6 +21,7 @@ async function run(options) {
     if (o.loopbackBlocked && /^http:\/\/127\.0\.0\.1/.test(this.url)) return this.onerror && this.onerror();   // The Frame 2025 (#122): the TV app cannot reach loopback
     if (o.refused && this.method === 'POST') { sent.push({method: this.method, url: this.url, body: JSON.parse(body)}); return this.onerror(); }   // preflight refused
     if (o.refused && /\/(status|screen)$/.test(this.url)) { sent.push({method: this.method, url: this.url}); this.status = o.refused.status; this.responseText = JSON.stringify(o.refused.body); return this.onload(); }
+    if (o.failFetch && /\/status$/.test(this.url) && o.failFetch.n-- > 0) { sent.push({method: this.method, url: this.url}); return this.onerror(); }
     if (o.pendingRefused && /\/auth\/pending$/.test(this.url)) { sent.push({method: this.method, url: this.url}); this.status = 403; this.responseText = JSON.stringify(o.pendingRefused); return this.onload(); }
     if (this.method === 'POST' && /\/screen\/control$/.test(this.url)) {
       const b = JSON.parse(body); sent.push({method: this.method, url: this.url, body: b});

@@ -52,7 +52,7 @@ function candidates(rows) {
     rows = Array.isArray(rows) ? rows : [];
     var out = [];
     LIST.forEach(function (entry) {
-        var byPackage = {}, order = [];
+        var byPackage = Object.create(null), order = [];
         rows.forEach(function (row) {
             if (!matches(entry, row) || typeof row.packageId !== 'string') return;
             if (!byPackage[row.packageId]) { byPackage[row.packageId] = []; order.push(row.packageId); }
@@ -102,7 +102,7 @@ function uninstall(id, deps) {
                     if (r && Array.isArray(r.apps)) last = r.apps;
                     if (r && r.ok) removed.push(pkg.packageId);
                     else failure = (r && r.error) || 'The TV did not confirm that it was removed';
-                }, function (e) { failure = e.message; });
+                }, function (e) { failure = (e && e.message) || String(e); });
             });
         }, Promise.resolve()).then(function () {
             return {ok: !failure, id: id, label: entry.label, removed: removed, error: failure, items: candidates(last)};

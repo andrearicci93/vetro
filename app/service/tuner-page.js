@@ -45,9 +45,10 @@ function veil(w, h, alpha) {
 }
 // A channel logo stand-in, as the mock-ups draw it (design/tuner.html): a coloured disc with the initials. The TV shows the channel's saved picture.
 function logo(name, x, y, size) {
+    name = name ? String(name) : 'TV';
     var h = 0, i;
     for (i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-    var initials = name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase();
+    var initials = name.replace(/[^A-Za-z0-9 ]/g, '').split(' ').map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase() || 'TV';
     return '<circle cx="' + n(x + size / 2) + '" cy="' + n(y + size / 2) + '" r="' + n(size / 2) + '" fill="hsl(' + h + ',55%,40%)"/>' +
         text(x + size / 2, y + size / 2 + size * 0.11, Math.round(size * 0.3), 600, 1, initials, 'middle');
 }
@@ -67,7 +68,7 @@ function progress(x0, x1, lineY, start, end, left, f) {
 // One picture: the TV picture (the launcher preview's sunset), the parts, a text for screen readers.
 function screen(label, parts) {
     return '<svg class="tuner-screen" viewBox="0 0 1920 1080" role="img" aria-label="' + esc(label) + '" font-family="' + FONT + '" font-weight="500">' +
-        '<use href="#tvScene"/>' + parts.join('') + '</svg>';
+        '<use href="#tvScene" xlink:href="#tvScene"/>' + parts.join('') + '</svg>';
 }
 
 // ---- the six views (tuner/src/Ui/Views.cs, InfoView.cs, GuideView.cs, Core/GuideScene.cs) ----

@@ -8,8 +8,9 @@
 // them (no module-level values). Not screenshots: the TV picture behind them is the launcher preview's sunset (tuner-page.js DEFS).
 
 function osdSvg(label, parts) {
-    return '<svg class="tuner-screen osd-screen" viewBox="0 0 1920 1080" role="img" aria-label="' + label + '" font-family="SamsungOneUI, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="500">' +
-        '<use href="#tvScene"/>' + parts.join('') + '</svg>';   // the shared TV picture (tuner-page.js DEFS), as in the launcher preview
+    var safeLabel = String(label == null ? '' : label).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return '<svg class="tuner-screen osd-screen" viewBox="0 0 1920 1080" role="img" aria-label="' + safeLabel + '" font-family="SamsungOneUI, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="500">' +
+        '<use href="#tvScene" xlink:href="#tvScene"/>' + parts.join('') + '</svg>';   // the shared TV picture (tuner-page.js DEFS), as in the launcher preview
 }
 
 // A rounded box in a colour at an alpha (0..1).
@@ -24,8 +25,9 @@ function osdPanel(x, y, w, h, r) {
 
 // A text placed by its baseline; weight 500 unless given (600 for names and titles).
 function osdText(x, base, size, alpha, str, anchor, color, weight) {
+    var safeStr = String(str == null ? '' : str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return '<text x="' + x + '" y="' + base + '" font-size="' + size + '"' + (weight ? ' font-weight="' + weight + '"' : '') + ' fill="' + (color || '#fff') + '"' +
-        (alpha < 1 ? ' fill-opacity="' + alpha + '"' : '') + (anchor ? ' text-anchor="' + anchor + '"' : '') + '>' + str + '</text>';
+        (alpha < 1 ? ' fill-opacity="' + alpha + '"' : '') + (anchor ? ' text-anchor="' + anchor + '"' : '') + '>' + safeStr + '</text>';
 }
 
 // The TV's glyphs (dock/res, 96 px pictures drawn at 40), as outlines in their 96 px grid: the speaker with 0..2 level bars (vol_icon_N), the
@@ -112,7 +114,7 @@ function osdTasksPreview() {
         // short words (22 px), at the places the launcher puts them (keys 50 px above the card's foot, words on the baseline 24 px above it).
         for (j = 0; j < foot.length; j++) {
             if (foot[j][0] === 'k') {
-                var pic = typeof REMOTE_ICONS !== 'undefined' && REMOTE_ICONS[foot[j][1]];
+                var pic = typeof REMOTE_ICONS !== 'undefined' && Object.prototype.hasOwnProperty.call(REMOTE_ICONS, foot[j][1]) && REMOTE_ICONS[foot[j][1]];
                 if (pic) parts.push(pic.replace('<svg ', '<svg x="' + (x + foot[j][2]) + '" y="' + (y + h - 50) + '" width="34" height="34" style="color:#fff;opacity:' + ka + '" '));
             } else parts.push(osdText(x + foot[j][2], y + h - 24, 22, ta, foot[j][1]));
         }

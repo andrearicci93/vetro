@@ -69,6 +69,7 @@ function fetchText(source, name, max) {
             lib = target.protocol === 'https:' ? https : http;
         } catch (e) { return reject(problem('The update address is not valid', 400)); }
         timer = setTimeout(function () { finish(problem('GitHub did not answer in time', 504)); }, FETCH_MS);
+        if (timer.unref) timer.unref();
         req = lib.get({protocol: target.protocol, hostname: target.hostname, port: target.port, path: target.path,
             headers: {'user-agent': 'Vetro', 'cache-control': 'no-cache'}}, function (res) {
             var chunks = [], size = 0;
@@ -78,14 +79,16 @@ function fetchText(source, name, max) {
                     : 'GitHub answered ' + res.statusCode + ' for the ' + (name.indexOf('update-index') === 0 ? 'update list' : 'update'), 502));
             }
             res.on('data', function (c) {
+                if (done) return;
                 size += c.length;
                 if (size > max) return finish(problem('The update is larger than expected', 502));
                 chunks.push(c);
             });
+            res.on('aborted', function () { finish(problem('Download interrupted', 502)); });
             res.on('end', function () { finish(null, Buffer.concat(chunks).toString('utf8')); });
-            res.on('error', function (e) { finish(problem('Download failed: ' + e.message, 502)); });
+            res.on('error', function (e) { finish(problem('Download failed: ' + ((e && e.message) || String(e)), 502)); });
         });
-        req.on('error', function (e) { finish(problem('Could not reach GitHub: ' + e.message, 502)); });
+        req.on('error', function (e) { finish(problem('Could not reach GitHub: ' + ((e && e.message) || String(e)), 502)); });
     });
 }
 
@@ -94,18 +97,18 @@ function fetchText(source, name, max) {
 // makes. A part this TV cannot have is left out (the tuner's files missing, its plugin stopped, a TV its checks refuse; the
 // launcher's files missing or its plugin stopped for the other three). The bar, the pad and the Control center are drawn by
 // the launcher's process, so they show while the launcher (or a custom launcher) is on; their switches are saved either way.
-function uiParts(d) {
-    var parts = [], launcher = d.dock.readState();
+function uiParts(d, launcher) {
+    var parts = [], state = launcher || d.dock.readState();
     if (d.dock.installed() && d.pluginRunning('launcher')) {
-        parts.push({name: 'keys', on: launcher.volumePill && launcher.numberPad});
-        parts.push({name: 'cards', on: d.dock.cardsEffective(launcher).length > 0});
+        parts.push({name: 'keys', on: state.volumePill && state.numberPad});
+        parts.push({name: 'cards', on: d.dock.cardsEffective(state).length > 0});
     }
     if (d.tuner.installed() && d.pluginRunning('tuner') && !d.tuner.unsupported) parts.push({name: 'tuner', on: d.tuner.readState().enabled});
     return parts;
 }
 
-function uiTile(d, agent) {
-    var parts = uiParts(d), on = parts.filter(function (p) { return p.on; }).length;
+function uiTile(d, agent, launcher) {
+    var parts = uiParts(d, launcher), on = parts.filter(function (p) { return p.on; }).length;
     if (!parts.length) return {state: 'na', why: !d.dock.installed() && !d.tuner.installed() ? 'Not in this Vetro package' : STOPPED};
     if (!agent) return {state: 'na', why: 'Needs root access'};
     return on === parts.length ? {state: 'on'} : on === 0 ? {state: 'off'} : {state: 'part', left: parts.length - on, of: parts.length};
@@ -121,7 +124,7 @@ function setUi(d, on) {
         if (p.name === 'cards') step(function () {
             var s = d.dock.readState();
             if (on === (d.dock.cardsEffective(s).length > 0)) return null;
-            return d.dock.setCards(on ? (s.lastCards.length ? s.lastCards : ['tasks']) : []);
+            return d.dock.setCards(on ? (Array.isArray(s.lastCards) && s.lastCards.length ? s.lastCards : ['tasks']) : []);
         });
         if (p.name === 'tuner') step(function () {
             if (on === d.tuner.readState().enabled) return null;
@@ -164,7 +167,7 @@ Controls.prototype.read = function (canControl) {
                 : !agent ? {state: 'na', why: 'Needs root access'} : {state: launcher.enabled || launcher.customApp ? 'on' : 'off', custom: !!launcher.customApp},
             ads: groupTile(groups.ads, apps),
             voice: groupTile(groups.voice, apps),
-            ui: uiTile(d, agent)
+            ui: uiTile(d, agent, launcher)
         };
         return {canControl: !!canControl, tiles: tiles, update: {configured: status.configured, version: status.version, busy: !!status.busy,
             pending: !!status.pending}};
@@ -188,7 +191,7 @@ Controls.prototype.act = function (p) {
             return fetchText(d.updater.status().source, r.index.file, BUNDLE_MAX).then(function (bundle) {
                 return d.updater.apply(bundle, r.index.sha256);
             }).then(function () { return {ok: true, phase: 'run', version: r.version}; }, function (e) {
-                throw problem(e.message, e.code === 'busy' || e.code === 'pending' ? 409 : e.statusCode || 400);
+                throw problem((e && e.message) || String(e), e && (e.code === 'busy' || e.code === 'pending') ? 409 : (e && e.statusCode) || 400);
             });
         });
     }
@@ -208,7 +211,7 @@ Controls.prototype.act = function (p) {
         task = d.applyQuick(QUICK[id], on);          // "on" here means disabled, as for the dashboard's switch
     }
     return task.then(function () { return self.read(true).then(function (r) { return {ok: true, tile: r.tiles[id]}; }); }, function (e) {
-        if (!e.statusCode) e.statusCode = 409;      // a refusal of the TV or of a lock, as the dashboard's routes answer it
+        if (e && !e.statusCode) e.statusCode = 409;      // a refusal of the TV or of a lock, as the dashboard's routes answer it
         throw e;
     });
 };

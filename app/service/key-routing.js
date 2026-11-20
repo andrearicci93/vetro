@@ -38,7 +38,7 @@ function keyCommand(nativeKey, inject) {
     var word = Object.prototype.hasOwnProperty.call(TUNER_KEYS, nativeKey) ? TUNER_KEYS[nativeKey] : null;
     var shown = alive(TUNER_PID, TUNER_PIPE) + ' && [ -e ' + TUNER_SHOWN + ' ]';
     if (word) return 'if ' + shown + '; then ' + write(TUNER_PIPE, word) + '; else ' + inject + '; fi';
-    if (TUNER_STEPS_ASIDE[nativeKey]) return 'if ' + shown + '; then ' + write(TUNER_PIPE, 'hide') + '; fi; ' + inject;
+    if (Object.prototype.hasOwnProperty.call(TUNER_STEPS_ASIDE, nativeKey)) return 'if ' + shown + '; then ' + write(TUNER_PIPE, 'hide') + '; fi; ' + inject;
     return inject;
 }
 

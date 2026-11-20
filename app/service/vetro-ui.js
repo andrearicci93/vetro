@@ -61,7 +61,7 @@ function uiKeysOf(owner) {
 
 // The user's shortcuts on the given keys (a list from uiReservedKeys or uiKeysOf): enabled physical rules only.
 function uiConflicts(rules, keys) {
-    var codes = {}, out = [];
+    var codes = Object.create(null), out = [];
     for (var i = 0; i < (keys || []).length; i++) codes[keys[i].code] = keys[i];
     (rules || []).forEach(function (r) {
         var k = r && r.enabled && r.trigger && r.trigger.type === 'physical' ? codes[String(r.trigger.value)] : null;

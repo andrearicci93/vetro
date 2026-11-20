@@ -1,6 +1,7 @@
 'use strict';
 // Regular expressions compiled once at module load, not on every call.
 var AVAILABLE_MB_RE = /^MemAvailable:\s+(\d+)\s*kB/m;
+var FAIL_CODE_RE = /^fail:([A-Za-z][A-Za-z-]{0,31})$/;
 // GET /screen: the few facts the TV screen (index.html) shows. Everything is read in memory or from /proc;
 // the only root command is the launcher's pid check, and only while the launcher is on.
 
@@ -8,7 +9,7 @@ function address(interfaces) {
     var names = Object.keys(interfaces || {}), i, j, list;
     for (i = 0; i < names.length; i++) {
         list = interfaces[names[i]] || [];
-        for (j = 0; j < list.length; j++) if (list[j].family === 'IPv4' && !list[j].internal) return list[j].address;
+        for (j = 0; j < list.length; j++) if (list[j] && (list[j].family === 'IPv4' || list[j].family === 4) && !list[j].internal) return list[j].address;
     }
     return null;
 }
@@ -33,7 +34,7 @@ function rootReason(p) {
     if (p.unsupported === true) return {reason: 'unsupported', code: null};
     if (p.prepareError) return {reason: 'prepare', code: null};
     var launches = (Array.isArray(p.attempts) ? p.attempts : []).filter(function (a) { return a && a.phase === 'launch'; });
-    var last = launches[launches.length - 1], m = last && /^fail:([A-Za-z][A-Za-z-]{0,31})$/.exec(last.connect || '');
+    var last = launches[launches.length - 1], m = last && FAIL_CODE_RE.exec(last.connect || '');
     // Right after a start the port may not be open yet: one refusal is not a verdict, two in a row are.
     if (m && launches.length > 1) return {reason: 'sdb', code: m[1]};
     if (last && last.connect === 'ok' && launches.length > 1) return {reason: 'agent', code: null};
