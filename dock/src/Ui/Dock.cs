@@ -382,7 +382,11 @@ namespace Launcher.Ui
             m = _initialsH[i]; _initialsH[i] = _initialsH[j]; _initialsH[j] = m;
             int g = _glowRgb[i]; _glowRgb[i] = _glowRgb[j]; _glowRgb[j] = g;
             string k = _iconKey[i]; _iconKey[i] = _iconKey[j]; _iconKey[j] = k;
-            _iconBox[i].W = _iconBox[j].W = -1; _iconAlpha[i] = _iconAlpha[j] = -1;
+            // Both tiles' places are forgotten in full: Place moves an object only when X or Y differ from the last box, and the
+            // slot keeps its X and Y, so forgetting only the width left each icon drawn where it was (the row looked unchanged
+            // after a move, while the order underneath had changed: LS03B, 2026-11-20).
+            _iconBox[i] = _iconBox[j] = new Box { X = int.MinValue, Y = int.MinValue, W = -1, H = -1 };
+            _iconAlpha[i] = _iconAlpha[j] = -1;
             _hlRgb = _hlRgb2 = -1;
             _fader.Invalidate();
         }
