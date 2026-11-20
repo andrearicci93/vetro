@@ -120,5 +120,20 @@ const {Dock} = require('../service/dock.js');
     await rm.event({code: 66, action: 'up', decision: 'blocked'});
     await new Promise(r => setTimeout(r, 500));
     assert.deepEqual(m, ['volmute\n'], 'mute is one change per press');
+
+    // Home key (63) when home interception is active: single-shot toggle to FIFO, XF86Home fallback when FIFO is down.
+    assert.deepEqual(vk.withTokens(['560'], {home: true}), ['560', '63']);
+    assert.equal(vk.wants({code: 63, action: 'down', decision: 'blocked'}, {home: true}), true);
+    assert.equal(vk.wants({code: 63, action: 'down', decision: 'blocked'}, {volume: true}), false);
+    const homeSent = [], homeFall = [];
+    const hr = vk.repeater({write: (p, t) => homeSent.push(t), reinject: k => homeFall.push(k)});
+    await hr.event({code: 63, action: 'down', decision: 'blocked'});
+    await hr.event({code: 63, action: 'repeat', decision: 'blocked'});
+    await hr.event({code: 63, action: 'up', decision: 'blocked'});
+    await new Promise(r => setTimeout(r, 500));
+    assert.deepEqual(homeSent, ['toggle\n'], 'Home is single-shot toggle');
+    assert.equal(await vk.handle({code: 63, action: 'down', decision: 'blocked'}, {write: () => { throw new Error('ENXIO'); }, reinject: async k => { homeFall.push(k); }}), 'native');
+    assert.deepEqual(homeFall, ['XF86Home'], 'Home falls back to XF86Home when FIFO cannot be opened');
+
     console.log('volume-keys ok');
 })().catch(e => { console.error(e); process.exit(1); });

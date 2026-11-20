@@ -1003,7 +1003,7 @@ function runActions(actions, direct, dispatchGuard) {
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var volumeKeys=require('./volume-keys.js');
 // The glass volume pill is on when the dock (or the custom launcher) runs and the user switched it on.
-function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true};}
+function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true,home:live};}
 var keyRouting=require('./key-routing.js');
 // volumeRoute (diagnostics): which way the last Vol / 123 key went to the launcher (its FIFO opened by the service, or written by the root
 // agent once the service was refused), or back to Samsung, with the service's errno for its own open. In memory only.

@@ -1462,8 +1462,8 @@ namespace Launcher
         private static byte OnFrame(IntPtr data)
         {
             byte again = Frame();
-            // The frame has been laid out (it is drawn when this callback returns): a Home guard that waited for it starts now.
-            if (GuardSpawn.Pending) ScheduleGuard();
+            // Wait until the entrance/exit animation finishes before spawning HomeGuard's subshell and app_launcher kills.
+            if (again == 0 && GuardSpawn.Pending) ScheduleGuard();
             return again;
         }
 
@@ -2088,7 +2088,7 @@ namespace Launcher
                             // As with the remote's Home (RawHome): an open osd 123 closes, or it stayed drawn under the Dock until its idle time.
                             case Command.Show: ClosePad(); _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
-                            case Command.Toggle: ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
+                            case Command.Toggle: ClosePad(); _perfWhy = "fifo-toggle"; if (_homeLaunch != null) { LaunchApp(_homeLaunch); break; } if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
                             case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
                             case Command.Pad: TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
@@ -2268,7 +2268,7 @@ namespace Launcher
             if (_guardApps == null) return;
             try
             {
-                NewGuardGeneration();
+                _guardGen++;
                 GuardSpawn.Set(HomeGuard.Command(_guardApps, _guardFile, _guardGen));
                 if (_anim == IntPtr.Zero) ScheduleGuard();
             }
@@ -2287,6 +2287,7 @@ namespace Launcher
             {
                 string cmd = GuardSpawn.Take();
                 if (cmd == null) return 0;
+                WriteGuardGeneration(_guardGen);
                 long t0 = _perf ? Stopwatch.GetTimestamp() : 0;
                 Libc.system(cmd);   // returns at once: the shell puts the whole chain in the background
                 if (_perf) Log("perf guard: shell started in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
@@ -2299,14 +2300,19 @@ namespace Launcher
         private static void CancelGuard()
         {
             if (_guardApps == null) return;
-            try { NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
+            try { GuardSpawn.Take(); NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
             catch (Exception ex) { Log("guard cancel: " + ex.Message); }
         }
 
         private static void NewGuardGeneration()
         {
             _guardGen++;
-            File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            WriteGuardGeneration(_guardGen);
+        }
+
+        private static void WriteGuardGeneration(int gen)
+        {
+            File.WriteAllText(_guardFile, gen.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         // ------------------------------------------------------------------ launching
