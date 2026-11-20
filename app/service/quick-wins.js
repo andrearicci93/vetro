@@ -20,8 +20,10 @@
 //             while the choice is saved and the app is still installed; it is installed only where the file is the
 //             known one (or a bash script that writes /proc/target_version); on other firmware the lock still starts
 //             with Vetro's root agent. swu-standalone.* is left alone: it is the USB recovery path.
-//             Evidence: topics/firmware-update-channels.md in the private wiki (dump + live Q80A, 2026-11-19);
-//             not tried on a TV. A firmware update that lands anyway replaces everything this win did.
+//             Evidence: topics/firmware-update-channels.md in the private wiki (dump + live Q80A, 2026-11-19 and
+//             2026-11-20). Tried on a Q80A fw 2310.0 after a cold reboot: the masks were in place 15 s after boot,
+//             before Vetro's service; other models are not tried. A firmware update that lands anyway replaces
+//             everything this win did.
 //   multiscreen  Samsung's own unit com.samsung.tv.multiscreen.service has ConditionPathExists=! on
 //             .../data/disable_preloading, so that file stops the preload at boot. The first Multi View
 //             after that starts cold. Nothing is replaced: removing the file puts everything back.
