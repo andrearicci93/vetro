@@ -246,15 +246,18 @@ Tuner.prototype.startScript = function (quiet) {
         'cd ' + q(this.dir),
         'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
-        env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 &',
+        '{ ' + env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
         'echo started'
     ].join('\n');
 };
 
 // The process is killed outright; only a pid that is really our dll is touched. The control pipe goes with it, so a
 // stale one cannot make a dashboard command look like it worked.
+// --no-block avoids blocking on Tizen 9 systemd/SMACK D-Bus JobRemoved; poll is-active text so deactivating still waits.
 Tuner.prototype.stopLines = function () {
-    return 'systemctl stop ' + UNIT + '.service >/dev/null 2>&1; ' +
+    return 'systemctl stop --no-block ' + UNIT + '.service >/dev/null 2>&1; ' +
+        'i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active ' + UNIT + '.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; ' +
+        'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
         '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + CONTROL;
 };
