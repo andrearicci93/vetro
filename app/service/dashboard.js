@@ -282,7 +282,7 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .rule-locked{color:var(--text)}.rule-locked .rkey{vertical-align:middle;margin-right:var(--s1)}.rule-locked .rkey svg{height:1.75rem}.rule-locked .lock-icon{width:16px;height:16px;vertical-align:-3px;margin-right:var(--s1);fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;color:var(--accent)}
 .subtabs{margin-bottom:var(--s4)}.subtabs button{font-size:var(--fs-s)}.ui-lead{margin:0 0 var(--s3);max-width:var(--vetro-prose-measure)}
 .ui-rules{margin:var(--s2) 0 0;padding-left:var(--s5);display:grid;gap:var(--s2)}.ui-rules li{font-size:var(--fs-s);line-height:1.55;color:var(--muted);max-width:var(--vetro-prose-measure)}.ui-rules strong{color:var(--text);font-weight:600}
-.quick-callout>p{margin:0}.quick-callout .quick-actions{margin-top:var(--s2)}
+.quick-callout>p{margin:0}.quick-item .quick-callout p{color:inherit}.quick-callout .quick-actions{margin-top:var(--s2)}
 .quick-item .field+.quick-callout,.quick-item .field+.quick-actions,.quick-item .quick-actions+.quick-callout,.quick-item .quick-callout+.inline-confirm{margin-top:var(--s3)}
 #keyEvent{font-size:var(--fs-xl);font-weight:500;margin:var(--s4) 0 var(--s2)}
 .operation-item{padding:var(--s3) 0;border-top:1px solid var(--border);overflow-wrap:anywhere}
@@ -1563,6 +1563,23 @@ function uiRow(id,title,text,state,control,tab,sub){
  return '<div class="quick-item" data-quick-item="ui-'+id+'"><div><h3>'+title+'</h3><p>'+text+'</p><div class="quick-state">'+state+'<button class="ui-open" data-ui-open="'+tab+'"'+(sub?' data-dock-open="'+sub+'"':'')+'>'+(id==='launcher'?'Choose':'Details')+'</button></div></div>'+control+'</div>';
 }
 // Where the volume bar is, for the slides: an edge, or hidden (the level changes, nothing is drawn).
+// Where the TV's sound goes (dockData.audioOutput: Samsung's speaker selection, tv-viewer's ext_volume, whether mbr-daemon runs) and what
+// Vetro's Volume bar can do there. A permanent caveat is muted text; amber only when the bar is on and Vol cannot reach the soundbar now.
+var AUDIO_OUTPUT_NAMES={1:'the optical output',2:'a receiver or soundbar on HDMI',3:'Sound Share',4:'a Wi-Fi speaker',8:'the TV and a receiver on HDMI',9:'the TV and the optical output',10:'the TV and a Wi-Fi speaker',11:'the optical output (centre mode)',12:'a receiver on HDMI (centre mode)',13:'headphones',14:'the line out',15:'a USB headset',16:'the TV and a Wi-Fi speaker',17:'the TV and a receiver on HDMI',18:'the TV and the optical output',19:'Auracast'};
+// ext_volume is -1 / -2 once Samsung's universal remote (mbr-daemon) has sent an IR Vol+ / Vol- since boot (Ghidra, Tizen 9, 2026-11-20).
+function audioIrDriven(a){return !!a&&(a.extVolume===-1||a.extVolume===-2)}
+function audioOutputNote(d){
+ var a=d&&d.audioOutput,sel=a&&a.selection,name=AUDIO_OUTPUT_NAMES[sel];if(!name)return null;
+ var rest=' The number pad, the launcher and the Control center work as usual.';
+ if([2,8,12,17].indexOf(sel)>=0)return {text:'Sound goes to '+name+'. Vol and Mute pass to it through Samsung, so Samsung’s bar shows its level and Vetro’s bar stays away.'+rest};
+ if(sel===1||sel===11){
+  if(d.volumePill&&audioIrDriven(a))return {attention:true,text:'The TV drives your optical soundbar’s volume by infrared, and while the Volume bar is on Vol never reaches it. Turn the Volume bar off to give Vol back to the soundbar.'};
+  return {text:'Sound goes to '+name+'. Vetro’s bar changes the TV’s own level: a soundbar on optical usually keeps its own, and one the TV drives by infrared stops following Vol while the bar is on.'+rest};
+ }
+ if(sel===9||sel===18)return {text:'Sound plays on the TV speakers and '+name.replace('the TV and ','')+'. Vetro’s bar changes the TV speakers’ level; a device on optical keeps its own.'+rest};
+ return {text:'Sound goes to '+name+'. Vetro’s bar changes the TV’s own level; whether '+name+' follows it has not been tried. If Vol stops working, turn the Volume bar off.'};
+}
+function audioOutputMarkup(d){var n=audioOutputNote(d);if(!n)return '';return n.attention?'<div class="quick-callout" data-audio-note="attention"><p>'+esc(n.text)+'</p></div>':'<p class="notice" data-audio-note>'+esc(n.text)+'</p>'}
 function edgeText(edge){return edge==='hidden'?'Hidden: Vol changes the level, no bar.':'On the '+edge+' edge.'}
 // The Overview's slideshow: what each part puts on the screen, with the key that brings it up.
 function overviewSlides(d){
@@ -1651,7 +1668,7 @@ function renderOsd(){
   '<div class="quick-callout"><p>The remote interception is off'+(anyOn?', so Vol and 123 still go to Samsung':'')+'. It turns on when you switch one of these on'+(uiInterception&&uiInterception.problem?'; last try: '+esc(uiInterception.problem):'')+'.</p><div class="quick-actions"><button data-ui-remote>Open the Remapper</button></div></div>';
  var needs='<section class="quick-group" aria-labelledby="osdNeedsTitle"><h2 class="section-title" id="osdNeedsTitle">${sectionIcon('access')}What they need</h2>'+host+inter+'</section>';
  var edge=d.volumeEdge||'left';
- var vol='<div class="quick-item" data-quick-item="volume-pill"><div><h3>Volume bar</h3><p>Vol and Mute show Vetro’s bar instead of Samsung’s. With a receiver or soundbar on HDMI, Vol goes to it and Samsung’s bar shows its level.</p><div class="quick-state">'+chip(d.volumePill?'On':'Off',d.volumePill?'on':'')+(d.volumePill?uiNeedNotes('volume'):'')+'</div><label class="quick-edge">Position <select data-osd-edge aria-label="Volume bar position"'+(dockBusy||!d.installed?' disabled':'')+'>'+['left','right','top','bottom','hidden'].map(function(e){return '<option value="'+e+'"'+(edge===e?' selected':'')+'>'+e.charAt(0).toUpperCase()+e.slice(1)+'</option>'}).join('')+'</select></label></div>'+switchMarkup('data-osd="volumePill"',!!d.volumePill,dockBusy||!d.installed,'Volume bar')+osdConflictMarkup('volumePill')+'</div>';
+ var vol='<div class="quick-item" data-quick-item="volume-pill"><div><h3>Volume bar</h3><p>Vol and Mute show Vetro’s bar instead of Samsung’s. With a receiver or soundbar on HDMI, Vol goes to it and Samsung’s bar shows its level.</p><div class="quick-state">'+chip(d.volumePill?'On':'Off',d.volumePill?'on':'')+(d.volumePill?uiNeedNotes('volume'):'')+'</div><label class="quick-edge">Position <select data-osd-edge aria-label="Volume bar position"'+(dockBusy||!d.installed?' disabled':'')+'>'+['left','right','top','bottom','hidden'].map(function(e){return '<option value="'+e+'"'+(edge===e?' selected':'')+'>'+e.charAt(0).toUpperCase()+e.slice(1)+'</option>'}).join('')+'</select></label>'+audioOutputMarkup(d)+'</div>'+switchMarkup('data-osd="volumePill"',!!d.volumePill,dockBusy||!d.installed,'Volume bar')+osdConflictMarkup('volumePill')+'</div>';
  var pad='<div class="quick-item" data-quick-item="number-pad"><div><h3>Number pad</h3><p>123 opens Vetro’s pad instead of Samsung’s.</p><div class="quick-state">'+chip(d.numberPad?'On':'Off',d.numberPad?'on':'')+(d.numberPad?uiNeedNotes('pad'):'')+'</div></div>'+switchMarkup('data-osd="numberPad"',!!d.numberPad,dockBusy||!d.installed,'Number pad')+osdConflictMarkup('numberPad')+'</div>';
  // The preview beside the switches, as on the other tabs; drawn again only when the bar moves to another edge.
  if(osdShowKey===edge&&box.firstChild&&$('osdParts')){paint($('osdParts'),vol+pad);paint($('osdNeeds'),needs);return}

@@ -12,7 +12,10 @@ const execError = require('../service/exec-error');
     privacy: () => Promise.reject(Object.assign(new Error(secret), {code: secret})),
     hbbtv: () => Promise.reject(coded('no-root-agent')),
     catalog: () => Promise.reject(Object.assign(new Error(secret), {exitCode: 99999})),
-    dns: () => new Promise(() => {})
+    dns: () => new Promise(() => {}),
+    // The root agent's own refusals (agent gone after a timed-out command, its queue full) come out as codes, not 'error'.
+    firmware: () => Promise.reject(coded('no-root-agent')),
+    quickWins: () => Promise.reject(coded('agent-busy'))
   }, 50);
   assert(!JSON.stringify(d).includes(secret));
   assert.deepStrictEqual(d.sections.startup, {status: 'unavailable', reason: 'command-timeout'});
@@ -22,6 +25,8 @@ const execError = require('../service/exec-error');
   assert.deepStrictEqual(d.sections.catalog, {status: 'unavailable', reason: 'error'});
   assert.deepStrictEqual(d.sections.dns, {status: 'timeout', reason: 'report-deadline'});
   assert.equal(d.sections.mqtt.reason, 'no-reader');
+  assert.equal(d.sections.firmware.reason, 'no-root-agent');
+  assert.equal(d.sections.quickWins.reason, 'agent-busy');
 
   // Projections: kernel threads counted, idle networks and dead fields dropped, provenance labelled.
   const now = Math.floor(Date.now() / 1000);

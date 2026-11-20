@@ -22,6 +22,10 @@ var PROTOCOL_VERSION = 'SAMSUNG-TV-ROOT/1';
 var MAX_FRAME_BYTES = 8 * 1024 * 1024;
 var MAX_PENDING = 32;
 
+// A refused or lost command carries a fixed code (app/service/exec-error.js CODES), so a diagnostics report says why a section is
+// missing: a timed-out command closes the channel and every command after it fails until the agent is back.
+function coded(message, code) { var e = new Error(message); e.code = code; return e; }
+
 function RootAgentServer(opts) {
     opts = opts || {};
     this.bindHost = opts.bindHost || '127.0.0.1';
@@ -153,7 +157,7 @@ RootAgentServer.prototype._verify = function (line, nonce) {
 };
 
 RootAgentServer.prototype.execute = function (command, timeoutMs) {
-    if (!this._conn) return Promise.reject(new Error('no root agent connected'));
+    if (!this._conn) return Promise.reject(coded('no root agent connected', 'no-root-agent'));
     return this._conn.execute(command, timeoutMs);
 };
 
@@ -226,14 +230,14 @@ RootAgentConnection.prototype.execute = function (command, timeoutMs) {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) {
         return Promise.reject(new Error('invalid command timeout'));
     }
-    if (self._socket.destroyed) return Promise.reject(new Error('root agent disconnected'));
-    if (Object.keys(self._pending).length >= MAX_PENDING) return Promise.reject(new Error('root agent busy'));
+    if (self._socket.destroyed) return Promise.reject(coded('root agent disconnected', 'no-root-agent'));
+    if (Object.keys(self._pending).length >= MAX_PENDING) return Promise.reject(coded('root agent busy', 'agent-busy'));
     return new Promise(function (resolve, reject) {
         var seq = ++self._sequence;
         var timer = setTimeout(function () {
             if (self._pending[seq]) {
                 delete self._pending[seq];
-                reject(new Error('root agent execute timeout; command outcome unknown'));
+                reject(coded('root agent execute timeout; command outcome unknown', 'command-timeout'));
                 // Do not reuse a channel whose command may still be running.
                 self._socket.destroy();
             }

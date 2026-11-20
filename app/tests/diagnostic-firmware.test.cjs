@@ -15,7 +15,10 @@ const vconf = {
     'memory/appfw/current_fullscreen_appid': 'org.tizen.netflix-app (String)', 'memory/avoc/home_shown': '1 (Int32)',
     'file/private/sound/feature/SpeakerSelection': '1 (Int32)', 'memory/pm/state': '1 (Int32)', 'db/menu/system/auto_protection_time': '2 (Int32)',
     'memory/volume-app/key_guide_status': '0 (Bool)', 'memory/tv-viewer/key_guide_status': '1 (Bool)', 'db/btapp/oob_status': '5 (Int32)',
-    'db/menu/settings_menu_guide': '1 (Bool)'
+    'db/menu/settings_menu_guide': '1 (Bool)', 'memory/tv-viewer/ext_volume': '-1 (Int32)', 'db/mbr/activityindex': '0 (Int32)',
+    'memory/org.tizen.bt-settings-external-controller/ext_bt_spp_spdif_status': '0 (Int32)',
+    // Escaped for the fake's echo "...": the real vconftool prints the JSON as it is.
+    'db/mbr-daemon/mbr-activity': '[{\\"ActivityName\\":\\"Soundbar\\",\\"BrandName\\":\\"Acme\\",\\"AudioSource\\":3,\\"SendIRType\\":\\"4\\",\\"DeviceType\\":1,\\"ActivityMode\\":0}] (String)'
 };
 fs.writeFileSync(path.join(bin, 'vconftool'), '#!/bin/sh\ncase "$2" in\n' +
     Object.keys(vconf).map(k => '  ' + k + ') echo "' + k + ', value = ' + vconf[k] + '";;').join('\n') + '\n  *) exit 1;;\nesac\n', {mode: 0o755});
@@ -60,14 +63,16 @@ function request() {
         assert.equal(d.front, 'other', 'the app in front is a kind, never its id');
         assert.ok(JSON.stringify(r).indexOf('netflix') < 0, 'no app id of the user anywhere in the report');
         assert.equal(d.homeShown, 1); assert.equal(d.pictureMode, 327705); assert.equal(d.pictureModeResult, 0);
-        assert.equal(d.speakerSelection, 1, 'optical'); assert.equal(d.displayState, 1); assert.equal(d.autoProtection, 2); assert.equal(d.screensaverOn, null);
+        assert.equal(d.speakerSelection, 1, 'optical'); assert.equal(d.extVolume, -1, 'an IR Vol+ sent since boot');
+        assert.deepEqual(d.mbr, {daemon: false, activityIndex: 0, spdifStatus: 0, activities: {bytes: d.mbr.activities && d.mbr.activities.bytes, count: 1, sendIrTypes: [4], audioSources: [3], deviceTypes: [1], activityModes: [0]}});
+        assert.ok(JSON.stringify(r).indexOf('Acme') < 0 && JSON.stringify(r).indexOf('Soundbar') < 0, 'no activity or brand name'); assert.equal(d.displayState, 1); assert.equal(d.autoProtection, 2); assert.equal(d.screensaverOn, null);
         assert.equal(JSON.stringify(d.keyGuides), JSON.stringify({volume: false, viewer: true, viewerDb: null, settingsMenuGuide: true, oobStatus: 5}));
         assert.equal(d.dotnetRuntime, '6.0.9'); assert.equal(d.inputHelpers, 0); assert.ok(d.uptimeMinutes === null || Number.isInteger(d.uptimeMinutes), 'minutes, or nothing without /proc');
         // The projector on its own: hostile or odd values become null or a fixed word.
-        const p = report.projectors.firmware({homeApp: 'evil;rm', front: 'com.samsung.tv.csfs', showStatus: '<x>', pictureMode: 'ii 1 2 3', speakerSelection: '1e9',
+        const p = report.projectors.firmware({homeApp: 'evil;rm', front: 'com.samsung.tv.csfs', showStatus: '<x>', pictureMode: 'ii 1 2 3', speakerSelection: '1e9', extVolume: 'soundbar',
             netcoreapp: '/etc/passwd', rootApp: 'yes', inputHelpers: '-1'});
         assert.equal(p.homeApp, 'other'); assert.equal(p.front, 'samsung-home'); assert.equal(p.showStatus, 'other'); assert.equal(p.pictureMode, null);
-        assert.equal(p.speakerSelection, null); assert.equal(p.dotnetRuntime, null); assert.equal(p.rootApp, null); assert.equal(p.inputHelpers, null);
+        assert.equal(p.speakerSelection, null); assert.equal(p.extVolume, null); assert.equal(report.projectors.firmware({extVolume: 'True'}).extVolume, true); assert.equal(p.dotnetRuntime, null); assert.equal(p.rootApp, null); assert.equal(p.inputHelpers, null);
         assert.equal(report.projectors.firmware({front: 'vetrotvapp.app'}).front, 'vetro');
         assert.equal(report.projectors.firmware({front: 'org.tizen.tv-viewer'}).front, 'tv-viewer');
 

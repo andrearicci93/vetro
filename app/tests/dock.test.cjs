@@ -245,6 +245,7 @@ function fixture(options) {
     fs.unlinkSync(path.join(f.tmp, 'apps.tsv'));
     s = await f.dock.status(); assert.deepEqual(s.entries, [], 'plain status: no TV read');
     s = await f.dock.status({preview: true}); assert.ok(s.entries.length > 0, 'preview status reads the list before the launcher was ever on');
+    assert.ok('audioOutput' in s, 'the dashboard read says where the sound goes (null when the TV cannot say)');
     assert.equal(s.enabled, false); assert.ok(!f.tv.started, 'and starts nothing');
     s = await f.dock.enable();
     assert.equal(s.fixTizenTube, true, 'turning the launcher on keeps the choice');
@@ -552,3 +553,20 @@ function fixture(options) {
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
 { const local=new (require('../service/dock.js').Dock)({execute:()=>Promise.reject(Error('no TV'))}); for(const slug of ['settings','samsunghome']) { const icon=local.iconFile(slug); assert.ok(icon && icon.slice(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])), 'local preview system icon: '+slug); } }
+
+// The dashboard's read of where the sound goes: one root read, kept 30 s, null when the TV cannot answer, never failing the status.
+(async () => {
+    const {Dock, parseAudio} = require('../service/dock.js');
+    assert.deepEqual(parseAudio('S|1\nE|1\nM|1\n'), {selection: 1, extVolume: 1, mbr: true});
+    assert.deepEqual(parseAudio('S|0\nE|False\nM|0\n'), {selection: 0, extVolume: false, mbr: false});
+    assert.equal(parseAudio('S|\nE|\nM|0\n'), null, 'no speaker selection: nothing to say');
+    assert.equal(parseAudio('S|1; rm\n'), null);
+    let reads = 0, clock = 1000;
+    const d = new Dock({execute: cmd => { if (/^echo "S\|/.test(cmd)) { reads++; return Promise.resolve({exit_code: 0, stdout: 'S|1\nE|1\nM|1\n'}); } return Promise.reject(Error('not here')); }, now: () => clock});
+    assert.deepEqual(await d.audioOutput(), {selection: 1, extVolume: 1, mbr: true});
+    clock += 10000; await d.audioOutput(); assert.equal(reads, 1, 'kept 30 s');
+    clock += 30000; await d.audioOutput(); assert.equal(reads, 2, 'read again after 30 s');
+    const down = new Dock({execute: () => Promise.reject(Error('no root agent connected'))});
+    assert.equal(await down.audioOutput(), null);
+    console.log('PASS dock audio output: parsed, cached, null when unreadable');
+})().catch(e => { console.error(e); process.exitCode = 1; });

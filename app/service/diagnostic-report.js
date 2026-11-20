@@ -85,7 +85,7 @@ var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .,<>:-]{1,100}$/;   /
 var DOCK_EVENT_RES=[/^command (?:Show|Hide|Toggle|VolUp|VolDown|VolMute|Pad|Rescan|Reload)$/,/^volume: (?:the level cannot be read|level change refused|pill ready|elm_win_add failed)$/,
     /^pad: (?:ready|elm_win_add failed)$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
     /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^outputs: (?:UseTv TV speakers|UseExternal [A-Za-z ()+-]{1,30}) (?:ok|refused \([A-Za-z0-9 .,:=_-]{0,80}\))$/,/^launch com\.samsung\.tv\.csfs rc=-?\d{1,6}$/,/^launch via HbbTV (?:request \d{1,6} ms|failed)$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/,
-    /^home: (?:claim (?:granted|refused|unavailable)|window keys (?:on|refused|unavailable)|claimed press from the window)$/];
+    /^home: (?:claim (?:granted|refused|unavailable)|window keys (?:on|refused|unavailable)|claimed press from the window|picture check not started rc=-?\d{1,6})$/];
 // The launcher's last openings (its OpenProbe lines): what opened and how long it took from the key to the first and the last frame of the
 // entrance, the key handler's own time and the longest gap between two frames, in ms. Fixed names, numbers only.
 var OPEN_RE=/^(?:\d{2}:\d{2}:\d{2}\.\d{3} )?perf open (home|fifo show|fifo toggle|control center|all apps|row rebuild|lists reload): frames=(\d{1,5}) key to first tick ms=(\d{1,6}\.\d) to first frame ms=(\d{1,6}\.\d) to last frame ms=(\d{1,6}\.\d) handler ms=(\d{1,6}\.\d) interval ms max=(\d{1,6}\.\d)$/;
@@ -119,12 +119,21 @@ function intIn(v,min,max){var n=/^-?\d{1,9}$/.test(String(v||''))?+v:NaN;return 
 function bit(v){return v==='1'||v==='true'||v==='True'?true:v==='0'||v==='false'||v==='False'?false:null;}
 function frontKind(v){if(typeof v!=='string'||!v)return null;if(/^com\.samsung\.tv\.(?:csfs|home\.media|home\.sidebar|coba\.)/.test(v))return 'samsung-home';
     if(v==='org.tizen.tv-viewer')return 'tv-viewer';if(/^vetrotvapp(?:\.|$)/.test(v))return 'vetro';return 'other';}
+// Samsung's universal remote: whether it runs, its current activity, the SPDIF status that stops it taking Vol (2), and its activity list cut
+// down to numbers: how many activities, and the values of the fields that say how each one is driven (no names, brands or code sets).
+function mbrNumbers(text,field){var out=[],re=new RegExp('"'+field+'"\\s*:\\s*"?(-?\\d{1,4})','g'),m;while((m=re.exec(text))&&out.length<12)out.push(+m[1]);return out;}
+function mbrSection(d){
+    var raw='';try{raw=/^[A-Za-z0-9+\/=]{0,40000}$/.test(String(d.mbrActivity||''))?Buffer.from(String(d.mbrActivity||''),'base64').toString('utf8'):'';}catch(e){raw='';}
+    return {daemon:bit(d.mbrDaemon),activityIndex:intIn(d.mbrIndex,-99,999),spdifStatus:intIn(d.spdifStatus,-9,99),
+        activities:raw?{bytes:Math.min(raw.length,99999),count:(raw.match(/"ActivityName"/g)||[]).length,sendIrTypes:mbrNumbers(raw,'SendIRType'),
+            audioSources:mbrNumbers(raw,'AudioSource'),deviceTypes:mbrNumbers(raw,'DeviceType'),activityModes:mbrNumbers(raw,'ActivityMode')}:null};
+}
 function firmwareSection(d){
     var pm=/^ii (\d{1,7}) (-?\d{1,4})$/.exec(String(d.pictureMode||'')),nc=/(\d{1,2}\.\d{1,2}\.\d{1,3})\/?$/.exec(String(d.netcoreapp||''));
     return {rootApp:bit(d.rootApp),rootColdBoot:intIn(d.rootColdBoot,0,9),homeApp:d.homeApp?(['com.samsung.tv.csfs','org.tizen.tv-viewer'].indexOf(d.homeApp)>=0?d.homeApp:'other'):null,
         autoStart:intIn(d.autoStart,0,9),appBooting:intIn(d.appBooting,0,9),firstscreenState:intIn(d.firstscreenState,-9,99),
         showStatus:d.showStatus?choice(d.showStatus,['full','partial','none'])||'other':null,front:frontKind(d.front),homeShown:intIn(d.homeShown,-9,9),
-        pictureMode:pm?+pm[1]:null,pictureModeResult:pm?+pm[2]:null,speakerSelection:intIn(d.speakerSelection,-1,99),displayState:intIn(d.displayState,0,9),
+        pictureMode:pm?+pm[1]:null,pictureModeResult:pm?+pm[2]:null,speakerSelection:intIn(d.speakerSelection,-1,99),extVolume:intIn(d.extVolume,-99999,99999)!==null?intIn(d.extVolume,-99999,99999):bit(d.extVolume),mbr:mbrSection(d),displayState:intIn(d.displayState,0,9),
         autoProtection:intIn(d.autoProtection,-1,999),screensaverOn:intIn(d.screensaverOn,-9,9),screensaverRunning:bit(d.screensaverRunning),
         keyGuides:{volume:bit(d.guideVolume),viewer:bit(d.guideViewer),viewerDb:intIn(d.guideViewerDb,0,9)!==null?intIn(d.guideViewerDb,0,9)>0:bit(d.guideViewerDb),
             settingsMenuGuide:bit(d.settingsMenuGuide),oobStatus:intIn(d.oobStatus,-9,99)},
@@ -172,7 +181,7 @@ var projectors = {
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
-         cardCount:Array.isArray(d.cards)?d.cards.length:null,appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog),
+         cardCount:Array.isArray(d.cards)?d.cards.length:null,homePictureClears:numeric(d.homePictureClears),homePictureAgoSeconds:numeric(d.homePictureAgoSeconds),appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog),
          bootTimeline:d.bootTimeline&&typeof d.bootTimeline==='object'?numbers(d.bootTimeline,['serviceStart','agentSeen','shownAtPowerOn']):null,
          openings:dockOpenings(d.openLog)});},
     // Vetro TV Tuner: states and counts only. The error text and the log tail stay out. `prerequisites` says which of the four things

@@ -96,6 +96,20 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.match(el('osd').innerHTML, /Turn on a launcher to use these displays/); assert.match(el('osd').innerHTML, /data-ui-open="launcher"/);
     sandbox.dockData = dock;
 
+    // The sound output under the Volume bar: nothing on the TV speakers, a muted note for a receiver or optical, amber only when the bar
+    // is on and Samsung's universal remote drives the soundbar by infrared (Vol cannot reach it then).
+    const osdWith = (audioOutput, extra) => { sandbox.osdShowKey = null; sandbox.dockData = Object.assign({}, dock, extra || {}, {audioOutput}); sandbox.renderOsd(); return el('osd').innerHTML; };
+    assert.doesNotMatch(osdWith({selection: 0, extVolume: 0, mbr: true}), /data-audio-note/);
+    assert.doesNotMatch(osdWith(null), /data-audio-note/);
+    assert.match(osdWith({selection: 2, extVolume: 0, mbr: true}), /<p class="notice" data-audio-note>Sound goes to a receiver or soundbar on HDMI\. Vol and Mute pass to it through Samsung/);
+    assert.match(osdWith({selection: 1, extVolume: 0, mbr: true}, {volumePill: true}), /<p class="notice" data-audio-note>Sound goes to the optical output\./);
+    assert.doesNotMatch(osdWith({selection: 1, extVolume: 1, mbr: true}, {volumePill: true}), /attention/, 'only -1 / -2 say an IR Vol was sent');
+    assert.match(osdWith({selection: 1, extVolume: -2, mbr: true}, {volumePill: true}), /data-audio-note="attention"><p>The TV drives your optical soundbar’s volume by infrared, and while the Volume bar is on Vol never reaches it\./);
+    assert.doesNotMatch(osdWith({selection: 1, extVolume: -1, mbr: true}, {volumePill: false}), /attention/, 'with the bar off there is nothing to fix');
+    assert.match(osdWith({selection: 9, extVolume: 0, mbr: false}), /Sound plays on the TV speakers and the optical output\./);
+    assert.match(osdWith({selection: 4, extVolume: 0, mbr: false}), /whether a Wi-Fi speaker follows it has not been tried/);
+    sandbox.osdShowKey = null; sandbox.dockData = dock;
+
     // The Remapper lists the keys Vetro UI holds, locked, first; the user's shortcut on the same key says it is overridden.
     sandbox.switchPanel('remote'); await tick(8);
     const list = el('rules').innerHTML;

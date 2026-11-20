@@ -381,7 +381,14 @@ function downloadDiagnostics(res, withComponents) {
                 'firstscreenState|' + v('memory/volt/firstscreen_state'), 'showStatus|' + v('memory/eden/show_status'),
                 'front|' + v('memory/appfw/current_fullscreen_appid'), 'homeShown|' + v('memory/avoc/home_shown'),
                 'pictureMode|$(busctl --timeout=3 call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl GetPictureMode i 1 2>/dev/null)',
-                'speakerSelection|' + v('file/private/sound/feature/SpeakerSelection'), 'displayState|' + v('memory/pm/state'),
+                'speakerSelection|' + v('file/private/sound/feature/SpeakerSelection'),
+                // Samsung's universal remote (mbr-daemon) driving an optical soundbar by IR (Ghidra, Tizen 9, 2026-11-20): it takes Vol from
+                // volume-app only with the route on optical, an MBR activity whose input is optical and ext_bt_spp_spdif_status != 2. ext_volume is
+                // -1 / -2 once it has sent an IR Vol+ / Vol- since boot. The activity list leaves as base64 and the report keeps only its numbers.
+                'extVolume|' + v('memory/tv-viewer/ext_volume'), 'mbrDaemon|$(pgrep -x mbr-daemon >/dev/null 2>&1 && echo 1 || echo 0)',
+                'mbrIndex|' + v('db/mbr/activityindex'), 'spdifStatus|' + v('memory/org.tizen.bt-settings-external-controller/ext_bt_spp_spdif_status'),
+                'mbrActivity|$(vconftool get db/mbr-daemon/mbr-activity 2>/dev/null | head -c 24000 | base64 | tr -d "\\n")',
+                'displayState|' + v('memory/pm/state'),
                 'autoProtection|' + v('db/menu/system/auto_protection_time'), 'screensaverOn|' + v('memory/window_system/screensaver_on_off'),
                 'screensaverRunning|$(pgrep -f glscreensaver >/dev/null 2>&1 && echo 1 || echo 0)',
                 'guideVolume|' + v('memory/volume-app/key_guide_status'), 'guideViewer|' + v('memory/tv-viewer/key_guide_status'),
@@ -513,7 +520,7 @@ function commandStats(now){
     return {perMinute:perMinute,lastTenMinutes:perMinute.reduce(function(a,b){return a+b;},0),sinceStart:commandTotal,queued:queuedCommands};
 }
 function agentExecute(cmd, timeoutMs, dispatchGuard) {
-    if(queuedCommands>=32)return Promise.reject(new Error('TV is busy; try again in a few seconds'));
+    if(queuedCommands>=32)return Promise.reject(Object.assign(new Error('TV is busy; try again in a few seconds'),{code:'agent-busy'}));
     queuedCommands++;
     var result=commandQueue.then(function(){
         if(dispatchGuard&&!dispatchGuard())throw new Error('TV command cancelled before dispatch');

@@ -317,7 +317,12 @@ Dock.prototype.probe = function () {
 
 // Only "is it running": {running, pid, other, cheap: true}. See runningCheck().
 Dock.prototype.check = function () {
-    return this.execute(runningCheck(PID_FILE, DLL, 'dock'), 6000).then(function (r) { return parseCheck(check(r, 'Status'), PROBE_DOCK_RE); });
+    var self = this;
+    return this.execute(runningCheck(PID_FILE, DLL, 'dock') + '; (' + HOME_PICTURE_SCRIPT + ') 2>/dev/null | sed -n "s/^cleared$/homepicture=cleared/p"; true', 6000).then(function (r) {
+        var out = check(r, 'Status');
+        if (/^homepicture=cleared$/m.test(out)) { self.homePictureClears = (self.homePictureClears || 0) + 1; self.homePictureAt = self.now(); }
+        return parseCheck(out, PROBE_DOCK_RE);
+    });
 };
 
 // What the supervision and the start wait use: the cheap check, and the full probe when the check cannot tell (a live pid
@@ -356,8 +361,45 @@ Dock.prototype.previewList = function () {
 
 Dock.prototype.status = function (options) {
     var self = this;
-    return (options && options.preview ? this.previewList() : Promise.resolve()).then(function () { return self.statusNow(); });
+    if (!(options && options.preview)) return Promise.resolve().then(function () { return self.statusNow(); });
+    // The dashboard's read also says where the TV's sound goes, for its note on what Vetro's volume bar can do there.
+    return Promise.all([this.previewList(), this.audioOutput()]).then(function (r) { return Promise.resolve(self.statusNow()).then(function (s) { return Object.assign(s, {audioOutput: r[1]}); }); });
 };
+
+// Where the TV's sound goes: Samsung's speaker selection (SoundTvOutputRoute: 0 TV speakers, 1 optical, 2 receiver on HDMI...),
+// ext_volume (-1 / -2 once Samsung's universal remote, mbr-daemon, has sent an IR Vol+ / Vol- to a soundbar since boot; Ghidra,
+// Tizen 9, 2026-11-20) and whether mbr-daemon runs. One root read, kept AUDIO_TTL_MS; null when it cannot be read,
+// and never longer than AUDIO_WAIT_MS, so the status never waits on it.
+var AUDIO_TTL_MS = 30000, AUDIO_WAIT_MS = 4000;
+Dock.prototype.audioOutput = function () {
+    var self = this, now = this.now();
+    if (this.audioCache && now - this.audioCache.at < AUDIO_TTL_MS) return Promise.resolve(this.audioCache.value);
+    if (!this.audioRead) {
+        var v = function (k) { return '$(vconftool get ' + k + ' 2>/dev/null | sed -n "s/.*value = \\(.*\\) (.*)$/\\1/p" | head -n 1)'; };
+        this.audioRead = Promise.resolve().then(function () {
+            if (typeof self.execute !== 'function') return null;
+            return self.execute('echo "S|' + v('file/private/sound/feature/SpeakerSelection') + '"; echo "E|' + v('memory/tv-viewer/ext_volume') +
+                '"; echo "M|$(pgrep -x mbr-daemon >/dev/null 2>&1 && echo 1 || echo 0)"', 5000).then(function (r) { return parseAudio(r && r.stdout); });
+        }).catch(function () { return null; }).then(function (value) {
+            self.audioRead = null;
+            if (value) self.audioCache = {at: self.now(), value: value};
+            return value;
+        });
+    }
+    var read = this.audioRead;
+    return new Promise(function (resolve) {
+        var t = setTimeout(function () { resolve(null); }, AUDIO_WAIT_MS);
+        read.then(function (v) { clearTimeout(t); resolve(v); });
+    });
+};
+function parseAudio(text) {
+    var out = {};
+    String(text || '').split('\n').forEach(function (l) { var m = /^([SEM])\|(.*)$/.exec(l.trim()); if (m) out[m[1]] = m[2].trim(); });
+    var sel = /^-?\d{1,3}$/.test(out.S || '') ? +out.S : null;
+    if (sel === null) return null;
+    var ext = /^-?\d{1,6}$/.test(out.E || '') ? +out.E : out.E === 'True' || out.E === 'true' ? true : out.E === 'False' || out.E === 'false' ? false : null;
+    return {selection: sel, extVolume: ext, mbr: out.M === '1' ? true : out.M === '0' ? false : null};
+}
 
 // Boot timeline: seconds since the TV booted at which each step of the first start happened. Kept in memory and shown
 // with the status, so one reboot is enough to see where the time goes. Each step is recorded once.
@@ -381,7 +423,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -1213,6 +1255,18 @@ Dock.prototype.showAtPowerOn = function (state) {
 // dock after a boot or a crash while it is switched on. It never switches the setting off: a slow
 // boot must not cost the user the launcher for good, so after repeated failures it keeps trying
 // every few minutes and reports the reason.
+// Samsung's picture mode for its Home (avocd "NewHome", picture mode 327705, memory/avoc/home_shown 1): csfs sets it while its Home is
+// on screen and hands it back (AvocSetNewHome(0)) when another app takes the screen, from a fullscreen-app callback it drops when it
+// stops. With Vetro's launcher on Home csfs is closed or never shown, so the flag can stay on under every app: on an S95C the video then
+// played in Home's mode with motion smoothing off (export with the launcher on: 327705, home_shown 1, motionPlus 0; off: Movie, 0, 2).
+// This does what csfs does: when the flag is on and the app on screen is not Samsung's Home, SetNewHome 0. Tizen 6.0 has neither the
+// key nor the method, so there it does nothing. It rides on the supervision's cheap check (one root command per round, 10-60 s) and the
+// launcher runs it too, 3 s after it hides (Program.cs HomePictureOff). Ghidra/ilspy: csfs FSAVMuteControl.AvocSettingOffByAppId, libavoc SetNewHome (i).
+var HOME_PICTURE_SCRIPT = 'h=$(vconftool get memory/avoc/home_shown 2>/dev/null | sed -n "s/.*value = \\(-*[0-9][0-9]*\\).*/\\1/p"); ' +
+    'f=$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null | sed -n "s/.*value = \\([^ ]*\\).*/\\1/p"); ' +
+    '[ "$h" = 1 ] || exit 0; case "$f" in com.samsung.tv.csfs|com.samsung.tv.home.*|com.samsung.tv.coba.*) exit 0;; esac; ' +
+    'busctl --timeout=3 call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl SetNewHome i 0 >/dev/null 2>&1 && echo cleared';
+
 Dock.prototype.supervise = function (agentConnected) {
     var self = this, state = this.readState(), custom = !!state.customApp;
     if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
@@ -1282,5 +1336,5 @@ Dock.prototype.checkCustomApp = function (appId) {
     }, function () { return null; });
 };
 
-module.exports = {rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
+module.exports = {HOME_PICTURE_SCRIPT: HOME_PICTURE_SCRIPT, parseAudio: parseAudio, rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck, hexLabel: hexLabel, LOG_FILE: LOG_FILE, shardCardText: shardCardText, cleanCards: cleanCards};

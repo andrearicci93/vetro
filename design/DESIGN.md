@@ -37,6 +37,8 @@ The dashboard's pages follow seven rules, written in full in `app/design-system/
 
 Vetro UI → Overview: the pictures and "How they fit together" on the left; on the right two cards, **Launcher + Control center** (what the Home key opens) and **Live TV + Volume bar + Number pad**. The TV's own Vetro page has **four** quick-control tiles (Vetro launcher, Disable ads and viewing data, Disable all voice assistants, Update Vetro): the Vetro UI tile was taken out on 2026-11-20, its parts are switched in the dashboard.
 
+Vetro UI → On-screen displays, under the Volume bar's position: one sentence on where the TV's sound goes and what Vetro's bar does there (from the launcher status's `audioOutput`: Samsung's speaker selection, `ext_volume` (-1 / -2 once the TV has sent an IR volume key since boot), whether `mbr-daemon` runs). TV speakers and Bluetooth say nothing; a receiver on HDMI, optical, TV + optical and the other outputs get muted text (a permanent caveat, never a box). Amber (`quick-callout`) only when the bar is on and the TV drives an optical soundbar by infrared, because Vol cannot reach the soundbar right now; it points at the switch beside it and adds no button of its own. Text inside a callout in a `quick-item` keeps the callout's colour.
+
 Two tabs of Quick settings must never be confused, and both carry the same pair of lines: **Disable** switches an app off and leaves it on the TV (one switch brings it back); **Uninstall** deletes it from the TV (space freed, not undone from here). Uninstall lists only what the service says this TV has and allows to remove, each with its icon and size, and asks for a confirmation in the row before anything is sent.
 
 ## Names of the TV screens

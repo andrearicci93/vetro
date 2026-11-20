@@ -1467,6 +1467,13 @@ namespace Launcher
             return again;
         }
 
+        // Samsung's Home picture mode handed back once the launcher has gone (Core/HomePicture.cs): in the background, so the frame never waits.
+        private static void HomePictureOff()
+        {
+            int rc = Libc.system(HomePicture.Command());
+            if (rc != 0) Log("home: picture check not started rc=" + rc);
+        }
+
         private static byte Frame()
         {
             if (_dock == null) { _anim = IntPtr.Zero; return 0; }   // custom launcher mode: no page to draw
@@ -1493,6 +1500,7 @@ namespace Launcher
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
                         ReloadWhenHidden();
+                        HomePictureOff();
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     ProbeTick(now, !more);
@@ -1513,6 +1521,7 @@ namespace Launcher
                     if (_hideFor123) _hideFor123 = false;
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId);
                     ReloadWhenHidden();
+                    HomePictureOff();
                 }
                 else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
                 if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
@@ -2014,7 +2023,11 @@ namespace Launcher
             // On a receiver on HDMI the level that counts is the receiver's: the key goes back to Samsung, which passes it on over HDMI-CEC
             // (the TV's own level would change and nothing would be heard). Optical stays with Vetro (OutputPickerModel.VetroSetsLevel).
             int output;
-            if (Sound.TryGetSpeakerSelection(out output) && !OutputPickerModel.VetroSetsLevel(output))
+            bool known = Sound.TryGetSpeakerSelection(out output);
+            // The Audio card offers the external output again only once it has been seen playing; the card read it only when it opened, so
+            // a TV switched to the TV speakers from Samsung's menu lost its Optical row (S95C, 2026-11-20). Vol reads it at every press.
+            if (known) LastExternal(output);
+            if (known && !OutputPickerModel.VetroSetsLevel(output))
             {
                 string native = key == Command.VolUp ? "XF86AudioRaiseVolume" : key == Command.VolDown ? "XF86AudioLowerVolume" : "XF86AudioMute";
                 bool detached = VolumePassOn.Works;
