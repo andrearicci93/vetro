@@ -1,6 +1,10 @@
 'use strict';
 const assert = require('assert').strict;
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 const zlib = require('zlib');
+const compat = require('../service/compat.js');
 const info = require('../service/package-info.js');
 function archive(xml, method) {
   const decoded = Buffer.from(xml); const data = method === 8 ? zlib.deflateRawSync(decoded) : decoded;
@@ -20,6 +24,38 @@ async function main() {
   await assert.rejects(info.fromBuffer(archive(xml + '<tizen:application package="other"/>', 0)), /one Tizen/);
   await assert.rejects(info.fromBuffer(archive('<!DOCTYPE widget>' + xml, 0)), /declarations/);
   await assert.rejects(info.read('/tmp/x.wgt;reboot'), /absolute/);
+
+  // Simulate Node 4.4.3 where zlib InflateRaw streams have no .destroy() until compat.install() runs
+  let closed = 0;
+  const { EventEmitter } = require('events');
+  const pkgSrc = fs.readFileSync(path.resolve(__dirname, '../service/package-info.js'), 'utf8');
+  for (const [mode, expected] of [['size', /config\.xml too large/], ['error', /corrupt deflate/]]) {
+      function FakeInflateRaw() { EventEmitter.call(this); }
+      FakeInflateRaw.prototype = Object.create(EventEmitter.prototype);
+      FakeInflateRaw.prototype.constructor = FakeInflateRaw;
+      FakeInflateRaw.prototype.close = function () { closed++; };
+      FakeInflateRaw.prototype.end = function () {
+          const s = this;
+          process.nextTick(() => {
+              if (mode === 'size') s.emit('data', Buffer.alloc(70000));
+              else s.emit('error', new Error('corrupt deflate'));
+          });
+      };
+      const fakeZlib = Object.assign({}, zlib, {
+          InflateRaw: FakeInflateRaw,
+          createInflateRaw: () => new FakeInflateRaw()
+      });
+      assert.equal(typeof FakeInflateRaw.prototype.destroy, 'undefined');
+      compat.install({ zlib: fakeZlib });
+      assert.equal(typeof FakeInflateRaw.prototype.destroy, 'function');
+      const mod = { exports: {} };
+      vm.runInNewContext('(function(require, module, exports){' + pkgSrc + '\n})', {
+          Buffer, Error, Math, Promise
+      })(id => (id === 'zlib' ? fakeZlib : require(id)), mod, mod.exports);
+      await assert.rejects(mod.exports.fromBuffer(archive(xml, 8)), expected);
+  }
+  assert.equal(closed, 2, 'Node 4.4 compat shim closed inflate stream via close()');
+
   console.log('PASS WGT: stored/deflated manifests, corrupt archives, ambiguous IDs and unsafe paths');
 }
 main().catch(e => {console.error(e); process.exitCode = 1;});

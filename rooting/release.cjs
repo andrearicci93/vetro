@@ -43,12 +43,13 @@ function buildBundle(privatePem) {
     const lost = all.filter(f => !updater.okPath(f.name) && !PACKAGE_ONLY.test(f.name)).map(f => f.name);
     if (lost.length) throw new Error('Files the updater refuses, so no update would carry them: ' + lost.join(', '));
     const infoFile = files.find(f => f.name === 'service/build-info.js');
+    if (!infoFile) throw new Error('service/build-info.js missing');
     Object.assign(info, updater.parseBuildInfo(infoFile.data));
     if (!info.version || !(info.shell >= 1)) throw new Error('build-info.js has no version or shell');
     if (info.port) throw new Error('Build without VETRO_PORT: an update must carry the default port (each TV keeps its own)');
     const manifest = { format: updater.FORMAT, v: 1, version: info.version, shell: info.shell, files: {} };
     const body = {};
-    files.sort((a, b) => a.name < b.name ? -1 : 1).forEach(f => {
+    files.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).forEach(f => {
         manifest.files[f.name] = { sha256: sha256(f.data), size: f.data.length };
         body[f.name] = f.data.toString('base64');
     });

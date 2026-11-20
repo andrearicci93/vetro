@@ -21,10 +21,16 @@ function probeVersion(port, host, timeoutMs) {
     return new Promise(function (resolve) {
         var done = false;
         function finish(v) { if (!done) { done = true; resolve(v); } }
-        var req = http.get({host: host || '127.0.0.1', port: port, path: '/status', timeout: timeoutMs || 2000}, function (res) {
+        var req = http.get({host: host || '127.0.0.1', port: port, path: '/status'}, function (res) {
             var body = '';
             res.setEncoding('utf8');
-            res.on('data', function (d) { if (body.length < 65536) body += d; });
+            res.on('data', function (d) {
+                body += d;
+                if (body.length > 65536) {
+                    finish(null);
+                    if (req.abort) req.abort(); else if (req.destroy) req.destroy();
+                }
+            });
             res.on('end', function () {
                 try {
                     var j = JSON.parse(body);
@@ -34,11 +40,14 @@ function probeVersion(port, host, timeoutMs) {
                     finish(ok ? j.app.version : null);
                 } catch (e) { finish(null); }
             });
-            res.on('error', function () { finish(null); });
+            res.on('error', function () { finish(false); });
         });
         // No HTTP answer at all (a timeout, a refused or reset connection) is false, not null: it may be a Vetro too busy to answer
         // (the first copy at boot), so it must not count as "somebody else's service".
-        req.on('timeout', function () { req.destroy(); finish(false); });
+        req.setTimeout(timeoutMs || 2000, function () {
+            finish(false);
+            if (req.abort) req.abort(); else if (req.destroy) req.destroy();
+        });
         req.on('error', function () { finish(false); });
     });
 }
@@ -95,7 +104,12 @@ function endOlderService(port, ownVersion, options) {
         try { kill(pid, 'SIGTERM'); } catch (e) { return {ended: false, reason: 'kill-refused', version: version, pid: pid, error: e.code || e.message}; }
         // Give it a moment to leave; the port is free once it stops answering.
         var waitMs = options.waitMs == null ? 3000 : options.waitMs;
-        function gone() { return find(port).indexOf(pid) < 0; }
+        function gone() {
+            if (!options.kill && !options.listeningPids) {
+                try { process.kill(pid, 0); } catch (e) { if (e && e.code !== 'EPERM') return true; }
+            }
+            return find(port).indexOf(pid) < 0;
+        }
         function poll(left) {
             if (gone()) return Promise.resolve(true);
             if (left <= 0) return Promise.resolve(false);

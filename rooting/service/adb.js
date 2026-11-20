@@ -23,7 +23,7 @@ const magicFor = (c) => (c ^ 0xFFFFFFFF) >>> 0;
 function checksum(data) {
     if (!data) return 0;
     let total = 0;
-    for (let i = 0; i < data.length; i++) total = (total + data[i]) & 0xFFFFFFFF;
+    for (let i = 0; i < data.length; i++) total = (total + data[i]) >>> 0;
     return total;
 }
 
@@ -33,11 +33,11 @@ function encodePacket(command, arg1, arg2, payload) {
         : payload;
     const length = data ? data.length : 0;
     const packet = Buffer.alloc(HEADER_BYTES + length);
-    packet.writeUInt32LE(command, 0);
-    packet.writeUInt32LE(arg1, 4);
-    packet.writeUInt32LE(arg2, 8);
-    packet.writeUInt32LE(length, 12);
-    packet.writeUInt32LE(checksum(data), 16);
+    packet.writeUInt32LE(command >>> 0, 0);
+    packet.writeUInt32LE(arg1 >>> 0, 4);
+    packet.writeUInt32LE(arg2 >>> 0, 8);
+    packet.writeUInt32LE(length >>> 0, 12);
+    packet.writeUInt32LE(checksum(data) >>> 0, 16);
     packet.writeUInt32LE(magicFor(command), 20);
     if (length > 0) data.copy(packet, HEADER_BYTES);
     return packet;
@@ -109,6 +109,7 @@ class Connection extends EventEmitter {
         this._header = null;
         this._awaitingHeader = true;
         this._connected = false;
+        this._dead = false;
         if (this._socket.setKeepAlive) this._socket.setKeepAlive(true, KEEPALIVE_MS);
         this._socket.on('readable', () => this._drain());
         this._socket.on('error', (e) => this._abandon(e));
@@ -121,27 +122,31 @@ class Connection extends EventEmitter {
     maxPayload() { return this._maxPayload; }
     _drain() {
         for (;;) {
+            if (this._dead || this._socket.destroyed) return;
             if (this._awaitingHeader) {
                 const header = this._socket.read(HEADER_BYTES);
-                if (!header) return;
-                this._header = decodeHeader(header);
-                if (this._header.magic !== magicFor(this._header.command)) return this._fatal('ESDBFRAMING', 'bad magic');
-                if (this._header.dataLength > MAX_PAYLOAD) return this._fatal('ESDBFRAMING', 'oversized payload');
-                if (this._header.dataLength === 0) this._dispatch(this._header);
-                else this._awaitingHeader = false;
+                if (!header || header.length < HEADER_BYTES) return;
+                const parsed = decodeHeader(header);
+                if (parsed.magic !== magicFor(parsed.command)) return this._fatal('ESDBFRAMING', 'bad magic');
+                if (parsed.dataLength > MAX_PAYLOAD) return this._fatal('ESDBFRAMING', 'oversized payload');
+                if (parsed.dataLength === 0) this._dispatch(parsed);
+                else { this._header = parsed; this._awaitingHeader = false; }
             } else {
                 const data = this._socket.read(this._header.dataLength);
-                if (!data) return;
-                if (checksum(data) !== this._header.dataCheck) return this._fatal('ESDBFRAMING', 'bad checksum');
-                this._header.data = data;
-                this._dispatch(this._header);
+                if (!data || data.length < this._header.dataLength) return;
+                const packet = this._header;
+                this._header = null;
                 this._awaitingHeader = true;
+                if (checksum(data) !== packet.dataCheck) return this._fatal('ESDBFRAMING', 'bad checksum');
+                packet.data = data;
+                this._dispatch(packet);
             }
         }
     }
     _fatal(code, msg) { this._socket.destroy(Object.assign(new Error(msg), { code })); }
     close() {
         this._streams.forEach((s) => this._closeStream(s));
+        this._dead = true;
         this._socket.removeAllListeners('readable');
         this._socket.on('data', () => {});
         this._socket.end();
@@ -154,6 +159,7 @@ class Connection extends EventEmitter {
         stream.end();
     }
     _abandon(cause) {
+        this._dead = true;
         if (this._streams.size === 0) return;
         const error = cause || Object.assign(new Error('sdbd closed'), { code: 'ESDBCLOSED' });
         const streams = Array.from(this._streams.values());
@@ -182,8 +188,8 @@ class Connection extends EventEmitter {
                 break;
             case COMMANDS.WRTE:
                 if (!stream) break;
-                stream.push(packet.data);
-                this._send(COMMANDS.OKAY, stream.localId(), stream.remoteId());
+                if (packet.data && packet.data.length > 0) stream.push(packet.data);
+                this._send(COMMANDS.OKAY, stream.localId(), stream.remoteId() === -1 ? packet.arg1 : stream.remoteId());
                 break;
             case COMMANDS.CLSE:
                 if (!stream) break;
@@ -197,10 +203,13 @@ class Connection extends EventEmitter {
         }
     }
     _send(command, arg1, arg2, payload) {
+        if (this._dead || this._socket.destroyed) return;
         if (!this._connected) { this._socket.once('connect', () => this._send(command, arg1, arg2, payload)); return; }
+        if (!this._socket.writable) return;
         this._socket.write(encodePacket(command, arg1, arg2, payload));
     }
     createStream(service) {
+        if (this._dead || this._socket.destroyed) throw Object.assign(new Error('sdbd closed'), { code: 'ESDBCLOSED' });
         const stream = new Stream(this, this._nextStreamId++);
         this._streams.set(stream.localId(), stream);
         const open = () => this._send(COMMANDS.OPEN, stream.localId(), 0, service);

@@ -83,5 +83,25 @@ const {Dock} = require('../service/dock.js');
     await rm.event({code: 66, action: 'up', decision: 'blocked'});
     await new Promise(r => setTimeout(r, 500));
     assert.deepEqual(m, ['volmute\n'], 'mute is one change per press');
+
+    // Sync throw in opts.reinject must reject cleanly (never throw synchronously) and must not wedge repeater.pending
+    await assert.rejects(() => vk.handle(down, {
+        write: () => { throw new Error('ENXIO'); },
+        reinject: () => { throw new Error('sync inject failure'); }
+    }), /sync inject failure/);
+    let reinjectCalls = 0;
+    const repFail = vk.repeater({
+        write: () => { throw new Error('ENXIO'); },
+        reinject: () => { reinjectCalls++; throw new Error('sync inject failure'); }
+    });
+    await repFail.event(down);
+    await new Promise(r => setTimeout(r, 620));
+    await repFail.event({code: 68, action: 'up', decision: 'blocked'});
+    assert.ok(reinjectCalls >= 3, 'repeater kept ticking after sync throw in reinject: ' + reinjectCalls);
+
+    await assert.rejects(vk.handle({code: 'toString'}, {}), /unknown volume key/);
+    await assert.rejects(vk.handle(null, {}), /unknown volume key/);
+    await assert.doesNotReject(vk.repeater({}).event(null));
+
     console.log('volume-keys ok');
 })().catch(e => { console.error(e); process.exit(1); });

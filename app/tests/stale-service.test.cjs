@@ -17,24 +17,26 @@ const old035 = {mode: 'app-only', running: false, app: {version: '0.3.5', source
 (async () => {
   assert.ok(stale.older('0.3.5', '0.5.0') && stale.older('0.4.9', '0.5.0') && !stale.older('0.5.0', '0.5.0') && !stale.older('0.5.1', '0.5.0') && !stale.older('x', '0.5.0'));
 
-  // /proc parsing: the pid whose fd holds the listening socket's inode.
-  const proc = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-proc-'));
-  fs.mkdirSync(path.join(proc, 'net'));
-  const hex = (8099).toString(16).toUpperCase();
-  fs.writeFileSync(path.join(proc, 'net', 'tcp'),
-    '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n' +
-    '   0: 00000000:' + hex + ' 00000000:0000 0A 00000000:00000000 00:00000000 00000000  5001        0 4242 1 0 0 0\n' +
-    '   1: 0100007F:' + hex + ' 0100007F:C000 01 00000000:00000000 00:00000000 00000000  5001        0 9999 1 0 0 0\n' +
-    '   2: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  5001        0 7777 1 0 0 0\n');
-  fs.writeFileSync(path.join(proc, 'net', 'tcp6'), '  sl  local_address\n');
-  fs.mkdirSync(path.join(proc, '321', 'fd'), {recursive: true});
-  fs.symlinkSync('socket:[4242]', path.join(proc, '321', 'fd', '7'));
-  fs.mkdirSync(path.join(proc, '322', 'fd'), {recursive: true});
-  fs.symlinkSync('socket:[9999]', path.join(proc, '322', 'fd', '7')); // an established connection, not the listener
-  fs.mkdirSync(path.join(proc, '323', 'fd'), {recursive: true});
-  fs.symlinkSync('socket:[7777]', path.join(proc, '323', 'fd', '7')); // another port
-  assert.deepStrictEqual(stale.listeningPids(8099, proc), [321]);
-  assert.deepStrictEqual(stale.listeningPids(8100, proc), []);
+  // /proc parsing: the pid whose fd holds the listening socket's inode (requires POSIX symlinks).
+  if (process.platform !== 'win32') {
+    const proc = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-proc-'));
+    fs.mkdirSync(path.join(proc, 'net'));
+    const hex = (8099).toString(16).toUpperCase();
+    fs.writeFileSync(path.join(proc, 'net', 'tcp'),
+      '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n' +
+      '   0: 00000000:' + hex + ' 00000000:0000 0A 00000000:00000000 00:00000000 00000000  5001        0 4242 1 0 0 0\n' +
+      '   1: 0100007F:' + hex + ' 0100007F:C000 01 00000000:00000000 00:00000000 00000000  5001        0 9999 1 0 0 0\n' +
+      '   2: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  5001        0 7777 1 0 0 0\n');
+    fs.writeFileSync(path.join(proc, 'net', 'tcp6'), '  sl  local_address\n');
+    fs.mkdirSync(path.join(proc, '321', 'fd'), {recursive: true});
+    fs.symlinkSync('socket:[4242]', path.join(proc, '321', 'fd', '7'));
+    fs.mkdirSync(path.join(proc, '322', 'fd'), {recursive: true});
+    fs.symlinkSync('socket:[9999]', path.join(proc, '322', 'fd', '7')); // an established connection, not the listener
+    fs.mkdirSync(path.join(proc, '323', 'fd'), {recursive: true});
+    fs.symlinkSync('socket:[7777]', path.join(proc, '323', 'fd', '7')); // another port
+    assert.deepStrictEqual(stale.listeningPids(8099, proc), [321]);
+    assert.deepStrictEqual(stale.listeningPids(8100, proc), []);
+  }
 
   async function run(body, opts) {
     return new Promise(resolve => serve(body, (s, port) => {
@@ -79,10 +81,30 @@ const old035 = {mode: 'app-only', running: false, app: {version: '0.3.5', source
   x = await run(old035, {over: {kill: () => { const e = new Error('no'); e.code = 'EPERM'; throw e; }}});
   assert.strictEqual(x.r.reason, 'kill-refused'); assert.strictEqual(x.r.error, 'EPERM');
 
-  // Nothing answers on the port.
+  // Nothing answers on the port, or a server hangs past timeoutMs.
   // (a Vetro too busy to answer looks the same: it is "no answer", never "somebody else's service")
   const r = await stale.endOlderService(1, '0.5.0', {probe: () => stale.probeVersion(1, '127.0.0.1', 300), listeningPids: () => [4321], kill: () => { throw new Error('must not kill'); }});
   assert.strictEqual(r.reason, 'no-answer');
+  const hung = http.createServer(() => {});
+  await new Promise(resolve => hung.listen(0, '127.0.0.1', resolve));
+  const timedOut = await stale.probeVersion(hung.address().port, '127.0.0.1', 150);
+  hung.close();
+  assert.strictEqual(timedOut, false);
+
+  // Oversized streaming response (>64 KiB) is aborted and treated as not-vetro (null) without hanging.
+  await new Promise((resolve, reject) => {
+    const big = http.createServer((req, res) => {
+      res.writeHead(200, {'content-type': 'text/plain'});
+      res.write('x'.repeat(70000));
+    });
+    big.listen(0, '127.0.0.1', () => {
+      stale.probeVersion(big.address().port, '127.0.0.1', 1000).then(v => {
+        big.close();
+        assert.strictEqual(v, null, 'oversized stream returns null');
+        resolve();
+      }).catch(e => { big.close(); reject(e); });
+    });
+  });
 
   console.log('PASS the service ends only an older Vetro that holds its port');
 })().catch(e => { console.log('FAIL stale service: ' + (e && e.stack || e)); process.exit(1); });

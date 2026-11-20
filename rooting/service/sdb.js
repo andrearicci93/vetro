@@ -69,7 +69,7 @@ function exec(client, command, options) {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
-            try { stream.removeAllListeners(); stream.close(); } catch (e) {}
+            try { stream.removeAllListeners(); stream.on('error', function () {}); stream.close(); } catch (e) {}
             if (err) reject(err); else resolve(value);
         }
         function onData(chunk) {

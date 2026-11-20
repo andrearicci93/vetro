@@ -5,6 +5,7 @@
 // injected again, so the volume keys never go dead. Mute is soft (the dock drops the level to 0 and restores it), so Samsung's mute banner never draws.
 
 var fs = require('fs');
+var constants = fs.constants || require('constants');
 
 var FIFO = '/home/owner/tvlauncher.fifo';
 var KEYS = {
@@ -22,9 +23,10 @@ function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, 
 
 // The key the remote sent, sent again by name when the dock cannot be reached: only the four names of the table above. Going through
 // control.js's list (the shortcuts' keys) left the 123 key dead whenever the dock was down.
-var NATIVE = {};
+var NATIVE = Object.create(null);
 Object.keys(KEYS).forEach(function (c) { NATIVE[KEYS[c].native] = true; });
 function reinjectCommand(native) { return NATIVE[native] === true ? '/usr/bin/input_keyevent ' + native : null; }
+var OPEN_FLAGS = ((constants && constants.O_WRONLY !== undefined) ? constants.O_WRONLY : 1) | ((constants && constants.O_NONBLOCK !== undefined) ? constants.O_NONBLOCK : 2048);
 
 // Tokens the bridge must hold back, beside the ones the shortcuts ask for (no duplicates).
 // flags: {volume: bool, pad: bool}
@@ -48,15 +50,16 @@ function wants(event, flags) {
 
 // opts.write(path, text) -> throws on failure; opts.reinject(nativeKey) -> Promise
 function handle(event, opts) {
+    if (!event || !Object.prototype.hasOwnProperty.call(KEYS, String(event.code))) return Promise.reject(new Error('unknown volume key'));
     var key = KEYS[String(event.code)];
     // Non-blocking open: a FIFO nobody reads fails at once (ENXIO) instead of freezing the service.
     var write = opts.write || function (p, t) {
-        var fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+        var fd = fs.openSync(p, OPEN_FLAGS);
         try { fs.writeSync(fd, t); } finally { fs.closeSync(fd); }
     };
     try { write(opts.fifo || FIFO, key.word + '\n'); return Promise.resolve('dock'); }
     catch (e) {
-        return Promise.resolve(opts.reinject(key.native)).then(function () { return 'native'; });
+        return Promise.resolve().then(function () { return opts.reinject(key.native); }).then(function () { return 'native'; });
     }
 }
 
@@ -71,6 +74,7 @@ function repeater(opts) {
     function send(event) { return handle(event, opts).catch(function () {}); }
     return {
         event: function (event) {
+            if (!event) return Promise.resolve();
             if (event.action === 'up') { stop(); return Promise.resolve(); }
             // Mute and the 123 key are toggles: one press, one change, never repeated.
             if (String(event.code) === '66' || String(event.code) === '140') return event.action === 'down' ? send(event) : Promise.resolve();
@@ -84,7 +88,7 @@ function repeater(opts) {
                         // queued faster than they finish would fill its queue and keep everything else out.
                         if (pending) return;
                         pending = true;
-                        send(event).then(function () { pending = false; });
+                        send(event).then(function () { pending = false; }, function () { pending = false; });
                     }, INTERVAL_MS);
                     if (timer.unref) timer.unref();
                 }, DELAY_MS);

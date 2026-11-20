@@ -3,6 +3,8 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const vm = require('vm');
+const compat = require('../../app/service/compat.js');
 const preflight = require('../service/root-preflight.js');
 const caps = '/usr/bin/dotnet = cap_setgid,cap_sys_admin+ep\n/usr/sbin/sdbd-tarlauncher cap_setuid,cap_setgid=ep\n';
 const listing = version => ({ok: true, output: 'Microsoft.NETCore.App ' + version + ' [/usr/share/dotnet/shared]\n'});
@@ -30,6 +32,22 @@ function probe(overrides) {
     await assert.rejects(probe({getcap: {ok: true, output: caps.split('\n')[0]}}), {code: 'launcher-capabilities-missing'});
     await assert.rejects(probe({tar: {ok: true, output: 'other options'}}), {code: 'tar-unsupported'});
     await assert.rejects(probe({tar: {ok: false}}), {code: 'tar-probe-failed'});
+
+    // Simulate Node 4.4.3 where fs.constants is undefined, shimmed by app/service/compat.js
+    const node4Fs = Object.assign({}, fs, {constants: undefined, R_OK: undefined});
+    compat.install({fs: node4Fs});
+    const mod = {exports: {}};
+    const src = fs.readFileSync(path.resolve(__dirname, '../service/root-preflight.js'), 'utf8');
+    vm.runInNewContext('(function(require, module, exports){' + src + '\n})', {
+        Buffer, console, Error, Number, Promise
+    })(id => (id === 'fs' ? node4Fs : require(id)), mod, mod.exports);
+    const seenAccess = [];
+    assert.equal(mod.exports.detectRuntime(samsung, {
+        realpathSync: files('6.0.1').realpathSync,
+        accessSync: (p, mode) => seenAccess.push([p, mode])
+    }), '6.0');
+    assert.deepEqual(seenAccess.map(x => typeof x[1]), ['number', 'number']);
+    assert.equal(seenAccess[0][1], 4);
 
     // Exercise real preparation: selected DLL/deps and generated config must
     // agree; runtime choice must not just relabel a 3.1 assembly as net6.

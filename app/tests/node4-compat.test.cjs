@@ -48,8 +48,8 @@ function wgt(xml) {
     await assert.rejects(Promise.resolve(1).finally(function () { throw new Error('late'); }), /late/, 'callback errors reject');
   } finally { Promise.prototype.finally = realFinally; }
 
-  // 4. Buffer.alloc — absent on Node 4.4.
-  const realAlloc = Buffer.alloc;
+  // 4. Buffer.alloc — absent on Node 4.4 (along with Buffer.allocUnsafe; `new Buffer(size)` is uninitialized there).
+  const realAlloc = Buffer.alloc, realAllocUnsafe = Buffer.allocUnsafe;
   delete Buffer.alloc;
   try {
     assert.equal(typeof Buffer.alloc, 'undefined', 'this Node still had Buffer.alloc');
@@ -59,6 +59,32 @@ function wgt(xml) {
     assert.equal(empty[0], 0, 'zero filled');
     assert.equal(Buffer.alloc(3, 7)[0], 7, 'fill honoured');
   } finally { Buffer.alloc = realAlloc; }
+  // With BOTH Buffer.alloc and Buffer.allocUnsafe absent (Node 4.4.3), Buffer.alloc(size) must still zero-fill.
+  {
+    const fills = [];
+    function FakeBuffer(n) { const b = realAlloc(n, 0xaa); const realFill = b.fill.bind(b); b.fill = function () { fills.push(Array.from(arguments)); return realFill.apply(b, arguments); }; return b; }
+    FakeBuffer.byteLength = Buffer.byteLength;
+    FakeBuffer.isBuffer = Buffer.isBuffer;
+    FakeBuffer.from = Buffer.from;
+    compat.install({ Buffer: FakeBuffer });
+    const zeroed = FakeBuffer.alloc(8);
+    assert.equal(zeroed.length, 8);
+    assert.ok(zeroed.every(b => b === 0), 'zero-filled even without Buffer.allocUnsafe');
+    assert.equal(fills.length, 1, 'filled once');
+    assert.equal(FakeBuffer.alloc(4, 9)[0], 9, 'explicit fill honoured without Buffer.allocUnsafe');
+  }
+
+  // 4b. stream.Transform.prototype.destroy — absent on Node 4.4 (added in Node 8.0); zlib uses close().
+  {
+    let closed = 0;
+    function FakeTransform() {}
+    FakeTransform.prototype.close = function () { closed++; };
+    compat.install({ Transform: FakeTransform });
+    assert.equal(typeof FakeTransform.prototype.destroy, 'function', 'Transform.prototype.destroy shimmed');
+    const t = new FakeTransform();
+    t.destroy();
+    assert.equal(closed, 1, 'destroy delegates to close()');
+  }
 
   // 5. Buffer.from(string) — on Node 4.4 this is the inherited TypedArray.from.
   const realFrom = Buffer.from;
@@ -84,13 +110,15 @@ function wgt(xml) {
     Object.defineProperty(Buffer, 'from', { value: realFrom, configurable: true, writable: true });
   }
 
-  // 6. crypto.timingSafeEqual and Number.isInteger — absent on Node 4.4.
-  const realSafeEqual = crypto.timingSafeEqual, realIsInteger = Number.isInteger;
+  // 6. crypto.timingSafeEqual, Number.isInteger, Number.isSafeInteger, latin1 Buffer, fs.constants & zlib.InflateRaw — absent on Node 4.4.
+  const realSafeEqual = crypto.timingSafeEqual, realIsInteger = Number.isInteger, realIsSafeInteger = Number.isSafeInteger;
   delete crypto.timingSafeEqual;
   delete Number.isInteger;
+  delete Number.isSafeInteger;
   try {
     assert.equal(typeof crypto.timingSafeEqual, 'undefined', 'this Node still had timingSafeEqual');
     assert.equal(typeof Number.isInteger, 'undefined', 'this Node still had Number.isInteger');
+    assert.equal(typeof Number.isSafeInteger, 'undefined', 'this Node still had Number.isSafeInteger');
     compat.install();
     assert.ok(crypto.timingSafeEqual(Buffer.from('abc'), Buffer.from('abc')), 'equal frames verify');
     assert.ok(!crypto.timingSafeEqual(Buffer.from('abc'), Buffer.from('abd')), 'a different frame is rejected');
@@ -99,9 +127,39 @@ function wgt(xml) {
     assert.equal(Number.isInteger(-3), true);
     assert.equal(Number.isInteger(3.5), false);
     assert.equal(Number.isInteger('3'), false);
+    assert.equal(Number.isSafeInteger(9007199254740991), true);
+    assert.equal(Number.isSafeInteger(9007199254740992), false);
+    assert.equal(Number.isSafeInteger(3.5), false);
+    assert.equal(Number.isSafeInteger('3'), false);
   } finally {
     crypto.timingSafeEqual = realSafeEqual;
     Number.isInteger = realIsInteger;
+    Number.isSafeInteger = realIsSafeInteger;
+  }
+  {
+    const seen = [];
+    function FakeBuf(val) { this.v = val; }
+    FakeBuf.isBuffer = Buffer.isBuffer;
+    FakeBuf.isEncoding = function (e) { return e !== 'latin1' && Buffer.isEncoding(e); };
+    FakeBuf.alloc = Buffer.alloc; FakeBuf.from = Buffer.from;
+    FakeBuf.byteLength = function (s, enc) { seen.push('len:' + enc); return Buffer.byteLength(s, enc); };
+    FakeBuf.prototype.toString = function (enc) { seen.push('str:' + enc); return String(this.v); };
+    const fakeFs = {};
+    let inflateClosed = 0;
+    function FakeInflateRaw() {}
+    FakeInflateRaw.prototype.close = function () { inflateClosed++; };
+    const fakeZlib = { InflateRaw: FakeInflateRaw };
+    compat.install({ Buffer: FakeBuf, fs: fakeFs, zlib: fakeZlib });
+    assert.equal(FakeBuf.isEncoding('latin1'), true);
+    assert.equal(FakeBuf.byteLength('hi', 'latin1'), 2);
+    assert.equal(new FakeBuf('hi').toString('latin1'), 'hi');
+    assert.deepEqual(seen, ['len:binary', 'str:binary']);
+    assert.equal(typeof fakeFs.constants.O_WRONLY, 'number');
+    assert.equal(typeof fakeFs.constants.O_NONBLOCK, 'number');
+    assert.equal(typeof fakeFs.constants.R_OK, 'number');
+    assert.equal(typeof FakeInflateRaw.prototype.destroy, 'function');
+    new FakeInflateRaw().destroy();
+    assert.equal(inflateClosed, 1);
   }
 
   // 7. package-info read(): the callback-fs path that replaced fs.promises.

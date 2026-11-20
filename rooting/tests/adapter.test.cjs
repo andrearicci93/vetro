@@ -13,6 +13,7 @@ async function main() {
   fail = true; await assert.rejects(provider.install('testPkg','/tmp/test.wgt'), error => error.submitted === null);
   assert.equal(closes,2);
   await assert.rejects(provider.install('bad;id','/tmp/test.wgt'),/invalid/);
+  await assert.rejects(provider.install('testPkg','/tmp/../etc/test.wgt'),/invalid/);
   provider.start(); provider.start(); assert.equal(provider.status().running,true);
   provider.stop(); assert.equal(provider.status().running,false);
   let timers=0; context.setTimeout = () => {timers++;}; context.scheduleRelaunch(); assert.equal(timers,0);

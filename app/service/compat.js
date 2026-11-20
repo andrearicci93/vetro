@@ -6,6 +6,7 @@
 // Node is unaffected. `install` takes an optional {Promise, Buffer} for tests.
 
 var crypto = require('crypto');
+var fs = require('fs');
 
 function acceptsString(BufferRef) {
     try { return BufferRef.from('a').toString() === 'a'; } catch (error) { return false; }
@@ -16,6 +17,7 @@ function install(env) {
     var PromiseRef = target.Promise || Promise;
     var BufferRef = target.Buffer || Buffer;
     var NumberRef = target.Number || Number;
+    var FsRef = target.fs || fs;
 
     if (typeof PromiseRef.prototype.finally !== 'function') {
         PromiseRef.prototype.finally = function (callback) {
@@ -29,14 +31,13 @@ function install(env) {
     }
 
     if (typeof BufferRef.alloc !== 'function') {
-        // Only reached on a runtime without Buffer.alloc. `new Buffer` is that
-        // runtime's allocator and is zero-filled there; allocUnsafe is used when
-        // present so the fallback never recurses into a Buffer.alloc of its own.
+        // Only reached on a runtime without Buffer.alloc. On Node 4.4 neither
+        // Buffer.alloc nor Buffer.allocUnsafe exists, and `new Buffer(size)`
+        // returns uninitialized memory, so always zero-fill when `fill` is omitted.
         BufferRef.alloc = function (size, fill, encoding) {
-            var unsafe = typeof BufferRef.allocUnsafe === 'function';
-            var buffer = unsafe ? BufferRef.allocUnsafe(size) : new BufferRef(size);
-            if (unsafe) buffer.fill(0);
+            var buffer = typeof BufferRef.allocUnsafe === 'function' ? BufferRef.allocUnsafe(size) : new BufferRef(size);
             if (fill !== undefined) buffer.fill(fill, 0, size, encoding);
+            else buffer.fill(0);
             return buffer;
         };
     }
@@ -66,15 +67,45 @@ function install(env) {
                 }
                 // Not `new Buffer(value)`: on a modern runtime that constructor
                 // delegates back to Buffer.from and would recurse.
+                if (encoding === 'latin1') encoding = 'binary';
                 var size = BufferRef.byteLength(value, encoding);
                 var buffer = typeof BufferRef.allocUnsafe === 'function'
                     ? BufferRef.allocUnsafe(size)
                     : new BufferRef(size);
-                buffer.write(value, 0, size, encoding);
-                return buffer;
+                var written = buffer.write(value, 0, size, encoding);
+                return written < size ? buffer.slice(0, written) : buffer;
             }
         });
     }
+
+    if (typeof BufferRef.isEncoding !== 'function' || !BufferRef.isEncoding('latin1')) {
+        var origToString = BufferRef.prototype.toString;
+        BufferRef.prototype.toString = function (encoding, start, end) {
+            if (encoding === 'latin1') encoding = 'binary';
+            return origToString.call(this, encoding, start, end);
+        };
+        var origByteLength = BufferRef.byteLength;
+        BufferRef.byteLength = function (string, encoding) {
+            if (encoding === 'latin1') encoding = 'binary';
+            return origByteLength.call(BufferRef, string, encoding);
+        };
+        if (typeof BufferRef.isEncoding === 'function') {
+            var origIsEncoding = BufferRef.isEncoding;
+            BufferRef.isEncoding = function (encoding) {
+                if (encoding === 'latin1') return true;
+                return origIsEncoding.call(BufferRef, encoding);
+            };
+        }
+    }
+
+    if (!FsRef.constants) {
+        var base = {};
+        try { base = require('constants') || {}; } catch (e) {}
+        FsRef.constants = Object.assign({}, base);
+    }
+    if (typeof FsRef.constants.O_WRONLY !== 'number') FsRef.constants.O_WRONLY = 1;
+    if (typeof FsRef.constants.O_NONBLOCK !== 'number') FsRef.constants.O_NONBLOCK = 2048;
+    if (typeof FsRef.constants.R_OK !== 'number') FsRef.constants.R_OK = typeof FsRef.R_OK === 'number' ? FsRef.R_OK : 4;
 
     // Node 4.4 has neither crypto.timingSafeEqual nor Number.isInteger. The
     // root agent verifies HMAC frames with the former; both are numeric or
@@ -97,7 +128,28 @@ function install(env) {
         };
     }
 
-    return { Promise: PromiseRef, Buffer: BufferRef };
+    if (typeof NumberRef.isSafeInteger !== 'function') {
+        NumberRef.isSafeInteger = function (value) {
+            return typeof value === 'number' && isFinite(value) && Math.floor(value) === value && Math.abs(value) <= 9007199254740991;
+        };
+    }
+
+    // Node 4.4 has no stream.Transform.prototype.destroy (added in Node 8.0);
+    // zlib streams (such as package-info.js inflate) expose close() there.
+    var TransformRef = target.Transform || require('stream').Transform;
+    if (TransformRef && TransformRef.prototype && typeof TransformRef.prototype.destroy !== 'function') {
+        TransformRef.prototype.destroy = function () {
+            if (typeof this.close === 'function') this.close();
+        };
+    }
+    var ZlibRef = target.zlib || require('zlib');
+    if (ZlibRef && ZlibRef.InflateRaw && ZlibRef.InflateRaw.prototype && typeof ZlibRef.InflateRaw.prototype.destroy !== 'function') {
+        ZlibRef.InflateRaw.prototype.destroy = function () {
+            if (typeof this.close === 'function') this.close();
+        };
+    }
+
+    return { Promise: PromiseRef, Buffer: BufferRef, fs: FsRef, zlib: ZlibRef };
 }
 
 module.exports = { install: install, acceptsString: acceptsString };
