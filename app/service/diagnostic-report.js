@@ -225,7 +225,10 @@ var projectors = {
     input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','savedNodePresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','keyedSameNameCount','selectableCount']),
         {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog),prevHelperError:helperError(d.prevHelperLog),
             // remoconSubtype: whether the helper made its copy of the remote a Remocon on the TV (set, refused, no tool, no node, failed).
-            remoconSubtype:(function(m){return m?m[1].replace(' ','-'):null;})(/^remocon subtype: (set|unsupported|refused|no tool|no node|failed)$/.exec(String(d.remoconSubtype||'').trim()))},
+            remoconSubtype:(function(m){return m?m[1].replace(' ','-'):null;})(/^remocon subtype: (set|unsupported|refused|no tool|no node|failed)$/.exec(String(d.remoconSubtype||'').trim())),
+            // remoconNode: how the helper found its copy's input node (by the sysfs name uinput gave it, by its Phys, not at all); null from a
+            // helper older than preview23 or one that never got that far.
+            remoconNode:(function(m){return m?m[1]:null;})(/^remocon node: (sysname|phys|none)$/.exec(String(d.remoconNode||'').trim()))},
         // loop: what the 5 s restore loop is waiting on; history: the bridge's last turns (connected, lost, ended before connecting, a restore
         // tried or failed, a stop and who asked, the root agent up or down, a Remapper request), newest last.
         {loop:d.loop&&typeof d.loop==='object'?Object.assign(flags(d.loop,['paused','lifecycle','restoring']),numbers(d.loop,['faultPauseSeconds','retryWaitSeconds','retryFailures','tokenCount']),{mode:choice(d.loop.mode,['off','filter','observe'])}):null,

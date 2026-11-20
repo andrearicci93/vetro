@@ -69,6 +69,9 @@ const kinds = () => JSON.parse(JSON.stringify(c.inputHistory)).map(e => e.kind +
     assert.equal(p.remoconSubtype, 'no-tool', 'the helper\'s Remocon line as a fixed word');
     assert.equal(report.projectors.input({remoconSubtype: 'remocon subtype: /etc/x'}).remoconSubtype, null);
     assert.equal(report.projectors.input({remoconSubtype: 'remocon subtype: unsupported\n'}).remoconSubtype, 'unsupported', 'firmware without the command (Q80A, Tizen 6.0)');
+    assert.equal(report.projectors.input({remoconNode: 'remocon node: phys\n'}).remoconNode, 'phys', 'the copy found by its Phys when UI_GET_SYSNAME fails');
+    assert.equal(report.projectors.input({remoconNode: 'remocon node: /dev/input/event3'}).remoconNode, null, 'only the fixed words');
+    assert.equal(report.projectors.input({}).remoconNode, null);
     const events = p.history.map(e => e.event);
     assert.ok(events.includes('lost helper-disconnected') && events.includes('failed helper-did-not-connect') && events.includes('stop request') && events.includes('request filter'), events.join(' | '));
     assert.equal(events[events.length - 1], 'lost other', 'an unknown reason is "other"; an unknown kind and a negative age are dropped');

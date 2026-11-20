@@ -136,40 +136,46 @@ internal static class SamsungTvRemoteInputAgent
         // be told the subclass directly; older firmware has no such command, so a failure here is not an error.
         private void MarkAsRemoteControl()
         {
+            // The copy's sysfs name, from UI_GET_SYSNAME. Where that call fails (seen as no "remocon subtype" line at all on a Q70C,
+            // Tizen 9, 2026-11-20) the copy is found by its Phys instead. Which way it was found goes to the log as
+            // "remocon node: sysname / phys / none", read by the diagnostics with the outcome line below.
+            string inputName = null;
             byte[] sysName = new byte[64];
-            if (ioctl_buffer(descriptor, UiGetSysName, sysName) < 0)
+            if (ioctl_buffer(descriptor, UiGetSysName, sysName) >= 0)
             {
-                return;
-            }
-            string inputName = Encoding.ASCII.GetString(sysName).TrimEnd('\0');
-            if (inputName.Length == 0 || inputName.IndexOf('/') >= 0)
-            {
-                return;
+                inputName = Encoding.ASCII.GetString(sysName).TrimEnd('\0');
+                if (inputName.Length == 0 || inputName.IndexOf('/') >= 0)
+                {
+                    inputName = null;
+                }
             }
             // The outcome goes to the log as one fixed line ("remocon subtype: set / unsupported / refused / no tool / no node / failed"), read by
             // the diagnostics: on Tizen 9 boards keys passed on through this copy seem not to reach Samsung's apps or Vetro's TV page
             // (S95C, Q70C, 2026-11-19), and whether the copy became a Remocon there is the first thing to know.
             Task.Run(() =>
             {
-                bool asked = false;
+                bool asked = false, told = false;
+                string how = "none";
                 try
                 {
                     for (int attempt = 0; attempt < 12; attempt++)
                     {
                         System.Threading.Thread.Sleep(250);
-                        string folder = "/sys/devices/virtual/input/" + inputName;
-                        if (!Directory.Exists(folder))
+                        string node = inputName == null ? null : EventNodeIn("/sys/devices/virtual/input/" + inputName);
+                        how = node != null ? "sysname" : "none";
+                        if (node == null)
                         {
-                            continue;
-                        }
-                        string node = null;
-                        foreach (string entry in Directory.GetDirectories(folder, "event*"))
-                        {
-                            node = "/dev/input/" + Path.GetFileName(entry);
+                            node = FindForwardedNode();
+                            if (node != null) how = "phys";
                         }
                         if (node == null)
                         {
                             continue;
+                        }
+                        if (!told)
+                        {
+                            Console.Error.WriteLine("remocon node: " + how);
+                            told = true;
                         }
                         if (!File.Exists("/usr/bin/enlightenment_info"))
                         {
@@ -200,6 +206,7 @@ internal static class SamsungTvRemoteInputAgent
                             }
                         }
                     }
+                    if (!asked) Console.Error.WriteLine("remocon node: none");
                     Console.Error.WriteLine(asked ? "remocon subtype: refused" : "remocon subtype: no node");
                 }
                 catch (Exception)
@@ -207,6 +214,68 @@ internal static class SamsungTvRemoteInputAgent
                     Console.Error.WriteLine("remocon subtype: failed");
                 }
             });
+        }
+
+        // The event node inside one input device's sysfs folder, or null.
+        private static string EventNodeIn(string folder)
+        {
+            try
+            {
+                if (!Directory.Exists(folder))
+                {
+                    return null;
+                }
+                foreach (string entry in Directory.GetDirectories(folder, "event*"))
+                {
+                    return "/dev/input/" + Path.GetFileName(entry);
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return null;
+        }
+
+        // This helper's copy found by its Phys among the virtual input devices (every uinput device is a real folder there; the
+        // /sys/class/input entries are links): the newest one (highest inputN) if an older copy lingers.
+        private static string FindForwardedNode()
+        {
+            string found = null;
+            int newest = -1;
+            try
+            {
+                foreach (string folder in Directory.GetDirectories("/sys/devices/virtual/input", "input*"))
+                {
+                    int number;
+                    if (!int.TryParse(Path.GetFileName(folder).Substring(5), out number) || number <= newest)
+                    {
+                        continue;
+                    }
+                    string phys;
+                    try
+                    {
+                        phys = File.ReadAllText(Path.Combine(folder, "phys")).Trim();
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                    }
+                    if (phys != ForwardedPhys)
+                    {
+                        continue;
+                    }
+                    string node = EventNodeIn(folder);
+                    if (node != null)
+                    {
+                        found = node;
+                        newest = number;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return found;
         }
 
         public void Forward(byte[] inputEvent)
