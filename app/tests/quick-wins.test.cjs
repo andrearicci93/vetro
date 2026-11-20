@@ -121,7 +121,7 @@ const noWait=()=>Promise.resolve();
  // Quick boot: the four markers at ~10 s, only while chosen; it shares the AT-HUB hook with the firmware lock
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});
  r=await w.apply('quickboot',true);assert.equal(r.status,'on');assert.equal(r.hook,true);assert.equal(t.s.hookInstalled,true);
- assert.equal(JSON.parse(io.data).quickboot,true);assert.ok(/graphical.target.done/.test(t.s.parseinfo)&&/quickboot/.test(t.s.parseinfo));
+ assert.equal(JSON.parse(io.data).quickboot,true);assert.ok(/graphical.target.done/.test(t.s.parseinfo)&&/quickboot/.test(t.s.parseinfo));assert.ok(/ewaiter -d \/run\/systemd\/system\/default\.target\.done/.test(t.s.parseinfo),'sets the 6.5/9 system-default event');
  r=await w.apply('quickboot',false);assert.equal(r.status,'off');assert.equal(t.s.hookInstalled,false);assert.equal(JSON.parse(io.data).quickboot,false);
  // With the update lock on, turning quick boot off keeps the shared hook; turning the lock off last removes it
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait});await w.apply('firmware',true);await w.apply('quickboot',true);

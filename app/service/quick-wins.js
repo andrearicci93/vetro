@@ -350,7 +350,11 @@ function fwHookScript() {
         '        while ((getline l < "' + FILE + '") > 0) { if (l ~ /"firmware"[ \\t]*:[ \\t]*true/) lock = 1; if (l ~ /"quickboot"[ \\t]*:[ \\t]*true/) boot = 1 }\n' +
         '        close("' + FILE + '")\n' +
         '    }\n' +
-        '    if (boot) system("/usr/bin/touch ' + BOOT_MARKERS.join(' ') + ' 2>/dev/null")\n' +
+        '    if (boot) {\n' +
+        '        system("/usr/bin/touch ' + BOOT_MARKERS.join(' ') + ' 2>/dev/null")\n' +
+        // 6.5/9 replaced the default-target file unit with an lwipc event; setting it here is what the vendor unit does.
+        '        system("[ -x /usr/bin/ewaiter ] && /usr/bin/ewaiter -d /run/systemd/system/default.target.done >/dev/null 2>&1")\n' +
+        '    }\n' +
         '    if (lock) {\n' +
         '        system("/usr/bin/systemctl mask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1 || for u in ' + FWUNITS.join(' ') + '; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
         '        system("/usr/bin/systemctl stop --no-block ' + fwStoppable().join(' ') + ' >/dev/null 2>&1")\n' +
