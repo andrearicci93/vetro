@@ -71,6 +71,19 @@ internal static partial class Tests
         Check(pr2.Count == 1 && rp2.Count == 2 && rl.Count == 1 && rl[0] == 108, "releases are reported to a caller that asks for them");
         var hold2 = new EvdevReader(16);
         Check(hold2.Feed(bytes.ToArray(), bytes.Count).Count == 1, "without asking for repeats only the press is reported");
+        hold2.Feed(null, 0, pr, rp, rl);
+        hold2.Feed(bytes.ToArray(), 0, pr, rp, rl);
+        var forwarded = InputDevices.RemoteNodes(
+            "I: Bus=0006 Vendor=0001 Product=0002 Version=0001\n" +
+            "N: Name=\"Samsung BLE Remote\"\n" +
+            "P: Phys=vetro-forwarded-remote\n" +
+            "H: Handlers=kbd event9\n\n" +
+            "N: Name=\"Generic HID Keyboard\"\n" +
+            "H: Handlers=kbd event2\n\n" +
+            "N: Name=\"Smart Control\"\n" +
+            "H: Handlers=event3\n");
+        Check(forwarded.Count == 2 && forwarded[0] == "/dev/input/event9" && forwarded[1] == "/dev/input/event3",
+            "InputDevices.RemoteNodes matches P: Phys=vetro-forwarded-remote alongside N: Name");
 
         // number pad
         var n = new NumberEntry();
