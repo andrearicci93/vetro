@@ -741,6 +741,7 @@ namespace Launcher
             MoveWindow(_taskLayout.WinX, _taskLayout.WinY, _taskLayout.WinW, _taskLayout.WinH);
             _tasksOn = true;
             _cardFocus = 0;
+            System.Threading.Volatile.Write(ref _pictureChecks, null);
             OpenCards(pop);
             if (HasCard(CardKind.Tasks))
             {
@@ -1890,6 +1891,10 @@ namespace Launcher
             StartChoicePoll();
         }
 
+        // Cached offered picture-mode check answer for the current Control Center session (cleared on OpenTasks),
+        // so selecting a picture mode runs 2 busctl calls instead of 24 while falling back if the signal changed.
+        private static string _pictureChecks;
+
         /// <summary>
         /// What reads (and sets) the choice card <paramref name="card"/>; null for the Task manager and the Audio output. A Shard's card asks
         /// the Vetro service with curl (never the Shard itself): the read, and a choice that answers the card's new state, so one call each.
@@ -1899,7 +1904,29 @@ namespace Launcher
             switch (card.Kind)
             {
                 case CardKind.Picture:
-                    return new ChoiceSource("picture mode", () => PictureModes.Build(Shell.Read(PictureModes.GetCommand()), Shell.Read(PictureModes.CheckCommand())), PictureModes.SetCommand, Log);
+                    return new ChoiceSource("picture mode", () =>
+                    {
+                        string get = Shell.Read(PictureModes.GetCommand());
+                        List<int> cur = PictureModes.Numbers(get);
+                        if (cur.Count < 2 || cur[1] != 0 || cur[0] < 0) return PictureModes.Build(get, "");
+                        int mode = cur[0];
+                        if (mode != PictureModes.NewHome && Array.IndexOf(PictureModes.Candidates, mode) < 0)
+                            return new ChoiceState
+                            {
+                                Rows = new List<ChoiceRow> { new ChoiceRow { Label = PictureModes.Name(mode) ?? "Another mode", Value = mode, Active = true } },
+                                Note = "Set in Samsung's menu",
+                                Choosable = false
+                            };
+                        string checks = System.Threading.Volatile.Read(ref _pictureChecks);
+                        if (checks != null)
+                        {
+                            ChoiceState cached = PictureModes.Build(get, checks);
+                            if (PictureModes.CacheCovers(cached, mode)) return cached;
+                        }
+                        string fresh = Shell.Read(PictureModes.CheckCommand());
+                        if (!string.IsNullOrEmpty(fresh)) System.Threading.Volatile.Write(ref _pictureChecks, fresh);
+                        return PictureModes.Build(get, fresh);
+                    }, PictureModes.SetCommand, Log);
                 case CardKind.Sleep:
                     return new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);
                 case CardKind.Shard:

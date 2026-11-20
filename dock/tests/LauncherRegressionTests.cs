@@ -259,6 +259,31 @@ namespace Launcher.Tests
                 T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
                 T.Eq(OutputPickerModel.ActionFor(new OutputEntry { Kind = OutputKind.ScreenOff, Label = "x" }), OutputAction.ScreenOff, "the last row turns the screen off");
             });
+
+            T.Run("picture modes: cached check answer matches SDR switches and falls back on HDR or unoffered modes", () =>
+            {
+                // Candidates indices: 0=65536 (Dynamic SDR), 3=65537 (Standard SDR), 4=393216 (Standard HDR), 12=65538 (Movie SDR), 20=655360 (Filmmaker SDR)
+                var lines = new string[PictureModes.Candidates.Length];
+                for (int i = 0; i < lines.Length; i++) lines[i] = (i == 0 || i == 3 || i == 12) ? "i 1" : "i 0";
+                string sdrChecks = string.Join("\n", lines) + "\n";
+
+                ChoiceState sdr = PictureModes.Build("ii 65537 0", sdrChecks);
+                T.True(PictureModes.CacheCovers(sdr, 65537), "Standard SDR covered by cached SDR check");
+                T.True(sdr.Rows.Exists(r => r.Active && r.Value == 65537), "Standard SDR active");
+
+                ChoiceState switched = PictureModes.Build("ii 65538 0", sdrChecks);
+                T.True(PictureModes.CacheCovers(switched, 65538), "Movie SDR covered by same cached SDR check (2 busctl instead of 24)");
+                T.True(switched.Rows.Exists(r => r.Active && r.Value == 65538), "Movie SDR active");
+
+                ChoiceState newHome = PictureModes.Build("ii " + PictureModes.NewHome + " 0", sdrChecks);
+                T.True(PictureModes.CacheCovers(newHome, PictureModes.NewHome), "NewHome covered by cached check with choosable list");
+
+                ChoiceState hdrSignal = PictureModes.Build("ii 393216 0", sdrChecks);
+                T.True(!PictureModes.CacheCovers(hdrSignal, 393216), "HDR Standard shares name with SDR Standard but has different Value -> cache miss forces fresh check");
+
+                ChoiceState unoffered = PictureModes.Build("ii 655360 0", sdrChecks);
+                T.True(!PictureModes.CacheCovers(unoffered, 655360), "Unoffered Filmmaker mode sets Choosable=false -> cache miss forces fresh check");
+            });
         }
     }
 }

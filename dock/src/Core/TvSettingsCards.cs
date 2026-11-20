@@ -137,6 +137,16 @@ namespace Launcher.Core
         {
             foreach (ChoiceRow r in st.Rows) if (r.Label == name) r.Active = true;
         }
+
+        /// <summary>
+        /// True when a <see cref="ChoiceState"/> built against a cached <see cref="CheckCommand"/> answer still covers
+        /// <paramref name="mode"/> (same signal family and choosable); false forces a fresh <see cref="CheckCommand"/>.
+        /// </summary>
+        public static bool CacheCovers(ChoiceState cached, int mode)
+        {
+            if (cached == null || !cached.Choosable || cached.Rows.Count == 0) return false;
+            return mode == NewHome || cached.Rows.Exists(r => r.Active && r.Value == mode);
+        }
     }
 
     /// <summary>
