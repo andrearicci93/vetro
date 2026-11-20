@@ -27,6 +27,23 @@ function bundle(version, files, opts) {
 // 1. paths and versions
 assert.ok(okPath('service/main.js') && okPath('native/dock/tvlauncher-dotnet.dll') && okPath('index.html') && okPath('payload/SamsungTvRootAgent.dll') && okPath('payload/net6/SamsungTvRootAgent.dll'));
 ['config.xml', 'author-signature.xml', '../x', 'service/../x.js', 'service/sub/x.js', '/etc/passwd', 'native/../x', 'payload/../x', 'payload//x', 'payload/net6/', 'service/a b.js', 'native//x', 'native/x/'].forEach(n => assert.ok(!okPath(n), 'refused: ' + n));
+assert.throws(() => new Updater({ installDir: 'relative/path', workDir: '/tmp/work' }), /Unsafe update folders/);
+if (process.platform === 'win32') {
+    const winUp = new Updater({ installDir: 'C:\\temp\\install', workDir: 'C:\\temp\\work' });
+    assert.throws(() => winUp._applyScript('0.4.0', '0.4.1', [], [], [], {}, false), /Unsafe path/);
+}
+// POSIX script generation: dirOf avoids backslashes and redundant mkdir -p "$B/." or "$I/." even when generated on Windows
+{
+    const posixUp = new Updater({ installDir: '/opt/usr/apps/vetro', workDir: '/opt/usr/home/owner/share/upd', buildInfo: { version: '0.4.0', shell: 1 } });
+    const sc = posixUp._applyScript('0.4.0', '0.4.1', ['index.html', 'native/dock/x.dll'], ['index.html'], ['native/dock/x.dll'], { 'index.html': 'a'.repeat(64), 'native/dock/x.dll': 'b'.repeat(64) }, true);
+    assert.ok(!sc.includes('\\'), 'generated POSIX update script has no backslashes');
+    assert.ok(!sc.includes('mkdir -p "$B/."') && !sc.includes('mkdir -p "$I/."'), 'no redundant mkdir -p for root files');
+    assert.ok(sc.includes('mkdir -p "$I/native/dock"'), 'nested dirs use POSIX slashes');
+    assert.match(sc, /\|\| \{\nset \+e\n/, 'apply undo clears set -e');
+    assert.match(sc, /> "\$W\/pending\.json\.tmp" && mv -f "\$W\/pending\.json\.tmp" "\$W\/pending\.json"/, 'pending.json is atomic');
+    const wd = posixUp._watchdog('0.4.1', ['index.html'], ['native/dock/x.dll'], true);
+    assert.ok(wd.includes('[ ! -f "$W/pending.json" ] && exit 0'), 'watchdog exits if pending.json removed by rollback');
+}
 assert.equal(compare('0.4.1', '0.4.0'), 1); assert.equal(compare('0.4.0', '0.4.0'), 0); assert.equal(compare('0.10.0', '0.9.9'), 1); assert.equal(compare('x', '0.1.0'), null);
 
 // 2. verification
@@ -77,6 +94,20 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await assert.rejects(f.u.apply(bundle('0.5.0', { 'service/a.js': 'x' }), 'f'.repeat(64)), /SHA-256/);
     assert.equal(f.ran.length, 0, 'nothing runs when a check fails');
     assert.equal(f.u.check(bundle('0.4.1', { 'service/a.js': 'new a' })).changed, 1);
+    if (process.platform === 'win32') {
+        // Also verify backup metadata validation on Windows before skipping POSIX sh execution
+        for (const meta of [
+            { from: "0.4.0'; touch pwned; #", to: '0.4.1', files: ['service/a.js'], added: [] },
+            { from: 40, to: '0.4.1', files: ['service/a.js'], added: [] },
+            { from: '0.4.0', to: '0.4.1-beta', files: ['service/a.js'], added: [] }
+        ]) {
+            fs.writeFileSync(path.join(f.work, 'backup.json'), JSON.stringify(meta));
+            assert.equal(f.u.status().canRollBack, false);
+            await assert.rejects(f.u.rollback(), err => err.code === 'other-backup');
+        }
+        console.log('PASS updater: signature, manifest paths, port kept, win32 constructor paths, backup validation, and POSIX apply-script guard');
+        process.exit(0);
+    }
 
     // An apply whose script never runs (the TV busy, the agent gone) leaves no Go back list behind it
     {
@@ -163,6 +194,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await f.u.apply(next);
     await f.u.rollback();
     assert.equal(f.read('service/a.js'), 'old a'); assert.ok(!fs.existsSync(path.join(f.install, 'service', 'b.js')));
+    assert.ok(fs.existsSync(path.join(f.work, 'ok-0.4.1')), 'manual rollback disarms any running watchdog');
+    // rollback refuses tampered non-semver from/to in backup.json (shell injection guard)
+    fs.writeFileSync(path.join(f.work, 'backup.json'), JSON.stringify({ from: "0.4.0';id;'", to: '0.4.1', files: ['service/a.js'], added: [] }));
+    await assert.rejects(f.u.rollback(), err => err.code === 'other-backup');
     await assert.rejects(fixture('0.4.0').u.rollback(), /no previous version/);
     // Vetro installed again with another version in between (the update folder outlives an install): the saved files are
     // not this version's, so they are neither offered nor put back.
@@ -224,6 +259,28 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     assert.equal((await upDock(() => { calls++; return Promise.resolve('restarted'); })).state, 'updated'); assert.equal(calls, 0);
     await wait(2500);
     assert.ok(!fs.existsSync(path.join(f.root, 'dockstops')), 'the launcher is not stopped when its files did not change');
+
+    // PR #252 regressions: rollback() refuses tampered/injected version fields in backup.json, undo clears set -e, and state writes are atomic
+    f = fixture('0.4.0');
+    await f.u.apply(next);
+    const badBackupCases = [
+        { from: "0.4.0'; touch " + path.join(f.root, 'pwned') + "; #", to: '0.4.1', files: ['service/a.js'], added: [] },
+        { from: 40, to: '0.4.1', files: ['service/a.js'], added: [] },
+        { from: '0.4.0', to: '0.4.1-beta', files: ['service/a.js'], added: [] }
+    ];
+    for (const meta of badBackupCases) {
+        fs.writeFileSync(path.join(f.work, 'backup.json'), JSON.stringify(meta));
+        assert.equal(f.u.status().canRollBack, false, 'invalid version metadata cannot roll back: ' + JSON.stringify(meta.from));
+        await assert.rejects(f.u.rollback(), err => err.code === 'other-backup');
+        assert.ok(!fs.existsSync(path.join(f.root, 'pwned')), 'no shell injection executed');
+    }
+    assert.match(f.ran[0], /\|\| \{\nset \+e\n/, 'apply undo clears set -e so partial restore continues');
+    assert.match(f.ran[0], /> "\$W\/pending\.json\.tmp" && mv -f "\$W\/pending\.json\.tmp" "\$W\/pending\.json"/, 'pending.json is written atomically');
+    f = fixture('0.4.0');
+    await f.u.apply(next);
+    await f.u.rollback();
+    assert.match(f.ran[1], /\nset \+e\n/, 'rollback clears set -e during restore lines');
+    assert.match(f.ran[1], /> "\$W\/result\.json\.tmp" && mv -f "\$W\/result\.json\.tmp" "\$W\/result\.json"/, 'result.json is written atomically');
 
     console.log('PASS updater: signature, manifest paths, port kept, replace + confirm, watchdog rollback, manual rollback, tampered staging refused, launcher restarted and rolled back with the update');
     process.exit(0);
