@@ -1535,8 +1535,105 @@ namespace Launcher.Tests
                 T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "svcapp" }), "services hidden");
                 T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "uiapp", NoDisplay = true }), "nodisplay hidden");
                 T.True(!Tasks.IsUserApp("x.y", null), "unknown hidden");
+                T.True(!Tasks.IsUserApp("com.samsung.tv.coba.adagent", ui), "Smart Hub adagent protected");
+                T.True(!Tasks.IsUserApp("org.tizen.ambientapp", ui), "ambientapp protected");
+
+                var t9Meta = Tasks.ParseAppInfo("Appid: com.samsung.tv.bixbycapsuleviewer\ncomponent: uiapp\nExec: /opt/usr/apps/com.samsung.tv.bixbycapsuleviewer/bin/bixbycapsuleviewer\nNodisplay: 0\nTaskmanage: 1\nOnboot: 0\nAutorestart: 0\n");
+                T.Eq(t9Meta.Exec, "/opt/usr/apps/com.samsung.tv.bixbycapsuleviewer/bin/bixbycapsuleviewer", "Exec parsed");
+                T.True(t9Meta.TaskManage && !t9Meta.OnBoot && !t9Meta.AutoRestart, "manifest flags parsed");
+                T.True(Tasks.IsUserApp("a.normal.app", t9Meta, false), "normal /opt/usr/apps uiapp visible");
+
+                var noTask = Tasks.ParseAppInfo("component: uiapp\nTaskmanage: 0\n");
+                T.True(!noTask.TaskManage && !Tasks.IsUserApp("com.foo.helper", noTask, false), "Taskmanage: 0 hidden when non-catalog");
+                T.True(Tasks.IsUserApp("com.foo.helper", noTask, true), "Taskmanage: 0 kept when in catalog");
+
+                var onBoot = Tasks.ParseAppInfo("component: uiapp\nOnboot: 1\n");
+                T.True(onBoot.OnBoot && !Tasks.IsUserApp("com.foo.boot", onBoot, false), "Onboot: 1 hidden");
+                var autoRestart = Tasks.ParseAppInfo("component: uiapp\nAutorestart: true\n");
+                T.True(autoRestart.AutoRestart && !Tasks.IsUserApp("com.foo.daemon", autoRestart, false), "Autorestart hidden");
+
+                var noAutoRaise = new AppInfo { Component = "uiapp", NoAutoRaise = true };
+                T.True(!Tasks.IsUserApp("com.samsung.tv.bixbycapsuleviewer", noAutoRaise, false), "noautoraise helper hidden");
+                T.True(!Tasks.IsUserApp("org.tizen.voice-app", noAutoRaise, false), "noautoraise voice-app hidden");
+                T.True(!Tasks.IsUserApp("org.tizen.art-app", noAutoRaise, false), "noautoraise art-app hidden");
+
+                var usrBin = Tasks.ParseAppInfo("component: uiapp\nExec: /usr/bin/p2p-asm-UI\nNodisplay: 0\n");
+                T.True(!Tasks.IsUserApp("p2p-asm-UI", usrBin, false), "/usr/bin/ uiapp daemon hidden");
+                T.True(Tasks.IsUserApp("com.samsung.tv.csfs", new AppInfo { Component = "uiapp", NoAutoRaise = true, OnBoot = true, AutoRestart = true, TaskManage = false, Exec = "/usr/bin/csfs" }, false), "Samsung Home always kept visible");
+
                 T.Eq(Tasks.DisplayName("com.samsung.tv.csfs", ui, null), "Samsung Home", "friendly name");
                 T.Eq(Tasks.DisplayName("a.b", new AppInfo { Label = "Pkg" }, "Catalog"), "Catalog", "catalog label wins");
+            });
+
+            T.Run("tasks: TaskCloseTracker runtime learning of unclosable/respawning apps", () =>
+            {
+                const long Hz = 1000;
+                var tr = new TaskCloseTracker(Hz);
+                Func<string, bool> keep = id => id == "com.user.app" || Tasks.IsKeepVisible(id);
+                var running = new List<KeyValuePair<string, int>>();
+
+                // Normal close: leaves and stays gone past respawn window
+                tr.RecordClose("org.normal.app", 100, 1000);
+                T.Eq(tr.Observe(running, 3000, keep).Count, 0, "gone at +2s not learned");
+                T.Eq(tr.Observe(running, 12000, keep).Count, 0, "stayed gone past +10s not learned");
+                T.True(!tr.IsLearned("org.normal.app"), "normal close not learned");
+
+                // Instant respawn with new PID inside 10 s window
+                tr.RecordClose("com.helper.instant", 100, 1000);
+                var res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.helper.instant", 200) }, 3000, keep);
+                T.Eq(res.Count, 1, "instant respawn learned");
+                T.True(res[0].Key == "com.helper.instant" && res[0].Value == "respawned pid 100->200", "respawn reason recorded");
+                T.True(tr.IsLearned("com.helper.instant"), "IsLearned true after respawn");
+
+                // Blink-out then respawn with new PID inside 10 s window
+                tr.RecordClose("com.helper.blink", 10, 1000);
+                T.Eq(tr.Observe(running, 2000, keep).Count, 0, "blink gone at +1s");
+                res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.helper.blink", 300) }, 5000, keep);
+                T.Eq(res.Count, 1, "blink-out respawn learned");
+
+                // Same-PID survival >= 6 s (including across panel close & reopen at +30 s)
+                tr.RecordClose("com.helper.stubborn", 100, 1000);
+                T.Eq(tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.helper.stubborn", 100) }, 5000, keep).Count, 0, "not yet at +4s");
+                res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.helper.stubborn", 100) }, 7000, keep);
+                T.Eq(res.Count, 1, "survived >=6s learned");
+                T.True(res[0].Value == "survived close pid 100", "survived reason recorded");
+
+                tr.RecordClose("com.helper.reopen", 100, 1000);
+                res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.helper.reopen", 100) }, 31000, keep);
+                T.Eq(res.Count, 1, "survived across reopen at +30s learned");
+
+                // CancelClose prevents false positive when user relaunches app
+                tr.RecordClose("com.helper.relaunch", 100, 1000);
+                tr.CancelClose("com.helper.relaunch");
+                res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.helper.relaunch", 250) }, 3000, keep);
+                T.Eq(res.Count, 0, "CancelClose prevents learning on explicit user launch");
+
+                // Catalog / KeepVisible apps are never learned even if they survive or respawn
+                tr.RecordClose("com.samsung.tv.csfs", 500, 1000);
+                res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.samsung.tv.csfs", 501) }, 3000, keep);
+                T.Eq(res.Count, 0, "Samsung Home never learned");
+                tr.RecordClose("com.user.app", 600, 1000);
+                res = tr.Observe(new List<KeyValuePair<string, int>> { new KeyValuePair<string, int>("com.user.app", 600) }, 8000, keep);
+                T.Eq(res.Count, 0, "catalog user app never learned");
+
+                // Persistence round-trip + invalid-line skip + MaxLearned FIFO cap
+                tr.LoadLearned("# comment\n\nbad id;rm\ncom.persisted.one\n");
+                T.True(tr.IsLearned("com.persisted.one"), "valid persisted id loaded");
+                string fmt = tr.FormatLearned();
+                T.True(fmt.Contains("com.persisted.one\n") && !fmt.Contains("# comment"), "FormatLearned round-trips cleanly");
+
+                var capped = new TaskCloseTracker(Hz);
+                for (int i = 0; i < TaskCloseTracker.MaxLearned + 5; i++)
+                    capped.LoadLearned("org.cap.app" + i + "\n");
+                T.Eq(capped.LearnedCount, TaskCloseTracker.MaxLearned, "LearnedCount capped at MaxLearned");
+                T.True(!capped.IsLearned("org.cap.app0") && capped.IsLearned("org.cap.app" + (TaskCloseTracker.MaxLearned + 4)), "FIFO eviction drops oldest learned entries");
+
+                // KeepClosing timeout and edge cases
+                T.True(TaskCloseTracker.KeepClosing(true, 100, 100, 1000, 4000, 6000), "same PID within timeout stays closing");
+                T.True(!TaskCloseTracker.KeepClosing(true, 100, 100, 1000, 7000, 6000), "same PID at timeout drops closing");
+                T.True(!TaskCloseTracker.KeepClosing(true, 100, 101, 1000, 4000, 6000), "new PID drops closing");
+                T.True(!TaskCloseTracker.KeepClosing(false, 100, 100, 1000, 4000, 6000), "wasClosing false drops closing");
+                T.True(TaskCloseTracker.KeepClosing(true, 100, 100, 0, 4000, 6000), "closingAt 0 stays closing");
             });
 
             T.Run("tasks: /proc parsing and process-tree sums", () =>
