@@ -97,6 +97,10 @@ assert.equal(ytNoCobalt.entries.length, 1, 'no Cobalt app: the row stays out');
 assert.equal(ytNoCobalt.skipped[0].reason, 'Not installed');
 const ytShort = catalog.build(Object.assign({}, ytGone, {installedCount: 3}));
 assert.equal(ytShort.entries.length, 1, 'a short package list is not trusted: the row stays out');
+// Same fallback when the wrapper package was uninstalled but its widgetinfo row remained in webappservice.db
+const ytStaleReg = catalog.build(Object.assign({}, ytGone, {registry: Object.assign({'111299001912': {title: 'YouTube', appId: '9Ur5IzDKqV.TizenYouTube', hidden: false}}, ytGone.registry)}));
+assert.equal(ytStaleReg.entries[0].appId, 'com.samsung.tv.cobalt-yt', 'stale wrapper registry row still falls back to Cobalt YouTube');
+assert.equal(ytStaleReg.skipped.length, 0);
 
 // load(): one read of the Home data, one check that the icon files exist; errors are explicit
 (async function () {
