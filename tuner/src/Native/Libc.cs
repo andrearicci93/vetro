@@ -15,6 +15,7 @@ namespace Tuner.Native
         public const int O_RDWR = 2;
         public const int F_SETFL = 4;
         public const int EAGAIN = 11;
+        public const int EINTR = 4;
 
         [DllImport(C, SetLastError = true)] public static extern int setenv(string name, string value, int overwrite);
         // PR_SET_NAME (15): names the calling thread in /proc (15 bytes at most). .NET on these TVs leaves its threads named after the

@@ -140,7 +140,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnTakeoverPoll = d => { try { PollTakeover(); } catch (Exception ex) { Log("takeover: " + ex.Message); } return (byte)(_takeoverBroken ? 0 : 1); };
         private static readonly Efl.TaskCb OnQuit = d => { Log("auto exit"); Efl.elm_exit(); return 0; };
         private static readonly Efl.TaskCb OnRescan = d => { try { WatchNodes(false); } catch (Exception ex) { Log("rescan: " + ex.Message); } return 1; };
-        private static readonly Efl.FdCb OnInput = (d, h) => { try { ReadInput((int)d); } catch (Exception ex) { Log("input: " + ex.Message); } return 1; };
+        private static readonly Efl.FdCb OnInput = (d, h) => { try { return ReadInput((int)d); } catch (Exception ex) { Log("input: " + ex.Message); return 1; } };
         private static readonly Efl.FdCb OnControlFd = (d, h) => { try { OnControl(); } catch (Exception ex) { Log("control: " + ex.Message); } return 1; };
 
         private static int Main(string[] args)
@@ -174,6 +174,7 @@ namespace Tuner
             // The channel service starts now, on its own thread, while this thread builds the window: the two do not depend on each other.
             if (Libc.pipe(Wake) != 0) { Log("pipe failed"); return 5; }
             Libc.fcntl(Wake[0], Libc.F_SETFL, Libc.O_NONBLOCK);
+            Libc.fcntl(Wake[1], Libc.F_SETFL, Libc.O_NONBLOCK);
             var worker = new Thread(WorkerMain) { IsBackground = true, Name = "tvs" };
             worker.Start();
 
@@ -417,14 +418,20 @@ namespace Tuner
         private static void Ui(Action a)
         {
             UiQueue.Enqueue(a);
-            Libc.write(Wake[1], WakeByte, (UIntPtr)1);
+            while ((long)Libc.write(Wake[1], WakeByte, (UIntPtr)1) < 0 && Marshal.GetLastWin32Error() == Libc.EINTR) { }
         }
         private static readonly byte[] WakeByte = { 1 };              // only read by write(): shared by every thread
         private static readonly byte[] WakeDrain = new byte[64];       // UI thread only
 
         private static readonly Efl.FdCb OnWake = (d, h) =>
         {
-            while ((long)Libc.read(Wake[0], WakeDrain, (UIntPtr)WakeDrain.Length) > 0) { }   // always: the handler is level-triggered
+            while (true)
+            {
+                long got = (long)Libc.read(Wake[0], WakeDrain, (UIntPtr)WakeDrain.Length);
+                if (got > 0) continue;
+                if (got < 0 && Marshal.GetLastWin32Error() == Libc.EINTR) continue;
+                break;
+            }   // always: the handler is level-triggered
             // While a transition runs, the worker's results (a programme, a schedule, the info panel's texts) wait for its end: a redraw would
             // move the objects that are flying. At most a third of a second.
             if (Anim.Busy) { if (!_uiWaiting) { _uiWaiting = true; Anim.WhenIdle(DrainUi); } }
@@ -661,6 +668,7 @@ namespace Tuner
 
         private static void CloseGuide()
         {
+            StopHold();
             if (_guideView == null) return;
             if (_guideTimer != IntPtr.Zero) { Efl.ecore_timer_del(_guideTimer); _guideTimer = IntPtr.Zero; }
             if (_detailTimer != IntPtr.Zero) { Efl.ecore_timer_del(_detailTimer); _detailTimer = IntPtr.Zero; }
@@ -775,7 +783,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnHoldFirst = d => { _holdTimer = IntPtr.Zero; StartHoldRepeat(); return 0; };
         private static readonly Efl.TaskCb OnHoldTick = d =>
         {
-            if (_holdCode == 0 || Environment.TickCount64 - _holdStarted > HoldMaxSeconds * 1000 || !_active) { _holdTimer = IntPtr.Zero; _holdCode = 0; return 0; }
+            if (_holdCode == 0 || Environment.TickCount64 - _holdStarted > HoldMaxSeconds * 1000 || !_active || LauncherOpen() || !KeysAreOurs()) { _holdTimer = IntPtr.Zero; _holdCode = 0; return 0; }
             HoldStep();
             return 1;
         };
@@ -798,7 +806,7 @@ namespace Tuner
 
         private static void StartHoldRepeat()
         {
-            if (_holdCode == 0) return;
+            if (!_active || _holdCode == 0) return;
             _holdTimer = Efl.ecore_timer_add(HoldEvery, OnHoldTick, IntPtr.Zero);
             HoldStep();
         }
@@ -1180,12 +1188,14 @@ namespace Tuner
 
         private static void CloseList()
         {
+            StopHold();
             if (_listTimer != IntPtr.Zero) { Efl.ecore_timer_del(_listTimer); _listTimer = IntPtr.Zero; }
             _listView.Hide();
         }
 
         private static void MoveSelection(int delta)
         {
+            if (_list == null || _list.Count == 0) { CloseList(); return; }
             if (Math.Abs(delta) > 1) _sel = Math.Max(0, Math.Min(_list.Count - 1, _sel + delta));              // a page stops at the ends
             else _sel = ((_sel + delta) % _list.Count + _list.Count) % _list.Count;                            // a single step wraps round
             DrawList();
@@ -1468,21 +1478,29 @@ namespace Tuner
         private static void OnControl()
         {
             byte[] buf = ControlRead;
-            long got;
-            while ((got = (long)Libc.read(_controlFd, buf, (UIntPtr)buf.Length)) > 0)
+            while (true)
             {
+                long got = (long)Libc.read(_controlFd, buf, (UIntPtr)buf.Length);
+                if (got < 0)
+                {
+                    if (Marshal.GetLastWin32Error() == Libc.EINTR) continue;
+                    break;
+                }
+                if (got == 0) break;
                 ControlBuf.Append(Encoding.ASCII.GetString(buf, 0, (int)got));
-                if (ControlBuf.Length > 4096) ControlBuf.Clear();
+                if (ControlBuf.Length > 4096) { ControlBuf.Clear(); break; }
             }
+            if (ControlBuf.Length == 0) return;
             string all = ControlBuf.ToString();
-            int nl;
-            while ((nl = all.IndexOf('\n')) >= 0)
+            int start = 0, nl;
+            while ((nl = all.IndexOf('\n', start)) >= 0)
             {
-                string line = all.Substring(0, nl).Trim();
-                all = all.Substring(nl + 1);
+                string line = all.Substring(start, nl - start).Trim();
+                start = nl + 1;
                 if (line.Length > 0) Command(line);
             }
-            ControlBuf.Clear(); ControlBuf.Append(all);
+            ControlBuf.Clear();
+            if (start < all.Length) ControlBuf.Append(all, start, all.Length - start);
         }
 
         private static void Command(string line)
@@ -1528,18 +1546,20 @@ namespace Tuner
 
         // ---- input devices ----
 
-        private static void ReadInput(int index)
+        private static byte ReadInput(int index)
         {
+            if (index < 0 || index >= _fds.Count) return 0;
             int fd = _fds[index];
-            if (fd < 0) return;
+            if (fd < 0) return 0;
             IntPtr n = Libc.read(fd, _buf, (UIntPtr)_buf.Length);
             long got = (long)n;
             if (got < 0)
             {
-                if (Marshal.GetLastWin32Error() != Libc.EAGAIN) DropNode(index);
-                return;
+                int err = Marshal.GetLastWin32Error();
+                if (err != Libc.EAGAIN && err != Libc.EINTR) { DropNode(index); return 0; }
+                return 1;
             }
-            if (got == 0) return;
+            if (got == 0) { DropNode(index); return 0; }
             _presses.Clear(); _held.Clear(); _released.Clear();
             _readers[index].Feed(_buf, (int)got, _presses, _held, _released);
             if (_presses.Count > 0 || _held.Count > 0)
@@ -1558,6 +1578,7 @@ namespace Tuner
             foreach (int code in _presses.ToArray()) { OnKey(code, Path.GetFileName(_paths[index])); BeginHold(code); }
             foreach (int code in _held.ToArray()) OnRepeat(code);
             foreach (int code in _released.ToArray()) EndHold(code);
+            return 1;
         }
 
         /// <summary>The Dock, its Task manager or the osd 123 is on screen (OverlayFlag): the remote's keys are the launcher's.</summary>
@@ -1624,6 +1645,7 @@ namespace Tuner
         private static void DropNode(int i)
         {
             if (_fds[i] < 0) return;
+            StopHold();
             Scan.Dirty();                                               // the next 3 s tick reads the list again (the node may still be there)
             Log("lost " + _paths[i]);
             if (_handlers[i] != IntPtr.Zero) Efl.ecore_main_fd_handler_del(_handlers[i]);
