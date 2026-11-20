@@ -562,7 +562,8 @@ function agentExecute(cmd, timeoutMs) {
 
 function status() {
     return Object.assign({}, state, { mode: 'tv-integration', agentLog: agentServer ? agentServer.log : [],
-        timing: {firstConnect: timing.firstConnect, reconnect: timing.reconnect, losses: timing.losses} });
+        timing: {firstConnect: timing.firstConnect, reconnect: timing.reconnect, losses: timing.losses},
+        channel: agentServer ? agentServer.channel : null });
 }
 // fn(true) when the agent connects, fn(false) when it is lost. The service uses it to restore the remote bridge at once.
 function onAgent(fn) { if (typeof fn === 'function') agentListeners.push(fn); }

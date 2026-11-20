@@ -21,10 +21,19 @@ var crypto = require('crypto');
 var PROTOCOL_VERSION = 'SAMSUNG-TV-ROOT/1';
 var MAX_FRAME_BYTES = 8 * 1024 * 1024;
 var MAX_PENDING = 32;
+// The agent runs one command at a time, ends it at its timeout and answers at once. GRACE_MS is how long that answer may take
+// after the timeout before the caller is told; a late answer still frees the channel. Only an agent silent for LATE_MAX_MS more
+// is taken for stuck, and the channel is closed: a relaunch through sdb costs seconds and every command fails meanwhile, and a
+// command answering late is one way two diagnostics exports (2026-11-20) may have lost the channel. The agent may answer late when
+// a process the command started outside its process group keeps stdout open: it waits for the end of the output after the kill.
+var GRACE_MS = 5000;
+var LATE_MAX_MS = 30000;
 
 // A refused or lost command carries a fixed code (app/service/exec-error.js CODES), so a diagnostics report says why a section is
 // missing: a timed-out command closes the channel and every command after it fails until the agent is back.
 function coded(message, code) { var e = new Error(message); e.code = code; return e; }
+// Closes a socket from this side, keeping the first reason for the diagnostics (an agent that closes by itself reads as "closed").
+function drop(socket, reason) { if (!socket.vetroDrop) socket.vetroDrop = reason; socket.destroy(); }
 
 function RootAgentServer(opts) {
     opts = opts || {};
@@ -37,7 +46,16 @@ function RootAgentServer(opts) {
     this._conn = null;
     this._listeningPort = 0;
     this.log = [];   // why each connection was rejected; shown in /status
+    // How the channel has fared, for the diagnostics: answers that came after the caller had given up, and why each agent was lost.
+    this.channel = {lateAnswers: 0, lateMaxMs: 0, busyRefusals: 0, drops: []};
+    this.graceMs = opts.graceMs || GRACE_MS;        // shorter only in tests
+    this.lateMaxMs = opts.lateMaxMs || LATE_MAX_MS;
 }
+
+RootAgentServer.prototype.dropped = function (reason, timeoutMs) {
+    this.channel.drops.push({at: Date.now(), reason: reason, timeoutMs: timeoutMs || null});
+    if (this.channel.drops.length > 6) this.channel.drops.shift();
+};
 
 RootAgentServer.prototype.note = function (what) {
     this.log.push({ at: Date.now(), what: String(what) });
@@ -79,17 +97,17 @@ RootAgentServer.prototype._handle = function (socket) {
         buf += chunk.toString('utf8');
         var idx;
         if (buf.length > MAX_FRAME_BYTES && buf.indexOf('\n') === -1) {
-            self.note('frame too large'); socket.destroy(); return;
+            self.note('frame too large'); drop(socket, 'frame-too-large'); return;
         }
         while ((idx = buf.indexOf('\n')) !== -1) {
-            if (idx > MAX_FRAME_BYTES) { self.note('frame too large'); socket.destroy(); return; }
+            if (idx > MAX_FRAME_BYTES) { self.note('frame too large'); drop(socket, 'frame-too-large'); return; }
             var line = buf.slice(0, idx);
             buf = buf.slice(idx + 1);
             if (!line) continue;
 
             var payload;
             try { payload = self._verify(line, nonce); }
-            catch (e) { self.note('auth frame rejected: ' + (e.message || e)); socket.destroy(); return; }
+            catch (e) { self.note('auth frame rejected: ' + (e.message || e)); drop(socket, 'bad-frame'); return; }
 
             if (!authed) {
                 // expect AUTH with a full root identity (same require_root as
@@ -118,7 +136,7 @@ RootAgentServer.prototype._handle = function (socket) {
                 }
                 authed = true;
                 clearTimeout(authTimer);
-                self._conn = new RootAgentConnection(socket, self.secret, nonce, ident);
+                self._conn = new RootAgentConnection(socket, self.secret, nonce, ident, self.channel, {graceMs: self.graceMs, lateMaxMs: self.lateMaxMs});
                 if (self.onConnect) self.onConnect(self._conn);
                 continue;
             }
@@ -126,14 +144,16 @@ RootAgentServer.prototype._handle = function (socket) {
             // after auth, frames are handled by the connection
             if (self._conn) self._conn._onFrame(payload);
         }
-        if (buf.length > MAX_FRAME_BYTES) { self.note('frame too large'); socket.destroy(); }
+        if (buf.length > MAX_FRAME_BYTES) { self.note('frame too large'); drop(socket, 'frame-too-large'); }
     });
 
     socket.on('error', function (e) { self.note('socket error: ' + (e.message || e)); });
     socket.on('close', function () {
         clearTimeout(authTimer);
         if (self._conn && self._conn._socket === socket) {
-            self._conn._failPending(new Error('root agent disconnected'));
+            var stuck = self._conn.stuck;
+            self.dropped(socket.vetroDrop || 'closed', stuck ? stuck.timeoutMs : null);
+            self._conn._failPending(coded('root agent disconnected', 'no-root-agent'));
             self._conn = null;
             if (self.onClose) self.onClose();
         } else if (!authed) {
@@ -171,13 +191,19 @@ RootAgentServer.prototype.close = function () {
 };
 
 // --- connection (server side, one agent) ----------------------------------
-function RootAgentConnection(socket, secret, nonce, identity) {
+function RootAgentConnection(socket, secret, nonce, identity, channel, limits) {
     this._socket = socket;
     this._secret = secret;
     this._nonce = nonce;
     this.identity = identity;
     this._sequence = 0;
-    this._pending = {}; // seq -> { resolve, reject }
+    this._pending = {}; // seq -> job, the one command the agent is running
+    this._queue = [];   // commands not sent yet: the agent would only start them after the current one
+    this._current = null;
+    this.stuck = null;  // the command the channel was closed for
+    this._channel = channel || {lateAnswers: 0, lateMaxMs: 0, busyRefusals: 0, drops: []};
+    this._graceMs = (limits && limits.graceMs) || GRACE_MS;
+    this._lateMaxMs = (limits && limits.lateMaxMs) || LATE_MAX_MS;
 }
 
 RootAgentConnection.prototype._send = function (payload) {
@@ -194,17 +220,26 @@ RootAgentConnection.prototype._onFrame = function (payload) {
         if (p) {
             delete this._pending[seq];
             clearTimeout(p.timer);
+            if (this._current === p) this._current = null;
             if (f.length !== 6 || !/^-?[0-9]+$/.test(f[2]) || !/^[01]$/.test(f[3])) {
                 p.reject(new Error('invalid root agent result'));
-                this._socket.destroy();
+                drop(this._socket, 'bad-result');
                 return;
             }
-            p.resolve({
-                exit_code: parseInt(f[2], 10),
-                timed_out: f[3] === '1',
-                stdout: Buffer.from(f[4], 'base64').toString('utf8'),
-                stderr: Buffer.from(f[5], 'base64').toString('utf8')
-            });
+            if (p.lateAt) {
+                // The caller was already told the command timed out; the answer only frees the channel.
+                var lateMs = Date.now() - p.lateAt;
+                this._channel.lateAnswers++;
+                if (lateMs > this._channel.lateMaxMs) this._channel.lateMaxMs = lateMs;
+            } else {
+                p.resolve({
+                    exit_code: parseInt(f[2], 10),
+                    timed_out: f[3] === '1',
+                    stdout: Buffer.from(f[4], 'base64').toString('utf8'),
+                    stderr: Buffer.from(f[5], 'base64').toString('utf8')
+                });
+            }
+            this._pump();
         }
     } else if (f[0] === 'PONG') {
         var s = f[1], pr = this._pending[s];
@@ -213,12 +248,47 @@ RootAgentConnection.prototype._onFrame = function (payload) {
 };
 
 RootAgentConnection.prototype._failPending = function (error) {
-    var pending = this._pending;
+    var pending = this._pending, queue = this._queue;
     this._pending = {};
+    this._queue = [];
+    this._current = null;
     Object.keys(pending).forEach(function (seq) {
         clearTimeout(pending[seq].timer);
         pending[seq].reject(error);
     });
+    queue.forEach(function (job) { clearTimeout(job.timer); job.reject(error); });
+};
+
+// Sends the next waiting command once the agent has answered the one before (or the channel is free). The timer of a command
+// starts when it is sent: before, a command queued behind a slow one ran out of time without having started.
+RootAgentConnection.prototype._pump = function () {
+    var self = this;
+    if (this._current || !this._queue.length || this._socket.destroyed) return;
+    var job = this._queue.shift();
+    clearTimeout(job.timer);
+    var seq = ++this._sequence;
+    this._current = job;
+    this._pending[seq] = job;
+    job.timer = setTimeout(function () {
+        if (self._pending[seq] !== job) return;
+        job.lateAt = Date.now();
+        job.reject(coded('root agent execute timeout; command outcome unknown', 'command-timeout'));
+        job.timer = setTimeout(function () {
+            if (self._pending[seq] !== job) return;
+            self.stuck = {timeoutMs: job.timeoutMs};
+            drop(self._socket, 'command-timeout');
+        }, self._lateMaxMs);
+    }, job.timeoutMs + self._graceMs);
+    try {
+        var b64 = Buffer.from(job.command, 'utf8').toString('base64');
+        this._send('EXEC\t' + seq + '\t' + job.timeoutMs + '\t' + b64);
+    } catch (e) {
+        clearTimeout(job.timer);
+        delete this._pending[seq];
+        this._current = null;
+        job.reject(e);
+        drop(this._socket, 'send-failed');
+    }
 };
 
 RootAgentConnection.prototype.execute = function (command, timeoutMs) {
@@ -231,28 +301,23 @@ RootAgentConnection.prototype.execute = function (command, timeoutMs) {
         return Promise.reject(new Error('invalid command timeout'));
     }
     if (self._socket.destroyed) return Promise.reject(coded('root agent disconnected', 'no-root-agent'));
-    if (Object.keys(self._pending).length >= MAX_PENDING) return Promise.reject(coded('root agent busy', 'agent-busy'));
+    if (self._queue.length + (self._current ? 1 : 0) >= MAX_PENDING) {
+        self._channel.busyRefusals++;
+        return Promise.reject(coded('root agent busy', 'agent-busy'));
+    }
     return new Promise(function (resolve, reject) {
-        var seq = ++self._sequence;
-        var timer = setTimeout(function () {
-            if (self._pending[seq]) {
-                delete self._pending[seq];
-                reject(coded('root agent execute timeout; command outcome unknown', 'command-timeout'));
-                // Do not reuse a channel whose command may still be running.
-                self._socket.destroy();
-            }
-        }, timeoutMs + 5000);
-        self._pending[seq] = { resolve: resolve, reject: reject, timer: timer };
-        try {
-            var b64 = Buffer.from(command, 'utf8').toString('base64');
-            self._send('EXEC\t' + seq + '\t' + timeoutMs + '\t' + b64);
-        } catch (e) {
-            clearTimeout(timer);
-            delete self._pending[seq];
-            reject(e);
-            self._socket.destroy();
-        }
+        var job = {command: command, timeoutMs: timeoutMs, resolve: resolve, reject: reject, timer: null, lateAt: 0};
+        // A command still waiting behind a late one gives up in its own time and leaves the channel alone.
+        job.timer = setTimeout(function () {
+            var i = self._queue.indexOf(job);
+            if (i < 0) return;
+            self._queue.splice(i, 1);
+            self._channel.busyRefusals++;
+            reject(coded('root agent busy: an earlier command has not answered yet', 'agent-busy'));
+        }, timeoutMs + self._graceMs);
+        self._queue.push(job);
+        self._pump();
     });
 };
 
-module.exports = { RootAgentServer };
+module.exports = { RootAgentServer, GRACE_MS: GRACE_MS, LATE_MAX_MS: LATE_MAX_MS };

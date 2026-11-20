@@ -67,6 +67,12 @@ const execError = require('../service/exec-error');
   assert.deepStrictEqual(preflight.rooting.failure, {stage: 'preflight', code: 'runtime-unsupported'});
   assert(!JSON.stringify(preflight).includes(secret));
   assert.equal(report.projectors.platform({preflight: {runtime: secret}}).rootRuntime, null);
+  // The root channel: why each agent was lost, late answers and busy refusals; numbers and fixed words only.
+  const channel = report.projectors.platform({timing: {losses: 2}, channel: {lateAnswers: 3, lateMaxMs: 12400, busyRefusals: 1,
+    drops: [{at: Date.now() - 61000, reason: 'command-timeout', timeoutMs: 15000, command: secret}, {at: Date.now(), reason: secret}, {at: Date.now(), reason: 'frame-too-large'}]}}).rootChannel;
+  assert.deepStrictEqual(channel, {losses: 2, lateAnswers: 3, lateMaxSeconds: 12, busyRefusals: 1,
+    drops: [{reason: 'command-timeout', agoSeconds: 61, timeoutSeconds: 15}, {reason: null, agoSeconds: 0, timeoutSeconds: null}, {reason: 'frame-too-large', agoSeconds: 0, timeoutSeconds: null}]});
+  assert.deepStrictEqual(report.projectors.platform({}).rootChannel, {losses: null, lateAnswers: null, lateMaxSeconds: null, busyRefusals: null, drops: []});
   const olderInventory = report.projectors.inventory({dependenciesAvailable: false, apps: [{appId: 'old.app', dependencies: null, dependents: null}]});
   assert.equal(olderInventory.registryAvailable, true);
   assert.equal(olderInventory.dependenciesAvailable, false);
