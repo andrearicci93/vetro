@@ -54,6 +54,48 @@ internal static partial class Tests
         var bad = (byte[])full.Clone(); bad[1] = 4;
         Check(!GuideReply.Parse(bad, false, out junk), "a reply that is not a branch is refused");
 
+        // corrupt inner programme TLV must cause Parse to return false (not silently skip)
+        byte[] Tlv(byte tag, byte kind, byte[] body)
+        {
+            var r = new byte[6 + body.Length];
+            r[0] = tag; r[1] = kind;
+            int len = body.Length;
+            r[2] = (byte)len; r[3] = (byte)(len >> 8); r[4] = (byte)(len >> 16); r[5] = (byte)(len >> 24);
+            Buffer.BlockCopy(body, 0, r, 6, body.Length);
+            return r;
+        }
+        byte[] Concat(params byte[][] parts)
+        {
+            int n = 0; foreach (var p in parts) n += p.Length;
+            var r = new byte[n]; int at = 0;
+            foreach (var p in parts) { Buffer.BlockCopy(p, 0, r, at, p.Length); at += p.Length; }
+            return r;
+        }
+        {
+            // programme branch whose inner leaf claims 99 bytes inside a 6-byte body
+            byte[] corruptProgBody = new byte[] { 2, 4, 99, 0, 0, 0 };
+            byte[] map = Tlv(0, 8, Concat(Tlv(0, 4, new byte[4]), Tlv(0, 8, corruptProgBody)));
+            byte[] packet = Tlv(1, 8, Concat(Tlv(0, 4, new byte[] { 1, 0, 0, 0 }), map));
+            Check(!GuideReply.Parse(packet, false, out junk) && junk.Count == 0, "a corrupt inner programme TLV is refused");
+
+            // TagTexts with KindLeaf (not KindBranch) is ignored without breaking Start/Duration
+            byte[] progBody = Concat(
+                Tlv(2, 4, new byte[] { 0x10, 0x00, 0x00, 0x00 }),
+                Tlv(3, 4, new byte[] { 0x3C, 0x00, 0x00, 0x00 }),
+                Tlv(6, 4, new byte[] { 0x00, 0x41 }));
+            byte[] map2 = Tlv(0, 8, Concat(Tlv(0, 4, new byte[4]), Tlv(0, 8, progBody)));
+            byte[] packet2 = Tlv(1, 8, Concat(Tlv(0, 4, new byte[] { 1, 0, 0, 0 }), map2));
+            List<GuideEvent> ev2;
+            Check(GuideReply.Parse(packet2, false, out ev2) && ev2.Count == 1 && ev2[0].Start == 16 && ev2[0].Duration == 60 && ev2[0].Title == "",
+                "non-branch TagTexts leaf is ignored safely");
+
+            // single-string GuideText.Title overload matches array overload
+            Check(GuideText.Title("Accordi & disaccordi^Talk") == "Accordi & disaccordi"
+                && GuideText.Title((string)null) == ""
+                && GuideText.Title("Foo\u007fBar\u00ad") == "FooBar",
+                "GuideText.Title single-string overload cleans control marks and cuts genre suffix");
+        }
+
         // ---- the store ----
         var store = new GuideStore();
         long now = c5[0].Start + 600;

@@ -52,7 +52,7 @@ namespace Tuner
         private static bool LogosOn { get { return Logos.Available && _features.On("logos"); } }
         private static string LogoOf(Channel c) { return LogosOn ? Logos.PathFor(c) : null; }
         private static ChannelList _list;            // null until the worker has read it
-        private static Channel _shown;                // the channel the screen (and, soon, the daemon) is on
+        private static volatile Channel _shown;       // the channel the screen (and, soon, the daemon) is on
         private static Channel _previous;             // the one watched before it: Back goes there, as on Samsung's own tuner (and back again on the next Back)
 
         /// <summary>The channel on screen changes: the one it was on becomes the one Back returns to.</summary>
@@ -63,7 +63,8 @@ namespace Tuner
             _shown = c;
         }
         private static int _startMajor;
-        private static bool _resident, _active;
+        private static bool _resident;
+        private static volatile bool _active;
         // --quiet (the service adds it when this start replaces a tuner that was running: an update, a new build): for the first
         // seconds the Banner does not come up by itself, so a restart nobody asked for draws nothing over the programme. A key shows it as ever.
         private const long QuietStartMs = 15000;
@@ -95,7 +96,7 @@ namespace Tuner
         private static GuideView _guideView;          // made the first time the guide opens
         private static GuideGrid _grid;
         private static string _assets;
-        private static int _guideGen;                 // bumped when the rows on screen change: a reading pass from an earlier gen stops
+        private static int _guideGen, _detailGen;     // bumped when the rows/focus change: an older pass stops
         private static IntPtr _guideTimer, _detailTimer;
         private static readonly Dictionary<string, string> Details = new Dictionary<string, string>();   // long texts of programmes, read on demand (UI thread only)
 
@@ -120,7 +121,7 @@ namespace Tuner
         private static readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
 
         private static readonly List<int> _fds = new List<int>();
-        private static readonly List<string> _paths = new List<string>();
+        private static readonly List<string> _paths = new List<string>(), _nodeNames = new List<string>();
         private static readonly List<EvdevReader> _readers = new List<EvdevReader>();
         private static readonly List<IntPtr> _handlers = new List<IntPtr>();
         private static readonly byte[] _buf = new byte[512];
@@ -138,7 +139,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnTakeoverPoll = d => { try { PollTakeover(); } catch (Exception ex) { Log("takeover: " + ex.Message); } return (byte)(_takeoverBroken ? 0 : 1); };
         private static readonly Efl.TaskCb OnQuit = d => { Log("auto exit"); Efl.elm_exit(); return 0; };
         private static readonly Efl.TaskCb OnRescan = d => { try { WatchNodes(false); } catch (Exception ex) { Log("rescan: " + ex.Message); } return 1; };
-        private static readonly Efl.FdCb OnInput = (d, h) => { try { ReadInput((int)d); } catch (Exception ex) { Log("input: " + ex.Message); } return 1; };
+        private static readonly Efl.FdCb OnInput = (d, h) => { try { return ReadInput((int)d); } catch (Exception ex) { Log("input: " + ex.Message); return 1; } };
         private static readonly Efl.FdCb OnControlFd = (d, h) => { try { OnControl(); } catch (Exception ex) { Log("control: " + ex.Message); } return 1; };
 
         private static int Main(string[] args)
@@ -172,6 +173,7 @@ namespace Tuner
             // The channel service starts now, on its own thread, while this thread builds the window: the two do not depend on each other.
             if (Libc.pipe(Wake) != 0) { Log("pipe failed"); return 5; }
             Libc.fcntl(Wake[0], Libc.F_SETFL, Libc.O_NONBLOCK);
+            Libc.fcntl(Wake[1], Libc.F_SETFL, Libc.O_NONBLOCK);
             var worker = new Thread(WorkerMain) { IsBackground = true, Name = "tvs" };
             worker.Start();
 
@@ -239,7 +241,11 @@ namespace Tuner
 
             Efl.elm_run();
             Log("elm_run returned");
-            if (_controlFd >= 0) { Libc.close(_controlFd); Libc.unlink(_controlPath); }
+            if (_wakeHandler != IntPtr.Zero) { Efl.ecore_main_fd_handler_del(_wakeHandler); _wakeHandler = IntPtr.Zero; }
+            if (_controlHandler != IntPtr.Zero) { Efl.ecore_main_fd_handler_del(_controlHandler); _controlHandler = IntPtr.Zero; }
+            if (_controlFd >= 0) { Libc.close(_controlFd); _controlFd = -1; Libc.unlink(_controlPath); }
+            if (Wake[0] >= 0) { Libc.close(Wake[0]); Wake[0] = -1; }
+            if (Wake[1] >= 0) { Libc.close(Wake[1]); Wake[1] = -1; }
             RemovePid();
             MarkShown(false);
             MarkTvUp(false);
@@ -258,7 +264,7 @@ namespace Tuner
         private static bool _loggedNotReady;
 
         /// <summary>Puts the window on screen (the first time, or again after <see cref="Deactivate"/>) with the banner of the channel we are on.</summary>
-        private static void Activate()
+        private static void Activate(bool showBanner = true)
         {
             if (_active) return;
             if (!Ready())
@@ -279,7 +285,7 @@ namespace Tuner
             try { TimeZoneInfo.ClearCachedData(); _utcOffset = TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow); } catch (Exception) { }
             Tvs.SourceUnknown();
             if (_listReadMs >= 0 && _clock.ElapsedMilliseconds - _listReadMs > ListMaxAgeMs) QueueListRead();
-            if (_shown != null && !QuietStart()) ShowBanner(_shown);
+            if (showBanner && _shown != null && !QuietStart()) ShowBanner(_shown);
             StartPrefetch();                                            // schedules may have gone stale while hidden (the store ages them), and a zap may have happened from the pipe
             if (_list != null) { _resyncLeft = 1; ResyncNow(); }        // Samsung's app may have changed the channel while we were hidden
             Log("shown");
@@ -290,6 +296,7 @@ namespace Tuner
         /// <param name="hold">Keep the tuner away while Samsung's app stays up (Back, Home). False for Power: the TV goes to standby and wakes on the same app, which must find the tuner on.</param>
         private static void Deactivate(bool hold = true)
         {
+            StopHold();
             CloseList(); ClosePad(); CloseGuide(); CloseInfo();
             _banner.Hide(); HideToasts();
             Anim.FinishAll();                                           // the window goes: nothing is left half way
@@ -401,7 +408,7 @@ namespace Tuner
                 Channel cur = _firstRead;
                 Log("tvs: " + status + (cur != null ? " -> " + cur.Major + " " + cur.Name : ""));
                 if (TvsClient.LoadedFrom != null) Log("tvs: client " + TvsClient.LoadedFrom);
-                if (cur != null) Ui(() => { _shown = cur; if (_active && !QuietStart()) ShowBanner(cur); RequestProgram(); });
+                if (cur != null) Ui(() => { _shown = cur; if (_active && !QuietStart()) ShowBanner(cur); else { _programAttempt = 0; RequestProgram(); } });
                 Interlocked.Exchange(ref _listReading, 1);
                 LoadChannels(true);
                 foreach (Action a in Work.GetConsumingEnumerable()) a();
@@ -413,14 +420,22 @@ namespace Tuner
         private static void Ui(Action a)
         {
             UiQueue.Enqueue(a);
-            Libc.write(Wake[1], WakeByte, (UIntPtr)1);
+            int fd = Wake[1];
+            if (fd < 0) return;
+            while ((long)Libc.write(fd, WakeByte, (UIntPtr)1) < 0 && Marshal.GetLastWin32Error() == Libc.EINTR) { }
         }
         private static readonly byte[] WakeByte = { 1 };              // only read by write(): shared by every thread
         private static readonly byte[] WakeDrain = new byte[64];       // UI thread only
 
         private static readonly Efl.FdCb OnWake = (d, h) =>
         {
-            while ((long)Libc.read(Wake[0], WakeDrain, (UIntPtr)WakeDrain.Length) > 0) { }   // always: the handler is level-triggered
+            while (true)
+            {
+                long got = (long)Libc.read(Wake[0], WakeDrain, (UIntPtr)WakeDrain.Length);
+                if (got > 0) continue;
+                if (got < 0 && Marshal.GetLastWin32Error() == Libc.EINTR) continue;
+                break;
+            }
             // While a transition runs, the worker's results (a programme, a schedule, the info panel's texts) wait for its end: a redraw would
             // move the objects that are flying. At most a third of a second.
             if (Anim.Busy) { if (!_uiWaiting) { _uiWaiting = true; Anim.WhenIdle(DrainUi); } }
@@ -458,14 +473,6 @@ namespace Tuner
             {
                 ulong id = (ulong)Interlocked.Exchange(ref _wantId, 0);
                 if (id == 0) return;                                  // a later request already took it
-                // The schedule does not depend on the tune (the daemon answers for any channel in ~40 ms): when the banner has nothing yet, it is read first.
-                Channel shown = _shown;
-                long t0 = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (shown != null && shown.Id == id && Store.Current(id, t0) == null && ReadIntoStore(id, t0))
-                {
-                    GuideEvent e = Store.Current(id, t0);
-                    if (e != null) Ui(() => ApplyProgram(shown, true, e.Start, e.Duration, e.Title, 0));
-                }
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 int r = -1;
                 try { r = Tvs.Tune(id); } catch (Exception ex) { Log("tune: " + ex.Message); }
@@ -531,7 +538,8 @@ namespace Tuner
             try
             {
                 List<GuideEvent> events;
-                ok = Tvs.ReadSchedule(id, now, GuideGrid.HorizonSeconds, false, out events);
+                long from = GuideGrid.Floor(now);
+                ok = Tvs.ReadSchedule(id, from, GuideGrid.HorizonSeconds + (now - from), false, out events);
                 if (ok) Store.Put(id, events, now, now + GuideGrid.HorizonSeconds);
             }
             catch (Exception ex) { Log("schedule: " + ex.Message); }
@@ -657,16 +665,19 @@ namespace Tuner
 
         private static void CloseGuide()
         {
+            StopHold();
             if (_guideView == null) return;
             if (_guideTimer != IntPtr.Zero) { Efl.ecore_timer_del(_guideTimer); _guideTimer = IntPtr.Zero; }
             if (_detailTimer != IntPtr.Zero) { Efl.ecore_timer_del(_detailTimer); _detailTimer = IntPtr.Zero; }
             Interlocked.Increment(ref _guideGen);                       // a reading pass in progress stops
+            Interlocked.Increment(ref _detailGen);
             _guideView.Hide();
         }
 
         /// <summary>After any move: redraw, read what is newly on screen, and (a moment later) the long text of the focused programme.</summary>
         private static void GuideChanged(bool rowsMayHaveChanged)
         {
+            Interlocked.Increment(ref _detailGen);
             DrawGuide();
             if (rowsMayHaveChanged) LoadGuideRows();
             Restart(ref _detailTimer, DetailDelay, OnDetailTimer);
@@ -737,21 +748,26 @@ namespace Tuner
             if (e == null || c == null) return;
             string key = DetailKey(c, e);
             if (Details.ContainsKey(key)) return;
+            int detailGen = Volatile.Read(ref _detailGen);
             Work.Add(() =>
             {
+                if (detailGen != Volatile.Read(ref _detailGen)) return;
+                bool readOk = false;
                 string text = "";
                 try
                 {
                     List<GuideEvent> ev;
-                    if (Tvs.ReadSchedule(c.Id, e.Start, 6 * 3600, true, out ev))
+                    readOk = Tvs.ReadSchedule(c.Id, e.Start, 6 * 3600, true, out ev);
+                    if (readOk)
                         foreach (GuideEvent x in ev) if (x.EventId == e.EventId && x.Start == e.Start) { text = x.Description; break; }
                 }
                 catch (Exception ex) { Log("detail: " + ex.Message); }
+                if (!readOk) return;
                 Ui(() =>
                 {
                     if (Details.Count > 200) Details.Clear();
                     Details[key] = text;
-                    if (GuideOpen) DrawGuide();
+                    if (GuideOpen && text.Length > 0 && detailGen == Volatile.Read(ref _detailGen)) DrawGuide();
                 });
             });
         }
@@ -771,7 +787,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnHoldFirst = d => { _holdTimer = IntPtr.Zero; StartHoldRepeat(); return 0; };
         private static readonly Efl.TaskCb OnHoldTick = d =>
         {
-            if (_holdCode == 0 || Environment.TickCount64 - _holdStarted > HoldMaxSeconds * 1000 || !_active) { _holdTimer = IntPtr.Zero; _holdCode = 0; return 0; }
+            if (_holdCode == 0 || Environment.TickCount64 - _holdStarted > HoldMaxSeconds * 1000 || !_active || LauncherOpen() || !KeysAreOurs()) { _holdTimer = IntPtr.Zero; _holdCode = 0; return 0; }
             HoldStep();
             return 1;
         };
@@ -794,7 +810,7 @@ namespace Tuner
 
         private static void StartHoldRepeat()
         {
-            if (_holdCode == 0) return;
+            if (!_active || _holdCode == 0) return;
             _holdTimer = Efl.ecore_timer_add(HoldEvery, OnHoldTick, IntPtr.Zero);
             HoldStep();
         }
@@ -819,7 +835,7 @@ namespace Tuner
                 else StopHold();
             }
             else if (GuideOpen) GuideMove(_holdCode);
-            else if (_listView.Visible) OnRepeat(_holdCode);
+            else if (_listView.Visible) OnRepeat(_holdCode, true);
             else StopHold();
         }
 
@@ -1021,7 +1037,7 @@ namespace Tuner
                 if (code == KeyDown) { MoveSelection(+1); return; }
                 if (code == KeyLeft) { MoveSelection(-ListView.Rows); return; }     // a page at a time
                 if (code == KeyRight) { MoveSelection(+ListView.Rows); return; }
-                if (code == KeyEnter) { Channel c = _list[_sel]; CloseList(); GoToOrShow(c); return; }
+                if (code == KeyEnter) { if (_list == null || _sel < 0 || _sel >= _list.Count) { CloseList(); return; } Channel c = _list[_sel]; CloseList(); GoToOrShow(c); return; }
                 return;
             }
             if (_padView.Visible)
@@ -1073,7 +1089,7 @@ namespace Tuner
         /// and Samsung's own overlays (Source, quick settings) leave the live TV app "in front" while they use those keys, and the tuner would
         /// pop up over them. Digits are left out too (the remotes that have them are rare, and Samsung's number entry would tune as well).
         /// </summary>
-        private static bool IsTvKey(int code) { return IsChannelKey(code) || code == KeyEpg || code == KeyGuide || code == KeyInfo || code == KeyInfoSamsung; }
+        private static bool IsTvKey(int code) { return IsChannelKey(code) || code == KeyEpg || code == KeyGuide || IsInfoKey(code); }
 
         /// <summary>
         /// Enforcement of the takeover. The poll runs twice a second and, after Back, leaves the screen to Samsung's app on purpose; but
@@ -1116,7 +1132,13 @@ namespace Tuner
                     SetShown(cur);
                     QueueSubtitleRead(cur);                              // another channel: its subtitles and the settings, read again
                     if (_list != null) _list.SetCurrent(cur.Id);
-                    if (_active) { if (!QuietStart()) ShowBanner(cur); StartPrefetch(); }
+                    if (_active)
+                    {
+                        if (InfoOpen) OpenInfo();
+                        else if (!QuietStart()) ShowBanner(cur);
+                        else { _programAttempt = 0; RequestProgram(); }
+                        StartPrefetch();
+                    }
                 });
             });
         }
@@ -1129,7 +1151,7 @@ namespace Tuner
             if (!TakeoverState.KeyWake(status, TvInput(), front)) return false;
             if (!Ready()) return false;                                 // the key stays with Samsung's app until the tuner has channels
             Log("takeover: key " + code + " with " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
-            Activate();
+            Activate(!IsChannelKey(code));
             return true;
         }
 
@@ -1175,12 +1197,14 @@ namespace Tuner
 
         private static void CloseList()
         {
+            StopHold();
             if (_listTimer != IntPtr.Zero) { Efl.ecore_timer_del(_listTimer); _listTimer = IntPtr.Zero; }
             _listView.Hide();
         }
 
         private static void MoveSelection(int delta)
         {
+            if (_list == null || _list.Count == 0) { CloseList(); return; }
             if (Math.Abs(delta) > 1) _sel = Math.Max(0, Math.Min(_list.Count - 1, _sel + delta));              // a page stops at the ends
             else _sel = ((_sel + delta) % _list.Count + _list.Count) % _list.Count;                            // a single step wraps round
             DrawList();
@@ -1190,11 +1214,11 @@ namespace Tuner
         /// A key held down (the remote's auto-repeat): in the list it runs on, and the longer it is held the more rows each step moves
         /// (1, then 3, then 8), so a long list is crossed in a moment. Nothing else repeats.
         /// </summary>
-        private static void OnRepeat(int code)
+        private static void OnRepeat(int code, bool fromHold = false)
         {
             // A remote that sends repeat events as well as releases (IR through rc-core): the hold timer already steps this key, and
             // both together moved the list and the guide twice as fast.
-            if (code == _holdCode && _holdTimer != IntPtr.Zero) return;
+            if (!fromHold && code == _holdCode && _holdTimer != IntPtr.Zero) return;
             if (_active && GuideOpen) { _repeatLog++; if (_repeatLog <= 3 || _repeatLog % 10 == 0) Log("repeat " + code + " #" + _repeatLog); }
             if (_active && GuideOpen && (code == KeyUp || code == KeyDown || code == KeyLeft || code == KeyRight)) { GuideMove(code); return; }   // if the remote does send repeat events
             if (!_active || !_listView.Visible || _list == null) return;
@@ -1462,21 +1486,29 @@ namespace Tuner
         private static void OnControl()
         {
             byte[] buf = ControlRead;
-            long got;
-            while ((got = (long)Libc.read(_controlFd, buf, (UIntPtr)buf.Length)) > 0)
+            while (true)
             {
+                long got = (long)Libc.read(_controlFd, buf, (UIntPtr)buf.Length);
+                if (got < 0)
+                {
+                    if (Marshal.GetLastWin32Error() == Libc.EINTR) continue;
+                    break;
+                }
+                if (got == 0) break;
                 ControlBuf.Append(Encoding.ASCII.GetString(buf, 0, (int)got));
-                if (ControlBuf.Length > 4096) ControlBuf.Clear();
+                if (ControlBuf.Length > 4096) { ControlBuf.Clear(); break; }
             }
+            if (ControlBuf.Length == 0) return;
             string all = ControlBuf.ToString();
-            int nl;
-            while ((nl = all.IndexOf('\n')) >= 0)
+            int start = 0, nl;
+            while ((nl = all.IndexOf('\n', start)) >= 0)
             {
-                string line = all.Substring(0, nl).Trim();
-                all = all.Substring(nl + 1);
+                string line = all.Substring(start, nl - start).Trim();
+                start = nl + 1;
                 if (line.Length > 0) Command(line);
             }
-            ControlBuf.Clear(); ControlBuf.Append(all);
+            ControlBuf.Clear();
+            if (start < all.Length) ControlBuf.Append(all, start, all.Length - start);
         }
 
         private static void Command(string line)
@@ -1501,11 +1533,11 @@ namespace Tuner
                 case "toggle": if (_active) Deactivate(); else Activate(); break;
                 case "quit": Efl.elm_exit(); break;
                 case "audio": if (_active) CycleAudio(); break;
-                case "banner": Activate(); ShowBanner(_list != null ? _list.Current : null); break;   // the channel banner, as after a channel change
-                case "list": Activate(); OpenList(); break;
-                case "pad": Activate(); OpenPad(-1); break;
-                case "info": Activate(); if (InfoOpen) CloseInfo(); else OpenInfo(); break;
-                case "guide": Activate(); if (GuideOpen) CloseGuide(); else OpenGuide(); break;
+                case "banner": Activate(); if (!_active) break; ShowBanner(_list != null ? _list.Current : null); break;   // the channel banner, as after a channel change
+                case "list": Activate(); if (!_active) break; OpenList(); break;
+                case "pad": Activate(); if (!_active) break; OpenPad(-1); break;
+                case "info": Activate(); if (!_active) break; if (InfoOpen) CloseInfo(); else OpenInfo(); break;
+                case "guide": Activate(); if (!_active) break; if (GuideOpen) CloseGuide(); else OpenGuide(); break;
                 // As if the remote had sent it: for testing, and for a Remapper shortcut whose key would otherwise be injected into this window and lost.
                 case "key": int k; if (p.Length > 1 && int.TryParse(p[1], out k) && k > 0 && k < 768) OnKey(k, "pipe"); break;
                 case "resume": Resume(); break;                // the launcher closed without opening anything (see Resume)
@@ -1514,6 +1546,7 @@ namespace Tuner
                     int n;
                     Channel c = p.Length > 1 && int.TryParse(p[1], out n) && _list != null ? _list.ByNumber(n) : null;
                     Activate();
+                    if (!_active) break;
                     if (c != null) GoToOrShow(c);
                     break;
             }
@@ -1521,20 +1554,23 @@ namespace Tuner
 
         // ---- input devices ----
 
-        private static void ReadInput(int index)
+        private static byte ReadInput(int index)
         {
+            if (index < 0 || index >= _fds.Count) return 0;
             int fd = _fds[index];
-            if (fd < 0) return;
+            if (fd < 0) return 0;
             IntPtr n = Libc.read(fd, _buf, (UIntPtr)_buf.Length);
             long got = (long)n;
             if (got < 0)
             {
-                if (Marshal.GetLastWin32Error() != Libc.EAGAIN) DropNode(index);
-                return;
+                int err = Marshal.GetLastWin32Error();
+                if (err != Libc.EAGAIN && err != Libc.EINTR) { DropNode(index); return 0; }
+                return 1;
             }
-            if (got == 0) return;
+            if (got == 0) { DropNode(index); return 0; }
             _presses.Clear(); _held.Clear(); _released.Clear();
             _readers[index].Feed(_buf, (int)got, _presses, _held, _released);
+            string nodeName = _nodeNames[index];
             if (_presses.Count > 0 || _held.Count > 0)
             {
                 string why = LauncherOpen() ? "a launcher window has them" : (_active && !KeysAreOurs()) ? "another window has the focus" : null;
@@ -1542,15 +1578,18 @@ namespace Tuner
                 {
                     // The key went to another window, which answers it: the tuner leaves it alone (Home, Power... still make it step aside),
                     // does not wake up on it, and its Banner makes room for that window.
-                    foreach (int c in _presses) if (!SystemKeys.Contains(c)) Log("key " + c + " from " + Path.GetFileName(_paths[index]) + " left alone: " + why);
+                    for (int i = 0; i < _presses.Count; i++)
+                        if (!SystemKeys.Contains(_presses[i])) Log("key " + _presses[i] + " from " + nodeName + " left alone: " + why);
                     _presses.RemoveAll(c => !SystemKeys.Contains(c));
                     _held.Clear();
+                    StopHold();
                     if (_banner.Visible) _banner.Hide();
                 }
             }
-            foreach (int code in _presses.ToArray()) { OnKey(code, Path.GetFileName(_paths[index])); BeginHold(code); }
-            foreach (int code in _held.ToArray()) OnRepeat(code);
-            foreach (int code in _released.ToArray()) EndHold(code);
+            for (int i = 0; i < _presses.Count; i++) { int code = _presses[i]; OnKey(code, nodeName); BeginHold(code); }
+            for (int i = 0; i < _held.Count; i++) OnRepeat(_held[i]);
+            for (int i = 0; i < _released.Count; i++) EndHold(_released[i]);
+            return 1;
         }
 
         /// <summary>The Dock, its Task manager or the osd 123 is on screen (OverlayFlag): the remote's keys are the launcher's.</summary>
@@ -1596,8 +1635,9 @@ namespace Tuner
                 if (!reuse) index = _fds.Count;
                 IntPtr h = Efl.ecore_main_fd_handler_add(fd, Efl.EcoreFdRead, OnInput, (IntPtr)index, IntPtr.Zero, IntPtr.Zero);
                 if (h == IntPtr.Zero) { Libc.close(fd); all = false; continue; }
-                if (reuse) { _fds[index] = fd; _paths[index] = node; _readers[index] = new EvdevReader(); _handlers[index] = h; }
-                else { _fds.Add(fd); _paths.Add(node); _readers.Add(new EvdevReader()); _handlers.Add(h); }
+                string nodeName = Path.GetFileName(node);
+                if (reuse) { _fds[index] = fd; _paths[index] = node; _nodeNames[index] = nodeName; _readers[index] = new EvdevReader(); _handlers[index] = h; }
+                else { _fds.Add(fd); _paths.Add(node); _nodeNames.Add(nodeName); _readers.Add(new EvdevReader()); _handlers.Add(h); }
                 Log("watching " + node);
             }
             Scan.Scanned(stamp, all);
@@ -1617,11 +1657,12 @@ namespace Tuner
         private static void DropNode(int i)
         {
             if (_fds[i] < 0) return;
+            StopHold();                                                 // a release will never arrive on a dropped node
             Scan.Dirty();                                               // the next 3 s tick reads the list again (the node may still be there)
             Log("lost " + _paths[i]);
             if (_handlers[i] != IntPtr.Zero) Efl.ecore_main_fd_handler_del(_handlers[i]);
             Libc.close(_fds[i]);
-            _fds[i] = -1; _paths[i] = null; _handlers[i] = IntPtr.Zero;
+            _fds[i] = -1; _paths[i] = null; _nodeNames[i] = null; _handlers[i] = IntPtr.Zero;
         }
 
         // ---- plumbing ----
@@ -1691,7 +1732,7 @@ namespace Tuner
                 Log("takeover: the application manager cannot be asked (" + ex.GetType().Name + "), switched off");
                 return -1;
             }
-            if (status != _lastStatus) { Log("takeover: " + _takeoverApp + " status " + (_lastStatus == int.MinValue ? "first" : _lastStatus.ToString()) + " -> " + status + (_active ? " (tuner shown)" : " (tuner hidden)")); _lastStatus = status; }
+            if (status != _lastStatus) { Log("takeover: " + _takeoverApp + " status " + (_lastStatus == int.MinValue ? "first" : _lastStatus.ToString()) + " -> " + status + (_active ? " (tuner shown)" : " (tuner hidden)")); Volatile.Write(ref _lastStatus, status); }
             return status;
         }
 
@@ -1708,12 +1749,13 @@ namespace Tuner
             // Samsung's live TV is what is on screen: the osd 123 sends its digits to the tuner only then (over another app they are that app's keys).
             // Not touched while a launcher window is open: it has the keys then, and what counts is what was in front when it opened (the osd 123
             // opened over YouTube must not start sending its digits to the tuner).
-            if (!launcher) MarkTvUp(up && front != FrontApp.Kind.Other);
+            if (!launcher) MarkTvUp(up && front != FrontApp.Kind.Other && Ready());
             else if (!up) MarkTvUp(false);
             switch (TakeoverState.Poll(status, _active, tv, front))
             {
                 case Takeover.Step.Show:
                     if (launcher) break;                                 // the launcher is open over live TV: the tuner waits for it to close (Resume)
+                    if (!Ready()) { Activate(); break; }
                     Log("takeover: " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
                     Activate();
                     break;
@@ -1730,6 +1772,7 @@ namespace Tuner
                     Log("takeover: " + _takeoverApp + " has the keys while the tuner is on screen, asking for them back");
                     Efl.elm_win_activate(_win);
                     Efl.elm_win_raise(_win);
+                    Gate.Shown(Efl.ecore_time_get());
                     break;
             }
         }
@@ -1755,7 +1798,7 @@ namespace Tuner
                 Log("input: " + SourceKey + " cannot be read (" + ex.GetType().Name + "), every input counts as the TV tuner");
                 return true;
             }
-            if (source != _lastSource) { Log("input: source type " + (_lastSource == int.MinValue ? "first" : _lastSource.ToString()) + " -> " + source + (source == 0 ? " (TV)" : " (not the TV tuner)")); _lastSource = source; }
+            if (source != _lastSource) { Log("input: source type " + (_lastSource == int.MinValue ? "first" : _lastSource.ToString()) + " -> " + source + (source == 0 ? " (TV)" : " (not the TV tuner)")); Volatile.Write(ref _lastSource, source); }
             return source == 0;
         }
 
@@ -1775,6 +1818,9 @@ namespace Tuner
             while (true)
             {
                 Thread.Sleep(500);
+                int lastStatus = Volatile.Read(ref _lastStatus);
+                int lastSource = Volatile.Read(ref _lastSource);
+                if (!_active && (!Takeover.IsUp(lastStatus) || (lastSource != 0 && lastSource != int.MinValue))) continue;
                 bool ok = false; int pid = 0; string app = null;
                 try
                 {
@@ -1888,15 +1934,17 @@ namespace Tuner
             _logBytes = 0;
         }
 
+        private static readonly object LogLock = new object();
+
         private static void Log(string line)
         {
-            lock (Work)
+            lock (LogLock)
             {
                 if (_log == null) return;
                 if (_logBytes > LogMaxBytes) { try { _log.Dispose(); } catch (Exception) { } OpenLog(); if (_log == null) return; }
                 string text = "+" + _clock.ElapsedMilliseconds + "ms " + line;
                 _logBytes += text.Length + 1;
-                _log.WriteLine(text);
+                try { _log.WriteLine(text); } catch (Exception) { }
             }
         }
     }

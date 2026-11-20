@@ -26,8 +26,7 @@ namespace Tuner.Core
     /// </summary>
     internal static class GuideReply
     {
-        private const byte KindLeaf = 4, KindBranch = 8;
-        private const byte TagEventId = 1, TagStart = 2, TagDuration = 3, TagTexts = 6;
+        private const byte TagEventId = 1, TagStart = 2, TagDuration = 3;
 
         /// <summary>
         /// The programmes in the reply, in the daemon's order (by start). <paramref name="events"/> is empty when the reply is not in the
@@ -40,15 +39,15 @@ namespace Tuner.Core
             try
             {
                 byte tag, kind; int s, e;
-                if (reply == null || !Header(reply, 0, reply.Length, out tag, out kind, out s, out e) || kind != KindBranch) return false;
+                if (reply == null || !GuideText.Header(reply, 0, reply.Length, out tag, out kind, out s, out e) || kind != GuideText.KindBranch) return false;
                 int p = s;
                 bool haveResult = false;
                 while (p < e)
                 {
                     int cs, ce; byte ct, ck;
-                    if (!Header(reply, p, e, out ct, out ck, out cs, out ce)) return false;
-                    if (ck == KindLeaf && !haveResult) haveResult = true;                  // the result code; the map decides whether there is anything
-                    else if (ck == KindBranch) return ReadMap(reply, cs, ce, keepDescription, events);
+                    if (!GuideText.Header(reply, p, e, out ct, out ck, out cs, out ce)) return false;
+                    if (ck == GuideText.KindLeaf && !haveResult) haveResult = true;                  // the result code; the map decides whether there is anything
+                    else if (ck == GuideText.KindBranch) { if (!ReadMap(reply, cs, ce, keepDescription, events)) { events.Clear(); return false; } return true; }
                     p = ce;
                 }
                 return haveResult;                                                          // a result and no map: nothing to list
@@ -62,61 +61,50 @@ namespace Tuner.Core
             while (p < end)
             {
                 int ks, ke, vs, ve; byte kt, kk, vt, vk;
-                if (!Header(b, p, end, out kt, out kk, out ks, out ke) || kk != KindLeaf) return false;
-                if (!Header(b, ke, end, out vt, out vk, out vs, out ve) || vk != KindBranch) return false;
-                GuideEvent ev = ReadProgramme(b, vs, ve, keepDescription);
+                if (!GuideText.Header(b, p, end, out kt, out kk, out ks, out ke) || kk != GuideText.KindLeaf) return false;
+                if (!GuideText.Header(b, ke, end, out vt, out vk, out vs, out ve) || vk != GuideText.KindBranch) return false;
+                GuideEvent ev;
+                if (!ReadProgramme(b, vs, ve, keepDescription, out ev)) return false;
                 if (ev != null) into.Add(ev);
                 p = ve;
             }
             return true;
         }
 
-        private static GuideEvent ReadProgramme(byte[] b, int start, int end, bool keepDescription)
+        private static bool ReadProgramme(byte[] b, int start, int end, bool keepDescription, out GuideEvent result)
         {
+            result = null;
             var ev = new GuideEvent();
             bool haveStart = false;
             int p = start;
             while (p < end)
             {
                 int s, e; byte tag, kind;
-                if (!Header(b, p, end, out tag, out kind, out s, out e)) return null;
-                if (kind == KindLeaf)
+                if (!GuideText.Header(b, p, end, out tag, out kind, out s, out e)) return false;
+                if (kind == GuideText.KindLeaf)
                 {
                     if (tag == TagEventId && e - s >= 2) ev.EventId = (ushort)(b[s] | b[s + 1] << 8);
-                    else if (tag == TagStart && e - s >= 4) { ev.Start = U32(b, s); haveStart = true; }
-                    else if (tag == TagDuration && e - s >= 4) ev.Duration = U32(b, s);
+                    else if (tag == TagStart && e - s >= 4) { ev.Start = GuideText.ReadU32(b, s); haveStart = true; }
+                    else if (tag == TagDuration && e - s >= 4) ev.Duration = GuideText.ReadU32(b, s);
                 }
-                else if (tag == TagTexts)
+                else if (tag == GuideText.TagTexts && kind == GuideText.KindBranch)
                 {
                     int q = s, index = 0;
                     while (q < e)
                     {
                         int is_, ie; byte it, ik;
-                        if (!Header(b, q, e, out it, out ik, out is_, out ie) || ik != KindLeaf) break;
-                        if (index == 0) ev.Title = Title(Encoding.BigEndianUnicode.GetString(b, is_, (ie - is_) & ~1));
+                        if (!GuideText.Header(b, q, e, out it, out ik, out is_, out ie) || ik != GuideText.KindLeaf) break;
+                        if (index == 0) ev.Title = GuideText.Title(Encoding.BigEndianUnicode.GetString(b, is_, (ie - is_) & ~1));
                         else if (index == 1 && keepDescription) ev.Description = GuideText.Clean(Encoding.BigEndianUnicode.GetString(b, is_, (ie - is_) & ~1));
                         index++;
+                        if (index > (keepDescription ? 1 : 0)) break;
                         q = ie;
                     }
                 }
                 p = e;
             }
-            return haveStart && ev.Duration > 0 ? ev : null;
-        }
-
-        private static string Title(string raw) { return GuideText.Title(new[] { raw }); }
-
-        private static bool Header(byte[] b, int pos, int end, out byte tag, out byte kind, out int bodyStart, out int bodyEnd)
-        {
-            tag = kind = 0; bodyStart = bodyEnd = 0;
-            if (pos + 6 > end) return false;
-            tag = b[pos]; kind = b[pos + 1];
-            long len = U32(b, pos + 2);
-            if (pos + 6 + len > end) return false;
-            bodyStart = pos + 6; bodyEnd = (int)(pos + 6 + len);
+            if (haveStart && ev.Duration > 0) result = ev;
             return true;
         }
-
-        private static long U32(byte[] b, int at) { return (uint)(b[at] | b[at + 1] << 8 | b[at + 2] << 16 | b[at + 3] << 24); }
     }
 }

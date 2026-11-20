@@ -15,8 +15,9 @@ namespace Tuner.Core
     /// </summary>
     internal static class GuideText
     {
-        private const byte KindLeaf = 4, KindBranch = 8;
-        private const byte TagFunction = 6, TagTexts = 6;
+        internal const byte KindLeaf = 4, KindBranch = 8;
+        internal const byte TagTexts = 6;
+        private const byte TagFunction = 6;
 
         /// <summary>The strings of the programme in the reply, or an empty array when the reply is not in the expected shape.</summary>
         public static string[] Texts(byte[] reply)
@@ -25,20 +26,20 @@ namespace Tuner.Core
             {
                 int pos = 0, end = reply.Length;
                 int bodyStart, bodyEnd;
-                if (!Entry(reply, ref pos, end, TagFunction, KindBranch, out bodyStart, out bodyEnd)) return new string[0];
+                if (!Entry(reply, ref pos, end, TagFunction, KindBranch, out bodyStart, out bodyEnd)) return Array.Empty<string>();
                 // inside the function: the result (a leaf), then the programme (a branch)
                 int p = bodyStart;
                 while (p < bodyEnd)
                 {
                     int s, e;
                     byte tag, kind;
-                    if (!Header(reply, p, bodyEnd, out tag, out kind, out s, out e)) return new string[0];
+                    if (!Header(reply, p, bodyEnd, out tag, out kind, out s, out e)) return Array.Empty<string>();
                     if (kind == KindBranch) return TextsOfProgramme(reply, s, e);
                     p = e;
                 }
             }
             catch (Exception) { }
-            return new string[0];
+            return Array.Empty<string>();
         }
 
         private static string[] TextsOfProgramme(byte[] b, int start, int end)
@@ -65,7 +66,7 @@ namespace Tuner.Core
                 }
                 p = e;
             }
-            return new string[0];
+            return Array.Empty<string>();
         }
 
         private static bool Entry(byte[] b, ref int pos, int end, byte tag, byte kind, out int bodyStart, out int bodyEnd)
@@ -76,35 +77,56 @@ namespace Tuner.Core
             return t == tag && k == kind;
         }
 
-        private static bool Header(byte[] b, int pos, int end, out byte tag, out byte kind, out int bodyStart, out int bodyEnd)
+        internal static bool Header(byte[] b, int pos, int end, out byte tag, out byte kind, out int bodyStart, out int bodyEnd)
         {
             tag = kind = 0; bodyStart = bodyEnd = 0;
             if (pos + 6 > end) return false;
             tag = b[pos]; kind = b[pos + 1];
             long len = ReadU32(b, pos + 2);
-            if (len < 0 || pos + 6 + len > end) return false;
+            if (pos + 6 + len > end) return false;
             bodyStart = pos + 6; bodyEnd = (int)(pos + 6 + len);
             return true;
         }
 
-        private static uint ReadU32(byte[] b, int at) { return (uint)(b[at] | b[at + 1] << 8 | b[at + 2] << 16 | b[at + 3] << 24); }
+        internal static uint ReadU32(byte[] b, int at) { return (uint)(b[at] | b[at + 1] << 8 | b[at + 2] << 16 | b[at + 3] << 24); }
 
-        /// <summary>Title and description, with the daemon's escape marks removed (a control character such as 0x7F or a soft hyphen splits words).</summary>
+        /// <summary>Title and description, with the daemon's escape marks removed (line breaks/tabs become a single space, control characters such as 0x7F or a soft hyphen split words).</summary>
         public static string Clean(string s)
         {
-            if (s == null) return "";
+            if (string.IsNullOrEmpty(s)) return "";
+            bool dirty = char.IsWhiteSpace(s[0]) || char.IsWhiteSpace(s[s.Length - 1]);
+            for (int i = 0; i < s.Length && !dirty; i++)
+            {
+                char c = s[i];
+                if (c < ' ' || c == '\u007f' || c == '\u00ad') dirty = true;
+            }
+            if (!dirty) return s;
             var sb = new StringBuilder(s.Length);
-            foreach (char c in s) if (c >= ' ' && c != '\u007f' && c != '­') sb.Append(c);
+            foreach (char c in s)
+            {
+                if (c == '\r' || c == '\n' || c == '\t')
+                {
+                    if (sb.Length > 0 && sb[sb.Length - 1] != ' ') sb.Append(' ');
+                }
+                else if (c >= ' ' && c != '\u007f' && c != '\u00ad')
+                {
+                    sb.Append(c);
+                }
+            }
             return sb.ToString().Trim();
         }
 
         /// <summary>The channel's title text carries "Title^Genre" style suffixes on some broadcasters; this returns the part before the first '^'.</summary>
-        public static string Title(string[] texts)
+        public static string Title(string raw)
         {
-            if (texts.Length == 0) return "";
-            string t = Clean(texts[0]);
+            string t = Clean(raw);
             int i = t.IndexOf('^');
             return i > 0 ? t.Substring(0, i).Trim() : t;
+        }
+
+        public static string Title(string[] texts)
+        {
+            return texts != null && texts.Length > 0 ? Title(texts[0]) : "";
         }
 
         public static string Description(string[] texts) { return texts.Length > 1 ? Clean(texts[1]) : ""; }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 
 namespace Tuner.Core
 {
@@ -46,6 +45,8 @@ namespace Tuner.Core
             return index > 0 ? name + " · track " + (index + 1) : name;
         }
 
+        private static readonly char[] Whitespace = { ' ', '\t', '\r', '\n' };
+
         /// <summary>
         /// Breaks <paramref name="text"/> into at most <paramref name="maxLines"/> lines no wider than <paramref name="maxWidth"/> (as
         /// <paramref name="measure"/> counts it), on word boundaries; a word wider than a line is cut. If the text does not fit, the last line ends with
@@ -53,10 +54,10 @@ namespace Tuner.Core
         /// </summary>
         public static List<string> Wrap(string text, int maxWidth, int maxLines, Func<string, int> measure)
         {
-            var lines = new List<string>();
+            var lines = new List<string>(Math.Max(0, maxLines));
             if (maxLines <= 0 || maxWidth <= 0 || string.IsNullOrWhiteSpace(text)) return lines;
-            string[] words = text.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            var line = new StringBuilder();
+            string[] words = text.Split(Whitespace, StringSplitOptions.RemoveEmptyEntries);
+            string line = "";
             bool cut = false;
             for (int i = 0; i < words.Length && !cut; i++)
             {
@@ -64,23 +65,27 @@ namespace Tuner.Core
                 while (true)
                 {
                     string tryLine = line.Length == 0 ? w : line + " " + w;
-                    if (measure(tryLine) <= maxWidth) { line.Clear(); line.Append(tryLine); break; }
+                    if (measure(tryLine) <= maxWidth) { line = tryLine; break; }
                     if (line.Length > 0)
                     {
                         if (lines.Count + 1 >= maxLines) { cut = true; break; }   // this line would be the last and the rest does not fit
-                        lines.Add(line.ToString()); line.Clear();
+                        lines.Add(line); line = "";
                         continue;                                                // the word starts the next line
                     }
-                    // one word wider than a whole line: keep as much of it as fits
-                    int n = w.Length;
-                    while (n > 1 && measure(w.Substring(0, n)) > maxWidth) n--;
-                    if (n >= w.Length) { line.Append(w); break; }
-                    if (lines.Count + 1 >= maxLines) { line.Append(w.Substring(0, n)); cut = true; break; }
+                    // one word wider than a whole line: keep as much of it as fits (binary search avoids O(N) native Evas layouts)
+                    int lo = 1, hi = w.Length - 1;
+                    while (lo < hi)
+                    {
+                        int mid = (lo + hi + 1) >> 1;
+                        if (measure(w.Substring(0, mid)) <= maxWidth) lo = mid; else hi = mid - 1;
+                    }
+                    int n = lo;
+                    if (lines.Count + 1 >= maxLines) { line = w.Substring(0, n); cut = true; break; }
                     lines.Add(w.Substring(0, n));
                     w = w.Substring(n);
                 }
             }
-            if (line.Length > 0) lines.Add(line.ToString());
+            if (line.Length > 0) lines.Add(line);
             if (cut && lines.Count > 0) lines[lines.Count - 1] = Ellipsize(lines[lines.Count - 1], maxWidth, measure);
             return lines;
         }
@@ -89,8 +94,14 @@ namespace Tuner.Core
         public static string Ellipsize(string s, int maxWidth, Func<string, int> measure)
         {
             s = s.TrimEnd();
-            while (s.Length > 1 && measure(s + "…") > maxWidth) s = s.Substring(0, s.Length - 1).TrimEnd();
-            return s + "…";
+            if (s.Length <= 1 || measure(s + "…") <= maxWidth) return s + "…";
+            int lo = 1, hi = s.Length - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) >> 1;
+                if (measure(s.Substring(0, mid).TrimEnd() + "…") <= maxWidth) lo = mid; else hi = mid - 1;
+            }
+            return s.Substring(0, lo).TrimEnd() + "…";
         }
     }
 }

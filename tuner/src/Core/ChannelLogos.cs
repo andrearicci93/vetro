@@ -10,7 +10,7 @@ namespace Tuner.Core
         public string SourceId = "";                          // the gallery's id for the channel (also the key of the tunable table)
         public string Name = "";
         public string IconUrl = "";                           // the address the TV downloads the picture from (the file name on disk comes from it)
-        public int[] Onid = new int[0], Tsid = new int[0], Sid = new int[0];   // parallel lists: the channel is broadcast as (Onid[i], Tsid[i], Sid[i]) in several places
+        public int[] Onid = Array.Empty<int>(), Tsid = Array.Empty<int>(), Sid = Array.Empty<int>();   // parallel lists: the channel is broadcast as (Onid[i], Tsid[i], Sid[i]) in several places
     }
 
     /// <summary>
@@ -23,6 +23,9 @@ namespace Tuner.Core
     {
         private readonly Dictionary<ulong, string> _byService = new Dictionary<ulong, string>();
         private readonly Dictionary<long, string> _byTriplet = new Dictionary<long, string>();
+        private Dictionary<ulong, string> _files;
+        private HashSet<ulong> _checked;
+        private long _checkedAt;
 
         public int Rows { get; private set; }
 
@@ -66,10 +69,33 @@ namespace Tuner.Core
 
         /// <summary>True when there is anything to look up: the views reserve room for a logo only then, so without the TV's data they draw as they always did.</summary>
         public bool Any { get { return _byService.Count > 0 || _byTriplet.Count > 0; } }
+
+        /// <summary>Worker thread: stores verified existing logo file paths (and which channel ids were checked) so UI lookups avoid File.Exists.</summary>
+        public void SetFiles(Dictionary<ulong, string> files, HashSet<ulong> checkedIds, long checkedAt)
+        {
+            _files = files;
+            _checked = checkedIds;
+            _checkedAt = checkedAt;
+        }
+
+        /// <summary>Verified existing file path for a channel id, or null if not verified as present.</summary>
+        public string FileFor(ulong id)
+        {
+            string p;
+            return _files != null && _files.TryGetValue(id, out p) ? p : null;
+        }
+
+        /// <summary>True when <paramref name="id"/> was already checked on the worker within <paramref name="maxAgeMs"/> and had no file on disk.</summary>
+        public bool WasCheckedMissing(ulong id, long now, long maxAgeMs)
+        {
+            return _checked != null && _checked.Contains(id) && now - _checkedAt < maxAgeMs;
+        }
     }
 
     internal static class LogoNames
     {
+        private static readonly char[] Slash = { '/' };
+
         /// <summary>
         /// The name the TV gives the downloaded file: the last three parts of the picture's own address (the address inside the "url=" of the
         /// resizer's link when there is one), joined with "_". "…/assets/assets/s84638_ll_h8_ab.png" is "assets_assets_s84638_ll_h8_ab.png".
@@ -87,7 +113,7 @@ namespace Tuner.Core
             if (q >= 0) inner = inner.Substring(0, q);
             int scheme = inner.IndexOf("://", StringComparison.Ordinal);
             if (scheme >= 0) inner = inner.Substring(scheme + 3);
-            string[] parts = inner.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] parts = inner.Split(Slash, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) return null;                       // a host and a file at least
             int from = Math.Max(1, parts.Length - 3);                // never the host
             string name = string.Join("_", parts, from, parts.Length - from);
@@ -98,7 +124,7 @@ namespace Tuner.Core
         /// <summary>The numbers of a list like "0x217C,0x2" (hex with or without the prefix). A part that is not a number becomes -1, so the lists stay parallel.</summary>
         public static int[] HexList(string text)
         {
-            if (string.IsNullOrEmpty(text)) return new int[0];
+            if (string.IsNullOrEmpty(text)) return Array.Empty<int>();
             string[] parts = text.Split(',');
             var l = new int[parts.Length];
             for (int i = 0; i < parts.Length; i++)

@@ -42,12 +42,12 @@ namespace Tuner.Ui
             for (int i = 0; i < _lines.Length; i++) _lines[i] = s.Rect();
             for (int i = 0; i < _fills.Length; i++) _fills[i] = s.Pill();
             for (int i = 0; i < _hatches.Length; i++) _hatches[i] = s.Tile("hatch", GuideScene.HatchTile);
-            for (int i = 0; i < _hatchEnds.Length; i++) _hatchEnds[i] = s.Tile("hatch_ends", HatchEndsSlots * GuideScene.HatchEndW, GuideLayout.CellH);
+            for (int i = 0; i < _hatchEnds.Length; i++) _hatchEnds[i] = s.Tile("keys", Surface.KeyAtlasW, Surface.KeyAtlasTotalH);
             _focus = s.Pill();
             for (int i = 0; i < _logos.Length; i++) _logos[i] = s.Logo();
             for (int i = 0; i < _texts.Length; i++) _texts[i] = NewSlot();
             foreach (string k in GuideScene.TextKeys) _keyed[k] = NewSlot();
-            foreach (string k in GuideScene.KeyNames) _keys[k] = s.Picture(k);
+            foreach (string k in GuideScene.KeyNames) _keys[k] = s.KeyPicture(k, GuideScene.KeyH);
             _probe = s.Text(24, 0, Theme.Font500);
             Efl.evas_object_hide(_probe);
             _parts["num"] = new Part(_keyed["num"].T, 24, false);
@@ -55,9 +55,7 @@ namespace Tuner.Ui
             _parts["title"] = new Part(_keyed["title"].T, 64, false);
         }
 
-        /// <summary>hatch_ends.png: the left end, then the right end for each of the 16 places it can start in the stripes' tile (tools/make-hatch-ends.py).</summary>
-        private const int HatchEndsSlots = 1 + GuideScene.HatchTile;
-
+        /// <summary>Row 2 of keys.png (y = 72): the left end, then the right end for each of the 16 places it can start in the stripes' tile (tools/make-hatch-ends.py).</summary>
         private Slot NewSlot() { var sl = new Slot { T = _s.Text(24, Theme.TextMain) }; Efl.evas_object_hide(sl.T); return sl; }
 
         public Surface Surface { get { return _s; } }
@@ -114,10 +112,10 @@ namespace Tuner.Ui
                     case PrimKind.HatchEnd:
                         if (hatchEnds < _hatchEnds.Length)
                         {
-                            // One slot of hatch_ends.png shows through the end's 24 px: the picture's fill is moved left by the slot's offset.
+                            // One slot of row 2 of keys.png (y = 72) shows through the end's 24 px: the picture's fill is moved left by the slot's offset and up by HatchEndsAtlasY.
                             IntPtr h = _hatchEnds[hatchEnds++];
                             Efl.evas_object_move(h, p.X, p.Y); Efl.evas_object_resize(h, p.W, p.H);
-                            Efl.evas_object_image_fill_set(h, -p.Phase * GuideScene.HatchEndW, 0, HatchEndsSlots * GuideScene.HatchEndW, GuideLayout.CellH);
+                            Efl.evas_object_image_fill_set(h, -p.Phase * GuideScene.HatchEndW, -Surface.HatchEndsAtlasY, Surface.KeyAtlasW, Surface.KeyAtlasTotalH);
                             Efl.evas_object_color_set(h, p.Alpha, p.Alpha, p.Alpha, p.Alpha); Efl.evas_object_show(h);
                         }
                         break;
@@ -151,27 +149,40 @@ namespace Tuner.Ui
             _s.Show();
         }
 
+        private static readonly char[] WordSep = { ' ', '\t', '\r', '\n' };
+        private string _paraText;
+        private int _paraSize, _paraWeight, _paraMaxW, _paraLines;
+        private readonly List<string> _paraOut = new List<string>(4);
+
         /// <summary>Puts a text primitive on the next free text object (a paragraph takes one object a line). Returns the next free index.</summary>
         private int Text(Prim p, int at)
         {
             if (at >= _texts.Length) return at;
             if (p.Lines <= 1) { Place(_texts[at], p, p.Text, p.Y); return at + 1; }
-            // paragraph: fill the lines greedily with words, measured in the paragraph's font
-            string[] words = p.Text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            int w = 0;
-            for (int line = 0; line < p.Lines && at < _texts.Length; line++)
+            if (_paraText != p.Text || _paraSize != p.Size || _paraWeight != p.Weight || _paraMaxW != p.MaxW || _paraLines != p.Lines)
             {
-                string cur = "";
-                while (w < words.Length)
+                _paraText = p.Text; _paraSize = p.Size; _paraWeight = p.Weight; _paraMaxW = p.MaxW; _paraLines = p.Lines;
+                _paraOut.Clear();
+                // paragraph: fill the lines greedily with words, measured directly on the probe (do not pollute WidthCache with one-off prefixes)
+                string[] words = p.Text.Split(WordSep, StringSplitOptions.RemoveEmptyEntries);
+                int w = 0;
+                for (int line = 0; line < p.Lines && w < words.Length; line++)
                 {
-                    string next = cur.Length == 0 ? words[w] : cur + " " + words[w];
-                    if (Measure(next, p.Size, p.Weight) > p.MaxW && cur.Length > 0) break;
-                    cur = next; w++;
+                    string cur = "";
+                    while (w < words.Length)
+                    {
+                        string next = cur.Length == 0 ? words[w] : cur + " " + words[w];
+                        if (MeasureNative(next, p.Size, p.Weight) > p.MaxW && cur.Length > 0) break;
+                        cur = next; w++;
+                    }
+                    if (line == p.Lines - 1 && w < words.Length) cur += " " + words[w] + (w + 1 < words.Length ? "…" : "");   // only the first overflowing word is needed for the ellipsis cut
+                    _paraOut.Add(cur);
                 }
-                if (line == p.Lines - 1 && w < words.Length) cur += " " + string.Join(" ", words, w, words.Length - w);   // the last line ends with an ellipsis
-                Place(_texts[at], p, cur, p.Y + line * p.LineH);
+            }
+            for (int line = 0; line < _paraOut.Count && at < _texts.Length; line++)
+            {
+                Place(_texts[at], p, _paraOut[line], p.Y + line * p.LineH);
                 at++;
-                if (w >= words.Length) break;
             }
             return at;
         }

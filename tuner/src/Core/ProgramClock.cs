@@ -19,9 +19,21 @@ namespace Tuner.Core
             return Clock(start, offset) + " - " + Clock(start + duration, offset);
         }
 
+        private static readonly string[] ClockCache = new string[24 * 60];
+
         public static string Clock(long unix, TimeSpan offset)
         {
-            return DateTimeOffset.FromUnixTimeSeconds(unix).ToOffset(offset).ToString("HH:mm");
+            long local = unix + (long)(offset.Ticks / TimeSpan.TicksPerSecond);
+            long daySec = ((local % 86400) + 86400) % 86400;
+            int minute = (int)(daySec / 60);
+            string s = ClockCache[minute];
+            if (s == null)
+            {
+                int h = minute / 60, m = minute % 60;
+                s = new string(new[] { (char)('0' + h / 10), (char)('0' + h % 10), ':', (char)('0' + m / 10), (char)('0' + m % 10) });
+                ClockCache[minute] = s;
+            }
+            return s;
         }
 
         /// <summary>"1 h 12 min left" or "35 min left"; empty when nothing is left or the data is unusable.</summary>

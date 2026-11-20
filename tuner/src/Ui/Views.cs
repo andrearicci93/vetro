@@ -188,6 +188,7 @@ namespace Tuner.Ui
         public void Draw(ChannelList list, int selected, Func<Channel, string> logo = null, bool room = false)
         {
             int top = Math.Max(0, Math.Min(selected - Rows / 2, list.Count - Rows));
+            bool anySelected = false;
             for (int r = 0; r < Rows; r++)
             {
                 int idx = top + r;
@@ -196,7 +197,7 @@ namespace Tuner.Ui
                 Channel c = list[idx];
                 int y = Y + Pad + r * RowH;
                 bool sel = idx == selected;
-                if (sel) { _focus.SetRect(X + 16, y + 2, W - 32, RowH - 4); _focus.SetRadius((RowH - 4) / 2); _focus.SetTint(Theme.Ice, Theme.FocusAlpha); }
+                if (sel) { anySelected = true; _focus.SetRect(X + 16, y + 2, W - 32, RowH - 4); _focus.SetRadius((RowH - 4) / 2); _focus.SetTint(Theme.Ice, Theme.FocusAlpha); }
                 Texts.Set(_num[r], c.Major.ToString());
                 if (sel) Theme.TintText(_num[r], Theme.Slate, 255); else Theme.TintText(_num[r], 0xFFFFFF, Theme.TextMuted);
                 if (sel) Theme.TintText(_name[r], Theme.Slate, 255); else Theme.TintText(_name[r], 0xFFFFFF, Theme.TextMain);
@@ -208,6 +209,7 @@ namespace Tuner.Ui
                 string file = logo == null ? null : logo(c);
                 if (file != null) _logo[r].Show(file, X + 114, y + (RowH - LogoSize) / 2, LogoSize); else _logo[r].Hide();
             }
+            if (!anySelected) _focus.SetWhite(0);
             _s.Show();
         }
     }
@@ -312,7 +314,7 @@ namespace Tuner.Ui
             for (int i = 0; i < 2; i++)
             {
                 int top = Y + PadY + i * RowH;
-                _key[i] = s.Picture(keys[i]);
+                _key[i] = s.KeyPicture(keys[i], KeySize);
                 Efl.evas_object_move(_key[i], KeyX, top + (RowH - KeySize) / 2);
                 Efl.evas_object_resize(_key[i], KeySize, KeySize);
                 Efl.evas_object_show(_key[i]);

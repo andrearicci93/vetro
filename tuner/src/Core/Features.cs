@@ -16,7 +16,8 @@ namespace Tuner.Core
         private readonly string _path;
         private readonly Func<long> _clock;
         private HashSet<string> _off = new HashSet<string>();
-        private long _readAt = long.MinValue;
+        private bool _loaded;
+        private long _readAt;
 
         public Features(string path, Func<long> clock = null) { _path = path; _clock = clock ?? (() => Environment.TickCount64); }
 
@@ -39,8 +40,9 @@ namespace Tuner.Core
         {
             if (_path == null) return true;
             long now = _clock();
-            if (now - _readAt >= 500 || now < _readAt)
+            if (!_loaded || now - _readAt >= 500 || now < _readAt)
             {
+                _loaded = true;
                 _readAt = now;
                 try { _off = Parse(File.Exists(_path) ? File.ReadAllText(_path) : null); } catch (Exception) { _off = new HashSet<string>(); }
             }

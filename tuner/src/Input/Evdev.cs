@@ -45,26 +45,38 @@ namespace Tuner.Input
         /// <summary>As above; when <paramref name="releases"/> is given, key releases (value 0) go there too.</summary>
         public void Feed(byte[] data, int count, List<int> presses, List<int> repeats, List<int> releases)
         {
+            if (data == null || count <= 0) return;
             int i = 0;
-            while (i < count)
+            if (_carried > 0)
             {
-                // complete a record left over from the previous read first
                 int need = _record - _carried;
-                int take = Math.Min(need, count - i);
-                Buffer.BlockCopy(data, i, _carry, _carried, take);
+                int take = Math.Min(need, count);
+                Buffer.BlockCopy(data, 0, _carry, _carried, take);
                 _carried += take;
                 i += take;
-                if (_carried < _record) break;
+                if (_carried < _record) return;
                 _carried = 0;
-                Decode(_carry, presses, repeats, releases);
+                Decode(_carry, 0, presses, repeats, releases);
+            }
+            while (count - i >= _record)
+            {
+                Decode(data, i, presses, repeats, releases);
+                i += _record;
+            }
+            if (i < count)
+            {
+                int rem = count - i;
+                Buffer.BlockCopy(data, i, _carry, 0, rem);
+                _carried = rem;
             }
         }
 
-        private void Decode(byte[] rec, List<int> into, List<int> repeats, List<int> releases)
+        private void Decode(byte[] rec, int at, List<int> into, List<int> repeats, List<int> releases)
         {
-            int type = rec[_typeOffset] | (rec[_typeOffset + 1] << 8);
-            int code = rec[_typeOffset + 2] | (rec[_typeOffset + 3] << 8);
-            int value = rec[_typeOffset + 4] | (rec[_typeOffset + 5] << 8) | (rec[_typeOffset + 6] << 16) | (rec[_typeOffset + 7] << 24);
+            int o = at + _typeOffset;
+            int type = rec[o] | (rec[o + 1] << 8);
+            int code = rec[o + 2] | (rec[o + 3] << 8);
+            int value = rec[o + 4] | (rec[o + 5] << 8) | (rec[o + 6] << 16) | (rec[o + 7] << 24);
             if (type == EvKey && value == 1) into.Add(code);
             else if (type == EvKey && value == 2 && repeats != null) repeats.Add(code);
             else if (type == EvKey && value == 0 && releases != null) releases.Add(code);
@@ -76,7 +88,10 @@ namespace Tuner.Input
     {
         // "vetro-forwarded-remote" is where Vetro's filter re-emits the keys it lets through after it has
         // taken the real remote exclusively (EVIOCGRAB): with the filter on, the physical nodes go silent.
-        private static readonly string[] Remote = { "smart control", "rc device", "mcirb", "vetro-forwarded-remote" };
+        // Current helpers set it on P: Phys= (while keeping the physical remote's name so keyrouter gives it
+        // the Remocon subclass, issue #143); older helpers set it on N: Name=. Both are matched.
+        private const string ForwardedPhys = "vetro-forwarded-remote";
+        private static readonly string[] Remote = { "smart control", "rc device", "mcirb", ForwardedPhys };
         private static readonly string[] Excluded = { "keyboard", "mouse", "panel" };
 
         private static bool Any(string lower, string[] words)
@@ -102,23 +117,27 @@ namespace Tuner.Input
         public static List<string> RemoteNodes(string procBusInputDevices)
         {
             var nodes = new List<string>();
-            string name = null, node = null;
+            string name = null, phys = null, node = null;
             foreach (string raw in (procBusInputDevices ?? "").Replace("\r", "").Split('\n'))
             {
                 string line = raw.TrimEnd();
-                if (line.Length == 0) { Flush(nodes, name, node); name = null; node = null; continue; }
+                if (line.Length == 0) { Flush(nodes, name, phys, node); name = null; phys = null; node = null; continue; }
                 if (line.StartsWith("N: Name=\"", StringComparison.Ordinal) && line.EndsWith("\"", StringComparison.Ordinal) && line.Length >= 10)
                     name = line.Substring(9, line.Length - 10);
+                else if (line.StartsWith("P: Phys=", StringComparison.Ordinal))
+                    phys = line.Substring(8).Trim();
                 else if (line.StartsWith("H: Handlers=", StringComparison.Ordinal))
                     node = EventNode(line.Substring(12));
             }
-            Flush(nodes, name, node);
+            Flush(nodes, name, phys, node);
             return nodes;
         }
 
-        private static void Flush(List<string> into, string name, string node)
+        private static void Flush(List<string> into, string name, string phys, string node)
         {
-            if (name == null || node == null) return;
+            if (node == null) return;
+            if (string.Equals(phys, ForwardedPhys, StringComparison.Ordinal)) { into.Add(node); return; }
+            if (name == null) return;
             string lower = name.ToLowerInvariant();
             if (Any(lower, Remote) && !Any(lower, Excluded)) into.Add(node);
         }

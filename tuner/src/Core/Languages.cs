@@ -5,7 +5,8 @@ namespace Tuner.Core
     {
         public static string Name(string code)
         {
-            switch ((code ?? "").ToUpperInvariant())
+            string up = (code ?? "").ToUpperInvariant();
+            switch (up)
             {
                 case "ITA": return "Italian";
                 case "ENG": return "English";
@@ -25,7 +26,7 @@ namespace Tuner.Core
                 case "DUT": case "NLD": return "Dutch";
                 case "GRE": case "ELL": return "Greek";
                 case "QAA": case "UND": case "UNKNOWN": case "": return "Original";   // qaa: the broadcast's "original language" track
-                default: return code.ToUpperInvariant();
+                default: return up;
             }
         }
     }

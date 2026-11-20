@@ -35,6 +35,15 @@ namespace Tuner.Core
         public bool Focus;
     }
 
+    /// <summary>Value-type cell projection used by <see cref="GuideScene.Build"/> to avoid per-key heap allocations.</summary>
+    internal struct CellBox
+    {
+        public int Row, X, W;
+        public long Start, End;
+        public GuideEvent Event;
+        public bool Loading, ClipLeft, ClipRight, Focus;
+    }
+
     /// <summary>
     /// The guide as a model: which channels are on screen, which 3 hours, which programme is focused, and the moves between them.
     /// No drawing and no TV: it works on a <see cref="ChannelList"/> and a <see cref="GuideStore"/>.
@@ -134,7 +143,15 @@ namespace Tuner.Core
 
         private static int IndexAt(List<Seg> segs, long t)
         {
-            for (int i = 0; i < segs.Count; i++) if (segs[i].Start <= t && t < segs[i].End) return i;
+            int lo = 0, hi = segs.Count - 1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) >> 1;
+                Seg s = segs[mid];
+                if (t < s.Start) hi = mid - 1;
+                else if (t >= s.End) lo = mid + 1;
+                else return mid;
+            }
             return segs.Count - 1;
         }
 
@@ -230,31 +247,71 @@ namespace Tuner.Core
 
         // ---- what to draw and what to read ----
 
+        private bool TryCell(Seg s, int row, int idx, out CellBox box)
+        {
+            long a = Math.Max(s.Start, WindowStart), b = Math.Min(s.End, WindowEnd);
+            int x0 = (int)Math.Round((a - WindowStart) * GuideLayout.PxPerSecond), x1 = (int)Math.Round((b - WindowStart) * GuideLayout.PxPerSecond);
+            int half = GuideLayout.CellGap / 2;
+            int left = x0 + (x0 > 0 ? half : 0), right = x1 - (x1 < GuideLayout.CellsW ? half : 0);
+            int w = right - left;
+            bool focus = idx == FocusRow && s.Start <= FocusTime && FocusTime < s.End;
+            if (w < GuideLayout.MinCellW)
+            {
+                if (!focus) { box = default(CellBox); return false; }
+                w = GuideLayout.MinCellW; left = Math.Min(left, GuideLayout.CellsW - w);   // the focus is always on screen
+            }
+            box = new CellBox
+            {
+                Row = row, X = GuideLayout.CellsX + left, W = w, Start = s.Start, End = s.End, Event = s.Event, Loading = s.Loading,
+                ClipLeft = s.Start < WindowStart, ClipRight = s.End > WindowEnd,
+                Focus = focus
+            };
+            return true;
+        }
+
+        /// <summary>Allocation-free row projection into a caller-owned list (<see cref="GuideScene.Build"/>).</summary>
+        internal void FillCells(int row, List<CellBox> into)
+        {
+            into.Clear();
+            int idx = FirstRow + row;
+            if (idx < 0 || idx >= _list.Count) return;
+            List<Seg> segs = Segments(_list[idx]);
+            if (segs.Count == 0) return;
+            int start = WindowStart < segs[0].Start ? 0 : IndexAt(segs, WindowStart);
+            for (int i = start; i < segs.Count; i++)
+            {
+                Seg s = segs[i];
+                if (s.Start >= WindowEnd) break;
+                if (s.End <= WindowStart) continue;
+                CellBox box;
+                if (TryCell(s, row, idx, out box)) into.Add(box);
+            }
+        }
+
         /// <summary>
         /// The boxes of one on-screen row (0..Rows-1), clipped to the window; boxes too narrow to show anything are left out. Neighbours are
         /// <see cref="GuideLayout.CellGap"/> apart; a box cut by the window's edge is flush with it (the grid's edges are straight).
         /// </summary>
         public List<GuideCell> Cells(int row)
         {
-            var cells = new List<GuideCell>();
+            var cells = new List<GuideCell>(8);
             int idx = FirstRow + row;
             if (idx < 0 || idx >= _list.Count) return cells;
-            foreach (Seg s in Segments(_list[idx]))
+            List<Seg> segs = Segments(_list[idx]);
+            if (segs.Count == 0) return cells;
+            int start = WindowStart < segs[0].Start ? 0 : IndexAt(segs, WindowStart);
+            for (int i = start; i < segs.Count; i++)
             {
-                if (s.End <= WindowStart || s.Start >= WindowEnd) continue;
-                long a = Math.Max(s.Start, WindowStart), b = Math.Min(s.End, WindowEnd);
-                int x0 = (int)Math.Round((a - WindowStart) * GuideLayout.PxPerSecond), x1 = (int)Math.Round((b - WindowStart) * GuideLayout.PxPerSecond);
-                int half = GuideLayout.CellGap / 2;
-                int left = x0 + (x0 > 0 ? half : 0), right = x1 - (x1 < GuideLayout.CellsW ? half : 0);
-                int w = right - left;
-                bool focus = idx == FocusRow && s.Start <= FocusTime && FocusTime < s.End;
-                if (w < GuideLayout.MinCellW) { if (!focus) continue; w = GuideLayout.MinCellW; left = Math.Min(left, GuideLayout.CellsW - w); }   // the focus is always on screen
-                cells.Add(new GuideCell
-                {
-                    Row = row, X = GuideLayout.CellsX + left, W = w, Start = s.Start, End = s.End, Event = s.Event, Loading = s.Loading,
-                    ClipLeft = s.Start < WindowStart, ClipRight = s.End > WindowEnd,
-                    Focus = focus
-                });
+                Seg s = segs[i];
+                if (s.Start >= WindowEnd) break;
+                if (s.End <= WindowStart) continue;
+                CellBox box;
+                if (TryCell(s, row, idx, out box))
+                    cells.Add(new GuideCell
+                    {
+                        Row = box.Row, X = box.X, W = box.W, Start = box.Start, End = box.End, Event = box.Event, Loading = box.Loading,
+                        ClipLeft = box.ClipLeft, ClipRight = box.ClipRight, Focus = box.Focus
+                    });
             }
             return cells;
         }
@@ -262,7 +319,7 @@ namespace Tuner.Core
         /// <summary>The time labels: the half hours of the window as (x of the tick, unix time).</summary>
         public List<KeyValuePair<int, long>> Ticks()
         {
-            var ticks = new List<KeyValuePair<int, long>>();
+            var ticks = new List<KeyValuePair<int, long>>(6);
             for (long t = WindowStart; t < WindowEnd; t += Half)
                 ticks.Add(new KeyValuePair<int, long>(GuideLayout.CellsX + (int)Math.Round((t - WindowStart) * GuideLayout.PxPerSecond), t));
             return ticks;
@@ -281,15 +338,19 @@ namespace Tuner.Core
         /// </summary>
         public List<int> RowsToRead()
         {
-            var order = new List<int>();
+            var order = new List<int>(GuideLayout.Rows * 3);
             if (_list.Count == 0) return order;
             var seen = new HashSet<int>();
-            Action<int> add = i => { if (i >= 0 && i < _list.Count && seen.Add(i)) order.Add(i); };
-            add(FocusRow);
-            for (int k = 1; k < GuideLayout.Rows; k++) { add(FocusRow + k); add(FocusRow - k); }
-            for (int k = 0; k < GuideLayout.Rows; k++) add(FirstRow + GuideLayout.Rows + k);
-            for (int k = 1; k <= GuideLayout.Rows; k++) add(FirstRow - k);
+            AddRow(order, seen, FocusRow);
+            for (int k = 1; k < GuideLayout.Rows; k++) { AddRow(order, seen, FocusRow + k); AddRow(order, seen, FocusRow - k); }
+            for (int k = 0; k < GuideLayout.Rows; k++) AddRow(order, seen, FirstRow + GuideLayout.Rows + k);
+            for (int k = 1; k <= GuideLayout.Rows; k++) AddRow(order, seen, FirstRow - k);
             return order;
+        }
+
+        private void AddRow(List<int> order, HashSet<int> seen, int i)
+        {
+            if (i >= 0 && i < _list.Count && seen.Add(i)) order.Add(i);
         }
     }
 }

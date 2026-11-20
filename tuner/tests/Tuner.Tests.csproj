@@ -35,6 +35,7 @@
     <Compile Include="../src/Core/TextFit.cs" />
     <Compile Include="../src/Core/IdleWork.cs" />
     <Compile Include="../src/Core/NodeScan.cs" />
+    <Compile Include="../src/Core/Features.cs" />
     <None Include="fixtures/*.bin" CopyToOutputDirectory="PreserveNewest" LinkBase="fixtures" />
     <None Include="present-reply.hex" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -1,6 +1,7 @@
 using System;
-using Tuner.Core;
+using System.Collections.Generic;
 using System.IO;
+using Tuner.Core;
 using Tuner.Native;
 
 namespace Tuner.Ui
@@ -76,6 +77,7 @@ namespace Tuner.Ui
     {
         private readonly IntPtr _evas, _clip;
         private readonly string _assets;
+        private readonly Dictionary<string, string> _assetPaths = new Dictionary<string, string>();
         private bool _drawn;      // the clipper is shown (true also while fading out)
         private int _alpha;       // the clipper's alpha now
 
@@ -160,8 +162,13 @@ namespace Tuner.Ui
             return t;
         }
 
-        /// <summary>A picture's file: the tuner's own res folder, or the launcher's for the pictures both share (<see cref="AssetPath"/>).</summary>
-        private string Asset(string name) { return AssetPath.Of(_assets, name); }
+        /// <summary>A picture's file: the tuner's own res folder, or the launcher's for the pictures both share (<see cref="AssetPath"/>). Cached per surface so pooling 200+ objects does not repeat stat() syscalls.</summary>
+        private string Asset(string name)
+        {
+            string p;
+            if (!_assetPaths.TryGetValue(name, out p)) _assetPaths[name] = p = AssetPath.Of(_assets, name);
+            return p;
+        }
 
         private IntPtr Slice(string name, int border) { return Slice(name, border, border, border, border); }
 
@@ -176,12 +183,47 @@ namespace Tuner.Ui
             return Clipped(img);
         }
 
-        /// <summary>A picture drawn as it is (a remote key, res/key_*.png), hidden until it is placed. Colours are premultiplied like the rest.</summary>
+        /// <summary>A picture drawn as it is (res/veil_corner.png), hidden until it is placed. Colours are premultiplied like the rest.</summary>
         public IntPtr Picture(string name)
         {
             IntPtr img = Efl.evas_object_image_add(_evas);
             Efl.evas_object_image_file_set(img, Asset(name), null);
             Efl.evas_object_image_filled_set(img, true);
+            Efl.evas_object_image_smooth_scale_set(img, true);
+            Efl.evas_object_color_set(img, 0, 0, 0, 0);
+            Clipped(img);
+            Efl.evas_object_hide(img);
+            return img;
+        }
+
+        public const int KeyAtlasW = 536, KeyAtlasH = 68, KeyAtlasTotalH = 148, HatchEndsAtlasY = 72;
+
+        private static int KeyAtlasX(string name)
+        {
+            switch (name)
+            {
+                case "key_ok": return 0;
+                case "key_left": return 72;
+                case "key_right": return 144;
+                case "key_up": return 216;
+                case "key_down": return 288;
+                case "key_ch": return 360;
+                case "key_back": return 468;
+                default: return 0;
+            }
+        }
+
+        /// <summary>One remote key picture from row 1 of the packed atlas (res/keys.png, 536 x 148; keys 536 x 68 at y = 0, hatch ends at y = 72), scaled to <paramref name="displayH"/> px tall, hidden until placed.</summary>
+        public IntPtr KeyPicture(string name, int displayH)
+        {
+            IntPtr img = Efl.evas_object_image_add(_evas);
+            Efl.evas_object_image_file_set(img, Asset("keys"), null);
+            Efl.evas_object_image_filled_set(img, false);
+            double scale = (double)displayH / KeyAtlasH;
+            int scaledX = (int)Math.Round(KeyAtlasX(name) * scale);
+            int scaledAtlasW = (int)Math.Round(KeyAtlasW * scale);
+            int scaledTotalH = (int)Math.Round(KeyAtlasTotalH * scale);
+            Efl.evas_object_image_fill_set(img, -scaledX, 0, scaledAtlasW, scaledTotalH);
             Efl.evas_object_image_smooth_scale_set(img, true);
             Efl.evas_object_color_set(img, 0, 0, 0, 0);
             Clipped(img);
@@ -208,8 +250,7 @@ namespace Tuner.Ui
         public string AssetProblems()
         {
             string problems = "";
-            var names = new System.Collections.Generic.List<string>(new[] { "bar", "veil_corner", "progress", "pill_bg", "pill_rim", "pill_cap", "pill", "hatch", "hatch_ends" });
-            names.AddRange(Tuner.Core.GuideScene.KeyNames);
+            string[] names = { "bar", "veil_corner", "progress", "pill_bg", "pill_rim", "pill_cap", "hatch", "keys" };
             IntPtr img = Efl.evas_object_image_add(_evas);
             Efl.evas_object_hide(img);
             foreach (string n in names)
@@ -254,8 +295,8 @@ namespace Tuner.Ui
             return r;
         }
 
-        /// <summary>A cell of the guide (pill.png: 64 px, radius 20, cut with a border of 24 drawn at its size): white at an alpha, or tinted (the ice focus).</summary>
-        public Chip Pill() { return new Chip(Slice("pill", 24)); }
+        /// <summary>A cell of the guide (reuses pill_cap.png scaled to radius 20): white at an alpha, or tinted (the ice focus).</summary>
+        public Chip Pill() { Chip c = Cap(); c.SetRadius(20); return c; }
 
         /// <summary>
         /// A picture repeated at its own size over the object (hatch.png, 16 px: the stripes of "no information"): not filled, the fill is one tile.

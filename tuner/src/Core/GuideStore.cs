@@ -33,19 +33,26 @@ namespace Tuner.Core
             lock (_items)
             {
                 _items[id] = new ChannelSchedule { Events = events, ReadAt = readAt, AskedUntil = askedUntil };
-                if (_items.Count <= KeepChannels) return;
-                // A resident tuner lives for weeks: without this, paging through the guide keeps 72 h of every channel ever seen.
-                var old = new List<ulong>();
-                foreach (var kv in _items) if (kv.Key != id && readAt - kv.Value.ReadAt >= MaxAgeSeconds) old.Add(kv.Key);
-                foreach (ulong k in old) _items.Remove(k);
-                // Paging fast through a long (satellite) list reads hundreds of channels within 15 minutes: past twice the cap, the
-                // oldest reads go too, down to the cap (72 h each, tens of MB on a 2 GB TV otherwise).
-                if (_items.Count <= 2 * KeepChannels) return;
-                var byAge = new List<KeyValuePair<ulong, ChannelSchedule>>(_items);
-                byAge.Sort((a, b) => a.Value.ReadAt.CompareTo(b.Value.ReadAt));
-                for (int i = 0; i < byAge.Count && _items.Count > KeepChannels; i++) if (byAge[i].Key != id) _items.Remove(byAge[i].Key);
+                Evict(id, readAt);
             }
         }
+
+        private void Evict(ulong keepId, long readAt)
+        {
+            if (_items.Count <= KeepChannels) return;
+            // A resident tuner lives for weeks: without this, paging through the guide keeps 72 h of every channel ever seen.
+            var old = new List<ulong>();
+            foreach (var kv in _items) if (kv.Key != keepId && readAt - kv.Value.ReadAt >= MaxAgeSeconds) old.Add(kv.Key);
+            foreach (ulong k in old) _items.Remove(k);
+            // Paging fast through a long (satellite) list reads hundreds of channels within 15 minutes: past twice the cap, the
+            // oldest reads go too, down to the cap (72 h each, tens of MB on a 2 GB TV otherwise).
+            if (_items.Count <= 2 * KeepChannels) return;
+            var byAge = new List<KeyValuePair<ulong, ChannelSchedule>>(_items);
+            byAge.Sort((a, b) => a.Value.ReadAt.CompareTo(b.Value.ReadAt));
+            for (int i = 0; i < byAge.Count && _items.Count > KeepChannels; i++) if (byAge[i].Key != keepId) _items.Remove(byAge[i].Key);
+        }
+
+        private static readonly List<GuideEvent> EmptyEvents = new List<GuideEvent>(0);
 
         /// <summary>
         /// The read of this channel failed: if nothing is known about it, it is recorded as having no programmes (the guide says "No information"
@@ -56,7 +63,8 @@ namespace Tuner.Core
             lock (_items)
             {
                 if (_items.ContainsKey(id)) return false;
-                _items[id] = new ChannelSchedule { Events = new List<GuideEvent>(), ReadAt = readAt, AskedUntil = askedUntil };
+                _items[id] = new ChannelSchedule { Events = EmptyEvents, ReadAt = readAt, AskedUntil = askedUntil };
+                Evict(id, readAt);
                 return true;
             }
         }
@@ -68,7 +76,11 @@ namespace Tuner.Core
         {
             ChannelSchedule c = Get(id);
             if (c == null) return null;
-            foreach (GuideEvent e in c.Events) if (e.Start <= now && now < e.End) return e;
+            foreach (GuideEvent e in c.Events)
+            {
+                if (e.Start > now) break;
+                if (now < e.End) return e;
+            }
             return null;
         }
 
@@ -81,9 +93,13 @@ namespace Tuner.Core
         {
             ChannelSchedule c = Get(id);
             if (c == null) return null;
-            GuideEvent cur = null;
-            foreach (GuideEvent e in c.Events) if (e.Start <= now && now < e.End) { cur = e; break; }
-            foreach (GuideEvent e in c.Events) if (cur != null ? e.Start >= cur.End : e.Start > now) return e;
+            long after = now;
+            bool haveCur = false;
+            foreach (GuideEvent e in c.Events)
+            {
+                if (!haveCur && e.Start <= now && now < e.End) { after = e.End; haveCur = true; continue; }
+                if (haveCur ? e.Start >= after : e.Start > now) return e;
+            }
             return null;
         }
 
@@ -99,7 +115,11 @@ namespace Tuner.Core
             // instead of MaxAgeSeconds, and each zap read 25 channels again. The slack is the age a reading may have anyway.
             if (c.AskedUntil + MaxAgeSeconds < until && age >= RetrySeconds) return true;
             bool coversNow = false;
-            foreach (GuideEvent e in c.Events) if (e.Start <= now && now < e.End) { coversNow = true; break; }
+            foreach (GuideEvent e in c.Events)
+            {
+                if (e.Start > now) break;
+                if (now < e.End) { coversNow = true; break; }
+            }
             return !coversNow && age >= RetrySeconds;
         }
 

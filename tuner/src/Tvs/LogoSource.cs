@@ -40,16 +40,25 @@ namespace Tuner.Tvs
                 catch (Exception ex) { problems += " " + n + "=" + ex.Message; }
             }
             var index = new LogoIndex(gallery, tunable);
+            var verified = new Dictionary<ulong, string>();
+            var checkedIds = new HashSet<ulong>();
             int found = 0, withFile = 0;
             if (channels != null)
                 foreach (Channel c in channels)
                 {
+                    if (c == null) continue;
                     string url = index.UrlFor(c);
                     if (url == null) continue;
                     found++;
+                    checkedIds.Add(c.Id);
                     string name = LogoNames.CacheFile(url);
-                    if (name != null && File.Exists(PictureDir + "/" + name)) withFile++;
+                    if (name != null)
+                    {
+                        string file = PictureDir + "/" + name;
+                        if (File.Exists(file)) { withFile++; verified[c.Id] = file; }
+                    }
                 }
+            index.SetFiles(verified, checkedIds, Environment.TickCount64);
             status = "logos: " + files + " db, " + index.Rows + " gallery rows, " + tunable.Count + " tunable, channels " + (channels == null ? 0 : channels.Count) + " matched " + found + " with a file " + withFile + (problems.Length > 0 ? ", problems:" + problems : "");
             return index.Any ? index : null;
         }
@@ -100,9 +109,16 @@ namespace Tuner.Tvs
         {
             LogoIndex index = _index;
             if (index == null || c == null) return null;
+            string ready = index.FileFor(c.Id);
+            if (ready != null) return ready;
             long now = Environment.TickCount64;
             KeyValuePair<string, long> memo;
             if (_seen.TryGetValue(c.Id, out memo) && (memo.Key != null || now - memo.Value < RecheckMs)) return memo.Key;
+            if (index.WasCheckedMissing(c.Id, now, RecheckMs))
+            {
+                _seen[c.Id] = new KeyValuePair<string, long>(null, now);
+                return null;
+            }
             string path = null;
             string name = LogoNames.CacheFile(index.UrlFor(c));
             if (name != null)

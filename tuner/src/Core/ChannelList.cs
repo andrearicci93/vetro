@@ -17,12 +17,14 @@ namespace Tuner.Core
     internal sealed class ChannelList
     {
         private readonly List<Channel> _items = new List<Channel>();
+        private readonly Dictionary<ulong, int> _byId = new Dictionary<ulong, int>();
         private int _current = -1;
 
         public ChannelList(IEnumerable<Channel> channels)
         {
             foreach (Channel c in channels) if (c != null && !c.Hidden) _items.Add(c);
             _items.Sort((a, b) => a.Major != b.Major ? a.Major.CompareTo(b.Major) : string.CompareOrdinal(a.Name, b.Name));
+            for (int i = 0; i < _items.Count; i++) if (!_byId.ContainsKey(_items[i].Id)) _byId[_items[i].Id] = i;
         }
 
         public int Count { get { return _items.Count; } }
@@ -33,8 +35,10 @@ namespace Tuner.Core
         /// <summary>Makes the channel with this service id the current one. False when it is not in the list.</summary>
         public bool SetCurrent(ulong id)
         {
-            for (int i = 0; i < _items.Count; i++) if (_items[i].Id == id) { _current = i; return true; }
-            return false;
+            int idx;
+            if (!_byId.TryGetValue(id, out idx)) return false;
+            _current = idx;
+            return true;
         }
 
         /// <summary>The channel after (+1) or before (-1) the current one, wrapping around. Null when the list is empty.</summary>
@@ -49,8 +53,14 @@ namespace Tuner.Core
         /// <summary>The channel a typed number selects: an exact match on the number, else null (the viewer typed a number that does not exist).</summary>
         public Channel ByNumber(int major)
         {
-            foreach (Channel c in _items) if (c.Major == major) return c;
-            return null;
+            int lo = 0, hi = _items.Count;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (_items[mid].Major < major) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo < _items.Count && _items[lo].Major == major ? _items[lo] : null;
         }
 
         /// <summary>

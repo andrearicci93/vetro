@@ -17,15 +17,16 @@ namespace Tuner.Core
         public const double DockSeconds = 25;   // the Dock hides itself 20 s after the last key
         public const double PadSeconds = 20;    // the osd 123 closes itself 14 s after the last key
 
+        // Liveness through /proc where there is one (the TV); elsewhere (the preview on a Mac) the flag is judged by its age alone.
+        private static readonly Func<int, bool> Alive = Directory.Exists("/proc/self") ? (Func<int, bool>)(pid => Directory.Exists("/proc/" + pid)) : null;
+
         /// <summary>Whether the flag at <paramref name="path"/> says its window is on screen now.</summary>
         public static bool Fresh(string path, double maxAgeSeconds)
         {
             try
             {
                 if (!File.Exists(path)) return false;
-                // Liveness through /proc where there is one (the TV); elsewhere (the preview on a Mac) the flag is judged by its age alone.
-                Func<int, bool> alive = Directory.Exists("/proc/self") ? (Func<int, bool>)(pid => Directory.Exists("/proc/" + pid)) : null;
-                return Judge(File.ReadAllText(path), File.GetLastWriteTimeUtc(path), DateTime.UtcNow, maxAgeSeconds, alive);
+                return Judge(File.ReadAllText(path), File.GetLastWriteTimeUtc(path), DateTime.UtcNow, maxAgeSeconds, Alive);
             }
             catch (Exception) { return false; }
         }
@@ -37,7 +38,7 @@ namespace Tuner.Core
         public static bool Judge(string content, DateTime writtenUtc, DateTime nowUtc, double maxAgeSeconds, Func<int, bool> alive)
         {
             double age = (nowUtc - writtenUtc).TotalSeconds;
-            if (age > maxAgeSeconds) return false;
+            if (age > maxAgeSeconds || age < -5.0) return false;
             int pid;
             if (int.TryParse((content ?? "").Trim(), out pid) && pid > 1 && alive != null && !alive(pid)) return false;
             return true;

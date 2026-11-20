@@ -6,10 +6,10 @@ namespace Tuner.Core
     internal enum PrimKind { Line, Fill, Hatch, HatchEnd, Focus, Text, Key, Logo }
 
     /// <summary>
-    /// One thing to draw. Line is a plain rectangle; Fill is a programme's rounded cell (pill.png, radius 20) in white at <see cref="Alpha"/>
+    /// One thing to draw. Line is a plain rectangle; Fill is a programme's rounded cell (pill_cap.png scaled to radius 20) in white at <see cref="Alpha"/>
     /// (0..255); Hatch is the "no information" stripes (hatch.png tiled, its fill moved by <see cref="Phase"/> px), HatchEnd one rounded end of
-    /// such a cell (hatch_ends.png, slot <see cref="Phase"/>: 0 the left end, 1 + k the right end starting k px into the tile); Focus is the focused cell, the same pill in ice; Text is text at
-    /// <see cref="Alpha"/> in white, or in <see cref="Tint"/> (opaque) when set; Key is the picture of a remote key (res/key_*.png, its name in
+    /// such a cell (row 2 of keys.png, slot <see cref="Phase"/>: 0 the left end, 1 + k the right end starting k px into the tile); Focus is the focused cell, the same pill in ice; Text is text at
+    /// <see cref="Alpha"/> in white, or in <see cref="Tint"/> (opaque) when set; Key is the picture of a remote key (row 1 of keys.png, its name in
     /// <see cref="Text"/>); Logo is a channel's logo (the file path in <see cref="Text"/>, drawn as a W x H square).
     /// </summary>
     internal struct Prim
@@ -62,10 +62,11 @@ namespace Tuner.Core
         /// <param name="into">The list to fill (cleared first) instead of a new one: the view keeps one, so a key does not allocate the scene again.</param>
         public static List<Prim> Build(GuideGrid g, long now, TimeSpan offset, string description, Func<Channel, string> logo = null, Func<string, int, int, int> measure = null, List<Prim> into = null)
         {
-            measure = measure ?? ((s, size, weight) => s.Length * size / 2);
+            measure = measure ?? DefaultMeasure;
             // The layers are gathered in lists kept from one build to the next (UI thread only; only "all" leaves this method).
             List<Prim> lines = Clear(_lines), fills = Clear(_fills), hatches = Clear(_hatches), focus = Clear(_focus), texts = Clear(_texts), keys = Clear(_keys), logos = Clear(_logos);
             int X0 = GuideLayout.X0;
+            long offsetSec = offset.Ticks / TimeSpan.TicksPerSecond;
 
             // ---- header: the focused programme ----
             GuideEvent fe = g.FocusEvent;
@@ -89,15 +90,16 @@ namespace Tuner.Core
                 texts.Add(T(X0, GuideLayout.TitleTop, 64, 600, Faint, g.FocusLoading ? "Loading…" : "No information", GuideLayout.TitleW));
                 if (fc != null) texts.Add(T(X0, GuideLayout.MetaTop, 30, 500, Muted, fc.Name, GuideLayout.MetaW));
             }
-            var date = T(GuideLayout.Right, GuideLayout.DateTop, 32, 500, Muted, DateTimeOffset.FromUnixTimeSeconds(g.FocusTime).ToOffset(offset).ToString("ddd d MMM", System.Globalization.CultureInfo.InvariantCulture), 400);
+            var date = T(GuideLayout.Right, GuideLayout.DateTop, 32, 500, Muted, FormatDate(g.FocusTime, offset, offsetSec), 400);
             date.Right = true;
             texts.Add(date);
 
             // ---- time axis: the half hours, full hours stronger ----
-            foreach (var tick in g.Ticks())
+            for (long t = g.WindowStart; t < g.WindowEnd; t += GuideGrid.Half)
             {
-                bool full = (tick.Value + (long)offset.TotalSeconds) % 3600 == 0;
-                texts.Add(T(tick.Key, GuideLayout.AxisY + 4, 26, full ? 600 : 500, full ? Main : Muted, ProgramClock.Clock(tick.Value, offset), 200));
+                int tickX = GuideLayout.CellsX + (int)Math.Round((t - g.WindowStart) * GuideLayout.PxPerSecond);
+                bool full = (t + offsetSec) % 3600 == 0;
+                texts.Add(T(tickX, GuideLayout.AxisY + 4, 26, full ? 600 : 500, full ? Main : Muted, ProgramClock.Clock(t, offset), 200));
             }
             lines.Add(new Prim { Kind = PrimKind.Line, X = GuideLayout.CellsX, Y = GuideLayout.AxisLineY, W = GuideLayout.CellsW, H = 2, Alpha = AxisAlpha });
 
@@ -123,14 +125,16 @@ namespace Tuner.Core
                     if (file != null) logos.Add(new Prim { Kind = PrimKind.Logo, X = GuideLayout.LabelX + 16, Y = y + 16, W = LogoSize, H = LogoSize, Alpha = 255, Text = file });
                 }
                 int labelW = GuideLayout.LabelX + GuideLayout.LabelW - 12 - tx;
-                var num = T(tx, y + 12, 24, 500, focusRow ? Main : Muted, c.Major.ToString(), labelW);
+                var num = T(tx, y + 12, 24, 500, focusRow ? Main : Muted, MajorText(c.Major), labelW);
                 var name = T(tx, y + 44, 26, focusRow ? 600 : 500, focusRow ? Main : Muted, c.Name, labelW);
                 if (focusRow) { num.Key = "num"; name.Key = "name"; }
                 texts.Add(num); texts.Add(name);
 
                 int cy = y + GuideLayout.CellDy;
-                foreach (GuideCell cell in g.Cells(r))
+                g.FillCells(r, _rowCells);
+                for (int ci = 0; ci < _rowCells.Count; ci++)
                 {
+                    CellBox cell = _rowCells[ci];
                     int tw = cell.W - 36;
                     if (cell.Focus)
                     {
@@ -184,15 +188,41 @@ namespace Tuner.Core
             all.Clear();
             if (all.Capacity < total) all.Capacity = total;
             all.AddRange(lines); all.AddRange(fills); all.AddRange(hatches); all.AddRange(focus); all.AddRange(logos); all.AddRange(texts); all.AddRange(keys);
-            Clear(_lines); Clear(_fills); Clear(_hatches); Clear(_focus); Clear(_texts); Clear(_keys); Clear(_logos);   // no strings held between builds
+            Clear(_lines); Clear(_fills); Clear(_hatches); Clear(_focus); Clear(_texts); Clear(_keys); Clear(_logos); _rowCells.Clear();   // no strings or events held between builds
             return all;
+        }
+
+        private static readonly Func<string, int, int, int> DefaultMeasure = (s, size, weight) => s.Length * size / 2;
+        private static readonly List<CellBox> _rowCells = new List<CellBox>(16);
+        private static readonly string[] MajorCache = new string[1000];
+        private static long _dateDay = long.MinValue;
+        private static string _dateText = "";
+
+        private static string MajorText(int major)
+        {
+            if ((uint)major >= (uint)MajorCache.Length) return major.ToString();
+            string s = MajorCache[major];
+            if (s == null) MajorCache[major] = s = major.ToString();
+            return s;
+        }
+
+        private static string FormatDate(long unix, TimeSpan offset, long offsetSec)
+        {
+            long local = unix + offsetSec;
+            long day = local >= 0 ? local / 86400 : (local - 86399) / 86400;
+            if (day != _dateDay)
+            {
+                _dateDay = day;
+                _dateText = DateTimeOffset.FromUnixTimeSeconds(unix).ToOffset(offset).ToString("ddd d MMM", System.Globalization.CultureInfo.InvariantCulture);
+            }
+            return _dateText;
         }
 
         private static readonly List<Prim> _lines = new List<Prim>(), _fills = new List<Prim>(), _hatches = new List<Prim>(), _focus = new List<Prim>(),
             _texts = new List<Prim>(), _keys = new List<Prim>(), _logos = new List<Prim>();
         private static List<Prim> Clear(List<Prim> l) { l.Clear(); return l; }
 
-        private static Prim Cell(GuideCell cell, int y, int alpha) { return new Prim { Kind = PrimKind.Fill, X = cell.X, Y = y, W = cell.W, H = GuideLayout.CellH, Alpha = alpha }; }
+        private static Prim Cell(CellBox cell, int y, int alpha) { return new Prim { Kind = PrimKind.Fill, X = cell.X, Y = y, W = cell.W, H = GuideLayout.CellH, Alpha = alpha }; }
 
         /// <summary>OK Watch · Left Right Time · Up Down Channel · CH Page · Back Close, left to right from <paramref name="x"/>.</summary>
         private static readonly KeyValuePair<string[], string>[] FooterGroups =

@@ -144,6 +144,99 @@ internal static partial class Tests
         Check(AssetPath.Of(tunerRes, "missing") == System.IO.Path.Combine(tunerRes, "missing.png"), "a missing picture keeps its own path (the load error names it)");
         System.IO.Directory.Delete(pkg, true);
 
+        // PR #255: Features first-read 64-bit underflow, cache & clock-rollback reload
+        string featFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vetro-features-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            long tick = 1000;
+            System.IO.File.WriteAllText(featFile, "focus=0\nlogos=0\n");
+            var feat = new Features(featFile, () => tick);
+            Check(!feat.On("focus") && !feat.On("logos") && feat.On("banner"), "features: first read parses toggles at small positive tick");
+            System.IO.File.WriteAllText(featFile, "focus=1\n");
+            tick = 1400;
+            Check(!feat.On("focus"), "features: cached within 500 ms");
+            tick = 1500;
+            Check(feat.On("focus"), "features: reloaded at 500 ms");
+            System.IO.File.WriteAllText(featFile, "hold=0\n");
+            tick = 1200;
+            Check(!feat.On("hold"), "features: reloaded if clock steps backward");
+        }
+        finally
+        {
+            try { System.IO.File.Delete(featFile); } catch (Exception) { }
+        }
+
+        // PR #255 + Round 2: GuideText preserves spaces for line breaks / tabs, drops control chars & soft hyphens, and fast-paths clean strings
+        Check(GuideText.Clean("Line 1\nLine 2\r\nLine\t3") == "Line 1 Line 2 Line 3", "GuideText.Clean separates lines and tabs with a single space");
+        Check(GuideText.Clean("foo\u007fbar\u00adbaz") == "foobarbaz", "GuideText.Clean still splits words at 0x7F and soft hyphens");
+        {
+            string clean = "Tu si que vales";
+            Check(ReferenceEquals(GuideText.Clean(clean), clean), "GuideText.Clean returns clean strings without allocation");
+        }
+
+        // PR #255: GuideStore.PutFailed enforces eviction limit just like Put
+        {
+            var st = new GuideStore();
+            int total = 2 * GuideStore.KeepChannels + 10;
+            for (int i = 1; i <= total; i++) st.PutFailed((ulong)i, 1000 + i, 2000 + i);
+            Check(st.Get(1) == null, "GuideStore.PutFailed evicts oldest failed entries beyond cap");
+            Check(st.Get((ulong)total) != null, "GuideStore.PutFailed retains newest entry");
+        }
+
+        // S6 packed atlas: keys.png is 536x148 (keys + hatch ends row 2), hatch_ends.png and pill.png are removed
+        {
+            string resDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "res"));
+            string keysPng = System.IO.Path.Combine(resDir, "keys.png");
+            if (System.IO.File.Exists(keysPng))
+            {
+                byte[] hdr = System.IO.File.ReadAllBytes(keysPng);
+                int w = (hdr[16] << 24) | (hdr[17] << 16) | (hdr[18] << 8) | hdr[19];
+                int h = (hdr[20] << 24) | (hdr[21] << 16) | (hdr[22] << 8) | hdr[23];
+                Check(w == 536 && h == 148, "S6 atlas keys.png is 536x148 (got " + w + "x" + h + ")");
+                Check(!System.IO.File.Exists(System.IO.Path.Combine(resDir, "hatch_ends.png")), "hatch_ends.png removed (packed into keys.png)");
+                Check(!System.IO.File.Exists(System.IO.Path.Combine(resDir, "pill.png")), "pill.png removed (reuses pill_cap.png)");
+            }
+        }
+
+        // Round 3: InputDevices.RemoteNodes matches P: Phys=vetro-forwarded-remote (#143), ChannelList O(log N)/O(1), ProgramClock cache, OverlayFlag clock skew, InfoText O(log N)
+        {
+            string proc =
+                "I: Bus=0006 Vendor=0001 Product=0002 Version=0001\n" +
+                "N: Name=\"Samsung BLE Remote\"\n" +
+                "P: Phys=vetro-forwarded-remote\n" +
+                "H: Handlers=kbd event9\n\n" +
+                "N: Name=\"Smart Control\"\n" +
+                "P: Phys=bt-00:11\n" +
+                "H: Handlers=kbd event2\n\n" +
+                "N: Name=\"Smart Control Keyboard\"\n" +
+                "P: Phys=bt-00:12\n" +
+                "H: Handlers=kbd event3\n\n" +
+                "N: Name=\"vetro-forwarded-remote\"\n" +
+                "H: Handlers=event4\n";
+            var rnodes = InputDevices.RemoteNodes(proc);
+            Check(rnodes.Count == 3 && rnodes[0] == "/dev/input/event9" && rnodes[1] == "/dev/input/event2" && rnodes[2] == "/dev/input/event4",
+                "RemoteNodes matches P: Phys=vetro-forwarded-remote, Smart Control, and legacy name while excluding Keyboard");
+
+            var dups = new ChannelList(new[] { Ch(5, "Zeta", 502), Ch(5, "Alpha", 501), Ch(1, "One", 101) });
+            Check(dups.ByNumber(5).Name == "Alpha" && dups.SetCurrent(502) && dups.Current.Name == "Zeta",
+                "ChannelList binary-search ByNumber picks first match and O(1) SetCurrent finds exact service id");
+
+            string c1 = ProgramClock.Clock(1794082800, TimeSpan.FromHours(1));
+            string c2 = ProgramClock.Clock(1794082800 + 86400, TimeSpan.FromHours(1));
+            Check(c1 == "21:20" && ReferenceEquals(c1, c2) && ProgramClock.Clock(0, TimeSpan.FromHours(-1)) == "23:00",
+                "ProgramClock.Clock caches invariant HH:mm strings and handles negative offsets");
+
+            DateTime nowUtc = new DateTime(2026, 11, 20, 12, 0, 0, DateTimeKind.Utc);
+            Check(OverlayFlag.Judge("1", nowUtc.AddSeconds(2), nowUtc, 20, null), "OverlayFlag tolerates minor mtime skew");
+            Check(!OverlayFlag.Judge("1", nowUtc.AddSeconds(60), nowUtc, 20, null), "OverlayFlag rejects far-future mtime after backward NTP jump");
+
+            int calls = 0;
+            Func<string, int> countM = s => { calls++; return s.Length * 10; };
+            var wrapped = InfoText.Wrap(new string('a', 100), 60, 2, countM);
+            Check(wrapped.Count == 2 && wrapped[0].Length == 6 && wrapped[1].EndsWith("…") && calls <= 25,
+                "InfoText.Wrap cuts long words with O(log N) measurements (calls=" + calls + ")");
+        }
+
         Console.WriteLine(_failed == 0 ? "ok: " + _run + " checks" : _failed + " of " + _run + " checks FAILED");
         return _failed == 0 ? 0 : 1;
     }

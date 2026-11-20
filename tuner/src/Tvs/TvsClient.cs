@@ -138,7 +138,50 @@ namespace Tuner.Tvs
         /// </summary>
         public void SourceUnknown() { _isTv = false; }
         private IServiceNavigation _nav;   // keeps the interface alive for the reflection call
-        private object _conn, _helperType, _wrapType;
+        private IServiceGuide _guide;      // keeps the interface alive for raw guide calls
+        private object _conn;
+        private Type _helperType, _wrapType, _fmtType, _bufType;
+        private ConstructorInfo _wrapCtor;
+        private MethodInfo _pushInObj, _pushInBool, _pushOutObj, _helperRun;
+        private FieldInfo _inListField;
+        private MethodInfo _fmtSerialize, _fmtGetInput;
+        private MethodInfo _bufPush, _bufGetSize, _bufRead, _connCall;
+        private Type[] _bufReadArgTypes;
+
+        private unsafe void EnsureCore(TVServiceAPI api)
+        {
+            if (_conn != null) return;
+            Assembly asm = typeof(TVServiceAPI).Assembly;
+            _conn = typeof(TVServiceAPI).GetField("pTVSConnection", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(api);
+            _helperType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MarshalHelperProxy");
+            _wrapType = asm.GetType("Tizen.TV.Broadcast.TVService.Types.ValueWrapper");
+            _wrapCtor = _wrapType != null ? _wrapType.GetConstructor(new[] { typeof(void*), typeof(Type) }) : null;
+            var o = new[] { typeof(object) };
+            _pushInObj = _helperType.GetMethod("PushIn", o);
+            _pushInBool = _helperType.GetMethod("PushIn", new[] { typeof(bool) });
+            _pushOutObj = _helperType.GetMethod("PushOut", o);
+            _helperRun = _helperType.GetMethod("Run");
+            _inListField = _helperType.GetField("inList");
+            _connCall = _conn != null ? _conn.GetType().GetMethod("Call") : null;
+        }
+
+        private void EnsureFormat(TVServiceAPI api)
+        {
+            EnsureCore(api);
+            if (_fmtType != null) return;
+            Assembly asm = typeof(TVServiceAPI).Assembly;
+            _fmtType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.Formatter");
+            _bufType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MessageBuffer");
+            BindingFlags nonPublic = BindingFlags.NonPublic | BindingFlags.Instance;
+            _fmtSerialize = _fmtType.GetMethod("Serialize", nonPublic);
+            _fmtGetInput = _fmtType.GetMethod("GetInputStream", nonPublic);
+            _bufPush = _bufType.GetMethod("PushConcatenated");
+            _bufGetSize = _bufType.GetMethod("GetFullBufferSize");
+            _bufRead = _bufType.GetMethod("ReadConcatenated");
+            ParameterInfo[] p = _bufRead.GetParameters();
+            _bufReadArgTypes = new Type[p.Length];
+            for (int i = 0; i < p.Length; i++) _bufReadArgTypes[i] = p[i].ParameterType;
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public int Tune(ulong serviceId)
@@ -183,29 +226,25 @@ namespace Tuner.Tvs
         [MethodImpl(MethodImplOptions.NoInlining)]
         private unsafe int SetService(TVServiceAPI api, ulong id)
         {
-            Assembly asm = typeof(TVServiceAPI).Assembly;
             if (_nav == null) _nav = api.CreateServiceNavigation(Profile.Main, 0);   // waits for the interface to exist
-            if (_conn == null)
+            EnsureCore(api);
+            object helper = null;
+            try
             {
-                _conn = typeof(TVServiceAPI).GetField("pTVSConnection", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(api);
-                _helperType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MarshalHelperProxy");
-                _wrapType = asm.GetType("Tizen.TV.Broadcast.TVService.Types.ValueWrapper");
+                helper = Activator.CreateInstance(_helperType, true);
+                int result = -1;
+                object wrap = _wrapCtor.Invoke(new object[] { Pointer.Box(&result, typeof(void*)), typeof(int) });
+                _pushOutObj.Invoke(helper, new object[] { wrap });
+                _pushInObj.Invoke(helper, new object[] { Profile.Main });
+                _pushInObj.Invoke(helper, new object[] { 0 });
+                _pushInObj.Invoke(helper, new object[] { id });
+                _pushInObj.Invoke(helper, new object[] { 0 });   // EServiceChangeDirection: none
+                _pushInBool.Invoke(helper, new object[] { false });
+                _pushInObj.Invoke(helper, new object[] { new MarshalableStringUTF8("NoAppId") });
+                bool ok = (bool)_helperRun.Invoke(helper, new object[] { _conn, "com.samsung.IServiceNavigation", "SetService", (short)0, false });
+                return ok ? result : -1000;
             }
-            var helperType = (Type)_helperType;
-            object helper = Activator.CreateInstance(helperType, true);
-            int result = -1;
-            object wrap = ((Type)_wrapType).GetConstructors()[0].Invoke(new object[] { Pointer.Box(&result, typeof(void*)), typeof(int) });
-            var o = new[] { typeof(object) };
-            MethodInfo pushIn = helperType.GetMethod("PushIn", o);
-            helperType.GetMethod("PushOut", o).Invoke(helper, new object[] { wrap });
-            pushIn.Invoke(helper, new object[] { Profile.Main });
-            pushIn.Invoke(helper, new object[] { 0 });
-            pushIn.Invoke(helper, new object[] { id });
-            pushIn.Invoke(helper, new object[] { 0 });   // EServiceChangeDirection: none
-            helperType.GetMethod("PushIn", new[] { typeof(bool) }).Invoke(helper, new object[] { false });
-            pushIn.Invoke(helper, new object[] { new MarshalableStringUTF8("NoAppId") });
-            bool ok = (bool)helperType.GetMethod("Run").Invoke(helper, new object[] { _conn, "com.samsung.IServiceNavigation", "SetService", (short)0, false });
-            return ok ? result : -1000;
+            finally { var d = helper as IDisposable; if (d != null) d.Dispose(); }
         }
 
         /// <summary>The programme on air on a service, from the daemon's guide: start (Unix UTC seconds) and length. Only services of the multiplex we are tuned to have one.</summary>
@@ -213,16 +252,12 @@ namespace Tuner.Tvs
         public bool ReadPresent(ulong serviceId, out long start, out long duration)
         {
             start = 0; duration = 0;
-            using (IServiceGuide g = TVServiceAPI.Instance().CreateServiceGuide())
-            {
-                var p = new ProgramData();
-                if (g.GetPresentProgram(serviceId, p) != 1) return false;
-                start = p.StartTime; duration = p.Duration;
-                return duration > 0;
-            }
+            if (_guide == null) _guide = TVServiceAPI.Instance().CreateServiceGuide();
+            var p = new ProgramData();
+            if (_guide.GetPresentProgram(serviceId, p) != 1) return false;
+            start = p.StartTime; duration = p.Duration;
+            return duration > 0;
         }
-
-        private Type _fmtType, _bufType;
 
         /// <summary>
         /// The strings of the programme on air (title, description...) for a service. The client's own decoder drops them, so this makes
@@ -233,50 +268,40 @@ namespace Tuner.Tvs
         public string[] ReadPresentTexts(ulong serviceId)
         {
             var api = TVServiceAPI.Instance();
-            using (IServiceGuide g = api.CreateServiceGuide())      // waits for the interface to exist
-                return RawPresent(api, serviceId);
+            if (_guide == null) _guide = api.CreateServiceGuide();      // waits for the interface to exist once
+            return RawPresent(api, serviceId);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private unsafe string[] RawPresent(TVServiceAPI api, ulong id)
+        private string[] RawPresent(TVServiceAPI api, ulong id)
         {
-            Assembly asm = typeof(TVServiceAPI).Assembly;
-            if (_conn == null)
-            {
-                _conn = typeof(TVServiceAPI).GetField("pTVSConnection", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(api);
-                _helperType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MarshalHelperProxy");
-                _wrapType = asm.GetType("Tizen.TV.Broadcast.TVService.Types.ValueWrapper");
-            }
-            if (_fmtType == null)
-            {
-                _fmtType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.Formatter");
-                _bufType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MessageBuffer");
-            }
-            var helperType = (Type)_helperType;
-            object helper = Activator.CreateInstance(helperType, true);
-            int result = -1;
-            object wrap = ((Type)_wrapType).GetConstructors()[0].Invoke(new object[] { Pointer.Box(&result, typeof(void*)), typeof(int) });
-            var o = new[] { typeof(object) };
-            helperType.GetMethod("PushOut", o).Invoke(helper, new object[] { wrap });
-            helperType.GetMethod("PushIn", o).Invoke(helper, new object[] { id });
-            helperType.GetMethod("PushOut", o).Invoke(helper, new object[] { new ProgramData() });
-            object fmt = Activator.CreateInstance(_fmtType, true);
-            BindingFlags nonPublic = BindingFlags.NonPublic | BindingFlags.Instance;
-            _fmtType.GetMethod("Serialize", nonPublic).Invoke(fmt, new object[] { new TagAttribute((short)6), helperType.GetField("inList").GetValue(helper) });
-            byte[] request = (byte[])_fmtType.GetMethod("GetInputStream", nonPublic).Invoke(fmt, null);
-            object inBuf = Activator.CreateInstance(_bufType), outBuf = Activator.CreateInstance(_bufType);
+            EnsureFormat(api);
+            object helper = null, fmt = null, inBuf = null, outBuf = null;
             try
             {
-                _bufType.GetMethod("PushConcatenated").Invoke(inBuf, new object[] { request });
-                bool ok = (bool)_conn.GetType().GetMethod("Call").Invoke(_conn, new object[] { "com.samsung.IServiceGuide", (short)6, inBuf, outBuf });
-                if (!ok) return new string[0];
-                int size = (int)(uint)_bufType.GetMethod("GetFullBufferSize").Invoke(outBuf, null);
-                if (size <= 0 || size > 65536) return new string[0];
+                helper = Activator.CreateInstance(_helperType, true);
+                _pushInObj.Invoke(helper, new object[] { id });
+                fmt = Activator.CreateInstance(_fmtType, true);
+                _fmtSerialize.Invoke(fmt, new object[] { new TagAttribute((short)6), _inListField.GetValue(helper) });
+                byte[] request = (byte[])_fmtGetInput.Invoke(fmt, null);
+                inBuf = Activator.CreateInstance(_bufType);
+                outBuf = Activator.CreateInstance(_bufType);
+                _bufPush.Invoke(inBuf, new object[] { request });
+                bool ok = (bool)_connCall.Invoke(_conn, new object[] { "com.samsung.IServiceGuide", (short)6, inBuf, outBuf });
+                if (!ok) return Array.Empty<string>();
+                int size = (int)(uint)_bufGetSize.Invoke(outBuf, null);
+                if (size <= 0 || size > 65536) return Array.Empty<string>();
                 var reply = new byte[size];
                 ReadConcatenated(outBuf, reply, size);
                 return GuideText.Texts(reply);
             }
-            finally { ((IDisposable)inBuf).Dispose(); ((IDisposable)outBuf).Dispose(); ((IDisposable)fmt).Dispose(); }
+            finally
+            {
+                var d = inBuf as IDisposable; if (d != null) d.Dispose();
+                d = outBuf as IDisposable; if (d != null) d.Dispose();
+                d = fmt as IDisposable; if (d != null) d.Dispose();
+                d = helper as IDisposable; if (d != null) d.Dispose();
+            }
         }
 
         /// <summary>
@@ -287,46 +312,41 @@ namespace Tuner.Tvs
         /// any channel, also on other multiplexes (30-50 ms). False when the call failed or the reply is not in the expected shape.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)]
-        public unsafe bool ReadSchedule(ulong serviceId, long start, long seconds, bool keepDescription, out List<GuideEvent> events)
+        public bool ReadSchedule(ulong serviceId, long start, long seconds, bool keepDescription, out List<GuideEvent> events)
         {
             events = new List<GuideEvent>();
+            if (start <= 0 || seconds <= 0) return false;
             var api = TVServiceAPI.Instance();
-            using (IServiceGuide g = api.CreateServiceGuide()) { }               // waits for the interface to exist
-            Assembly asm = typeof(TVServiceAPI).Assembly;
-            if (_conn == null)
-            {
-                _conn = typeof(TVServiceAPI).GetField("pTVSConnection", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(api);
-                _helperType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MarshalHelperProxy");
-                _wrapType = asm.GetType("Tizen.TV.Broadcast.TVService.Types.ValueWrapper");
-            }
-            if (_fmtType == null)
-            {
-                _fmtType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.Formatter");
-                _bufType = asm.GetType("Tizen.TV.Broadcast.TVService.Core.MessageBuffer");
-            }
-            var helperType = (Type)_helperType;
-            object helper = Activator.CreateInstance(helperType, true);
-            var o = new[] { typeof(object) };
-            helperType.GetMethod("PushIn", o).Invoke(helper, new object[] { serviceId });
-            helperType.GetMethod("PushIn", o).Invoke(helper, new object[] { (uint)start });
-            helperType.GetMethod("PushIn", o).Invoke(helper, new object[] { (uint)seconds });
-            object fmt = Activator.CreateInstance(_fmtType, true);
-            BindingFlags nonPublic = BindingFlags.NonPublic | BindingFlags.Instance;
-            _fmtType.GetMethod("Serialize", nonPublic).Invoke(fmt, new object[] { new TagAttribute((short)1), helperType.GetField("inList").GetValue(helper) });
-            byte[] request = (byte[])_fmtType.GetMethod("GetInputStream", nonPublic).Invoke(fmt, null);
-            object inBuf = Activator.CreateInstance(_bufType), outBuf = Activator.CreateInstance(_bufType);
+            if (_guide == null) _guide = api.CreateServiceGuide();               // waits for the interface to exist once
+            EnsureFormat(api);
+            object helper = null, fmt = null, inBuf = null, outBuf = null;
             try
             {
-                _bufType.GetMethod("PushConcatenated").Invoke(inBuf, new object[] { request });
-                bool ok = (bool)_conn.GetType().GetMethod("Call").Invoke(_conn, new object[] { "com.samsung.IServiceGuide", (short)1, inBuf, outBuf });
+                helper = Activator.CreateInstance(_helperType, true);
+                _pushInObj.Invoke(helper, new object[] { serviceId });
+                _pushInObj.Invoke(helper, new object[] { (uint)start });
+                _pushInObj.Invoke(helper, new object[] { (uint)seconds });
+                fmt = Activator.CreateInstance(_fmtType, true);
+                _fmtSerialize.Invoke(fmt, new object[] { new TagAttribute((short)1), _inListField.GetValue(helper) });
+                byte[] request = (byte[])_fmtGetInput.Invoke(fmt, null);
+                inBuf = Activator.CreateInstance(_bufType);
+                outBuf = Activator.CreateInstance(_bufType);
+                _bufPush.Invoke(inBuf, new object[] { request });
+                bool ok = (bool)_connCall.Invoke(_conn, new object[] { "com.samsung.IServiceGuide", (short)1, inBuf, outBuf });
                 if (!ok) return false;
-                int size = (int)(uint)_bufType.GetMethod("GetFullBufferSize").Invoke(outBuf, null);
+                int size = (int)(uint)_bufGetSize.Invoke(outBuf, null);
                 if (size <= 0 || size > 1 << 20) return false;
                 var reply = new byte[size];
                 ReadConcatenated(outBuf, reply, size);
                 return GuideReply.Parse(reply, keepDescription, out events);
             }
-            finally { ((IDisposable)inBuf).Dispose(); ((IDisposable)outBuf).Dispose(); ((IDisposable)fmt).Dispose(); }
+            finally
+            {
+                var d = inBuf as IDisposable; if (d != null) d.Dispose();
+                d = outBuf as IDisposable; if (d != null) d.Dispose();
+                d = fmt as IDisposable; if (d != null) d.Dispose();
+                d = helper as IDisposable; if (d != null) d.Dispose();
+            }
         }
 
         /// <summary>
@@ -336,12 +356,10 @@ namespace Tuner.Tvs
         /// </summary>
         private void ReadConcatenated(object buffer, byte[] reply, int size)
         {
-            MethodInfo m = _bufType.GetMethod("ReadConcatenated");
-            ParameterInfo[] p = m.GetParameters();
             object[] args = { reply, size, 0 };
-            for (int i = 1; i < args.Length && i < p.Length; i++)
-                if (p[i].ParameterType != typeof(int)) args[i] = Convert.ChangeType(args[i], p[i].ParameterType, System.Globalization.CultureInfo.InvariantCulture);
-            m.Invoke(buffer, args);
+            for (int i = 1; i < args.Length && i < _bufReadArgTypes.Length; i++)
+                if (_bufReadArgTypes[i] != typeof(int)) args[i] = Convert.ChangeType(args[i], _bufReadArgTypes[i], System.Globalization.CultureInfo.InvariantCulture);
+            _bufRead.Invoke(buffer, args);
         }
 
         /// <summary>Where the TV takes its channels from: "Antenna", "Cable" or "Satellite" ("" when it cannot be read). Same call as the probe's `tvmode`.</summary>

@@ -65,16 +65,21 @@ namespace Tuner.Ui
         public static void FinishAll()
         {
             int guard = 0;
-            while (Tracks.Count > 0 && guard++ < 1000)
+            while (guard < 1000)
             {
-                Track t = Tracks[0];
-                Tracks.RemoveAt(0);
-                t.Gone = true;
-                t.Apply(1);
-                if (t.Done != null) t.Done();
+                while (Tracks.Count > 0 && guard++ < 1000)
+                {
+                    Track t = Tracks[0];
+                    Tracks.RemoveAt(0);
+                    t.Gone = true;
+                    t.Apply(1);
+                    if (t.Done != null) t.Done();
+                }
+                Stop();
+                if (Idle.Count == 0) break;
+                RunIdle();
+                if (Tracks.Count == 0) break;
             }
-            Stop();
-            RunIdle();
         }
 
         /// <summary>Runs <paramref name="a"/> now, or when nothing moves any more.</summary>
@@ -253,13 +258,12 @@ namespace Tuner.Ui
                             {
                                 { double x, y, w, h; Motion.FlyFrom(a.X, a.Y, a.W, a.H, a.P.Size, b.X, b.Y, b.P.Size, p, out x, out y, out w, out h); MapTo(a, x, y, w, h); }
                                 if (!cross) Colour(a, a, b, p);
-                            });
+                            }, cross ? (Action)null : () => Fade(b, b, 1));
                             if (cross)
                             {
                                 Anim.Run(null, swap, T - swap, Motion.Linear, p => Fade(a, a, 1 - p));
                                 Anim.Run(null, swap, T - swap, Motion.Linear, p => Fade(b, b, p));
                             }
-                            else Anim.Run(null, 0.001, T, Motion.Linear, p => { if (p >= 1) Fade(b, b, 1); });
                         }
                         break;
                 }

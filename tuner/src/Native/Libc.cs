@@ -14,6 +14,7 @@ namespace Tuner.Native
         public const int O_NONBLOCK = 0x800;   // Linux (ARM and x86)
         public const int O_RDWR = 2;
         public const int F_SETFL = 4;
+        public const int EINTR = 4;
         public const int EAGAIN = 11;
 
         [DllImport(C, SetLastError = true)] public static extern int setenv(string name, string value, int overwrite);
