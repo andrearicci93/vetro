@@ -125,7 +125,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 - **A slow start after a boot is no longer "Start failed"** ([#179](https://github.com/andrearicci93/vetro/issues/179)).
 - **The launcher keeps its app tiles on firmware without Samsung's "featured" column.**
 - **Port already in use**: Vetro says which port is taken and waits for it instead of restarting over and over.
-- **Samsung's YouTube stays in the launcher** when its wrapper app is gone.
+- **Samsung's YouTube stays in the launcher** when its wrapper app is gone, also when the wrapper left its entry behind in Samsung's app registry ([#259](https://github.com/andrearicci93/vetro/pull/259) by swiezaczek).
 
 ## 0.5.0 — 2026-11-06
 

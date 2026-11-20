@@ -284,8 +284,8 @@ function build(parsed, options) {
             return;
         }
         if (kind !== 'd/webapp') { skipped.push({item: item, reason: 'Unsupported entry'}); return; }
-        var reg = parsed.registry[ident];
-        if (!reg && ident === OFFICIAL_YOUTUBE_ROW && parsed.installedCount >= MIN_PACKAGES && parsed.installed[COBALT_YOUTUBE]) {
+        var reg = Object.prototype.hasOwnProperty.call(parsed.registry, ident) ? parsed.registry[ident] : null;
+        if ((!reg || (!reg.hidden && uninstalled(reg))) && ident === OFFICIAL_YOUTUBE_ROW && parsed.installedCount >= MIN_PACKAGES && parsed.installed[COBALT_YOUTUBE]) {
             add('youtube', 'YouTube', COBALT_YOUTUBE, parsed.icons[ident]);
             return;
         }
