@@ -259,6 +259,19 @@ namespace Launcher.Tests
                 T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
                 T.Eq(OutputPickerModel.ActionFor(new OutputEntry { Kind = OutputKind.ScreenOff, Label = "x" }), OutputAction.ScreenOff, "the last row turns the screen off");
             });
+
+            T.Run("NumberPadModel grab key tables", () =>
+            {
+                var seen = new HashSet<string>();
+                foreach (string k in NumberPadModel.GrabKeys) T.True(seen.Add(k), "unique grab key: " + k);
+                foreach (string k in new[] { "Left", "Right", "Up", "Down", "Return", "XF86Back" })
+                {
+                    T.True(Array.IndexOf(NumberPadModel.CoreGrabKeys, k) >= 0, "CoreGrabKeys includes " + k);
+                    T.True(seen.Contains(k), "GrabKeys includes core key " + k);
+                }
+                foreach (string k in new[] { "KP_Enter", "Select", "BackSpace", "Escape", "XF86Exit", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" })
+                    T.True(seen.Contains(k), "GrabKeys includes " + k);
+            });
         }
     }
 }

@@ -19,6 +19,7 @@ namespace Launcher.Native
         private const string AppControl = "libcapi-appfw-app-control.so.0";
 
         public const int ElmWinNotification = 12;
+        public const int ElmWinKeygrabTopmost = 512;
         public const int EvasCallbackKeyDown = 10;
         public const int EvasCallbackKeyUp = 11;
         public const int EcoreFdRead = 1;
@@ -42,6 +43,9 @@ namespace Launcher.Native
         [DllImport(Elm)] public static extern void elm_win_layer_set(IntPtr win, int layer);
         [DllImport(Elm)] public static extern int elm_win_aux_hint_add(IntPtr win, string hint, string val);
         [DllImport(Elm)] public static extern void elm_win_activate(IntPtr win);
+        [DllImport(Elm)] public static extern void elm_win_raise(IntPtr win);
+        [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_set(IntPtr win, string key, ulong modifiers, ulong notModifiers, int priority, int grabMode);
+        [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_unset(IntPtr win, string key, ulong modifiers, ulong notModifiers);
         [DllImport(Elm)] public static extern void elm_win_screen_size_get(IntPtr win, out int x, out int y, out int w, out int h);
 
         // --- evas: generic objects ---
@@ -55,6 +59,8 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_event_callback_add(IntPtr obj, int type, EvasCb cb, IntPtr data);
         [DllImport(Evas)] public static extern IntPtr evas_object_rectangle_add(IntPtr evas);
         [DllImport(Evas)] public static extern void evas_object_pass_events_set(IntPtr obj, [MarshalAs(UnmanagedType.U1)] bool pass);
+        [DllImport(Evas)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool evas_object_key_grab(IntPtr obj, string keyname, ulong modifiers, ulong notModifiers, [MarshalAs(UnmanagedType.U1)] bool exclusive);
+        [DllImport(Evas)] public static extern void evas_object_key_ungrab(IntPtr obj, string keyname, ulong modifiers, ulong notModifiers);
         [DllImport(Evas)] public static extern void evas_object_del(IntPtr obj);
 
         // --- evas: images ---

@@ -1612,6 +1612,7 @@ namespace Launcher
         {
             try
             {
+                if (_pad != null && _pad.IsOnScreen) return;
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
                 if (Navigation.IsEcho(key, Efl.ecore_time_get())) return;
