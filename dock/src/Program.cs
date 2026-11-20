@@ -1781,12 +1781,13 @@ namespace Launcher
             if (!listed) Log("outputs: no Bluetooth list (" + AudioOutputs.LastError + ")");
             int selection;
             if (!Sound.TryGetSpeakerSelection(out selection)) selection = -1;
-            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection, true, LastExternal(selection));
+            bool optical = Sound.HasOpticalOutput();
+            List<OutputEntry> entries = OutputPickerModel.Build(paired, selection, true, LastExternal(selection), optical);
             string note = !listed ? "Bluetooth is off" : !OutputPickerModel.HasDevices(entries) ? "No paired speakers" : "";
             _audioCard.SetEntries(entries, note);
             _audioCtl.SetCount(entries.Count);
             if (!keepSelection) _audioCtl.Select(_audioCard.ActiveRow);
-            Log("outputs: speaker selection " + selection + ", " + entries.Count + " rows, read in "
+            Log("outputs: speaker selection " + selection + (optical ? ", optical port" : "") + ", " + entries.Count + " rows, read in "
                 + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
         }
 

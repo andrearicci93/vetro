@@ -224,6 +224,16 @@ namespace Launcher.Tests
                 T.True(OutputPickerModel.Build(paired, 6)[1].Active && OutputPickerModel.Build(paired, -1)[1].Active, "6 reads as Bluetooth; unknown with a connected device assumes it plays");
                 T.True(OutputPickerModel.Build(null, 5)[0].Active, "Bluetooth selected but nothing connected: the TV plays");
                 T.Eq(OutputPickerModel.Build(null).Count, 1, "no list: only the TV speakers");
+                var withPort = OutputPickerModel.Build(paired, 5, true, -1, true);
+                var portRow = withPort.Find(r => r.Kind == OutputKind.External);
+                T.True(portRow != null && portRow.Label == "Optical" && portRow.Selection == 1 && !portRow.Active, "a TV with an optical port offers Optical before the sound has been there (Q70BA)");
+                T.Eq(OutputPickerModel.ActionFor(portRow), OutputAction.UseExternal, "choosing it sets output 1");
+                T.True(OutputPickerModel.Build(paired, 5, true, -1, false).Find(r => r.Kind == OutputKind.External) == null, "no optical port: no Optical row");
+                T.Eq(OutputPickerModel.Build(paired, 1, true, -1, true).FindAll(r => r.Kind == OutputKind.External).Count, 1, "on optical: one Optical row, not two");
+                T.Eq(OutputPickerModel.Build(paired, 9, true, -1, true).FindAll(r => r.Kind == OutputKind.External).Count, 1, "on TV + optical: no second optical row");
+                var receiverAndPort = OutputPickerModel.Build(paired, 0, true, 2, true).FindAll(r => r.Kind == OutputKind.External);
+                T.True(receiverAndPort.Count == 2 && receiverAndPort[0].Selection == 2 && receiverAndPort[1].Selection == 1, "a receiver seen before and the optical port: both offered");
+                T.True(OutputPickerModel.Build(paired, -1, true, -1, true).Find(r => r.Kind == OutputKind.External) == null, "output unknown: nothing extra");
                 var optical = OutputPickerModel.Build(paired, 1);
                 T.True(!optical[0].Active && optical[1].Kind == OutputKind.External && optical[1].Label == "Optical" && optical[1].Active, "optical (1): its own ticked row, the TV speakers unticked");
                 T.Eq(OutputPickerModel.ActionFor(optical[1]), OutputAction.None, "the external output that plays cannot be chosen again");

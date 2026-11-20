@@ -102,6 +102,9 @@ namespace Launcher.Core
         /// and centre modes, line out. Not the Wi-Fi speakers (Samsung's own list never selects 4 by this call), Sound Share, Auracast or the
         /// headphone outputs, which come and go with their device.
         /// </summary>
+        /// <summary>An output that plays through the optical port: optical (1), TV + optical (9, 18), the optical centre mode (11).</summary>
+        public static bool IsOpticalSelection(int selection) { return selection == 1 || selection == 9 || selection == 11 || selection == 18; }
+
         public static bool CanChooseAgain(int selection)
         {
             switch (selection)
@@ -116,8 +119,10 @@ namespace Launcher.Core
         /// the TV's sound output (<c>sound_manager_get_speaker_selection</c>, -1 when unknown): the sound is on the connected device only when
         /// it says Bluetooth (or is unknown, then a connected device is assumed to be playing). <paramref name="lastExternal"/> is the external
         /// output the launcher last saw playing (-1 for none): while the sound is elsewhere it stays in the list, so it can be chosen again.
+        /// <paramref name="opticalPort"/>: the TV has an optical output (Samsung's spdif_support flag), so Optical is offered as Samsung's own
+        /// list offers it, even before the launcher has seen the sound go there (Q70BA, 2026-11-20: switched in Samsung's menu, no row).
         /// </summary>
-        public static List<OutputEntry> Build(IEnumerable<BondedDevice> paired, int selection = -1, bool screenOff = false, int lastExternal = -1)
+        public static List<OutputEntry> Build(IEnumerable<BondedDevice> paired, int selection = -1, bool screenOff = false, int lastExternal = -1, bool opticalPort = false)
         {
             var devices = new List<BondedDevice>();
             if (paired != null) foreach (BondedDevice d in paired) if (IsAudio(d)) devices.Add(d);
@@ -136,6 +141,9 @@ namespace Launcher.Core
             rows.Add(new OutputEntry { Kind = OutputKind.TvSpeaker, Label = TvLabel, Active = !onBluetooth && external == null });
             if (external != null) rows.Add(new OutputEntry { Kind = OutputKind.External, Label = external, Active = true, Selection = selection });
             else if (selection >= 0 && CanChooseAgain(lastExternal)) rows.Add(new OutputEntry { Kind = OutputKind.External, Label = ExternalName(lastExternal), Selection = lastExternal });
+            // Optical once: not again when the row already there is an optical one (optical, TV + optical, the optical centre mode).
+            if (opticalPort && selection >= 0 && !rows.Exists(r => r.Kind == OutputKind.External && IsOpticalSelection(r.Selection)))
+                rows.Add(new OutputEntry { Kind = OutputKind.External, Label = ExternalName(1), Selection = 1 });
             bool first = true;
             foreach (BondedDevice d in devices)
             {

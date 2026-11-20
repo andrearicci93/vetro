@@ -24,6 +24,25 @@ namespace Launcher.Native
         /// </summary>
         public const int SpeakerTv = 0, SpeakerBluetooth = 5;
 
+        [DllImport("libcapi-system-info.so.0", EntryPoint = "system_info_get_custom_bool")]
+        private static extern int GetCustomBool(string key, [MarshalAs(UnmanagedType.I1)] out bool value);
+        private static int _optical = -1;   // read once: -1 not read, 0 no, 1 yes
+
+        /// <summary>
+        /// Whether the TV has an optical output: Samsung's own Sound output list adds its Optical row only when the feature flag
+        /// com.samsung/featureconf/spdif_support is true (Tizen 6.5 volume-setting, Tizen 9 volume-app; static, 2026-11-20; the Q80A's says
+        /// true). False when it cannot be read.
+        /// </summary>
+        public static bool HasOpticalOutput()
+        {
+            if (_optical < 0)
+            {
+                bool v = false;
+                try { _optical = GetCustomBool("com.samsung/featureconf/spdif_support", out v) == 0 && v ? 1 : 0; } catch (Exception) { _optical = 0; }
+            }
+            return _optical == 1;
+        }
+
         public static bool TryGetSpeakerSelection(out int type)
         {
             type = -1;
