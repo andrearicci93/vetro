@@ -42,14 +42,18 @@ namespace Launcher.Ui
         private Dictionary<int, long> _prevTicks = new Dictionary<int, long>();
         private long _prevStamp;
         private TaskSnapshot _ready;
-        private bool _busy, _appInfoBroken;
+        private bool _busy, _appInfoBroken, _execMissing, _onBootMissing, _metaMissing;
         private readonly int _hz, _pageKb;
+        private readonly TaskCloseTracker _tracker = new TaskCloseTracker(Stopwatch.Frequency);
+        private readonly string _unclosablePath;
+        private string _lastShownKey;
 
         [DllImport("libc")] private static extern int sysconf(int name);
         [DllImport("libc")] private static extern void free(IntPtr p);
         private const int ScClkTck = 2, ScPageSize = 30;
 
         private const string AppManager = "libcapi-appfw-app-manager.so.0";
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate byte MetadataCb(IntPtr key, IntPtr value, IntPtr userData);
         [DllImport(AppManager)] private static extern int app_info_create(string appId, out IntPtr info);
         [DllImport(AppManager)] private static extern int app_info_destroy(IntPtr info);
         [DllImport(AppManager)] private static extern int app_info_get_label(IntPtr info, out IntPtr label);
@@ -57,21 +61,66 @@ namespace Launcher.Ui
         [DllImport(AppManager)] private static extern int app_info_is_nodisplay(IntPtr info, out byte noDisplay);
         [DllImport(AppManager)] private static extern int app_info_get_app_component_type(IntPtr info, out int type);
         [DllImport(AppManager)] private static extern int app_info_get_package(IntPtr info, out IntPtr package);
+        [DllImport(AppManager)] private static extern int app_info_get_exec(IntPtr info, out IntPtr exec);
+        [DllImport(AppManager)] private static extern int app_info_is_onboot(IntPtr info, out byte onBoot);
+        [DllImport(AppManager)] private static extern int app_info_foreach_metadata(IntPtr info, MetadataCb cb, IntPtr userData);
         private const int ComponentUiApp = 0;   // APP_INFO_APP_COMPONENT_TYPE_UI_APP
+        private const string NoAutoRaiseKey = "http://developer.samsung.com/tizen/metadata/noautoraise";
+        private static bool _metaNoAutoRaise;
+        private static readonly MetadataCb MetaCb = OnMetadata;
 
-        public TaskSource(AppEntry[] catalog, Action<string> log)
+        private static byte OnMetadata(IntPtr key, IntPtr value, IntPtr userData)
+        {
+            if (key != IntPtr.Zero && Marshal.PtrToStringUTF8(key) == NoAutoRaiseKey) { _metaNoAutoRaise = true; return 0; }
+            return 1;
+        }
+
+        public TaskSource(AppEntry[] catalog, Action<string> log) : this(catalog, null, null, log) { }
+
+        public TaskSource(AppEntry[] catalog, AppEntry[] allApps, Action<string> log) : this(catalog, allApps, null, log) { }
+
+        public TaskSource(AppEntry[] catalog, AppEntry[] allApps, string stateDir, Action<string> log)
         {
             _log = log;
-            foreach (AppEntry e in catalog)
-            {
-                if (e.AppId == null || e.IsSystem) continue;
-                if (!_catalogLabels.ContainsKey(e.AppId)) _catalogLabels[e.AppId] = e.Label;
-                if (e.IconPath != null && !_catalogIcons.ContainsKey(e.AppId)) _catalogIcons[e.AppId] = e.IconPath;
-            }
+            IndexCatalogLocked(catalog);
+            IndexCatalogLocked(allApps);
             int hz = 100, page = 4096;
             try { hz = sysconf(ScClkTck); page = sysconf(ScPageSize); } catch (Exception) { }
             _hz = hz > 0 ? hz : 100;
             _pageKb = page >= 1024 ? page / 1024 : 4;
+            if (!string.IsNullOrEmpty(stateDir))
+            {
+                _unclosablePath = Path.Combine(stateDir, "vetro-tasks-unclosable.txt");
+                if (File.Exists(_unclosablePath))
+                {
+                    _tracker.LoadLearned(ReadSmall(_unclosablePath));
+                    if (_tracker.LearnedCount > 0) _log("tasks: loaded " + _tracker.LearnedCount + " unclosable helper(s)");
+                }
+            }
+        }
+
+        private void IndexCatalogLocked(AppEntry[] catalog)
+        {
+            if (catalog == null) return;
+            foreach (AppEntry e in catalog)
+            {
+                if (e == null || e.AppId == null || e.IsSystem) continue;
+                if (!_catalogLabels.ContainsKey(e.AppId)) _catalogLabels[e.AppId] = e.Label;
+                if (e.IconPath != null && !_catalogIcons.ContainsKey(e.AppId)) _catalogIcons[e.AppId] = e.IconPath;
+            }
+        }
+
+        /// <summary>Updates the label/icon lookup tables when the dock reloads its lists, and invalidates cached store icons.</summary>
+        public void UpdateCatalog(AppEntry[] apps, AppEntry[] allApps)
+        {
+            lock (_gate)
+            {
+                _catalogLabels.Clear();
+                _catalogIcons.Clear();
+                IndexCatalogLocked(apps);
+                IndexCatalogLocked(allApps);
+                _storeIcons = null;
+            }
         }
 
         public bool Busy { get { lock (_gate) return _busy; } }
@@ -88,7 +137,7 @@ namespace Launcher.Ui
             {
                 try { Take(); }
                 catch (Exception ex) { _log("tasks: " + ex.Message); }
-                lock (_gate) _busy = false;
+                finally { lock (_gate) _busy = false; }
             });
             t.IsBackground = true;
             t.Name = "tasks";
@@ -103,6 +152,10 @@ namespace Launcher.Ui
 
         private void Publish(TaskSnapshot s) { lock (_gate) _ready = s; }
 
+        public void RecordClose(string appId, int pid) { lock (_gate) _tracker.RecordClose(appId, pid, Stopwatch.GetTimestamp()); }
+
+        public void CancelClose(string appId) { lock (_gate) _tracker.CancelClose(appId); }
+
         /// <summary>Asks the app to close, and kills it if it is still there two seconds later. Runs detached.</summary>
         public void Close(string appId)
         {
@@ -113,6 +166,18 @@ namespace Launcher.Ui
             _log("tasks: close " + appId + " rc=" + rc);
         }
 
+        private void SaveLearned(string text)
+        {
+            if (string.IsNullOrEmpty(_unclosablePath) || text == null) return;
+            try
+            {
+                string tmp = _unclosablePath + ".tmp";
+                File.WriteAllText(tmp, text);
+                File.Move(tmp, _unclosablePath, true);
+            }
+            catch (Exception ex) { _log("tasks: save unclosable: " + ex.Message); }
+        }
+
         private static long Ms(long since) { return (Stopwatch.GetTimestamp() - since) * 1000 / Stopwatch.Frequency; }
 
         private void Take()
@@ -120,6 +185,20 @@ namespace Launcher.Ui
             long t0 = Stopwatch.GetTimestamp();
             var running = Tasks.ParseStatus(Run("/usr/bin/app_launcher", "-S"));
             long tStatus = Ms(t0);
+            long now = Stopwatch.GetTimestamp();
+            List<KeyValuePair<string, string>> newlyLearned;
+            string learnedText = null;
+            lock (_gate)
+            {
+                newlyLearned = _tracker.Observe(running, now, id => _catalogLabels.ContainsKey(id) || Tasks.IsKeepVisible(id));
+                if (newlyLearned.Count > 0) learnedText = _tracker.FormatLearned();
+            }
+            if (newlyLearned.Count > 0)
+            {
+                foreach (var item in newlyLearned)
+                    _log("tasks: learned unclosable " + item.Key + " (" + item.Value + ")");
+                SaveLearned(learnedText);
+            }
             LookUp(running);
             long tInfo = Ms(t0);
 
@@ -129,12 +208,32 @@ namespace Launcher.Ui
             foreach (var r in running)
             {
                 AppInfo info;
-                lock (_gate) _infos.TryGetValue(r.Key, out info);
-                if (!Tasks.IsUserApp(r.Key, info)) continue;
+                bool inCatalog, learned;
+                lock (_gate)
+                {
+                    _infos.TryGetValue(r.Key, out info);
+                    inCatalog = _catalogLabels.ContainsKey(r.Key);
+                    learned = !inCatalog && !Tasks.IsKeepVisible(r.Key) && _tracker.IsLearned(r.Key);
+                }
+                if (learned || !Tasks.IsUserApp(r.Key, info, inCatalog)) continue;
                 users.Add(r);
                 quick.Apps.Add(NewApp(r, info));
             }
+            string shownKey = string.Join(",", quick.Apps.ConvertAll(a => a.AppId));
+            if (shownKey != _lastShownKey)
+            {
+                _lastShownKey = shownKey;
+                _log("tasks: showing " + quick.Apps.Count + " of " + running.Count + " running" + (shownKey.Length > 0 ? " (" + shownKey + ")" : ""));
+            }
             Publish(quick);
+
+            if (users.Count == 0)
+            {
+                _prevTicks.Clear();
+                _prevStamp = 0;
+                Publish(new TaskSnapshot { AvailableKb = MemAvailable() });
+                return;
+            }
 
             // Step two: the process trees.
             var procs = new Dictionary<int, ProcSample>();
@@ -186,7 +285,7 @@ namespace Launcher.Ui
         private RunningApp NewApp(KeyValuePair<string, int> r, AppInfo info)
         {
             string label;
-            _catalogLabels.TryGetValue(r.Key, out label);
+            lock (_gate) _catalogLabels.TryGetValue(r.Key, out label);
             return new RunningApp { AppId = r.Key, Pid = r.Value, Label = Tasks.DisplayName(r.Key, info, label), IconPath = IconFor(r.Key, info) };
         }
 
@@ -194,13 +293,19 @@ namespace Launcher.Ui
         private string IconFor(string appId, AppInfo info)
         {
             if (!string.IsNullOrEmpty(info.Icon) && File.Exists(info.Icon)) return info.Icon;
-            if (_storeIcons == null) _storeIcons = LoadStoreIcons();
+            Dictionary<string, string> store;
+            lock (_gate) store = _storeIcons;
+            if (store == null)
+            {
+                store = LoadStoreIcons();
+                lock (_gate) { if (_storeIcons == null) _storeIcons = store; else store = _storeIcons; }
+            }
             string icon;
             int dot = appId.IndexOf('.');
-            if (_storeIcons.TryGetValue(appId, out icon)) return icon;
-            if (info.Package != null && _storeIcons.TryGetValue(info.Package, out icon)) return icon;
-            if (dot > 0 && _storeIcons.TryGetValue(appId.Substring(0, dot), out icon)) return icon;
-            if (_catalogIcons.TryGetValue(appId, out icon)) return icon;
+            if (store.TryGetValue(appId, out icon)) return icon;
+            if (info.Package != null && store.TryGetValue(info.Package, out icon)) return icon;
+            if (dot > 0 && store.TryGetValue(appId.Substring(0, dot), out icon)) return icon;
+            lock (_gate) if (_catalogIcons.TryGetValue(appId, out icon)) return icon;
             return null;
         }
 
@@ -274,6 +379,21 @@ namespace Launcher.Ui
                 info.Label = TakeString(app_info_get_label(h, out IntPtr label), label);
                 info.Icon = TakeString(app_info_get_icon(h, out IntPtr icon), icon);
                 info.Package = TakeString(app_info_get_package(h, out IntPtr pkg), pkg);
+                if (!_execMissing)
+                {
+                    try { info.Exec = TakeString(app_info_get_exec(h, out IntPtr exec), exec); }
+                    catch (EntryPointNotFoundException) { _execMissing = true; }
+                }
+                if (!_onBootMissing)
+                {
+                    try { byte ob; info.OnBoot = app_info_is_onboot(h, out ob) == 0 && ob != 0; }
+                    catch (EntryPointNotFoundException) { _onBootMissing = true; }
+                }
+                if (!_metaMissing)
+                {
+                    try { _metaNoAutoRaise = false; app_info_foreach_metadata(h, MetaCb, IntPtr.Zero); info.NoAutoRaise = _metaNoAutoRaise; }
+                    catch (EntryPointNotFoundException) { _metaMissing = true; }
+                }
                 return info.Component == null ? null : info;
             }
             catch (Exception ex)
@@ -289,7 +409,7 @@ namespace Launcher.Ui
         private static string TakeString(int rc, IntPtr p)
         {
             if (p == IntPtr.Zero) return null;
-            string s = rc == 0 ? Marshal.PtrToStringAnsi(p) : null;
+            string s = rc == 0 ? Marshal.PtrToStringUTF8(p) : null;
             free(p);
             return s;
         }
@@ -317,6 +437,11 @@ namespace Launcher.Ui
                     block.Clear();
                 }
                 else block.Append(line).Append('\n');
+            }
+            lock (_gate)
+            {
+                foreach (string id in ids)
+                    if (!_infos.ContainsKey(id)) _infos[id] = null;
             }
         }
 
