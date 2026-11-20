@@ -299,6 +299,31 @@ function settle() { return new Promise(r => setImmediate(r)); }
         await settle();
         assert.equal(u.timers.filter(x => !x.cleared && x.ms === 5000).length, 0);
         u.provider.stop();
+        assert.equal(u.context.state.agentPort, null, 'stop() clears agentPort');
         console.log('PASS the SDB tunnel tries its port again while an older Vetro still holds it');
+    }
+
+    // --- execute clamps timeout >= 100 ms and install closes SDB client without Promise.prototype.finally ---
+    {
+        const recorded = [];
+        let agentOpts = null;
+        const t = load({
+            './root-agent.js': { RootAgentServer: function (o) {
+                agentOpts = o;
+                this.start = function (cb) { cb(4321); };
+                this.close = function () {};
+                this.log = [];
+                this.execute = function (cmd, ms) { recorded.push({cmd, ms}); return Promise.resolve({exit_code: 0, stdout: 'ok'}); };
+            }}
+        });
+        t.provider.start();
+        await settle();
+        agentOpts.onConnect({identity: {pid: 1, uid: 0, gid: 0, cap_eff: '0', smack: ''}, _socket: {destroy() {}}});
+        await t.provider.execute('id', 25);
+        await t.provider.execute('id', 999999);
+        assert.deepEqual(recorded.map(x => x.ms), [100, 120000]);
+        t.provider.stop();
+        assert.equal(t.context.state.agentPort, null);
+        console.log('PASS execute clamps timeouts to [100, 120000] ms and stop() clears agentPort');
     }
 })().catch(e => { console.error(e); process.exit(1); });
