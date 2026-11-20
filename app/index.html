@@ -64,7 +64,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 .keys span{margin-left:28px}
 .keys span{display:inline-flex;align-items:center}.ki{display:inline-flex;vertical-align:middle;margin-right:10px;color:var(--text)}.ki svg{width:44px;height:44px}.more .ki svg{width:36px;height:36px}.more{display:flex;align-items:center}
 
-/* Quick controls (the main view): five tiles that do what one switch of the dashboard does, and a strip with the checks.
+/* Quick controls (the main view): four tiles that do what one switch of the dashboard does, and a strip with the checks.
    Same system as the rest of the page: system sans at 400 and 500 only, 16 px surfaces, 8 px controls, solid fills, a uniform border
    everywhere (focus is a brighter border plus an outline, never a coloured edge). Scale for a TV at 1920 px: section title 40, card
    title 32, text 25, labels 22 in capitals, values 26. One inset (28) for every card, so every text edge lines up. */
@@ -449,25 +449,25 @@ function cell(c) {
 
 var WAITING = [['Service', 'Starting'], ['Root access', 'Checking'], ['Remote input', 'Checking'], ['Launcher', 'Checking'], ['TV APIs', 'Checking'], ['Memory', 'Checking']];
 // ---- quick controls (the main view) -----------------------------------------------------------------------
-// Five tiles through POST /screen/control; each does what one switch of the dashboard does, Vetro UI what four do. The state comes from one
+// Four tiles through POST /screen/control; each does what one switch of the dashboard does. The state comes from one
 // GET /screen/controls when the screen opens and again after each action: nothing polls. Every call has a time limit.
 var view = 'main', focus = 0, lastTile = 0, controls = null, controlsSeq = 0, busy = {}, upd = {phase: 'idle', version: null}, toastText = '', toastTimer = null;
 var TILE_ICONS = {
   launcher: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linejoin="round"><rect x="4" y="4" width="11" height="11" rx="3"/><rect x="21" y="4" width="11" height="11" rx="3"/><rect x="4" y="21" width="11" height="11" rx="3"/><rect x="21" y="21" width="11" height="11" rx="3"/></svg>',
   ads: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18s5-9 15-9 15 9 15 9-5 9-15 9S3 18 3 18z"/><circle cx="18" cy="18" r="4.5"/><path d="M6 31L30 5"/></svg>',
   voice: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="3" width="10" height="17" rx="5"/><path d="M7 16a11 11 0 0 0 22 0M18 27v6"/><path d="M5 31L31 5"/></svg>',
-  update: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="14"/><path d="M18 9v13M12 17l6 6 6-6"/></svg>',
-  ui: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="30" height="21" rx="3"/><path d="M9 19h9M11 32h14"/></svg>'
+  update: '<svg viewBox="0 0 36 36" fill="none" stroke="#8fbaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="14"/><path d="M18 9v13M12 17l6 6 6-6"/></svg>'
 };
 // Tile order is the order on screen. "on"/"off" are the words for the switch; a switch is "on" when the feature is switched on
-// (the launcher, Vetro UI) or switched off for good (ads, voice: the dashboard's "Disable" switches).
+// (the launcher) or switched off for good (ads, voice: the dashboard's "Disable" switches).
 var TILES = [
   {id: 'launcher', title: 'Vetro launcher', tag: '', on: 'On', off: 'Off', desc: 'Home opens the Vetro launcher.', words: ['Launcher on', 'Launcher off']},
-  {id: 'ui', title: 'Vetro UI', tag: '', on: 'On', off: 'Off', desc: 'Live TV, Volume bar, Number pad and Control center.', words: ['Vetro UI on', 'Vetro UI off']},
   {id: 'ads', title: 'Disable ads and viewing data', tag: '', on: 'Disabled', off: 'Enabled', desc: 'Stops the ad players, analytics and viewing-data collection.', words: ['Ads and viewing data disabled', 'Ads and viewing data enabled']},
   {id: 'voice', title: 'Disable all voice assistants', tag: 'MIC', on: 'Disabled', off: 'Enabled', desc: 'Alexa, Bixby, Google Assistant and voice search. Turns off the mic.', words: ['Voice assistants disabled', 'Voice assistants enabled']},
   {id: 'update', title: 'Update Vetro', tag: '', desc: 'Press OK to check GitHub.'}
 ];
+// The Diagnostics strip under the tiles takes the focus after the last tile.
+var DIAG_FOCUS = TILES.length;
 // A call to the service with its own time limit, so a tile can never stay on "Working" for good. Resolves {status, data}.
 function call(method, path, body, ms) {
   return new Promise(function (resolve, reject) {
@@ -526,8 +526,8 @@ function tileView(t) {
     return o;
   }
   if (t.id === 'launcher' && s.custom) o.desc = 'A custom launcher app is set for the Home key. Press OK to put Samsung’s Home back.';
-  // Part way: for ads and voice some members still run; for Vetro UI some of its parts are still off. OK finishes the job.
-  if (s.state === 'part') { o.sw = 'part'; o.val = t.id === 'ui' ? (s.left || 'Some') + (s.of ? ' of ' + s.of : '') + ' off' : (s.left || 'Some') + ' still on'; o.cls = 'warn'; return o; }
+  // Part way: for ads and voice some members still run. OK finishes the job.
+  if (s.state === 'part') { o.sw = 'part'; o.val = (s.left || 'Some') + ' still on'; o.cls = 'warn'; return o; }
   o.sw = s.state === 'on' ? 'on' : 'off';
   o.val = s.state === 'on' ? t.on : t.off;
   o.cls = s.state === 'on' ? 'ok' : 'mute';
@@ -578,7 +578,7 @@ function renderMain(d) {
   }
   var parts = [];
   for (i = 0; i < TILES.length; i++) { parts.push(tileParts(i)); tiles += '<div class="' + parts[i][0] + '">' + parts[i][1] + '</div>'; }
-  var right = locked ? esc('This page is not recognised as the TV, so its switches are off. Use the dashboard.') : focus < 5 ? keyIcon('pad-left', 'Left') + keyIcon('pad-right', 'Right') + 'to choose &middot; ' + keyIcon('pad-ok', 'OK') + 'to switch' : '';
+  var right = locked ? esc('This page is not recognised as the TV, so its switches are off. Use the dashboard.') : focus < DIAG_FOCUS ? keyIcon('pad-left', 'Left') + keyIcon('pad-right', 'Right') + 'to choose &middot; ' + keyIcon('pad-ok', 'OK') + 'to switch' : '';
   var el = document.getElementById('screen');
   // The hero without the PIN slot, which paintPairing redraws on its own every second.
   var heroA = '<div class="hero"><img src="' + ICON + '" alt="Vetro"><div><h1>Vetro</h1><div class="meta">' + (version ? 'Version ' + esc(version) : '') + (model ? ' &middot; ' + esc(model) : '') + (firmware ? ' &middot; firmware ' + esc(firmware) : '') +
@@ -588,8 +588,8 @@ function renderMain(d) {
     '<div class="url' + (addr ? '' : ' off') + '">' + (addr ? esc(addr) : 'Address unavailable') + '</div>' +
     '<p>' + (addr ? 'Open it on a phone or computer on the same network.' : 'The address appears once the TV is on the network.') + '</p></div></div>',
     pinHtml = pinInner(pin),
-    diagCls = 'diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === 5 ? ' focus' : ''),
-    more = focus === 5 ? '<b style="color:var(--text)">' + keyIcon('pad-ok', 'OK') + '</b>Details' : keyIcon('pad-down', 'Down') + 'for details',
+    diagCls = 'diag ' + (bad ? 'bad' : warn ? 'warn' : '') + (focus === DIAG_FOCUS ? ' focus' : ''),
+    more = focus === DIAG_FOCUS ? '<b style="color:var(--text)">' + keyIcon('pad-ok', 'OK') + '</b>Details' : keyIcon('pad-down', 'Down') + 'for details',
     m = mainDrawn, kids = el.children;
   if (m && el.firstChild === m.first && kids && kids.length === 5) {
     var hero = kids[0], pinEl = document.getElementById('pin'), tileEls = kids[2].children, diag = kids[3];
@@ -632,7 +632,7 @@ function chosen() { return TILES[focus] && TILES[focus].id; }
 // One tile pressed. A switch asks the service for the opposite of what it shows; "part" (some members still on) finishes the job.
 function activate() {
   var id = chosen(), s, want;
-  if (focus === 5) { view = 'details'; render(lastScreen, false); return; }
+  if (focus === DIAG_FOCUS) { view = 'details'; render(lastScreen, false); return; }
   if (!controls) { toast('Controls did not load. Press Back and reopen Vetro.'); return; }
   if (!controls.canControl) { toast('Use the dashboard to change settings.'); return; }
   if (id === 'update') return activateUpdate();
@@ -687,14 +687,14 @@ function waitForVersion(v, tries) {
 function moveTo(n) {
   if (n === focus) return;
   if (upd.phase === 'confirm') upd.phase = 'found';
-  focus = n; if (n < 5) lastTile = n;
+  focus = n; if (n < DIAG_FOCUS) lastTile = n;
   render(lastScreen, false);
 }
 function mainKey(k) {
-  if (k === 37 && focus > 0 && focus < 5) moveTo(focus - 1);
-  else if (k === 39 && focus < 4) moveTo(focus + 1);
-  else if (k === 40 && focus < 5) moveTo(5);
-  else if (k === 38 && focus === 5) moveTo(lastTile);
+  if (k === 37 && focus > 0 && focus < DIAG_FOCUS) moveTo(focus - 1);
+  else if (k === 39 && focus < DIAG_FOCUS - 1) moveTo(focus + 1);
+  else if (k === 40 && focus < DIAG_FOCUS) moveTo(DIAG_FOCUS);
+  else if (k === 38 && focus === DIAG_FOCUS) moveTo(lastTile);
   else if (k === 13) activate();
   else if (k === 10009 || k === 27) leave();
 }

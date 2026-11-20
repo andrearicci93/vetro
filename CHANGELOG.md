@@ -6,7 +6,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Vetro UI
 
-- **One page for everything Vetro draws on the TV.** Vetro UI has four tabs: Overview (one switch per part, and what each part needs), Launcher, Live TV and On-screen displays. Moving from the Vetro launcher to another app of yours is one button. [Guide](app/docs/VETRO-UI.md).
+- **One page for everything Vetro draws on the TV.** Vetro UI has four tabs: Overview (one switch per part, and what each part needs), Launcher, Live TV and On-screen displays. Moving from the Vetro launcher to another app of yours is one button. The page is marked **Experimental**: some parts may not work on every TV yet. [Guide](app/docs/VETRO-UI.md).
 - **Vetro UI and the Remapper share the remote.** Turning on the volume bar or the number pad turns on the remote interception and lists their keys first in the Remapper, locked. A shortcut of yours on the same key is marked *Overridden by Vetro UI*, and both pages ask before taking a key from the other.
 - **One window answers each key.** The launcher, the number pad and the tuner all read the remote; in several cases two of them answered the same press (CH+ brought the tuner up over the launcher, Home then Back left Samsung's tuner in charge, digits typed during a fade were lost). Each key now goes to the window on screen, and the tuner covers the TV input only, so HDMI devices get their keys.
 - **The remote's keys are drawn as pictures** wherever a screen tells you to press one (the TV guide, the Control center, the Vetro page on the TV).
@@ -65,7 +65,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### TV screen
 
-- **Tiles on the Vetro screen of the TV**: Vetro launcher, Vetro UI, ads and viewing data, voice assistants, and **Update Vetro**, which downloads and installs a signed update from the TV itself. On TVs without root access the Update tile says to install with Apps2Samsung.
+- **Tiles on the Vetro screen of the TV**: Vetro launcher, ads and viewing data, voice assistants, and **Update Vetro**, which downloads and installs a signed update from the TV itself. On TVs without root access the Update tile says to install with Apps2Samsung.
 
 ### Remapper
 

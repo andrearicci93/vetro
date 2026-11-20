@@ -244,7 +244,6 @@
   /* ---------- 3 · TV home page ---------- */
   var TILES = [
     { id: 'launcher', icon: 'squares-four', title: 'Vetro launcher', tag: '', desc: 'Home opens Vetro’s launcher instead of Samsung’s Home.', on: true, val: 'On' },
-    { id: 'ui', icon: 'television-simple', title: 'Vetro UI', tag: '', desc: 'Vetro’s live TV, volume bar, number pad and Control center.', on: false, val: 'Off' },
     { id: 'ads', icon: 'eye-slash', title: 'Disable ads and viewing data', tag: '', desc: 'Stops the ad players, analytics and viewing-data collection.', on: true, val: 'Done' },
     { id: 'voice', icon: 'microphone-slash', title: 'Disable all voice assistants', tag: 'MIC', desc: 'Alexa, Bixby, Google and voice search. The mic button stops working.', part: true, val: 'Partly done' },
     { id: 'update', icon: 'arrow-circle-down', title: 'Update Vetro', tag: '', desc: 'Looks on GitHub only when you press OK.', btn: 'Check' }
@@ -287,7 +286,7 @@
     });
 
     /* tiles */
-    var TY = SY + SH + 20, TH = 452, gap = 20, pitch = (FW + gap) / 5, pad = 28;
+    var TY = SY + SH + 20, TH = 452, gap = 20, pitch = (FW + gap) / TILES.length, pad = 28;
     TILES.forEach(function (t, i) {
       var x = X + Math.round(i * pitch), TW = Math.round((i + 1) * pitch) - Math.round(i * pitch) - gap, foc = i === focusIdx;
       sheet(c, x, TY, TW, TH, R_SHEET);
