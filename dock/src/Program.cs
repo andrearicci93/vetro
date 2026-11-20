@@ -1899,7 +1899,16 @@ namespace Launcher
             switch (card.Kind)
             {
                 case CardKind.Picture:
-                    return new ChoiceSource("picture mode", () => PictureModes.Build(Shell.Read(PictureModes.GetCommand()), Shell.Read(PictureModes.CheckCommand())), PictureModes.SetCommand, Log);
+                    return new ChoiceSource("picture mode", () =>
+                    {
+                        string[] lines = Shell.Read(PictureModes.GetWithEnergyCommand()).Replace("\r", "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        string get = lines.Length > 0 ? lines[0] : "";
+                        string checkEnergy = lines.Length > 1 ? lines[1] : "";
+                        string getEnergy = lines.Length > 2 ? lines[2] : "";
+                        ChoiceState st = PictureModes.Build(get, Shell.Read(PictureModes.CheckCommand()));
+                        PictureModes.AppendEnergySaving(st, checkEnergy, getEnergy);
+                        return st;
+                    }, PictureModes.SetCommand, Log);
                 case CardKind.Sleep:
                     return new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);
                 case CardKind.Shard:
