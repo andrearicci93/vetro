@@ -58,7 +58,7 @@ function sq(v, glob) { if (!(glob ? GLOB_PATH_RE : PLAIN_PATH_RE).test(v)) throw
 // shell built-ins: paths are printed as they are, which is why only plain characters are accepted in them.
 function extrasScript(clear, x) {
     var out = ['run=$(app_launcher -S 2>/dev/null); case "$run" in *"("*")"*) ok=1;; *) ok=0; echo "N apps";; esac',
-        'busy() { printf "%s\\n" "$run" | grep -Eq "[[:space:]]$1([. ]|\\$)"; }',
+        'busy() { printf "%s\\n" "$run" | grep -Eq "(^|[[:space:]])$1([. ]|\\$)"; }',
         'inuse() { command -v fuser >/dev/null 2>&1 || return 0; fuser "$1" >/dev/null 2>&1; }',
         'safe() { case "$1" in *[!A-Za-z0-9_./\\ -]*) return 1;; esac; }',
         'drop() { if [ "$1" = file ]; then rm -f -- "$2"; [ ! -e "$2" ] && [ ! -L "$2" ]; else find "$2" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} \\; ; [ -z "$(ls -A "$2" 2>/dev/null)" ]; fi; }',
@@ -95,14 +95,16 @@ function parse(text, dirs) {
             // A missing tmp/ subfolder is normal; anything else is reported.
             if (!(m[2] === 'missing' && m[1] !== '0')) out.errors.push({path: dirs[+m[1]], error: m[2]});
         } else if ((m = FILE_LINE_RE.exec(l))) {
-            out.files.push({name: name(m[4]), path: dirs[+m[1]] + '/' + name(m[4]), size: +m[2], isPackage: m[3] === '1'});
+            var fn = name(m[4]);
+            out.files.push({name: fn, path: dirs[+m[1]] + '/' + fn, size: +m[2], isPackage: m[3] === '1'});
         } else if (l === 'N apps') {
             out.appsUnreadable = true;
         } else if ((m = CANDIDATE_LINE_RE.exec(l))) {
             var item = {kind: m[2], label: KINDS[m[2]], path: m[4], size: +m[3]};
             (m[1] === 'K' ? out.extras : m[1] === 'Y' ? out.extrasDeleted : out.extrasFailed).push(item);
         } else if ((m = DIRECTORY_LINE_RE.exec(l))) {
-            (m[1] === 'D' ? out.deleted : out.failed).push({name: name(m[4]), path: dirs[+m[2]] + '/' + name(m[4]), size: +m[3]});
+            var dn = name(m[4]);
+            (m[1] === 'D' ? out.deleted : out.failed).push({name: dn, path: dirs[+m[2]] + '/' + dn, size: +m[3]});
         }
     });
     var packages = out.files.filter(function (f) { return f.isPackage; });
@@ -119,7 +121,7 @@ function parse(text, dirs) {
 function Leftovers(execute) { this.execute = execute; this.busy = false; }
 Leftovers.prototype.list = function () {
     return this.execute(wrap(script(false)), 25000).then(function (r) {
-        if (r.exit_code || r.timed_out) throw new Error('Staging folder unreadable');
+        if (!r || r.exit_code || r.timed_out) throw new Error('Staging folder unreadable');
         return parse(r.stdout);
     });
 };
@@ -128,7 +130,7 @@ Leftovers.prototype.clear = function () {
     if (this.busy) return Promise.reject(new Error('Cleanup already in progress'));
     this.busy = true;
     return this.execute(wrap(script(true)), 60000).then(function (r) {
-        if (r.timed_out) throw new Error('Cleanup did not finish in time; refresh to see what remains');
+        if (!r || r.timed_out) throw new Error('Cleanup did not finish in time; refresh to see what remains');
         var result = parse(r.stdout);
         // Files that were not packages stay; list them as the current contents.
         return Object.assign(result, {ok: !result.failed.length && !result.errors.length && !result.extrasFailed.length});

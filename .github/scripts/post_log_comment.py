@@ -9,9 +9,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--event', type=Path, required=True)
 parser.add_argument('--comment', type=Path, required=True)
 args = parser.parse_args()
-issue = json.loads(args.event.read_text()).get('issue')
+issue = json.loads(args.event.read_text(encoding='utf-8')).get('issue')
 if issue_matches(issue):
-    body = args.comment.read_text()
+    body = args.comment.read_text(encoding='utf-8')
     if not body.startswith(MARKER) or len(body) > 15000:
         raise ValueError('Invalid generated comment')
     post_comment(issue, body)

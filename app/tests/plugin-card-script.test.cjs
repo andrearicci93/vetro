@@ -26,4 +26,14 @@ assert.equal(r.status, 0, 'a Shard without the key needs none of it');
 const packed = pack(shard({ controlCenter: { label: 'Lights', extra: 1 } }, both));
 assert.deepEqual(entryFor(packed, 'dist/x.vplugin').controlCenter, { label: 'Lights' }, 'the catalog entry carries only the label');
 assert.equal(entryFor(pack(shard({}, both)), 'x').controlCenter, undefined);
+r = cp.spawnSync(process.execPath, [script, 'new', 'developer', os.tmpdir()], { encoding: 'utf8' });
+assert.equal(r.status, 2, 'reserved plugin id "developer" is rejected');
+{
+    const sd = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-sign-'));
+    const idx = path.join(sd, 'index.json'), key = path.join(sd, 'key.pem');
+    fs.writeFileSync(idx, JSON.stringify({ format: 'vetro-plugin-index', version: 1, plugins: [{ id: 'bad', version: '1.0.0', url: '' }] }));
+    fs.writeFileSync(key, 'unused');
+    r = cp.spawnSync(process.execPath, [script, 'sign', idx, key], { encoding: 'utf8' });
+    assert.notEqual(r.status, 0); assert.match(r.stderr, /invalid bundle url/);
+}
 console.log('plugin-card-script: ok');

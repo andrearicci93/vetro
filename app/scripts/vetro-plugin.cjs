@@ -25,7 +25,9 @@ function pack(folder) {
         for (const n of fs.readdirSync(dir).sort()) {
             const full = path.join(dir, n), rel = prefix + n;
             if (n.charAt(0) === '.' || n === 'node_modules' || n === 'config.json') { skipped.push(rel); continue; }
-            if (fs.statSync(full).isDirectory()) { walk(full, rel + '/'); continue; }
+            const st = fs.lstatSync(full);
+            if (st.isSymbolicLink()) { skipped.push(rel); continue; }
+            if (st.isDirectory()) { walk(full, rel + '/'); continue; }
             if (rel === 'manifest.json') continue;
             const buf = fs.readFileSync(full);
             if (buf.includes(0)) throw new Error(rel + ' is a binary file; a bundle holds text only');
@@ -93,7 +95,7 @@ if (require.main !== module) return;
 const [cmd, a, b, c] = process.argv.slice(2);
 try {
     if (cmd === 'new') {
-        if (!/^[a-z][a-z0-9-]{1,31}$/.test(a || '') || a === 'install' || a === 'resume') die('usage: node scripts/vetro-plugin.cjs new <id> [dir]\n  id: 2-32 chars, a-z 0-9 and -, starting with a letter', 2);
+        if (!/^[a-z][a-z0-9-]{1,31}$/.test(a || '') || a === 'install' || a === 'resume' || a === 'developer') die('usage: node scripts/vetro-plugin.cjs new <id> [dir]\n  id: 2-32 chars, a-z 0-9 and -, starting with a letter', 2);
         const dest = scaffold(a, b);
         console.log('Created ' + dest + '\nNext: edit index.js, then `check ' + dest + '` and `pack ' + dest + '` (docs/plugins.md).');
     } else if (cmd === 'check') {
@@ -140,7 +142,9 @@ try {
         const list = JSON.parse(fs.readFileSync(a, 'utf8')), key = fs.readFileSync(b, 'utf8'), base = c || path.join(path.dirname(a), 'dist');
         if (list.format !== 'vetro-plugin-index' || !Array.isArray(list.plugins)) die(a + ' is not a plugin list');
         list.plugins.forEach(e => {
-            const file = path.join(base, path.basename(String(e.url || '')));
+            const name = path.basename(String(e.url || ''));
+            if (!name || !name.endsWith('.vplugin')) throw new Error((e.id || 'entry') + ': invalid bundle url');
+            const file = path.join(base, name);
             const text = fs.readFileSync(file, 'utf8'), hash = sha256(text);
             if (hash !== e.sha256) throw new Error(e.id + ': the bundle ' + file + ' does not match the SHA-256 in the list');
             const m = JSON.parse(text).manifest;

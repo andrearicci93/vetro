@@ -14,12 +14,12 @@ def main():
     if not 30<=a.seconds<=300 or not 5<=a.interval<=30:p.error('duration 30–300s, interval 5–30s')
     out=pathlib.Path(a.out)
     if out.exists():p.error('Output exists; refusing overwrite')
-    status=api(a.base,'/status');pids=sorted({x for x in [status.get('agent',{}).get('pid'),status.get('self',{}).get('pid')] if isinstance(x,int) and x>0})
+    status=api(a.base,'/status');pids=sorted({x for x in [status.get('agent',{}).get('pid'),status.get('self',{}).get('pid')] if type(x) is int and x>0})
     if len(pids)<2:p.error('Service and agent PID unavailable; comparison not reliable')
     boot=api(a.base,'/telemetry').get('boot_id')
     if not boot:p.error('Boot ID unavailable')
     if a.previous:
-        prior=json.loads(pathlib.Path(a.previous).read_text())
+        prior=json.loads(pathlib.Path(a.previous).read_text(encoding='utf-8'))
         if not prior.get('complete') or prior['bootId']!=boot or prior['pids']!=pids or prior['seconds']!=a.seconds or prior['interval']!=a.interval:p.error('Comparison requires completed previous phase, same boot/PIDs/duration/interval')
     result={'phase':a.phase,'bootId':boot,'pids':pids,'seconds':a.seconds,'interval':a.interval,'complete':False,'method':'Read-only collector; UI phase declared by user, not inferred. No calls to /monitor. Observer overhead present in all phases.','samples':[]}
     start=time.monotonic();target=start;identities=None
@@ -27,7 +27,7 @@ def main():
         while target<=start+a.seconds:
             time.sleep(max(0,target-time.monotonic()));t=time.monotonic();r=api(a.base,'/exec',{'cmd':command(pids)})
             if not r.get('ok'):raise RuntimeError('Counter collection failed')
-            if r['output'].split('__BOOT__\n',1)[1].splitlines()[0]!=boot:raise RuntimeError('Boot changed during collection')
+            if '__BOOT__\n' not in r.get('output','') or r['output'].split('__BOOT__\n',1)[1].splitlines()[0]!=boot:raise RuntimeError('Boot changed during collection')
             current={}
             for pid in pids:
                 match=re.search(r'__PID__:'+str(pid)+r'\n'+str(pid)+r' \(.*\) (.*)',r['output'])
@@ -36,7 +36,7 @@ def main():
             if identities is not None and identities!=current:raise RuntimeError('Observed process restarted')
             identities=current
             result['samples'].append({'elapsed':time.monotonic()-start,'latencyMs':(time.monotonic()-t)*1000,'raw':r['output']})
-            out.write_text(json.dumps(result,indent=2));target+=a.interval
+            out.write_text(json.dumps(result,indent=2),encoding='utf-8');target+=a.interval
         result['complete']=True
-    finally:out.write_text(json.dumps(result,indent=2))
+    finally:out.write_text(json.dumps(result,indent=2),encoding='utf-8')
 if __name__=='__main__':main()

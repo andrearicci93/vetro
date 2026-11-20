@@ -297,7 +297,7 @@ def main():
     args = parser.parse_args()
     issue = None
     if args.event:
-        event = json.loads(args.event.read_text())
+        event = json.loads(args.event.read_text(encoding='utf-8'))
         issue = event.get('issue')
         if not issue_matches(issue):
             print('Not a Vetro log report; skipped')
@@ -313,7 +313,7 @@ def main():
         result = markdown(analyze(args.file.read_text(encoding='utf-8-sig')))
     else:
         parser.error('Use --file or --event')
-    args.output.write_text(result)
+    args.output.write_text(result, encoding='utf-8')
     print('Diagnostic review generated')
     return 0
 

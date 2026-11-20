@@ -17,6 +17,12 @@ const probeStore=require('../service/probe');
  assert.deepEqual(pr,{partial:true,done:6,of:9,next:'remoteApi8001',elapsedSeconds:41,slow:['apps','packages'],carried:['apps']});
  assert.equal(report.projectors.probe({probe:{},progress:{next:'<script>'}}).screen.next,null);
  assert.equal(report.projectors.probe({probe:{}}).screen,null,'an older widget sends no progress');
+ const clean=probeStore.sanitize(JSON.parse('{"__proto__":{"polluted":1},"constructor":{"x":1},"prototype":{"y":2},"tv":"Q80A"}'));
+ assert.equal(Object.prototype.hasOwnProperty.call(clean,'__proto__'),false);
+ assert.equal(Object.prototype.hasOwnProperty.call(clean,'constructor'),false);
+ assert.equal(Object.prototype.hasOwnProperty.call(clean,'prototype'),false);
+ assert.equal(clean.polluted,undefined);
+ assert.equal(clean.tv,'Q80A');
 }
 (async()=>{
  const secret='PERSONAL_SENTINEL@example.com';
@@ -46,11 +52,13 @@ const probeStore=require('../service/probe');
   input:()=>({...poison,enabled:true,auto:true,connected:false,savedPresent:false,sameNameCount:3,selectableCount:2,volumeKeys:true,padKey:true,problem:false,device:secret,node:'/dev/input/'+secret,failure:'native input helper did not connect',helperLog:'IOException: EVIOCGRAB /dev/input/event6 failed with errno 16\nArgumentException: '+secret+' @ x',
    recentKeys:[{code:390,key:'KEY_AUX',scan_code_hex:'0x000C00E9',decision:'native',device:secret,node:secret,tv_fullscreen_appid:secret},{code:140,key:secret,scan_code_hex:secret,decision:'blocked'},{code:28,key:'KEY_ENTER',decision:'wake'},{code:9999,key:'KEY_X'},{code:4,key:'KEY_3',scan_code_hex:'0x00070020',decision:'native'},{code:30,key:'KEY_A',decision:'native'}]}),
   factoryTest:()=>({...poison,key:secret,present:true,value:1,type:'Int32',active:true}),
+  components:()=>({complete:true,packageCount:1,totalUnknown:1,truncated:false,packages:[{packageId:'com.example.x',origin:'system',manifest:'found',description:'Device AA:BB:CC:DD:EE:FF info',privileges:[],components:[]}]}),
   quickWins:()=>({wins:{firmware:{status:'on',value:0},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
  };
  const d=await report.collect(readers,100);
  const text=JSON.stringify(d);
- assert(!text.includes(secret));assert(!text.includes('192.168.'));assert(!text.includes('"pid"'));assert(!text.includes('"bootId"'));assert(!text.includes('"cmdline"'));
+ assert(!text.includes(secret));assert(!text.includes('192.168.'));assert(!text.includes('AA:BB:CC:DD:EE:FF'));assert(!text.includes('"pid"'));assert(!text.includes('"bootId"'));assert(!text.includes('"cmdline"'));
+ assert.equal(d.sections.components.data.packages[0].description,null,'MAC address in component description is refused');
  assert.equal(d.sections.platform.data.rootAgent.uid,0);
  assert.equal(d.sections.platform.data.persistence,'unknown');
  assert.equal(d.sections.inventory.data.apps[0].disabled,true);

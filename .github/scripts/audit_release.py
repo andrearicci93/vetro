@@ -13,16 +13,16 @@ for name in filter(None, paths):
     if not path.is_file():
         continue
     if (name.startswith(('app/diagnostics/', 'rooting/on-boot-probe/certs/', 'rooting/tools/tizen/', 'rooting/tools/payloads31/', '.claude/'))
-        or path.suffix.lower() in ('.p12', '.pfx', '.wgt', '.cer', '.key', '.log')
+        or path.suffix.lower() in ('.p12', '.pfx', '.wgt', '.cer', '.key', '.pem', '.log')
         or name.split('/')[-1].startswith('.env')):
         problems.append('Private/generated artifact tracked: ' + name)
     if path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.dll', '.ico'):
         continue
     try:
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
     except (UnicodeError, OSError):
         continue
-    if re.search(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s+[A-Za-z0-9+/=]{80}', text):
+    if re.search(r'-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----\s+[A-Za-z0-9+/=\r\n]{80}', text):
         problems.append('Private key material: ' + name)
     if ('/Users/' + 'andrearicci/') in text or re.search(r'192\.168\.1\.(?:91|72)\b', text):
         problems.append('Local device/user data: ' + name)
@@ -36,7 +36,7 @@ privileged = {'service/' + p.name for p in (root/'rooting/service').glob('*.js')
 for name in files:
     if name.startswith('payload/') or name in privileged:
         problems.append('Privileged implementation in app-only package: ' + name)
-platform = (root/'app/service/platform.js').read_text()
+platform = (root/'app/service/platform.js').read_text(encoding='utf-8')
 if 'app-only' not in platform:
     problems.append('Standalone platform adapter missing')
 if problems:

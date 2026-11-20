@@ -1,7 +1,7 @@
 import json,urllib.request,re,pathlib,sys,time,argparse
 parser=argparse.ArgumentParser();parser.add_argument('phase',choices=['A','B']);parser.add_argument('--snapshot',required=True);parser.add_argument('--out',required=True);parser.add_argument('--base',default='http://127.0.0.1:8099');args=parser.parse_args()
 base=args.base
-snapshot=json.load(open(args.snapshot))
+snapshot=json.loads(pathlib.Path(args.snapshot).read_text(encoding='utf-8'))
 targets=[x for x in snapshot['/apps']['apps'] if x.get('disabled')]
 def api(cmd):
  req=urllib.request.Request(base+'/exec',data=json.dumps({'cmd':cmd}).encode(),headers={'Content-Type':'application/json',**({'Authorization':'Bearer '+__import__('os').environ['VETRO_TOKEN']} if __import__('os').environ.get('VETRO_TOKEN') else {})})
@@ -28,4 +28,4 @@ except Exception:
  if mode=='A':
   for app in ids:api('pkgcmd -D -t app -n '+app+' --global')
  raise
-finally:pathlib.Path(args.out).write_text(json.dumps(events,indent=2))
+finally:pathlib.Path(args.out).write_text(json.dumps(events,indent=2),encoding='utf-8')

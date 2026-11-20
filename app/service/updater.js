@@ -14,8 +14,8 @@
 var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
+var atomicFile = require('./atomic-file.js');
 // Regular expressions compiled once at module load, not on every call.
-var SAFE_PATH_RE = /^[A-Za-z0-9_.\/-]+$/;
 var SHA256_RE = /^[0-9a-f]{64}$/;
 var BUILD_INFO_RE = /module\.exports = (\{[\s\S]*\});\s*$/;
 var DEFAULT_PORT_RE = /\b8099\b/g;
@@ -30,6 +30,7 @@ var WAIT_SECONDS = 240;    // the watchdog waits this long for the new version t
 // payload/ takes subfolders (payload/net6) since 0.7.0; 0.5.x refuses them, so release.cjs keeps them out for now (#226).
 var ALLOWED = /^(?:service\/[A-Za-z0-9_.-]+\.js|native\/[A-Za-z0-9_.\/-]+|payload\/[A-Za-z0-9_.\/-]+|index\.html|icon\.png)$/;
 var DIR = /^\/[A-Za-z0-9_.\/-]+$/;
+var WIN_DIR = /^[A-Za-z]:[\\\/][A-Za-z0-9_.\\\/ ()+-]+$/;
 var VERSION = /^(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/;
 var SERVICE_ID = 'vetrotvapp.svc';
 
@@ -59,11 +60,15 @@ function rmrf(target) {
 }
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; } }
 function writeJson(file, value) {
-    var temp = file + '.tmp';
-    fs.writeFileSync(temp, JSON.stringify(value) + '\n');
-    fs.renameSync(temp, file);
+    atomicFile.write(fs, file, JSON.stringify(value) + '\n');
 }
-function sq(v) { if (!SAFE_PATH_RE.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
+function dirOk(p) {
+    if (typeof p !== 'string' || !p) return false;
+    if (DIR.test(p)) return true;
+    return process.platform === 'win32' && WIN_DIR.test(p) && !/(^|[\\\/])\.\.([\\\/]|$)/.test(p);
+}
+function dirOf(n) { var i = n.lastIndexOf('/'); return i > 0 ? n.slice(0, i) : ''; }
+function sq(v) { if (!DIR.test(v)) throw fail('Unsafe path'); return "'" + v + "'"; }
 
 // The TV's UEP refuses to run a shell script FILE that is not signed ("the file is NOT signed"), but runs text given to
 // `sh -c`. So nothing is ever written to disk and executed: detached jobs are passed inline, as base64 to keep quoting simple.
@@ -133,7 +138,7 @@ function Updater(opts) {
         ('app_launcher -k ' + SERVICE_ID + ' >/dev/null 2>&1; sleep 8; app_launcher -S 2>/dev/null | grep -q "' + SERVICE_ID + ' (" || app_launcher -s ' + SERVICE_ID + ' >/dev/null 2>&1');
     this.waitSteps = Math.max(1, Math.ceil((opts.waitSeconds || WAIT_SECONDS) / 2));
     this.busy = false;
-    if (!DIR.test(this.installDir || '') || !DIR.test(this.workDir || '')) throw fail('Unsafe update folders');
+    if (!dirOk(this.installDir) || !dirOk(this.workDir)) throw fail('Unsafe update folders');
 }
 
 Updater.prototype._file = function (n) { return path.join(this.workDir, n); };
@@ -153,9 +158,10 @@ Updater.prototype.status = function () {
 // (the update folder outlives an install), putting them back would lay an older version's files over the new package and
 // delete files it needs, with no watchdog behind it. So a backup counts only while this version is one of its two ends.
 Updater.prototype._backupFits = function (meta) {
-    if (!meta) return false;
+    if (!meta || typeof meta.from !== 'string' || typeof meta.to !== 'string') return false;
+    if (!VERSION.test(meta.from) || !VERSION.test(meta.to)) return false;
     var v = this.buildInfo.version;
-    return !v || typeof meta.from !== 'string' || typeof meta.to !== 'string' || meta.from === v || meta.to === v;
+    return !v || meta.from === v || meta.to === v;
 };
 
 // What a bundle would change here, without applying it.
@@ -171,10 +177,15 @@ Updater.prototype._read = function (raw, expectedSha256) {
     if (order === null) throw fail('Unknown version format');
     if (m.shell > (this.buildInfo.shell || 1)) throw fail('This version changes the package itself (permissions or service settings): install it again with Apps2Samsung', 'needs-reinstall');
     parsed.newer = order > 0;
-    parsed.files = this._adapt(parsed.files);
+    var origFiles = parsed.files;
+    parsed.files = this._adapt(origFiles);
+    parsed.hashes = {};
+    Object.keys(parsed.files).forEach(function (n) {
+        parsed.hashes[n] = parsed.files[n] === origFiles[n] ? m.files[n].sha256 : sha256(parsed.files[n]);
+    });
     var dir = this.installDir;
     parsed.changed = Object.keys(parsed.files).filter(function (n) {
-        try { return sha256(fs.readFileSync(path.join(dir, n))) !== sha256(parsed.files[n]); } catch (e) { return true; }
+        try { return sha256(fs.readFileSync(path.join(dir, n))) !== parsed.hashes[n]; } catch (e) { return true; }
     }).sort();
     return parsed;
 };
@@ -231,7 +242,7 @@ Updater.prototype.apply = function (raw, expectedSha256) {
         var existing = changed.filter(function (n) { return fs.existsSync(path.join(self.installDir, n)); });
         var added = changed.filter(function (n) { return existing.indexOf(n) < 0; });
         var hashes = {};
-        changed.forEach(function (n) { hashes[n] = sha256(parsed.files[n]); });
+        changed.forEach(function (n) { hashes[n] = parsed.hashes[n]; });
         var script = self._applyScript(from, to, changed, existing, added, hashes, dock);
         var staging = self._file('staging');
         rmrf(staging);
@@ -258,7 +269,7 @@ Updater.prototype._applyScript = function (from, to, changed, existing, added, h
     changed.forEach(function (n) {
         lines.push('[ "$(sha256sum "$S/' + n + '" | cut -d" " -f1)" = "' + hashes[n] + '" ] || { echo "staged file changed: ' + n + '" >&2; exit 3; }');
     });
-    existing.forEach(function (n) { lines.push('mkdir -p "$B/' + path.dirname(n) + '"; cp -p "$I/' + n + '" "$B/' + n + '"'); });
+    existing.forEach(function (n) { var d = dirOf(n); lines.push((d ? 'mkdir -p "$B/' + d + '"; ' : '') + 'cp -p "$I/' + n + '" "$B/' + n + '"'); });
     // The list of what Go back restores appears only now, with the backup it names: a script that never ran (the TV busy, the agent
     // gone) or stopped before this line leaves no list, so Go back is not offered over files of an older update.
     lines.push('mv -f "$W/backup.json.next" "$W/backup.json"');
@@ -266,11 +277,12 @@ Updater.prototype._applyScript = function (from, to, changed, existing, added, h
     // replaced are put back at once, because no watchdog exists yet at this point and a mix of old and new files would
     // otherwise stay until the next restart. (`set -e` is ignored inside an `||` list, so the chain is explicit.)
     var chain = changed.map(function (n) {
-        return 'mkdir -p "$I/' + path.dirname(n) + '" && cp "$S/' + n + '" "$I/' + n + '.vnew" && chmod 644 "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"';
+        var d = dirOf(n);
+        return (d ? 'mkdir -p "$I/' + d + '" && ' : '') + 'cp "$S/' + n + '" "$I/' + n + '.vnew" && chmod 644 "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"';
     }).join(' && ');
-    var undo = this._restoreLines(existing, added).concat(changed.map(function (n) { return 'rm -f "$I/' + n + '.vnew"'; }));
-    lines.push(chain + ' || {', undo.join('\n'), 'echo "copy failed: the previous files were put back" >&2; exit 4', '}');
-    lines.push("echo '" + JSON.stringify({ from: from, to: to, dock: dock, at: Date.now() }) + "' > \"$W/pending.json\"");
+    var undo = changed.map(function (n) { return 'rm -f "$I/' + n + '.vnew"'; }).concat(this._restoreLines(existing, added));
+    lines.push(chain + ' || {', 'set +e', undo.join('\n'), 'echo "copy failed: the previous files were put back" >&2; exit 4', '}');
+    lines.push("echo '" + JSON.stringify({ from: from, to: to, dock: dock, at: Date.now() }) + "' > \"$W/pending.json.tmp\" && mv -f \"$W/pending.json.tmp\" \"$W/pending.json\"");
     lines.push(detached(this._watchdog(to, existing, added, dock)), detached('sleep 3; ' + this.restartCommand), 'exit 0');
     return lines.join('\n') + '\n';
 };
@@ -278,9 +290,13 @@ Updater.prototype._applyScript = function (from, to, changed, existing, added, h
 // Waits for the new version to confirm itself (confirm() below); otherwise puts the old files back and restarts.
 Updater.prototype._watchdog = function (to, existing, added, dock) {
     var lines = ['#!/bin/sh', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'i=0',
-        'while [ "$i" -lt ' + this.waitSteps + ' ]; do', '  [ -f "$W/ok-' + to + '" ] && exit 0', '  sleep 2; i=$((i+1))', 'done',
+        'while [ "$i" -lt ' + this.waitSteps + ' ]; do',
+        '  [ -f "$W/ok-' + to + '" ] && exit 0',
+        '  [ ! -f "$W/pending.json" ] && exit 0',
+        '  sleep 2; i=$((i+1))', 'done',
         // One last look after the final sleep: a confirm written in the last two seconds must not be rolled back.
-        '[ -f "$W/ok-' + to + '" ] && exit 0'];
+        '[ -f "$W/ok-' + to + '" ] && exit 0',
+        '[ ! -f "$W/pending.json" ] && exit 0'];
     lines.push.apply(lines, this._restoreLines(existing, added));
     if (dock && this.dockStopCommand) lines.push(this.dockStopCommand);
     lines.push('echo rolled-back > "$W/rolled-back"', this.restartCommand);
@@ -288,8 +304,8 @@ Updater.prototype._watchdog = function (to, existing, added, dock) {
 };
 Updater.prototype._restoreLines = function (existing, added) {
     var lines = [];
-    existing.forEach(function (n) { lines.push('cp -p "$B/' + n + '" "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"'); });
     added.forEach(function (n) { lines.push('rm -f "$I/' + n + '"'); });
+    existing.forEach(function (n) { lines.push('cp -p "$B/' + n + '" "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"'); });
     return lines;
 };
 
@@ -302,10 +318,13 @@ Updater.prototype.rollback = function () {
     if (this.busy) return Promise.reject(fail('An update is already in progress', 'busy'));
     var self = this;
     this.busy = true;
-    var lines = ['set -e', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'rm -f "$W"/ok-* "$W/pending.json"']
+    var lines = ['set -e', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'rm -f "$W"/ok-* "$W/pending.json"', 'set +e']
         .concat(this._restoreLines(meta.files, meta.added));
+    lines.push('set -e');
     if (meta.dock === true && this.dockStopCommand) lines.push(this.dockStopCommand);
-    lines.push("echo '" + JSON.stringify({ state: 'rolled-back', from: meta.to, to: meta.from, at: Date.now() }) + "' > \"$W/result.json\"",
+    // Disarm any still-running watchdog for meta.to so it exits cleanly instead of rolling back and restarting again.
+    lines.push('echo rolled-back > "$W/ok-' + meta.to + '"',
+        "echo '" + JSON.stringify({ state: 'rolled-back', from: meta.to, to: meta.from, at: Date.now() }) + "' > \"$W/result.json.tmp\" && mv -f \"$W/result.json.tmp\" \"$W/result.json\"",
         detached('sleep 3; ' + this.restartCommand), 'exit 0');
     return this.execute(lines.join('\n') + '\n', 60000).then(function (r) {
         if (!r || r.exit_code !== 0 || r.timed_out) throw fail('The previous files could not be put back', 'rollback-failed');

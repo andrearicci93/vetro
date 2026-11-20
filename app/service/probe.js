@@ -5,6 +5,7 @@
 // app inventory in memory and on disk, so the dashboard can show them.
 
 var fs = require('fs');
+var atomicFile = require('./atomic-file.js');
 
 var STORE_PATH = '/opt/usr/home/owner/share/vetro-probe.json';
 var MAX_JSON = 262144;
@@ -17,7 +18,11 @@ function clip(value, depth) {
     if (Array.isArray(value)) return value.slice(0, 2000).map(function (v) { return clip(v, depth + 1); });
     if (value && typeof value === 'object') {
         var out = {};
-        Object.keys(value).slice(0, 100).forEach(function (k) { out[k.slice(0, 80)] = clip(value[k], depth + 1); });
+        Object.keys(value).slice(0, 100).forEach(function (k) {
+            var key = k.slice(0, 80);
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') return;
+            out[key] = clip(value[k], depth + 1);
+        });
         return out;
     }
     return null;
@@ -36,7 +41,7 @@ function load() {
 }
 
 function save(report) {
-    try { fs.writeFileSync(STORE_PATH, JSON.stringify(report)); return true; } catch (e) { return false; }
+    try { atomicFile.write(fs, STORE_PATH, JSON.stringify(report)); return true; } catch (e) { return false; }
 }
 
 // The TV screen now sends what it has after the first steps and again at the end (#101, #104), and reads the package

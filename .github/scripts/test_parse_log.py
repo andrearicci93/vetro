@@ -159,4 +159,15 @@ class ParserTests(unittest.TestCase):
             self.assertEqual(p.report_text('See https://github.com/user-attachments/files/123/report.json.'), 'ok')
         self.assertEqual(seen, ['https://github.com/user-attachments/files/123/report.json'])
 
+    def test_cli_event_and_output_utf8(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            ev = Path(td) / 'event.json'
+            out = Path(td) / 'out.md'
+            body = '### Vetro diagnostic report\n```json\n' + self.report(device={'realModel': 'QE50Q80AATXZT', 'firmware': 'T-NKM2DEUC-2301.1'}) + '\n```\nNote: — · ✓'
+            ev.write_text(json.dumps({'issue': {'title': '[Log report] Q80A — test', 'body': body}}), encoding='utf-8')
+            with patch('sys.argv', ['parse_log.py', '--event', str(ev), '--output', str(out)]):
+                self.assertEqual(p.main(), 0)
+            self.assertIn('QE50Q80AATXZT', out.read_text(encoding='utf-8'))
+
 if __name__ == '__main__':unittest.main()

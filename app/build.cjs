@@ -15,8 +15,14 @@ function nativeResources(part) {
     // A tuner picture that is byte for byte the launcher's (the osd 123's pill_bg, pill_rim, pill_cap) is shipped once, in native/dock/res,
     // where the tuner looks when its own folder lacks a file (tuner/src/Ui/Surface.cs Asset): each file costs room in the update from 0.5.0.
     const dock = path.join(__dirname, '..', 'dock', 'res');
-    const same = rel => part === 'tuner' && fs.existsSync(path.join(dock, rel)) && fs.readFileSync(path.join(dock, rel)).equals(fs.readFileSync(path.join(root, rel)));
-    return found.filter(rel => !same(rel)).map(rel => ({name: 'native/' + part + '/res/' + rel, source: path.join(root, rel)}));
+    const out = [];
+    found.forEach(rel => {
+        const source = path.join(root, rel);
+        const data = fs.readFileSync(source);
+        if (part === 'tuner' && fs.existsSync(path.join(dock, rel)) && fs.readFileSync(path.join(dock, rel)).equals(data)) return;
+        out.push({name: 'native/' + part + '/res/' + rel, data});
+    });
+    return out;
 }
 const DEFAULT_PORT = 8099;
 // Ports the package already uses for other things: the TV's remote WebSocket origins in config.xml.
@@ -56,7 +62,7 @@ function collectFiles() {
         : PORT_FILES.includes(name) && port !== DEFAULT_PORT
         ? Buffer.from(fs.readFileSync(path.join(__dirname,name),'utf8').replace(/\b8099\b/g, String(port)))
         : fs.readFileSync(path.join(__dirname,name))}))
-        .concat(dockFiles.map(file => ({uri: encodeURIComponent(file.name), data: fs.readFileSync(file.source)})))
+        .concat(dockFiles.map(file => ({uri: encodeURIComponent(file.name), data: file.data})))
         .concat([
             {uri: 'LICENSE', data: fs.readFileSync(path.join(__dirname, '..', 'LICENSE'))},
             {uri: 'THIRD_PARTY_NOTICES.md', data: fs.readFileSync(path.join(__dirname, '..', 'THIRD_PARTY_NOTICES.md'))},
@@ -67,10 +73,11 @@ function zip(files) {
     const chunks = [], directory = []; let offset = 0;
     files.forEach(file => {
         const name = Buffer.from(decodeURIComponent(file.uri)); const data = Buffer.from(file.data);
+        const crc = crc32(data);
         const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50); local.writeUInt16LE(20,4);
-        local.writeUInt32LE(crc32(data),14); local.writeUInt32LE(data.length,18); local.writeUInt32LE(data.length,22); local.writeUInt16LE(name.length,26);
+        local.writeUInt32LE(crc,14); local.writeUInt32LE(data.length,18); local.writeUInt32LE(data.length,22); local.writeUInt16LE(name.length,26);
         const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50); central.writeUInt16LE(20,4); central.writeUInt16LE(20,6);
-        central.writeUInt32LE(crc32(data),16); central.writeUInt32LE(data.length,20); central.writeUInt32LE(data.length,24); central.writeUInt16LE(name.length,28); central.writeUInt32LE(offset,42);
+        central.writeUInt32LE(crc,16); central.writeUInt32LE(data.length,20); central.writeUInt32LE(data.length,24); central.writeUInt16LE(name.length,28); central.writeUInt32LE(offset,42);
         chunks.push(local,name,data); directory.push(central,name); offset += local.length + name.length + data.length;
     });
     const table = Buffer.concat(directory), end = Buffer.alloc(22);

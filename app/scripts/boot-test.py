@@ -154,7 +154,7 @@ def summarize(baseline, rows, markers, mode):
 
 
 def process_snapshot(base, pid):
-    if not isinstance(pid, int) or pid < 1:
+    if type(pid) is not int or pid < 1:
         return {'ok': False, 'error': 'No valid service PID'}
     # Only reading existing process metadata and systemd properties. No TV writes.
     command = ('getconf CLK_TCK; cat /proc/' + str(pid) + '/stat; cat /proc/uptime; '
@@ -210,7 +210,7 @@ def save_summary(out, baseline, rows, markers, mode, snapshot, reason):
     report = summarize(baseline, rows, markers, mode)
     report.update(mode=mode, stopReason=reason, processSnapshot=snapshot)
     pending = out / 'summary.tmp'
-    pending.write_text(json.dumps(report, indent=2) + '\n')
+    pending.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     pending.replace(out / 'summary.json')
     return report
 
@@ -225,8 +225,8 @@ def record(args):
         if not baseline_valid(baseline):
             raise SystemExit('Preflight failed: /status and /telemetry must respond before the reboot.')
         out.mkdir(parents=True)
-        (out / 'baseline.json').write_text(json.dumps(baseline, indent=2) + '\n')
-        (out / 'plan.json').write_text(json.dumps(vars(args), indent=2) + '\n')
+        (out / 'baseline.json').write_text(json.dumps(baseline, indent=2) + '\n', encoding='utf-8')
+        (out / 'plan.json').write_text(json.dumps(vars(args), indent=2) + '\n', encoding='utf-8')
         print('ARMED — ' + str(out), flush=True)
         print('Mode: ' + args.mode + '. This tool never reboots the TV or opens apps on it.', flush=True)
         print('Type a letter + Enter: r reboot requested, o Vetro opened, a ok apps,', flush=True)
@@ -239,13 +239,21 @@ def record(args):
         last_up = True
         reason = 'duration_elapsed'
         read_stdin = True
-        with (out / 'events.jsonl').open('x', buffering=1) as stream:
+        with (out / 'events.jsonl').open('x', buffering=1, encoding='utf-8') as stream:
             def event(kind, value):
                 stream.write(json.dumps({'type': kind, **value}) + '\n')
                 stream.flush()
             try:
                 while time.monotonic() - started < args.duration:
-                    if read_stdin and select.select([sys.stdin], [], [], 0)[0]:
+                    if read_stdin:
+                        try:
+                            ready = bool(select.select([sys.stdin], [], [], 0)[0])
+                        except OSError:
+                            read_stdin = False
+                            ready = False
+                    else:
+                        ready = False
+                    if ready:
                         line = sys.stdin.readline()
                         if not line:
                             read_stdin = False

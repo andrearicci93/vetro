@@ -18,4 +18,4 @@ subprocess.run([str(args.dotnet), str(compilers[-1]), '-nologo', '-noconfig', '-
                + ['-r:' + str(p) for p in refs] + [str(root / 'native/TvState.cs')], check=True)
 (root / 'native/TvState.runtimeconfig.json').write_text(json.dumps({
     'runtimeOptions': {'tfm': 'netcoreapp3.1', 'framework': {
-        'name': 'Microsoft.NETCore.App', 'version': '3.1.0'}}}) + '\n')
+        'name': 'Microsoft.NETCore.App', 'version': '3.1.0'}}}) + '\n', encoding='utf-8')

@@ -3,7 +3,7 @@ import json,pathlib,statistics
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-ROOT=pathlib.Path(__file__).resolve().parents[1];D=ROOT/'diagnostics';data={p:json.loads((D/f'benchmark-{p}-20261011.json').read_text()) for p in ['A','B']}
+ROOT=pathlib.Path(__file__).resolve().parents[1];D=ROOT/'diagnostics';data={p:json.loads((D/f'benchmark-{p}-20261011.json').read_text(encoding='utf-8')) for p in ['A','B']}
 for d in data.values():
  if not d['completed']:raise SystemExit('Incomplete phase')
 assert data['A']['planHash']==data['B']['planHash'];assert data['A']['bootId']!=data['B']['bootId']
@@ -13,13 +13,13 @@ for phase,d in data.items():
  label='A · five apps re-enabled' if phase=='A' else 'B · original debloat'
  axes[0].plot(t,cpu,color=colors[phase],label=label);axes[1].plot(t,ram,color=colors[phase]);axes[2].plot(t,swap,color=colors[phase]);summary[phase]={'samples':len(samples),'durationSeconds':d['durationSeconds'],'initialRamMiB':d['initial']['memory']['availableBytes']/1048576,'meanCpuPercent':statistics.mean(x for x in cpu if x is not None),'medianRamMiB':statistics.median(ram),'minRamMiB':min(ram),'endRamMiB':ram[-1],'endSwapFreeMiB':swap[-1],'medianKeyAckMs':statistics.median(x['ackSeconds']*1000 for x in d['actions'] if x['path']=='/control')}
  for index,app in enumerate(d['plan']['apps']):
-  start=next(x['elapsed'] for x in d['actions'] if x['body'].get('appId')==app);end=next((x['elapsed'] for x in d['actions'] if x['path']=='/apps/launch' and x['elapsed']>start),d['durationSeconds']);stage=[x['monitor']for x in samples if start<=x['elapsed']<end];summary[phase][app]={'meanCpuPercent':statistics.mean(x['cpu']['percent']for x in stage if x['cpu']['percent']is not None),'medianRamMiB':statistics.median(x['memory']['availableBytes']/1048576 for x in stage)}
+  start=next(x['elapsed'] for x in d['actions'] if x['body'].get('appId')==app);end=next((x['elapsed'] for x in d['actions'] if x['path']=='/apps/launch' and x['elapsed']>start),d['durationSeconds']);stage=[x['monitor']for x in samples if start<=x['elapsed']<end];stage_cpu=[x['cpu']['percent']for x in stage if x['cpu']['percent']is not None];stage_ram=[x['memory']['availableBytes']/1048576 for x in stage];summary[phase][app]={'meanCpuPercent':statistics.mean(stage_cpu) if stage_cpu else None,'medianRamMiB':statistics.median(stage_ram) if stage_ram else None}
 for ax,label in zip(axes,['Total CPU (%)','Available RAM (MiB)','Free swap (MiB)']):
  ax.set_ylabel(label);ax.grid(axis='y',alpha=.2);ax.spines[['top','right']].set_visible(False)
  for x in [30,55,80,105,131,156]:ax.axvline(x,color='#dddddd',linewidth=.8)
 axes[0].legend(frameon=False,loc='upper left');axes[2].set_xlabel('Seconds from sequence start');axes[0].set_title('Vetro · first A/B comparison after full power-off',loc='left',pad=18)
 for x,name in [(30,'YouTube'),(55,'Stremio'),(80,'Disney+'),(105,'Prime'),(131,'Netflix'),(156,'Scroll')]:axes[0].text(x+1,1.01,name,transform=axes[0].get_xaxis_transform(),fontsize=8)
-fig.text(.09,.015,'One exploratory pair; cache/network remain variable. FPS and visual load times not measured.',fontsize=9,color='#737b84');fig.tight_layout(rect=(0,.04,1,1));fig.savefig(D/'benchmark-AB-20261011.png',dpi=160);fig.savefig(D/'benchmark-AB-20261011.svg');(D/'benchmark-summary-20261011.json').write_text(json.dumps(summary,indent=2))
+fig.text(.09,.015,'One exploratory pair; cache/network remain variable. FPS and visual load times not measured.',fontsize=9,color='#737b84');fig.tight_layout(rect=(0,.04,1,1));fig.savefig(D/'benchmark-AB-20261011.png',dpi=160);fig.savefig(D/'benchmark-AB-20261011.svg');(D/'benchmark-summary-20261011.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')
 report='''# First A/B comparison — Q80A, 2026-10-11
 
 Both sequences completed and were visually confirmed by the owner. Five apps and twelve keys; no errors in the samples. Two different boots, with initial uptime aligned within 0.28 s. Vetro version unchanged across phases; no DNS or HbbTV changes. A re-enables the five initial app_disable flags; B restores exactly those flags, without changing onboot/autorestart. This is not equivalent to a TV restored to factory settings.
@@ -43,5 +43,5 @@ After B, the local filter is active. `config.samsungads.com` resolves to 0.0.0.0
 
 The five original flags are restored and verified after boot B. No uninstalls or startup-flag changes. Raw A/B data, pkgcmd output and the initial snapshot are in diagnostics; the plan and script are in scripts/benchmark-tv.py and docs/BENCHMARK.md.
 '''
-(ROOT/'docs/BENCHMARK-RESULTS-20261011.md').write_text(report)
+(ROOT/'docs/BENCHMARK-RESULTS-20261011.md').write_text(report,encoding='utf-8')
 print(json.dumps({p:{k:v for k,v in s.items() if not isinstance(v,dict)}for p,s in summary.items()},indent=2))

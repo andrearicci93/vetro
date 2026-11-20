@@ -12,7 +12,7 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--base',default='http://127.0.0.1:8099');p.add_argument('--phase',choices=['A','B'],required=True);p.add_argument('--out',required=True);p.add_argument('--snapshot',required=True);p.add_argument('--expected-boot');p.add_argument('--previous');a=p.parse_args()
     out=pathlib.Path(a.out)
     if out.exists():raise SystemExit('Output already exists; measurements are never overwritten')
-    baseline=json.loads(pathlib.Path(a.snapshot).read_text());installed=api(a.base,'/apps')['apps'];ids={x['appId'] for x in installed}
+    baseline=json.loads(pathlib.Path(a.snapshot).read_text(encoding='utf-8'));installed=api(a.base,'/apps')['apps'];ids={x['appId'] for x in installed}
     if not all(x in ids for x in APPS):raise SystemExit('One of the five planned apps is missing')
     expected=set() if a.phase=='A' else {x['appId'] for x in baseline['/apps']['apps'] if x.get('disabled')}
     flags=api(a.base,'/exec',{'cmd':FLAGS})
@@ -23,7 +23,7 @@ def main():
     if not boot or (a.expected_boot and boot==a.expected_boot):raise SystemExit('New boot not confirmed')
     planHash=hashlib.sha256(json.dumps(PLAN,sort_keys=True).encode()).hexdigest()
     if a.previous:
-        previous=json.loads(pathlib.Path(a.previous).read_text())
+        previous=json.loads(pathlib.Path(a.previous).read_text(encoding='utf-8'))
         if previous['planHash']!=planHash or previous['bootId']==boot:raise SystemExit('Different plan or same boot as the previous phase')
         if previous['phase']==a.phase:raise SystemExit('Previous phase must be different')
         target=previous['initialUptimeSeconds']
@@ -34,7 +34,7 @@ def main():
     lock=threading.Lock();stop=threading.Event();start=time.monotonic()
     def save():
         with lock:
-            tmp=out.with_suffix(out.suffix+'.tmp');tmp.write_text(json.dumps(report,indent=2));tmp.replace(out)
+            tmp=out.with_suffix(out.suffix+'.tmp');tmp.write_text(json.dumps(report,indent=2),encoding='utf-8');tmp.replace(out)
     def sampler():
         while not stop.is_set():
             sample={'elapsed':time.monotonic()-start}

@@ -11,7 +11,7 @@ var MENU_ID_RE = /^[A-Za-z0-9_./+() -]+$/;
 var MENU_ID_PUNCT_RE = /[+()]/g;
 var HASH_RE = /^[a-f0-9]{64}$/;
 var SAFE_TEXT_RE = /^[A-Za-z0-9 .,()_\-\/&+:']{1,100}$/;
-var SENSITIVE_TEXT_RE = /(?:\d{1,3}\.){3}\d{1,3}|https?:|\/home\/|\/opt\/|\/Users\//i;
+var SENSITIVE_TEXT_RE = /(?:\d{1,3}\.){3}\d{1,3}|(?:[a-f0-9]{2}[:-]){5}[a-f0-9]{2}|https?:|\/home\/|\/opt\/|\/Users\//i;
 var PRIVILEGE_RE = /^(?:tizen|samsung)\/[A-Za-z0-9_.\/-]{1,80}$/;
 var ADDRESS_START_RE = /^(?:\d|[a-f0-9]*:)/i;
 var LAUNCHER_RE = /tizentube/i;
@@ -216,7 +216,7 @@ var SLOW = {startup: 4, components: 3};
 function collect(readers, timeoutMs) {
     return Promise.all(Object.keys(projectors).map(function(name){
         if(typeof readers[name]!=='function')return {name:name,status:'unavailable',reason:'no-reader'};
-        return new Promise(function(resolve){var done=false,timer=setTimeout(function(){finish({name:name,status:'timeout',reason:'report-deadline'});},(timeoutMs||20000)*(SLOW[name]||1));
+        return new Promise(function(resolve){var done=false,timer=setTimeout(function(){finish({name:name,status:'timeout',reason:'report-deadline'});},(timeoutMs||20000)*(SLOW[name]||1));if(timer.unref)timer.unref();
             function finish(v){if(done)return;done=true;clearTimeout(timer);resolve(v);}
             function fail(e){var f=failure(e);finish({name:name,status:'unavailable',reason:f.reason,exitCode:f.exitCode});}
             Promise.resolve().then(readers[name]).then(function(d){if(!d||d.error)throw Error('unavailable');finish({name:name,status:'ok',data:projectors[name](d)});},fail).catch(fail);
@@ -232,10 +232,12 @@ function twoSamples(snapshot, gapMs, totalMs) {
         var budget = totalMs - (Date.now() - started) - gapMs;
         if (budget < 3000) return first;
         return new Promise(function(resolve){
-            var finished = false, timer = null;
-            function finish(v){if(finished)return;finished=true;clearTimeout(timer);resolve(v);}
-            setTimeout(function(){snapshot(true).then(finish,function(){finish(first);});},gapMs);
+            var finished = false, gapTimer = null, timer = null;
+            function finish(v){if(finished)return;finished=true;clearTimeout(gapTimer);clearTimeout(timer);resolve(v);}
+            gapTimer = setTimeout(function(){snapshot(true).then(finish,function(){finish(first);});},gapMs);
+            if (gapTimer.unref) gapTimer.unref();
             timer = setTimeout(function(){finish(first);}, gapMs + budget);
+            if (timer.unref) timer.unref();
         });
     });
 }
