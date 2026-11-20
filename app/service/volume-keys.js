@@ -8,6 +8,7 @@ var fs = require('fs');
 
 var FIFO = '/home/owner/tvlauncher.fifo';
 var KEYS = {
+    '63': {word: 'toggle', native: 'XF86Home'},
     '68': {word: 'volup', native: 'XF86AudioRaiseVolume'},
     '67': {word: 'voldown', native: 'XF86AudioLowerVolume'},
     '66': {word: 'volmute', native: 'XF86AudioMute'},
@@ -15,7 +16,7 @@ var KEYS = {
     // has in tizen_key_layout on 6.0, 6.5 and 9; XF86NumberPad (185) has no handler on 6.5 and 9, so 123 was dead there.
     '140': {word: 'pad', native: 'XF86More'}
 };
-var GROUPS = {volume: ['66', '67', '68'], pad: ['140']};
+var GROUPS = {volume: ['66', '67', '68'], pad: ['140'], home: ['63']};
 var TOKENS = GROUPS.volume.concat(GROUPS.pad);
 
 function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, String(code)); }
@@ -72,8 +73,8 @@ function repeater(opts) {
     return {
         event: function (event) {
             if (event.action === 'up') { stop(); return Promise.resolve(); }
-            // Mute and the 123 key are toggles: one press, one change, never repeated.
-            if (String(event.code) === '66' || String(event.code) === '140') return event.action === 'down' ? send(event) : Promise.resolve();
+            // Mute, 123, and Home are toggles: one press, one change, never repeated.
+            if (String(event.code) === '66' || String(event.code) === '140' || String(event.code) === '63') return event.action === 'down' ? send(event) : Promise.resolve();
             if (event.action === 'repeat' && timer) return Promise.resolve();
             if (event.action === 'down') {
                 stop(); started = Date.now();

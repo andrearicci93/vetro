@@ -984,7 +984,7 @@ function runActions(actions, direct, dispatchGuard) {
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var volumeKeys=require('./volume-keys.js');
 // The glass volume pill is on when the dock (or the custom launcher) runs and the user switched it on.
-function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true};}
+function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true,home:live};}
 var volumeRepeat=volumeKeys.repeater({reinject:function(key){var c=volumeKeys.reinjectCommand(key);return c?agentExecute(c,5000):Promise.resolve();}});
 var keyRouting=require('./key-routing.js');
 // Every stop of the bridge (asked for, or the helper went away on its own) ends a volume repeat: its release will never come.

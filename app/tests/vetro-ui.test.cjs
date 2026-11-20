@@ -143,7 +143,7 @@ function request(service, method, url, body) {
     // Switching a part on turns it on, with the held keys, and marks it as Vetro UI's own.
     const r1 = await service.context.vetroUiInput(); assert.equal(r1, true, String(service.context.vetroUiInputProblem) + " flags " + JSON.stringify(service.context.keyFlags()));
     assert.equal(starts.length, 1); assert.equal(starts[0].mode, 'filter'); assert.equal(starts[0].device, '/dev/input/event5');
-    assert.deepEqual(Array.from(starts[0].tokens).sort(), ['66', '67', '68']);
+    assert.deepEqual(Array.from(starts[0].tokens).sort(), ['63', '66', '67', '68']);
     assert.deepEqual(JSON.parse(disk).input, {enabled: true, device: 'Smart Control', node: '/dev/input/event5', auto: true});
     let remap = await request(service, 'GET', '/remap');
     assert.deepEqual(remap.reserved.map(k => k.code), ['68', '67', '66']); assert.equal(remap.reserved[0].live, true);
