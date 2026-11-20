@@ -106,6 +106,20 @@ namespace Launcher
         private static int _guardGen;
         private static string _guardFile;
         private static int _homeCode = -1;
+        // --claim-home (#184; idea and first version by chemicalsno, tried on a QN90D): the window claims XF86Home at the compositor
+        // (Tizen keyrouter, exclusive grab), so the key no longer reaches Samsung's Home (csfs registers it in its manifest), which came
+        // up for a moment before the dock on every press until the guard closed it. On the Q80A the claimed key reaches this process while
+        // the window is hidden, but only as an ecore_input event (evas drops it), so ecore's key events are watched too (WatchEcoreKeys):
+        // a Home from another source (sent by name, the phone app, CEC) then opens the dock. The claim is made only after the input reader
+        // has answered a real press, at that press's ShowDock: a TV whose reader does not hear the remote keeps Samsung's Home on the key.
+        // The first press after each start still shows Samsung's Home for a moment (the guard closes it). The
+        // guard stays armed: on a firmware where Samsung's Home still starts, it is closed as before. The claim belongs to this process's
+        // Wayland connection, so when the launcher exits Samsung's Home gets the key again. While it is granted, tvlauncher.homeclaim
+        // holds this process's pid and the service sends its own Home down the FIFO (key-routing.js). A Home that reaches the hidden
+        // window (WindowHome) is the echo of the press the reader answered, or a press of its own.
+        private static bool _claimHome, _claimTried, _homeClaimed, _rawHomeSeen;
+        private static string _claimPath;
+        private const int KeygrabExclusive = 1 << 10;   // ELM_WIN_KEYGRAB_EXCLUSIVE
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
@@ -270,6 +284,7 @@ namespace Launcher
                 {
                     File.Delete(_pidPath);
                     Libc.unlink(_fifoPath);
+                    if (_claimPath != null) Libc.unlink(_claimPath);
                 }
                 if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, false, null);
                 if (_pad != null && _pad.IsOnScreen) OverlayFlag.Mark(OverlayFlag.PadPath, false, null);
@@ -568,6 +583,7 @@ namespace Launcher
             MarkDock(true);
             Efl.evas_object_show(_win);
             Efl.elm_win_activate(_win);
+            ClaimHome();   // once, on the window a real Home press brings up (the claim needs a mapped window)
             StartClock();
             StartAnimator();
             ResetIdle();
@@ -1614,6 +1630,7 @@ namespace Launcher
             {
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                if (key == "XF86Home" && _homeClaimed && !DockActive) { WindowHome(); return; }
                 if (Navigation.IsEcho(key, Efl.ecore_time_get())) return;
                 HandleKey(key);
             }
@@ -2125,14 +2142,31 @@ namespace Launcher
         private static void ClosePad() { if (_pad != null && _pad.IsShown) _pad.Close(); }
 
         /// <summary>The Home key read from the input device: the dock opens or closes (or the custom launcher's app opens), and the guard is armed.</summary>
-        private static void RawHome()
+        private static void RawHome() { HomePress(true); }
+
+        /// <summary>
+        /// XF86Home on the window while the dock is hidden, which only the claim brings there. Within <see cref="HomeEchoSeconds"/> of a
+        /// press the input reader answered it is that press again; otherwise it is a press the reader did not see (a Home sent by name,
+        /// input_keyevent, or a remote the reader does not hold) and the dock opens.
+        /// </summary>
+        private static void WindowHome()
+        {
+            double now = Efl.ecore_time_get();
+            // The echo of a press the reader answered, or the same press the window's evas already answered.
+            if (now - _lastRawHome < HomeEchoSeconds || now - _lastHome < HomeDebounceSeconds) return;
+            Log("home: claimed press from the window");
+            HomePress(false);
+        }
+
+        /// <summary>One Home press. raw: read from the input device, so the window's copy that follows is its echo.</summary>
+        private static void HomePress(bool raw)
         {
             ClosePad();
             double now = Efl.ecore_time_get();
             // The focused dock also gets XF86Home through evas and hides itself: count it once.
             if (now - _lastHome < HomeDebounceSeconds) return;
             _lastHome = now;
-            _lastRawHome = now;
+            if (raw) { _lastRawHome = now; _rawHomeSeen = true; }
             _perfWhy = "home";
             if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); return; }
             if (DockActive) HideDock(); else { ProbeBegin("home"); ShowDock(); }
@@ -2164,6 +2198,54 @@ namespace Launcher
             if (!home) return;
             Log("home pressed while the launcher was starting: answered now");
             RawHome();
+        }
+
+        /// <summary>Claims XF86Home once (--claim-home, never in custom launcher mode), after the input reader has heard a real press, and says how it went in the log.</summary>
+        private static void ClaimHome()
+        {
+            if (!_claimHome || _claimTried || !_rawHomeSeen || _homeLaunch != null) return;
+            _claimTried = true;
+            try
+            {
+                _homeClaimed = Efl.elm_win_keygrab_set(_win, "XF86Home", 0, 0, 0, KeygrabExclusive);
+                Log("home: claim " + (_homeClaimed ? "granted" : "refused"));
+            }
+            catch (Exception ex) { Log("home: claim unavailable"); Log("home claim: " + ex.GetType().Name + " " + ex.Message); }
+            if (_homeClaimed) WatchEcoreKeys();
+            try
+            {
+                if (_homeClaimed) File.WriteAllText(_claimPath, Libc.getpid().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                else Libc.unlink(_claimPath);
+            }
+            catch (Exception ex) { Log("home claim file: " + ex.Message); }
+        }
+
+        // The key events of ecore_input, for the claimed Home while the window is hidden (evas drops a key for a window that is not shown).
+        private static readonly Efl.EventCb EcoreKeyCb = OnEcoreKey;
+        private static int _ecoreKeyDown = -1;
+
+        private static void WatchEcoreKeys()
+        {
+            try
+            {
+                IntPtr lib = System.Runtime.InteropServices.NativeLibrary.Load("libecore_input.so.1");
+                _ecoreKeyDown = Marshal.ReadInt32(System.Runtime.InteropServices.NativeLibrary.GetExport(lib, "ECORE_EVENT_KEY_DOWN"));
+                bool ok = Efl.ecore_event_handler_add(_ecoreKeyDown, EcoreKeyCb, IntPtr.Zero) != IntPtr.Zero;
+                Log("home: window keys " + (ok ? "on" : "refused"));
+            }
+            catch (Exception ex) { Log("home: window keys unavailable"); Log("home claim: " + ex.GetType().Name + " " + ex.Message); }
+        }
+
+        private static byte OnEcoreKey(IntPtr data, int type, IntPtr ev)
+        {
+            try
+            {
+                // Ecore_Event_Key starts with `const char *keyname`.
+                string key = ev == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(ev));
+                if (key == "XF86Home" && !DockActive) WindowHome();
+            }
+            catch (Exception ex) { Log("ecore key: " + ex.Message); }
+            return 1;   // ECORE_CALLBACK_PASS_ON
         }
 
         private static void ArmGuard()
@@ -2456,6 +2538,7 @@ namespace Launcher
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
             _fifoPath = Path.Combine(_dir, "tvlauncher.fifo");
+            _claimPath = Path.Combine(_dir, "tvlauncher.homeclaim");
             TrimLog();
 
             if (!AcquireInstance()) return 0;
@@ -2542,6 +2625,8 @@ namespace Launcher
                     _homeLaunch = HomeLaunch.Parse(homeLaunch);
                     Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
+                _claimHome = Flag(args, "--claim-home") && _homeLaunch == null;
+                Libc.unlink(_claimPath);   // one left by a launcher that was killed
                 // The remote is opened now, before the pages and the warm-up: a Home pressed meanwhile waits in the node's buffer and is answered
                 // when the loop starts (DrainStartupInput). The fifo is still made after the warm-up: until it has a reader the service sends the
                 // volume and 123 keys to the TV itself, and they must not wait for the start-up instead.

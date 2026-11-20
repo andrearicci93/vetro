@@ -327,7 +327,7 @@ function downloadDiagnostics(res, withComponents) {
         // keyLog: the launcher's log lines about the keys it is handed (Vol, Mute, 123), their windows and the Audio card; the report keeps fixed shapes only.
         launcher: later(function () { return dock.status().then(function (d) {
             // openLog: the launcher's last openings with their timings (Home, the Control center, All apps...), "perf open ..." lines.
-            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|outputs: Use(Tv|External) |fifo: |screen: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24; echo ---; grep -E \'^[0-9:.]+ perf open \' ' + dockModule.LOG_FILE + ' | tail -n 12').toString('base64') + ' | base64 -d | sh', 5000)
+            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|outputs: Use(Tv|External) |fifo: |screen: |home: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24; echo ---; grep -E \'^[0-9:.]+ perf open \' ' + dockModule.LOG_FILE + ' | tail -n 12').toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
                 .then(function (out) { var parts = out.split(/(?:^|\n)---\n?/); return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: parts[0] || '', openLog: parts[1] || ''}); }); }); }),
         // tunerLog: the tuner's start and its talk with Samsung's TV client (EFL start, which client was loaded, the first reads, a stall, an
@@ -569,6 +569,8 @@ function handleControl(req, res) {
             return serveJson(res, { error: 'missing "key" (see GET /control for names)' }, 400);
         }
         var cmd = control.injectCommand(key);
+        // Home goes to the Vetro launcher's FIFO while it holds the key (key-routing.js), or it would only reach the launcher's window.
+        if (cmd && key === 'XF86Home') cmd = keyRouting.homeCommand(cmd);
         if (!cmd) {
             return serveJson(res, { error: 'unknown key ' + key, keys: control.KEYS }, 400);
         }

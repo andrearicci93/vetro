@@ -29,6 +29,7 @@ namespace Launcher.Native
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte TaskCb(IntPtr data);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte FdCb(IntPtr data, IntPtr handler);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void EvasCb(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte EventCb(IntPtr data, int type, IntPtr ev);
 
         // --- elementary ---
         [DllImport(Elm)] public static extern int elm_init(int argc, IntPtr argv);
@@ -42,6 +43,9 @@ namespace Launcher.Native
         [DllImport(Elm)] public static extern void elm_win_layer_set(IntPtr win, int layer);
         [DllImport(Elm)] public static extern int elm_win_aux_hint_add(IntPtr win, string hint, string val);
         [DllImport(Elm)] public static extern void elm_win_activate(IntPtr win);
+        // The Home claim (--claim-home). Exported by libelementary on the Q80A (Tizen 6.0) and in the 6.5 (PTMD 1720) and 9 (NKLD 0090)
+        // dumps. Evas_Modifier_Mask is an unsigned long long; the mode is an Elm_Win_Keygrab_Mode bit (EXCLUSIVE = 1 << 10).
+        [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_set(IntPtr win, string key, ulong modifiers, ulong notModifiers, int priority, int grabMode);
         [DllImport(Elm)] public static extern void elm_win_screen_size_get(IntPtr win, out int x, out int y, out int w, out int h);
 
         // --- evas: generic objects ---
@@ -102,6 +106,9 @@ namespace Launcher.Native
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_del(IntPtr timer);
         [DllImport(Ecore)] public static extern IntPtr ecore_main_fd_handler_add(int fd, int flags, FdCb func, IntPtr data, IntPtr bufFunc, IntPtr bufData);
         [DllImport(Ecore)] public static extern IntPtr ecore_main_fd_handler_del(IntPtr handler);
+        // A key as ecore_input hands it out (type ECORE_EVENT_KEY_DOWN, read from libecore_input), before evas: the claimed Home reaches
+        // the process here even when the window is not shown, if the compositor sends it at all.
+        [DllImport(Ecore)] public static extern IntPtr ecore_event_handler_add(int type, EventCb func, IntPtr data);
 
         // --- diagnostics ---
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_ecore_evas_get(IntPtr evas);

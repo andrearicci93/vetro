@@ -41,7 +41,7 @@ require the saved node to match. Editing rules releases the grab and then reappl
 the saved policy with the current enabled physical rules. Observe mode temporarily
 pauses interception for key capture; it is never restored at startup. Explicitly
 turning the switch off persists that choice. A new installation defaults to off. Native actions use `app_launcher` and the supported
-`input_keyevent` whitelist, without the LAN WebSocket client. Injected keys go
+`input_keyevent` whitelist, without the LAN WebSocket client. While the Vetro launcher holds the Home key (it claims `XF86Home` from the compositor after the first Home press it reads from the remote; `tvlauncher.homeclaim` holds its pid), `XF86Home` goes down the launcher's FIFO as `toggle` instead, because a claimed key sent by name reaches neither Samsung's Home nor the hidden launcher window; otherwise it goes through `input_keyevent` as before. Injected keys go
 to the foreground application, not directly to arbitrary background apps.
 
 `GET /apps` enriches the public probe with read-only package-registry metadata

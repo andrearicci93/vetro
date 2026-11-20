@@ -98,8 +98,10 @@ function request() {
 
         // The launcher's new shapes: the Samsung Home pill and the screen off; other launches (app ids of the user) stay out.
         const lv = report.projectors.launcher({keyLog: ['10:00:00.000 launch com.samsung.tv.csfs rc=0', '10:00:01.000 screen: off ok',
-            '10:00:02.000 launch org.tizen.netflix-app rc=0', '10:00:03.000 launch 5exPmCT0nz.svtplay via HbbTV request 42 ms', '10:00:04.000 launch via HbbTV failed: 5exPmCT0nz.svtplay'].join('\n'), bootTimeline: {serviceStart: 95.2, shownAtPowerOn: 140.1, secret: 'x'}});
-        assert.deepEqual(lv.events, ['launch com.samsung.tv.csfs rc=0', 'screen: off ok', 'launch via HbbTV request 42 ms', 'launch via HbbTV failed']);
+            '10:00:02.000 launch org.tizen.netflix-app rc=0', '10:00:03.000 launch 5exPmCT0nz.svtplay via HbbTV request 42 ms', '10:00:04.000 launch via HbbTV failed: 5exPmCT0nz.svtplay',
+            '10:00:05.000 home: claim granted', '10:00:05.500 home: window keys on', '10:00:06.000 home: claimed press from the window', '10:00:07.000 home claim: EntryPointNotFoundException /opt/x'].join('\n'), bootTimeline: {serviceStart: 95.2, shownAtPowerOn: 140.1, secret: 'x'}});
+        assert.deepEqual(lv.events, ['launch com.samsung.tv.csfs rc=0', 'screen: off ok', 'launch via HbbTV request 42 ms', 'launch via HbbTV failed',
+            'home: claim granted', 'home: window keys on', 'home: claimed press from the window'], 'the Home claim (#184) in fixed words; its exception text stays out');
         assert.ok(JSON.stringify(lv).indexOf('svtplay') < 0, 'the HbbTV launches keep no app id');
         assert.equal(JSON.stringify(lv.bootTimeline), JSON.stringify({serviceStart: 95.2, agentSeen: null, shownAtPowerOn: 140.1}));
         // The Audio card's switches by output name; a Bluetooth address or a free error text never passes.

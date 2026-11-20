@@ -6,6 +6,10 @@
 //     Tuner on screen that is the tuner's own window, which does not take named keys (it reads the remote from the input device): the
 //     key would be lost. So a key the tuner answers goes to it on its control pipe (`key CODE`), and Home or Menu first send it away,
 //     as the real keys do. Nothing changes while the tuner is not on screen.
+//   * Home sent by name while the Vetro launcher holds the key (its claim, #184) reaches the launcher's window, not Samsung's Home:
+//     it goes down the launcher's FIFO as `toggle` instead, which opens or closes the dock as the remote's Home does. The launcher
+//     writes its pid to tvlauncher.homeclaim while the compositor grants the claim; without that (custom launcher, a refused claim, no
+//     launcher) Home is sent by name as before.
 //   * The remote bridge makes a new forwarding node every time it starts. The launcher and the tuner look for new nodes every 3 s; for
 //     those seconds they heard nothing (the real remote is held by the bridge). `rescanCommand` tells both to look at once.
 //
@@ -14,7 +18,7 @@
 // never blocks even if the reader died a moment ago: these lines run on the root agent, and a write stuck on a pipe would hold up its
 // queue until the timeout (the TV has no `timeout` command).
 
-var DOCK_PID = '/home/owner/tvlauncher.pid', DOCK_FIFO = '/home/owner/tvlauncher.fifo';
+var DOCK_PID = '/home/owner/tvlauncher.pid', DOCK_FIFO = '/home/owner/tvlauncher.fifo', DOCK_CLAIM = '/home/owner/tvlauncher.homeclaim';
 var TUNER_PID = '/home/owner/vetro-tuner.pid', TUNER_PIPE = '/tmp/vetro-tuner.ctl';
 var TUNER_SHOWN = TUNER_PIPE + '.shown';
 
@@ -38,8 +42,14 @@ function keyCommand(nativeKey, inject) {
     var word = Object.prototype.hasOwnProperty.call(TUNER_KEYS, nativeKey) ? TUNER_KEYS[nativeKey] : null;
     var shown = alive(TUNER_PID, TUNER_PIPE) + ' && [ -e ' + TUNER_SHOWN + ' ]';
     if (word) return 'if ' + shown + '; then ' + write(TUNER_PIPE, word) + '; else ' + inject + '; fi';
+    if (nativeKey === 'XF86Home') inject = homeCommand(inject);
     if (TUNER_STEPS_ASIDE[nativeKey]) return 'if ' + shown + '; then ' + write(TUNER_PIPE, 'hide') + '; fi; ' + inject;
     return inject;
+}
+
+// Home by name: down the launcher's FIFO while the launcher that is running holds the key, by name otherwise.
+function homeCommand(inject) {
+    return 'if ' + alive(DOCK_PID, DOCK_FIFO) + ' && [ "$(cat ' + DOCK_CLAIM + ' 2>/dev/null)" = "$p" ]; then ' + write(DOCK_FIFO, 'toggle') + '; else ' + inject + '; fi';
 }
 
 // The shell line that asks the launcher and the tuner to look for input nodes now.
@@ -55,4 +65,5 @@ function dockWordCommand(word) {
     return /^(?:volup|voldown|volmute|pad)$/.test(word) ? alive(DOCK_PID, DOCK_FIFO) + ' && ' + write(DOCK_FIFO, word) : null;
 }
 
-module.exports = {keyCommand: keyCommand, rescanCommand: rescanCommand, dockWordCommand: dockWordCommand, TUNER_KEYS: TUNER_KEYS, TUNER_PIPE: TUNER_PIPE, DOCK_FIFO: DOCK_FIFO};
+module.exports = {keyCommand: keyCommand, homeCommand: homeCommand, rescanCommand: rescanCommand, dockWordCommand: dockWordCommand, TUNER_KEYS: TUNER_KEYS, TUNER_PIPE: TUNER_PIPE,
+    DOCK_FIFO: DOCK_FIFO, DOCK_CLAIM: DOCK_CLAIM};
