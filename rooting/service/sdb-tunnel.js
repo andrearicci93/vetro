@@ -29,11 +29,18 @@
 var net = require('net');
 var SDB_PORT = require('./sdb.js').SDB_PORT;
 
+function alloc(length) {
+    return Buffer.alloc ? Buffer.alloc(length) : new Buffer(length);
+}
+function fromBytes(value) {
+    return Buffer.from && Buffer.alloc ? Buffer.from(value) : new Buffer(value);
+}
+
 var NAMES = ['SYNC', 'OPEN', 'CNXN', 'AUTH', 'OKAY', 'CLSE', 'WRTE'];
 var CMD = {};
 var MAGIC = {};
 NAMES.forEach(function (name) {
-    CMD[name] = Buffer.from(name).readUInt32LE(0);
+    CMD[name] = fromBytes(name).readUInt32LE(0);
     MAGIC[CMD[name]] = (CMD[name] ^ 0xffffffff) >>> 0;
 });
 
@@ -48,21 +55,20 @@ var MAX_FRAME_BYTES = 1024 * 1024;
 var VERSION = 0x01000000;
 var FIRST_STREAM_ID = 0x40000000;
 var IDLE_RELEASE_MS = 3000;
+var HANDSHAKE_TIMEOUT_MS = 10000;
 
-function alloc(length) {
-    return Buffer.alloc ? Buffer.alloc(length) : new Buffer(length);
-}
+var EMPTY = alloc(0);
 
 function checksum(data) {
     var total = 0;
-    for (var i = 0; i < data.length; i++) total = (total + data[i]) & 0xffffffff;
+    for (var i = 0; i < data.length; i++) total = (total + data[i]) >>> 0;
     return total;
 }
 
 function encode(command, arg0, arg1, payload) {
     var data = (typeof payload === 'string')
-        ? Buffer.concat([Buffer.from(payload), Buffer.from([0])])
-        : (payload || alloc(0));
+        ? Buffer.concat([fromBytes(payload), fromBytes([0])])
+        : (payload || EMPTY);
     var length = data.length;
     var packet = alloc(HEADER_BYTES + length);
     packet.writeUInt32LE(command, 0);
@@ -93,7 +99,7 @@ function decodeAll(buffer) {
         });
         offset += HEADER_BYTES + length;
     }
-    return { bad: false, packets: packets, rest: buffer.slice(offset) };
+    return { bad: false, packets: packets, rest: offset === buffer.length ? EMPTY : buffer.slice(offset) };
 }
 
 function validPort(port) {
@@ -109,7 +115,7 @@ function Client(socket, pool) {
     this.streams = new Map();
     var self = this;
     socket.on('data', function (chunk) {
-        self.buffer = Buffer.concat([self.buffer, chunk]);
+        self.buffer = self.buffer.length ? Buffer.concat([self.buffer, chunk]) : chunk;
         self.drain();
     });
     socket.on('error', function (e) {
@@ -129,16 +135,19 @@ Client.prototype.drain = function () {
     if (decoded.bad) { this.socket.destroy(); return; }
     this.buffer = decoded.rest;
     for (var i = 0; i < decoded.packets.length; i++) {
+        if (this.socket.destroyed) return;
         this.pool.onClientPacket(this, decoded.packets[i]);
     }
 };
 
-function Pool(host, port, log, idleMs) {
+function Pool(host, port, log, idleMs, handshakeMs) {
     this.host = host;
     this.port = port;
     this.log = log;
     this.idleMs = idleMs;
+    this.handshakeMs = handshakeMs === undefined ? HANDSHAKE_TIMEOUT_MS : handshakeMs;
     this.idleTimer = null;
+    this.handshakeTimer = null;
     this.socket = null;
     this.ready = false;
     this.buffer = alloc(0);
@@ -149,6 +158,10 @@ function Pool(host, port, log, idleMs) {
     this.banner = null;
 }
 
+Pool.prototype.cancelHandshake = function () {
+    if (this.handshakeTimer) { clearTimeout(this.handshakeTimer); this.handshakeTimer = null; }
+};
+
 // The first client's CNXN payload becomes the upstream banner, so sdbd sees the
 // same host features it saw through a direct connection. Later clients get the
 // device banner back but cannot renegotiate the shared upstream.
@@ -158,22 +171,38 @@ Pool.prototype.startUpstream = function (payload) {
     var socket = net.connect(this.port, this.host);
     this.socket = socket;
     this.ready = false;
+    this.cancelHandshake();
+    this.handshakeTimer = setTimeout(function () {
+        self.handshakeTimer = null;
+        if (self.socket === socket && !self.ready) {
+            self.log('sdb upstream handshake timeout');
+            self.reset();
+        }
+    }, this.handshakeMs);
+    if (this.handshakeTimer && typeof this.handshakeTimer.unref === 'function') this.handshakeTimer.unref();
     socket.on('connect', function () {
+        if (self.socket !== socket) return;
         socket.write(encode(CMD.CNXN, VERSION, MAX_PAYLOAD, payload || 'host::'));
     });
     socket.on('data', function (chunk) {
-        self.buffer = Buffer.concat([self.buffer, chunk]);
+        if (self.socket !== socket) return;
+        self.buffer = self.buffer.length ? Buffer.concat([self.buffer, chunk]) : chunk;
         self.drainUpstream();
     });
     socket.on('error', function (e) {
+        if (self.socket !== socket) return;
         self.log('sdb upstream error: ' + (e && e.message || e));
         self.reset();
     });
-    socket.on('close', function () { self.reset(); });
+    socket.on('close', function () {
+        if (self.socket !== socket) return;
+        self.reset();
+    });
 };
 
 Pool.prototype.reset = function () {
     this.cancelIdle();
+    this.cancelHandshake();
     var socket = this.socket;
     this.socket = null;
     this.ready = false;
@@ -233,13 +262,20 @@ Pool.prototype.clientHandshake = function (client, packet) {
 Pool.prototype.removeClient = function (client) {
     this.clients.delete(client);
     var self = this;
+    var removedIds = new Set();
     client.streams.forEach(function (upstreamId) {
+        removedIds.add(upstreamId);
         var stream = self.streams.get(upstreamId);
         self.streams.delete(upstreamId);
         if (stream && self.ready && self.socket && self.socket.writable) {
             self.socket.write(encode(CMD.CLSE, upstreamId, stream.remoteId < 0 ? 0 : stream.remoteId, null));
         }
     });
+    if (removedIds.size > 0 && this.queued.length > 0) {
+        this.queued = this.queued.filter(function (pkt) {
+            return pkt.length < 8 || !removedIds.has(pkt.readUInt32LE(4));
+        });
+    }
     client.streams.clear();
     this.scheduleIdle();
 };
@@ -254,6 +290,7 @@ Pool.prototype.drainUpstream = function () {
     if (decoded.bad) { this.reset(); return; }
     this.buffer = decoded.rest;
     for (var i = 0; i < decoded.packets.length; i++) {
+        if (!this.socket) return;
         this.onUpstreamPacket(decoded.packets[i]);
     }
 };
@@ -262,6 +299,7 @@ Pool.prototype.onUpstreamPacket = function (packet) {
     var stream;
     switch (packet.command) {
         case CMD.CNXN:
+            this.cancelHandshake();
             this.ready = true;
             this.banner = packet;
             var queued = this.queued;
@@ -278,7 +316,10 @@ Pool.prototype.onUpstreamPacket = function (packet) {
             break;
         case CMD.OKAY:
             stream = this.streams.get(packet.arg1);
-            if (!stream) break;
+            if (!stream) {
+                if (packet.arg0 > 0) this.sendUpstream(encode(CMD.CLSE, packet.arg1, packet.arg0, null));
+                break;
+            }
             if (stream.remoteId < 0) stream.remoteId = packet.arg0;
             if (stream.pendingWrite) {
                 if (stream.pendingWrite.offset < stream.pendingWrite.payload.length) {
@@ -320,12 +361,17 @@ Pool.prototype.writeFragment = function (id, stream) {
 
 Pool.prototype.onClientPacket = function (client, packet) {
     var upstreamId;
+    if (packet.command !== CMD.CNXN && !client.cnxn) {
+        client.socket.destroy();
+        return;
+    }
     switch (packet.command) {
         case CMD.CNXN:
             // Terminate the handshake here: sdbd allows one host connection.
             this.clientHandshake(client, packet);
             break;
         case CMD.OPEN:
+            if (client.streams.has(packet.arg0)) { client.socket.destroy(); break; }
             upstreamId = this.nextId++;
             this.streams.set(upstreamId, { client: client, clientId: packet.arg0, remoteId: -1 });
             client.streams.set(packet.arg0, upstreamId);
@@ -335,7 +381,7 @@ Pool.prototype.onClientPacket = function (client, packet) {
             upstreamId = client.streams.get(packet.arg0);
             if (upstreamId === undefined) break;
             var stream = this.streams.get(upstreamId);
-            if (stream.pendingWrite) { client.socket.destroy(); break; }
+            if (!stream || stream.remoteId < 0 || stream.pendingWrite) { client.socket.destroy(); break; }
             stream.pendingWrite = {payload: packet.payload, offset: 0, remoteId: packet.arg1};
             this.writeFragment(upstreamId, stream);
             break;
@@ -349,7 +395,12 @@ Pool.prototype.onClientPacket = function (client, packet) {
             if (upstreamId === undefined) break;
             client.streams.delete(packet.arg0);
             this.streams.delete(upstreamId);
-            this.sendUpstream(encode(CMD.CLSE, upstreamId, packet.arg1, null));
+            if (this.queued.length > 0) {
+                this.queued = this.queued.filter(function (pkt) {
+                    return pkt.length < 8 || pkt.readUInt32LE(4) !== upstreamId;
+                });
+            }
+            if (this.ready) this.sendUpstream(encode(CMD.CLSE, upstreamId, packet.arg1, null));
             break;
         default:
             this.log('sdb client sent ' + packet.command);
@@ -358,14 +409,7 @@ Pool.prototype.onClientPacket = function (client, packet) {
 };
 
 Pool.prototype.close = function () {
-    this.cancelIdle();
-    var clients = this.clients;
-    this.clients = new Set();
-    clients.forEach(function (client) { client.streams.clear(); client.socket.destroy(); });
-    var socket = this.socket;
-    this.socket = null;
-    this.ready = false;
-    if (socket) { try { socket.destroy(); } catch (e) {} }
+    this.reset();
 };
 
 function TunnelServer(opts) {
@@ -378,6 +422,7 @@ function TunnelServer(opts) {
     this.sdbPort = opts.sdbPort || SDB_PORT;
     this.log = opts.log || function () {};
     this.idleMs = opts.idleMs === undefined ? IDLE_RELEASE_MS : opts.idleMs;
+    this.handshakeMs = opts.handshakeMs === undefined ? HANDSHAKE_TIMEOUT_MS : opts.handshakeMs;
     this._server = null;
     this._pool = null;
 }
@@ -419,15 +464,19 @@ TunnelServer.prototype.start = function (cb) {
         return this;
     }
 
-    this._pool = new Pool(this.sdbHost, this.sdbPort, this.log, this.idleMs);
-    this._server = net.createServer(function (client) {
+    this._pool = new Pool(this.sdbHost, this.sdbPort, this.log, this.idleMs, this.handshakeMs);
+    var server = net.createServer(function (client) {
         // One multiplexed upstream for every client: sdbd sees a single host
         // connection, while each client keeps its own CNXN and stream ids.
         self.acceptClient(client);
     });
-    this._server.on('error', function (e) { done(e); });
-    this._server.listen(this.port, this.bindHost, function () {
-        var port = self._server.address().port;
+    this._server = server;
+    server.on('error', function (e) { if (self._server === server) self.close(); done(e); });
+    server.listen(this.port, this.bindHost, function () {
+        if (self._server !== server) return;
+        var addr = server.address();
+        if (!addr) return;
+        var port = addr.port;
         self.log('sdb tunnel listening on ' + self.bindHost + ':' + port);
         done(null, port);
     });

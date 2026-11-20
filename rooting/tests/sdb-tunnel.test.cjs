@@ -324,6 +324,174 @@ async function main() {
     await assert.rejects(startTunnel(26101, {port: 70000}), /invalid tunnel port/);
   });
 
+  await check('rejects OPEN before CNXN without starting upstream', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      await new Promise((resolve, reject) => {
+        const bad = net.connect(port, '127.0.0.1');
+        const timer = setTimeout(() => { bad.destroy(); reject(new Error('pre-CNXN OPEN not rejected')); }, 1500);
+        bad.on('error', () => {});
+        bad.on('close', () => { clearTimeout(timer); resolve(); });
+        bad.on('connect', () => bad.write(encode('OPEN', 1, 0, 'shell')));
+      });
+      assert.equal(state.connections, 0, 'upstream must not open on unauthenticated OPEN');
+    } finally { tunnel.close(); fake.close(); }
+  });
+
+  await check('rejects duplicate OPEN with the same client stream id', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      await new Promise((resolve, reject) => {
+        const sock = net.connect(port, '127.0.0.1');
+        const timer = setTimeout(() => { sock.destroy(); reject(new Error('duplicate OPEN not rejected')); }, 1500);
+        sock.on('error', () => {});
+        sock.on('close', () => { clearTimeout(timer); resolve(); });
+        sock.on('connect', () => sock.write(encode('CNXN', 0x01000000, 4096, 'host::')));
+        sock.once('data', () => {
+          sock.write(encode('OPEN', 42, 0, 'shell'));
+          sock.write(encode('OPEN', 42, 0, 'shell'));
+        });
+      });
+      assert.equal(tunnel._pool.streams.size, 0, 'no leaked stream entries after duplicate OPEN');
+    } finally { tunnel.close(); fake.close(); }
+  });
+
+  await check('resets pool when upstream accepts TCP but never answers CNXN', async () => {
+    const silent = net.createServer(() => {});
+    const sdbPort = await listen(silent);
+    const {tunnel, port} = await startTunnel(sdbPort, {handshakeMs: 120});
+    try {
+      await new Promise((resolve, reject) => {
+        const sock = net.connect(port, '127.0.0.1');
+        const timer = setTimeout(() => { sock.destroy(); reject(new Error('hung upstream did not time out')); }, 1500);
+        sock.on('error', () => {});
+        sock.on('close', () => { clearTimeout(timer); resolve(); });
+        sock.on('connect', () => sock.write(encode('CNXN', 0x01000000, 4096, 'host::')));
+      });
+      assert.equal(tunnel._pool.socket, null, 'upstream socket cleared after handshake timeout');
+    } finally { tunnel.close(); silent.close(); }
+  });
+
+  await check('tunnel: drops queued OPEN on early client close and rejects WRTE before OKAY', async () => {
+    const upstreamServices = [];
+    let releaseCnxn = null;
+    const fake = net.createServer((socket) => {
+      let buffer = Buffer.alloc(0);
+      socket.on('error', () => {});
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        while (buffer.length >= HEADER) {
+          const cmd = buffer.toString('ascii', 0, 4);
+          const len = buffer.readUInt32LE(12);
+          if (buffer.length < HEADER + len) break;
+          const arg0 = buffer.readUInt32LE(4);
+          const payload = buffer.slice(HEADER, HEADER + len);
+          buffer = buffer.slice(HEADER + len);
+          if (cmd === 'CNXN') releaseCnxn = () => socket.write(encode('CNXN', 0x01000000, 4096, null));
+          else if (cmd === 'OPEN') {
+            const svc = payload.toString('ascii').replace(/\0$/, '');
+            upstreamServices.push(svc);
+            if (svc !== 'shell:premature') socket.write(encode('OKAY', 4001, arg0, null));
+          }
+        }
+      });
+    });
+    const sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      // 1. Client connects, queues OPEN while upstream CNXN is stalled, then disconnects early
+      await new Promise((resolve) => {
+        const c1 = net.connect(port, '127.0.0.1');
+        c1.on('error', () => {});
+        c1.on('connect', () => {
+          c1.write(encode('CNXN', 0x01000000, 4096, 'host::'));
+          c1.write(encode('OPEN', 11, 0, 'shell:early-bye'));
+          setTimeout(() => { c1.destroy(); resolve(); }, 30);
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.ok(releaseCnxn, 'upstream handshake initiated');
+      releaseCnxn();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(upstreamServices, [], 'queued OPEN of disconnected client must not reach sdbd');
+
+      // 2. Client sends WRTE before OKAY sets remoteId: tunnel destroys it cleanly without crashing
+      await new Promise((resolve, reject) => {
+        const c2 = net.connect(port, '127.0.0.1');
+        c2.resume();
+        const timer = setTimeout(() => { c2.destroy(); reject(new Error('WRTE before OKAY was not rejected')); }, 1500);
+        c2.on('error', () => {});
+        c2.on('close', () => { clearTimeout(timer); resolve(); });
+        c2.on('connect', () => {
+          c2.write(Buffer.concat([
+            encode('CNXN', 0x01000000, 4096, 'host::'),
+            encode('OPEN', 22, 0, 'shell:premature'),
+            encode('WRTE', 22, 0, 'bad')
+          ]));
+        });
+      });
+
+      // 3. Pool.close() clears queued packets, streams, and banner state
+      tunnel._pool.queued.push(Buffer.from('stale'));
+      tunnel._pool.streams.set(999, {client: null, clientId: 1, remoteId: -1});
+      tunnel._pool.close();
+      assert.equal(tunnel._pool.queued.length, 0);
+      assert.equal(tunnel._pool.streams.size, 0);
+      assert.equal(tunnel._pool.banner, null);
+    } finally { tunnel.close(); fake.close(); }
+  });
+
+  await check('stale upstream close after reset() does not kill a newly opened upstream', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      const first = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      await echo(first, 'before-reset');
+      const oldUpstream = tunnel._pool.socket;
+      // Simulate reset() right before a new client connects, while oldUpstream's close fires on next tick.
+      tunnel._pool.reset();
+      assert.equal(oldUpstream.destroyed, true);
+      // Wait for fakeSdbd to see the old socket drop before opening the new upstream.
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const second = await sdb.connect({host: '127.0.0.1', port, timeout: 2000});
+      // Synthesize a late close/error event from the superseded upstream socket.
+      oldUpstream.emit('error', new Error('late stale error'));
+      oldUpstream.emit('close');
+      const stream = await echo(second, 'after-stale-close');
+      assert.ok(stream);
+      sdb.close(second);
+    } finally { tunnel.close(); fake.close(); }
+  });
+
+  await check('pipelined invalid frame destroys client without processing trailing OPEN', async () => {
+    const state = {connections: 0, services: [], closedStreams: 0};
+    const fake = fakeSdbd(state), sdbPort = await listen(fake);
+    const {tunnel, port} = await startTunnel(sdbPort);
+    try {
+      await new Promise((resolve, reject) => {
+        const sock = net.connect(port, '127.0.0.1');
+        const timer = setTimeout(() => { sock.destroy(); reject(new Error('pipelined invalid frame not closed')); }, 1500);
+        sock.on('error', () => {});
+        sock.on('close', () => { clearTimeout(timer); resolve(); });
+        sock.on('connect', () => {
+          // Pre-CNXN WRTE (invalid -> destroys client) pipelined with CNXN + OPEN in the same write.
+          sock.write(Buffer.concat([
+            encode('WRTE', 1, 2, 'bad'),
+            encode('CNXN', 0x01000000, 4096, 'host::'),
+            encode('OPEN', 3, 0, 'shell:should-not-run')
+          ]));
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.deepEqual(state.services, [], 'trailing pipelined OPEN after destroy must never run');
+    } finally { tunnel.close(); fake.close(); }
+  });
+
   process.exitCode = failures ? 1 : 0;
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; });
