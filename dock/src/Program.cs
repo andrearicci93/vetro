@@ -2021,7 +2021,8 @@ namespace Launcher
         {
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
             // On a receiver on HDMI the level that counts is the receiver's: the key goes back to Samsung, which passes it on over HDMI-CEC
-            // (the TV's own level would change and nothing would be heard). Optical stays with Vetro (OutputPickerModel.VetroSetsLevel).
+            // (the TV's own level would change and nothing would be heard). The same for an optical soundbar, which follows Samsung's universal
+            // remote or Q-Symphony and not the TV's level (OutputPickerModel.VetroSetsLevel).
             int output;
             bool known = Sound.TryGetSpeakerSelection(out output);
             // The Audio card offers the external output again only once it has been seen playing; the card read it only when it opened, so

@@ -80,15 +80,19 @@ namespace Launcher.Core
         }
 
         /// <summary>
-        /// Whether Vetro's volume bar changes the level itself. Only a receiver on HDMI (2, and TV + receiver and the centre mode: 8, 12, 17)
-        /// sends the key back to Samsung, which passes it to the receiver over HDMI-CEC (static reading, not tried on a TV). Everything else
-        /// stays with Vetro, optical included, as up to the 0.6.9 preview8: handing the key to Samsung on preview10-12 took Vetro's bar away
-        /// from an S95C on optical (export of 2026-11-19). Whether a TV level change moves what an optical soundbar plays is not known yet.
-        /// Unknown (-1) stays with Vetro.
+        /// Whether Vetro's volume bar changes the level itself. A receiver on HDMI (2; TV + receiver and the centre mode: 8, 12, 17) and the
+        /// optical outputs (1; TV + optical 9, 18; optical centre mode 11) send the key back to Samsung instead: Samsung passes it on over
+        /// HDMI-CEC, or to an optical soundbar through its universal remote (IR) or Q-Symphony, while a change of the TV's own level does not
+        /// move the soundbar. Seen on three TVs on 2026-11-20: S95C + IR soundbar, S90D + HW-B650 (1) and S90F with Q-Symphony (9) followed
+        /// Vol with Vetro's bar off and not with it on. TV speakers, Bluetooth, Wi-Fi speakers and unknown (-1) stay with Vetro.
         /// </summary>
         public static bool VetroSetsLevel(int selection)
         {
-            return !(selection == 2 || selection == 8 || selection == 12 || selection == 17);
+            switch (selection)
+            {
+                case 1: case 2: case 8: case 9: case 11: case 12: case 17: case 18: return false;
+                default: return true;
+            }
         }
 
         /// <summary>
