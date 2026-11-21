@@ -62,10 +62,14 @@ function definition(dock, options) {
         description: 'The minimal launcher that replaces Samsung\'s Home while it is switched on.',
         permissions: ['exec'],     // it runs root commands through the agent; a label, as for every plugin
         create: function (ctx) {
-            var vetro = ctx.vetro, timer = null, agentWas = false, ticks = 0, streak = 0, seenChanges = dock.changes;
+            var vetro = ctx.vetro, timer = null, agentWas = false, hadAgent = false, ticks = 0, streak = 0, seenChanges = dock.changes;
 
             function tick() {
                 var up = !!vetro.agentConnected(), edge = up && !agentWas;
+                if (edge) {
+                    if (hadAgent && typeof dock.noteWake === 'function') dock.noteWake();
+                    hadAgent = true;
+                }
                 agentWas = up;
                 if (edge || dock.changes !== seenChanges) { seenChanges = dock.changes; streak = 0; }
                 if (edge || ++ticks >= roundTicks(streak)) {
@@ -93,6 +97,7 @@ function definition(dock, options) {
                 if (p.action === 'refresh') return rebuild();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
+                if (p.action === 'closeIdleHome') return dock.setCloseIdleHome(p.on);
                 if (p.action === 'volumePill') return dock.setVolumePill(p.on);
                 if (p.action === 'volumeEdge') return dock.setVolumeEdge(p.edge);
                 if (p.action === 'numberPad') return dock.setNumberPad(p.on);
@@ -110,7 +115,7 @@ function definition(dock, options) {
                 // switch (POST api/action), which also handles Samsung's autorun, so stopping here never kills it.
                 start: function () {
                     if (timer) return;
-                    agentWas = false; ticks = 0; streak = 0;
+                    agentWas = false; hadAgent = false; ticks = 0; streak = 0;
                     timer = timers.setInterval(tick, tickMs);
                     if (timer && timer.unref) timer.unref();
                 },

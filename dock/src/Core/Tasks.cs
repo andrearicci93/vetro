@@ -51,8 +51,8 @@ namespace Launcher.Core
         {
             "org.tizen.tv-viewer", "org.tizen.menu", "org.tizen.function-osd", "com.samsung.tv.sboard-app",
             "org.tizen.welcome-mode", "org.tizen.hbbtv", "org.tizen.ScreenMirroring-app-tv", "com.samsung.hitcomp",
-            "org.tizen.volume", "org.tizen.screen-saver", "com.samsung.tv.notification",
-            "com.samsung.tv.coba.adagent", "org.tizen.ambientapp",
+            "org.tizen.volume", "org.tizen.volume-app", "org.tizen.screen-saver", "com.samsung.tv.notification",
+            "com.samsung.tv.coba.adagent", "org.tizen.ambientapp", "com.samsung.tv.quicklaunch",
         };
 
         /// <summary>
