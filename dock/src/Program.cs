@@ -733,6 +733,7 @@ namespace Launcher
             if (_tasksOn)
             {
                 StopTaskTimers();
+                CancelTaskOk();   // an OK let go after the panel went away opens nothing
                 if (HideCards()) StartAnimator();
                 return;
             }
@@ -1001,6 +1002,8 @@ namespace Launcher
             if (app == null || app.Closing) return;
             AppEntry e = null;
             foreach (AppEntry a in _apps) if (a.AppId == app.AppId) { e = a; break; }
+            // An app only in All apps opens the way All apps opens it (its launch mode or data), not as a bare id.
+            if (e == null && _allApps != null) foreach (AppEntry a in _allApps) if (a.AppId == app.AppId) { e = a; break; }
             if (e == null) e = new AppEntry(app.AppId, app.Label ?? app.AppId, app.AppId, null);
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             Log("tasks: open " + app.AppId);

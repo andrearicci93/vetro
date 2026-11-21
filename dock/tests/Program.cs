@@ -1530,6 +1530,8 @@ namespace Launcher.Tests
                 T.True(Tasks.IsUserApp("com.samsung.tv.csfs", ui), "Samsung Home is listed (large, comes back on Home)");
                 T.True(!Tasks.IsUserApp("org.tizen.tv-viewer", ui), "live TV protected");
                 T.True(!Tasks.IsUserApp("vetrotvapp.svc", ui), "Vetro protected");
+                T.True(!Tasks.IsUserApp("com.samsung.tv.coba.adagent", ui), "Smart Hub ad agent protected (Samsung's Home loads it)");
+                T.True(!Tasks.IsUserApp("org.tizen.ambientapp", ui), "Ambient app protected (screend starts it again)");
                 T.True(!Tasks.IsUserApp("capi-bnr-tv", ui), "backup service (bnr-service) hidden");
                 T.True(!Tasks.IsUserApp("com.samsung.tv.preview-updater", ui), "Home preview updater (IotPreviewd) hidden");
                 T.True(!Tasks.IsUserApp("x.y", new AppInfo { Component = "svcapp" }), "services hidden");
@@ -1537,6 +1539,16 @@ namespace Launcher.Tests
                 T.True(!Tasks.IsUserApp("x.y", null), "unknown hidden");
                 T.Eq(Tasks.DisplayName("com.samsung.tv.csfs", ui, null), "Samsung Home", "friendly name");
                 T.Eq(Tasks.DisplayName("a.b", new AppInfo { Label = "Pkg" }, "Catalog"), "Catalog", "catalog label wins");
+            });
+
+            T.Run("tasks: a row stays closing only while the same process runs, and not past the timeout", () =>
+            {
+                long hz = 1000, limit = (long)(Tasks.ClosingTimeoutSeconds * hz);
+                T.True(Tasks.StillClosing(true, 42, 42, 1000, 1000 + 2 * hz, limit), "same pid, 2 s after the close: still closing");
+                T.True(!Tasks.StillClosing(true, 42, 42, 1000, 1000 + limit, limit), "same pid past the timeout: the close failed, the row is usable again");
+                T.True(!Tasks.StillClosing(true, 42, 43, 1000, 1000 + hz, limit), "a new pid is the app started again, not closing");
+                T.True(!Tasks.StillClosing(false, 42, 42, 1000, 1000 + hz, limit), "never closed");
+                T.True(Tasks.ClosingTimeoutSeconds > 2.6, "longer than the close itself (terminate, 2 s, kill) and the 2.6 s look after it");
             });
 
             T.Run("tasks: /proc parsing and process-tree sums", () =>

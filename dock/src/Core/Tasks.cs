@@ -44,12 +44,15 @@ namespace Launcher.Core
         /// <summary>
         /// UI apps that are part of the TV itself: closing them breaks the picture, the menus or Vetro.
         /// Samsung's Home (csfs) is listed on purpose: it is large and comes back on the next Home press.
+        /// The Smart Hub ad agent is part of what Samsung's Home loads, and screend starts the Ambient app again within seconds
+        /// of a close (both reported running on an S90C, PR #270 by swiezaczek).
         /// </summary>
         private static readonly HashSet<string> Protected = new HashSet<string>(StringComparer.Ordinal)
         {
             "org.tizen.tv-viewer", "org.tizen.menu", "org.tizen.function-osd", "com.samsung.tv.sboard-app",
             "org.tizen.welcome-mode", "org.tizen.hbbtv", "org.tizen.ScreenMirroring-app-tv", "com.samsung.hitcomp",
             "org.tizen.volume", "org.tizen.screen-saver", "com.samsung.tv.notification",
+            "com.samsung.tv.coba.adagent", "org.tizen.ambientapp",
         };
 
         /// <summary>
@@ -103,6 +106,19 @@ namespace Launcher.Core
             foreach (RunningApp a in apps)
                 if (a != null && a.AppId != null && seen.Add(a.AppId)) list.Add(a);
             return list;
+        }
+
+        /// <summary>How long a row may say "closing…" while the app keeps the same process: after it the close is taken as failed.</summary>
+        public const double ClosingTimeoutSeconds = 6.0;
+
+        /// <summary>
+        /// Whether a row that was closing still is in a new look: only while the same process is running and the close was asked
+        /// less than <paramref name="limit"/> ago (all in Stopwatch ticks). A kill that fails would otherwise leave it closing,
+        /// dimmed and unable to open or close again, until the dock restarts.
+        /// </summary>
+        public static bool StillClosing(bool wasClosing, int oldPid, int newPid, long closingAt, long now, long limit)
+        {
+            return wasClosing && oldPid == newPid && now - closingAt < limit;
         }
 
         /// <summary>Parses `pkginfo --app ID` ("Key: value" lines). Null when it holds no component.</summary>

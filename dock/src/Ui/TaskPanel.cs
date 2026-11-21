@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Launcher.Core;
 using Launcher.Native;
@@ -20,6 +21,7 @@ namespace Launcher.Ui
             public string CpuText, MemText;
             public string IconKey;   // its icon's key in Dock.Icons, null without one
             public bool ShownClosing;
+            public long ClosingAt;   // Stopwatch ticks when the close was asked
             public int Alpha = -1;
             public int NameW, ValueH, NameH;
             // Measured when the texts are set (never per frame): the right-aligned figures' widths and every line height.
@@ -62,12 +64,15 @@ namespace Launcher.Ui
                 _rows.RemoveAt(i);
             }
             _rows.Clear();
+            long now = Stopwatch.GetTimestamp();
+            long limit = (long)(Tasks.ClosingTimeoutSeconds * Stopwatch.Frequency);
             foreach (RunningApp a in apps)
             {
                 Row r;
                 if (_byId.TryGetValue(a.AppId, out r))
                 {
-                    a.Closing = a.Closing || (r.App.Closing && r.App.Pid == a.Pid);   // still closing until it is gone
+                    // Still closing until it is gone, or until the close is taken as failed: then it can be opened or closed again.
+                    a.Closing = a.Closing || Tasks.StillClosing(r.App.Closing, r.App.Pid, a.Pid, r.ClosingAt, now, limit);
                     r.App = a;
                 }
                 else { r = NewRow(a); _byId[a.AppId] = r; }
@@ -86,6 +91,7 @@ namespace Launcher.Ui
             Row r;
             if (app == null || !_byId.TryGetValue(app.AppId, out r)) return;
             r.App.Closing = true;
+            r.ClosingAt = Stopwatch.GetTimestamp();
             UpdateRowText(r);
             Changed();
             r.Alpha = -1;

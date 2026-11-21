@@ -821,7 +821,7 @@ namespace Tuner
                 else StopHold();
             }
             else if (GuideOpen) GuideMove(_holdCode);
-            else if (_listView.Visible) OnRepeat(_holdCode);
+            else if (_listView.Visible) OnRepeat(_holdCode, true);
             else StopHold();
         }
 
@@ -1192,11 +1192,12 @@ namespace Tuner
         /// A key held down (the remote's auto-repeat): in the list it runs on, and the longer it is held the more rows each step moves
         /// (1, then 3, then 8), so a long list is crossed in a moment. Nothing else repeats.
         /// </summary>
-        private static void OnRepeat(int code)
+        private static void OnRepeat(int code, bool fromHold = false)
         {
             // A remote that sends repeat events as well as releases (IR through rc-core): the hold timer already steps this key, and
             // both together moved the list and the guide twice as fast.
-            if (code == _holdCode && _holdTimer != IntPtr.Zero) return;
+            // The hold timer's own step (fromHold) must pass, or a held key moved the list one row only.
+            if (!fromHold && code == _holdCode && _holdTimer != IntPtr.Zero) return;
             if (_active && GuideOpen) { _repeatLog++; if (_repeatLog <= 3 || _repeatLog % 10 == 0) Log("repeat " + code + " #" + _repeatLog); }
             if (_active && GuideOpen && (code == KeyUp || code == KeyDown || code == KeyLeft || code == KeyRight)) { GuideMove(code); return; }   // if the remote does send repeat events
             if (!_active || !_listView.Visible || _list == null) return;
