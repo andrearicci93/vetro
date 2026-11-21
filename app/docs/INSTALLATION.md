@@ -147,7 +147,7 @@ Good to know:
 
 Vetro changes the TV in several places (it can replace Home, stop services, disable components, block domains), and a plain uninstall leaves some of that behind: the domain filter keeps hiding names from `/etc/hosts` and the saved settings stay in the share folder. So restore first, then remove the app.
 
-1. **Restore the TV.** Open the dashboard, *Quick settings*, *Maintenance*, **Restore the TV**. Press *Review what will change* to see the list, then *Restore everything*. Nothing changes before you confirm. The report says what it could not put back (packages removed from the Task manager, values written in the TV settings pages).
+1. **Restore the TV.** Open the dashboard, *Quick settings*, *General*, **Restore the TV**. Press *Review what will change* to see the list, then *Restore everything*. Nothing changes before you confirm. The report says what it could not put back (packages removed from Apps and processes, values written in the TV settings pages).
 2. **Optional: remove Vetro's saved data.** In **Remove Vetro**, *Remove Vetro's saved data*. It is offered only when nothing is left to put back, because those files hold the values used to restore. A package uninstall does not remove them.
 3. **Restart the TV.** This clears temporary changes and reloads Home.
 4. **Remove the app on the TV.** Open *Apps*, go to the settings icon of the Apps screen, select Vetro and choose *Delete*. Menu names vary by model and year.
@@ -155,7 +155,7 @@ Vetro changes the TV in several places (it can replace Home, stop services, disa
 6. **Developer Mode.** If you turned it on only for Vetro, switch it off, or set *Host PC IP* back, in the same Apps screen.
 7. **Home Assistant.** If you used the bridge, delete the TV device there; its entities stay until you do.
 
-Vetro cannot remove itself: its own package is protected from the Task manager on purpose.
+Vetro cannot remove itself: its own package is protected in Apps and processes on purpose.
 
 ## If the dashboard says the root agent is not connected
 

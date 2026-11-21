@@ -35,4 +35,4 @@ The local filter refuses these and exports never include them or a parent domain
 | `time.samsungcloudsolution.com`, `time.samsungcloudsolution.net`, `time.samsungqbe.cn` | `time-client` calls `/openapi/timesync` here to set the clock |
 | `svdca.samsungqbe.com` | Samsung’s Certificate Manager fetches the developer certificate here (see INSTALLATION.md) |
 
-`sas.samsungcloudsolution.com` and `.net` are the software-update servers (`SWU::Core::Strategies::CServerManager`). They are not refused: blocking them stops firmware updates, which is a decision for the owner. Quick settings has a switch for the same goal that is easier to undo: Support > Software Update > Auto update.
+`sas.samsungcloudsolution.com` and `.net` are the software-update servers (`SWU::Core::Strategies::CServerManager`). They are not refused: blocking them stops firmware updates, which is a decision for the owner. Quick settings has a switch for the same goal that is easier to undo and covers every update path, not only those servers: General → Essential settings → **Block firmware and software updates** (it needs root).
