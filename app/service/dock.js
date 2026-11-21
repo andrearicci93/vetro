@@ -485,7 +485,7 @@ Dock.prototype.cardsShown = function () {
 // agent had been relaunched at wake). In its own unit it survives standby. KillSignal is SIGKILL because the
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
-    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
+    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR + ' DOTNET_EnableDiagnostics=0 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1';
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
@@ -1230,11 +1230,16 @@ Dock.prototype.iconFile = function (slug) {
 // it. Never during the boot window (the Q80A stalls without it), and only once: opening it again from the dock is deliberate.
 Dock.prototype.closeHomeOnce = function (samsungHome) {
     if (this.homeClosed || this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
-    this.homeClosed = true;
     // Only the run of the service that came up with the TV does it: after a later restart (an update, a crash) a Samsung
     // Home on screen is one the user opened from the launcher, and closing it would take it away from them.
-    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) return Promise.resolve();
-    return this.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) { this.homeClosed = true; return Promise.resolve(); }
+    var self = this;
+    var cmd = 'f=$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null | sed -n "s/.*value = \\([^ (]*\\).*/\\1/p"); ' +
+        'case "$f" in com.samsung.tv.csfs|com.samsung.tv.home.*|com.samsung.tv.coba.*) exit 0;; esac; ' +
+        HOME_KILL.concat([PREVIEW_UNIT]).map(function (id) { return 'app_launcher -k ' + id; }).join('; ') + '; true';
+    return this.execute(cmd, 8000).then(function (r) {
+        if (r && !r.exit_code && !r.timed_out) self.homeClosed = true;
+    }).catch(function () {});
 };
 
 // The Vetro launcher at power-on (#206; the owner's choice of 2026-11-19). Firmware that boots through a "root app" (2022 and later:

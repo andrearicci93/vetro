@@ -25,7 +25,7 @@ function fixture(options) {
         homeData: options.homeData == null ? HOME_DATA : options.homeData, log: options.log || ''};
     const execute = async function (cmd) {
         tv.scripts.push(cmd);
-        if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
+        if (/app_launcher -k /.test(cmd)) { if (!cmd.includes('current_fullscreen_appid') || !tv.fullscreenHome) tv.csfs = false; return {exit_code: 0, stdout: ''}; }
         const script = /^echo \S+ \| base64 -d \| sh$/.test(cmd) ? Buffer.from(cmd.split(' ')[1], 'base64').toString() : cmd;   // the running check goes unwrapped
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
@@ -550,6 +550,30 @@ function fixture(options) {
         t.dock.leaveCustom = async () => { throw new Error('no agent'); };
         assert.equal(await t.dock.giveUpCustom('the app is gone.'), 'failed');
         assert.equal(told, 2);
+    }
+    // closeHomeOnce kills all HOME_KILL apps (+ preview-updater), skips when Samsung Home/Art is fullscreen, and retries if execute failed.
+    {
+        const ch = fixture({running: true});
+        ch.dock.patchState({enabled: true});
+        ch.dock.serviceStart = 50; ch.dock.uptime = () => 400;
+        let killAttempts = 0;
+        const origExec = ch.dock.execute;
+        ch.dock.execute = async cmd => {
+            if (cmd.includes('app_launcher -k com.samsung.tv.csfs')) {
+                killAttempts++;
+                assert.ok(cmd.includes('current_fullscreen_appid') && cmd.includes('com.samsung.tv.home.*'), 'guards fullscreen Home/Art Mode');
+                assert.ok(cmd.includes('com.samsung.tv.home.sidebar') && cmd.includes('com.samsung.tv.home.media') && cmd.includes('com.samsung.tv.preview-updater'), 'kills all HOME_KILL apps and preview-updater');
+                if (killAttempts === 1) return {exit_code: 1, stdout: '', stderr: 'busy'};
+                ch.tv.csfs = false; return {exit_code: 0, stdout: ''};
+            }
+            return origExec(cmd);
+        };
+        await ch.dock.supervise(true);
+        assert.equal(ch.dock.homeClosed, undefined, 'failed closeHomeOnce does not mark homeClosed');
+        await ch.dock.supervise(true);
+        assert.equal(ch.dock.homeClosed, true);
+        assert.equal(killAttempts, 2);
+        assert.match(ch.dock.startScript(), /DOTNET_EnableDiagnostics=0 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1/);
     }
 
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
