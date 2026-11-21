@@ -251,29 +251,61 @@ Updater.prototype.apply = function (raw, expectedSha256) {
 
 // Everything the root shell needs is inline: it never reads a list from the work folder. Staged files are checked
 // against the hashes of the verified bundle just before they are copied.
+// The list of files is written once, as a shell variable, and each step is a loop over its words (`set -- $L`, see overList:
+// no pipe, whose loop would run in a subshell that an `exit` only leaves, and no here-document, which bash writes to a
+// temporary file that the TV might not let the root shell create). The root agent takes 64 KiB per command; 0.7.0 repeated each
+// path about ten times (about 1 KB per changed file), this costs about 150 bytes per file, so a bundle of MAX_FILES fits
+// (rooting/tests/update-size.test.cjs measures both).
+// What the script leaves on disk (backup/, backup.json, pending.json, ok-*, rolled-back) is the same as 0.7.0's: the
+// watchdog of a 0.7.0 that installs this version, and a Go back from here over an update 0.7.0 applied, both rely on it.
+// Every name passed the bundle's okPath and every hash is hex, so nothing in the lists needs quoting or can expand.
 Updater.prototype._applyScript = function (from, to, changed, existing, added, hashes, dock) {
     var I = sq(this.installDir), W = sq(this.workDir);
-    var lines = ['set -e', 'I=' + I, 'W=' + W, 'S="$W/staging"', 'B="$W/backup"',
-        'rm -rf "$B"; mkdir -p "$B"; rm -f "$W"/ok-* "$W/pending.json" "$W/backup.json"'];
-    changed.forEach(function (n) {
-        lines.push('[ "$(sha256sum "$S/' + n + '" | cut -d" " -f1)" = "' + hashes[n] + '" ] || { echo "staged file changed: ' + n + '" >&2; exit 3; }');
+    // One line per changed file: hash, e (it exists here and is saved first) or a (added), its path. The folder is taken
+    // from the path in the loop (FOLDER), which needs no dirname binary.
+    var list = changed.map(function (n) {
+        if (!SHA256_RE.test(hashes[n] || '')) throw fail('Bad hash for ' + n);
+        return hashes[n] + ' ' + (existing.indexOf(n) >= 0 ? 'e' : 'a') + ' ' + listName(n);
     });
-    existing.forEach(function (n) { lines.push('mkdir -p "$B/' + path.dirname(n) + '"; cp -p "$I/' + n + '" "$B/' + n + '"'); });
+    var lines = ['set -e', 'I=' + I, 'W=' + W, 'S="$W/staging"', 'B="$W/backup"',
+        'rm -rf "$B"; mkdir -p "$B"; rm -f "$W"/ok-* "$W/pending.json" "$W/backup.json"',
+        "L='" + list.join('\n') + "'"];
+    lines.push.apply(lines, overList('L', ['h', 'k', 'n'], [
+        '[ "$(sha256sum "$S/$n" | cut -d" " -f1)" = "$h" ] || { echo "staged file changed: $n" >&2; exit 3; }']));
+    lines.push.apply(lines, overList('L', ['h', 'k', 'n'], ['[ "$k" = e ] || continue', FOLDER, 'mkdir -p "$B/$d"; cp -p "$I/$n" "$B/$n"']));
     // The list of what Go back restores appears only now, with the backup it names: a script that never ran (the TV busy, the agent
     // gone) or stopped before this line leaves no list, so Go back is not offered over files of an older update.
     lines.push('mv -f "$W/backup.json.next" "$W/backup.json"');
-    // The copy is one && chain, not `set -e` lines: if a copy fails half way (disk full, a read-only folder) the files already
-    // replaced are put back at once, because no watchdog exists yet at this point and a mix of old and new files would
-    // otherwise stay until the next restart. (`set -e` is ignored inside an `||` list, so the chain is explicit.)
-    var chain = changed.map(function (n) {
-        return 'mkdir -p "$I/' + path.dirname(n) + '" && cp "$S/' + n + '" "$I/' + n + '.vnew" && chmod 644 "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"';
-    }).join(' && ');
-    var undo = this._restoreLines(existing, added).concat(changed.map(function (n) { return 'rm -f "$I/' + n + '.vnew"'; }));
-    lines.push(chain + ' || {', undo.join('\n'), 'echo "copy failed: the previous files were put back" >&2; exit 4', '}');
+    // If a copy fails half way (disk full, a read-only folder) the files already replaced are put back at once, because no
+    // watchdog exists yet at this point and a mix of old and new files would otherwise stay until the next restart. The loop
+    // stops at the first failure and the undo puts back every saved file and removes every added one and every .vnew; each
+    // undo step ends in `|| :` so that one failure there cannot stop the others under `set -e`.
+    lines.push('f=0');
+    lines.push.apply(lines, overList('L', ['h', 'k', 'n'], [
+        FOLDER,
+        'mkdir -p "$I/$d" && cp "$S/$n" "$I/$n.vnew" && chmod 644 "$I/$n.vnew" && mv -f "$I/$n.vnew" "$I/$n" || { f=1; break; }']));
+    lines.push('if [ "$f" = 1 ]; then');
+    lines.push.apply(lines, overList('L', ['h', 'k', 'n'], [
+        'if [ "$k" = e ]; then cp -p "$B/$n" "$I/$n.vnew" && mv -f "$I/$n.vnew" "$I/$n" || :; else rm -f "$I/$n" || :; fi',
+        'rm -f "$I/$n.vnew" || :']));
+    lines.push('echo "copy failed: the previous files were put back" >&2; exit 4', 'fi');
     lines.push("echo '" + JSON.stringify({ from: from, to: to, dock: dock, at: Date.now() }) + "' > \"$W/pending.json\"");
     lines.push(detached(this._watchdog(to, existing, added, dock)), detached('sleep 3; ' + this.restartCommand), 'exit 0');
     return lines.join('\n') + '\n';
 };
+
+// A name for a list line: the same characters sq() allows, so it splits on spaces and expands to nothing.
+function listName(n) { if (!SAFE_PATH_RE.test(n)) throw fail('Unsafe path'); return n; }
+// The folder of $n in $d ("." for a file at the top, as path.dirname gives).
+var FOLDER = 'case "$n" in */*) d="${n%/*}" ;; *) d=. ;; esac';
+// A loop over the list in variable `name`, taken as words (`set -f`: no globbing; every word is a hex hash, a one-letter
+// flag or a safe path, so the default IFS splits it exactly), `vars.length` words at a time, with `body` lines inside.
+// `continue`, `break` and `exit` work as in any loop: it runs in the script's own shell.
+function overList(name, vars, body) {
+    var take = vars.map(function (v, i) { return v + '=$' + (i + 1); }).join(' ') + '; shift ' + vars.length;
+    return ['set -f; set -- $' + name, 'while [ $# -ge ' + vars.length + ' ]; do', '  ' + take]
+        .concat(body.map(function (l) { return '  ' + l; }), ['done']);
+}
 
 // Waits for the new version to confirm itself (confirm() below); otherwise puts the old files back and restarts.
 Updater.prototype._watchdog = function (to, existing, added, dock) {
@@ -286,11 +318,26 @@ Updater.prototype._watchdog = function (to, existing, added, dock) {
     lines.push('echo rolled-back > "$W/rolled-back"', this.restartCommand);
     return lines.join('\n');
 };
+// Puts back the saved files ($B) over the installed ones ($I) and removes the added ones, in a loop over one list (e = saved,
+// a = added). It behaves as 0.7.0's `cp && mv` line per file did: under the Go back's `set -e` a failed copy is passed over
+// and a failed move stops the script (the `if` keeps a failed copy of the LAST file from failing the whole loop).
 Updater.prototype._restoreLines = function (existing, added) {
-    var lines = [];
-    existing.forEach(function (n) { lines.push('cp -p "$B/' + n + '" "$I/' + n + '.vnew" && mv -f "$I/' + n + '.vnew" "$I/' + n + '"'); });
-    added.forEach(function (n) { lines.push('rm -f "$I/' + n + '"'); });
-    return lines;
+    var list = existing.map(function (n) { return 'e ' + listName(n); }).concat(added.map(function (n) { return 'a ' + listName(n); }));
+    return ["R='" + list.join('\n') + "'"].concat(overList('R', ['k', 'n'], [
+        'case "$k" in',
+        '    e) if cp -p "$B/$n" "$I/$n.vnew"; then mv -f "$I/$n.vnew" "$I/$n"; fi ;;',
+        '    a) rm -f "$I/$n" ;;',
+        'esac']));
+};
+
+// The script of the manual Go back (rollback below), from the saved list.
+Updater.prototype._rollbackScript = function (meta) {
+    var lines = ['set -e', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'rm -f "$W"/ok-* "$W/pending.json"']
+        .concat(this._restoreLines(meta.files, meta.added));
+    if (meta.dock === true && this.dockStopCommand) lines.push(this.dockStopCommand);
+    lines.push("echo '" + JSON.stringify({ state: 'rolled-back', from: meta.to, to: meta.from, at: Date.now() }) + "' > \"$W/result.json\"",
+        detached('sleep 3; ' + this.restartCommand), 'exit 0');
+    return lines.join('\n') + '\n';
 };
 
 // Manual way back to the files saved before the last update.
@@ -301,13 +348,10 @@ Updater.prototype.rollback = function () {
     if (!this._backupFits(meta)) return Promise.reject(fail('The saved files are from another version of Vetro (' + meta.from + ' to ' + meta.to + '), not from this one', 'other-backup'));
     if (this.busy) return Promise.reject(fail('An update is already in progress', 'busy'));
     var self = this;
+    var script;
+    try { script = this._rollbackScript(meta); } catch (e) { return Promise.reject(e); }
     this.busy = true;
-    var lines = ['set -e', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'rm -f "$W"/ok-* "$W/pending.json"']
-        .concat(this._restoreLines(meta.files, meta.added));
-    if (meta.dock === true && this.dockStopCommand) lines.push(this.dockStopCommand);
-    lines.push("echo '" + JSON.stringify({ state: 'rolled-back', from: meta.to, to: meta.from, at: Date.now() }) + "' > \"$W/result.json\"",
-        detached('sleep 3; ' + this.restartCommand), 'exit 0');
-    return this.execute(lines.join('\n') + '\n', 60000).then(function (r) {
+    return this.execute(script, 60000).then(function (r) {
         if (!r || r.exit_code !== 0 || r.timed_out) throw fail('The previous files could not be put back', 'rollback-failed');
         return { ok: true, from: meta.to, to: meta.from, restarting: true };
     }).then(function (res) { self.busy = false; return res; }, function (e) { self.busy = false; throw e; });

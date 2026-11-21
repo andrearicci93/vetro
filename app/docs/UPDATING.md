@@ -8,6 +8,14 @@ The **Update Vetro** tile on the TV screen does the same without a browser. The 
 
 This is a file swap done with the root agent, not a new install. It cannot change what the package declares in `config.xml` (privileges, service flags). When a version does, Vetro says so and you install it once more with Apps2Samsung.
 
+## Which versions can update
+
+The TV runs the updater of the version it is on. That updater writes the whole swap as one shell script for the root agent, which takes at most 64 KiB.
+
+- **0.7.0 and later** update from here. The 0.7.0 updater's script takes about 1 KB for each file that differs, so about 60 files may differ from 0.7.0, whichever release changed them (a TV left on 0.7.0 goes straight to the newest update); `rooting/release.cjs` refuses a bundle that a TV on 0.7.0 could not apply. From 0.7.1 the script lists the files once and loops over them, about 150 bytes per file, so an update can replace the whole package.
+- **0.5.0** cannot take 0.7.1 or a later version: **Check for update** answers *Path not allowed in an update: payload/net6/…* and nothing on the TV changes. Install the new version with Apps2Samsung. (Since 0.7.1 updates carry `payload/net6`, which the 0.5.0 updater refuses; without it, a 0.5.0 would accept the update and then fail at the root agent half way.)
+- **Versions before 0.5.0** have no updater: install with Apps2Samsung.
+
 ## What an update covers
 
 Everything Vetro ships except `config.xml`: the service and dashboard (`service/`), the **launcher** (`native/dock/`: the program and its pictures), `native/TvState.dll`, the root helpers (`payload/`, picked up when the service starts again), `index.html` and the icon. Plugins and settings live outside the package and stay.

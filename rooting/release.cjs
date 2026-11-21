@@ -31,14 +31,14 @@ function keygen(folder) {
 
 // What never goes into a bundle: the Samsung package's own files (a file swap cannot change them) and the notices.
 const PACKAGE_ONLY = /^(?:config\.xml|LICENSE|THIRD_PARTY_NOTICES\.md|notices\/[A-Za-z0-9_.-]+)$/;
-// A TV checks the bundle with the updater it runs. 0.5.x refuses any subfolder of payload/ and then refuses the whole
-// bundle, so payload/net6 stays out until no 0.5.x is left to update (it has not changed since 0.5.0) (#226).
-const OLD_UPDATER = /^payload\/[^/]+\//;
+// A TV checks the bundle with the updater it runs. Since 0.7.1 the bundle carries payload/net6 (unchanged since 0.5.0, so
+// nothing to copy on a 0.7.0 TV): 0.5.x refuses any subfolder of payload/, so a TV still on 0.5.0 refuses the whole bundle
+// when it checks it, before it writes anything, and installs with Apps2Samsung instead (#226; owner's call, 2026-11-21).
 
 function buildBundle(privatePem) {
     const info = {};
     const all = collectIntegration().map(f => ({ name: decodeURIComponent(f.uri), data: f.data }));
-    const files = all.filter(f => updater.okPath(f.name) && !OLD_UPDATER.test(f.name));
+    const files = all.filter(f => updater.okPath(f.name));
     // A file that is neither shipped nor package-only would be left behind on every TV without a word: stop instead.
     const lost = all.filter(f => !updater.okPath(f.name) && !PACKAGE_ONLY.test(f.name)).map(f => f.name);
     if (lost.length) throw new Error('Files the updater refuses, so no update would carry them: ' + lost.join(', '));
@@ -65,10 +65,8 @@ function build(folder) {
     const built = buildBundle(privatePem);
     // Check what was just written exactly as a TV would.
     updater.verifyBundle(built.raw, publicPem);
-    // And that a TV still on 0.5.0 can apply it: its updater runs everything as one script of at most 64 KiB.
-    const parsed = JSON.parse(built.raw), shipped = Object.keys(parsed.files).map(n => ({ name: n, data: Buffer.from(parsed.files[n], 'base64') }));
-    const tooBig = require('./update-size.cjs').measure(shipped).filter(r => r.margin <= 0);
-    if (tooBig.length) throw new Error('A TV on 0.5.0 could not apply this bundle: ' + tooBig.map(r => r.build + ' ' + r.bytes + ' bytes').join(', ') + ' (limit 65536)');
+    // And what each published version still on TVs does with it (refuses at once, or applies it in one 64 KiB script).
+    checkReach(built.raw, publicPem).forEach(line => console.log(line));
     const keyInPackage = require('../app/service/update-key.js');
     if (keyInPackage && keyInPackage.trim() !== publicPem.trim()) throw new Error('This key does not match app/service/update-key.js: TVs would refuse the bundle');
     if (!require('../app/service/plugin-key.js')) console.warn('Warning: app/service/plugin-key.js has no key, so unsigned plugins require Developer mode (this is a different key from the update key)');
@@ -83,7 +81,33 @@ function build(folder) {
     console.log('wrote ' + path.join(dir, 'update-index.json'));
 }
 
-module.exports = { buildBundle, keygen, build };
+// A TV runs the updater of the version it is on, so a bundle is checked with each published one (update-size.cjs):
+// - 0.7.0 must accept it (paths, file count, size) and fit its apply script in the root agent's 64 KiB;
+// - 0.5.0 must refuse it when it checks it, or fit too: a 0.5.0 that applies an oversized bundle fails at the root agent
+//   after it has already rewritten its Go back list.
+// Throws when one of these does not hold; otherwise returns one line per version for the release log.
+function checkReach(raw, publicPem) {
+    const size = require('./update-size.cjs');
+    const parsed = JSON.parse(raw), shipped = Object.keys(parsed.files).map(n => ({ name: n, data: Buffer.from(parsed.files[n], 'base64') }));
+    const lines = [];
+    require('./tests/fixtures/update-from-070/updater.js').verifyBundle(raw, publicPem);
+    // The Update Vetro tile of the TV page downloads at most 8 MiB of bundle text (BUNDLE_MAX in 0.7.0's screen-controls.js).
+    if (Buffer.byteLength(raw) > 8 * 1024 * 1024) throw new Error('The bundle is ' + Buffer.byteLength(raw) + ' bytes: the Update Vetro tile of 0.7.0 takes 8 MiB at most');
+    const from070 = size.measure(shipped, '0.7.0');
+    const over = from070.filter(r => r.margin <= 0);
+    if (over.length) throw new Error('A TV on 0.7.0 could not apply this bundle: ' + over.map(r => r.changed + ' files, ' + r.bytes + ' bytes').join('; ') + ' (limit ' + size.LIMIT + '). Fewer changed files, or leave 0.7.0 behind too');
+    lines.push('from 0.7.0: ' + from070.map(r => r.changed + ' files differ (' + r.existing + ' changed, ' + r.added + ' new), script ' + r.bytes + ' bytes, margin ' + r.margin).join('; '));
+    const refused = size.refused(shipped, '0.5.0');
+    if (refused.length) lines.push('from 0.5.0: refused when checked ("Path not allowed in an update: ' + refused[0] + '"); those TVs install with Apps2Samsung');
+    else {
+        const from050 = size.measure(shipped, '0.5.0'), bad = from050.filter(r => r.margin <= 0);
+        if (bad.length) throw new Error('A TV on 0.5.0 would accept this bundle and then fail to apply it (' + bad.map(r => r.bytes + ' bytes').join(', ') + '): ship a payload subfolder so that it refuses it at the check');
+        lines.push('from 0.5.0: fits (margin ' + Math.min.apply(null, from050.map(r => r.margin)) + ')');
+    }
+    return lines;
+}
+
+module.exports = { buildBundle, checkReach, keygen, build };
 if (require.main === module) {
     try {
         const [command, folder] = process.argv.slice(2);

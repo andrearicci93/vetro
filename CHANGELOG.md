@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.1 — unreleased
+
+### Updates
+
+- **From 0.5.0, install 0.7.1 with Apps2Samsung.** The 0.5.0 updater writes the whole update as one script, which the root agent takes up to 64 KiB only, and 0.7.1 changes more files than that holds. A TV on 0.5.0 now refuses the update as soon as it checks it (*Path not allowed in an update: payload/net6/…*), before anything changes, instead of failing half way through. TVs on 0.7.0 update from Quick settings as before.
+- **An update can replace every file of Vetro at once.** The update script lists the files once and loops over them, about 150 bytes per file instead of about 1 KB, so from 0.7.1 on a whole package fits. Go back and the watchdog keep the same files on the TV, and Go back from 0.7.1 also undoes the update that 0.7.0 applied. Tried with bash and dash against a test folder; not yet on a TV.
+- **The .NET 6 root helpers are in updates again** (`payload/net6`, #226). They have not changed since 0.5.0, so a TV on 0.7.0 already has the same files and nothing is copied.
+
 ## 0.7.0 — 2026-11-21
 
 Vetro now draws its own TV: a launcher with your own row and a Control center, a live TV screen, and its own volume bar and number pad, all in one place in the dashboard (Vetro UI).
