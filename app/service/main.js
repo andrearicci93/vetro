@@ -912,6 +912,59 @@ function handleLeftovers(req,res) {
         leftovers.clear().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
     });
 }
+// --- OOM protection & dotnet-free TvState --------------------------------------------------------
+var INT32_REPLY_RE = /int32\s+(-?\d+)/g;
+var SRC_VCONF_RE = /value = (-?\d+) \(Int32\)/;
+var TVM_VCONF_RE = /value = (True|true|1|False|false|0)\b/;
+var TV_STATE_CMD = [
+    'echo "__VOL__"; dbus-send --system --reply-timeout=2000 --print-reply=literal --dest=org.tizen.speakermanager /Org/Tizen/SpeakerManagerInternal org.tizen.speakermanager.GetSpeakerVolume 2>/dev/null || echo "__FAIL__"',
+    'echo "__MUTE__"; dbus-send --system --reply-timeout=2000 --print-reply=literal --dest=org.tizen.speakermanager /Org/Tizen/SpeakerManagerInternal org.tizen.speakermanager.GetSpeakerMute 2>/dev/null || echo "__FAIL__"',
+    'echo "__SRC__"; vconftool get memory/system/source_type 2>/dev/null || true',
+    'echo "__TVM__"; vconftool get memory/org.tizen.tv-viewer/mute_status 2>/dev/null || true',
+    'true'
+].join('; ');
+function parseInt32List(text) {
+    var out = [], m;
+    INT32_REPLY_RE.lastIndex = 0;
+    while ((m = INT32_REPLY_RE.exec(String(text || '')))) out.push(Number(m[1]));
+    return out;
+}
+function parseFastTvState(text) {
+    var raw = String(text || '');
+    var volSec = (raw.split('__VOL__')[1] || '').split('__MUTE__')[0] || '';
+    var muteSec = (raw.split('__MUTE__')[1] || '').split('__SRC__')[0] || '';
+    var srcSec = (raw.split('__SRC__')[1] || '').split('__TVM__')[0] || '';
+    var tvmSec = raw.split('__TVM__')[1] || '';
+    if (volSec.indexOf('__FAIL__') >= 0 && muteSec.indexOf('__FAIL__') >= 0) return null;
+    var vols = parseInt32List(volSec), mutes = parseInt32List(muteSec);
+    var volume = vols.length >= 2 && vols[1] === 0 && vols[0] >= 0 && vols[0] <= 100 ? vols[0] : null;
+    var spkMuted = mutes.length >= 2 && mutes[1] === 0 && (mutes[0] === 0 || mutes[0] === 1) ? (mutes[0] === 1) : null;
+    var tvmM = TVM_VCONF_RE.exec(tvmSec);
+    var tvMuted = tvmM ? (tvmM[1] === 'True' || tvmM[1] === 'true' || tvmM[1] === '1') : null;
+    var muted = spkMuted === null && tvMuted === null ? null : (spkMuted === true || tvMuted === true);
+    var srcM = SRC_VCONF_RE.exec(srcSec);
+    var type = srcM ? Number(srcM[1]) : null;
+    var source = type === 0 ? 'TV' : (type >= 13 && type <= 16 ? 'HDMI' + (type - 12) : null);
+    return { volume: volume, muted: muted, source: source, sourceType: type };
+}
+function readTvStateFast() {
+    return agentExecute(TV_STATE_CMD, 6000).then(function (r) {
+        if (!r || r.exit_code || r.timed_out) return tvState.read();
+        var parsed = parseFastTvState(r.stdout);
+        return parsed || tvState.read();
+    }).catch(function () { return tvState.read(); });
+}
+function protectVetroMemory() {
+    var pid = Number(process.pid);
+    if (typeof pid !== 'number' || pid % 1 !== 0 || pid <= 0) return;
+    var cmd = 'p=' + pid + '; pp=$(awk \'/^PPid:/{print $2}\' /proc/$p/status 2>/dev/null); ' +
+        'for x in $p $pp $(pgrep -f "vetrotvapp|tvlauncher-dotnet|vetro-tuner|SamsungTvRemoteInputAgent" 2>/dev/null); do ' +
+        '[ -n "$x" ] || continue; ' +
+        'busctl --timeout=2 call org.tizen.resourced /Org/Tizen/ResourceD/Memory org.tizen.resourced.memory ProcExclude si exclude "$x" >/dev/null 2>&1 || true; ' +
+        '[ -w "/proc/$x/oom_score_adj" ] && echo -500 > "/proc/$x/oom_score_adj" 2>/dev/null; done; ' +
+        'for x in $p $pp; do [ -n "$x" ] && [ -w /sys/fs/cgroup/memory/cgroup.procs ] && echo "$x" > /sys/fs/cgroup/memory/cgroup.procs 2>/dev/null; done; true';
+    agentExecute(cmd, 5000).catch(function () {});
+}
 function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);});}
 var iconCache = {};
 // ?appId=... read straight from the query string: the one parameter does not need a URL parser.
@@ -1356,6 +1409,7 @@ if(typeof platform.onAgent==='function')platform.onAgent(function(up){
     bridgeWait={agentAt:Date.now(),bridgeMs:null};
     inputRetryReset();
     try{restoreInput();}catch(e){/* the 5 s round tries again */}
+    try{protectVetroMemory();}catch(e){/* best-effort oom_score_adj protection */}
 });
 // platform.start() and plugins.start() run in becomeOwner(), once this copy owns the port.
 // The launcher is started again after a boot or a crash while its switch is on: that supervision is the launcher plugin's (plugin-launcher.js).
@@ -1448,7 +1502,7 @@ var presenceTimer=setInterval(function(){
 // Native audio/source reads require no foreground UI and never alter the TV.
 var tvStateTimer=setInterval(function(){
  if(!bridge.connected)return;
- tvState.read().then(function(d){bridge.publishTvState(d);}).catch(function(){bridge.publishTvState(null);});
+ readTvStateFast().then(function(d){bridge.publishTvState(d);}).catch(function(){bridge.publishTvState(null);});
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
 
 // Boot tasks below also wait for the launcher (dock.bootSettled(): off, up, or 60 s after the agent connected): the root agent runs
