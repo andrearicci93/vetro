@@ -78,7 +78,7 @@ function uiNeeds(part, d, input) {
         if (mode === 'off') needs.push('launcher');
         var st = input && input.status, pref = st && st.preference;
         if (input && !(pref && pref.enabled === true)) needs.push('interception');
-        else if (st && st.policy && st.policy.mode === 'observe') needs.push('listening');
+        else if (st && st.policy && (st.policy.mode === 'observe' || st.policy.mode === 'capture')) needs.push('listening');
     }
     return needs;
 }

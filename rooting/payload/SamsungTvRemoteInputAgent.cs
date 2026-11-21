@@ -6,13 +6,14 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 internal static class SamsungTvRemoteInputAgent
 {
     private const string ProtocolVersion = "SAMSUNG-TV-REMOTE/1";
     private const string Libc = "libc";
-    private const string VconfApi = "/usr/lib/libvconf.so.0";
+    private const string VconfApi = "libvconf.so.0";
     private const string CurrentSourceTypeKey = "memory/system/source_type";
     private const string CurrentFullscreenAppIdKey =
         "memory/appfw/current_fullscreen_appid";
@@ -24,6 +25,7 @@ internal static class SamsungTvRemoteInputAgent
     private const int OpenWriteOnly = 1;
     private const int OpenNonblock = 2048;
     private const int InterruptedSystemCall = 4;
+    private const int ResourceTemporarilyUnavailable = 11;
     private const short PollIn = 1;
     private const short PollError = 8;
     private const short PollHangup = 16;
@@ -47,6 +49,19 @@ internal static class SamsungTvRemoteInputAgent
     private const uint UiGetSysName = 0x8040552c;
     // Marks Vetro's own forwarding device; must match FORWARDED_PHYS in app/service/physical-input.js.
     private const string ForwardedPhys = "vetro-forwarded-remote";
+    private const string AllDevicesSpec = "*";
+    private const int InNonblock = 0x800;
+    private const uint InAttrib = 0x4, InMovedTo = 0x80, InCreate = 0x100;
+    private static readonly Regex RemoteNameRegex = new Regex("smart control|rc device|mcirb", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex NotRemoteNameRegex = new Regex("keyboard|mouse|panel", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex BlockNameRegex = new Regex("^N: Name=\"(.*)\"$", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex BlockPhysRegex = new Regex("^P: Phys=(.*)$", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex BlockHandlersRegex = new Regex("^H: Handlers=(.*)$", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex BlockKeyRegex = new Regex("^B: KEY=(.*)$", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex BlockEvRegex = new Regex("^B: EV=([0-9a-f]+)$", RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex NonZeroHexRegex = new Regex("[1-9a-f]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex EventNodeRegex = new Regex("\\bevent[0-9]+\\b", RegexOptions.Compiled);
+    private static readonly Regex BlockIdentityRegex = new Regex("Bus=([0-9A-Fa-f]+) Vendor=([0-9A-Fa-f]+) Product=([0-9A-Fa-f]+) Version=([0-9A-Fa-f]+)", RegexOptions.Compiled);
     // Picture Off (screen off, sound on). deviced keeps its display state in memory/pm/state: 1 with the screen on, 3 while
     // it is off (read on a Q80A, fw 2310.0; the key is in deviced on Tizen 6.0, 6.5 and 9).
     private const string DisplayStateKey = "memory/pm/state";
@@ -56,6 +71,21 @@ internal static class SamsungTvRemoteInputAgent
     private const int DeviceBusy = 16;   // EBUSY
     private const int UinputUserDeviceSize = 1116;
     private const int UinputNameBytes = 80;
+    private const long VconfCacheMs = 250;
+    private static int wakingScreen;
+
+    private struct PendingEvent
+    {
+        public string JsonPrefix;
+        public long Sequence;
+        public long Seconds;
+        public long Microseconds;
+        public ushort Code;
+        public int Value;
+        public string Key;
+        public string Decision;
+        public int? ScanCode;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PollDescriptor
@@ -73,6 +103,19 @@ internal static class SamsungTvRemoteInputAgent
         public ushort Vendor;
         public ushort Product;
         public ushort Version;
+    }
+
+    private sealed class SourceDevice
+    {
+        public InputDevice Info;
+        public int Fd = -1;
+        public bool Grabbed;
+        public readonly Dictionary<ushort, bool> PressedBlocked = new Dictionary<ushort, bool>();
+        public readonly HashSet<ushort> PressedWake = new HashSet<ushort>();
+        public readonly HashSet<ushort> ForwardedPressed = new HashSet<ushort>();
+        public int? ScanCode;
+        public bool ForwardSyn;
+        public string JsonPrefix = "";
     }
 
     private sealed class PresentationSnapshot
@@ -160,7 +203,15 @@ internal static class SamsungTvRemoteInputAgent
                 {
                     for (int attempt = 0; attempt < 12; attempt++)
                     {
-                        System.Threading.Thread.Sleep(250);
+                        if (Volatile.Read(ref descriptor) < 0)
+                        {
+                            return;
+                        }
+                        Thread.Sleep(250);
+                        if (Volatile.Read(ref descriptor) < 0)
+                        {
+                            return;
+                        }
                         string node = inputName == null ? null : EventNodeIn("/sys/devices/virtual/input/" + inputName);
                         how = node != null ? "sysname" : "none";
                         if (node == null)
@@ -191,8 +242,16 @@ internal static class SamsungTvRemoteInputAgent
                             process.StartInfo.RedirectStandardOutput = true;
                             process.StartInfo.RedirectStandardError = true;
                             process.Start();
-                            string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-                            process.WaitForExit(5000);
+                            Task<string> outTask = process.StandardOutput.ReadToEndAsync();
+                            Task<string> errTask = process.StandardError.ReadToEndAsync();
+                            if (!process.WaitForExit(5000))
+                            {
+                                try { process.Kill(); } catch { }
+                                continue;
+                            }
+                            Task.WhenAll(outTask, errTask).Wait(1000);
+                            string output = (outTask.Status == TaskStatus.RanToCompletion ? outTask.Result : "")
+                                + (errTask.Status == TaskStatus.RanToCompletion ? errTask.Result : "");
                             if (output.Contains("Success"))
                             {
                                 Console.Error.WriteLine("remocon subtype: set");
@@ -278,33 +337,128 @@ internal static class SamsungTvRemoteInputAgent
             return found;
         }
 
-        public void Forward(byte[] inputEvent)
+        public bool ForwardKey(byte[] inputEvent, HashSet<ushort> sourceForwardedPressed, List<SourceDevice> allSources)
         {
-            RequireWrite(descriptor, inputEvent);
             int typeOffset = IntPtr.Size == 8 ? 16 : 8;
             int codeOffset = typeOffset + 2;
             int valueOffset = codeOffset + 2;
-            ushort type = BitConverter.ToUInt16(inputEvent, typeOffset);
-            if (type != EventKey)
-            {
-                return;
-            }
             ushort code = BitConverter.ToUInt16(inputEvent, codeOffset);
             int value = BitConverter.ToInt32(inputEvent, valueOffset);
+            // IR kernel drivers emit EV_REP (value == 2), whereas BT Smart Control (EV=3) does not. Suppressing
+            // hardware repeat writes makes forwarded IR act identically to SolarCell (software hold/repeat).
+            if (value == 2)
+            {
+                return false;
+            }
             if (value == 0)
             {
+                sourceForwardedPressed.Remove(code);
+                if (!pressedKeys.Contains(code) || IsHeldByAnotherSource(allSources, sourceForwardedPressed, code))
+                {
+                    return false;
+                }
+                RequireWrite(descriptor, inputEvent);
                 pressedKeys.Remove(code);
+                return true;
             }
-            else
+            sourceForwardedPressed.Add(code);
+            if (pressedKeys.Contains(code))
             {
-                pressedKeys.Add(code);
+                return false;
             }
+            RequireWrite(descriptor, inputEvent);
+            pressedKeys.Add(code);
+            return true;
+        }
+
+        public void ForwardSyn(byte[] synEvent)
+        {
+            RequireWrite(descriptor, synEvent);
+        }
+
+        public void ReleaseSourceKeys(SourceDevice dropped, List<SourceDevice> remaining)
+        {
+            int current = Volatile.Read(ref descriptor);
+            if (current < 0 || dropped.ForwardedPressed.Count == 0)
+            {
+                dropped.ForwardedPressed.Clear();
+                return;
+            }
+            int eventSize = IntPtr.Size == 8 ? 24 : 16;
+            int typeOffset = IntPtr.Size == 8 ? 16 : 8;
+            int codeOffset = typeOffset + 2;
+            int valueOffset = codeOffset + 2;
+            byte[] packet = new byte[eventSize];
+            bool wroteAny = false;
+            try
+            {
+                foreach (ushort code in dropped.ForwardedPressed)
+                {
+                    if (IsHeldByOtherSource(remaining, dropped, code) || !pressedKeys.Remove(code))
+                    {
+                        continue;
+                    }
+                    Array.Clear(packet, 0, eventSize);
+                    WriteUInt16(packet, typeOffset, EventKey);
+                    WriteUInt16(packet, codeOffset, code);
+                    WriteInt32(packet, valueOffset, 0);
+                    RequireWrite(current, packet);
+                    wroteAny = true;
+                }
+                if (wroteAny)
+                {
+                    Array.Clear(packet, 0, eventSize);
+                    WriteUInt16(packet, typeOffset, EventSynchronization);
+                    RequireWrite(current, packet);
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine("failed to release source remote keys: " + exception.Message);
+            }
+            finally
+            {
+                dropped.ForwardedPressed.Clear();
+            }
+        }
+
+        private static bool IsHeldByAnotherSource(List<SourceDevice> allSources, HashSet<ushort> currentSourceSet, ushort code)
+        {
+            if (allSources == null)
+            {
+                return false;
+            }
+            for (int i = 0; i < allSources.Count; i++)
+            {
+                if (!ReferenceEquals(allSources[i].ForwardedPressed, currentSourceSet)
+                    && allSources[i].ForwardedPressed.Contains(code))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsHeldByOtherSource(List<SourceDevice> remaining, SourceDevice dropped, ushort code)
+        {
+            if (remaining == null)
+            {
+                return false;
+            }
+            for (int i = 0; i < remaining.Count; i++)
+            {
+                if (!ReferenceEquals(remaining[i], dropped)
+                    && remaining[i].ForwardedPressed.Contains(code))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public void Dispose()
         {
-            int current = descriptor;
-            descriptor = -1;
+            int current = Interlocked.Exchange(ref descriptor, -1);
             if (current < 0)
             {
                 return;
@@ -324,26 +478,31 @@ internal static class SamsungTvRemoteInputAgent
 
         private void ReleasePressedKeys(int current)
         {
+            if (pressedKeys.Count == 0)
+            {
+                return;
+            }
             int eventSize = IntPtr.Size == 8 ? 24 : 16;
             int typeOffset = IntPtr.Size == 8 ? 16 : 8;
             int codeOffset = typeOffset + 2;
             int valueOffset = codeOffset + 2;
-            foreach (ushort code in pressedKeys)
+            byte[] packet = new byte[eventSize];
+            try
             {
-                byte[] release = new byte[eventSize];
-                WriteUInt16(release, typeOffset, EventKey);
-                WriteUInt16(release, codeOffset, code);
-                WriteInt32(release, valueOffset, 0);
-                RequireWrite(current, release);
+                foreach (ushort code in pressedKeys)
+                {
+                    Array.Clear(packet, 0, eventSize);
+                    WriteUInt16(packet, typeOffset, EventKey);
+                    WriteUInt16(packet, codeOffset, code);
+                    WriteInt32(packet, valueOffset, 0);
+                    write(current, packet, eventSize);
+                }
+                Array.Clear(packet, 0, eventSize);
+                WriteUInt16(packet, typeOffset, EventSynchronization);
+                RequireWrite(current, packet);
             }
-            if (pressedKeys.Count != 0)
+            finally
             {
-                byte[] synchronization = new byte[eventSize];
-                WriteUInt16(
-                    synchronization,
-                    typeOffset,
-                    EventSynchronization);
-                RequireWrite(current, synchronization);
                 pressedKeys.Clear();
             }
         }
@@ -380,6 +539,12 @@ internal static class SamsungTvRemoteInputAgent
         [In, Out] PollDescriptor[] descriptors,
         uint count,
         int timeout);
+
+    [DllImport(Libc, SetLastError = true)]
+    private static extern int inotify_init1(int flags);
+
+    [DllImport(Libc, SetLastError = true)]
+    private static extern int inotify_add_watch(int descriptor, string path, uint mask);
 
     [DllImport(Libc, SetLastError = true, EntryPoint = "ioctl")]
     private static extern int ioctl_integer(int descriptor, uint request, int value);
@@ -427,21 +592,14 @@ internal static class SamsungTvRemoteInputAgent
             {
                 throw new ArgumentException("invalid callback port");
             }
-            bool filter;
-            if (arguments[6] == "observe")
+            string mode = arguments[6];
+            if (mode != "observe" && mode != "filter" && mode != "capture")
             {
-                filter = false;
+                throw new ArgumentException("remote-input mode must be observe, filter or capture");
             }
-            else if (arguments[6] == "filter")
-            {
-                filter = true;
-            }
-            else
-            {
-                throw new ArgumentException("remote-input mode must be observe or filter");
-            }
+            bool grabMode = mode == "filter" || mode == "capture";
             HashSet<string> blocked = ParseTokens(arguments[7]);
-            if (!filter && blocked.Count != 0)
+            if (!grabMode && blocked.Count != 0)
             {
                 throw new ArgumentException("observe mode cannot block input tokens");
             }
@@ -458,7 +616,7 @@ internal static class SamsungTvRemoteInputAgent
                 arguments[3],
                 arguments[4],
                 arguments[5],
-                filter,
+                mode,
                 blocked);
             return 0;
         }
@@ -477,6 +635,111 @@ internal static class SamsungTvRemoteInputAgent
         }
     }
 
+    private static string BuildJsonPrefix(InputDevice device, string transport, string model, string mode)
+    {
+        return ",\"node\":\"" + EscapeJson(device.Node)
+            + "\",\"device\":\"" + EscapeJson(device.Name)
+            + "\",\"transport\":\"" + EscapeJson(transport)
+            + "\",\"model\":\"" + EscapeJson(model)
+            + "\",\"mode\":\"" + EscapeJson(mode)
+            + "\",\"time_seconds\":";
+    }
+
+    private static bool TryParseAllDeviceSpec(string deviceSpec, out HashSet<string> excludedNames)
+    {
+        excludedNames = new HashSet<string>(StringComparer.Ordinal);
+        if (deviceSpec == AllDevicesSpec)
+        {
+            return true;
+        }
+        if (deviceSpec != null && deviceSpec.StartsWith("*!", StringComparison.Ordinal))
+        {
+            string rest = deviceSpec.Substring(2);
+            foreach (string part in rest.Split(','))
+            {
+                if (string.IsNullOrEmpty(part))
+                {
+                    continue;
+                }
+                string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(part));
+                if (decoded.Length > 0)
+                {
+                    excludedNames.Add(decoded);
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static InputDevice SelectForwarderSource(List<SourceDevice> sources)
+    {
+        for (int i = 0; i < sources.Count; i++)
+        {
+            if (string.Equals(sources[i].Info.Name, "Smart Control 2016", StringComparison.OrdinalIgnoreCase))
+            {
+                return sources[i].Info;
+            }
+        }
+        for (int i = 0; i < sources.Count; i++)
+        {
+            if (sources[i].Info.Name.IndexOf("Smart Control", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return sources[i].Info;
+            }
+        }
+        for (int i = 0; i < sources.Count; i++)
+        {
+            if (sources[i].Info.Name.IndexOf("rc device", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return sources[i].Info;
+            }
+        }
+        return sources[0].Info;
+    }
+
+    private static void GrabDevice(int inputDescriptor, string node)
+    {
+        // A key held down at the moment of the grab would never be released for the window system: its release
+        // then comes from the copy, while the remote still counts it as down, and Tizen 9 drops a release whose
+        // code is down on another device (a Play/Pause that then reads as held). Wait up to a second for no key down.
+        WaitForNoKeyDown(inputDescriptor);
+        // EBUSY: the helper of an earlier start may still be letting go of the remote (seen once on
+        // an AU7000); a short wait is enough, the service ends stale helpers before a new start.
+        int grab = ioctl_integer(inputDescriptor, EviocGrab, 1);
+        for (int attempt = 0; grab != 0 && Marshal.GetLastWin32Error() == DeviceBusy && attempt < 5; attempt++)
+        {
+            Thread.Sleep(300);
+            grab = ioctl_integer(inputDescriptor, EviocGrab, 1);
+        }
+        if (grab != 0)
+        {
+            throw NativeError("EVIOCGRAB " + node);
+        }
+    }
+
+    private static void DisposeSource(SourceDevice source, UinputForwarder forwarder, List<SourceDevice> remaining)
+    {
+        if (source == null)
+        {
+            return;
+        }
+        if (forwarder != null)
+        {
+            forwarder.ReleaseSourceKeys(source, remaining);
+        }
+        if (source.Grabbed && source.Fd >= 0)
+        {
+            ioctl_integer(source.Fd, EviocGrab, 0);
+            source.Grabbed = false;
+        }
+        if (source.Fd >= 0)
+        {
+            close(source.Fd);
+            source.Fd = -1;
+        }
+    }
+
     private static void Run(
         string host,
         int port,
@@ -484,14 +747,30 @@ internal static class SamsungTvRemoteInputAgent
         string deviceName,
         string transport,
         string model,
-        bool filter,
+        string mode,
         HashSet<string> blocked)
     {
-        InputDevice device = FindInputDevice(deviceName);
-        if (device == null)
+        bool grabMode = mode == "filter" || mode == "capture";
+        HashSet<string> excludedNames;
+        bool allDevices = TryParseAllDeviceSpec(deviceName, out excludedNames);
+        List<InputDevice> initialDevices;
+        if (allDevices)
         {
-            throw new InvalidOperationException(
-                "input device not found: " + deviceName);
+            initialDevices = FindSelectableDevices(excludedNames);
+            if (initialDevices.Count == 0)
+            {
+                throw new InvalidOperationException("no physical remote devices found");
+            }
+        }
+        else
+        {
+            InputDevice device = FindInputDevice(deviceName);
+            if (device == null)
+            {
+                throw new InvalidOperationException(
+                    "input device not found: " + deviceName);
+            }
+            initialDevices = new List<InputDevice> { device };
         }
         using (TcpClient client = new TcpClient())
         {
@@ -524,117 +803,310 @@ internal static class SamsungTvRemoteInputAgent
                 {
                     throw new InvalidDataException("invalid challenge length");
                 }
-                int inputDescriptor = open(device.Node, OpenReadOnly | OpenNonblock);
-                if (inputDescriptor < 0)
+                using (HMACSHA256 hmac = new HMACSHA256(secret))
                 {
-                    throw NativeError("open " + device.Node);
-                }
-                UinputForwarder forwarder = null;
-                bool grabbed = false;
-                try
-                {
-                    if (filter)
+                    List<SourceDevice> sources = new List<SourceDevice>(initialDevices.Count);
+                    UinputForwarder forwarder = null;
+                    int inotifyFd = -1;
+                    try
                     {
-                        forwarder = new UinputForwarder(device);
-                        // A key held down at the moment of the grab would never be released for the window system: its release
-                        // then comes from the copy, while the remote still counts it as down, and Tizen 9 drops a release whose
-                        // code is down on another device (a Play/Pause that then reads as held). Wait up to a second for no key down.
-                        WaitForNoKeyDown(inputDescriptor);
-                        // EBUSY: the helper of an earlier start may still be letting go of the remote (seen once on
-                        // an AU7000); a short wait is enough, the service ends stale helpers before a new start.
-                        int grab = ioctl_integer(inputDescriptor, EviocGrab, 1);
-                        for (int attempt = 0; grab != 0 && Marshal.GetLastWin32Error() == DeviceBusy && attempt < 5; attempt++)
+                        for (int i = 0; i < initialDevices.Count; i++)
                         {
-                            System.Threading.Thread.Sleep(300);
-                            grab = ioctl_integer(inputDescriptor, EviocGrab, 1);
+                            InputDevice dev = initialDevices[i];
+                            int fd = open(dev.Node, OpenReadOnly | OpenNonblock);
+                            if (fd < 0)
+                            {
+                                Exception openError = NativeError("open " + dev.Node);
+                                if (!allDevices)
+                                {
+                                    throw openError;
+                                }
+                                Console.Error.WriteLine("skipping " + dev.Node + ": " + openError.Message);
+                                continue;
+                            }
+                            sources.Add(new SourceDevice
+                            {
+                                Info = dev,
+                                Fd = fd,
+                                JsonPrefix = BuildJsonPrefix(dev, transport, model, mode),
+                            });
                         }
-                        if (grab != 0)
+                        if (sources.Count == 0)
                         {
-                            throw NativeError("EVIOCGRAB " + device.Node);
+                            throw new InvalidOperationException("no physical remote device could be opened");
                         }
-                        grabbed = true;
+                        if (grabMode)
+                        {
+                            forwarder = new UinputForwarder(SelectForwarderSource(sources));
+                            for (int i = sources.Count - 1; i >= 0; i--)
+                            {
+                                SourceDevice s = sources[i];
+                                try
+                                {
+                                    GrabDevice(s.Fd, s.Info.Node);
+                                    s.Grabbed = true;
+                                }
+                                catch (Exception grabError)
+                                {
+                                    if (!allDevices)
+                                    {
+                                        throw;
+                                    }
+                                    Console.Error.WriteLine("skipping " + s.Info.Node + ": " + grabError.Message);
+                                    sources.RemoveAt(i);
+                                    DisposeSource(s, null, null);
+                                }
+                            }
+                            if (sources.Count == 0)
+                            {
+                                throw new IOException("failed to grab any physical remote device");
+                            }
+                        }
+                        if (allDevices)
+                        {
+                            Console.Error.WriteLine("watching " + sources.Count + " device(s)");
+                            inotifyFd = OpenInputDirectoryWatch();
+                        }
+                        string authDeviceName = allDevices ? "all" : sources[0].Info.Name;
+                        string authDeviceNode = allDevices ? "all" : sources[0].Info.Node;
+                        WriteAuthenticated(
+                            stream,
+                            nonce,
+                            hmac,
+                            string.Join(
+                                "\t",
+                                "AUTH",
+                                getpid().ToString(),
+                                getuid().ToString(),
+                                getgid().ToString(),
+                                Base64(authDeviceName),
+                                Base64(authDeviceNode),
+                                Base64(transport),
+                                Base64(model),
+                                mode));
+                        ForwardEvents(
+                            client,
+                            stream,
+                            sources,
+                            allDevices,
+                            excludedNames,
+                            inotifyFd,
+                            transport,
+                            model,
+                            mode,
+                            blocked,
+                            forwarder,
+                            nonce,
+                            hmac);
                     }
-                    WriteAuthenticated(
-                        stream,
-                        nonce,
-                        secret,
-                        string.Join(
-                            "\t",
-                            "AUTH",
-                            getpid().ToString(),
-                            getuid().ToString(),
-                            getgid().ToString(),
-                            Base64(device.Name),
-                            Base64(device.Node),
-                            Base64(transport),
-                            Base64(model),
-                            filter ? "filter" : "observe"));
-                    ForwardEvents(
-                        client,
-                        stream,
-                        inputDescriptor,
-                        device,
-                        transport,
-                        model,
-                        filter,
-                        blocked,
-                        forwarder,
-                        nonce,
-                        secret);
-                }
-                finally
-                {
-                    if (forwarder != null)
+                    finally
                     {
-                        forwarder.Dispose();
+                        if (inotifyFd >= 0)
+                        {
+                            close(inotifyFd);
+                        }
+                        if (forwarder != null)
+                        {
+                            forwarder.Dispose();
+                        }
+                        for (int i = 0; i < sources.Count; i++)
+                        {
+                            DisposeSource(sources[i], null, null);
+                        }
                     }
-                    if (grabbed)
-                    {
-                        ioctl_integer(inputDescriptor, EviocGrab, 0);
-                    }
-                    close(inputDescriptor);
                 }
             }
         }
     }
 
+    private static int OpenInputDirectoryWatch()
+    {
+        try
+        {
+            int fd = inotify_init1(InNonblock);
+            if (fd < 0)
+            {
+                return -1;
+            }
+            if (inotify_add_watch(fd, "/dev/input", InCreate | InAttrib | InMovedTo) < 0)
+            {
+                close(fd);
+                return -1;
+            }
+            return fd;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    private static bool TryAttachNewDevices(
+        List<SourceDevice> sources,
+        HashSet<string> excludedNames,
+        string transport,
+        string model,
+        string mode,
+        bool grabMode)
+    {
+        List<InputDevice> available = FindSelectableDevices(excludedNames);
+        bool added = false;
+        for (int i = 0; i < available.Count; i++)
+        {
+            InputDevice dev = available[i];
+            bool known = false;
+            for (int j = 0; j < sources.Count; j++)
+            {
+                if (sources[j].Info.Node == dev.Node)
+                {
+                    known = true;
+                    break;
+                }
+            }
+            if (known)
+            {
+                continue;
+            }
+            int fd = open(dev.Node, OpenReadOnly | OpenNonblock);
+            if (fd < 0)
+            {
+                Console.Error.WriteLine("skipping " + dev.Node + ": open failed errno " + Marshal.GetLastWin32Error());
+                continue;
+            }
+            bool grabbed = false;
+            try
+            {
+                if (grabMode)
+                {
+                    GrabDevice(fd, dev.Node);
+                    grabbed = true;
+                }
+                sources.Add(new SourceDevice
+                {
+                    Info = dev,
+                    Fd = fd,
+                    Grabbed = grabbed,
+                    JsonPrefix = BuildJsonPrefix(dev, transport, model, mode),
+                });
+                added = true;
+                Console.Error.WriteLine("attached " + dev.Node);
+            }
+            catch (Exception ex)
+            {
+                if (grabbed)
+                {
+                    ioctl_integer(fd, EviocGrab, 0);
+                }
+                close(fd);
+                Console.Error.WriteLine("skipping " + dev.Node + ": " + ex.Message);
+            }
+        }
+        return added;
+    }
+
+    private static PollDescriptor[] BuildPollDescriptors(
+        List<SourceDevice> sources,
+        int socketFd,
+        int inotifyFd)
+    {
+        int extra = inotifyFd >= 0 ? 2 : 1;
+        PollDescriptor[] descriptors = new PollDescriptor[sources.Count + extra];
+        for (int i = 0; i < sources.Count; i++)
+        {
+            descriptors[i] = new PollDescriptor { FileDescriptor = sources[i].Fd, Events = PollIn };
+        }
+        descriptors[sources.Count] = new PollDescriptor { FileDescriptor = socketFd, Events = PollIn };
+        if (inotifyFd >= 0)
+        {
+            descriptors[sources.Count + 1] = new PollDescriptor { FileDescriptor = inotifyFd, Events = PollIn };
+        }
+        return descriptors;
+    }
+
+    private static bool[] BuildBlockedTable(
+        HashSet<string> blocked,
+        Dictionary<int, string> keyNames)
+    {
+        bool[] table = new bool[KeyMaximum + 1];
+        if (blocked == null || blocked.Count == 0)
+        {
+            return table;
+        }
+        for (int code = 0; code <= KeyMaximum; code++)
+        {
+            string key;
+            if (blocked.Contains(code.ToString())
+                || (keyNames.TryGetValue(code, out key)
+                    && !string.IsNullOrEmpty(key)
+                    && blocked.Contains(key)))
+            {
+                table[code] = true;
+            }
+        }
+        return table;
+    }
+
     private static void ForwardEvents(
         TcpClient client,
         Stream stream,
-        int inputDescriptor,
-        InputDevice device,
+        List<SourceDevice> sources,
+        bool allDevices,
+        HashSet<string> excludedNames,
+        int inotifyFd,
         string transport,
         string model,
-        bool filter,
+        string mode,
         HashSet<string> blocked,
         UinputForwarder forwarder,
         byte[] nonce,
-        byte[] secret)
+        HMACSHA256 hmac)
     {
+        bool grabMode = mode == "filter" || mode == "capture";
+        bool captureAll = mode == "capture";
         int eventSize = IntPtr.Size == 8 ? 24 : 16;
         int typeOffset = IntPtr.Size == 8 ? 16 : 8;
         int codeOffset = typeOffset + 2;
         int valueOffset = codeOffset + 2;
         Dictionary<int, string> keyNames = ReadKeyNames();
-        Dictionary<ushort, bool> pressedBlocked = new Dictionary<ushort, bool>();
-        HashSet<ushort> pressedWake = new HashSet<ushort>();
+        bool[] blockedCodes = BuildBlockedTable(blocked, keyNames);
+        List<PendingEvent> pendingEvents = new List<PendingEvent>(4);
         long sequence = 0;
-        int? scanCode = null;
+        long vconfAt = long.MinValue;
+        int cachedSourceType = -1;
+        PresentationSnapshot cachedPresentation = null;
+        StringBuilder jsonBuilder = new StringBuilder(512);
+        byte[] probe = new byte[1];
         byte[] buffer = new byte[eventSize];
-        PollDescriptor[] descriptors = new PollDescriptor[]
-        {
-            new PollDescriptor { FileDescriptor = inputDescriptor, Events = PollIn },
-            new PollDescriptor
-            {
-                FileDescriptor = client.Client.Handle.ToInt32(),
-                Events = PollIn,
-            },
-        };
+        byte[] inotifyBuf = inotifyFd >= 0 ? new byte[1024] : null;
+        int socketFd = client.Client.Handle.ToInt32();
+        PollDescriptor[] descriptors = BuildPollDescriptors(sources, socketFd, inotifyFd);
+        bool sourcesDirty = false;
+        long rescanAt = -1;
         while (true)
         {
-            descriptors[0].ReturnedEvents = 0;
-            descriptors[1].ReturnedEvents = 0;
-            int ready = poll(descriptors, 2, -1);
+            if (rescanAt >= 0 && Environment.TickCount64 >= rescanAt)
+            {
+                rescanAt = -1;
+                if (TryAttachNewDevices(sources, excludedNames, transport, model, mode, grabMode))
+                {
+                    sourcesDirty = true;
+                }
+            }
+            if (sourcesDirty)
+            {
+                descriptors = BuildPollDescriptors(sources, socketFd, inotifyFd);
+                sourcesDirty = false;
+            }
+            int socketIndex = sources.Count;
+            int inotifyIndex = inotifyFd >= 0 ? sources.Count + 1 : -1;
+            for (int i = 0; i < descriptors.Length; i++)
+            {
+                descriptors[i].ReturnedEvents = 0;
+            }
+            int pollTimeout = rescanAt >= 0
+                ? (int)Math.Max(1L, Math.Min((long)int.MaxValue, rescanAt - Environment.TickCount64))
+                : -1;
+            int ready = poll(descriptors, (uint)descriptors.Length, pollTimeout);
             if (ready < 0)
             {
                 if (Marshal.GetLastWin32Error() == InterruptedSystemCall)
@@ -643,14 +1115,13 @@ internal static class SamsungTvRemoteInputAgent
                 }
                 throw NativeError("poll remote input");
             }
-            if ((descriptors[1].ReturnedEvents
+            if ((descriptors[socketIndex].ReturnedEvents
                     & (PollError | PollHangup | PollInvalid)) != 0)
             {
                 return;
             }
-            if ((descriptors[1].ReturnedEvents & PollIn) != 0)
+            if ((descriptors[socketIndex].ReturnedEvents & PollIn) != 0)
             {
-                byte[] probe = new byte[1];
                 int count = client.Client.Receive(probe, 0, 1, SocketFlags.Peek);
                 if (count == 0)
                 {
@@ -659,171 +1130,304 @@ internal static class SamsungTvRemoteInputAgent
                 throw new InvalidDataException(
                     "remote-input host sent unexpected data");
             }
-            if ((descriptors[0].ReturnedEvents
-                    & (PollError | PollHangup | PollInvalid)) != 0)
+            if (inotifyIndex >= 0 && (descriptors[inotifyIndex].ReturnedEvents & PollIn) != 0)
             {
-                throw new IOException("remote input device disconnected");
+                for (int round = 0; round < 8; round++)
+                {
+                    int n = read(inotifyFd, inotifyBuf, inotifyBuf.Length);
+                    if (n <= 0)
+                    {
+                        break;
+                    }
+                }
+                rescanAt = Environment.TickCount64 + 100;
             }
-            if ((descriptors[0].ReturnedEvents & PollIn) == 0)
+            for (int i = sources.Count - 1; i >= 0; i--)
             {
-                continue;
-            }
-            while (true)
-            {
-                int count = read(inputDescriptor, buffer, buffer.Length);
-                if (count != eventSize)
+                SourceDevice source = sources[i];
+                short revents = descriptors[i].ReturnedEvents;
+                if ((revents & (PollError | PollHangup | PollInvalid)) != 0)
                 {
-                    break;
-                }
-                ushort type = BitConverter.ToUInt16(buffer, typeOffset);
-                ushort code = BitConverter.ToUInt16(buffer, codeOffset);
-                int value = BitConverter.ToInt32(buffer, valueOffset);
-                if (type == EventMiscellaneous && code == MiscellaneousScan)
-                {
-                    scanCode = value;
-                }
-                string key;
-                if (!keyNames.TryGetValue(code, out key))
-                {
-                    key = "";
-                }
-                bool block = false;
-                // With the screen off, Samsung turns it back on at the first key that is not a volume or power key and drops
-                // that key. A key re-emitted through uinput only moves deviced's state back to "lcdon" and leaves the panel
-                // dark (Q80A, 2026-11-19), so while this agent holds the remote it does the same itself: the key (down,
-                // repeats and up) goes nowhere, not even to a shortcut, and deviced is asked for "lcdon".
-                bool wake = false;
-                if (filter && type == EventKey)
-                {
-                    if (value == 1 && !KeepsScreenOff(code) && ScreenIsOff())
+                    sources.RemoveAt(i);
+                    DisposeSource(source, forwarder, sources);
+                    sourcesDirty = true;
+                    if (!allDevices || sources.Count == 0)
                     {
-                        pressedWake.Add(code);
-                        TurnScreenOn();
+                        throw new IOException("remote input device disconnected");
                     }
-                    wake = pressedWake.Contains(code);
-                    if (wake && value == 0)
+                    Console.Error.WriteLine("detached " + source.Info.Node);
+                    continue;
+                }
+                if ((revents & PollIn) == 0)
+                {
+                    continue;
+                }
+                bool sourceRemoved = false;
+                while (true)
+                {
+                    int count = read(source.Fd, buffer, buffer.Length);
+                    if (count < 0)
                     {
-                        pressedWake.Remove(code);
+                        int errno = Marshal.GetLastWin32Error();
+                        if (errno == ResourceTemporarilyUnavailable)
+                        {
+                            break;
+                        }
+                        if (errno == InterruptedSystemCall)
+                        {
+                            continue;
+                        }
+                        sources.RemoveAt(i);
+                        DisposeSource(source, forwarder, sources);
+                        sourcesDirty = true;
+                        sourceRemoved = true;
+                        if (!allDevices || sources.Count == 0)
+                        {
+                            throw NativeError("read " + source.Info.Node);
+                        }
+                        Console.Error.WriteLine("detached " + source.Info.Node);
+                        break;
+                    }
+                    if (count == 0)
+                    {
+                        sources.RemoveAt(i);
+                        DisposeSource(source, forwarder, sources);
+                        sourcesDirty = true;
+                        sourceRemoved = true;
+                        if (!allDevices || sources.Count == 0)
+                        {
+                            throw new IOException("remote input device disconnected");
+                        }
+                        Console.Error.WriteLine("detached " + source.Info.Node);
+                        break;
+                    }
+                    if (count != eventSize)
+                    {
+                        break;
+                    }
+                    ushort type = BitConverter.ToUInt16(buffer, typeOffset);
+                    ushort code = BitConverter.ToUInt16(buffer, codeOffset);
+                    int value = BitConverter.ToInt32(buffer, valueOffset);
+                    if (type == EventMiscellaneous && code == MiscellaneousScan)
+                    {
+                        source.ScanCode = value;
+                    }
+                    if (type == EventKey)
+                    {
+                        string key;
+                        if (!keyNames.TryGetValue(code, out key))
+                        {
+                            key = "";
+                        }
+                        bool block = false;
+                        // With the screen off, Samsung turns it back on at the first key that is not a volume or power key and drops
+                        // that key. A key re-emitted through uinput only moves deviced's state back to "lcdon" and leaves the panel
+                        // dark (Q80A, 2026-11-19), so while this agent holds the remote it does the same itself: the key (down,
+                        // repeats and up) goes nowhere, not even to a shortcut, and deviced is asked for "lcdon".
+                        bool wake = false;
+                        if (grabMode)
+                        {
+                            if (value == 1)
+                            {
+                                if (!KeepsScreenOff(code) && ScreenIsOff())
+                                {
+                                    source.PressedWake.Add(code);
+                                    TurnScreenOn();
+                                }
+                                else
+                                {
+                                    source.PressedWake.Remove(code);
+                                }
+                            }
+                            wake = source.PressedWake.Contains(code);
+                            if (wake && value == 0)
+                            {
+                                source.PressedWake.Remove(code);
+                            }
+                        }
+                        if (!wake)
+                        {
+                            bool first = captureAll || (code <= KeyMaximum
+                                ? blockedCodes[code]
+                                : (blocked.Contains(code.ToString())
+                                    || (!string.IsNullOrEmpty(key) && blocked.Contains(key))));
+                            bool original;
+                            if (value == 1)
+                            {
+                                block = first;
+                                source.PressedBlocked[code] = block;
+                            }
+                            else if (source.PressedBlocked.TryGetValue(code, out original))
+                            {
+                                block = original;
+                            }
+                            else
+                            {
+                                block = first;
+                            }
+                        }
+                        if (grabMode && !block && !wake)
+                        {
+                            if (forwarder.ForwardKey(buffer, source.ForwardedPressed, sources))
+                            {
+                                source.ForwardSyn = true;
+                            }
+                        }
+                        sequence++;
+                        long seconds = IntPtr.Size == 8
+                            ? BitConverter.ToInt64(buffer, 0)
+                            : BitConverter.ToInt32(buffer, 0);
+                        long microseconds = IntPtr.Size == 8
+                            ? BitConverter.ToInt64(buffer, 8)
+                            : BitConverter.ToInt32(buffer, 4);
+                        pendingEvents.Add(new PendingEvent
+                        {
+                            JsonPrefix = source.JsonPrefix,
+                            Sequence = sequence,
+                            Seconds = seconds,
+                            Microseconds = microseconds,
+                            Code = code,
+                            Value = value,
+                            Key = key,
+                            Decision = wake ? "wake" : block ? "blocked" : "native",
+                            ScanCode = source.ScanCode,
+                        });
+                        if (value == 0)
+                        {
+                            source.PressedBlocked.Remove(code);
+                        }
+                    }
+                    else if (type == EventSynchronization)
+                    {
+                        if (grabMode && source.ForwardSyn)
+                        {
+                            forwarder.ForwardSyn(buffer);
+                            source.ForwardSyn = false;
+                        }
+                        source.ScanCode = null;
+                        if (pendingEvents.Count > 0)
+                        {
+                            FlushPendingEvents(
+                                pendingEvents,
+                                stream,
+                                nonce,
+                                hmac,
+                                jsonBuilder,
+                                ref vconfAt,
+                                ref cachedSourceType,
+                                ref cachedPresentation);
+                        }
                     }
                 }
-                if (type == EventKey && !wake)
+                if (pendingEvents.Count > 0)
                 {
-                    bool first = blocked.Contains(code.ToString())
-                        || (!string.IsNullOrEmpty(key) && blocked.Contains(key));
-                    bool original;
-                    if (value == 1)
-                    {
-                        block = first;
-                        pressedBlocked[code] = block;
-                    }
-                    else if (pressedBlocked.TryGetValue(code, out original))
-                    {
-                        block = original;
-                    }
-                    else
-                    {
-                        block = first;
-                    }
-                }
-                if (filter
-                    && !block
-                    && !wake
-                    && (type == EventKey || type == EventSynchronization))
-                {
-                    forwarder.Forward(buffer);
-                }
-                if (type == EventKey)
-                {
-                    sequence++;
-                    WriteAuthenticated(
+                    FlushPendingEvents(
+                        pendingEvents,
                         stream,
                         nonce,
-                        secret,
-                        "EVENT\t"
-                        + sequence
-                        + "\t"
-                        + Convert.ToBase64String(
-                            Encoding.UTF8.GetBytes(
-                                EventJson(
-                                    sequence,
-                                    buffer,
-                                    device,
-                                    transport,
-                                    model,
-                                    filter,
-                                    code,
-                                    value,
-                                    key,
-                                    wake ? "wake" : block ? "blocked" : "native",
-                                    scanCode))));
-                    if (value == 0)
-                    {
-                        pressedBlocked.Remove(code);
-                    }
+                        hmac,
+                        jsonBuilder,
+                        ref vconfAt,
+                        ref cachedSourceType,
+                        ref cachedPresentation);
                 }
-                if (type == EventSynchronization)
+                if (sourceRemoved)
                 {
-                    scanCode = null;
+                    continue;
                 }
             }
         }
     }
 
+    private static void FlushPendingEvents(
+        List<PendingEvent> pendingEvents,
+        Stream stream,
+        byte[] nonce,
+        HMACSHA256 hmac,
+        StringBuilder jsonBuilder,
+        ref long vconfAt,
+        ref int cachedSourceType,
+        ref PresentationSnapshot cachedPresentation)
+    {
+        for (int i = 0; i < pendingEvents.Count; i++)
+        {
+            PendingEvent ev = pendingEvents[i];
+            long now = Environment.TickCount64;
+            if (ev.Value == 1 || vconfAt == long.MinValue || now - vconfAt >= VconfCacheMs)
+            {
+                cachedSourceType = ReadCurrentSourceType();
+                cachedPresentation = ReadPresentationSnapshot();
+                vconfAt = now;
+            }
+            WriteAuthenticated(
+                stream,
+                nonce,
+                hmac,
+                "EVENT\t"
+                + ev.Sequence
+                + "\t"
+                + Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes(
+                        EventJson(
+                            jsonBuilder,
+                            ev.Sequence,
+                            ev.JsonPrefix,
+                            ev.Seconds,
+                            ev.Microseconds,
+                            ev.Code,
+                            ev.Value,
+                            ev.Key,
+                            ev.Decision,
+                            ev.ScanCode,
+                            cachedSourceType,
+                            cachedPresentation))));
+        }
+        pendingEvents.Clear();
+    }
+
     private static string EventJson(
+        StringBuilder builder,
         long sequence,
-        byte[] buffer,
-        InputDevice device,
-        string transport,
-        string model,
-        bool filter,
+        string jsonPrefix,
+        long seconds,
+        long microseconds,
         ushort code,
         int value,
         string key,
         string decision,
-        int? scanCode)
+        int? scanCode,
+        int sourceType,
+        PresentationSnapshot presentation)
     {
-        long seconds = IntPtr.Size == 8
-            ? BitConverter.ToInt64(buffer, 0)
-            : BitConverter.ToInt32(buffer, 0);
-        long microseconds = IntPtr.Size == 8
-            ? BitConverter.ToInt64(buffer, 8)
-            : BitConverter.ToInt32(buffer, 4);
-        int sourceType = ReadCurrentSourceType();
-        PresentationSnapshot presentation = ReadPresentationSnapshot();
-        return "{"
-            + "\"event\":\"input\""
-            + ",\"sequence\":" + sequence
-            + ",\"node\":\"" + EscapeJson(device.Node) + "\""
-            + ",\"device\":\"" + EscapeJson(device.Name) + "\""
-            + ",\"transport\":\"" + EscapeJson(transport) + "\""
-            + ",\"model\":\"" + EscapeJson(model) + "\""
-            + ",\"mode\":\"" + (filter ? "filter" : "observe") + "\""
-            + ",\"time_seconds\":" + seconds
-            + ",\"time_microseconds\":" + microseconds
-            + ",\"type\":1"
-            + ",\"code\":" + code
-            + ",\"value\":" + value
-            + ",\"type_name\":\"EV_KEY\""
-            + ",\"key\":\"" + EscapeJson(key) + "\""
-            + ",\"action\":\"" + ActionName(value) + "\""
-            + ",\"decision\":\"" + decision + "\""
-            + (scanCode.HasValue
-                ? ",\"scan_code\":" + scanCode.Value
-                    + ",\"scan_code_hex\":\"0x"
-                    + unchecked((uint)scanCode.Value).ToString("X8") + "\""
-                : "")
-            + (sourceType >= 0
-                ? ",\"tv_source\":\"" + SourceName(sourceType) + "\""
-                    + ",\"tv_source_type\":" + sourceType
-                : "")
-            + (presentation != null
-                ? ",\"tv_fullscreen_appid\":\""
-                    + EscapeJson(presentation.FullscreenApplicationId)
-                    + "\",\"tv_partial_appid\":\""
-                    + EscapeJson(presentation.PartialApplicationId)
-                    + "\""
-                : "")
-            + "}";
+        builder.Clear();
+        builder.Append("{\"event\":\"input\",\"sequence\":").Append(sequence)
+            .Append(jsonPrefix).Append(seconds)
+            .Append(",\"time_microseconds\":").Append(microseconds)
+            .Append(",\"type\":1,\"code\":").Append(code)
+            .Append(",\"value\":").Append(value)
+            .Append(",\"type_name\":\"EV_KEY\",\"key\":\"").Append(EscapeJson(key))
+            .Append("\",\"action\":\"").Append(ActionName(value))
+            .Append("\",\"decision\":\"").Append(decision).Append('"');
+        if (scanCode.HasValue)
+        {
+            builder.Append(",\"scan_code\":").Append(scanCode.Value)
+                .Append(",\"scan_code_hex\":\"0x")
+                .Append(unchecked((uint)scanCode.Value).ToString("X8")).Append('"');
+        }
+        if (sourceType >= 0)
+        {
+            builder.Append(",\"tv_source\":\"").Append(SourceName(sourceType))
+                .Append("\",\"tv_source_type\":").Append(sourceType);
+        }
+        if (presentation != null)
+        {
+            builder.Append(",\"tv_fullscreen_appid\":\"")
+                .Append(EscapeJson(presentation.FullscreenApplicationId))
+                .Append("\",\"tv_partial_appid\":\"")
+                .Append(EscapeJson(presentation.PartialApplicationId)).Append('"');
+        }
+        builder.Append('}');
+        return builder.ToString();
     }
 
     // Keys that leave the screen off in Samsung's Picture Off: volume and mute (66-68 on Samsung remotes, 113-115 on others)
@@ -843,12 +1447,23 @@ internal static class SamsungTvRemoteInputAgent
 
     private static bool ScreenIsOff()
     {
-        int state;
-        return VconfGetInt(DisplayStateKey, out state) == 0 && state == DisplayStateOff;
+        try
+        {
+            int state;
+            return VconfGetInt(DisplayStateKey, out state) == 0 && state == DisplayStateOff;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+        {
+            return false;
+        }
     }
 
     private static void TurnScreenOn()
     {
+        if (Interlocked.CompareExchange(ref wakingScreen, 1, 0) != 0)
+        {
+            return;
+        }
         Task.Run(() =>
         {
             try
@@ -858,34 +1473,47 @@ internal static class SamsungTvRemoteInputAgent
                     process.StartInfo.FileName = "/usr/bin/busctl";
                     process.StartInfo.Arguments = ScreenOnCommand;
                     process.StartInfo.UseShellExecute = false;
-                    process.StartInfo.RedirectStandardOutput = true;
-                    process.StartInfo.RedirectStandardError = true;
+                    process.StartInfo.RedirectStandardOutput = false;
+                    process.StartInfo.RedirectStandardError = false;
                     process.Start();
-                    process.StandardOutput.ReadToEnd();
-                    process.StandardError.ReadToEnd();
-                    process.WaitForExit(5000);
+                    if (!process.WaitForExit(5000))
+                    {
+                        try { process.Kill(); } catch { }
+                    }
                 }
             }
             catch (Exception)
             {
+            }
+            finally
+            {
+                Volatile.Write(ref wakingScreen, 0);
             }
         });
     }
 
     private static int ReadCurrentSourceType()
     {
-        int sourceType;
-        return VconfGetInt(CurrentSourceTypeKey, out sourceType) == 0
-            ? sourceType
-            : -1;
+        try
+        {
+            int sourceType;
+            return VconfGetInt(CurrentSourceTypeKey, out sourceType) == 0
+                ? sourceType
+                : -1;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+        {
+            return -1;
+        }
     }
 
     private static PresentationSnapshot ReadPresentationSnapshot()
     {
         string fullscreen;
         string partial;
-        if (!TryReadVconfString(CurrentFullscreenAppIdKey, out fullscreen)
-            || !TryReadVconfString(CurrentPartialAppIdKey, out partial))
+        bool hasFull = TryReadVconfString(CurrentFullscreenAppIdKey, out fullscreen);
+        bool hasPartial = TryReadVconfString(CurrentPartialAppIdKey, out partial);
+        if (!hasFull && !hasPartial)
         {
             return null;
         }
@@ -898,7 +1526,16 @@ internal static class SamsungTvRemoteInputAgent
 
     private static bool TryReadVconfString(string key, out string value)
     {
-        IntPtr pointer = VconfGetString(key);
+        IntPtr pointer;
+        try
+        {
+            pointer = VconfGetString(key);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+        {
+            value = "";
+            return false;
+        }
         if (pointer == IntPtr.Zero)
         {
             value = "";
@@ -906,7 +1543,7 @@ internal static class SamsungTvRemoteInputAgent
         }
         try
         {
-            value = Marshal.PtrToStringAnsi(pointer) ?? "";
+            value = Marshal.PtrToStringUTF8(pointer) ?? "";
             return true;
         }
         finally
@@ -947,6 +1584,95 @@ internal static class SamsungTvRemoteInputAgent
         }
     }
 
+    private static bool BlockHasKeys(string block)
+    {
+        Match keyMatch = BlockKeyRegex.Match(block);
+        if (keyMatch.Success)
+        {
+            return NonZeroHexRegex.IsMatch(keyMatch.Groups[1].Value);
+        }
+        Match evMatch = BlockEvRegex.Match(block);
+        if (evMatch.Success)
+        {
+            string hex = evMatch.Groups[1].Value;
+            if (hex.Length > 8)
+            {
+                hex = hex.Substring(hex.Length - 8);
+            }
+            uint evBits = Convert.ToUInt32(hex, 16);
+            return (evBits & 2u) != 0;
+        }
+        return true;
+    }
+
+    private static InputDevice ParseInputDeviceBlock(string block)
+    {
+        Match physMatch = BlockPhysRegex.Match(block);
+        if (physMatch.Success && physMatch.Groups[1].Value.Trim() == ForwardedPhys)
+        {
+            return null;
+        }
+        Match nameMatch = BlockNameRegex.Match(block);
+        if (!nameMatch.Success)
+        {
+            return null;
+        }
+        Match handlersMatch = BlockHandlersRegex.Match(block);
+        Match eventMatch = handlersMatch.Success
+            ? EventNodeRegex.Match(handlersMatch.Groups[1].Value)
+            : EventNodeRegex.Match(block);
+        if (!eventMatch.Success)
+        {
+            return null;
+        }
+        Match identity = BlockIdentityRegex.Match(block);
+        InputDevice device = new InputDevice();
+        device.Name = nameMatch.Groups[1].Value;
+        device.Node = "/dev/input/" + eventMatch.Value;
+        if (identity.Success)
+        {
+            device.Bus = ParseHex16(identity.Groups[1].Value);
+            device.Vendor = ParseHex16(identity.Groups[2].Value);
+            device.Product = ParseHex16(identity.Groups[3].Value);
+            device.Version = ParseHex16(identity.Groups[4].Value);
+        }
+        return device;
+    }
+
+    private static List<InputDevice> FindSelectableDevices(HashSet<string> excludedNames)
+    {
+        List<InputDevice> result = new List<InputDevice>();
+        if (!File.Exists("/proc/bus/input/devices"))
+        {
+            return result;
+        }
+        string text = File.ReadAllText("/proc/bus/input/devices").Replace("\r", "");
+        HashSet<string> seenNodes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string block in Regex.Split(text.Trim(), "\\n\\s*\\n"))
+        {
+            InputDevice device = ParseInputDeviceBlock(block);
+            if (device == null)
+            {
+                continue;
+            }
+            if (excludedNames != null && excludedNames.Contains(device.Name))
+            {
+                continue;
+            }
+            if (!RemoteNameRegex.IsMatch(device.Name)
+                || NotRemoteNameRegex.IsMatch(device.Name)
+                || !BlockHasKeys(block))
+            {
+                continue;
+            }
+            if (seenNodes.Add(device.Node))
+            {
+                result.Add(device);
+            }
+        }
+        return result;
+    }
+
     private static InputDevice FindInputDevice(string expectedName)
     {
         // Vetro extension: bind an exact node as well as its registered name.
@@ -963,38 +1689,17 @@ internal static class SamsungTvRemoteInputAgent
         {
             return null;
         }
-        string text = File.ReadAllText("/proc/bus/input/devices");
+        string text = File.ReadAllText("/proc/bus/input/devices").Replace("\r", "");
         foreach (string block in Regex.Split(text.Trim(), "\\n\\s*\\n"))
         {
-            Match nameMatch = Regex.Match(block, "N: Name=\\\"(.*)\\\"");
-            if (!nameMatch.Success || nameMatch.Groups[1].Value != expectedName)
+            InputDevice device = ParseInputDeviceBlock(block);
+            if (device == null || device.Name != expectedName)
             {
                 continue;
             }
-            Match physMatch = Regex.Match(block, "P: Phys=(.*)");
-            if (physMatch.Success && physMatch.Groups[1].Value.Trim() == ForwardedPhys)
+            if (expectedNode != null && device.Node != expectedNode)
             {
                 continue;
-            }
-            Match eventMatch = Regex.Match(block, "\\bevent[0-9]+\\b");
-            if (!eventMatch.Success)
-            {
-                continue;
-            }
-            Match identity = Regex.Match(
-                block,
-                "Bus=([0-9A-Fa-f]+) Vendor=([0-9A-Fa-f]+) "
-                + "Product=([0-9A-Fa-f]+) Version=([0-9A-Fa-f]+)");
-            InputDevice device = new InputDevice();
-            device.Name = expectedName;
-            device.Node = "/dev/input/" + eventMatch.Value;
-            if (expectedNode != null && device.Node != expectedNode) continue;
-            if (identity.Success)
-            {
-                device.Bus = ParseHex16(identity.Groups[1].Value);
-                device.Vendor = ParseHex16(identity.Groups[2].Value);
-                device.Product = ParseHex16(identity.Groups[3].Value);
-                device.Version = ParseHex16(identity.Groups[4].Value);
             }
             return device;
         }
@@ -1080,18 +1785,7 @@ internal static class SamsungTvRemoteInputAgent
     private static void WriteAuthenticated(
         Stream stream,
         byte[] nonce,
-        byte[] secret,
-        string payload)
-    {
-        string line = payload + "\t" + Authenticate(nonce, secret, payload);
-        byte[] bytes = Encoding.UTF8.GetBytes(line + "\n");
-        stream.Write(bytes, 0, bytes.Length);
-        stream.Flush();
-    }
-
-    private static string Authenticate(
-        byte[] nonce,
-        byte[] secret,
+        HMACSHA256 hmac,
         string payload)
     {
         byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
@@ -1103,10 +1797,21 @@ internal static class SamsungTvRemoteInputAgent
             message,
             nonce.Length + 1,
             payloadBytes.Length);
-        using (HMACSHA256 hmac = new HMACSHA256(secret))
+        byte[] hash = hmac.ComputeHash(message);
+        byte[] frame = new byte[payloadBytes.Length + 1 + hash.Length * 2 + 1];
+        Buffer.BlockCopy(payloadBytes, 0, frame, 0, payloadBytes.Length);
+        int at = payloadBytes.Length;
+        frame[at++] = (byte)'\t';
+        const string hex = "0123456789abcdef";
+        for (int i = 0; i < hash.Length; i++)
         {
-            return HexEncode(hmac.ComputeHash(message));
+            byte b = hash[i];
+            frame[at++] = (byte)hex[b >> 4];
+            frame[at++] = (byte)hex[b & 0xF];
         }
+        frame[at] = (byte)'\n';
+        stream.Write(frame, 0, frame.Length);
+        stream.Flush();
     }
 
     private static string ReadLine(Stream stream)
@@ -1141,12 +1846,19 @@ internal static class SamsungTvRemoteInputAgent
 
     private static void RequireWrite(int descriptor, byte[] buffer)
     {
-        int count = write(descriptor, buffer, buffer.Length);
-        if (count != buffer.Length)
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            throw NativeError(
-                "write returned " + count + ", expected " + buffer.Length);
+            int count = write(descriptor, buffer, buffer.Length);
+            if (count == buffer.Length) return;
+            if (count >= 0) throw NativeError("write returned " + count + ", expected " + buffer.Length);
+            int errno = Marshal.GetLastWin32Error();
+            if (errno != InterruptedSystemCall && errno != ResourceTemporarilyUnavailable)
+            {
+                throw NativeError("write returned " + count + ", expected " + buffer.Length);
+            }
+            Thread.Sleep(1);
         }
+        throw NativeError("write returned -1 after retries, expected " + buffer.Length);
     }
 
     private static Exception NativeError(string operation)
@@ -1167,14 +1879,16 @@ internal static class SamsungTvRemoteInputAgent
 
     private static void WriteUInt16(byte[] target, int offset, ushort value)
     {
-        byte[] bytes = BitConverter.GetBytes(value);
-        Buffer.BlockCopy(bytes, 0, target, offset, bytes.Length);
+        target[offset] = (byte)value;
+        target[offset + 1] = (byte)(value >> 8);
     }
 
     private static void WriteInt32(byte[] target, int offset, int value)
     {
-        byte[] bytes = BitConverter.GetBytes(value);
-        Buffer.BlockCopy(bytes, 0, target, offset, bytes.Length);
+        target[offset] = (byte)value;
+        target[offset + 1] = (byte)(value >> 8);
+        target[offset + 2] = (byte)(value >> 16);
+        target[offset + 3] = (byte)(value >> 24);
     }
 
     private static ushort ParseHex16(string value)
@@ -1189,14 +1903,38 @@ internal static class SamsungTvRemoteInputAgent
 
     private static string EscapeJson(string value)
     {
-        StringBuilder builder = new StringBuilder();
-        foreach (char character in value ?? "")
+        if (string.IsNullOrEmpty(value))
+        {
+            return "";
+        }
+        bool dirty = false;
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (c == '"' || c == '\\' || c < ' ')
+            {
+                dirty = true;
+                break;
+            }
+        }
+        if (!dirty)
+        {
+            return value;
+        }
+        StringBuilder builder = new StringBuilder(value.Length + 8);
+        foreach (char character in value)
         {
             switch (character)
             {
                 case '"':
                 case '\\':
                     builder.Append('\\').Append(character);
+                    break;
+                case '\b':
+                    builder.Append("\\b");
+                    break;
+                case '\f':
+                    builder.Append("\\f");
                     break;
                 case '\n':
                     builder.Append("\\n");
@@ -1208,21 +1946,18 @@ internal static class SamsungTvRemoteInputAgent
                     builder.Append("\\t");
                     break;
                 default:
-                    builder.Append(character);
+                    if (character < ' ')
+                    {
+                        builder.Append("\\u").Append(((int)character).ToString("x4"));
+                    }
+                    else
+                    {
+                        builder.Append(character);
+                    }
                     break;
             }
         }
         return builder.ToString();
-    }
-
-    private static string HexEncode(byte[] bytes)
-    {
-        StringBuilder output = new StringBuilder(bytes.Length * 2);
-        foreach (byte value in bytes)
-        {
-            output.Append(value.ToString("x2"));
-        }
-        return output.ToString();
     }
 
     private static byte[] HexDecode(string value)
