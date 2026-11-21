@@ -271,6 +271,14 @@ namespace Launcher.Tests
                 T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
                 T.Eq(OutputPickerModel.ActionFor(new OutputEntry { Kind = OutputKind.ScreenOff, Label = "x" }), OutputAction.ScreenOff, "the last row turns the screen off");
             });
+
+            T.Run("Tizen 9 Task Manager protection for volume-app and quicklaunch", () =>
+            {
+                var ui = new AppInfo { Component = "uiapp", NoDisplay = false };
+                T.True(!Tasks.IsUserApp("org.tizen.volume-app", ui), "volume-app protected");
+                T.True(!Tasks.IsUserApp("com.samsung.tv.quicklaunch", ui), "quicklaunch protected");
+                T.True(Tasks.IsUserApp("com.samsung.tv.store", ui), "normal uiapp remains visible");
+            });
         }
     }
 }

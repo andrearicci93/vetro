@@ -58,6 +58,10 @@ var HOME_CODE = 63;                                   // Home on the forwarded r
 var START_WAIT_MS = 15000;
 var BOOT_WAIT_MS = 75000;                             // a start in the first minutes after a TV boot is slow
 var BOOT_WINDOW_S = 300;
+var IDLE_HOME_MS = 600000;                            // close idle Samsung Home after 10 min unused in background
+var HOME_CHECK_INTERVAL_MS = 120000;                  // check Samsung Home background presence at most once per 2 min
+var WAKE_HOME_DELAY_MS = 25000;                       // wait 25 s after standby wake so preload settles before one sweep
+var WAKE_GAP_MS = 120000;                             // wall-clock gap fallback if tick missed !agentConnected across suspend
 var RETRY_FIRST_MS = 30000;
 var RETRY_BOOT_MS = 10000;                            // first retry inside the boot window: the TV is still busy, not broken
 var BOOT_GATE_MS = 60000;                             // other boot tasks wait for the dock at most this long after the agent connects
@@ -147,6 +151,14 @@ function Dock(options) {
     this.shards = null;            // the plugin host, once setShards() has been called
     this.shardTimer = null;
     this.lastShardLaunch = null;
+    this.wakeHomePending = false;
+    this.wakeSeenAt = null;
+    this.lastSuperviseAt = null;
+    this.homeCheckedAt = null;
+    this.homeIdleSince = null;
+    this.idleHomeClosed = false;
+    this.idleHomeClears = 0;
+    this.idleHomeAt = null;
 }
 
 Dock.prototype.installed = function () {
@@ -216,7 +228,7 @@ Dock.prototype.readState = function () {
     try {
         var s = this.readStateFile();
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), closeIdleHome: s && typeof s.closeIdleHome === 'boolean' ? s.closeIdleHome : true, row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
@@ -230,7 +242,7 @@ Dock.prototype.readState = function () {
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
 };
 
@@ -423,7 +435,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -982,6 +994,18 @@ Dock.prototype.setNoMotion = function (on) {
     return this.refreshOr(function () { self.patchState({noMotion: state.noMotion}); tell(); });
 };
 
+Dock.prototype.setCloseIdleHome = function (on) {
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    try { this.patchState({closeIdleHome: on}); }
+    catch (e) { return Promise.reject(e); }
+    this.homeCheckedAt = null;
+    this.homeIdleSince = null;
+    this.idleHomeClosed = false;
+    if (!on) this.wakeHomePending = false;
+    return this.status();
+};
+
 // The Control center: Down from the apps row shows up to three cards side by side (the Task manager, the Audio output). A start
 // argument (--cards, or --no-tasks when there is none), so a running Vetro launcher is restarted.
 Dock.prototype.setCards = function (list) {
@@ -1225,6 +1249,69 @@ Dock.prototype.iconFile = function (slug) {
     return null;
 };
 
+function idleHomeScript(allowKill) {
+    var kill = allowKill ? (PREVIEW_OFF + '; ' + HOME_KILL.concat([PREVIEW_UNIT]).map(function (id) { return 'app_launcher -k ' + id + ' >/dev/null 2>&1'; }).join('; ') + '; ') : '';
+    return [
+        'f=$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null | sed -n "s/.*value = \\([^ (]*\\).*/\\1/p")',
+        'case "$f" in com.samsung.tv.csfs|com.samsung.tv.home.*|com.samsung.tv.coba.*) echo fg; exit 0;; esac',
+        'csfs=0; help=0',
+        'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || grep -qE "(^|[._])csfs$" /proc/[0-9]*/comm 2>/dev/null; then csfs=1; fi',
+        'if pidof com.samsung.tv.home.sidebar com.samsung.tv.home.media ' + PREVIEW_UNIT + ' >/dev/null 2>&1 || grep -qE "(home\\.sidebar|home\\.media|view-updater)$" /proc/[0-9]*/comm 2>/dev/null; then help=1; fi',
+        'if [ "$csfs" -eq 0 ] && [ "$help" -eq 0 ]; then echo off; exit 0; fi',
+        allowKill ? (kill + 'if [ "$csfs" -eq 1 ]; then echo closed:csfs; else echo closed:helpers; fi')
+            : 'if [ "$csfs" -eq 1 ]; then echo bg:csfs; else echo bg:helpers; fi'
+    ].join('\n');
+}
+
+Dock.prototype.noteWake = function () {
+    this.wakeHomePending = true;
+    this.wakeSeenAt = this.now();
+};
+
+Dock.prototype.maintainIdleHome = function (state) {
+    if (!state || !state.enabled || state.customApp || state.closeIdleHome === false) return Promise.resolve();
+    if (this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
+    var now = this.now();
+    if (this.homeCheckedAt === null) this.homeCheckedAt = now;
+    var wakeDue = !!(this.wakeHomePending && this.wakeSeenAt !== null && now - this.wakeSeenAt >= WAKE_HOME_DELAY_MS);
+    var pollDue = now - this.homeCheckedAt >= HOME_CHECK_INTERVAL_MS;
+    if (!wakeDue && !pollDue) return Promise.resolve();
+    this.homeCheckedAt = now;
+    var idleDue = !this.idleHomeClosed && this.homeIdleSince !== null && now - this.homeIdleSince >= IDLE_HOME_MS;
+    var allowKill = wakeDue || idleDue;
+    var self = this;
+    return this.execute(wrap(idleHomeScript(allowKill)), 8000).then(function (r) {
+        if (!r || r.exit_code || r.timed_out) return;
+        var out = String(r.stdout || '').trim();
+        var t = self.now();
+        if (wakeDue) self.wakeHomePending = false;
+        if (out === 'fg' || out === 'off') {
+            self.homeIdleSince = null;
+            self.idleHomeClosed = false;
+            return;
+        }
+        if (out.indexOf('closed') === 0) {
+            self.idleHomeClosed = true;
+            self.homeIdleSince = null;
+            self.idleHomeClears = (self.idleHomeClears || 0) + 1;
+            self.idleHomeAt = t;
+            return;
+        }
+        if (out === 'bg:csfs') {
+            if (self.idleHomeClosed) {
+                self.idleHomeClosed = false;
+                self.homeIdleSince = t;
+            } else if (self.homeIdleSince === null) {
+                self.homeIdleSince = t;
+            }
+            return;
+        }
+        if (out === 'bg:helpers') {
+            if (!self.idleHomeClosed && self.homeIdleSince === null) self.homeIdleSince = t;
+        }
+    }).catch(function () {});
+};
+
 // After a boot Samsung's own Home is started by the TV and sits idle (~140 MB); the dock closes it only after a Home press,
 // and enable() only when the switch is turned on. So once per service run, when the dock is up and the boot has settled, close
 // it. Never during the boot window (the Q80A stalls without it), and only once: opening it again from the dock is deliberate.
@@ -1274,8 +1361,11 @@ Dock.prototype.supervise = function (agentConnected) {
     var self = this, state = this.readState(), custom = !!state.customApp;
     if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
+    var supNow = this.now();
+    if (this.lastSuperviseAt !== null && supNow - this.lastSuperviseAt >= WAKE_GAP_MS) this.noteWake();
+    this.lastSuperviseAt = supNow;
     this.busy = true;
-    if (this.agentSeenAt === null) { this.agentSeenAt = this.now(); this.mark('agentSeen'); }
+    if (this.agentSeenAt === null) { this.agentSeenAt = supNow; this.mark('agentSeen'); }
     return this.healHome(state).then(function () { return self.runningNow(); }).then(function (c) {
         // The cheap check is enough while the launcher runs. "Not running" is confirmed by the full probe before anything is
         // started, and once after the boot window the full probe says whether Samsung's idle Home is up (closeHomeOnce).
@@ -1297,7 +1387,7 @@ Dock.prototype.supervise = function (agentConnected) {
             self.relisted = true; self.refreshPending = false;
             return self.launch(false).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); return 'started'; });
         }
-        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return self.showAtPowerOn(state); }).then(function () { return 'running'; }); }
+        if (p.running) { self.failures = 0; if (self.superviseFailed) { self.superviseFailed = false; self.lastError = null; } self.up(); self.refreshCatalogLater(); return self.closeHomeOnce(p.samsungHome).then(function () { return self.maintainIdleHome(state); }).then(function () { return self.showAtPowerOn(state); }).then(function () { return 'running'; }); }
         return self.launch(true).then(function () { self.failures = 0; self.superviseFailed = false; self.lastError = null; self.up(); self.refreshCatalogLater(); return 'started'; });
     }).then(function (result) {
         return custom ? self.checkCustomApp(state.customApp).then(function (gone) { return gone || result; }) : result;

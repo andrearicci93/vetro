@@ -552,6 +552,101 @@ function fixture(options) {
         assert.equal(told, 2);
     }
 
+    // maintainIdleHome: 10 min idle countdown, no helper respawn loop, foreground reset, post-wake sweep, and setCloseIdleHome toggle.
+    {
+        const ih = fixture({running: true});
+        ih.dock.patchState({enabled: true});
+        ih.dock.serviceStart = 50; ih.dock.uptime = () => 1000;
+        let idleMode = 'bg:csfs', idleChecks = 0, idleKills = 0;
+        const origIhExec = ih.dock.execute;
+        ih.dock.execute = async cmd => {
+            if (/^echo (\S+) \| base64 -d \| sh$/.test(cmd)) {
+                const sh = Buffer.from(cmd.split(' ')[1], 'base64').toString();
+                if (sh.includes('current_fullscreen_appid') && sh.includes('preview-updater')) {
+                    idleChecks++;
+                    if (sh.includes('app_launcher -k')) {
+                        if (idleMode === 'fg' || idleMode === 'off') return {exit_code: 0, stdout: idleMode + '\n'};
+                        idleKills++;
+                        return {exit_code: 0, stdout: idleMode === 'bg:csfs' ? 'closed:csfs\n' : 'closed:helpers\n'};
+                    }
+                    return {exit_code: 0, stdout: idleMode + '\n'};
+                }
+            }
+            return origIhExec(cmd);
+        };
+        await ih.dock.supervise(true); // sets homeClosed = true & homeCheckedAt = now
+        ih.tv.clock += 120000;        // +2 min -> poll sees bg:csfs, starts 10 min countdown
+        idleChecks = 0; idleKills = 0; ih.dock.idleHomeClosed = false;
+        await ih.dock.supervise(true);
+        assert.equal(idleChecks, 1); assert.equal(idleKills, 0, 'does not kill immediately on first bg observation');
+        ih.tv.clock += 540000;        // +9 min total (< 10 min)
+        await ih.dock.supervise(true);
+        assert.equal(idleKills, 0, 'keeps Samsung Home warm before 10 min idle');
+        ih.tv.clock += 120000;        // +11 min total (>= 10 min)
+        await ih.dock.supervise(true);
+        assert.equal(idleKills, 1, 'closes idle Samsung Home after 10 min in background');
+        assert.equal(ih.dock.idleHomeClears, 1);
+        // Helper respawn alone (bg:helpers while idleHomeClosed=true) must not cause a kill loop:
+        idleMode = 'bg:helpers';
+        ih.tv.clock += 700000;
+        await ih.dock.supervise(true);
+        assert.equal(idleKills, 1, 'ignores stubborn helper respawn without restarting countdown');
+        // Opening Samsung Home again (fg) resets cleanly:
+        idleMode = 'fg';
+        ih.tv.clock += 120000;
+        await ih.dock.supervise(true);
+        assert.equal(ih.dock.idleHomeClosed, false);
+        assert.equal(ih.dock.homeIdleSince, null);
+        // Standby wake trigger waits 25 s then sweeps once:
+        idleMode = 'bg:csfs';
+        ih.dock.noteWake();
+        ih.tv.clock += 10000;
+        await ih.dock.supervise(true);
+        assert.equal(idleKills, 1, 'waits 25 s after wake for preload to settle');
+        ih.tv.clock += 20000;
+        await ih.dock.supervise(true);
+        assert.equal(idleKills, 2, 'sweeps once after wake settle delay');
+        // Toggle off prevents checks without restarting dock:
+        await ih.dock.setCloseIdleHome(false);
+        assert.equal(ih.dock.readState().closeIdleHome, false);
+        ih.tv.clock += 700000;
+        await ih.dock.supervise(true);
+        assert.equal(idleKills, 2, 'disabled closeIdleHome skips sweeps');
+        await ih.dock.setCloseIdleHome(true);
+        assert.equal((await ih.dock.status()).closeIdleHome, true);
+
+        // plugin-launcher forwards standby wake edges to noteWake() only after initial connect, and accepts closeIdleHome actions.
+        const plMod = require('../service/plugin-launcher.js');
+        let agentUp = true, tickFn = null, notes = 0;
+        const stubDock = {
+            changes: 0, installed: () => true, readState: () => ({enabled: true}),
+            noteWake() { notes++; },
+            supervise: async () => 'running',
+            setCloseIdleHome: async on => ({closeIdleHome: on})
+        };
+        const pl = plMod.definition(stubDock, {timers: {setInterval: fn => { tickFn = fn; return {}; }, clearInterval() {}}}).create({
+            vetro: {
+                agentConnected: () => agentUp,
+                json: (r, b, c) => { r.code = c || 200; r.body = b; },
+                readJson: (req, r, cb) => cb(req.body)
+            }
+        });
+        pl.start();
+        tickFn();
+        assert.equal(notes, 0, 'cold connect does not fire noteWake');
+        agentUp = false; tickFn();
+        agentUp = true; tickFn();
+        assert.equal(notes, 1, 'reconnect after disconnect fires noteWake');
+        const plRes = {code: 0, body: null};
+        pl.route({method: 'POST', url: '/plugins/launcher/api/action', body: {action: 'closeIdleHome', on: false}}, plRes, 'action');
+        await new Promise(r => setImmediate(r));
+        assert.deepEqual(plRes, {code: 200, body: {closeIdleHome: false}});
+
+        // dashboard exposes Close idle Samsung Home toggle in Launcher Customization
+        const dashHtml = require('../service/dashboard.js')();
+        assert.ok(dashHtml.includes('data-dock-idle-home') && dashHtml.includes('Close idle Samsung Home'), 'dashboard includes Close idle Samsung Home switch');
+    }
+
     console.log('PASS dock service: on, off, boot start, crash restart, back-off that never switches it off');
 })().catch(e => { console.error(e); process.exitCode = 1; });
 
