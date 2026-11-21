@@ -43,6 +43,7 @@ var APP_ID_120_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var WHITESPACE_CHAR_RE = /\s/g;
 var FORMAT_QUERY_RE = /(?:^|&)format=(hosts|domains)(?:&|$)/;
 var KEY_CAPABILITY_RE = /[1-9a-f]/i;
+var PHYSICAL_CODE_RE = /^\d{1,3}$/;
 var PLUGIN_SESSION_API_RE = /^\/plugins\/[^\/]+\/s\/[0-9a-f]{32}\/api(?:\/|$)/;
 var COMPONENTS_QUERY_RE = /(?:\?|&)components=1(?:&|$)/;
 var MENU_ID_QUERY_RE = /[?&]id=([^&]+)/;
@@ -359,13 +360,15 @@ function downloadDiagnostics(res, withComponents) {
                 var parts = String(r && r.stdout || '').split(/(?:^|\n)---\n?/); helperLog = parts[0] || ''; prevHelperLog = parts[1] || ''; subtype = parts[2] || ''; remoconNode = parts[3] || ''; }, function () {}).then(function () {
                 return physical.inventory();
             }).then(function (all) {
-                var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
+                var isAll = pref.device === 'all';
+                var named = !isAll && pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;
+                var exAll = isAll ? normalizeInputExclude(pref.exclude) : [];
                 // Which of the same-name nodes advertise keys (what restoreInput chooses among), and whether the node saved with the choice is
                 // still one of them: a remote whose nodes were renumbered after a reboot, with several keyed ones, cannot be picked again.
                 var keyed = named ? named.filter(function (d) { try { return d.selectable && KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/' + d.node.split('/').pop() + '/device/capabilities/key', 'utf8')); } catch (e) { return false; } }) : null;
                 return {enabled: pref.enabled === true, auto: pref.auto === true, connected: !!(snap.policy && snap.policy.connected),
-                    keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null,
-                    savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
+                    keyedSameNameCount: keyed ? keyed.length : null, savedNodePresent: isAll ? true : (named && pref.node ? named.some(function (d) { return d.node === pref.node; }) : null),
+                    savedPresent: isAll ? all.some(function (d) { return d.selectable && exAll.indexOf(d.name) < 0; }) : (named ? named.some(function (d) { return d.selectable; }) : null), sameNameCount: named ? named.length : null,
                     selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, remoconSubtype: subtype.trim(), remoconNode: remoconNode.trim(), loop: loop, history: history,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; }),
                     volumeRoute: volumeRoute ? {route: volumeRoute.route, errno: volumeRoute.errno, ageSeconds: Math.round((Date.now() - volumeRoute.at) / 1000)} : null};
@@ -680,6 +683,57 @@ var remapStore = (function () {
 })();
 try { remapStore.rules = remap.validateRules(remapStore.rules || []); }
 catch (e) { remapStore.rules = []; }
+function sanitizeAliases(rawRules, rawAliases, rules) {
+    var out = Object.create(null), used = Object.create(null), i, r;
+    for (i = 0; i < rules.length; i++) {
+        r = rules[i];
+        if (r.trigger.type === 'physical') used[r.trigger.value] = r.id;
+    }
+    for (i = 0; i < rules.length; i++) {
+        r = rules[i];
+        if (r.trigger.type !== 'physical') continue;
+        var raw = rawRules ? (rawRules[i] && Array.isArray(rawRules[i].aliases) ? rawRules[i].aliases : null)
+            : (rawAliases && Array.isArray(rawAliases[r.id]) ? rawAliases[r.id] : null);
+        if (!raw) continue;
+        var list = [];
+        raw.forEach(function (c) {
+            var s = typeof c === 'number' || typeof c === 'string' ? String(c).trim() : '';
+            if (!PHYSICAL_CODE_RE.test(s) || +s > 767) throw new Error('invalid alias key code: ' + s);
+            s = String(+s);
+            if (s === r.trigger.value || list.indexOf(s) >= 0) return;
+            if (used[s] && used[s] !== r.id) throw new Error('button ' + s + ' is already used by another shortcut');
+            used[s] = r.id;
+            list.push(s);
+        });
+        if (list.length) out[r.id] = list;
+    }
+    return out;
+}
+function rulesWithAliases() {
+    var aliases = remapStore.aliases || {};
+    return remapStore.rules.map(function (r) {
+        var list = r.trigger.type === 'physical' && Array.isArray(aliases[r.id]) ? aliases[r.id] : null;
+        return list && list.length ? Object.assign({}, r, { aliases: list.slice() }) : r;
+    });
+}
+function resolvePhysicalActions(code) {
+    var aliases = remapStore.aliases || {}, out = [];
+    remapStore.rules.forEach(function (r) {
+        if (!r.enabled || r.trigger.type !== 'physical') return;
+        var list = Array.isArray(aliases[r.id]) ? aliases[r.id] : null;
+        if (r.trigger.value === code || (list && list.indexOf(code) >= 0)) {
+            r.actions.forEach(function (a) { out.push(a); });
+        }
+    });
+    return out;
+}
+try { remapStore.aliases = sanitizeAliases(null, remapStore.aliases, remapStore.rules); }
+catch (e) { remapStore.aliases = Object.create(null); }
+if (remapStore.input && typeof remapStore.input === 'object') {
+    var initExclude = normalizeInputExclude(remapStore.input.exclude);
+    if (initExclude.length) remapStore.input.exclude = initExclude;
+    else delete remapStore.input.exclude;
+}
 function saveRemap() {
     try { atomicFile.write(fs, REMAP_PATH, JSON.stringify(remapStore)); return true; } catch (e) { return false; }
 }
@@ -965,18 +1019,23 @@ function handleSettings(req, res) {
 
 function handleRemap(req, res) {
     // reserved: the keys Vetro UI holds (volume bar, number pad). Computed, never stored with the rules, and they come first.
-    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token, reserved: vetroUi.reservedKeys(dock.readState()),
+    if (req.method === 'GET') return serveJson(res, { rules: rulesWithAliases(), paired: !!remapStore.token, reserved: vetroUi.reservedKeys(dock.readState()),
         interception: {auto: !!(remapStore.input && remapStore.input.auto && remapStore.input.enabled), problem: vetroUiInputProblem},
         // Whether Vetro TV Tuner is on: a shortcut on one of its keys takes that key away from it (the page warns).
         tuner: {enabled: (function () { try { return tuner.readState().enabled === true; } catch (e) { return false; } })()} });
     readJsonBody(req, res, function (parsed) {
-        var rules;
-        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
+        var rules, aliases;
+        try {
+            rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf);
+            aliases = sanitizeAliases(parsed.rules, null, rules);
+        }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
         stopInput('rules'); inputPaused=false; inputFaultUntil=0; inputRetryReset();
         remapStore.rules = rules;
+        if (Object.keys(aliases).length) remapStore.aliases = aliases;
+        else delete remapStore.aliases;
         bridge.setTopics(rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
-        serveJson(res, { ok: true, persisted: saveRemap(), rules: rules });
+        serveJson(res, { ok: true, persisted: saveRemap(), rules: rulesWithAliases() });
     });
 }
 
@@ -1027,12 +1086,13 @@ var physicalHooks={onStop:function(lost){volumeRepeat.stop();if(lost)inputNote(l
         if(bridgeWait&&status&&status.policy&&status.policy.mode==='filter'){bridgeWait.bridgeMs=Date.now()-bridgeWait.agentAt;bridgeTiming[bridgeTiming.first?'last':'first']=bridgeWait;bridgeWait=null;}
         if(status&&status.policy&&status.policy.mode==='filter')agentExecute(keyRouting.rescanCommand(),5000).catch(function(){});}};
 var physical=new PhysicalInput(agentExecute,function(event){
+    if(physical.status().policy.mode==='capture')return;
     if(inputLifecycleActive&&volumeKeys.wants(event,keyFlags())){
         volumeRepeat.event(event);
         return;
     }
     if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
-    var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
+    var actions=resolvePhysicalActions(String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
     var generation=inputGeneration;
@@ -1062,12 +1122,26 @@ if(typeof module!=='undefined'){
     module.exports.onStart=startInputLifecycle;module.exports.onRequest=startInputLifecycle;
     module.exports.onStop=stopInputLifecycle;module.exports.onExit=stopInputLifecycle;
 }
+function normalizeInputExclude(list){
+    var out=[];
+    if(!Array.isArray(list))return out;
+    list.forEach(function(name){if(typeof name==='string'&&name.length>0&&name.length<=80&&out.indexOf(name)<0&&out.length<16)out.push(name);});
+    return out;
+}
 function inputPreference(){var p=remapStore.input;return p&&p.enabled===true&&typeof p.device==='string'?p:{enabled:false};}
 function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
-function inputTokens(){return volumeKeys.withTokens(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;}),keyFlags());}
+function inputTokens(){
+    var codes=[], aliases=remapStore.aliases||{};
+    remapStore.rules.forEach(function(r){
+        if(!r.enabled||r.trigger.type!=='physical')return;
+        codes.push(r.trigger.value);
+        if(Array.isArray(aliases[r.id]))aliases[r.id].forEach(function(a){codes.push(a);});
+    });
+    return volumeKeys.withTokens(codes,keyFlags());
+}
 var vetroUi=require('./vetro-ui.js'),vetroUiInputProblem=null;
 // Vetro UI's keys need the remote interception. It is switched on here only when one of its parts is switched on (or the launcher
 // that draws them comes on), never by the 5 s restore loop: a user who turns the interception off keeps it off. The remote is
@@ -1086,12 +1160,11 @@ function vetroUiInput(){
     if(!inputLifecycleActive||inputPaused||!platform.status().agent.connected){vetroUiInputProblem='The remote interception could not be turned on now (the TV is not connected, or the Remapper is listening). Turn it on in the Remapper.';return Promise.resolve(false);}
     return physical.inventory().then(function(list){
         var candidates=list.filter(function(d){return d.selectable;});
-        var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
-        var device=candidates.length===1?candidates[0]:keyed.length===1?keyed[0]:null;
-        if(!device)throw new Error(candidates.length?'More than one remote was found: choose yours in the Remapper and turn the interception on there.':'No remote was found to listen to.');
+        var target=candidates.length>1?'all':candidates.length===1?candidates[0].node:null;
+        if(!target)throw new Error('No remote was found to listen to.');
         var still=keyFlags();if(!still.volume&&!still.pad)return null;   // switched off again while the remotes were being listed
         stopInput('vetro-ui');
-        return physical.start(device.node,'filter',inputTokens(),list);
+        return physical.start(target,'filter',inputTokens(),list);
     }).then(function(status){
         if(!status)return false;
         saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node,auto:true});
@@ -1106,6 +1179,11 @@ function restoreInput(){
     inputRestoring=true;inputNote('restore');
     physical.inventory().then(function(list){
         if(!inputLifecycleActive||generation!==inputGeneration||inputPaused||Date.now()<inputFaultUntil||inputPreference()!==preference)return;
+        if(preference.device==='all'){
+            var exclude=normalizeInputExclude(preference.exclude);
+            if(!list.some(function(d){return d.selectable&&exclude.indexOf(d.name)<0;}))throw new Error('Saved physical remote is unavailable');
+            return physical.start('all','filter',inputTokens(),list,exclude.length?{exclude:exclude}:undefined);
+        }
         var candidates=list.filter(function(d){return d.selectable&&d.name===preference.device;});
         var keyed=candidates.filter(function(d){try{return KEY_CAPABILITY_RE.test(require('fs').readFileSync('/sys/class/input/'+d.node.split('/').pop()+'/device/capabilities/key','utf8'));}catch(e){return false;}});
         // Several interfaces share the name: the one that advertises keys, and if more than one does, the saved node among them.
@@ -1130,10 +1208,16 @@ function handleInput(req,res){
     readJsonBody(req,res,function(p){
         if(!inputLifecycleActive)return serveJson(res,{error:'Service input is stopped'},503);
         var tokens=inputTokens();
+        var prevExclude=remapStore.input&&Array.isArray(remapStore.input.exclude)?normalizeInputExclude(remapStore.input.exclude):[];
+        var nextExclude=p.exclude!==undefined?normalizeInputExclude(p.exclude):prevExclude;
         inputError=null;inputFaultUntil=0;
-        if(p.mode==='off'){try{saveInputPreference({enabled:false});}catch(e){return serveJson(res,{ok:false,error:e.message},503);}inputPaused=false;stopInput('request');return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});}
-        if(p.mode!=='observe'&&p.mode!=='filter')return serveJson(res,{error:'invalid input mode'},400);
-        if(p.mode==='filter'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
+        if(p.mode==='off'){
+            var offPref=nextExclude.length?{enabled:false,exclude:nextExclude}:{enabled:false};
+            try{saveInputPreference(offPref);}catch(e){return serveJson(res,{ok:false,error:e.message},503);}
+            inputPaused=false;stopInput('request');return serveJson(res,{ok:true,persisted:true,status:inputSnapshot()});
+        }
+        if(p.mode!=='observe'&&p.mode!=='filter'&&p.mode!=='capture')return serveJson(res,{error:'invalid input mode'},400);
+        if(p.mode!=='observe'&&p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         inputPaused=true;inputNote('request',p.mode);
         if(p.mode==='observe'&&p.device==='auto'){
             stopInput('request');var observerGeneration=inputGeneration;return physical.inventory().then(function(list){
@@ -1148,10 +1232,15 @@ function handleInput(req,res){
         }
         if(p.device==='auto')return serveJson(res,{error:'select the detected node before intercepting'},400);
         stopInput('request');var requestGeneration=inputGeneration;
-        physical.start(p.device,p.mode,tokens).then(function(status){
+        var startOpts=(p.device==='all'&&p.mode==='filter'&&nextExclude.length)?{exclude:nextExclude}:undefined;
+        physical.start(p.device,p.mode,tokens,undefined,startOpts).then(function(status){
             if(!inputLifecycleActive)throw new Error('Input request cancelled');
             if(requestGeneration!==inputGeneration)throw superseded();
-            if(p.mode==='filter'){saveInputPreference({enabled:true,device:status.policy.device,node:status.policy.node});inputPaused=false;}
+            if(p.mode==='filter'){
+                var saved={enabled:true,device:status.policy.device,node:status.policy.node};
+                if(nextExclude.length)saved.exclude=nextExclude;
+                saveInputPreference(saved);inputPaused=false;
+            }
             serveJson(res,{ok:true,persisted:p.mode==='filter',status:inputSnapshot()});
         }).catch(function(e){
             // physical.start fails with its own "cancelled" error when a newer request stopped it: that is the same case.
@@ -1165,7 +1254,8 @@ function handleInput(req,res){
 }
 function handleRemapRun(req,res){readJsonBody(req,res,function(p){
     if(typeof p.type!=='string'||typeof p.value!=='string')return serveJson(res,{error:'type and value required'},400);
-    runActions(remap.resolve(remapStore.rules,p.type,p.value,p.payload)).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
+    var actions=p.type==='physical'?resolvePhysicalActions(p.value):remap.resolve(remapStore.rules,p.type,p.value,p.payload);
+    runActions(actions).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
 });}
 
 // POST /screen/control: one tile of the TV screen. The sign-in gate has already decided who may get here (the TV app itself,
