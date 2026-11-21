@@ -296,6 +296,7 @@ function serveDashboard(req, res) {
 }
 
 var diagnosticPending = null, diagnosticComponents = false;
+function diagnosticParts(text) { return require('./diagnostic-report.js').parts(text); }
 function downloadDiagnostics(res, withComponents) {
     // The CPU rate needs a second sample 1.5 s after the first, and the TV runs its commands one after the other:
     // read together, the sample waited behind the 13 s startup listing and came back without a rate (4 of 7 reports).
@@ -329,7 +330,7 @@ function downloadDiagnostics(res, withComponents) {
             // openLog: the launcher's last openings with their timings (Home, the Control center, All apps...), "perf open ..." lines.
             return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|outputs: Use(Tv|External) |fifo: |screen: |home: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24; echo ---; grep -E \'^[0-9:.]+ perf open \' ' + dockModule.LOG_FILE + ' | tail -n 12').toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
-                .then(function (out) { var parts = out.split(/(?:^|\n)---\n?/); return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: parts[0] || '', openLog: parts[1] || ''}); }); }); }),
+                .then(function (out) { var parts = diagnosticParts(out); return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: parts[0] || '', openLog: parts[1] || ''}); }); }); }),
         // tunerLog: the tuner's start and its talk with Samsung's TV client (EFL start, which client was loaded, the first reads, a stall, an
         // exception, its window), then its last show / hide / takeover lines; the report keeps fixed shapes only and cuts the channel name
         // off the first read. tunerThreads: each thread of the running tuner as name|state|kernel wait (and the kernel stack's function
@@ -337,11 +338,11 @@ function downloadDiagnostics(res, withComponents) {
         tuner: later(function () { return tuner.status().then(function (d) {
             var log = tunerModule.LOG_FILE, pid = tunerModule.PID_FILE;
             return agentExecute('echo ' + Buffer.from("grep -E '^\\+[0-9]+ms (elm_init |tvs: |tvs worker: |start |window up |elm_win_add |pipe failed)' " + log + " | head -n 30; " +
-                "grep -E '^\\+[0-9]+ms (shown$|hidden$|not shown|takeover: |resume: )' " + log + " | tail -n 8; echo ---; " +
+                "grep -E '^\\+[0-9]+ms (shown$|hidden$|not shown|takeover: |resume: |live: |input: source type )' " + log + " | tail -n 12; echo ---; " +
                 "p=$(cat " + pid + " 2>/dev/null); [ -n \"$p\" ] && for t in /proc/$p/task/*; do s=$(sed 's/.*) //' $t/stat | cut -d' ' -f1); k=''; " +
                 "[ \"$s\" = D ] && k=$(sed 's/.*] //' $t/stack 2>/dev/null | cut -d+ -f1 | head -n 8 | tr '\\n' ' '); echo \"$(cat $t/comm)|$s|$(cat $t/wchan 2>/dev/null)|$k\"; done; true").toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
-                .then(function (out) { var parts = out.split(/(?:^|\n)---\n?/); return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: parts[0] || '', tunerThreads: parts[1] || ''}); }); }); }),
+                .then(function (out) { var parts = diagnosticParts(out); return Object.assign({}, d, {error: null, hasError: !!d.error, tunerLog: parts[0] || '', tunerThreads: parts[1] || ''}); }); }); }),
         input: later(function () {
             var pref = inputPreference(), snap = inputSnapshot(), keys = keyFlags(), helperLog = '', prevHelperLog = '', subtype = '', remoconNode = '', now = Date.now();
             // What the restore loop is waiting on, read before the commands below: paused by the Remapper, the service's input stopped, a
@@ -356,7 +357,7 @@ function downloadDiagnostics(res, withComponents) {
             // words, where they would push out an exception logged before them.
             return agentExecute('grep -v "^remocon " /tmp/vetro-input.log 2>/dev/null | tail -n 2; echo ---; grep -v "^remocon " /tmp/vetro-input.prev.log 2>/dev/null | tail -n 2; echo ---; ' +
                 'grep -h "remocon subtype: " /tmp/vetro-input.prev.log /tmp/vetro-input.log 2>/dev/null | tail -n 1; echo ---; grep -h "remocon node: " /tmp/vetro-input.prev.log /tmp/vetro-input.log 2>/dev/null | tail -n 1', 5000).then(function (r) {
-                var parts = String(r && r.stdout || '').split(/(?:^|\n)---\n?/); helperLog = parts[0] || ''; prevHelperLog = parts[1] || ''; subtype = parts[2] || ''; remoconNode = parts[3] || ''; }, function () {}).then(function () {
+                var parts = diagnosticParts(r && r.stdout); helperLog = parts[0] || ''; prevHelperLog = parts[1] || ''; subtype = parts[2] || ''; remoconNode = parts[3] || ''; }, function () {}).then(function () {
                 return physical.inventory();
             }).then(function (all) {
                 var named = pref.device ? all.filter(function (d) { return d.name === pref.device; }) : null;

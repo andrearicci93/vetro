@@ -103,7 +103,9 @@ var TUNER_EVENT_RES=[/^start pid=\d{1,7}(?: [a-z]{1,12})?$/,/^elm_init (?:start|
     // Its window and whether it shows: the engine, a failed window or pipe, then the last show / hide / takeover lines (Samsung's app ids
     // and states, no paths: a line with a '/' or a quote is dropped).
     /^window up engine=[a-z_]{1,24}$/,/^(?:elm_win_add failed|pipe failed|shown|hidden)$/,/^not shown: no channel list yet, Samsung's live TV keeps the screen$/,
-    /^(?:takeover|resume): [A-Za-z0-9 .,()>_=-]{1,160}$/];
+    /^(?:takeover|resume|live): [A-Za-z0-9 .,()>_=-]{1,160}$/,
+    // The TV's input as the tuner reads it (Samsung's source type: 0 the tuner, -1 an app or Samsung TV Plus, 13-16 HDMI).
+    /^input: source type (?:first|-?\d{1,3}) -> -?\d{1,3} \((?:TV|not the TV tuner)\)$/];
 function tunerEvents(text){return String(text||'').split('\n').map(function(l){
         var m=/^\+(\d{1,7})ms (.*)$/.exec(l.trim());if(!m)return null;
         var body=m[2].replace(/^(tvs: .*?) -> .*$/,'$1').replace(/^(tvs worker: [A-Za-z][A-Za-z0-9_.]{0,80}Exception)[:\s].*$/,'$1').trim();
@@ -272,4 +274,8 @@ function twoSamples(snapshot, gapMs, totalMs) {
         });
     });
 }
-module.exports={collect:collect,projectors:projectors,twoSamples:twoSamples};
+// The diagnostics' root commands print their parts one after another with a line "---" between them. Split on those lines only: a
+// pattern that also ate the line break let two empty parts in a row run together, and every later part moved up one (the helper's
+// remocon lines came back as null when its log held nothing else, 2026-11-21).
+function parts(text){var out=[''];String(text||'').split('\n').forEach(function(l){if(l==='---')out.push('');else out[out.length-1]+=(out[out.length-1]?'\n':'')+l;});return out.map(function(p){return p.replace(/\n+$/,'');});}
+module.exports={collect:collect,projectors:projectors,twoSamples:twoSamples,parts:parts};

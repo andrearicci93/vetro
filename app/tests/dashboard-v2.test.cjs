@@ -19,7 +19,7 @@ assert.ok(squash(html).includes(squash('--vetro-duration-fast:0ms')), 'reduced m
 // Navigation: the three entries at the top, then the rest
 const nav = /<nav aria-label="Main">([\s\S]*?)<\/nav>/.exec(html)[1];
 assert.deepEqual([...nav.matchAll(/data-tab="(\w+)"/g)].map(m => m[1]), ['quick', 'vetroui', 'plugins', 'remote']);
-assert.match(nav, /Vetro UI<\/button>/);
+assert.match(nav, /Vetro UI<span class="chip nav-count">Preview<\/span><\/button>/);
 assert.doesNotMatch(nav, /chip beta/);
 assert.match(nav, /Remapper<\/button>/);
 assert.match(html, /<nav aria-label="TV"><button data-tab="apps"[^>]*>[\s\S]*?Apps and processes<\/button>/);

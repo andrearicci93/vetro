@@ -89,3 +89,18 @@ const probeStore=require('../service/probe');
  context.fetch=async()=>({ok:false});fn.call(button);await new Promise(r=>setImmediate(r));assert.equal(button.disabled,false);assert(status.textContent.includes('Download failed'));assert.equal(clicks,3,'a failed download saves no file');
  console.log('PASS diagnostic export: sensitive-field exclusion, technical fields, partial failure, timeout and browser JSON download');
 })().catch(e=>{console.error(e);process.exit(1);});
+
+// The root commands' parts split on "---" lines, empty parts kept in place (the helper's remocon lines came back null when the
+// first two parts were empty).
+{
+    const report = require('../service/diagnostic-report.js');
+    const p = report.parts('---\n---\nremocon subtype: unsupported\n---\nremocon node: sysname\n');
+    assert.deepStrictEqual(p.slice(0, 4), ['', '', 'remocon subtype: unsupported', 'remocon node: sysname']);
+    assert.deepStrictEqual(report.parts('a\nb\n---\nc'), ['a\nb', 'c']);
+    assert.deepStrictEqual(report.parts(''), ['']);
+    assert.deepStrictEqual(report.parts(null), ['']);
+    const tuner = report.projectors.tuner({installed: true, tunerLog: '+10ms live: the TV is on 4965 (TV Plus)\n+11ms live: the TV is on a TV Plus channel, tuning 1 and showing the tuner\n+12ms input: source type -1 -> 0 (TV)\n+13ms live: Samsung\'s x\n'});
+    const lines = (tuner.events || []).map(e => e.line);
+    assert.ok(lines.includes('live: the TV is on 4965 (TV Plus)') && lines.includes('input: source type -1 -> 0 (TV)'), 'live and source lines kept');
+    assert.ok(!lines.some(l => l.indexOf("'") >= 0), 'a line with a quote is dropped');
+}

@@ -1795,13 +1795,13 @@ namespace Tuner
             {
                 string status;
                 Channel cur = null;
-                try { cur = Tvs.ReadCurrent(out status); } catch (Exception ex) { Log("live: " + ex.Message); }
+                try { cur = Tvs.ReadCurrent(out status); } catch (Exception) { Log("live: the current channel cannot be read"); }
                 if (cur == null) return;
                 Ui(() =>
                 {
                     Log("live: the TV is on " + cur.Major + (cur.Virtual ? " (TV Plus)" : " (antenna)"));
                     if (!cur.Virtual || !Ready()) return;
-                    LeaveTvPlus("Samsung's app is on a TV Plus channel");
+                    LeaveTvPlus("the TV is on a TV Plus channel");
                 });
             });
         }

@@ -34,7 +34,7 @@ const tick = () => new Promise(r => setImmediate(r));
 
 (async () => {
     await tick(); await tick();
-    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards<\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><\/nav>/, 'Quick settings, Vetro UI (launcher, live TV, on-screen displays), Vetro Shards and Remapper');
+    assert.match(html, /<nav aria-label="Main">[\s\S]*?Quick settings<\/button><button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<span class="chip nav-count">Preview<\/span><\/button><button data-tab="plugins"[^>]*>[\s\S]*?Vetro Shards<\/button><button data-tab="remote"[^>]*>[\s\S]*?Remapper<\/button><\/nav>/, 'Quick settings, Vetro UI (launcher, live TV, on-screen displays), Vetro Shards and Remapper');
     assert.doesNotMatch(html, /data-tab="dock"|data-tab="tuner"/, 'the launcher and the tuner are tabs of Vetro UI, not sidebar entries');
     assert.ok(!calls.some(c => c.url === '/dock'), 'the dock is not read until its tab is opened');
     sandbox.switchPanel('dock'); await tick(); await tick();

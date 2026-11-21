@@ -40,7 +40,7 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
 (async () => {
     await tick();
     // One entry, four tabs; the old entries open their tab.
-    assert.match(html, /<button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<\/button>/);
+    assert.match(html, /<button data-tab="vetroui"[^>]*>[\s\S]*?Vetro UI<span class="chip nav-count">Preview<\/span><\/button>/);
     ['overview', 'launcher', 'tuner', 'osd'].forEach(t => assert.match(html, new RegExp('data-ui-tab="' + t + '"')));
     sandbox.switchPanel('osd'); await tick();
     assert.equal(sandbox.currentPanel, 'vetroui'); assert.equal(sandbox.uiTab, 'osd');

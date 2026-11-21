@@ -93,12 +93,14 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Dashboard
 
+- **Vetro UI is marked Preview** in the side menu: it is new in 0.7.0 and still taking shape with your reports.
 - **Shorter and denser.** Settings run in two columns on wide screens, each with one sentence, and a preview sits beside its settings. The Launcher tab has three parts: Vetro launcher, Control center and Custom launcher.
 - **The Task manager page is now Apps and processes**, so the name belongs to the Control center card only.
 - Turning on the Volume bar or the Number pad over a shortcut of yours opens its confirmation instead of flipping back silently; *Keep removed apps* keeps its warning instead of "Action failed"; DNS blocking no longer drops a domain the telemetry switch has just added; the Remapper stops listening by itself after two minutes (listening pauses the Volume bar and the number pad); the Custom launcher's Retry works.
 
 ### Fixes
 
+- **The diagnostic report keeps every part of the launcher, tuner and remote logs in place.** When two parts in a row were empty, the later ones moved up one, so the remote helper's result came back empty. The tuner's part now also says which input the TV reports and what Live TV did with a Samsung TV Plus channel.
 - **Live TV leaves Samsung TV Plus.** Samsung's live TV app goes back to its last channel, so after a Samsung TV Plus channel the Live TV tile and TV in Sources brought TV Plus back, with Samsung's own screens instead of Vetro's tuner. The launcher now tells the tuner that you chose the TV input; when the channel on air is a TV Plus one, the tuner switches to the last antenna channel you watched with it (or the first one) and comes up. The Samsung TV Plus tile still opens TV Plus. Tried on a Q80A.
 - **Holding Up or Down in the Channel list runs down the list again** ([#268](https://github.com/andrearicci93/vetro/pull/268), by [swiezaczek](https://github.com/swiezaczek)). On remotes that send a release for every key, the 0.7.0 previews moved one row only, because the guard against double steps also stopped the hold's own steps. Holding CH and moving in the TV guide were not affected. Tried on a Q80A.
 - **Restarting the launcher or the tuner no longer waits on systemd** ([#258](https://github.com/andrearicci93/vetro/pull/258), by [swiezaczek](https://github.com/swiezaczek)). Vetro asks systemd to stop the unit without waiting for its answer, then checks that the unit is gone (up to 3 seconds) and clears a failed state before starting it again. Tried on a Q80A: Volume bar edge changes, launcher and tuner off and on, standby and wake.

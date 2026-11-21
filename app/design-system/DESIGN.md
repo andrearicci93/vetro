@@ -25,7 +25,7 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 - Glass and gradients are for small overlays and brand moments only. Everyday surfaces are solid.
 - **Never a coloured top border on a rounded card**: a thicker line on top makes coloured "ears" at the corners. Give a card a theme colour with a faint background, a uniform border and a coloured label or icon.
 - A switch is a **win**: its title says what you get ("Disable HbbTV", "Disable automatic firmware update"), and *on* means the win is applied. A chip under the title says *Done* or *Partly done*, in plain words.
-- Copy is English, short, and says what changes on the TV. A feature that is not finished carries a **Beta** chip.
+- Copy is English, short, and says what changes on the TV. A feature that is not finished carries a **Beta** chip. A whole area that is new and still being shaped carries a **Preview** chip in the sidebar, on the right of its name like a count (`chip nav-count`): Vetro UI in 0.7.0.
 - The mobile navigation sheet and details drawer isolate background controls while open, contain keyboard focus and return it on dismissal. Sidebar navigation exposes the current page; segmented views expose their pressed state.
 - Under 620 px the sidebar becomes a sheet: a top bar with the brand and a **Menu** button opens it, so every page, the service state and Sign out stay reachable. Tab rows and filter chips scroll sideways and run to the screen edge, which shows there is more.
 
