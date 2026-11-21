@@ -99,18 +99,18 @@ Each step reverses differently. Menu changes go back in the menu. Vetro's switch
 
 ## What does the Vetro setup involve?
 
-The [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) describes three routes: Apps2Samsung, a coding agent, or manual signing with Tizen Studio. All of them end the same way: open Vetro once on the TV, set Host PC IP to `127.0.0.1` in Developer Mode and restart. After a cold boot, startup and root can take up to 90 seconds. The root runs through TV-local SDB, so no computer needs to stay connected.
+The [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) describes three routes: Apps2Samsung, a coding agent, or manual signing with Tizen Studio. All of them end the same way: open Vetro once on the TV, set Host PC IP to `127.0.0.1` in Developer Mode and restart. After a restart, startup and root can take more than a minute, sometimes more than 90 seconds. The root runs through TV-local SDB, so no computer needs to stay connected.
 
 The dashboard is served over plain HTTP. Once the Vetro app on the TV has been seen, each browser pairs once with a six-digit code shown on the TV; until then the dashboard is open to the local network, as [SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md) explains. Keep the TV on a trusted network. For the steps, see [Developer Mode](/root/samsung-tv-developer-mode/) and [installing Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
 
 ## What has gone wrong for other people?
 
-The changelog and README table are candid about it:
+The changelog and the README table record these problems:
 
 - On two 2022 TVs, a UE65BU8002KXXH ([#22](https://github.com/andrearicci93/vetro/issues/22), [model page](/tested-tvs/bu8002/)) and a QE75QN85BATXXU ([#25](https://github.com/andrearicci93/vetro/issues/25), [model page](/tested-tvs/qn85b/)), turning the launcher on failed with "The Home row is empty or unreadable". Those TVs keep Samsung's Home order cache in a different folder, which release 0.3.1 reads.
 - The 0.3.2 notes described a single-process limitation on Tizen 9. Version 0.5.0 added a multi-app Home guard; no Tizen 9 memory-saving measurement is published.
 - With the launcher on, video played in Samsung Home's picture mode, with motion smoothing off, because Samsung's Home was not running to give the picture back when an app opened (found in an S95C's diagnostics). The 0.7.0 changelog says Vetro now gives the picture back itself, and that this is not yet tried on a TV.
-- Some models run the dashboard but have not tried the launcher. The Frame ([LS03B](/tested-tvs/ls03b/), [#39](https://github.com/andrearicci93/vetro/issues/39)) is one: its report says the launcher was not tried.
+- The first report from The Frame ([LS03B](/tested-tvs/ls03b/), [#39](https://github.com/andrearicci93/vetro/issues/39)) did not try the launcher. A second LS03B owner ran it and found that SVT Play would not open from the row ([#200](https://github.com/andrearicci93/vetro/issues/200)); 0.7.0 includes their fix, which they tested on that TV ([#211](https://github.com/andrearicci93/vetro/pull/211)).
 
 The [tested TVs index](/tested-tvs/) shows which confirmed cases exist.
 

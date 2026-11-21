@@ -39,16 +39,16 @@ The guide ends every route with the same two steps.
 1. Open Vetro on the TV once. The guide calls this required: on some TVs the installer registers the service with start at boot and auto-restart off, and Vetro turns them on by itself only after it has run once and the root agent has connected ([#25](https://github.com/andrearicci93/vetro/issues/25)). A visible icon or an accepted install is not proof that the background service works.
 2. Open `http://TV_IP:8099/` from a browser on the same network. Pairing is automatic: once the Vetro app on the TV has been seen, a browser pairs with a six-digit code shown on the TV ([sign-in guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/SIGN-IN.md)).
 3. Open the Developer Mode screen again (Apps, then 12345), set Host PC IP to `127.0.0.1` and restart the TV.
-4. Wait up to 90 seconds, then open the dashboard. It says Root agent: connected when it worked.
+4. Allow time for startup, then open the dashboard. It can take more than a minute, sometimes more than 90 seconds, and it worked when the dashboard says Root agent: connected.
 
-Root helper startup goes through the TV's own SDB service, which is why the TV has to talk to itself. The guide says this step is tested on a Q80A and that reports from other models describe it as the step that made the TV root itself. While it is set, a computer cannot use SDB on that TV by default. To install a new build from a computer, put the computer's IP back, restart, install, and repeat the step. Do not change the TV's custom DNS for this. More in [connecting with sdb](/root/samsung-sdb-connect-tv/).
+Root helper startup goes through the TV's own SDB service, which is why the TV has to talk to itself. The guide says this step is tested on a Q80A and that reports from other models describe it as the step that made the TV root itself. While it is set, a computer cannot use SDB on that TV by default. To reinstall by hand from a computer, put the computer's IP back, restart, install, and repeat the step, unless the computer goes through Vetro's SDB tunnel (Allow SDB from the local network, below). Updating from Vetro 0.5.0 or later needs none of this: Quick settings, General, Software update keeps Host PC IP at `127.0.0.1`. Do not change the TV's custom DNS for this. More in [connecting with sdb](/root/samsung-sdb-connect-tv/).
 
 If the dashboard does not say connected, open `http://TV_IP:8099/status` (if pairing is on, pair the browser first):
 
 | You see | Meaning |
 | --- | --- |
 | `"mode": "app-only"` | The package has no root integration |
-| `"mode": "tv-integration"` and agent not connected | Check Developer Mode, Host PC IP `127.0.0.1`, a restart and 90 seconds |
+| `"mode": "tv-integration"` and agent not connected | Check Developer Mode, Host PC IP `127.0.0.1` and a restart; just after a restart, give it more than a minute |
 | The page does not load | The background service is not running; open Vetro once and reload |
 
 ## What should I turn on after installing?
@@ -56,7 +56,7 @@ If the dashboard does not say connected, open `http://TV_IP:8099/status` (if pai
 Two settings in Quick settings, General, Essential settings matter right after a first install.
 
 - Block firmware and software updates. Samsung firmware can close the route Vetro uses to get root: in [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update to 1722.0 removed root from a 2022 TV, and Samsung does not support going back. Turn the switch on while root still works. It stops every update service and applies the lock again at each boot; the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says it was tried on a Q80A only. It can help keep root, it does not guarantee it, and while it is on Samsung's firmware and app updates do not install. The details are in [what a firmware update does to root](/updates/firmware-update-remove-root/).
-- Allow SDB from the local network, if you want to keep installing apps from Apps2Samsung or TV-Store. The dashboard says turning it on improves compatibility with both, and turning it off disconnects them. It moved here from Developer settings in 0.7.0.
+- Allow SDB from the local network, if you want to keep installing apps from Apps2Samsung or TV-Store. The dashboard says turning it on improves compatibility with both, and turning it off disconnects them. It opens Vetro's SDB tunnel to clients on your network, and the tunnel does not use Vetro pairing ([the security model](/reference/vetro-security-model/)). It moved here from Developer settings in 0.7.0.
 
 Vetro UI's parts, the launcher with its Control center, live TV, the volume bar and the number pad, each have their own switch on the Vetro UI page. They are new in 0.7.0 and marked Preview; if one misbehaves, open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the report from Quick settings, Developer settings, Diagnostic report.
 

@@ -1,6 +1,6 @@
 ---
 title: "Is it safe to root a Samsung TV? Risks and what to undo"
-description: "Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo."
+description: "Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, Shard trust and what Restore can undo."
 keywords: ["is it safe to root samsung tv", "root samsung tv risks", "samsung tv root brick", "samsung tv root warranty"]
 date: 2026-11-10
 updated: 2026-11-21
@@ -16,10 +16,10 @@ faq:
   - q: "Does a Samsung firmware update remove root?"
     a: "It can. In Vetro issue #223 a forced update to 1722.0 removed root on a 2022 TV, and Samsung does not support firmware downgrades. Vetro's Block firmware and software updates switch can help keep root while it works, but it does not guarantee it. Root is also volatile and has to be acquired again after each restart."
   - q: "Can I undo what Vetro changed?"
-    a: "Mostly. Restore the TV puts back the changes Vetro recorded after one confirmation. Uninstalled apps, settings without a saved previous value and changes made by plugins need manual recovery."
+    a: "Mostly. Restore the TV puts back the changes Vetro recorded after one confirmation. Uninstalled apps, settings without a saved previous value and changes made by Shards need manual recovery."
 ---
 
-Rooting a Samsung TV is not risk free. It changes a device Samsung locked down, the tools are experimental, and a firmware update can change the result. Vetro's [changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) and guides document a boot hazard on the Q80A, a plain-HTTP dashboard, plugins that run with full access, and a forced firmware update that removed root on one TV ([#223](https://github.com/andrearicci93/vetro/issues/223)). Most changes can be reversed; a few cannot. For the method itself, see [how to root a Samsung TV](/root/how-to-root-samsung-tv/).
+Rooting a Samsung TV is not risk free. It changes a device Samsung locked down, the tools are experimental, and a firmware update can change the result. Vetro's [changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) and guides document a boot hazard on the Q80A, a plain-HTTP dashboard, Shards (third-party extensions) that run with full access, and a forced firmware update that removed root on one TV ([#223](https://github.com/andrearicci93/vetro/issues/223)). Most changes can be reversed; a few cannot. For the method itself, see [how to root a Samsung TV](/root/how-to-root-samsung-tv/).
 
 ## What does rooting actually change?
 
@@ -37,7 +37,7 @@ The published Vetro files record no bricked TV. They do document two hazards tha
 
 ### Disabling Samsung Home on the Q80A
 
-The 0.5.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), in its custom launcher entry, says: keep Samsung's Home enabled, because on the [Q80A](/tested-tvs/q80a/) disabling it can keep the TV from finishing its boot. Vetro's custom launcher leaves Samsung's Home enabled and closes it after each Home press. The separate Samsung Home switch, now on the Launcher tab of the dashboard's Vetro UI page, asks for confirmation. The same 0.5.0 entry said the custom launcher was not yet tried by hand on a TV.
+The 0.5.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), in its custom launcher entry, says: keep Samsung's Home enabled, because on the [Q80A](/tested-tvs/q80a/) disabling it can keep the TV from finishing its boot. Vetro's custom launcher leaves Samsung's Home enabled and closes it after each Home press. The separate Disable Samsung Home switch, now in Vetro UI → Launcher → Custom launcher → Samsung Home, asks for confirmation. The same 0.5.0 entry said the custom launcher was not yet tried by hand on a TV.
 
 The changelog states this for the Q80A only. Other models may behave differently, which is a reason to read each switch before turning it on.
 
@@ -47,7 +47,7 @@ Per the changelog, opening Samsung's AgingApp could leave a TV starting a factor
 
 ### Changes to the boot step
 
-Two switches added in 0.7.0 change what the TV runs early in its boot. Block firmware and software updates and Quick boot (marked Experimental) both use a small replacement of the vendor script `parseinfo.sh` in the TV's AT-HUB boot step, which keeps the vendor write. The changelog says turning the switches off (or Restore the TV, for Quick boot) brings the vendor boot step back, and that the replacement does nothing once Vetro is uninstalled. Quick boot was tested on a Q80A only, and the changelog says another model or boot order may differ.
+Two switches added in 0.7.0 change what the TV runs early in its boot. Block firmware and software updates and Quick boot (marked Experimental) both use a small replacement of the vendor script `parseinfo.sh` in the TV's AT-HUB boot step, which keeps the vendor write. Because the two switches share that hook, Vetro puts the vendor script back only once both are off, and Restore the TV turns both off. The changelog adds that the replacement does nothing once Vetro is uninstalled. Quick boot was tested on a Q80A only, and the changelog says another model or boot order may differ.
 
 ## What about firmware updates?
 
@@ -64,7 +64,7 @@ Traffic is still plain HTTP, so someone watching your network could copy a key. 
 Two further switches widen the trust:
 
 - Allow SDB from the local network (Quick settings, General, Essential settings), off by default, gives any reachable client developer access to the TV without Vetro pairing. See [connecting with sdb](/root/samsung-sdb-connect-tv/).
-- Vetro Shards (plugins) are third-party code with no sandbox: a plugin can do whatever Vetro can, including running commands as root. They are off until switched on, and the [plugin guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/plugins.md) says to enable only ones you trust.
+- Shards, the third-party extensions on the dashboard's Vetro Shards page, have no sandbox: a Shard can do whatever Vetro can, including running commands as root. They are off until switched on, and the [Shard guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/plugins.md) says to enable only ones you trust.
 
 More in the [Vetro security model](/reference/vetro-security-model/). Do not share signing keys or developer-account credentials. Diagnostic reports exclude many private fields but can still show which software is installed, so read one before you post it.
 
@@ -80,7 +80,7 @@ Vetro 0.7.0 draws more of the TV itself: a launcher with your own row and a Cont
 | Disabling a component | Yes, it stays installed |
 | Stopping a process | Yes, it is only stopped |
 | Uninstalling a package | Needs an installer to recover |
-| Restore the TV | Puts back recorded changes; plugin changes and settings with no saved previous value need manual recovery |
+| Restore the TV | Puts back recorded changes; Shard changes and settings with no saved previous value need manual recovery |
 | An update | The previous version is restored if the new one does not start within four minutes |
 
 If Vetro cannot read its saved state, it keeps its backups and blocks data removal. Turning a switch back is not a recovery guarantee after a stalled boot or a lost network. For the full procedure see [uninstall Vetro and clean up](/root/uninstall-vetro-samsung-tv/).

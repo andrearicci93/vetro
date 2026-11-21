@@ -1,6 +1,6 @@
 ---
 title: "Vetro security model: pairing, plain HTTP, trusted LAN"
-description: "Since 0.5.0 Vetro pairs browsers with a six-digit code shown on the TV, but traffic is plain HTTP. What pairing covers, what stays open, SDB, plugins."
+description: "Since 0.5.0 Vetro pairs browsers with a six-digit code shown on the TV, but traffic is plain HTTP. What pairing covers, what stays open, SDB, Shards."
 keywords: ["vetro security", "vetro pairing", "samsung tv root security", "vetro diagnostic report privacy"]
 date: 2026-11-10
 updated: 2026-11-21
@@ -20,7 +20,7 @@ Pairing is automatic by default. It switches on the first time the Vetro app on 
 
 This matters because of what happened to the first 0.5.0 build. It had pairing always on, and on a Samsung Q8F (Tizen 9) the TV app could not reach the service, so the code never appeared and nobody could open the dashboard. The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) records the republish with the automatic mode, which has not yet been tried on a Q8F. If you still run a 0.5.0 build, update to 0.7.0 from Quick settings → General → Software update, or reinstall with Apps2Samsung if the dashboard does not open (see the [install guide](/root/install-vetro-apps2samsung/)).
 
-You can choose yourself in Quick settings → Developer settings → Pairing: Require pairing can be automatic, always on or always off. Turning it on from an unpaired browser first pairs that browser, so nobody is locked out. Turning it off asks for confirmation. Restore the TV does not change it, and existing paired keys stay valid in every mode.
+Require pairing, in Quick settings → Developer settings → Pairing, starts in automatic mode; choosing On or Off overrides it. Turning it on from an unpaired browser first pairs that browser, so nobody is locked out. Turning it off asks for confirmation. Restore the TV does not change it, and existing paired keys stay valid in every mode.
 
 ## How does pairing work?
 
@@ -43,14 +43,14 @@ Several things are outside what pairing covers.
 - Traffic is plain HTTP. A device that can watch your LAN traffic could copy a key, so a paired browser is only as safe as the network.
 - Other apps installed on the TV are trusted like the Vetro widget and need no pairing.
 - Until the TV app has been seen, or when you choose Off, the dashboard is open to the LAN.
-- The developer connection is separate. The experimental SDB tunnel accepts only loopback clients by default. A paired user can switch on Allow SDB from the local network, which 0.7.0 moved to Quick settings → General → Essential settings because it helps Apps2Samsung and TV-Store reach the TV. From then on any reachable client gets developer access to the TV, with no Vetro pairing. Signing out in HTTP does not revoke it. Turning the switch off disconnects network clients, and Restore the TV turns it off. The tunnel listens on port 26201, and changing the port does not add authentication.
+- The developer connection is separate. The experimental SDB tunnel accepts only loopback clients by default. A paired user can switch on Allow SDB from the local network, which 0.7.0 moved to Quick settings → General → Essential settings because it helps Apps2Samsung and TV-Store reach the TV. The switch opens the tunnel to clients on your network, and the tunnel does not use Vetro pairing: from then on any client that reaches it gets developer access to the TV. Signing out in HTTP does not revoke it. Turning the switch off disconnects network clients, and Restore the TV turns it off. The tunnel listens on port 26201, and changing the port does not add authentication.
 - The root helper uses its own internal protocol, which does not protect the browser interface.
 
 Keep the TV on a trusted network, do not forward 8099 or any other Vetro port, and think about whether guests on your Wi-Fi should reach the TV at all. That last point is general networking advice, not a Vetro feature.
 
-## What can a plugin or an update do?
+## What can a Shard or an update do?
 
-Vetro Shards are third-party code that runs inside Vetro's service. There is no sandbox: the host guards failures, but a plugin can do what Vetro can, including running commands as root, whatever permissions it declares. Plugins are off until you switch them on and can be installed only by a paired device. The public list is signed and spot-checked, not audited; a signature shows that a file is the one the list published, not that its code is safe. Plugins outside the list need Developer mode, which is off by default. Install only plugins you trust.
+Shards are third-party extensions, installed from the dashboard's Vetro Shards page, that run inside Vetro's service. There is no sandbox: the host guards failures, but a Shard can do what Vetro can, including running commands as root, whatever permissions it declares. Shards are off until you switch them on and can be installed only by a paired device. The public list is signed and spot-checked, not audited; a signature shows that a file is the one the list published, not that its code is safe. Shards outside the list need Developer mode, which is off by default. Install only Shards you trust.
 
 Software update replaces Vetro's files through the root helper. An update is accepted only if its manifest is signed with the Vetro release key, whose public half ships in the package, and the previous version is restored if the new one does not start. Since 0.7.0 the Update Vetro tile on the TV can download a signed update by itself, with the same signature and hash checks; the [update guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md) says that path has not been tried on a TV yet and has the details. Update notices, in Developer settings and off by default, only let the browser look for new versions; installing stays manual.
 

@@ -52,7 +52,7 @@ On retail firmware the connection can work while the interactive shell does not.
 
 ## How does Vetro use SDB?
 
-After you set Host PC IP to `127.0.0.1` and restart, the Vetro service on the TV starts a small root helper through the TV's own SDB service, and the helper connects back to Vetro. No computer needs to stay connected. The dashboard shows when the root agent is connected, and startup can take up to 90 seconds. The root comes from Chris Ritsen's research; Vetro is experimental, needs root and ships no signed installer. See [does root survive a restart](/root/keep-root-after-restart/).
+After you set Host PC IP to `127.0.0.1` and restart, the Vetro service on the TV starts a small root helper through the TV's own SDB service, and the helper connects back to Vetro. No computer needs to stay connected. Startup can take more than a minute, sometimes more than 90 seconds; the dashboard shows when the root agent is connected. The root comes from Chris Ritsen's research; Vetro is experimental, needs root and ships no signed installer. See [does root survive a restart](/root/keep-root-after-restart/).
 
 ### Can a computer share the connection with Vetro?
 

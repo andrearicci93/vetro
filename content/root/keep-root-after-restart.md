@@ -1,6 +1,6 @@
 ---
 title: "Does root survive a restart on a Samsung TV?"
-description: "What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself in up to 90 seconds."
+description: "What happens to Samsung TV root after a restart, standby, a full power cycle or a firmware update, and how Vetro gets root back by itself after each start."
 keywords: ["samsung tv root persistent reboot", "does root survive restart samsung tv", "samsung tv root after power cycle", "vetro root agent boot"]
 date: 2026-11-10
 updated: 2026-11-21
@@ -8,7 +8,7 @@ verified: "Checked on 2026-11-21 against Vetro's BOOT-TEST.md, RELEASE-AUDIT.md,
 related: ["how-to-root-samsung-tv", "firmware-update-remove-root", "stop-samsung-tv-auto-update", "samsung-sdb-connect-tv", "install-vetro-apps2samsung", "is-it-safe-to-root-samsung-tv"]
 ---
 
-Root on a Samsung TV does not stay switched on across a restart; it has to be obtained again. The research Vetro builds on describes root as volatile. What Vetro does is get it back automatically: after the TV starts, its background service uses the TV's own SDB service to launch a root helper, and the helper connects back. The installation guide says this can take up to 90 seconds. Evidence comes from one Q80A and a few community reports, not from every model, so treat it as likely rather than guaranteed.
+Root on a Samsung TV does not stay switched on across a restart; it has to be obtained again. The research Vetro builds on describes root as volatile. What Vetro does is get it back automatically: after the TV starts, its background service uses the TV's own SDB service to launch a root helper, and the helper connects back. The installation guide says this can take more than a minute, sometimes more than 90 seconds. Evidence comes from one Q80A and a few community reports, not from every model, so treat it as likely rather than guaranteed.
 
 ## What is "persistent" root here?
 
@@ -18,7 +18,7 @@ Vetro changes where that happens. Its root agent is a small helper that runs as 
 
 ## How long does it take after a restart?
 
-The [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#check-that-it-starts-by-itself) says startup and root can take up to 90 seconds after a cold boot, and to wait before treating an unavailable dashboard or agent as a failure. Several diagnostic report sections say "unavailable: no root agent connected" until the helper is up, which is expected in that window.
+The [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#check-that-it-starts-by-itself) says startup and root can take more than a minute after a full restart, and that 90 seconds is not a universal deadline: on a [Q60B](/tested-tvs/q60b/) with Vetro 0.5.0, the service, root agent and launcher were back after about 100 seconds in a software-restart test. Wait until the dashboard says Root agent: connected before treating an unavailable dashboard or agent as a failure. Several diagnostic report sections say "unavailable: no root agent connected" until the helper is up, which is expected in that window.
 
 The project's [release audit](https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md), a document from 11 October 2026 about the 0.2.x builds, records two results on a [Q80A](/tested-tvs/q80a/). After a complete power cycle without opening Vetro, the service and an authenticated UID-0 agent were back; the audit calls this one cold boot of the then-installed package, not proof across firmware or repeated boots. After a later reboot without opening Vetro, two distinct boots were verified, with the DNS filter seen connected at roughly 115 and 118 seconds of uptime. The audit says native key behavior stays in place until Vetro and the helper are ready, and that this is not a guarantee for all firmware or an unplugged cold boot.
 
@@ -31,11 +31,11 @@ The project's [release audit](https://github.com/andrearicci93/vetro/blob/main/a
 | Full power cycle (unplugged) | One unattended cold boot confirmed on the Q80A in the audit; repeat checks on newer builds were listed as outstanding |
 | Firmware update | Can remove root for good. In [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update to 1722.0 removed root from a 2022 TV, and an update to Tizen 10 removed it from a [QN80F](/tested-tvs/qn80f/) ([#181](https://github.com/andrearicci93/vetro/issues/181)) |
 
-A restart costs root only until the helper is back, up to 90 seconds; a firmware update can cost it for good, and Samsung does not support going back. Vetro 0.7.0's Block firmware and software updates switch, in Quick settings, General, Essential settings, stops every update service and applies the lock again at each boot. On TVs that run the AT-HUB boot step (Tizen 6, 6.5 and 9) it is applied at power-on, before the update services start; elsewhere it starts with the root agent. The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says it was tried on a Q80A only. Turn it on while root still works: it can help keep root, it does not guarantee it, and while it is on Samsung's firmware and app updates do not install. More in [what a firmware update does to root](/updates/firmware-update-remove-root/) and [stopping automatic updates](/updates/stop-samsung-tv-auto-update/).
+A restart costs root only until the helper is back, which can take more than a minute; a firmware update can cost it for good, and Samsung does not support going back. Vetro 0.7.0's Block firmware and software updates switch, in Quick settings, General, Essential settings, stops every update service and applies the lock again at each boot. On TVs that run the AT-HUB boot step (Tizen 6, 6.5 and 9) it is applied at power-on, before the update services start; elsewhere it starts with the root agent. The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says it was tried on a Q80A only. Turn it on while root still works: it can help keep root, it does not guarantee it, and while it is on Samsung's firmware and app updates do not install. More in [what a firmware update does to root](/updates/firmware-update-remove-root/) and [stopping automatic updates](/updates/stop-samsung-tv-auto-update/).
 
 ## Can Vetro start sooner after a boot?
 
-Version 0.7.0 adds Quick boot, an experimental switch in the same Essential settings section. The CHANGELOG explains that the TV waits for four boot-completion markers and two never appear, so Vetro started about 30 seconds late. Quick boot creates the markers at about 10 seconds through the same AT-HUB boot step. On a Q80A, Vetro went from about 97 seconds to 28 to 31 seconds after power-on, and the launcher from about 103 seconds to 42 to 45 seconds. It was tested on a Q80A only, and the dashboard says it may not work on your TV. On Tizen 6.5 and 9 it also sets an extra boot event, and those models are untested. Turning it off, or Restore the TV, brings the vendor boot step back.
+Version 0.7.0 adds Quick boot, an experimental switch in the same Essential settings section. The CHANGELOG explains that the TV waits for four boot-completion markers and two never appear, so Vetro started about 30 seconds late. Quick boot creates the markers at about 10 seconds through the same AT-HUB boot step. On a Q80A, Vetro went from about 97 seconds to 28 to 31 seconds after power-on, and the launcher from about 103 seconds to 42 to 45 seconds. It was tested on a Q80A only, and the dashboard says it may not work on your TV. On Tizen 6.5 and 9 it also sets an extra boot event, and those models are untested. Quick boot and Block firmware and software updates share that boot hook, so Vetro puts the vendor boot script back only once both switches are off; Restore the TV turns both off.
 
 The same release stops calling a slow start after a boot "Start failed" ([#179](https://github.com/andrearicci93/vetro/issues/179)).
 
@@ -68,7 +68,7 @@ BOOT-TEST.md describes `scripts/boot-test.py` in the `app` folder, which records
 The installation guide's table starts from `http://TV_IP:8099/status` (pair the browser first if pairing is on):
 
 - `"mode": "app-only"`: the package has no root integration.
-- `"mode": "tv-integration"` with the agent not connected: check that Developer Mode is on, Host PC IP is `127.0.0.1`, you restarted the TV afterwards and you waited 90 seconds.
+- `"mode": "tv-integration"` with the agent not connected: check that Developer Mode is on, Host PC IP is `127.0.0.1` and you restarted the TV afterwards. Just after a restart, give it more than a minute and read the `rooting.phase` and `rooting.failure` fields rather than treating 90 seconds as a deadline.
 - The page does not load: the background service is not running. Open Vetro once, wait 10 seconds and reload.
 - Launches that end without `agent-connected`: root did not work on this firmware or SDB refused the connection. The guide asks for the diagnostic report in a new issue.
 

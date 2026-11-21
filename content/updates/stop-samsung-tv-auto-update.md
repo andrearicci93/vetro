@@ -12,9 +12,9 @@ faq:
   - q: "Does turning off Auto Update stop all Samsung TV updates?"
     a: "No. Samsung's page says other app updates or Smart Hub updates will still download and install automatically. Vetro's notes add that the toggle only decides what the TV does with a firmware image it has found, while other update paths never read it."
   - q: "Can I block Samsung TV updates on my router?"
-    a: "Vetro's domain notes identify sas.samsungcloudsolution.com and sas.samsungcloudsolution.net as the software-update servers, taken from Q80A firmware, and say blocking them stops firmware updates. Those notes do not claim a tested blocklist for other models, and blocking can have side effects."
+    a: "Yes. Denying the TV all internet access on the router, over IPv4 and IPv6, blocks the updates that come over the network; a firmware file on a USB stick still installs. The Q80A firmware references sas.samsungcloudsolution.com and sas.samsungcloudsolution.net as update servers, but blocking those names alone does not cover every update connection."
   - q: "Does turning off auto update keep root on a Samsung TV?"
-    a: "Not reliably. In Vetro issue #223 a forced update removed root from a 2022 TV whose owner had automatic updates off. On a rooted TV, Vetro 0.7.0's Block firmware and software updates switch stops every update path; it can help keep root, but it does not guarantee it."
+    a: "Not reliably. In Vetro issue #223 a forced update removed root from a 2022 TV whose owner had automatic updates off. On a rooted TV, Vetro 0.7.0's Block firmware and software updates switch stops and masks Samsung's update services; it can help keep root, but it does not guarantee it."
 ---
 
 To stop Samsung TV automatic firmware updates, open Settings, go to Support, then Software Update, and if Auto Update is on, select it once to turn it off. That covers firmware installs only: Samsung says app and Smart Hub updates continue. On a rooted TV the toggle is not enough to protect root: a forced update has already removed root from a TV with it off ([#223](https://github.com/andrearicci93/vetro/issues/223)). This page gives Samsung's menu path, the router option and what Vetro 0.7.0's update lock does.
@@ -39,9 +39,9 @@ Vetro's [guide to blocking updates without root](https://github.com/andrearicci9
 
 ## Can I block updates on my router?
 
-Yes. Vetro's [without-root guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says that without root the network is the only reliable block, and recommends denying the TV internet access on the router for both IPv4 and IPv6, or putting it on a network that reaches your home devices but not the internet. If you need streaming apps, allow only the hosts they use. It also says a DNS blocklist alone is not enough, because the TV can reach a host by its address, use another resolver or go over IPv6. A firmware file on a USB stick still installs without any network. The owner in #223 reports that DNS, IPv6 and router blocks were in place when the forced update installed, so treat any network block as a precaution, not a guarantee.
+Yes. Vetro's [without-root guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says that without root the network is the only reliable block, and recommends denying the TV internet access on the router for both IPv4 and IPv6, or putting it on a network that reaches your home devices but not the internet. If you need streaming apps, allow only the hosts they use. It also says a DNS blocklist alone is not enough, because the TV can reach a host by its address, use another resolver or go over IPv6. A complete cutoff, over IPv4 and IPv6, blocks the updates that come over the network, while a firmware file on a USB stick still installs without any network. The owner in #223 had a partial block: they blocked selected DNS resolvers on the router, used DNS filtering and turned IPv6 off on the TV, and the update still arrived. They did not report cutting the TV off from the internet.
 
-Blocking only update hostnames is a smaller step with side effects. Vetro's [domain filter notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md) identify `sas.samsungcloudsolution.com` and `sas.samsungcloudsolution.net` as the software-update servers, from strings in the Q80A firmware, and say that blocking them stops firmware updates. They also say Vetro does not refuse these names, because it is a decision for the owner, and that a Quick settings switch is easier to undo.
+Blocking only update hostnames is a smaller step, and it leaves gaps. According to Vetro's [domain filter notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md), the Q80A firmware references `sas.samsungcloudsolution.com` and `sas.samsungcloudsolution.net` as its software-update servers. Blocking those names alone does not cover every update connection. The notes say Vetro's filter does not refuse them, because blocking them is a decision for the owner, and point to a Quick settings switch that is easier to undo and covers the other update services too.
 
 Those two names come from Q80A firmware ([model page](/tested-tvs/q80a/)). They are not a tested blocklist for other Samsung TVs, and a router or DNS rule only affects the devices it covers. Filters can also break features, so read [blocking Samsung TV telemetry with DNS](/privacy/block-samsung-tv-telemetry-dns/) before you edit lists.
 
@@ -55,7 +55,7 @@ According to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CH
 
 ![Vetro Quick settings in an earlier interface, with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant](/assets/img/dashboard-quick-settings.jpg)
 
-Two limits come with it. The behavior was read from the Tizen 6, 6.5 and 9 firmware and tried on a Q80A ([model page](/tested-tvs/q80a/)) after a cold reboot; other models are not tried. And while it is on, Samsung's firmware and app updates do not install, so security fixes wait until you turn it off. It can help keep root; it does not guarantee it, and a firmware update that lands anyway replaces everything it does.
+Two limits come with it. The behavior was read from the Tizen 6, 6.5 and 9 firmware, and the test is narrow: on a Q80A ([model page](/tested-tvs/q80a/)) with firmware 2310.0, the masks on the update services were in place after a cold reboot, before Vetro's own service started. No TV has been tested against a forced update like the one in #223, and other models are not tried. And while it is on, Samsung's firmware and app updates do not install, so security fixes wait until you turn it off. It can help keep root; it does not guarantee it, and a firmware update that lands anyway replaces everything it does.
 
 Vetro is experimental, needs root and ships no signed installer. Read [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/) before relying on it, and see [Vetro's root requirements](/root/how-to-root-samsung-tv/) for the route. If your TV still roots, turn the switch on before the next update rather than after.
 
@@ -65,18 +65,18 @@ Vetro is experimental, needs root and ships no signed installer. Read [whether r
 | --- | --- | --- | --- |
 | Menu toggle (Support, Software Update, Auto Update) | No | What the TV does with a firmware image it found | App and Smart Hub updates continue; other update paths never read it |
 | No internet for the TV on the router (IPv4 and IPv6) | No | Every update that needs the network | Streaming apps need their hosts allowed; USB updates still install |
-| DNS or hostname block | No | Names the TV looks up through your resolver | Not enough alone; hosts taken from Q80A firmware, not a tested list |
-| Vetro's Block firmware and software updates | Yes | Every update service on the TV, applied again at each boot | Tried on a Q80A only; Samsung's app updates stop too |
+| DNS or hostname block | No | Names the TV looks up through your resolver | Does not cover every update connection; hosts taken from Q80A firmware, not a tested list |
+| Vetro's Block firmware and software updates | Yes | Samsung's update services, blocked again at each boot | Checked on a Q80A only, not against a forced update; Samsung's app updates stop too |
 
-Most people should stop at the first row. A rooted TV with a result you want to keep is the case for the others: Vetro's switch while root works, and the router rule if you want a block that lives outside the TV.
+Without root, the menu toggle only changes how firmware updates are handled; the router rule is what blocks the background paths. On a rooted TV you want to keep rooted, use Vetro's switch while root works, and add the router rule if you want a block that lives outside the TV.
 
 ## Is turning it off a good idea?
 
-Turning Auto Update off lets you review updates before installing them, but delaying them also delays security fixes, and Vetro's switch delays app updates as well. If you rely on root, read [will a firmware update remove root](/updates/firmware-update-remove-root/) to see what Vetro's records show, and [can you downgrade firmware](/updates/downgrade-samsung-tv-firmware/), because going back is usually not possible.
+Turning Auto Update off only changes how the TV handles a firmware image it finds. Background updates can still run, and a forced update may still install. Holding updates back also delays security fixes, and Vetro's switch holds back app updates as well. If you rely on root, read [will a firmware update remove root](/updates/firmware-update-remove-root/) to see what Vetro's records show, and [can you downgrade firmware](/updates/downgrade-samsung-tv-firmware/), because going back is usually not possible.
 
 ## Limits
 
-Samsung's US page is the source for the menu path, and your TV's wording may differ, especially outside the US or on older models. We haven't tested whether a firmware prompt can still appear with the toggle off, or whether Vetro's switch holds back a forced update like the one in #223 on TVs other than the Q80A. Nothing here is warranty or legal advice.
+Samsung's US page is the source for the menu path, and your TV's wording may differ, especially outside the US or on older models. We haven't tested whether a firmware prompt can still appear with the toggle off. Vetro's switch was checked on a Q80A only, after a cold reboot, and never against a forced update like the one in #223. Nothing here is warranty or legal advice.
 
 ## Next steps
 

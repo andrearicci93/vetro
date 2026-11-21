@@ -301,11 +301,14 @@ const rootNote = (t) => {
   if (t.slug === 'q80r') return `${base} The stock package did not work on this TV; the report used a personal port with local changes.`;
   return base;
 };
+// A firmware that could not be read is plain text; a platform identifier from the report gets its own line, never the Firmware label.
+const fwText = (t) => (/^Not /.test(t.firmware) ? esc(t.firmware) : `<code>${esc(t.firmware)}</code>`);
+const platformLine = (t) => (t.platformId ? `<br><span class="muted">Reported platform identifier <code>${esc(t.platformId)}</code></span>` : '');
 const issueLink = (t) => (t.issue ? `<a href="${REPO}/issues/${t.issue}" rel="noopener">#${t.issue}</a>` : esc(t.source || 'no issue number'));
 {
   const p = '/tested-tvs/';
   const crumbs = [{ name: 'Vetro', path: '/' }, { name: 'Tested TVs', path: p }];
-  const rows = tvs.map((t) => `<tr><td><a href="${url(`/tested-tvs/${t.slug}/`)}">${esc(t.name)}</a><br><span class="muted">${esc(t.code)}</span></td><td>${t.year ?? 'n/a'}</td><td>${esc(t.tizen)}</td><td><code>${esc(t.firmware)}</code></td><td>${esc(t.status)}</td><td>${issueLink(t)}</td></tr>`).join('');
+  const rows = tvs.map((t) => `<tr><td><a href="${url(`/tested-tvs/${t.slug}/`)}">${esc(t.name)}</a><br><span class="muted">${esc(t.code)}</span>${platformLine(t)}</td><td>${t.year ?? 'n/a'}</td><td>${esc(t.tizen)}</td><td>${fwText(t)}</td><td>${esc(t.status)}</td><td>${issueLink(t)}</td></tr>`).join('');
   const body = `<div class="wrap hub">${crumbsHtml(crumbs)}<h1>Samsung TVs tested with Vetro</h1>
 <p class="lede">Vetro is developed on a Samsung Q80A. Every other TV below is there because an owner reported it, usually with a diagnostic export. Reported working reflects the evidence recorded for each model in Vetro's README. Reports vary in detail and do not establish that every feature was tested. Root features need Tizen 6 to 9; Tizen 10 has no root yet.</p>
 ${tableWrap(`<thead><tr><th scope="col">TV</th><th scope="col">Year</th><th scope="col">Tizen</th><th scope="col">Firmware</th><th scope="col">Status</th><th scope="col">Report</th></tr></thead><tbody>${rows}</tbody>`, 'Samsung TVs tested with Vetro')}
@@ -322,12 +325,12 @@ ${tableWrap(`<thead><tr><th scope="col">TV</th><th scope="col">Year</th><th scop
     const others = t.year == null ? [] : tvs.filter((x) => x.slug !== t.slug && x.year === t.year).slice(0, 5);
     const title = `${t.name}: Vetro compatibility and limits`;
     // Whole sentences only: prefer the longest variant that fits, never cut mid-sentence.
-    const lead = `${t.name} with Vetro: ${t.status.toLowerCase()}. ${t.firmwareLabel ? 'Reported platform identifier' : 'Firmware'} ${t.firmware}, ${t.tizen}.`;
+    const lead = `${t.name} with Vetro: ${t.status.toLowerCase()}. ${t.platformId ? `Reported platform identifier ${t.platformId}` : `Firmware ${t.firmware}`}, ${t.tizen}.`;
     const desc = t.description || [`${lead} What was reported and what to check first.`, lead, `${t.name} with Vetro: ${t.status.toLowerCase()}.`].find((s) => s.length <= 158);
     const b = `<div class="wrap article-layout"><article>${crumbsHtml(c2)}<header class="article-head"><p class="eyebrow">Tested TVs</p><h1>${esc(t.name)} with Vetro</h1><p class="meta">${esc(t.status)} · Model code <code>${esc(t.code)}</code></p></header>
 <div class="prose"><p>${esc(t.summary)}</p>
 <h2>Report details</h2>
-<table><tbody><tr><th scope="row">Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th scope="row">Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th scope="row">Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th scope="row">${esc(t.firmwareLabel || 'Firmware')}</th><td><code>${esc(t.firmware)}</code></td></tr><tr><th scope="row">Status</th><td>${esc(t.status)}</td></tr><tr><th scope="row">Report</th><td>${issueLink(t)}</td></tr></tbody></table>
+<table><tbody><tr><th scope="row">Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th scope="row">Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th scope="row">Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th scope="row">Firmware</th><td>${fwText(t)}</td></tr>${t.platformId ? `<tr><th scope="row">Reported platform identifier</th><td><code>${esc(t.platformId)}</code></td></tr>` : ''}<tr><th scope="row">Status</th><td>${esc(t.status)}</td></tr><tr><th scope="row">Report</th><td>${issueLink(t)}</td></tr></tbody></table>
 ${t.noRoot
   ? `<h2>What this means for your TV</h2>
 <p>${noRootNote}${t.slug === 'qn80f' ? '' : ` A firmware update that moves a TV to Tizen 10 removes root, as the <a href="${url('/tested-tvs/qn80f/')}">QN80F report</a> shows.`} If your TV still runs Tizen 9 or older and roots, read <a href="${url('/updates/firmware-update-remove-root/')}">what a firmware update does to root</a> before the next update. Vetro's <a href="${REPO}/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md" rel="noopener">guide to blocking updates without root</a> says the network is then the only reliable block. Vetro is experimental and not affiliated with Samsung.</p>`
@@ -382,14 +385,14 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <p class="links"><a href="${url('/tested-tvs/')}">See tested TVs and firmware</a><a href="${url('/tested-tvs/q80a/')}">Q80A test record</a><a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">Read the rooting risks</a></p>
 <aside class="secnote" aria-labelledby="keep-root-h"><h3 id="keep-root-h">Block updates while root still works</h3>
 <p>A Samsung firmware update can close the route Vetro uses to get root. In <a href="${REPO}/issues/223" rel="noopener">issue #223</a> a forced update to firmware 1722.0 removed root from a 2022 TV, and Samsung does not support going back to older firmware.</p>
-<p>If your TV still roots, install Vetro and turn on Block firmware and software updates in Quick settings, General, Essential settings. It stops every update path, not only the menu's Auto update, and applies the lock again at each boot. It can help keep root; it does not guarantee it. While it is on, Samsung's firmware and app updates do not install. It needs root and was tried on a Q80A only.</p>
+<p>If your TV still roots, install Vetro and turn on Block firmware and software updates in Quick settings, General, Essential settings. The switch is off by default and needs root. It blocks Samsung's automatic firmware and software update services, not only the menu's Auto update, and applies the block again after every boot; USB recovery still works. It can help keep root; it does not guarantee it. While it is on, Samsung's firmware and app updates do not install. It was tried on a Q80A only.</p>
 <p class="links"><a href="${url('/updates/firmware-update-remove-root/')}">What a firmware update does to root</a><a href="${REPO}/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md" rel="noopener">Blocking updates without root</a></p></aside>
 </div></section>
 
 <section class="chapter" id="product"><div class="wrap grid">
 <div class="text"><h2 id="launcher-h">Replace Samsung Home</h2>
-<p class="copy">Press Home for Vetro's launcher: a row of your apps that starts in Samsung's order and is yours to rearrange, with All apps at its end. Down opens the Control center, with cards for running apps, audio output, picture mode and the sleep timer. Samsung Home closes while the launcher is on and stays one press away.</p>
-<p class="copy">The same part of Vetro, Vetro UI, also draws live TV and its own volume bar and number pad. It is new in 0.7.0 and marked Preview: some parts may not work on every TV yet. Report problems in a <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">GitHub issue</a> with the diagnostic report from Quick settings, Developer settings, Diagnostic report.</p>
+<p class="copy">Press Home for Vetro's launcher: a row of your apps that starts in Samsung's order and is yours to rearrange, with All apps at its end. Down opens the Control center once you turn on one of its cards in Vetro UI → Launcher → Control center: Task manager, Audio output, Picture mode and Sleep timer. Samsung Home closes while the launcher is on and stays one press away.</p>
+<p class="copy">Vetro UI also covers live TV and Vetro's own volume bar and number pad. It is new in 0.7.0 and marked Preview: some parts may not work on every TV yet. Report problems in a <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">GitHub issue</a> with the diagnostic report from Quick settings, Developer settings, Diagnostic report.</p>
 <p class="copy evidence">On one Q80A measurement, available RAM rose from 533 MB to 662 MB with the launcher on. This measures memory, not frame rate; other TVs will differ.</p>
 <p class="cta-link"><a href="${url('/speed/custom-launcher-samsung-tv/')}">Read about the Samsung TV launcher</a></p></div>
 <figure class="media">${shot('launcher-dashboard.jpg', "Vetro dashboard, the launcher settings with the app list and a preview of the app bar, earlier interface")}<figcaption>The launcher settings and their app-bar preview. Earlier interface shown; in 0.7.0 they are the Launcher tab of Vetro UI. ${full('launcher-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>

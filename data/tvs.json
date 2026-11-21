@@ -141,7 +141,7 @@
   "firmware": "T-PTMAKUC-1720.7",
   "status": "Reported working",
   "issue": 39,
-  "summary": "Reported working. The service started by itself after a cold boot. The Launcher was not tried on this TV."
+  "summary": "Reported working. The service started by itself after a cold boot. The Launcher was not tried on this TV. A second LS03B owner later ran the launcher with Vetro 0.5.0 and tested the SVT Play fix that 0.7.0 includes (#200, #211)."
  },
  {
   "slug": "s95c",
@@ -171,11 +171,11 @@
   "code": "GU75CU7179",
   "year": 2023,
   "tizen": "Tizen 9.0",
-  "firmware": "23_KSUE_UB_T09",
+  "firmware": "Not reported",
+  "platformId": "23_KSUE_UB_T09",
   "status": "Reported working",
   "issue": 17,
-  "summary": "Reported working on Tizen 9.0, installed with Apps2Samsung. A 2023 TV reported on Tizen 9.0 shows why model year alone does not tell you the installed Tizen version.",
-  "firmwareLabel": "Reported platform identifier"
+  "summary": "Reported working on Tizen 9.0, installed with Apps2Samsung. A 2023 TV reported on Tizen 9.0 shows why model year alone does not tell you the installed Tizen version."
  },
  {
   "slug": "cu8070",
@@ -252,7 +252,7 @@
   "code": "QN80F",
   "year": null,
   "tizen": "Tizen 10 (after a firmware update)",
-  "firmware": "Not reported",
+  "firmware": "2103.1",
   "status": "Lost root after an update to Tizen 10",
   "issue": 181,
   "noRoot": true,
@@ -265,8 +265,8 @@
   "code": "UA55M70HAULXL",
   "year": null,
   "tizen": "Tizen 10.0",
-  "firmware": "26_X22U_UHD_VOX",
-  "firmwareLabel": "Reported platform identifier",
+  "firmware": "Not readable",
+  "platformId": "26_X22U_UHD_VOX",
   "status": "Dashboard works; no root on Tizen 10",
   "issue": 91,
   "noRoot": true,

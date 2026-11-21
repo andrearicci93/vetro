@@ -12,7 +12,7 @@ Yes, a firmware update can remove root, and it has already happened. In Vetro [i
 
 ## What happened in issue #223?
 
-The reporter's TV, a UE43BU8075U, ran Vetro 0.5.0 on firmware 1720.7. The issue says Samsung rolled out a forced update to T-KSU2EBDEUC-1722.0 and that the TV can no longer be rooted with the tools that exist today. The owner says the update installed although automatic firmware updates were off and the TV's traffic was filtered on the network. The switch in 0.5.0 only changed the menu's Auto update value, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) cites #223 for the broader switch in 0.7.0.
+The reporter's TV, a UE43BU8075U, ran Vetro 0.5.0 on firmware 1720.7. The issue says Samsung rolled out a forced update to T-KSU2EBDEUC-1722.0 and that the TV can no longer be rooted with the tools that exist today. The owner says the update installed although automatic firmware updates were off on the TV and in Vetro. They had blocked selected DNS resolvers on the router, used DNS filtering and turned IPv6 off on the TV; they did not report cutting the TV off from the internet. The switch in 0.5.0 only changed the menu's Auto update value, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) cites #223 for the broader switch in 0.7.0.
 
 Firmware 1720.7 is also the firmware of several 2022 TVs on the [tested TVs list](/tested-tvs/), such as the [BU8002](/tested-tvs/bu8002/), [Q60B](/tested-tvs/q60b/) and [QN90B](/tested-tvs/qn90b/). Whether each of them gets the same update is not known.
 
@@ -33,11 +33,11 @@ The TV's own Auto update setting only decides what the TV does with a firmware i
 3. Applies the lock again after every restart. On TVs that run the AT-HUB boot step (Tizen 6, 6.5 and 9) it does so at power-on, before the update services start. On other firmware it starts with Vetro's root agent, later in the boot.
 4. Leaves USB recovery working. Turning the switch off unmasks the services and restores the previous Auto update value.
 
-The CHANGELOG's own caution: the behavior was read from the Tizen 6, 6.5 and 9 firmware and tried on a Q80A (firmware 2310.0) after a cold reboot. Other models are not tried. While the switch is on, Samsung's firmware and app updates do not install, so security fixes wait too. A firmware update that lands anyway replaces everything the switch does.
+The CHANGELOG's own caution: the behavior was read from the Tizen 6, 6.5 and 9 firmware. On a Q80A (firmware 2310.0) the masks on the update services were in place after a cold reboot, before Vetro's service started. No TV was tested against a forced update like the one in #223, and other models are not tried. While the switch is on, Samsung's firmware and app updates do not install, so security fixes wait too. A firmware update that lands anyway replaces everything the switch does.
 
 ## What if Vetro has no root on my TV?
 
-Then Vetro cannot stop any of these services, and the dashboard shows Root required where the switch would be. The [without-root guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says the only reliable block is then the network: deny the TV internet access on your router for IPv4 and IPv6, or put it on a network without internet access. A DNS blocklist alone is not enough, because the TV can reach a host by its address, use another resolver or go over IPv6. A firmware file on a USB stick still installs without any network. [Stopping automatic updates](/updates/stop-samsung-tv-auto-update/) compares the options.
+Then Vetro cannot stop any of these services, and the dashboard shows Root required where the switch would be. The [without-root guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says the only reliable block is then the network: deny the TV internet access on your router for IPv4 and IPv6, or put it on a network without internet access. A complete cutoff like that blocks the updates that come over the network, which is more than the owner in #223 reported doing. A DNS blocklist alone is not enough, because the TV can reach a host by its address, use another resolver or go over IPv6. A firmware file on a USB stick still installs without any network. [Stopping automatic updates](/updates/stop-samsung-tv-auto-update/) compares the options.
 
 ## What do Vetro's records show for the Q80A?
 
@@ -47,13 +47,13 @@ Vetro's files record two firmware strings on the Q80A ([model page](/tested-tvs/
 | --- | --- | --- |
 | [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md), measurements of 2026-10-11 and 2026-10-23 | T-NKM2DEUC-2301.1 | Performance and memory tests |
 | [UPDATING.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md), tests of 2026-10-30 | firmware 2310.0 | Signed self-update test through the root agent |
-| 0.7.0 CHANGELOG, update lock | firmware 2310.0 | The update lock after a cold reboot |
+| 0.7.0 CHANGELOG, update lock | firmware 2310.0 | The update-service masks after a cold reboot |
 
 The README table still lists 2301.1 for the Q80A. The files don't say how the TV went from one version to the other, so they don't record a test of the update itself. They do show that root worked on 2310.0. The [Q60A](/tested-tvs/q60a/) ([#28](https://github.com/andrearicci93/vetro/issues/28)) is also reported working on 2310.0. That is two firmware versions on one TV, not a guarantee for any other model.
 
 ## Does root come back after a restart?
 
-Root from this route is volatile: it is gained again at each start. That is separate from a firmware update, and [does root survive a restart](/root/keep-root-after-restart/) covers it. After a cold boot, the install guide says startup and root can take up to 90 seconds.
+Root from this route is volatile: it is gained again at each start. That is separate from a firmware update, and [does root survive a restart](/root/keep-root-after-restart/) covers it. The install guide says startup and root can take more than a minute after a restart, sometimes more than 90 seconds; wait until the dashboard says the root agent is connected.
 
 ## Does Vetro's own update change the firmware?
 
@@ -81,7 +81,7 @@ Open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/n
 
 ## Limits
 
-Vetro's public files contain no record of what changes inside a firmware update and no data on most models. The 0.7.0 update lock was tried on one Q80A; whether it holds back a forced update like the one in #223 on other TVs is not known. Vetro is experimental, needs root and ships no signed installer; start with [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
+Vetro's public files contain no record of what changes inside a firmware update and no data on most models. The 0.7.0 update lock was checked after a cold reboot on one Q80A and has not been tested against a forced update like the one in #223 on any TV. Vetro is experimental, needs root and ships no signed installer; start with [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
 
 ## Next steps
 

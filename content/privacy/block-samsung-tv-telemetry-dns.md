@@ -32,7 +32,7 @@ Wildcard or suffix rules for `samsungcloudsolution.com` and `samsungcloudsolutio
 
 ### Which names does Vetro refuse to block?
 
-From reading the firmware image of one TV, the Vetro project keeps a never-block list: `cdn.samsungcloudsolution.com` and `cdn.samsungqbe.cn` (the online check), `time.samsungcloudsolution.com`, `time.samsungcloudsolution.net` and `time.samsungqbe.cn` (clock sync), and `svdca.samsungqbe.com` (the developer certificate). The same document says `sas.samsungcloudsolution.com` and `sas.samsungcloudsolution.net` are the software-update servers, which Vetro does not refuse: blocking them stops firmware updates, which is a decision for the owner. See [stopping Samsung TV automatic updates](/updates/stop-samsung-tv-auto-update/) for the less drastic route.
+From reading the firmware image of one TV, the Vetro project keeps a never-block list: `cdn.samsungcloudsolution.com` and `cdn.samsungqbe.cn` (the online check), `time.samsungcloudsolution.com`, `time.samsungcloudsolution.net` and `time.samsungqbe.cn` (clock sync), and `svdca.samsungqbe.com` (the developer certificate). The same document says the Q80A firmware references `sas.samsungcloudsolution.com` and `sas.samsungcloudsolution.net` as its software-update servers. Vetro does not refuse them, because blocking them is a decision for the owner, and blocking those names alone does not cover every update connection. See [stopping Samsung TV automatic updates](/updates/stop-samsung-tv-auto-update/) for the other routes.
 
 That is why this page does not publish a copy-and-paste mega-list.
 

@@ -33,7 +33,7 @@ Root on a TV is broad access, not a permanent unlock. The upstream project says 
 
 The same access can break the TV if used carelessly. Our [risk guide](/root/is-it-safe-to-root-samsung-tv/) lists what has actually gone wrong. Two cases are documented in the [Vetro changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), and both involve booting:
 
-- On the [Q80A](/tested-tvs/q80a/), disabling Samsung's Home app can keep the TV from finishing its boot. Vetro's custom launcher leaves Home enabled and closes it after each Home press; the separate Samsung Home switch, on the Launcher tab of the dashboard's Vetro UI page, asks for confirmation.
+- On the [Q80A](/tested-tvs/q80a/), disabling Samsung's Home app can keep the TV from finishing its boot. Vetro's custom launcher leaves Home enabled and closes it after each Home press; the separate Disable Samsung Home switch, in Vetro UI → Launcher → Custom launcher → Samsung Home, asks for confirmation.
 - Opening Samsung's AgingApp could leave a TV starting a factory colour test at every boot, even after a factory reset ([#135](https://github.com/andrearicci93/vetro/issues/135)). Since 0.5.0 Vetro no longer opens that app, and Quick settings offers Turn off the factory test. The changelog says this guard was tried only against a simulated TV.
 
 ## Which Samsung TVs have been rooted?
@@ -69,7 +69,7 @@ Developer Mode on the TV comes first. Samsung documents it on its [TV device pag
 
 You also need a signed package. Vetro is experimental, needs root and ships no signed installer: you build the package and sign it with your own Samsung certificate, or use a community tool such as [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung). The [install guide](/root/install-vetro-apps2samsung/) has the steps, and [the risk guide](/root/is-it-safe-to-root-samsung-tv/) says what you accept.
 
-Know your exact model and firmware, and compare them with the table above. [How to read a model code and firmware string](/reference/samsung-model-code-decoder/) explains what each part means. Then allow some time: after a cold boot, startup and root can take up to 90 seconds, according to the [install guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md).
+Know your exact model and firmware, and compare them with the table above. [How to read a model code and firmware string](/reference/samsung-model-code-decoder/) explains what each part means. Then allow some time: after a restart, startup and root can take more than a minute, sometimes more than 90 seconds, according to the [install guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md). Wait until the dashboard says the root agent is connected.
 
 ## Does root survive a restart or an update?
 
