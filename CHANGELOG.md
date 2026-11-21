@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 — unreleased
+## 0.7.0 — 2026-11-21
 
 Vetro now draws its own TV: a launcher with your own row and a Control center, a live TV screen, and its own volume bar and number pad, all in one place in the dashboard (Vetro UI).
 
@@ -63,7 +63,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Shards
 
-- **A Shard can take over an app's launcher tile** (manifest key `intercepts`): the Ad-free YouTube Shard uses it to open its patched YouTube from the YouTube tile.
+- **A Shard can take over an app's launcher tile** (manifest key `intercepts`): the Ad-free YouTube Shard (0.4.1) uses it to open its patched YouTube from the YouTube tile, where the tile starts Samsung's own YouTube app rather than the YouTube wrapper some TVs install.
 - **A Shard can add a card to the Control center** (manifest key `controlCenter`, see above).
 - **Resume starts paused Shards at once** ([#190](https://github.com/andrearicci93/vetro/issues/190)), and turning the TV off right after an update no longer pauses them.
 

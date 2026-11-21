@@ -217,7 +217,7 @@ Notes:
 1. **Safe mode.** *What it is:* the host writes a `starting` marker when Vetro starts and removes it after the service has
    stayed up for 60 s (or on a deliberate stop). The marker counts the starts in a row that did not survive; when the
    next start finds two, the host starts with every plugin **paused** ("Suspended"): still listed, never run, so the plugin that crashes Vetro
-   can be switched off or removed. **Resume** takes effect at the next restart. It exists so that one bad plugin cannot
+   can be switched off or removed. **Resume** starts the paused plugins at once (since 0.7.0; before, it waited for the next restart). It exists so that one bad plugin cannot
    put Vetro in a crash loop and lock the owner out of the dashboard. *The question:* today it pauses everything,
    bundled plugins included, so the launcher would no longer be supervised or reachable on its routes. The dock process
    itself is a separate unit and the worst case of a dead dock is Samsung's Home back, so this is safe but visible.

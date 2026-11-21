@@ -211,7 +211,7 @@ cannot push code as a Vetro update. Each entry carries a `signature` over its id
 
 For the list's maintainer: `node scripts/vetro-plugin.cjs keygen <folder>` makes the pair (paste the public key into
 `app/service/plugin-key.js`); `node scripts/vetro-plugin.cjs sign <index.json> <private.pem> [dist-folder]` adds the
-`signature` to every entry after checking each bundle against its hash. Run it before every publish.
+`signature` to every entry after checking each bundle against its hash. In the vetro-plugins repository the publish job does this on every push to `main`; run it by hand only for a list of your own.
 
 ## Publish on GitHub
 
