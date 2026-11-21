@@ -14,7 +14,10 @@ fs.mkdirSync(run); fs.mkdirSync(proc);
 function onTv(line) { return line.split('/home/owner').join(run).split('/proc/').join(proc + '/'); }
 function fakeProcess(pid, argv) { fs.mkdirSync(path.join(proc, String(pid)), {recursive: true}); fs.writeFileSync(path.join(proc, String(pid), 'cmdline'), argv.join('\0') + '\0'); }
 function has(shell) { return cp.spawnSync(shell, ['-c', 'true']).status === 0; }
-const shells = ['bash', '/bin/sh'].filter(has);
+// The TV's /bin/sh is bash. A /bin/sh that cannot read NUL-separated fields (dash, the /bin/sh of Debian and Ubuntu, so of
+// the CI runner) is not the TV's shell: it is checked on its own below, where "other" is the right answer.
+function readsFields(shell) { return cp.spawnSync(shell, ['-c', "printf 'a\\0' | { IFS= read -r -d '' v && [ \"$v\" = a ]; }"]).status === 0; }
+const shells = ['bash', '/bin/sh'].filter(has).filter(readsFields);
 const scripts = [];
 function executeWith(shell) {
     return async function (cmd) {
