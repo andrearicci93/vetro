@@ -2,6 +2,13 @@
 
 ## 0.7.1 — unreleased
 
+### Home Assistant (MQTT)
+
+- **A Channel sensor.** While Vetro's tuner runs and the input is TV, Home Assistant gets the channel on screen as `21 Rai 4`, with the number, the name and whether it is a Samsung TV Plus channel as attributes. It changes with every zap and is unavailable on other inputs or with the tuner off.
+- **No more program started every 10 seconds.** Volume, mute and input were read by starting a small .NET program at each read, which costs memory and processor time on 2 GB TVs. Vetro now reads the TV's own settings for them in one short command (about 34 ms on a Q80A); the program is only the fallback for a TV where those settings cannot be read.
+- **Mute follows the remote's Mute key.** It was read from the audio library, which keeps saying "not muted" when the TV is muted with its own key; it now comes from the TV's own mute setting as well.
+- **DisplayPort** shows as a source on Samsung monitors (#215).
+
 ### Updates
 
 - **From 0.5.0, install 0.7.1 with Apps2Samsung.** The 0.5.0 updater writes the whole update as one script, which the root agent takes up to 64 KiB only, and 0.7.1 changes more files than that holds. A TV on 0.5.0 now refuses the update as soon as it checks it (*Path not allowed in an update: payload/net6/…*), before anything changes, instead of failing half way through. TVs on 0.7.0 update from Quick settings as before.

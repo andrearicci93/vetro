@@ -62,6 +62,15 @@ namespace Tuner
             if (c != null && (_shown == null || _shown.Id != c.Id)) SubtitlesForget();
             _shown = c;
             if (c != null && !c.Virtual) _lastAntenna = c;
+            PublishChannel(c);
+        }
+        // The channel on screen for Vetro's service (MQTT): rewritten only when it is another channel.
+        private static string _channelPath;
+        private static ulong _publishedId;
+        private static void PublishChannel(Channel c)
+        {
+            if (c == null || _channelPath == null || c.Id == _publishedId) return;
+            if (ChannelFile.Write(_channelPath, ChannelFile.Json(c, _ownPid, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))) _publishedId = c.Id;
         }
         private static Channel _lastAntenna;   // the last channel on screen that is not a TV Plus one: where "live" goes back to
         private static int _startMajor;
@@ -158,6 +167,7 @@ namespace Tuner
             _controlPath = StrArg(args, "--control", "/tmp/vetro-tuner.ctl");
             _logPath = StrArg(args, "--log", "/tmp/vetro-tuner.log");
             _pidFile = StrArg(args, "--pid-file", null);
+            _channelPath = ChannelFile.PathNextTo(_pidFile);
             _features = new Features(StrArg(args, "--features", null));
             string takeover = StrArg(args, "--takeover", null);
             if (takeover != null && AppIdPattern.IsMatch(takeover)) _takeoverApp = takeover;
@@ -405,7 +415,7 @@ namespace Tuner
                 Channel cur = _firstRead;
                 Log("tvs: " + status + (cur != null ? " -> " + cur.Major + " " + cur.Name : ""));
                 if (TvsClient.LoadedFrom != null) Log("tvs: client " + TvsClient.LoadedFrom);
-                if (cur != null) Ui(() => { _shown = cur; if (_active && !QuietStart()) ShowBanner(cur); RequestProgram(); });
+                if (cur != null) Ui(() => { _shown = cur; PublishChannel(cur); if (_active && !QuietStart()) ShowBanner(cur); RequestProgram(); });
                 Interlocked.Exchange(ref _listReading, 1);
                 LoadChannels(true);
                 foreach (Action a in Work.GetConsumingEnumerable()) a();
@@ -1927,6 +1937,7 @@ namespace Tuner
 
         private static void RemovePid()
         {
+            ChannelFile.Write(_channelPath, null);
             if (_pidFile == null) return;
             try { File.Delete(_pidFile); } catch (Exception) { }
         }

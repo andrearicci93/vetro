@@ -117,6 +117,7 @@ internal static partial class Tests
         var cut = new byte[200]; Array.Copy(reply, cut, 200);
         Check(GuideText.Texts(cut).Length == 0, "a truncated reply gives no texts");
         TakeoverTests();
+        ChannelFileTests();
         KeyRoutingTests();
         KeyRoutingTests2();
         KeyRoutingTests3();

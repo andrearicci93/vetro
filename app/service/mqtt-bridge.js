@@ -18,7 +18,7 @@ var LEGACY_IDENTITY_RE_2 = /^vetro-[a-f0-9]{16,32}$/;
 var HOST_RE = /^[A-Za-z0-9:._-]+$/;
 var TOPIC_RE = /^[-A-Za-z0-9_.]+(?:\/[-A-Za-z0-9_.]+)*$/;
 var WHITESPACE_RE = /\s+/;
-var TV_SOURCE_RE = /^(TV|HDMI[1-4])$/;
+var TV_SOURCE_RE = /^(TV|HDMI[1-4]|DisplayPort)$/;
 var PERCENT_RE = /%/g;
 var MEMINFO_LINE_RE = /^(\S+):\s*(\d+)/;
 
@@ -61,7 +61,7 @@ function MqttBridge(getTelemetry,onMessage) {
     this.publishTimer = null;
     this.reconnectTimer = null;
     this.running = false;
-    this.discovered = false;this.discoveryTopics=[];this.availabilityTopic=null;this.lastPresence=null;this.legacyIdentity=legacyIdentity();this.identity=null;
+    this.discovered = false;this.discoveryTopics=[];this.availabilityTopic=null;this.lastPresence=null;this.lastChannel=null;this.legacyIdentity=legacyIdentity();this.identity=null;
 }
 
 MqttBridge.prototype._publishTelemetry = function () {
@@ -148,6 +148,13 @@ MqttBridge.prototype._discover = function () {
         client.publish(prefix+'/'+s[3]+'/availability','offline',{retain:true});
         client.publish(topic,JSON.stringify(conf),{retain:true});client.discoveryTopics.push(topic);
     });
+    // The channel on screen, from Vetro's tuner while it runs and the input is TV: "<number> <name>", with both as attributes.
+    var channelTopic='homeassistant/sensor/'+client.identity+'/channel/config';
+    client.publish(prefix+'/channel/availability','offline',{retain:true});
+    client.publish(channelTopic,JSON.stringify({name:'Channel',state_topic:prefix+'/channel',json_attributes_topic:prefix+'/channel-attrs',
+        unique_id:client.identity+'_channel',device:device,icon:'mdi:television-classic',
+        availability:[{topic:client.availabilityTopic},{topic:prefix+'/channel/availability'}],availability_mode:'all',
+        payload_available:'online',payload_not_available:'offline'}),{retain:true});client.discoveryTopics.push(channelTopic);
 
     this.discovered = true;
 };
@@ -166,6 +173,16 @@ MqttBridge.prototype.publishTvState = function(d) {
         self.publish(prefix+'/'+key+'/availability',available?'online':'offline',{retain:true});
         if(!available)self.publish(prefix+'/'+key,'',{retain:true});
     });
+    // Published only when it changes (a zap), and cleared when the tuner stops or the input is not TV.
+    var c=d.channel,ch=values.source==='TV'&&c&&Number.isInteger(c.number)&&c.number>=0&&typeof c.name==='string'?c:null;
+    var key=ch?ch.number+'|'+ch.name+'|'+(ch.tvPlus===true):'none';
+    if(key===this.lastChannel)return;
+    if(ch){
+        self.publish(prefix+'/channel',(ch.number+' '+ch.name).trim(),{retain:true});
+        self.publish(prefix+'/channel-attrs',JSON.stringify({number:ch.number,name:ch.name,tv_plus:ch.tvPlus===true}),{retain:true});
+    }else{self.publish(prefix+'/channel','',{retain:true});self.publish(prefix+'/channel-attrs','',{retain:true});}
+    self.publish(prefix+'/channel/availability',ch?'online':'offline',{retain:true});
+    this.lastChannel=key;
 };
 
 // Publishes the foreground app only when it changes. {name, appId, pid} or null.
@@ -232,7 +249,7 @@ MqttBridge.prototype._connect = function () {
         if (!self.running || self.client !== client) return;
         self.connected=true;self.state='connected';self.connectedAt=Date.now();self.lastError=null;self.event('connected','MQTT connection confirmed');
         self.subscriptions=self.topics.map(function(t){client.subscribe(t);return {topic:t,status:'pending'};});
-        self.discovered = false;self.lastPresence = null;self.publish(self.availabilityTopic,'online',{retain:true});
+        self.discovered = false;self.lastPresence = null;self.lastChannel = null;self.publish(self.availabilityTopic,'online',{retain:true});
         self._publishTelemetry();
         self._discover();
     });
