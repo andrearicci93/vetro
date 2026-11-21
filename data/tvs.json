@@ -8,7 +8,7 @@
   "firmware": "T-NKM2DEUC-2301.1",
   "status": "Developed and tested",
   "issue": null,
-  "summary": "The Q80A is the TV Vetro is developed on. Published Q80A records cover launcher behavior, root-agent startup and signed self-updates. Some 0.5.0 features, including Restore the TV, still lack a recorded manual TV test."
+  "summary": "The Q80A is the TV Vetro is developed on. Published Q80A records cover launcher behavior, root-agent startup and signed self-updates. In 0.7.0 the firmware update lock and Quick boot were tried on a Q80A on firmware 2310.0; many other 0.7.0 changes are marked in the changelog as not yet tried on a TV."
  },
  {
   "slug": "q70a",
@@ -55,6 +55,17 @@
   "summary": "Service and dashboard reported working; the root agent did not connect (the Host PC IP step was not confirmed), so the features that need it stay off."
  },
  {
+  "slug": "au7172",
+  "name": "Samsung AU7172",
+  "code": "UE43AU7172UXXH",
+  "year": 2021,
+  "tizen": "Tizen 6.0",
+  "firmware": "T-KSU2EDEUC-2301.1",
+  "status": "Diagnostic report only",
+  "issue": 182,
+  "summary": "Vetro 0.5.0, diagnostic report only: root agent with UID 0, service running and loopback probe succeeded. Whether it starts by itself after a cold boot was not checked."
+ },
+ {
   "slug": "q67b",
   "name": "Samsung Q67B",
   "code": "QE43Q67BAUXXH",
@@ -64,6 +75,18 @@
   "status": "Reported working",
   "issue": null,
   "summary": "Reported working on firmware 1720.7, the same firmware family as several other 2022 reports."
+ },
+ {
+  "slug": "q60b",
+  "name": "Samsung Q60B",
+  "code": "QE43Q60BAUXXC",
+  "year": 2022,
+  "tizen": "Tizen 6.5",
+  "firmware": "T-NKLBDEUC-1720.7",
+  "status": "Reported working with Vetro 0.5.0",
+  "issue": null,
+  "source": "README report, no issue number",
+  "summary": "Vetro 0.5.0 on a 43-inch Q60B: dashboard, UID-0 agent, launcher and the physical Home key verified. Service, root and launcher came back by themselves after a software restart, observed after about 100 s. Recovery after a power cut was not tested."
  },
  {
   "slug": "bu8002",
@@ -86,6 +109,17 @@
   "status": "Core functions reported working",
   "issue": 25,
   "summary": "Core functions were reported working. The Launcher failed before 0.3.1 because of the Home cache folder."
+ },
+ {
+  "slug": "qn90b",
+  "name": "Samsung QN90B",
+  "code": "QE55QN90BATXXH",
+  "year": 2022,
+  "tizen": "Tizen 6.5",
+  "firmware": "T-PTMDEUC-1720.7",
+  "status": "Reported working",
+  "issue": 158,
+  "summary": "Reported working with Vetro 0.5.0, installed with Apps2Samsung: root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting. The physical Home key opens a custom launcher. Another cold boot was not tested."
  },
  {
   "slug": "s95b",
@@ -144,6 +178,17 @@
   "firmwareLabel": "Reported platform identifier"
  },
  {
+  "slug": "cu8070",
+  "name": "Samsung CU8070",
+  "code": "UE43CU8070UXXN",
+  "year": 2023,
+  "tizen": "Tizen 9.0",
+  "firmware": "2220",
+  "status": "Reported working",
+  "issue": 183,
+  "summary": "Reported working with Vetro 0.5.0, installed with Apps2Samsung: root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting. The physical Home key opens a custom launcher, with Samsung Home kept. Like the GU75CU7179, it is a 2023 TV reported on Tizen 9.0."
+ },
+ {
   "slug": "q65d",
   "name": "Samsung QN55Q65D",
   "code": "QN55Q65DAGXZS",
@@ -153,6 +198,19 @@
   "status": "Reported working",
   "issue": 10,
   "summary": "Reported working, installed with Apps2Samsung."
+ },
+ {
+  "slug": "q60d",
+  "name": "Samsung Q60D",
+  "code": "Not reported",
+  "year": 2024,
+  "tizen": "Tizen 8 (by model year)",
+  "firmware": "Not reported",
+  "status": "Reported working in a Reddit comment",
+  "issue": null,
+  "source": "Reddit comment",
+  "description": "Samsung Q60D with Vetro: reported working in a Reddit comment that gave no model code, firmware, Tizen or Vetro version. What that report can tell you.",
+  "summary": "Reported working in a Reddit comment. No model code, firmware, Tizen or Vetro version was given, so this is the least detailed report on the list."
  },
  {
   "slug": "s90d",
@@ -166,6 +224,17 @@
   "summary": "Reported working on Tizen 9, with the root agent back after a full restart (the owner's account)."
  },
  {
+  "slug": "due77",
+  "name": "Samsung Crystal UHD DUE77",
+  "code": "UA55DUE77AKLXL",
+  "year": 2024,
+  "tizen": "Tizen 9",
+  "firmware": "T-KSU2EDUABC-0090-2130.0",
+  "status": "Reported working",
+  "issue": 180,
+  "summary": "Reported working with Vetro 0.3.5: root agent with UID 0 after a full restart without opening Vetro. The bundled launcher opens from the physical Home key."
+ },
+ {
   "slug": "smart-monitor-m8",
   "name": "Samsung Smart Monitor M8",
   "code": "LS32BM801UNXGO",
@@ -176,6 +245,33 @@
   "issue": 15,
   "summary": "Installed, with the service and root agent running. What works beyond that has not been reported yet.",
   "description": "Samsung Smart Monitor M8 with Vetro: service and root agent reported running on firmware T-PTMWWC-1720.7. Feature testing and Tizen version were not reported."
+ },
+ {
+  "slug": "qn80f",
+  "name": "Samsung QN80F",
+  "code": "QN80F",
+  "year": null,
+  "tizen": "Tizen 10 (after a firmware update)",
+  "firmware": "Not reported",
+  "status": "Lost root after an update to Tizen 10",
+  "issue": 181,
+  "noRoot": true,
+  "description": "Samsung QN80F with Vetro: root was lost when a firmware update moved the TV to Tizen 10. What still works on Tizen 10 and what to do before an update.",
+  "summary": "Root stopped working when a firmware update moved this TV to Tizen 10, so the launcher, privacy switches and remapper no longer run on it. Tizen 10 has no root method yet."
+ },
+ {
+  "slug": "m70h",
+  "name": "Samsung M70H",
+  "code": "UA55M70HAULXL",
+  "year": null,
+  "tizen": "Tizen 10.0",
+  "firmware": "26_X22U_UHD_VOX",
+  "firmwareLabel": "Reported platform identifier",
+  "status": "Dashboard works; no root on Tizen 10",
+  "issue": 91,
+  "noRoot": true,
+  "description": "Samsung M70H on Tizen 10.0 with Vetro: the service and dashboard ran, but the TV closed the SDB connection Vetro uses to get root. Why there is no root yet.",
+  "summary": "Reported on Tizen 10.0 with Vetro 0.3.5; the firmware version could not be read. The service and dashboard ran, but the TV's local SDB daemon closed the connection before the handshake finished, so the root agent never started."
  },
  {
   "slug": "tu7090",

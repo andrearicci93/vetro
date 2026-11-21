@@ -3,8 +3,8 @@ title: "Samsung TV memory usage: what uses RAM and how to read it"
 description: "What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A."
 keywords: ["samsung tv memory usage", "samsung tv ram", "samsung tv available memory", "samsung tv zram swap"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the Linux kernel proc documentation and the Vetro README, CHANGELOG and PERFORMANCE.md for release 0.5.0; every size comes from one Samsung Q80A."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG and dashboard labels, the README and PERFORMANCE.md, and the Linux kernel proc documentation; every measured size comes from one Samsung Q80A."
 related: ["samsung-tv-slow-fix", "custom-launcher-samsung-tv", "remove-ads-samsung-tv-home-screen", "what-each-vetro-switch-changes", "keep-root-after-restart"]
 ---
 
@@ -35,6 +35,17 @@ The table gives what Vetro's notes record for the Q80A. Resident set size (RSS) 
 
 In the one run measured with the launcher, available RAM went from 533 MB to 662 MB, about 129 MB or 24%, on firmware 2301.1. The notes describe it as a single run taken by hand during development, not an A/B test and not repeated.
 
+### What does Vetro 0.7.0 add?
+
+The [0.7.0 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) adds a few memory items, again from the Q80A or from the dashboard's own text:
+
+- Samsung's Home is closed after a boot once Vetro's launcher runs and the TV has been up five minutes, about 130 MB on a Q80A. On TVs where Samsung's Home is a .NET app Vetro never found it before; now it does.
+- The Samsung TV Plus switch on the Disable tab covers the app and the two services behind it, and the dashboard says it frees about 25 MB.
+- The Disable tab has one switch per app that came with the TV (Netflix, Prime Video, YouTube and others), and the new Uninstall tab deletes most of them (not YouTube), the Samsung TV Plus app and the e-Manual. The 21 to 124 MB given for those deletions is storage space, not RAM.
+- The launcher keeps app icons at the size it draws them, which takes less memory, and the launcher and Vetro's tuner stop redrawing while nothing moves.
+
+None of these comes with a before-and-after measurement of available RAM.
+
 ### Does stopping them free that much?
 
 Not necessarily. The 0.3.0 changelog's sizes for HbbTV, MultiScreen and Ambient come from a survey of a running Q80A, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the effect of each change on a running TV is not yet verified.
@@ -43,9 +54,9 @@ HbbTV and Ambient also restart themselves on this TV. According to the changelog
 
 ## How do I see memory use on the TV?
 
-On a rooted TV, Vetro's dashboard shows CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes (README). The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, 0.72 to 0.79% on the summary view and 2.07% in the Task manager. These are percentages of one core, not of the four.
+On a rooted TV, Vetro's dashboard (the Resource monitor page) shows CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes (README). The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, 0.72 to 0.79% on the summary view and 2.07% on the page then called Task manager, now Apps and processes. These are percentages of one core, not of the four.
 
-![Vetro Task manager filtered to Tracking, with component descriptions, app state and startup flags](/assets/img/task-manager.jpg)
+![Vetro's Apps and processes page in an earlier interface, when it was called Task manager, filtered to Tracking, with component descriptions, app state and startup flags](/assets/img/task-manager.jpg)
 
 Vetro is experimental, needs root and ships no signed installer. See [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/). [Vetro's root requirements](/root/how-to-root-samsung-tv/) cover the rest.
 
@@ -67,7 +78,7 @@ The notes say no tuning is offered. The TV reports Linux 4.1.10, a vendor kernel
 
 ## What do the numbers not show?
 
-They don't show frame rate, input latency or time to open an app. The notes call for repeated ABBA trials with the same network, workload and boot age before any such claim, and point out that a 60 Hz display doesn't mean every app produces 60 frames. Your numbers will differ with model, firmware and what is running. Version 0.5.0 added a multi-app Home guard, but publishes no memory measurement for Tizen 9.
+They don't show frame rate, input latency or time to open an app. The notes call for repeated ABBA trials with the same network, workload and boot age before any such claim, and point out that a 60 Hz display doesn't mean every app produces 60 frames. Your numbers will differ with model, firmware and what is running. Version 0.5.0 added a multi-app Home guard, but publishes no memory measurement for Tizen 9, and the 0.7.0 figure of about 130 MB is also from a Q80A.
 
 ## Next steps
 

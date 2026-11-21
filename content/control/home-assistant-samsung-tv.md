@@ -3,8 +3,8 @@ title: "Home Assistant Samsung TV: three ways to connect it"
 description: "Connect a Samsung TV to Home Assistant with the built-in integration, a community fork, or MQTT from the TV itself. What each does, needs and cannot do."
 keywords: ["home assistant samsung tv", "samsungtv integration", "ha-samsungtv-smart", "samsung tv mqtt home assistant"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the Home Assistant samsungtv integration page, the ha-samsungtv-smart and ha-samsungtv-tizen READMEs, and the Vetro 0.5.0 MQTT guide, README and SECURITY.md."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG and dashboard labels, the Vetro MQTT guide, README and SECURITY.md, the Home Assistant samsungtv integration page and the ha-samsungtv-smart and ha-samsungtv-tizen READMEs."
 related: ["samsung-remote-keys-home-assistant", "remap-samsung-remote-buttons", "what-each-vetro-switch-changes", "vetro-security-model", "how-to-root-samsung-tv", "tizentube-samsung-tv"]
 ---
 
@@ -41,13 +41,15 @@ Pick a fork when you want the extra details above. The cost is a dependency on a
 The [Vetro MQTT guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/mqtt/README.md) describes the setup in four parts:
 
 1. A broker. The guide uses Mosquitto as a second Docker container next to Home Assistant, and its files are a template to copy rather than an installer. The broker's LAN IP goes into both Vetro and Home Assistant's MQTT integration. The template uses plain TCP on port 1883 without TLS, on your home network only.
-2. Vetro's MQTT page, which the 0.5.0 dashboard shows as Home Assistant. Enter the same broker address, port and a separate account, keep the default topic prefix `vetro` and enable the connection.
+2. Vetro's MQTT page, which the dashboard's side menu calls Home Assistant. Enter the same broker address, port and a separate account, keep the default topic prefix `vetro` and enable the connection.
 3. What the TV publishes. Every 10 seconds Vetro publishes the metrics it has, and Home Assistant discovery registers SoC temperature, load average, CPU frequency, RAM used, uptime, foreground app, volume, mute and source. Some metrics may be unavailable on your TV. Volume, mute and source were read in the background on the tested [Q80A](/tested-tvs/q80a/).
-4. What reacts to Home Assistant. You create a rule with an MQTT trigger on an exact topic and payload, plus an action such as opening an app. Vetro subscribes only to the exact topics of enabled rules and ignores retained messages and messages carrying MQTT's duplicate flag.
+4. What reacts to Home Assistant. You create a rule with an MQTT trigger on an exact topic and payload, plus an action: Open app, Send key or Publish MQTT message. Since 0.7.0, Send key offers the same keys as the Remapper: an input (TV, HDMI 1 to 4), the playback keys, Home, Back, OK, the arrows and the volume keys ([#204](https://github.com/andrearicci93/vetro/issues/204)). Vetro subscribes only to the exact topics of enabled rules and ignores retained messages and messages carrying MQTT's duplicate flag.
 
 The guide's own test is to publish `open` to `vetro/command/open-app` with Home Assistant's `mqtt.publish` action, and the TV opens the app you chose. The volume, mute and source entities are state only, not controls, and channel number and name are not exposed. The guide also warns that MQTT service availability means Vetro is connected, not that the TV screen is on, so do not use these sensors as a replacement for the TV's power state.
 
 The guide's validation note says a Q80A was verified connected to a real broker on 2026-10-13, and that a separate subscriber received the discovery records, live telemetry and volume, mute and source values. It adds that Home Assistant UI behavior and TLS against a real broker "still require verification", so treat the Home Assistant side as not yet confirmed by the project.
+
+The 0.7.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) fixes two connection problems: the Home Assistant connection no longer reconnects every 10 seconds ([#199](https://github.com/andrearicci93/vetro/issues/199), [#213](https://github.com/andrearicci93/vetro/issues/213)), nor when the topics it listens to change ([#248](https://github.com/andrearicci93/vetro/issues/248), [#249](https://github.com/andrearicci93/vetro/pull/249)). MQTT also works on TVs with Node 4.4 ([#77](https://github.com/andrearicci93/vetro/issues/77)).
 
 ## Which Samsung TV integration should I use?
 

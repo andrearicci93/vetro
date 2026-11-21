@@ -3,8 +3,8 @@ title: "Turn off ACR on a Samsung TV: menu steps and limits"
 description: "Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs."
 keywords: ["disable acr samsung tv", "viewing information services", "samsung tv acr opt out", "samsung automatic content recognition"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Re-read on 2026-11-10: Malwarebytes (2026-03-02, 2026-10-27), Techlicious and the Watching the Watchers project page (2026-10-22), Samsung's US privacy policy (effective 2026-07-20), Samsung Australia's ads notice, and the Vetro 0.5.0 README, CHANGELOG and DOMAIN-FILTER.md."
+updated: 2026-11-21
+verified: "Vetro parts checked on 2026-11-21 against the 0.7.0 CHANGELOG, dashboard labels, README and DOMAIN-FILTER.md; Malwarebytes, Techlicious, Watching the Watchers and Samsung's notices as re-read on 2026-11-10."
 related: ["samsung-acr-texas-settlement", "what-data-samsung-tv-collects", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "turn-off-bixby-alexa-samsung-tv", "what-each-vetro-switch-changes"]
 faq:
   - q: "How do I turn off ACR on a Samsung TV?"
@@ -77,9 +77,9 @@ Techlicious says the only sure way to stop Samsung receiving your viewing data i
 
 Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) and [the Apps2Samsung install route](/root/install-vetro-apps2samsung/) before deciding.
 
-The Vetro 0.5.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) lists a Stop viewing-data collection switch. It stops recognition, analytics, ad and usage-log services now and after restarts. The [0.5.0 release notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-0.5.0.md) count ten services, with brake files that survive a restart and a boot step for the others. The project's limits are in the same changelog entry:
+Vetro's Quick settings has a Stop viewing-data collection switch on the Privacy and ads tab. The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) added it in 0.5.0: it stops recognition, analytics, ad and usage-log services now and after restarts. The [0.5.0 release notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-0.5.0.md) count ten services, with brake files that survive a restart and a boot step for the others. The project's limits are in the same changelog entry:
 
-- The usage-log domain is added to your saved domain list, but DNS blocking is not turned on for you.
+- The usage-log domain is added to your saved domain list, but DNS blocking is not turned on for you. Since 0.7.0, DNS blocking no longer drops a domain this switch has just added.
 - The data service can still run, so uploads may continue unless DNS blocking is on.
 - Effects on recognition and suggestions have not been verified.
 - The release notes list the viewing-data stop as checked on a Q80A (see the [Q80A page](/tested-tvs/q80a/)) in earlier restart tests, and "consolidated package and other models" as still to be tested.

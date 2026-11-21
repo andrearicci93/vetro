@@ -3,8 +3,8 @@ title: "Samsung TV model number decoder: model code and firmware"
 description: "Read a Samsung TV model number letter by letter, from QE50Q80AATXZT to the year letter, and learn what a firmware string like T-NKM2DEUC-2301.1 can tell you."
 keywords: ["samsung tv model number decoder", "samsung tv model code", "samsung tv firmware version", "samsung model year letter"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Samsung's US and Canada model-code support pages, Samsung's TV Model Groups and ProductInfo developer pages, and the Vetro 0.5.0 README and diagnostic export notes."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro README compatibility table, the 0.7.0 CHANGELOG, the diagnostic export notes and issue #223; Samsung's model-code, TV Model Groups and ProductInfo pages were checked on 2026-11-10."
 related: ["samsung-tv-tizen-version-by-year", "root-tizen-6-samsung-tv", "firmware-update-remove-root", "keep-root-after-restart", "how-to-root-samsung-tv"]
 ---
 
@@ -61,9 +61,9 @@ Samsung does not document it. What we can say comes from the Vetro reports in th
 
 ## Why does the exact string matter?
 
-Rooting reports are only comparable when they name the exact model and firmware. The README says a firmware update can change the result, and Vetro's report form asks for both. A report that says "Samsung 55 inch, works" is difficult to compare. An exact model and firmware identify the configuration, but reproducing the result also requires the Vetro version and test steps.
+Rooting reports are only comparable when they name the exact model and firmware. The README says a firmware update can change the result, and Vetro's report form asks for both. One build number can be the whole difference: in [#223](https://github.com/andrearicci93/vetro/issues/223) the owner of a 2022 TV on firmware 1720.7 reports that a forced update to 1722.0 removed root, and the README says a firmware update that moves a TV to Tizen 10 removes root too ([#181](https://github.com/andrearicci93/vetro/issues/181)). A report that says "Samsung 55 inch, works" is difficult to compare. An exact model and firmware identify the configuration, but reproducing the result also requires the Vetro version and test steps.
 
-Vetro's diagnostic report records the firmware and Tizen version and says where each came from. If the widget on the TV never posted its probe, the service reads the firmware and Tizen version itself, and, since 0.5.0, falls back to the TV's own remote-control API for a model name. The commercial model and platform code can still come only from the widget, so type the model into your report by hand if it is missing. The rules are in the [export documentation](https://github.com/andrearicci93/vetro/blob/main/app/docs/DIAGNOSTIC-EXPORT.md).
+Vetro's diagnostic report records the firmware and Tizen version and says where each came from. If the widget on the TV never posted its probe, the service reads the firmware and Tizen version itself, and, since 0.5.0, falls back to the TV's own remote-control API for a model name. The commercial model and platform code can still come only from the widget, so type the model into your report by hand if it is missing. You download the report from Quick settings → Developer settings → Diagnostic report; since 0.7.0 it also has a firmware section that says how the TV boots. The rules are in the [export documentation](https://github.com/andrearicci93/vetro/blob/main/app/docs/DIAGNOSTIC-EXPORT.md).
 
 ## Limits
 

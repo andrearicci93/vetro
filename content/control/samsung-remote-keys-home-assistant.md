@@ -3,8 +3,8 @@ title: "Samsung TV remote buttons as Home Assistant events"
 description: "Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT."
 keywords: ["samsung tv remote button home assistant", "home assistant remote button trigger", "samsung remote mqtt", "samsung tv remote events"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Home Assistant's samsungtv integration and trigger docs, a Home Assistant community thread, and the Vetro 0.5.0 MQTT guide, README, SECURITY.md and release audit."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, VETRO-UI.md and dashboard labels, the Vetro MQTT guide, README, SECURITY.md and release audit, and Home Assistant's samsungtv integration and trigger docs."
 related: ["home-assistant-samsung-tv", "remap-samsung-remote-buttons", "what-each-vetro-switch-changes", "vetro-security-model", "how-to-root-samsung-tv", "is-it-safe-to-root-samsung-tv"]
 ---
 
@@ -16,10 +16,10 @@ The [Samsung Smart TV integration page](https://www.home-assistant.io/integratio
 
 ## How does Vetro turn a key press into an MQTT message?
 
-Vetro's Remapper listens to the remote's input device on the TV, and a saved shortcut can open an app, send a native key or publish an MQTT message. The [Vetro MQTT guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/mqtt/README.md) says: "A physical remote button can also publish an MQTT message." The steps:
+Vetro's Remapper listens to the remote's input device on the TV, and a saved shortcut can open an app, press another key (Send key) or publish an MQTT message. The [Vetro MQTT guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/mqtt/README.md) says: "A physical remote button can also publish an MQTT message." The steps:
 
 1. Set up a broker and connect both Home Assistant and Vetro to it, as described in [Samsung TV and Home Assistant: three ways](/control/home-assistant-samsung-tv/).
-2. Turn on physical input interception. The guide calls this part of the dashboard Remote; the 0.5.0 dashboard has a Remapper tab, and the MQTT page is now named Home Assistant.
+2. Turn on physical input interception. The guide calls this part of the dashboard Remote; the dashboard's side menu now names it Remapper, and the MQTT page Home Assistant.
 3. Open Home Assistant → Rules. Select Physical key as the trigger, enter the key code found in Remapper, choose Publish MQTT message, enter a destination topic and message, and select Add rule.
 4. In Home Assistant, create an automation with an MQTT trigger on the same topic.
 
@@ -39,16 +39,19 @@ Replace the topic with the one from your Vetro rule. The trigger page links to a
 
 Interception means Vetro blocks the original action for keys you save. In the [release audit](https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md) for an earlier build on a [Q80A](/tested-tvs/q80a/), two saved key codes were blocked after a reboot and the Prime Video button opened Stremio instead. A remapped button therefore stops doing what Samsung built it to do. The documentation does not say whether a button can keep its old function and also publish a message, and we have not tested it.
 
+Vol +, Vol -, Mute and 123 are a special case in 0.7.0. While Vetro UI's volume bar is on, the volume and Mute keys go to it first; while its number pad is on, 123 does. A shortcut of yours on such a key does not run, and the Remapper marks it Overridden by Vetro UI ([VETRO-UI.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/VETRO-UI.md)). Vetro UI is marked Preview in the dashboard.
+
 ## What is verified and what is not?
 
 - The MQTT guide says a Q80A was verified connected to a real broker on 2026-10-13, with a separate subscriber receiving discovery records, telemetry and volume, mute and source values. Rules with an MQTT trigger and an Open app action are documented with a Home Assistant `mqtt.publish` test.
 - The same guide says Home Assistant UI behavior and TLS against a real broker still require verification. No recorded end-to-end test of a remote button publishing to Home Assistant is published, so treat the flow as documented rather than proven.
 - After a restart the key filter was seen connected at about 115 and 118 seconds of uptime in the audit. Until then the button does what Samsung assigned and no message is sent. Incoming MQTT rules work in the background while the TV and the Vetro service are running.
+- The 0.7.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the Home Assistant connection no longer reconnects every 10 seconds ([#199](https://github.com/andrearicci93/vetro/issues/199), [#213](https://github.com/andrearicci93/vetro/issues/213)) or when the topics it listens to change ([#248](https://github.com/andrearicci93/vetro/issues/248)).
 - Which keys can be intercepted depends on firmware. See [remap Samsung remote buttons](/control/remap-samsung-remote-buttons/).
 
 ## What does the finished chain look like?
 
-A press is read on the TV, the original action is blocked, the Remapper publishes a message to the broker, and Home Assistant's MQTT trigger fires an automation: a light, a scene, anything you attach. The reverse direction works through exact-topic rules, so an automation can open an app on the TV. Keep command topics and state topics separate.
+A press is read on the TV, the original action is blocked, the Remapper publishes a message to the broker, and Home Assistant's MQTT trigger fires an automation: a light, a scene, anything you attach. The reverse direction works through exact-topic rules, so an automation can open an app on the TV or, since 0.7.0, press a key there: switch to an input, play or pause, or send Home, Back, OK, an arrow or a volume key ([#204](https://github.com/andrearicci93/vetro/issues/204)). Keep command topics and state topics separate.
 
 ## What are the risks?
 

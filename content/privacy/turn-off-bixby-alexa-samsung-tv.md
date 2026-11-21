@@ -3,8 +3,8 @@ title: "Turn off Bixby, Alexa and the mic on a Samsung TV"
 description: "How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does."
 keywords: ["disable bixby samsung tv", "turn off alexa samsung tv", "samsung tv microphone switch", "samsung tv voice wake-up"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Re-read on 2026-11-10: Samsung's UAE microphone-switch and voice-assistant pages, Samsung Canada's microphone-switch page, Samsung Australia's Alexa page, Malwarebytes (2026-10-27) and the Vetro 0.5.0 README and CHANGELOG."
+updated: 2026-11-21
+verified: "Vetro parts checked on 2026-11-21 against the 0.7.0 CHANGELOG, dashboard labels and README; Samsung's UAE, Canada and Australia pages and Malwarebytes as re-read on 2026-11-10."
 related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "samsung-ads-opt-out", "remap-samsung-remote-buttons", "what-each-vetro-switch-changes"]
 ---
 
@@ -45,11 +45,13 @@ Voice Guide, the read-aloud accessibility feature, is a separate setting. We hav
 
 Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer: see [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [the Apps2Samsung install route](/root/install-vetro-apps2samsung/). The stock menus are the better answer if you only want to stop wake-up.
 
-According to the Vetro 0.5.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), Quick settings has a Voice section with a Disable all voice assistants switch, plus per-feature switches for Alexa, Google Assistant, Bixby and other voice services. The all-in switch disables whatever the Task manager files under voice assistants on that TV. It asks for confirmation because it also turns off the remote's microphone button, Voice Guide (read-aloud) and voice suggestions in search. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) says each switch shows Done or Partly done.
+According to the Vetro [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), Quick settings has a Voice tab with a Disable all voice assistants switch, plus per-feature switches for Alexa, Google Assistant, Bixby and other voice services. The all-in switch disables whatever the Apps and processes page (called Task manager before 0.7.0) files under voice assistants on that TV. It asks for confirmation because it also turns off the remote's microphone button, Voice Guide (read-aloud) and voice suggestions in search. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) says each switch shows Done or Partly done.
+
+Vetro 0.7.0 adds a Vision AI switch on the Disable tab, for 2024 and later TVs that have Samsung's Vision AI apps. On those TVs, holding Home or pressing the AI button of the newer remotes opens Samsung's AI screens (Click to Search, the AI companion), and turning off Bixby does not stop that, according to the CHANGELOG. The switch turns those apps off, so nothing opens; a short Home press works as before, and the Vision AI row of Samsung's Home stays. The tab lists it only on a TV that has those apps.
 
 ![Vetro Quick settings with the voice assistants switch](/assets/img/dashboard-quick-settings.jpg)
 
-The evidence is limited. The CHANGELOG records a community report from a Samsung Q65S95C (2023) on Vetro 0.2.3 ([#13](https://github.com/andrearicci93/vetro/issues/13); see the [S95C page](/tested-tvs/s95c/)) with 23 voice-assistant and ACR components disabled from Quick settings and 29 of 29 controls confirmed. The project itself is developed on the [Q80A](/tested-tvs/q80a/), and the Task manager descriptions come from the Q80A firmware, so other models may leave some packages unclassified. Disabling a component does not prove that no audio leaves the TV, and the project has not published a traffic capture.
+The evidence is limited. The CHANGELOG records a community report from a Samsung Q65S95C (2023) on Vetro 0.2.3 ([#13](https://github.com/andrearicci93/vetro/issues/13); see the [S95C page](/tested-tvs/s95c/)) with 23 voice-assistant and ACR components disabled from Quick settings and 29 of 29 controls confirmed. The project itself is developed on the [Q80A](/tested-tvs/q80a/), and the component descriptions come from the Q80A firmware, so other models may leave some packages unclassified. Disabling a component does not prove that no audio leaves the TV, and the project has not published a traffic capture.
 
 If you want the microphone button for something else, Vetro also remaps remote keys; see [remapping Samsung remote buttons](/control/remap-samsung-remote-buttons/).
 

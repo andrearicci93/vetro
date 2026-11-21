@@ -3,8 +3,8 @@ title: "TizenTube on Samsung TV: install steps and requirements"
 description: "How to install TizenTube on a Samsung Tizen TV with Developer Mode and Apps2Samsung, which build to pick, the proxy DNS prerequisite and common errors."
 keywords: ["tizentube samsung tv", "youtube without ads samsung tv", "tizenbrew", "tizentube install apps2samsung"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the TizenTube README and installation guide, the TizenBrew guide, the Apps2Samsung README, and the Vetro README, CHANGELOG and release audit."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, VETRO-UI.md and dashboard labels and the Vetro README and release audit; TizenTube, TizenBrew and Apps2Samsung docs as checked on 2026-11-10."
 related: ["samsung-tv-developer-mode", "install-vetro-apps2samsung", "samsung-developer-certificate-errors", "jellyfin-samsung-tv", "custom-launcher-samsung-tv", "how-to-root-samsung-tv"]
 ---
 
@@ -58,11 +58,12 @@ For TizenTube itself the standalone Apps2Samsung route above is the one the Tize
 
 ## Does TizenTube work with Vetro?
 
-Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; read [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/) first. Three documented points touch TizenTube:
+Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; read [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/) first. These documented points touch TizenTube and YouTube:
 
-- A Fix TizenTube switch in the Launcher tab gives the TizenTube tile the YouTube icon and closes Samsung's own YouTube just before TizenTube starts, according to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md). The launcher is in beta and was developed on the [Q80A](/tested-tvs/q80a/); see [a custom launcher for a Samsung TV](/speed/custom-launcher-samsung-tv/).
-- TizenTube and tizen-youtube use the same port as Vetro's default, 8099. A [Q60A](/tested-tvs/q60a/) owner hit this ([#28](https://github.com/andrearicci93/vetro/issues/28)), and Vetro's [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) explains how to build the package with another port.
+- A Fix TizenTube switch, on the Launcher tab of the dashboard's Vetro UI page, gives the TizenTube tile the YouTube icon and closes Samsung's own YouTube just before TizenTube starts, according to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md). Vetro UI, which holds the launcher, is marked Preview in 0.7.0, and Vetro was developed on the [Q80A](/tested-tvs/q80a/); see [a custom launcher for a Samsung TV](/speed/custom-launcher-samsung-tv/).
+- TizenTube and tizen-youtube use the same port as Vetro's default, 8099. A [Q60A](/tested-tvs/q60a/) owner hit this ([#28](https://github.com/andrearicci93/vetro/issues/28)), and Vetro's [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) explains how to build the package with another port. Since 0.7.0, a port chosen in Apps2Samsung survives an update of Vetro.
 - The Remapper can open an app from a remote button. In an earlier build's [release audit](https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md), the TizenTube key was blocked and its launch action reported no error, but the TV opened YouTube instead; TizenTube behavior was not validated. See [remap Samsung remote buttons](/control/remap-samsung-remote-buttons/).
+- Since 0.7.0 a Vetro Shard (plugin) can take over an app's launcher tile. The CHANGELOG says the Ad-free YouTube Shard uses this to open its patched YouTube from the YouTube tile. Shards are third-party code that is not sandboxed: read the warning in [the plugin guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/plugins.md) first.
 
 ## Limits
 

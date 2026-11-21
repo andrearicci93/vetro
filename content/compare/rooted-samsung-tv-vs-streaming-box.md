@@ -3,8 +3,8 @@ title: "Rooted Samsung TV vs streaming box: which one to choose"
 description: "A debloated, rooted Samsung TV or a Fire TV, Google TV or Apple TV box? Compared on ads, privacy, updates and effort. Neither route removes every ad."
 keywords: ["samsung tv vs streaming box ads privacy", "rooted samsung tv vs fire tv", "streaming box or smart tv", "samsung tv ads streaming stick"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Google TV Help, Apple Support, an AFTVnews Fire TV ad guide, and the Vetro 0.5.0 README, SECURITY.md and PERFORMANCE.md."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, README, SECURITY.md, PERFORMANCE.md and issue #223; Google TV Help, Apple Support and the AFTVnews guide were checked on 2026-11-10."
 related: ["remove-ads-samsung-tv-home-screen", "what-data-samsung-tv-collects", "turn-off-acr-samsung-tv", "is-it-safe-to-root-samsung-tv", "how-to-root-samsung-tv", "vetro-vs-aerotizen-free-my-tv-tizenbrew"]
 ---
 
@@ -24,7 +24,7 @@ A box changes the platform whose apps, privacy controls and promotions you use; 
 
 ## What does a rooted Samsung give you?
 
-On a rooted TV, [Vetro](https://github.com/andrearicci93/vetro) can do things the stock menus do not. Vetro is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/). Its [README](https://github.com/andrearicci93/vetro/blob/main/README.md) lists switches that stop the viewing-data services (the ones that recognise what is on screen, log remote presses and send usage logs), block ad and tracking domains with a filter on the TV that keeps your DNS servers, disable HbbTV, Multi View autostart and Ambient, and turn off voice assistants. A Task manager lists every app and service with a plain description and a role, and lets you disable, stop or uninstall. The launcher replaces Samsung's Home with one that shows your apps in the same order. In [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md), available RAM rose from 533 MB to 662 MB on a [Q80A](/tested-tvs/q80a/) in one run, a memory figure only.
+On a rooted TV, [Vetro](https://github.com/andrearicci93/vetro) can do things the stock menus do not. Vetro is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/). Its [README](https://github.com/andrearicci93/vetro/blob/main/README.md) lists switches that stop the viewing-data services (the ones that recognise what is on screen, log remote presses and send usage logs), block ad and tracking domains with a filter on the TV that keeps your DNS servers, disable HbbTV, Multi View autostart and Ambient, and turn off voice assistants. Since 0.7.0 there is also one switch for Samsung TV Plus and one per app that came with the TV, and an Uninstall tab ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)). An Apps and processes page lists every app and service with a plain description and a role, and lets you disable, stop or uninstall. The launcher replaces Samsung's Home with one that starts with your apps in the same order, and since 0.7.0 lets you change the row; it is part of Vetro UI, which the dashboard marks Preview. In [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md), available RAM rose from 533 MB to 662 MB on a [Q80A](/tested-tvs/q80a/) in one run, a memory figure only.
 
 Stock Samsung menus cover only part of this, and what they offer depends on model, year and firmware. For the home screen, see [remove ads from the Samsung TV home screen](/speed/remove-ads-samsung-tv-home-screen/).
 
@@ -35,7 +35,7 @@ Stock Samsung menus cover only part of this, and what they offer depends on mode
 | Setup | Plug in and sign in | Developer Mode, Apps2Samsung or manual signing, compatible root route |
 | Ads | Present on Fire TV and Google TV; check Apple TV yourself | Home screen ads can be replaced by a launcher; ads inside apps stay |
 | Tracking | Platform's own settings; the TV still has its own | Switches for viewing-data services, domain filter; no guarantee of full blocking |
-| Updates | Maintained by the platform vendor | A firmware update can remove root; Vetro can turn off automatic firmware updates |
+| Updates | Maintained by the platform vendor | A firmware update can remove root, and one forced update already did ([#223](https://github.com/andrearicci93/vetro/issues/223)); Vetro's Block firmware and software updates switch can help, with no guarantee, and holds back Samsung's fixes too |
 | Risk | Low | Privileged changes can disrupt TV features; the dashboard runs over plain HTTP |
 | Cost | You buy a box | No purchase, but time and some risk |
 | Warranty | Normal | Check Samsung's terms; we do not give warranty advice |
@@ -45,7 +45,7 @@ The README says domain filtering does not guarantee every app's ads or telemetry
 ## Which should I pick?
 
 - If you want it working this evening and do not enjoy tinkering, buy a box. On Google TV, use the controls on Google's page; on Fire TV, expect to live with some ads.
-- If your TV is a model Vetro has been reported on, you are comfortable with certificates, and you want the TV's own services switched off, a rooted TV is worth a try. Check the [tested TVs](/tested-tvs/) list first. Reports are small in number and firmware updates can change the result.
+- If your TV is a model Vetro has been reported on, you are comfortable with certificates, and you want the TV's own services switched off, a rooted TV is worth a try. Check the [tested TVs](/tested-tvs/) list first. Reports are small in number, root features target Tizen 6 to 9 (Tizen 10 has no root yet), and firmware updates can change the result.
 - If you want a nicer Home screen without root, use one of the tools in [Samsung TV launcher tools compared](/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/).
 - If you want both, nothing stops you from using a box on one HDMI input of a TV you have also debloated.
 

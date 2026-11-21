@@ -11,7 +11,7 @@ const BASE = (process.env.SITE_BASE ?? '/vetro').replace(/\/$/, ''); // '' for a
 const OUT = path.join(ROOT, 'dist');
 const SITE = 'Vetro';
 const REPO = 'https://github.com/andrearicci93/vetro';
-const TODAY = process.env.SITE_DATE || '2026-11-10';
+const TODAY = process.env.SITE_DATE || '2026-11-21';
 
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/manifest.json'), 'utf8'));
 const tvs = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/tvs.json'), 'utf8'));
@@ -262,7 +262,7 @@ ${faqHtml}
 </div>
 <section class="related"><h2 id="rel-h">Related guides</h2><div class="cards">${related.map(card).join('')}</div></section>
 <nav class="pager" aria-label="More in this section">${prev ? `<a href="${url(prev.path)}"><span>Previous</span>${esc(prev.title)}</a>` : '<span></span>'}${next ? `<a class="next" href="${url(next.path)}"><span>Next</span>${esc(next.title)}</a>` : '<span></span>'}</nav>
-<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung Tizen TV and is experimental software. <a href="${url('/root/install-vetro-apps2samsung/')}">Install guide</a> · <a href="${url('/tested-tvs/')}">Tested TVs</a> · <a href="${REPO}" rel="noopener">GitHub</a></aside>
+<aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung TV on Tizen 6 to 9 and is experimental software. <a href="${url('/root/install-vetro-apps2samsung/')}">Install guide</a> · <a href="${url('/tested-tvs/')}">Tested TVs</a> · <a href="${REPO}" rel="noopener">GitHub</a></aside>
 </article>
 ${tocHtml}
 </div>`;
@@ -294,21 +294,24 @@ for (const s of sectionOrder) {
 
 // Tested TVs
 const rootForYear = (y) => (y === 2021 ? 'root-tizen-6-samsung-tv' : y === 2022 ? 'root-samsung-tizen-6-5-2022' : y === 2023 ? 'root-samsung-tizen-7-2023' : y && y >= 2024 ? 'root-samsung-tizen-8-9-2024' : y && y <= 2020 ? 'root-samsung-2019-2020-tizen-5' : 'how-to-root-samsung-tv');
+const noRootNote = "Vetro's README says Tizen 10 has no root yet: its firmware blocks the method Vetro uses to get root, so the launcher, privacy switches and remapper do not work on it. The dashboard, app list and diagnostics were reported working on Tizen 10, and Vetro will support it as soon as a root method for Tizen 10 exists.";
 const rootNote = (t) => {
   const base = "Vetro's launcher, privacy switches and remapper require compatible root support. Apps2Samsung handles signing and installation; manual signing is another route.";
   if (/root features unavailable/i.test(t.status)) return `${base} On this TV the root features are unavailable in the stock package; only the dashboard, app list and diagnostics were reported working.`;
   if (t.slug === 'q80r') return `${base} The stock package did not work on this TV; the report used a personal port with local changes.`;
   return base;
 };
-const issueLink = (t) => (t.issue ? `<a href="${REPO}/issues/${t.issue}" rel="noopener">#${t.issue}</a>` : 'no issue number');
+const issueLink = (t) => (t.issue ? `<a href="${REPO}/issues/${t.issue}" rel="noopener">#${t.issue}</a>` : esc(t.source || 'no issue number'));
 {
   const p = '/tested-tvs/';
   const crumbs = [{ name: 'Vetro', path: '/' }, { name: 'Tested TVs', path: p }];
   const rows = tvs.map((t) => `<tr><td><a href="${url(`/tested-tvs/${t.slug}/`)}">${esc(t.name)}</a><br><span class="muted">${esc(t.code)}</span></td><td>${t.year ?? 'n/a'}</td><td>${esc(t.tizen)}</td><td><code>${esc(t.firmware)}</code></td><td>${esc(t.status)}</td><td>${issueLink(t)}</td></tr>`).join('');
   const body = `<div class="wrap hub">${crumbsHtml(crumbs)}<h1>Samsung TVs tested with Vetro</h1>
-<p class="lede">Vetro is developed on a Samsung Q80A. Every other TV below is there because an owner reported it, usually with a diagnostic export. Reported working reflects the evidence recorded for each model in Vetro's README. Reports vary in detail and do not establish that every feature was tested.</p>
+<p class="lede">Vetro is developed on a Samsung Q80A. Every other TV below is there because an owner reported it, usually with a diagnostic export. Reported working reflects the evidence recorded for each model in Vetro's README. Reports vary in detail and do not establish that every feature was tested. Root features need Tizen 6 to 9; Tizen 10 has no root yet.</p>
 ${tableWrap(`<thead><tr><th scope="col">TV</th><th scope="col">Year</th><th scope="col">Tizen</th><th scope="col">Firmware</th><th scope="col">Status</th><th scope="col">Report</th></tr></thead><tbody>${rows}</tbody>`, 'Samsung TVs tested with Vetro')}
 <p class="note">Where the project's README does not state a Tizen version, the table shows the version Samsung launched that model year with, marked "by model year". Samsung's update policy can move a TV to a newer Tizen, as the GU75CU7179 shows. Read <a href="${url('/root/samsung-tv-tizen-version-by-year/')}">Samsung TV Tizen version by year</a> and <a href="${url('/reference/samsung-model-code-decoder/')}">how to read a model code and firmware string</a> before you compare your TV with this list.</p>
+<h2>Tizen 10: no root yet</h2>
+<p>Vetro's README says the Tizen 10 firmware blocks the method Vetro uses to get root (<a href="${REPO}/issues/91" rel="noopener">#91</a>, <a href="${REPO}/issues/140" rel="noopener">#140</a>, <a href="${REPO}/issues/177" rel="noopener">#177</a>, <a href="${REPO}/issues/178" rel="noopener">#178</a>). The dashboard, app list and diagnostics were reported working on Tizen 10 TVs: the README names the M70H, M73H, U8000H and QN80F. A firmware update that moves a TV to Tizen 10 removes root: a <a href="${url('/tested-tvs/qn80f/')}">QN80F</a> lost it that way (<a href="${REPO}/issues/181" rel="noopener">#181</a>). Vetro will support Tizen 10 as soon as a root method for it exists. If your TV still roots, read <a href="${url('/updates/firmware-update-remove-root/')}">what a firmware update does to root</a>.</p>
 <h2>Not on the list?</h2>
 <p>Open a <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">diagnostic report issue</a> with your exact model, firmware and what worked or failed. Failed attempts help too. The report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. Start with <a href="${url('/root/how-to-root-samsung-tv/')}">how rooting a Samsung TV works</a> and <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a>.</p></div>`;
   emit(p, layout({ title: 'Samsung TVs tested with Vetro: models, Tizen, firmware', description: 'Samsung TV reports listed in the Vetro compatibility table: Q80A, Q70A, Q60A, QN85A, S90C, S90D and more, with Tizen version, firmware string and the issue behind each report.', path: p, body, jsonld: [crumbsLd(crumbs)], navActive: 'tested-tvs' }), { lastmod: TODAY, priority: '0.9' });
@@ -316,7 +319,7 @@ ${tableWrap(`<thead><tr><th scope="col">TV</th><th scope="col">Year</th><th scop
     const tp = `/tested-tvs/${t.slug}/`;
     const c2 = [...crumbs, { name: t.name, path: tp }];
     const art = bySlug[rootForYear(t.year)];
-    const others = tvs.filter((x) => x.slug !== t.slug && x.year === t.year).slice(0, 5);
+    const others = t.year == null ? [] : tvs.filter((x) => x.slug !== t.slug && x.year === t.year).slice(0, 5);
     const title = `${t.name}: Vetro compatibility and limits`;
     // Whole sentences only: prefer the longest variant that fits, never cut mid-sentence.
     const lead = `${t.name} with Vetro: ${t.status.toLowerCase()}. ${t.firmwareLabel ? 'Reported platform identifier' : 'Firmware'} ${t.firmware}, ${t.tizen}.`;
@@ -325,8 +328,11 @@ ${tableWrap(`<thead><tr><th scope="col">TV</th><th scope="col">Year</th><th scop
 <div class="prose"><p>${esc(t.summary)}</p>
 <h2>Report details</h2>
 <table><tbody><tr><th scope="row">Model code</th><td><code>${esc(t.code)}</code></td></tr><tr><th scope="row">Model year</th><td>${t.year ?? 'not stated'}</td></tr><tr><th scope="row">Tizen</th><td>${esc(t.tizen)}</td></tr><tr><th scope="row">${esc(t.firmwareLabel || 'Firmware')}</th><td><code>${esc(t.firmware)}</code></td></tr><tr><th scope="row">Status</th><td>${esc(t.status)}</td></tr><tr><th scope="row">Report</th><td>${issueLink(t)}</td></tr></tbody></table>
-<h2>Before you try it on this TV</h2>
-<p>A firmware update can change the result, even within one model family, so compare your firmware string with the one above. ${rootNote(t)} The <a href="${url('/root/install-vetro-apps2samsung/')}">install guide</a> covers the route, and <a href="${url('/root/samsung-tv-developer-mode/')}">Developer Mode</a> comes first.${art ? ` The closest rooting guide for this model year is <a href="${url(art.path)}">${esc(art.title)}</a>.` : ''} Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> too. Vetro is experimental and not affiliated with Samsung.</p>
+${t.noRoot
+  ? `<h2>What this means for your TV</h2>
+<p>${noRootNote}${t.slug === 'qn80f' ? '' : ` A firmware update that moves a TV to Tizen 10 removes root, as the <a href="${url('/tested-tvs/qn80f/')}">QN80F report</a> shows.`} If your TV still runs Tizen 9 or older and roots, read <a href="${url('/updates/firmware-update-remove-root/')}">what a firmware update does to root</a> before the next update. Vetro's <a href="${REPO}/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md" rel="noopener">guide to blocking updates without root</a> says the network is then the only reliable block. Vetro is experimental and not affiliated with Samsung.</p>`
+  : `<h2>Before you try it on this TV</h2>
+<p>A firmware update can change the result, even within one model family, so compare your firmware string with the one above. ${rootNote(t)} The <a href="${url('/root/install-vetro-apps2samsung/')}">install guide</a> covers the route, and <a href="${url('/root/samsung-tv-developer-mode/')}">Developer Mode</a> comes first.${art ? ` The closest rooting guide for this model year is <a href="${url(art.path)}">${esc(art.title)}</a>.` : ''} Read <a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">the risks</a> too, and <a href="${url('/updates/firmware-update-remove-root/')}">what a firmware update does to root</a>. Vetro is experimental and not affiliated with Samsung.</p>`}
 ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a href="${url(`/tested-tvs/${o.slug}/`)}">${esc(o.name)}</a>: ${esc(o.status.toLowerCase())}</li>`).join('')}</ul>` : ''}
 <p><a href="${url('/tested-tvs/')}">Back to all tested TVs</a> · <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">Report your own TV</a></p></div></article></div>`;
     emit(tp, layout({ title, description: desc, path: tp, body: b, type: 'article', jsonld: [crumbsLd(c2)], navActive: 'tested-tvs' }), { lastmod: TODAY, priority: '0.6' });
@@ -361,41 +367,46 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
   const body = `<div class="home">
 <section class="hero"><div class="wrap">
 <h1>A cleaner Home for your Samsung TV</h1>
-<p class="lede">Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Replace Home, disable selected tracking services and give remote buttons new shortcuts.</p>
+<p class="lede">Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Replace Home with your own row of apps, disable selected tracking services and give remote buttons new shortcuts.</p>
 <p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Install Vetro</a><a class="textlink" href="${url('/root/how-to-root-samsung-tv/')}">How Samsung TV rooting works</a></p>
-<p class="req">Vetro 0.5.0. Root features require a compatible Tizen 6+ TV. Experimental software; launcher in beta.</p>
+<p class="req">Vetro 0.7.0. Root features need a compatible TV on Tizen 6 to 9; Tizen 10 has no root yet. Experimental software; Vetro UI is in preview.</p>
 <figure class="stage"><div class="stage-glass"><a class="stage-img" href="${url('/assets/img/launcher-on-tv.jpg')}" aria-label="View launcher image">${shot('launcher-on-tv.jpg', "The Vetro launcher, a horizontal app bar at the bottom of the TV screen with the apps from Samsung's Home", 'eager')}</a></div>
-<figcaption>Vetro's launcher on the TV. Your apps stay in Samsung's order; Samsung Home is one press away. ${full('launcher-on-tv.jpg', 'View launcher image')}</figcaption></figure>
+<figcaption>Vetro's launcher on the TV, earlier version shown. The row starts in Samsung's order and you can rearrange it; Samsung Home is one press away. ${full('launcher-on-tv.jpg', 'View launcher image')}</figcaption></figure>
 <p class="stage-note">Vetro runs on the TV. Open its dashboard from a computer or phone on the same network.</p>
 </div></section>
 
 <section class="compat"><div class="wrap">
 <h2 id="compat-h">Check your Samsung TV first</h2>
-<p class="copy">Vetro is developed and tested on the Q80A. Other models have community reports, with different results by firmware. Root features target Tizen 6 and newer; Tizen 9 and 10 have mixed reports. Older TVs have limited dashboard support.</p>
-<ul class="band"><li>Developed on Q80A</li><li>Community reports vary</li><li>Check model and firmware</li></ul>
+<p class="copy">Vetro is developed and tested on the Q80A. Other models have community reports, with different results by firmware. Root features need Tizen 6 to 9, most 2021 to 2025 TVs, and Tizen 9 reports are mixed. Tizen 10 has no root yet: its firmware blocks the method Vetro uses, and an update that moves a TV to Tizen 10 removes root. Older TVs and Tizen 10 get the dashboard and diagnostics only.</p>
+<ul class="band"><li>Developed on Q80A</li><li>Root on Tizen 6 to 9</li><li>Check model and firmware</li></ul>
 <p class="links"><a href="${url('/tested-tvs/')}">See tested TVs and firmware</a><a href="${url('/tested-tvs/q80a/')}">Q80A test record</a><a href="${url('/root/is-it-safe-to-root-samsung-tv/')}">Read the rooting risks</a></p>
+<aside class="secnote" aria-labelledby="keep-root-h"><h3 id="keep-root-h">Block updates while root still works</h3>
+<p>A Samsung firmware update can close the route Vetro uses to get root. In <a href="${REPO}/issues/223" rel="noopener">issue #223</a> a forced update to firmware 1722.0 removed root from a 2022 TV, and Samsung does not support going back to older firmware.</p>
+<p>If your TV still roots, install Vetro and turn on Block firmware and software updates in Quick settings, General, Essential settings. It stops every update path, not only the menu's Auto update, and applies the lock again at each boot. It can help keep root; it does not guarantee it. While it is on, Samsung's firmware and app updates do not install. It needs root and was tried on a Q80A only.</p>
+<p class="links"><a href="${url('/updates/firmware-update-remove-root/')}">What a firmware update does to root</a><a href="${REPO}/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md" rel="noopener">Blocking updates without root</a></p></aside>
 </div></section>
 
 <section class="chapter" id="product"><div class="wrap grid">
 <div class="text"><h2 id="launcher-h">Replace Samsung Home</h2>
-<p class="copy">Press Home for a minimal app bar with the same apps and icons in the same order. Samsung Home closes while Vetro's launcher is on, and remains one press away. The launcher returns after a restart or standby.</p>
-<p class="copy evidence">On one Q80A measurement, available RAM rose from 533 MB to 662 MB. This measures memory, not frame rate; other TVs will differ.</p>
+<p class="copy">Press Home for Vetro's launcher: a row of your apps that starts in Samsung's order and is yours to rearrange, with All apps at its end. Down opens the Control center, with cards for running apps, audio output, picture mode and the sleep timer. Samsung Home closes while the launcher is on and stays one press away.</p>
+<p class="copy">The same part of Vetro, Vetro UI, also draws live TV and its own volume bar and number pad. It is new in 0.7.0 and marked Preview: some parts may not work on every TV yet. Report problems in a <a href="${REPO}/issues/new?template=log_report.yml" rel="noopener">GitHub issue</a> with the diagnostic report from Quick settings, Developer settings, Diagnostic report.</p>
+<p class="copy evidence">On one Q80A measurement, available RAM rose from 533 MB to 662 MB with the launcher on. This measures memory, not frame rate; other TVs will differ.</p>
 <p class="cta-link"><a href="${url('/speed/custom-launcher-samsung-tv/')}">Read about the Samsung TV launcher</a></p></div>
-<figure class="media">${shot('launcher-dashboard.jpg', "Vetro dashboard, Launcher page with the app list and a preview of the app bar")}<figcaption>The Launcher dashboard and its app-bar preview. Earlier interface shown. ${full('launcher-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
+<figure class="media">${shot('launcher-dashboard.jpg', "Vetro dashboard, the launcher settings with the app list and a preview of the app bar, earlier interface")}<figcaption>The launcher settings and their app-bar preview. Earlier interface shown; in 0.7.0 they are the Launcher tab of Vetro UI. ${full('launcher-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
 </div></section>
 
 <section class="chapter wide"><div class="wrap grid">
 <div class="text"><h2 id="privacy-h">Choose what runs on your TV</h2>
-<p class="copy">Quick settings groups privacy and background-service switches. Task manager explains apps and services so you can disable selected components. Disabling keeps a component installed and can be reversed; uninstalling needs an installer to recover.</p>
+<p class="copy">Quick settings groups privacy and background-service switches, and in 0.7.0 one switch per app you don't use, such as Netflix, Prime Video or Samsung TV Plus, with an Uninstall tab beside it. Apps and processes explains apps and services so you can disable selected components. Disabling keeps a component installed and can be reversed; uninstalling needs an installer to recover.</p>
 <p class="copy evidence">DNS blocking does not guarantee that every app's ads or telemetry are blocked.</p>
 <p class="links"><a href="${url('/reference/what-each-vetro-switch-changes/')}">See what each Vetro switch changes</a><a href="${url('/privacy/turn-off-acr-samsung-tv/')}">Turn off Samsung TV ACR</a></p></div>
-<div class="media-stack"><figure class="media"><div class="scroll">${shot('task-manager.jpg', "Vetro dashboard, Task manager listing apps and services with their status")}</div><figcaption>Task manager showing tracking components. Earlier interface shown. ${full('task-manager.jpg', 'View full-size screenshot')}</figcaption></figure>
-<details class="more-shot"><summary>See Quick settings</summary><figure class="media">${shot('dashboard-quick-settings.jpg', "Vetro dashboard, Quick settings with privacy and background-service switches", 'hidden')}<figcaption>Earlier Quick settings interface; controls and grouping differ in 0.5.0. ${full('dashboard-quick-settings.jpg', 'View full-size screenshot')}</figcaption></figure></details></div>
+<div class="media-stack"><figure class="media"><div class="scroll">${shot('task-manager.jpg', "Vetro dashboard, the list of apps and services with their status, earlier interface")}</div><figcaption>Apps and processes, called Task manager before 0.7.0, showing tracking components. Earlier interface shown. ${full('task-manager.jpg', 'View full-size screenshot')}</figcaption></figure>
+<details class="more-shot"><summary>See Quick settings</summary><figure class="media">${shot('dashboard-quick-settings.jpg', "Vetro dashboard, Quick settings with privacy and background-service switches", 'hidden')}<figcaption>Earlier Quick settings interface; controls and grouping differ in 0.7.0. ${full('dashboard-quick-settings.jpg', 'View full-size screenshot')}</figcaption></figure></details></div>
 </div></section>
 
 <section class="chapter flip"><div class="wrap grid">
 <div class="text"><h2 id="remap-h">Give remote buttons new shortcuts</h2>
-<p class="copy">Press a remote button, choose an app and save the shortcut. Saved shortcuts survive restarts. The Home Assistant page can also turn a key press into an MQTT message.</p>
+<p class="copy">Press a remote button, choose an app or another key to send, and save the shortcut. Saved shortcuts survive restarts. The Home Assistant page can also turn a key press into an MQTT message.</p>
 <p class="cta-link"><a href="${url('/control/remap-samsung-remote-buttons/')}">See Samsung remote remapping</a></p></div>
 <figure class="media">${shot('remapper-dashboard.jpg', "Vetro dashboard, Remapper page with a captured key and saved app shortcuts")}<figcaption>Capture a key and choose an app in Remapper. Earlier interface shown. ${full('remapper-dashboard.jpg', 'View full-size screenshot')}</figcaption></figure>
 </div></section>
@@ -403,6 +414,7 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <section class="chapter install"><div class="wrap">
 <h2 id="install-h">Install Vetro on a compatible TV</h2>
 <p class="copy">Apps2Samsung handles signing and installation. After installing, open Vetro once, set Host PC IP to 127.0.0.1 in Developer Mode and restart the TV. Follow the complete guide for prerequisites and checks.</p>
+<p class="copy">Already running Vetro 0.5.0? It updates itself to 0.7.0 from the dashboard: Quick settings, General, Software update. Older versions install 0.7.0 with Apps2Samsung.</p>
 <p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Follow the Vetro installation guide</a><a class="textlink" href="${REPO}" rel="noopener">Read the source and release notes</a></p>
 <aside class="secnote"><p>The dashboard uses plain HTTP. Keep it on a trusted local network and never expose it to the Internet. Automatic pairing starts after the TV app has been seen; until then the dashboard can be open.</p><a href="${url('/reference/vetro-security-model/')}">Dashboard security and pairing</a></aside>
 </div></section>
@@ -422,7 +434,7 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
     {
       '@context': 'https://schema.org', '@graph': [
         { '@type': 'WebPage', '@id': abs('/#webpage'), url: abs('/'), name: 'Vetro: Launcher & Debloater for Samsung Tizen TVs', description: desc, inLanguage: 'en', isPartOf: { '@id': abs('/#website') }, mainEntity: { '@id': abs('/#software') } },
-        { '@type': 'SoftwareApplication', '@id': abs('/#software'), name: 'Vetro', url: abs('/'), description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Experimental software; root features require a compatible Tizen 6+ TV.', softwareVersion: '0.5.0', operatingSystem: 'Samsung Tizen', applicationCategory: 'UtilitiesApplication', license: 'https://opensource.org/license/mit', sameAs: [REPO], publisher: { '@id': abs('/#organization') }, isBasedOn: { '@type': 'SoftwareSourceCode', codeRepository: REPO, name: 'Vetro source code' } },
+        { '@type': 'SoftwareApplication', '@id': abs('/#software'), name: 'Vetro', url: abs('/'), description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Experimental software; root features require a compatible TV on Tizen 6 to 9.', softwareVersion: '0.7.0', operatingSystem: 'Samsung Tizen', applicationCategory: 'UtilitiesApplication', license: 'https://opensource.org/license/mit', sameAs: [REPO], publisher: { '@id': abs('/#organization') }, isBasedOn: { '@type': 'SoftwareSourceCode', codeRepository: REPO, name: 'Vetro source code' } },
       ],
     },
   ];

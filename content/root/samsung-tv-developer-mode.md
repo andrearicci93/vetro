@@ -3,8 +3,8 @@ title: "How to enable Developer Mode on a Samsung TV"
 description: "Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code."
 keywords: ["samsung tv developer mode", "samsung tv 12345 developer mode", "host pc ip samsung tv", "enable developer mode samsung tizen"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Samsung's tv-device developer page, the Apps2Samsung and Jellyfin2Samsung FAQs, and the Vetro 0.5.0 installation guide and SECURITY.md."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against Samsung's tv-device developer page, the Apps2Samsung and Jellyfin2Samsung FAQs, and Vetro 0.7.0's installation guide, SECURITY.md, CHANGELOG and dashboard labels."
 related: ["install-vetro-apps2samsung", "samsung-sdb-connect-tv", "samsung-developer-certificate-errors", "how-to-root-samsung-tv", "keep-root-after-restart"]
 faq:
   - q: "What is the Samsung TV developer mode code?"
@@ -45,7 +45,7 @@ It depends on who talks to the TV.
 | Installing from a computer or phone | That device's LAN address | The TV accepts developer connections from the address you give it |
 | After Vetro is installed | `127.0.0.1` | The TV connects to its own SDB service |
 
-During installation the field holds the address of the computer. The [Vetro installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) then has you change it to `127.0.0.1` and restart, which lets Vetro start its root helper from the TV itself with no computer attached. While it is set, a computer cannot use SDB on that TV by default, so to install a newer build you put the computer's address back first. The one documented exception is Vetro's Allow SDB from the local network switch (Quick settings, Developer settings, Developer access), which is off by default and gives any reachable client developer access without pairing; see [SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md) and [connecting with sdb](/root/samsung-sdb-connect-tv/).
+During installation the field holds the address of the computer. The [Vetro installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) then has you change it to `127.0.0.1` and restart, which lets Vetro start its root helper from the TV itself with no computer attached. While it is set, a computer cannot use SDB on that TV by default, so to install a newer build you put the computer's address back first. The one documented exception is Vetro's Allow SDB from the local network switch, which since 0.7.0 sits in Quick settings, General, Essential settings. It is off by default; the dashboard says turning it on improves compatibility with Apps2Samsung and TV-Store, and SECURITY.md says it gives any reachable client developer access without pairing. See [SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md) and [connecting with sdb](/root/samsung-sdb-connect-tv/).
 
 The guide also says not to change the TV's custom DNS for this. It is a different setting.
 

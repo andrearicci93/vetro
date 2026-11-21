@@ -1,14 +1,14 @@
 ---
 title: "Root a 2019 or 2020 Samsung TV (Tizen 5): what works"
-description: "Root features need Tizen 6 or newer. A 2019 Q80R works with a local port; the 2020 TU7090 and T4300 and a 2018 NU7090 get the dashboard only, no root."
+description: "Vetro's root features need Tizen 6 to 9. A 2019 Q80R works with a local port; the 2020 TU7090 and T4300 and a 2018 NU7090 get the dashboard only, no root."
 keywords: ["root samsung tizen 5", "samsung q80r root", "samsung 2019 tv root", "samsung 2020 tv root"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the Vetro 0.5.0 README compatibility table, the CHANGELOG Node 4.4 entry, the integration README and Samsung's TV model groups page."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro README compatibility table on main, the CHANGELOG Node 4.4 entries up to 0.7.0, the integration README and Samsung's TV model groups page."
 related: ["how-to-root-samsung-tv", "root-tizen-6-samsung-tv", "samsung-tv-tizen-version-by-year", "is-it-safe-to-root-samsung-tv", "samsung-model-code-decoder", "samsung-sdb-connect-tv"]
 ---
 
-For Vetro's root features the short answer is no, not with the stock package: the README says they work on Tizen 6 or newer. Older TVs still get something. Two 2020 models and one 2018 model are reported with the dashboard, the app list and diagnostics working and the root features unavailable, and the only 2019 report works with a personal port that was never reviewed or merged.
+For Vetro's root features the short answer is no, not with the stock package: the README says they work on Tizen 6 to 9. Older TVs still get something. Two 2020 models and one 2018 model are reported with the dashboard, the app list and diagnostics working and the root features unavailable, and the only 2019 report works with a personal port that was never reviewed or merged.
 
 The linked research repository is written for researchers and can contain exploit code. This page contains none; see [how rooting works](/root/how-to-root-samsung-tv/) for the general picture. Vetro is experimental, needs root and ships no signed installer; read [the risks](/root/is-it-safe-to-root-samsung-tv/) too.
 
@@ -35,7 +35,7 @@ The Q80R works with local changes, not with the stock package. The report descri
 
 ## Why does the older Tizen matter?
 
-Tizen 4 and 5.5 TVs run Vetro's web service on Node.js 4.4, where newer TVs run a newer Node. The changelog says the service, which expects a newer runtime, stopped twice on those TVs, while loading and on the first request, until a compatibility layer added the few built-ins that Node 4.4.3 lacks. The [changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says starting the service on Node 4.4 does not make root features available there: the app-only package has no root on that platform. The [integration README](https://github.com/andrearicci93/vetro/blob/main/rooting/README.md) says the adapter is written in ES5 because of that Node version, and that when the platform cannot run the root integration it records `platformUnsupported` and the dashboard, the app list and diagnostics keep working. On such a TV the sections that need the root agent report that it is missing. That matches what the NU7090, TU7090 and T4300 reports describe.
+Tizen 4 and 5.5 TVs run Vetro's web service on Node.js 4.4, where newer TVs run a newer Node. The changelog says the service, which expects a newer runtime, stopped twice on those TVs, while loading and on the first request, until a compatibility layer added the few built-ins that Node 4.4.3 lacks. The [changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says starting the service on Node 4.4 does not make root features available there: the app-only package has no root on that platform. The [integration README](https://github.com/andrearicci93/vetro/blob/main/rooting/README.md) says the adapter is written in ES5 because of that Node version, and that when the platform cannot run the root integration it records `platformUnsupported` and the dashboard, the app list and diagnostics keep working. On such a TV the sections that need the root agent report that it is missing. That matches what the NU7090, TU7090 and T4300 reports describe. Vetro 0.7.0 also lists a fix for MQTT on TVs with Node 4.4 ([#77](https://github.com/andrearicci93/vetro/issues/77)).
 
 ## What can you do on an older TV?
 

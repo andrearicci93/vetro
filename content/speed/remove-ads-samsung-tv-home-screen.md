@@ -3,8 +3,8 @@ title: "Remove ads from the Samsung TV home screen: your options"
 description: "Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home."
 keywords: ["remove ads samsung tv home screen", "samsung tv home screen ads", "disable samsung tv promotional content", "samsung tv launcher"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against two Samsung community threads, Samsung Canada's TV Plus support page, and the Vetro README, CHANGELOG, DOMAIN-FILTER.md, PERFORMANCE.md and SECURITY.md for release 0.5.0."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, VETRO-UI.md and dashboard labels, the README, DOMAIN-FILTER.md, PERFORMANCE.md and SECURITY.md; the Samsung community threads and TV Plus page were checked on 2026-11-10."
 related: ["custom-launcher-samsung-tv", "disable-samsung-tv-plus", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "rooted-samsung-tv-vs-streaming-box", "samsung-tv-slow-fix"]
 faq:
   - q: "Can you turn off ads on the Samsung TV home screen?"
@@ -12,7 +12,7 @@ faq:
   - q: "Does blocking ad domains with DNS remove home screen ads?"
     a: "Only partly. Vetro's changelog says blocking the Home-picture host alone does not remove pictures already cached on the TV, so that host stays out of its default lists."
   - q: "Does the Vetro launcher have ads?"
-    a: "The launcher bar is built from the apps in Samsung's own Home row, plus Source, Settings and a Samsung Home button. Samsung's Home stays one press away. Vetro is experimental and needs root, and its launcher is in beta."
+    a: "The launcher row starts with the apps in Samsung's own Home row, which you can reorder or trim, plus an All apps pill and a Samsung Home button. Samsung's Home stays one press away. Vetro is experimental and needs root, and Vetro UI, which holds the launcher, is in preview."
   - q: "Will replacing the Samsung home screen void my warranty?"
     a: "We can't tell you. Rooting changes the TV in ways Samsung may not accept, so read Samsung's terms for your country before you try it."
 ---
@@ -45,15 +45,15 @@ The longer treatment is in [blocking Samsung TV telemetry with DNS](/privacy/blo
 
 The promotional content is part of Samsung's Home, a system app (`com.samsung.tv.csfs` on the Q80A, per the changelog). A launcher is a different app that opens on the Home key. If Samsung's Home isn't on screen, its tiles aren't either.
 
-Vetro's launcher is native: a glass-style bar at the bottom of the screen. According to the [README](https://github.com/andrearicci93/vetro/blob/main/README.md) it shows the same apps and icons as Samsung's Home, in the same order, and comes back by itself after a restart or a standby. It also has Source and Settings entries and a Samsung Home button, so nothing is removed and Samsung's Home is one press away. While the launcher is on, Samsung's Home is closed.
+Vetro's launcher is native: a bar at the bottom of the screen. According to the [README](https://github.com/andrearicci93/vetro/blob/main/README.md) it starts with the same apps and icons as Samsung's Home, in the same order, and comes back by itself after a restart or a standby. Since 0.7.0 the row is yours to change, and an **All apps** pill at its end lists every app Samsung's Apps screen lists. Up opens the TV's sources, and a Samsung Home button opens the original, so nothing is removed and Samsung's Home is one press away. While the launcher is on, Samsung's Home is closed.
 
-![The Vetro launcher at the bottom of the TV screen with the apps from Samsung's Home row, a Source hint, and Settings and Samsung Home buttons](/assets/img/launcher-on-tv.jpg)
+![The Vetro launcher at the bottom of the TV screen in an earlier version, with the apps from Samsung's Home row, a Source hint, and Settings and Samsung Home buttons](/assets/img/launcher-on-tv.jpg)
 
 Vetro is experimental, needs root and ships no signed installer: you sign the package with your own Samsung certificate or install it through a tool such as Apps2Samsung. Read [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/) before you start. The root comes from Chris Ritsen's [samsung-tv-root research](https://github.com/chris-ritsen/samsung-tv-root), and [Vetro's root requirements](/root/how-to-root-samsung-tv/) are a separate matter from the launcher itself.
 
 What else to know:
 
-- The launcher is in beta. Vetro is unaffiliated with Samsung.
+- The launcher is part of Vetro UI, which the dashboard marks Preview. Report problems in a [GitHub issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the diagnostic report from Quick settings → Developer settings → Diagnostic report. Vetro is unaffiliated with Samsung.
 - The bar has no promotional rows of its own, but Samsung's Home, one press away, still does.
 - Vetro is developed on the Samsung Q80A ([tested TV page](/tested-tvs/q80a/)). The README table lists other models as "reported working", some with fixes, and the [list of tested TVs](/tested-tvs/) has the rest.
 
@@ -67,20 +67,24 @@ It frees memory. On the Q80A, available RAM went from 533 MB with Samsung's Home
 
 Vetro's Quick settings has a switch that adds ad and tracking domains to a filter that runs on the TV itself, keeping your DNS servers, and another that disables advertising and tracking components, which includes the services that recognise what is on screen. Each shows Done or Partly done and can be switched back. Both act on background services and requests, and neither removes the tiles. The changelog notes that the effect on recognition and suggestions of the viewing-data switch has not been verified.
 
-The Task manager can disable or stop individual components. Disabling keeps a component installed and is reversible. On TVs other than the Q80A some packages are unclassified and left alone.
+Since 0.7.0 the Disable tab of Quick settings also has one switch per app that came with the TV, such as Netflix, Prime Video, YouTube, Spotify, Samsung Health, the Internet browser and Gallery, with their background services, and one for Samsung TV Plus. The new Uninstall tab deletes the same apps except YouTube, plus the Samsung TV Plus app and the e-Manual; each TV only lists the apps it has and allows removing, and an uninstalled app needs an installer to come back ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)).
 
-![Vetro Quick settings with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant](/assets/img/dashboard-quick-settings.jpg)
+The Apps and processes page (called Task manager before 0.7.0) can disable or stop individual components. Disabling keeps a component installed and is reversible. On TVs other than the Q80A some packages are unclassified and left alone.
+
+![Vetro Quick settings in an earlier interface, with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant](/assets/img/dashboard-quick-settings.jpg)
 
 ## What can you adjust in the launcher?
+
+Since 0.7.0 the row itself is yours. On the TV, hold OK on a tile to move it with Left and Right, or press Down to take it out of the row; in All apps, hold OK to add an app. Vetro keeps your order on top of Samsung's row, new apps arrive at the end, and Samsung's own Home row is never written. **Use Samsung's row again**, on the Launcher tab of the dashboard's Vetro UI page, forgets your row.
 
 The changelog for 0.5.0 lists these launcher options, and none involve ads:
 
 - HDMI sources on Home shows the HDMI tiles that are already in Samsung's Home row, in the same positions, and HDMI source images uses Samsung's artwork instead of generic icons. Both are off by default and were tested on an S95C ([#34](https://github.com/andrearicci93/vetro/pull/34)).
 - Reduce motion turns off all launcher animations.
 - Fix TizenTube gives the TizenTube tile the YouTube icon and closes Samsung's YouTube before TizenTube starts.
-- The app list is read from Samsung's Home each time the launcher starts, so apps you add, remove or reorder there follow. On TVs where the Home row holds only recent apps, the launcher adds the other visible installed apps.
+- The app list is read from Samsung's Home each time the launcher starts. On TVs where the Home row holds only recent apps, the launcher adds the other visible installed apps.
 
-Home-row order follows Samsung's saved row, but on layouts that contain only recent apps, Vetro also adds other visible installed apps. Removing a tile from the row may therefore leave the app visible in Vetro. A promotional tile that can't be removed isn't an app in that row, so we expect the launcher not to show it, but we haven't checked that tile by tile.
+On layouts that contain only recent apps, Vetro also adds other visible installed apps, so an app you removed from Samsung's row may still show in Vetro's. You can take it out of Vetro's row on the TV. A promotional tile that can't be removed isn't an app in that row, so we expect the launcher not to show it, but we haven't checked that tile by tile.
 
 ## In what order should you try things?
 
@@ -91,7 +95,7 @@ From least to most invasive:
 3. Switch off background services. On a rooted TV, Vetro's Quick settings can stop components that recognise what is on screen, send usage logs and fetch ads. This is about data and requests, not about the layout of Home.
 4. Replace Samsung's Home. Vetro's launcher requires root. AeroTizen also documents no-root Home modes; see the [launcher comparison](/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/) for their compatibility limits.
 
-Each step reverses differently. Menu changes go back in the menu. Vetro's switches show Done or Partly done and can be turned back on. The 0.5.0 changelog also adds Restore the TV, which shows the changes Vetro recorded and puts them back after one confirmation; uninstalled apps and settings without a saved previous value need manual recovery, and the changelog says Restore the TV has not been tried on a TV.
+Each step reverses differently. Menu changes go back in the menu. Vetro's switches show Done or Partly done and can be turned back on. The 0.5.0 changelog also adds Restore the TV (Quick settings → General → Restore the TV), which shows the changes Vetro recorded and puts them back after one confirmation; uninstalled apps and settings without a saved previous value need manual recovery, and the 0.5.0 changelog says Restore the TV had not been tried on a TV.
 
 ## What does the Vetro setup involve?
 
@@ -101,10 +105,11 @@ The dashboard is served over plain HTTP. Once the Vetro app on the TV has been s
 
 ## What has gone wrong for other people?
 
-The changelog and README table are candid about it, which is what "beta" means in practice:
+The changelog and README table are candid about it:
 
 - On two 2022 TVs, a UE65BU8002KXXH ([#22](https://github.com/andrearicci93/vetro/issues/22), [model page](/tested-tvs/bu8002/)) and a QE75QN85BATXXU ([#25](https://github.com/andrearicci93/vetro/issues/25), [model page](/tested-tvs/qn85b/)), turning the launcher on failed with "The Home row is empty or unreadable". Those TVs keep Samsung's Home order cache in a different folder, which release 0.3.1 reads.
 - The 0.3.2 notes described a single-process limitation on Tizen 9. Version 0.5.0 added a multi-app Home guard; no Tizen 9 memory-saving measurement is published.
+- With the launcher on, video played in Samsung Home's picture mode, with motion smoothing off, because Samsung's Home was not running to give the picture back when an app opened (found in an S95C's diagnostics). The 0.7.0 changelog says Vetro now gives the picture back itself, and that this is not yet tried on a TV.
 - Some models run the dashboard but have not tried the launcher. The Frame ([LS03B](/tested-tvs/ls03b/), [#39](https://github.com/andrearicci93/vetro/issues/39)) is one: its report says the launcher was not tried.
 
 The [tested TVs index](/tested-tvs/) shows which confirmed cases exist.

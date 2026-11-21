@@ -1,14 +1,14 @@
 ---
 title: "Root a Tizen 6 Samsung TV (2021): models and firmware"
-description: "2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A); an AU7000 report failed at the root agent. Firmware and caveats."
+description: "2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A), an AU7172 sent a report and an AU7000 failed at the root agent."
 keywords: ["root tizen 6 tv", "samsung q80a root", "samsung 2021 tv root"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the Vetro 0.5.0 README compatibility table, the CHANGELOG compatibility entries and the install guide."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro README compatibility table on main, the 0.7.0 CHANGELOG, the install guide, UPDATES-WITHOUT-ROOT.md and issue #223."
 related: ["how-to-root-samsung-tv", "root-samsung-tizen-6-5-2022", "samsung-tv-tizen-version-by-year", "install-vetro-apps2samsung", "keep-root-after-restart", "samsung-model-code-decoder"]
 ---
 
-Samsung's 2021 TVs run Tizen 6.0, and this is the generation Vetro is built on: the project's reference TV is a [Q80A](/tested-tvs/q80a/). Five 2021 models are in the compatibility table. Four are reported working; the fifth, the [AU7000](/tested-tvs/au7000/), got the dashboard but its root agent did not connect. Vetro is experimental, needs root and ships no signed installer (see [the risks](/root/is-it-safe-to-root-samsung-tv/)).
+Samsung's 2021 TVs run Tizen 6.0, and this is the generation Vetro is built on: the project's reference TV is a [Q80A](/tested-tvs/q80a/). Six 2021 models are in the compatibility table. Four are reported working, the [AU7172](/tested-tvs/au7172/) has a diagnostic report only, and the [AU7000](/tested-tvs/au7000/) got the dashboard but its root agent did not connect. Vetro is experimental, needs root and ships no signed installer (see [the risks](/root/is-it-safe-to-root-samsung-tv/)).
 
 The root comes from [Chris Ritsen's research](https://github.com/chris-ritsen/samsung-tv-root). That repository is written for researchers and can contain exploit code. This page contains none; for the general picture see [how to root a Samsung TV](/root/how-to-root-samsung-tv/).
 
@@ -20,6 +20,7 @@ The root comes from [Chris Ritsen's research](https://github.com/chris-ritsen/sa
 | [Q70A](/tested-tvs/q70a/) (QE55Q70AATXXC) | T-NKM2DEUC-2301.1 | Reported working | [#8](https://github.com/andrearicci93/vetro/issues/8) |
 | [Q60A](/tested-tvs/q60a/) (QN70Q60AAVXZC) | T-NKLAAKUC-2310.0 | Reported working; listen port changed to avoid a clash | [#28](https://github.com/andrearicci93/vetro/issues/28) |
 | [QN85A](/tested-tvs/qn85a/) (GQ65QN85AATXZG) | T-NKM2DEUC-2301.1 | Reported working; back after a reboot once the owner enabled the service's on-boot and auto-restart flags | no issue number |
+| [AU7172](/tested-tvs/au7172/) (UE43AU7172UXXH) | T-KSU2EDEUC-2301.1 | Vetro 0.5.0, diagnostic report only: root agent with UID 0, service running and loopback probe succeeded; start after a cold boot not checked | [#182](https://github.com/andrearicci93/vetro/issues/182) |
 | [AU7000](/tested-tvs/au7000/) (UA50AU7000UXTW) | T-KSU2EUABC-2310.0 | Service and dashboard work; the root agent did not connect, so root features stay off | [#134](https://github.com/andrearicci93/vetro/issues/134) |
 
 ## What did each report actually confirm?
@@ -28,7 +29,7 @@ The Q70A report (firmware 2301.1) says setup with root access completed, that Qu
 
 The QN85A report has no public issue, so the only evidence is the changelog entry: the app, the service and the UID-0 agent were working and recovered after a reboot, once the owner had enabled the service's on-boot and auto-restart flags. A new owner should not assume that recovery is automatic. The changelog also records that a DNS filter blocking one Samsung certificate host made Certificate Manager fail on that TV.
 
-A contributor's test on a Q60A used a personal certificate; the changelog says the service started on every launch of the app there. "Reported working" always means the owner said what worked, not that every feature was tried.
+A contributor's test on a Q60A used a personal certificate; the changelog says the service started on every launch of the app there. The AU7172 entry is a diagnostic report, not an owner's account of what works: it shows the root agent with UID 0, the service running and a successful loopback probe, and the start after a cold boot was not checked. "Reported working" always means the owner said what worked, not that every feature was tried.
 
 ## Why did the Q60A need a different port?
 
@@ -46,6 +47,7 @@ If your TV is not listed, open a [diagnostic report issue](https://github.com/an
 - That the TV is on Tizen 6. [Samsung TV Tizen version by year](/root/samsung-tv-tizen-version-by-year/) lists the versions.
 - That Developer Mode works and that you can enter an IP address. The [Developer Mode guide](/root/samsung-tv-developer-mode/) lists the usual snags.
 - That you allow time: after a cold boot, startup and root can take up to 90 seconds, according to the [install guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md). [Does root survive a restart](/root/keep-root-after-restart/) says what has been measured.
+- That you decide about firmware updates before one arrives. In [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update to 1722.0 removed root on a 2022 TV, and Samsung does not support downgrades. Vetro 0.7.0's Block firmware and software updates switch (Quick settings, General, Essential settings) stops and masks every update service and, on Tizen 6, applies the lock at power-on through the TV's AT-HUB boot step; the changelog says it was read from the Tizen 6, 6.5 and 9 firmware and tried on a Q80A only. Turn it on while root still works: it can help keep root, it does not guarantee it, and while it is on Samsung's firmware and app updates do not install. More in [will a firmware update remove root](/updates/firmware-update-remove-root/).
 
 ## Next steps
 

@@ -3,8 +3,8 @@ title: "Samsung TV Tizen version by year, 2017 to 2026"
 description: "Which Tizen version a Samsung TV shipped with, year by year from 2017 to 2026, why your TV may run a newer one now, and how the version relates to rooting."
 keywords: ["samsung tv tizen version by year", "samsung tizen version", "which tizen version is my samsung tv", "tizen 6.5 samsung tv year"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Samsung's TV model groups page, Wikipedia's Tizen article, SamMobile's update report and the Vetro 0.5.0 README compatibility table."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against Samsung's TV model groups page, Wikipedia's Tizen article, SamMobile's update report and the Vetro README compatibility table on main, which adds the Tizen 10 row."
 related: ["how-to-root-samsung-tv", "samsung-model-code-decoder", "root-samsung-tizen-6-5-2022", "root-samsung-tizen-7-2023", "root-samsung-tizen-8-9-2024", "root-tizen-6-samsung-tv"]
 ---
 
@@ -36,7 +36,7 @@ Wikipedia's [Tizen article](https://en.wikipedia.org/wiki/Tizen) lists releases 
 
 Samsung updates the operating system on some TVs. [SamMobile](https://www.sammobile.com/opinion/samsung-promised-7-years-of-tv-updates-still-waiting-to-see-what-happens/) reports that in mid-2024 Samsung said TVs released in 2024 or later, plus select 2023 models, would get seven years of Tizen OS updates. Its article says premium 2023 models got Tizen 8.0 in November 2024, and its October 2025 update says Samsung confirmed those 2023 models would start moving to Tizen 9 the following week, possibly in stages and not in every region at once. It names no full model list.
 
-The Vetro README table shows the same pattern from the owners' side. A 2023 [CU7179](/tested-tvs/cu7179/) is reported on Tizen 9.0, a 2023 [S90C](/tested-tvs/s90c/) on Tizen 7.0 and a 2024 [S90D](/tested-tvs/s90d/) on Tizen 9. Two TVs from the same year can sit on different versions, so treat the table as a starting guess and check the real value.
+The Vetro README table shows the same pattern from the owners' side. The 2023 [CU7179](/tested-tvs/cu7179/) and [CU8070](/tested-tvs/cu8070/) are reported on Tizen 9.0, a 2023 [S90C](/tested-tvs/s90c/) on Tizen 7.0, and the 2024 [S90D](/tested-tvs/s90d/) and [DUE77](/tested-tvs/due77/) on Tizen 9. The README's Tizen 10 row says some 2025 TVs reach Tizen 10 after an update, and it records a [QN80F](/tested-tvs/qn80f/) that lost root when a firmware update moved it to Tizen 10 ([#181](https://github.com/andrearicci93/vetro/issues/181)). Two TVs from the same year can sit on different versions, so treat the table as a starting guess and check the real value.
 
 ## How do I see which Tizen version my TV runs?
 
@@ -51,7 +51,9 @@ Rows from the [Vetro compatibility table](https://github.com/andrearicci93/vetro
 | [Q80A](/tested-tvs/q80a/) | 2021 | 6.0 | Listed under Tizen 6; firmware 2301.1 |
 | [S90C](/tested-tvs/s90c/) | 2023 | 7.0 | Tizen 7.0 |
 | [CU7179](/tested-tvs/cu7179/) | 2023 | 7.0 | Tizen 9.0 |
+| [CU8070](/tested-tvs/cu8070/) | 2023 | 7.0 | Tizen 9.0 |
 | [S90D](/tested-tvs/s90d/) | 2024 | 8.0 | Tizen 9 |
+| [DUE77](/tested-tvs/due77/) | 2024 | 8.0 | Tizen 9 |
 | [Q80R](/tested-tvs/q80r/) | 2019 | 5.0 | Tizen 5.0 |
 | [NU7090](/tested-tvs/nu7090/) | 2018 | 4.0 | Tizen 4 |
 
@@ -61,9 +63,9 @@ The 2023 and 2024 rows are the ones that moved.
 
 It is a clue, not a rule. Vetro's root route comes from [Chris Ritsen's samsung-tv-root research](https://github.com/chris-ritsen/samsung-tv-root), which reports results for exact models and firmware builds. It lists one Tizen 10 TV, a UN50M75HAGXZD, where SDB connected but rejected the injection, and calls that an exact-build failure, not proof about all Tizen 10 TVs.
 
-For Vetro itself the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility) says root features need Tizen 6 or newer. On Tizen 6 to 8 the reports are positive. On Tizen 9 and 10 they are mixed: some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), and the 0.5.0 fallback is not yet tried on a TV), and root problems are reported on others ([#91](https://github.com/andrearicci93/vetro/issues/91), [#99](https://github.com/andrearicci93/vetro/issues/99)). Tizen 5.5 and Tizen 4 TVs get the dashboard, app list and diagnostics but not root features. A Tizen 5.0 Q80R works only with a personal port that has not been merged ([#35](https://github.com/andrearicci93/vetro/issues/35)). The README says there is no confirmed range and that a firmware update can change the result inside one model family.
+For Vetro itself the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility) says root features work on Tizen 6 to 9. On Tizen 6 to 8 the reports are positive. On Tizen 9 they are mixed: some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), and the 0.5.0 fallback is not yet tried on a TV), and root problems are reported on others ([#99](https://github.com/andrearicci93/vetro/issues/99)). Tizen 10 has no root yet: the README says its firmware blocks the method Vetro uses ([#91](https://github.com/andrearicci93/vetro/issues/91), [#140](https://github.com/andrearicci93/vetro/issues/140), [#177](https://github.com/andrearicci93/vetro/issues/177), [#178](https://github.com/andrearicci93/vetro/issues/178)), while the dashboard, app list and diagnostics are reported working there. Tizen 5.5 and Tizen 4 TVs get the dashboard, app list and diagnostics but not root features. A Tizen 5.0 Q80R works only with a personal port that has not been merged ([#35](https://github.com/andrearicci93/vetro/issues/35)). The README says there is no confirmed range and that a firmware update can change the result inside one model family. An update can also remove root without moving to a new Tizen: in [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update from 1720.7 to 1722.0 did it on a 2022 TV. See [will a firmware update remove root](/updates/firmware-update-remove-root/).
 
-Other reports exist for the [Q70A](/tested-tvs/q70a/), [Q67B](/tested-tvs/q67b/), [S95C](/tested-tvs/s95c/) and [Q65D](/tested-tvs/q65d/). The Q80A is the only TV Vetro is developed and tested on. Vetro is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/install-vetro-apps2samsung/) and [is it safe to root a Samsung TV](/root/is-it-safe-to-root-samsung-tv/).
+Other reports exist for the [Q70A](/tested-tvs/q70a/), [Q60B](/tested-tvs/q60b/), [Q67B](/tested-tvs/q67b/), [QN90B](/tested-tvs/qn90b/), [S95C](/tested-tvs/s95c/) and [Q65D](/tested-tvs/q65d/). The Q80A is the only TV Vetro is developed and tested on. Vetro is experimental, needs root and ships no signed installer; see [Vetro's root requirements](/root/install-vetro-apps2samsung/) and [is it safe to root a Samsung TV](/root/is-it-safe-to-root-samsung-tv/).
 
 Pages by year:
 

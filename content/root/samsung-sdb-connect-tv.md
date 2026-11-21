@@ -1,10 +1,10 @@
 ---
 title: "Connect to a Samsung TV with sdb (port 26101)"
-description: "How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro 0.5.0 uses the TV's own SDB with no PC."
+description: "How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro uses the TV's own SDB with no PC."
 keywords: ["samsung sdb connect tv", "sdb connect samsung tv 26101", "sdb shell closed samsung tv", "samsung sdb tizen tv"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Samsung's command line and tv-device pages, the Jellyfin Tizen README, the samsung-tv-root page, and Vetro 0.5.0's INSTALLATION.md, SECURITY.md, rooting README and CHANGELOG."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against Samsung's command line and tv-device pages, the Jellyfin Tizen README, the samsung-tv-root page, and Vetro 0.7.0's INSTALLATION.md, SECURITY.md, rooting README, CHANGELOG and dashboard labels."
 related: ["samsung-tv-developer-mode", "install-vetro-apps2samsung", "how-to-root-samsung-tv", "keep-root-after-restart", "vetro-security-model", "samsung-developer-certificate-errors"]
 ---
 
@@ -56,7 +56,7 @@ After you set Host PC IP to `127.0.0.1` and restart, the Vetro service on the TV
 
 ### Can a computer share the connection with Vetro?
 
-In 0.5.0, yes, through an experimental SDB tunnel. The [rooting README](https://github.com/andrearicci93/vetro/blob/main/rooting/README.md) says the integration multiplexes its SDB connection through port 26201, and only loopback clients are admitted by default. The switch Quick settings, Developer settings, Developer access, Allow SDB from the local network opens it to Apps2Samsung or Samsung's SDK. It asks for confirmation, stays on across restarts and is turned off by Restore the TV ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)).
+Yes, through an experimental SDB tunnel that arrived in 0.5.0. The [rooting README](https://github.com/andrearicci93/vetro/blob/main/rooting/README.md) says the integration multiplexes its SDB connection through port 26201, and only loopback clients are admitted by default. The switch Allow SDB from the local network opens it to tools such as Apps2Samsung, TV-Store or Samsung's SDK. Since 0.7.0 it sits in Quick settings, General, Essential settings, no longer under Developer settings, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says turning it on improves compatibility with Apps2Samsung and TV-Store. It asks for confirmation, stays on across restarts and is turned off by Restore the TV.
 
 The limits are in [SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md):
 

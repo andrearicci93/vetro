@@ -3,8 +3,8 @@ title: "Is it safe to root a Samsung TV? Risks and what to undo"
 description: "Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, plugin trust and what Restore can undo."
 keywords: ["is it safe to root samsung tv", "root samsung tv risks", "samsung tv root brick", "samsung tv root warranty"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the published Vetro 0.5.0 README, CHANGELOG, SECURITY.md, sign-in and update guides, and the samsung-tv-root project page."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro README on main, the 0.7.0 CHANGELOG, SECURITY.md, VETRO-UI.md, UPDATES-WITHOUT-ROOT.md, the sign-in and update guides, issue #223 and the samsung-tv-root project page."
 related: ["how-to-root-samsung-tv", "vetro-security-model", "firmware-update-remove-root", "keep-root-after-restart", "uninstall-vetro-samsung-tv", "stop-samsung-tv-auto-update"]
 faq:
   - q: "Is it safe to root a Samsung TV?"
@@ -12,14 +12,14 @@ faq:
   - q: "Will rooting void my Samsung warranty?"
     a: "We cannot say. Read Samsung's terms for your TV and region before you start. Nothing on this page is warranty advice."
   - q: "Can rooting brick a Samsung TV?"
-    a: "The published Vetro files record no bricked TV, but they do document two boot hazards: on the Q80A, disabling Samsung's Home app can keep the TV from finishing its boot, and opening Samsung's factory colour test app could start that test at every boot. Vetro 0.5.0 avoids the first by default and no longer opens the second app."
+    a: "The published Vetro files record no bricked TV, but they do document two boot hazards: on the Q80A, disabling Samsung's Home app can keep the TV from finishing its boot, and opening Samsung's factory colour test app could start that test at every boot. Since 0.5.0 Vetro avoids the first by default and no longer opens the second app."
   - q: "Does a Samsung firmware update remove root?"
-    a: "It can change the result, even within one model family, according to the Vetro README. Root is also volatile and has to be acquired again after each restart."
+    a: "It can. In Vetro issue #223 a forced update to 1722.0 removed root on a 2022 TV, and Samsung does not support firmware downgrades. Vetro's Block firmware and software updates switch can help keep root while it works, but it does not guarantee it. Root is also volatile and has to be acquired again after each restart."
   - q: "Can I undo what Vetro changed?"
     a: "Mostly. Restore the TV puts back the changes Vetro recorded after one confirmation. Uninstalled apps, settings without a saved previous value and changes made by plugins need manual recovery."
 ---
 
-Rooting a Samsung TV is not risk free. It changes a device Samsung locked down, the tools are experimental, and a firmware update can change the result. The published [Vetro 0.5.0 documents](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) a boot hazard on the Q80A, a plain-HTTP dashboard and plugins that run with full access. Most changes can be reversed; a few cannot. For the method itself, see [how to root a Samsung TV](/root/how-to-root-samsung-tv/).
+Rooting a Samsung TV is not risk free. It changes a device Samsung locked down, the tools are experimental, and a firmware update can change the result. Vetro's [changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) and guides document a boot hazard on the Q80A, a plain-HTTP dashboard, plugins that run with full access, and a forced firmware update that removed root on one TV ([#223](https://github.com/andrearicci93/vetro/issues/223)). Most changes can be reversed; a few cannot. For the method itself, see [how to root a Samsung TV](/root/how-to-root-samsung-tv/).
 
 ## What does rooting actually change?
 
@@ -37,17 +37,23 @@ The published Vetro files record no bricked TV. They do document two hazards tha
 
 ### Disabling Samsung Home on the Q80A
 
-The 0.5.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), in its custom launcher entry, says: keep Samsung's Home enabled, because on the [Q80A](/tested-tvs/q80a/) disabling it can keep the TV from finishing its boot. Vetro's custom launcher leaves Samsung's Home enabled and closes it after each Home press. The separate Samsung Home switch sits at the bottom of the Custom launcher tab and asks for confirmation. The same entry says the custom launcher was not yet tried by hand on a TV.
+The 0.5.0 [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), in its custom launcher entry, says: keep Samsung's Home enabled, because on the [Q80A](/tested-tvs/q80a/) disabling it can keep the TV from finishing its boot. Vetro's custom launcher leaves Samsung's Home enabled and closes it after each Home press. The separate Samsung Home switch, now on the Launcher tab of the dashboard's Vetro UI page, asks for confirmation. The same 0.5.0 entry said the custom launcher was not yet tried by hand on a TV.
 
 The changelog states this for the Q80A only. Other models may behave differently, which is a reason to read each switch before turning it on.
 
 ### The factory colour test
 
-Per the changelog, opening Samsung's AgingApp could leave a TV starting a factory colour test at every boot, with the volume bar hidden, even after a factory reset ([#135](https://github.com/andrearicci93/vetro/issues/135)). Vetro 0.5.0 no longer opens AgingApp or the service menus and asks for confirmation before opening other hotel, shop or factory apps. If the test is on, Quick settings offers to turn it off. The changelog says this guard was tried only against a simulated TV.
+Per the changelog, opening Samsung's AgingApp could leave a TV starting a factory colour test at every boot, with the volume bar hidden, even after a factory reset ([#135](https://github.com/andrearicci93/vetro/issues/135)). Since 0.5.0 Vetro no longer opens AgingApp or the service menus and asks for confirmation before opening other hotel, shop or factory apps. If the test is on, Quick settings offers to turn it off. The changelog says this guard was tried only against a simulated TV.
+
+### Changes to the boot step
+
+Two switches added in 0.7.0 change what the TV runs early in its boot. Block firmware and software updates and Quick boot (marked Experimental) both use a small replacement of the vendor script `parseinfo.sh` in the TV's AT-HUB boot step, which keeps the vendor write. The changelog says turning the switches off (or Restore the TV, for Quick boot) brings the vendor boot step back, and that the replacement does nothing once Vetro is uninstalled. Quick boot was tested on a Q80A only, and the changelog says another model or boot order may differ.
 
 ## What about firmware updates?
 
-A new firmware can change the result even within one model family, says the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility). Vetro has a Disable automatic firmware update switch so an update does not arrive unnoticed. According to the 0.3.0 changelog notes it writes one value in the TV's menu database, keeps the old value and restores it when you switch it off. See [what a firmware update does to root](/updates/firmware-update-remove-root/) and [stopping automatic updates](/updates/stop-samsung-tv-auto-update/).
+A new firmware can change the result even within one model family, says the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility), and it can remove root. In [#223](https://github.com/andrearicci93/vetro/issues/223), the owner of a 2022 TV on firmware 1720.7 reports a forced update to 1722.0, after which Vetro 0.5.0 could no longer get root. Samsung's [developer FAQ](https://developer.samsung.com/smarttv/develop/faq/device-information-and-firmware.html) says downgrading TV firmware is not supported.
+
+In 0.7.0 the firmware switch is called Block firmware and software updates and sits in Quick settings, General, Essential settings. It is off until you turn it on and needs root. It stops and masks every update service, not only the menu's Auto update, and applies the lock again at every boot. The changelog says it was read from the Tizen 6, 6.5 and 9 firmware and tried on a Q80A only. Turning it on while root still works can help keep root; it does not guarantee it, and a firmware update that lands anyway replaces everything it did. While it is on, Samsung's firmware and app updates do not install, which also holds back their security fixes. Without root, Vetro's [guide to blocking updates without root](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says the network is the only reliable block. See [what a firmware update does to root](/updates/firmware-update-remove-root/) and [stopping automatic updates](/updates/stop-samsung-tv-auto-update/).
 
 ## Is the Vetro dashboard secure?
 
@@ -57,10 +63,14 @@ Traffic is still plain HTTP, so someone watching your network could copy a key. 
 
 Two further switches widen the trust:
 
-- Allow SDB from the local network, off by default, gives any reachable client developer access to the TV without Vetro pairing. See [connecting with sdb](/root/samsung-sdb-connect-tv/).
+- Allow SDB from the local network (Quick settings, General, Essential settings), off by default, gives any reachable client developer access to the TV without Vetro pairing. See [connecting with sdb](/root/samsung-sdb-connect-tv/).
 - Vetro Shards (plugins) are third-party code with no sandbox: a plugin can do whatever Vetro can, including running commands as root. They are off until switched on, and the [plugin guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/plugins.md) says to enable only ones you trust.
 
 More in the [Vetro security model](/reference/vetro-security-model/). Do not share signing keys or developer-account credentials. Diagnostic reports exclude many private fields but can still show which software is installed, so read one before you post it.
+
+## What about Vetro UI, the new launcher and live TV?
+
+Vetro 0.7.0 draws more of the TV itself: a launcher with your own row and a Control center, a live TV screen, and its own volume bar and number pad. The dashboard marks Vetro UI as Preview, and its [guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/VETRO-UI.md) says some parts may not work on every TV yet; several parts are not yet tried on a TV. Samsung's tuner is never removed or changed, and each part has its own switch. If something misbehaves, turn that part off and open a [GitHub issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the diagnostic report from Quick settings, Developer settings, Diagnostic report.
 
 ## What can I undo?
 
@@ -82,7 +92,7 @@ If you own the TV, accept that privileged changes can disrupt TV features and wa
 ## A checklist before you start
 
 - Use a TV you own or are allowed to administer, as SECURITY.md says.
-- Find your model in the README compatibility table and the [tested TVs](/tested-tvs/). Apart from the Q80A, rows are community reports, and the Tizen 4 and 5.5 TVs listed get the dashboard and diagnostics only.
+- Find your model in the README compatibility table and the [tested TVs](/tested-tvs/). Apart from the Q80A, rows are community reports, and the Tizen 4 and 5.5 TVs listed get the dashboard and diagnostics only, as do Tizen 10 TVs for now.
 - Put the TV on a trusted network and never forward its ports.
 - Read what a switch does before you turn it on.
 - If something misbehaves, turn the switch back off, then attach the diagnostic report to an issue. The report excludes credentials, IP and MAC addresses and serial numbers; read it before uploading.

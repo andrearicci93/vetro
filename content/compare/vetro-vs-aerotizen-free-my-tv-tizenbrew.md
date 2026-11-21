@@ -1,10 +1,10 @@
 ---
 title: "Vetro vs AeroTizen, free-my-tv and TizenBrew"
-description: "Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each changes on a Samsung TV, and who should pick which."
+description: "Vetro, AeroTizen, free-my-tv and TizenBrew compared on root, install route, what each one changes on a Samsung TV, and who should pick which tool."
 keywords: ["samsung tv launcher debloat tools compared", "aerotizen vs vetro", "free-my-tv samsung", "tizenbrew alternative"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the AeroTizen, free-my-tv and TizenBrew READMEs, the TizenBrew guide, and the Vetro 0.5.0 README, CHANGELOG, SECURITY.md and PERFORMANCE.md."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, VETRO-UI.md, README, SECURITY.md and PERFORMANCE.md; the AeroTizen, free-my-tv and TizenBrew READMEs and the TizenBrew guide were checked on 2026-11-10."
 related: ["custom-launcher-samsung-tv", "remove-ads-samsung-tv-home-screen", "why-vetro-is-native", "tizentube-samsung-tv", "how-to-root-samsung-tv", "what-each-vetro-switch-changes"]
 ---
 
@@ -14,19 +14,19 @@ These four projects solve different problems. AeroTizen and free-my-tv give you 
 
 | | Vetro | AeroTizen | free-my-tv | TizenBrew |
 | --- | --- | --- | --- | --- |
-| What it is | Launcher, debloater, remapper, MQTT | Home screen replacement | Home screen app | Loader for modded sites and apps |
+| What it is | Launcher, debloater, remapper, live TV screen, MQTT | Home screen replacement | Home screen app | Loader for modded sites and apps |
 | Root needed | Yes | No (optional root guide) | No | No |
 | Install route | Build and sign a package, Developer Mode, Apps2Samsung or your own certificate | `aerotizen` CLI on macOS, Windows or Linux, Developer Mode, Samsung sign-in | TizenBrew Installer, or a Python script, Developer Mode | Desktop installer or CLI, Developer Mode |
 | Replaces Samsung Home | Yes, by a native launcher on the Home key | Optional "Native Home", or a watcher that reopens it | No, Samsung Home stays | No |
 | Debloat or tracking switches | Yes | Links to guides; README does not clearly describe removing packages itself | Not documented for Samsung | No |
 | License | MIT | MIT | MIT | GPL-3.0 |
-| Status in the docs | Experimental, launcher in beta | Native Home experimental | Compatibility notes per year | Needs Tizen 3.0 or later |
+| Status in the docs | Experimental; Vetro UI (launcher, live TV, volume bar, number pad) in preview | Native Home experimental | Compatibility notes per year | Needs Tizen 3.0 or later |
 
 ## What does Vetro offer?
 
-[Vetro](https://github.com/andrearicci93/vetro) runs on the TV with root and serves a dashboard you open from a computer or phone. Per its [README](https://github.com/andrearicci93/vetro/blob/main/README.md), the launcher shows the same apps as Samsung's Home, in the same order, and returns after a restart or standby, with Samsung's Home one press away. In a single run on the [Q80A](/tested-tvs/q80a/), available RAM went from 533 MB to 662 MB with the launcher on, about 24% more. [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md) says that is a memory figure only: nothing there shows a change in frame rate, input latency or time to open an app.
+[Vetro](https://github.com/andrearicci93/vetro) runs on the TV with root and serves a dashboard you open from a computer or phone. Per its [README](https://github.com/andrearicci93/vetro/blob/main/README.md), the launcher starts with the same apps as Samsung's Home, in the same order, and returns after a restart or standby, with Samsung's Home one press away. Since 0.7.0 the row can be reordered and trimmed on the TV, an All apps list sits at its end, and Down opens a Control center with cards such as a task manager and the audio output ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)). In a single run on the [Q80A](/tested-tvs/q80a/), available RAM went from 533 MB to 662 MB with the launcher on, about 24% more. [PERFORMANCE.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/PERFORMANCE.md) says that is a memory figure only: nothing there shows a change in frame rate, input latency or time to open an app.
 
-The rest of Vetro is the debloater (Quick settings and a Task manager that lists every app and service), a Remapper for remote buttons, MQTT for Home Assistant and diagnostics. The README says every switch can be turned back on. The root comes from [Chris Ritsen's samsung-tv-root research](https://github.com/chris-ritsen/samsung-tv-root), and Vetro is experimental and ships no signed installer: you use a package signed for your TV, for example with Apps2Samsung (see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and the [install guide](/root/install-vetro-apps2samsung/)). The dashboard runs over plain HTTP; since 0.5.0 it uses a pairing code, but pairing is automatic and the dashboard is open until the Vetro app on the TV has been seen ([SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md)). Vetro was developed on the Q80A and community reports cover other models; see the [tested TVs](/tested-tvs/).
+The rest of Vetro is the debloater (Quick settings and an Apps and processes page that lists every app and service), a Remapper for remote buttons, MQTT for Home Assistant and diagnostics. Version 0.7.0 adds its own live TV screen and its own volume bar and number pad, all on the dashboard's Vetro UI page, which is marked Preview. The README says every switch can be turned back on. The root comes from [Chris Ritsen's samsung-tv-root research](https://github.com/chris-ritsen/samsung-tv-root), and Vetro is experimental and ships no signed installer: you use a package signed for your TV, for example with Apps2Samsung (see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and the [install guide](/root/install-vetro-apps2samsung/)). The dashboard runs over plain HTTP; since 0.5.0 it uses a pairing code, but pairing is automatic and the dashboard is open until the Vetro app on the TV has been seen ([SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md)). Vetro was developed on the Q80A and community reports cover other models; its root features target Tizen 6 to 9, and Tizen 10 has no root yet. See the [tested TVs](/tested-tvs/).
 
 Pick it if you want the debloater and the remapper as well as a launcher, and you accept [the risks of rooting](/root/is-it-safe-to-root-samsung-tv/). Do not pick it if you only want a different home screen, or if you cannot get root on your TV.
 
@@ -58,7 +58,7 @@ Some pairings are documented. free-my-tv installs through TizenBrew Installer. V
 
 - For a nicer home screen without root, use AeroTizen or free-my-tv.
 - For YouTube with the ad blocking TizenTube describes, and no root, use TizenBrew with TizenTube, or the Apps2Samsung route in the [TizenTube guide](/control/tizentube-samsung-tv/).
-- For lower memory use, tracking services switched off and remapped remote buttons, use Vetro on a rooted TV, accepting a beta launcher and an HTTP dashboard. Read [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) first.
+- For lower memory use, tracking services switched off and remapped remote buttons, use Vetro on a rooted TV, accepting a launcher that is still in preview and an HTTP dashboard. Read [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) first.
 - For fewer ads on the home screen only, read [remove ads from the Samsung TV home screen](/speed/remove-ads-samsung-tv-home-screen/) first. A launcher may be more than you need.
 
 For how the native launcher differs from web ones, see [why Vetro's launcher is native](/reference/why-vetro-is-native/) and [a custom launcher for a Samsung TV](/speed/custom-launcher-samsung-tv/). What each Vetro switch does is in [the switch reference](/reference/what-each-vetro-switch-changes/).

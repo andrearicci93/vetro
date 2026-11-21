@@ -3,8 +3,8 @@ title: "Can you downgrade Samsung TV firmware? What reports say"
 description: "Samsung says downgrading TV firmware is not supported. See what its community and SamyGO threads report, and why Vetro offers prevention, not a rollback."
 keywords: ["samsung tv downgrade firmware", "downgrade samsung tv firmware", "roll back samsung tv update", "samsung tv older firmware"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Samsung's developer FAQ, a Samsung US community thread, two SamyGO forum threads, and the Vetro README and CHANGELOG for release 0.5.0."
+updated: 2026-11-21
+verified: "Checked on 2026-11-10 against Samsung's developer FAQ, a Samsung US community thread and two SamyGO forum threads; Vetro parts rechecked on 2026-11-21 against the 0.7.0 CHANGELOG, dashboard labels and issue #223."
 related: ["firmware-update-remove-root", "stop-samsung-tv-auto-update", "how-to-root-samsung-tv", "is-it-safe-to-root-samsung-tv", "uninstall-vetro-samsung-tv"]
 ---
 
@@ -30,9 +30,9 @@ Taken together, these posts suggest the exceptions rely on root and on specific,
 
 We can't say. The [samsung-tv-root](https://github.com/chris-ritsen/samsung-tv-root) README that Vetro builds on records results for exact models and firmware and doesn't mention downgrades. See [Vetro's root requirements](/root/how-to-root-samsung-tv/) and [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/).
 
-Vetro offers prevention, not a rollback: a Quick settings switch, Disable automatic firmware update, so that a new firmware does not remove root behind your back (README). See [stopping Samsung TV auto updates](/updates/stop-samsung-tv-auto-update/). If an update has already happened, [will a firmware update remove root](/updates/firmware-update-remove-root/) lists what Vetro's records show. Vetro is experimental, needs root and ships no signed installer; see [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
+Vetro offers prevention, not a rollback. In Vetro 0.7.0 the switch is Block firmware and software updates, in Quick settings, General, Essential settings: on a rooted TV it stops every update service, not only the menu's Auto update, and applies the lock again at each boot. The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says it was tried on a Q80A only. It can help keep root; it does not guarantee it, and while it is on Samsung's firmware and app updates do not install. It matters because a downgrade is not on offer: in [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update to 1722.0 removed root from a 2022 TV, and there is no supported way back to the older firmware. See [stopping Samsung TV auto updates](/updates/stop-samsung-tv-auto-update/). If an update has already happened, [will a firmware update remove root](/updates/firmware-update-remove-root/) lists what Vetro's records show. Vetro is experimental, needs root and ships no signed installer; see [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
 
-![Vetro Quick settings with privacy, DNS blocking and voice-assistant controls](/assets/img/dashboard-quick-settings.jpg)
+![Vetro Quick settings in an earlier interface, with privacy, DNS blocking and voice-assistant controls](/assets/img/dashboard-quick-settings.jpg)
 
 ## Why do people ask for a downgrade?
 
@@ -44,7 +44,7 @@ Nothing we can quantify. The risks are the plain ones: an image the TV rejects, 
 
 ## How can I avoid needing a downgrade?
 
-You can't avoid every case, but you can cut the unplanned ones. Turn automatic updates off ([how](/updates/stop-samsung-tv-auto-update/)), note your exact firmware before you accept a manual update, and check the README compatibility table for your model. Vetro's diagnostic report records the model and firmware.
+You can't avoid every case, but you can cut the unplanned ones. Turn automatic updates off ([how](/updates/stop-samsung-tv-auto-update/)); on a rooted TV, turn on Vetro's update lock while root still works. Note your exact firmware before you accept a manual update, and check the README compatibility table for your model. Vetro's diagnostic report records the model and firmware.
 
 ## What if an update broke something?
 

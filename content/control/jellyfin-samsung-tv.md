@@ -3,8 +3,8 @@ title: "Jellyfin on a Samsung TV: official app or sideloading"
 description: "Jellyfin reached Samsung's app store in February 2026 for some TVs. If yours is not eligible, here is how sideloading works and why it needs no root."
 keywords: ["jellyfin samsung tv", "jellyfin tizen", "install jellyfin samsung tv", "sideload jellyfin samsung"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Android Authority's 2026-02-04 report, the jellyfin-tizen and Apps2Samsung READMEs, Samsung's TV device page and the Vetro 0.5.0 README."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG and README; Android Authority's 2026-02-04 report, the jellyfin-tizen and Apps2Samsung READMEs and Samsung's TV device page as checked on 2026-11-10."
 related: ["samsung-tv-developer-mode", "samsung-developer-certificate-errors", "install-vetro-apps2samsung", "tizentube-samsung-tv", "remap-samsung-remote-buttons", "how-to-root-samsung-tv"]
 ---
 
@@ -68,7 +68,7 @@ Android Authority also describes a community tool, Samsung-Jellyfin-Installer, t
 
 No. Both sideload routes use Samsung's own Developer Mode and signing. Root is a separate step, and [how to root a Samsung TV](/root/how-to-root-samsung-tv/) explains what it involves and why you would not do it only for Jellyfin.
 
-Vetro, a launcher and remapper for rooted TVs, can sit beside a sideloaded Jellyfin. The Remapper can assign a remote button to open an app you choose; see [remap Samsung remote buttons](/control/remap-samsung-remote-buttons/). We have not tested Jellyfin with it. Vetro is experimental, needs root and ships no signed installer; read [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/) first. The same tooling installs other apps: [TizenTube](/control/tizentube-samsung-tv/) goes on with Apps2Samsung too.
+Vetro, a launcher and remapper for rooted TVs, can sit beside a sideloaded Jellyfin. The Remapper can assign a remote button to open an app you choose; see [remap Samsung remote buttons](/control/remap-samsung-remote-buttons/). Since 0.7.0, an app installed with Apps2Samsung appears in the Vetro launcher's row and in All apps the next time you open the launcher, without a restart, according to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md). We have not tested Jellyfin with it. Vetro is experimental, needs root and ships no signed installer; read [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting is safe](/root/is-it-safe-to-root-samsung-tv/) and the [Apps2Samsung install guide](/root/install-vetro-apps2samsung/) first. The same tooling installs other apps: [TizenTube](/control/tizentube-samsung-tv/) goes on with Apps2Samsung too.
 
 ## Limits
 

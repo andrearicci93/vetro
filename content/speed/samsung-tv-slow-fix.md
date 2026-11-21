@@ -3,8 +3,8 @@ title: "Samsung TV slow? Restart, cache and network fixes"
 description: "Samsung TV slow or lagging? Cold boot, clear app cache, check the network and update before a Smart Hub reset, plus one memory figure for rooted TVs."
 keywords: ["samsung tv slow lag fix", "samsung tv slow", "samsung tv lagging apps", "samsung tv free up memory"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against Samsung's UAE support page on troubleshooting a slow TV app, and the Vetro README, CHANGELOG and PERFORMANCE.md for release 0.5.0."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG and dashboard labels, the README, PERFORMANCE.md and issue #223; Samsung's UAE support page was checked on 2026-11-10."
 related: ["samsung-tv-memory-usage", "custom-launcher-samsung-tv", "remove-ads-samsung-tv-home-screen", "stop-samsung-tv-auto-update", "disable-samsung-tv-plus", "what-each-vetro-switch-changes"]
 faq:
   - q: "How do I speed up a slow Samsung TV?"
@@ -38,7 +38,7 @@ Test one app that streams and one that doesn't. If only streaming apps lag, look
 
 ## Should I install the update?
 
-Samsung lists updating as a fix, and an update can also change behaviour. If you run a rooted TV with Vetro, a firmware change can alter the rooting result, so read [will a firmware update remove root](/updates/firmware-update-remove-root/) before you accept one. For stopping automatic installs, see [how to stop automatic firmware updates](/updates/stop-samsung-tv-auto-update/).
+Samsung lists updating as a fix, and an update can also change behaviour. If you run a rooted TV with Vetro, a firmware change can alter the rooting result, so read [will a firmware update remove root](/updates/firmware-update-remove-root/) before you accept one. In [#223](https://github.com/andrearicci93/vetro/issues/223) the owner of a 2022 TV on firmware 1720.7 reports that a forced update to 1722.0 removed root, and Samsung's developer FAQ says downgrading is not supported. Vetro 0.7.0's **Block firmware and software updates** switch (Quick settings → General → Essential settings) can help keep root, but it does not guarantee it, and while it is on Samsung's firmware and app updates do not install, so the update step above does nothing until you turn it off. For the options, see [how to stop automatic firmware updates](/updates/stop-samsung-tv-auto-update/).
 
 ## Which fix for which symptom?
 
@@ -52,7 +52,7 @@ Samsung lists updating as a fix, and an update can also change behaviour. If you
 
 ## Can Vetro free memory on a Samsung TV?
 
-It can free memory, which may help a TV that is short of it. The measurements are about memory, not speed. Vetro is experimental, needs root and ships no signed installer, and its launcher is in beta. Read [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/) first. Stock troubleshooting above should come first.
+It can free memory, which may help a TV that is short of it. The measurements are about memory, not speed. Vetro is experimental, needs root and ships no signed installer, and Vetro UI, which holds its launcher, is in preview. Read [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [how to install Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/) first. Stock troubleshooting above should come first.
 
 ### What does the launcher figure show?
 
@@ -62,13 +62,13 @@ This single run measured available memory. The notes say it was not repeated or 
 
 ### What about the disable switches?
 
-Vetro's Quick settings has switches for HbbTV, MultiScreen autostart and Ambient. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) gives their memory as about 22 MB, 15 MB and 59 MB, from a process survey of a Q80A, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the effect of each change on a running TV is not yet verified.
+Vetro's Quick settings has switches for HbbTV, MultiScreen autostart and Ambient on its Disable tab. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) gives their memory as about 22 MB, 15 MB and 59 MB, from a process survey of a Q80A, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the effect of each change on a running TV is not yet verified. Version 0.7.0 adds a Samsung TV Plus switch (about 25 MB, by the dashboard's own description), one switch per app that came with the TV, and closes Samsung's Home after a boot once the launcher runs and the TV has been up five minutes (about 130 MB on a Q80A).
 
 The performance notes also record an exploratory A/B test on the same Q80A that compared the same five application-disable flags removed and restored, with a full power cycle before each phase. With the flags restored, available RAM at the start was 704.6 MiB against 537.0 MiB, the median was 587.9 against 454.3 and mean CPU was 29.6% against 32.1%, with less free swap. The notes state that these results do not attribute all the differences to the disabled components or establish smoother navigation.
 
-![Vetro Quick settings with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant](/assets/img/dashboard-quick-settings.jpg)
+![Vetro Quick settings in an earlier interface, with switches for HbbTV, advertising and tracking, domain blocking and the voice assistant](/assets/img/dashboard-quick-settings.jpg)
 
-Vetro's own load is small. The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, and 2.07% with the Task manager open.
+Vetro's own load is small. The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, and 2.07% with the page then called Task manager, now Apps and processes, open.
 
 ## Limits
 

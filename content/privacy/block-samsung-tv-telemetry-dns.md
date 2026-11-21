@@ -1,10 +1,10 @@
 ---
 title: "Block Samsung TV telemetry with Pi-hole or AdGuard"
-description: "Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and breakage risks."
+description: "Which Samsung domains community Pi-hole lists block, what breaks, why some TVs bypass your DNS, and the on-TV DNS blocking in Vetro. Limits and risks."
 keywords: ["samsung tv pihole blocklist", "block samsung tv telemetry", "adguard home samsung tv", "samsung tv hardcoded dns"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Re-read on 2026-11-10: the hkamran80 Smart TV gist and its comments, the LazyAdmin smart TV guide, a Pi-hole forum thread on hard-coded DNS, and the Vetro 0.5.0 DOMAIN-FILTER.md, README and CHANGELOG."
+updated: 2026-11-21
+verified: "Vetro parts checked on 2026-11-21 against the 0.7.0 CHANGELOG, UPDATES-WITHOUT-ROOT.md, DOMAIN-FILTER.md and README; the hkamran80 gist, the LazyAdmin guide and the Pi-hole thread as re-read on 2026-11-10."
 related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "samsung-ads-opt-out", "stop-samsung-tv-auto-update", "remove-ads-samsung-tv-home-screen", "what-each-vetro-switch-changes"]
 ---
 
@@ -63,6 +63,8 @@ The same document says the filter refuses the never-block names above, and that 
 ## Should I rely on blocking?
 
 Not alone. Use the TV's own opt-outs first ([ACR](/privacy/turn-off-acr-samsung-tv/) and [interest-based ads](/privacy/samsung-ads-opt-out/)), then add DNS or on-TV blocking if you accept some breakage. A 2026 study reported ACR-like traffic from a Samsung TV after opt-out ([Watching the Watchers](https://watchingthewatchers.github.io/watchingthewatchers/)), which is one reason to treat a blocklist as a second layer and not a replacement. What the TV sends in the first place is listed in [what data a Samsung TV collects](/privacy/what-data-samsung-tv-collects/).
+
+DNS blocking is also a weak way to stop firmware updates. Vetro's [guide to blocking updates without root](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says a blocklist only stops names the TV looks up through the resolver you control: the TV can reach a host by its address, use another resolver or go over IPv6. It recommends router rules that deny the TV internet access, for IPv4 and IPv6, or a network without internet. [Stopping Samsung TV auto updates](/updates/stop-samsung-tv-auto-update/) covers the menu and Vetro's switch.
 
 Home screen promotions have their own limits: see [removing ads from the Samsung TV home screen](/speed/remove-ads-samsung-tv-home-screen/).
 

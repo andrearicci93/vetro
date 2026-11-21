@@ -3,12 +3,12 @@ title: "Uninstall Vetro from a Samsung TV and clean up leftovers"
 description: "Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV."
 keywords: ["uninstall app samsung tv leftovers", "uninstall vetro samsung tv", "remove sideloaded app samsung tizen", "restore samsung tv after vetro"]
 date: 2026-11-10
-updated: 2026-11-10
-verified: "Checked on 2026-11-10 against the uninstalling section of Vetro 0.5.0's published INSTALLATION.md, its README, CHANGELOG, SECURITY.md, Samsung's command line page and the Apps2Samsung README."
+updated: 2026-11-21
+verified: "Checked on 2026-11-21 against the uninstalling section of Vetro's INSTALLATION.md, the README, the 0.7.0 CHANGELOG and dashboard labels, UPDATES-WITHOUT-ROOT.md, SECURITY.md, Samsung's command line page and the Apps2Samsung README."
 related: ["install-vetro-apps2samsung", "samsung-tv-developer-mode", "is-it-safe-to-root-samsung-tv", "keep-root-after-restart", "what-each-vetro-switch-changes", "samsung-developer-certificate-errors"]
 ---
 
-To uninstall Vetro cleanly, restore what it changed first, then delete the app, then undo Developer Mode. Deleting the app alone leaves some changes behind: the domain filter keeps hiding names from the hosts file and the saved settings stay in the share folder. The steps below follow the uninstalling section of Vetro's published [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#uninstalling), which covers 0.5.0. The guide is the only published uninstall procedure; this page adds the context around it.
+To uninstall Vetro cleanly, restore what it changed first, then delete the app, then undo Developer Mode. Deleting the app alone leaves some changes behind: the domain filter keeps hiding names from the hosts file and the saved settings stay in the share folder. The steps below follow the uninstalling section of Vetro's published [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md#uninstalling), with the dashboard labels of Vetro 0.7.0. The guide is the only published uninstall procedure; this page adds the context around it.
 
 ## What does a plain uninstall leave behind?
 
@@ -16,13 +16,15 @@ The guide says Vetro changes the TV in several places: it can replace Home, stop
 
 - The domain filter. Names Vetro added to the hosts file stay hidden.
 - Saved settings. They stay in the share folder, and they hold the values used to restore, which is why you restore first.
-- Disabled components and stopped services, if you used the Task manager or Quick settings.
+- Disabled components and stopped services, if you used Apps and processes (the dashboard page called Task manager before 0.7.0) or Quick settings.
 
-Vetro cannot remove itself: its own package is protected from the Task manager on purpose.
+One change goes away with Vetro instead of staying behind: the update lock of Block firmware and software updates. The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says its boot-step replacement does nothing once Vetro is uninstalled, and Vetro's [guide to blocking updates without root](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATES-WITHOUT-ROOT.md) says the block lasts only until the next boot. After you remove Vetro, expect the TV to take Samsung's updates again, including a firmware that can remove root.
+
+Vetro cannot remove itself: its own package is protected from Apps and processes on purpose.
 
 ## How do I uninstall Vetro step by step?
 
-1. Restore the TV. In the dashboard open Quick settings, Maintenance, Restore the TV (the 0.5.0 changelog lists it under General). Press Review what will change to see the list, then Restore everything. Nothing changes before you confirm, and the report says what could not be put back.
+1. Restore the TV. In the dashboard open Quick settings, General, Restore the TV. Press Review what will change to see the list, then Restore everything. Nothing changes before you confirm, and the report says what could not be put back.
 2. Optionally remove Vetro's saved data. In Remove Vetro, choose to remove the saved data. It is offered only when nothing is left to put back, because those files hold the values used to restore. A package uninstall does not remove them.
 3. Restart the TV. This clears temporary changes and reloads Home.
 4. Remove the app on the TV. Open Apps, go to the settings icon of the Apps screen, select Vetro and choose Delete. Menu names vary by model and year.
@@ -34,7 +36,7 @@ Vetro cannot remove itself: its own package is protected from the Task manager o
 
 The [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) and the [README](https://github.com/andrearicci93/vetro/blob/main/README.md) give these limits:
 
-- Apps you uninstalled with the Task manager, settings without a saved previous value and changes made by plugins need manual recovery.
+- Apps you uninstalled with Apps and processes or the Uninstall tab, settings without a saved previous value and changes made by plugins need manual recovery.
 - If Vetro cannot read its saved state, it keeps its backups and blocks data removal.
 - Deleting saved data and pairing is a separate confirmation. Restore the TV does not change the Require pairing choice ([SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md)).
 - Restore the TV turns off Allow SDB from the local network, if you had enabled it.
@@ -43,7 +45,7 @@ If your Vetro version has no Restore the TV button, turn off the switches you us
 
 ## What does Restore the TV cover?
 
-The changelog says it shows the changes Vetro recorded and puts them back after one confirmation, with a result for each step. The 0.5.0 notes and hardening review name some of what is included: the Disable AirPlay switch, the original Autorun Smart Hub value that the custom launcher changed, and Allow SDB from the local network. If any step fails or cannot be read, the result says so instead of reporting complete. Read the per-step results before you delete the app, because anything marked as needing manual recovery will not be fixed by the uninstall.
+The changelog says it shows the changes Vetro recorded and puts them back after one confirmation, with a result for each step. The 0.5.0 notes and hardening review name some of what is included: the Disable AirPlay switch, the original Autorun Smart Hub value that the custom launcher changed, and Allow SDB from the local network. If any step fails or cannot be read, the result says so instead of reporting complete. The 0.7.0 changelog adds that removing Vetro is never blocked by a restore step ([#212](https://github.com/andrearicci93/vetro/issues/212)), and that turning off Quick boot, or Restore the TV, brings the vendor boot step back. Read the per-step results before you delete the app, because anything marked as needing manual recovery will not be fixed by the uninstall.
 
 ## How do I check that the TV is back to normal?
 
@@ -59,4 +61,4 @@ Vetro listens on port 8099 unless it was built with another one, a build-time ch
 
 ## Limits
 
-The published guide covers Vetro's own uninstall; it does not cover removing other apps' leftover Home tiles or files. Rooting has risks that an uninstall does not erase; see [is it safe to root a Samsung TV](/root/is-it-safe-to-root-samsung-tv/). Vetro is experimental, needs root and ships no signed installer. Vetro is not affiliated with Samsung.
+The published guide covers Vetro's own uninstall; it does not cover removing other apps' leftover Home tiles or files. For apps you remove with Vetro 0.7.0, the changelog says Vetro also removes the Home line, the registry row and the icon that the package manager leaves behind, and Rebuild app list clears old ones. Rooting has risks that an uninstall does not erase; see [is it safe to root a Samsung TV](/root/is-it-safe-to-root-samsung-tv/). Vetro is experimental, needs root and ships no signed installer. Vetro is not affiliated with Samsung.
