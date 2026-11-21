@@ -165,6 +165,32 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await f.u.rollback();
     assert.equal(f.read('service/a.js'), 'old a'); assert.ok(!fs.existsSync(path.join(f.install, 'service', 'b.js')));
     await assert.rejects(fixture('0.4.0').u.rollback(), /no previous version/);
+    // Go back after an update of the launcher, with the real launcher and tuner stop lines on a TV where they fail: their units are
+    // transient, so `systemctl reset-failed` exits 1 once they are stopped, and a pid file can be missing. Go back must still write
+    // its result and restart (on a Q80A, 2026-11-22, it stopped there under set -e with the files already put back).
+    {
+        f = fixture('0.4.0');
+        const bin = path.join(f.root, 'bin');
+        fs.writeFileSync(path.join(bin, 'systemctl'), '#!/bin/sh\ncase "$1" in reset-failed) exit 1;; is-active) echo inactive; exit 3;; esac\nexit 0\n', { mode: 0o755 });
+        const stop = require('../service/dock.js').Dock.prototype.stopLines.call({}) + '\n' + require('../service/tuner.js').Tuner.prototype.stopLines.call({});
+        const r0 = cp.spawnSync('sh', ['-e', '-c', stop], { env: Object.assign({}, process.env, { PATH: bin + ':' + process.env.PATH }), encoding: 'utf8' });
+        assert.equal(r0.status, 0, 'the stop lines themselves survive set -e');
+        const run = script => new Promise(resolve => {
+            const r = cp.spawnSync('sh', ['-c', script], { env: Object.assign({}, process.env, { PATH: bin + ':' + process.env.PATH }), encoding: 'utf8' });
+            resolve({ exit_code: r.status, stdout: r.stdout, stderr: r.stderr, timed_out: false });
+        });
+        const u = new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.0', shell: 1 }, waitSeconds: 2,
+            restartCommand: 'echo restarted >> ' + path.join(f.root, 'restarts'), dockStopCommand: stop + '\nfalse', execute: run });
+        await u.apply(bundle('0.4.1', { 'native/dock/x.dll': 'new dll', 'service/a.js': 'new a' }));
+        new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.1', shell: 1 }, execute: run }).confirm();
+        const back = await new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.1', shell: 1 },
+            restartCommand: 'echo restarted >> ' + path.join(f.root, 'restarts'), dockStopCommand: stop + '\nfalse', execute: run }).rollback();
+        assert.equal(back.ok, true, 'Go back is not stopped by a failed launcher stop');
+        assert.equal(f.read('service/a.js'), 'old a');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(f.work, 'result.json'), 'utf8')).state, 'rolled-back', 'its result is written');
+        await wait(4500);
+        assert.ok(fs.existsSync(path.join(f.root, 'restarts')), 'and the service is restarted');
+    }
     // Vetro installed again with another version in between (the update folder outlives an install): the saved files are
     // not this version's, so they are neither offered nor put back.
     f = fixture('0.4.0');

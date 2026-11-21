@@ -257,8 +257,8 @@ Tuner.prototype.startScript = function (quiet) {
 Tuner.prototype.stopLines = function () {
     return 'systemctl stop --no-block ' + UNIT + '.service >/dev/null 2>&1; ' +
         'i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active ' + UNIT + '.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; ' +
-        'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1; ' +
-        'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
+        'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1 || true; ' +
+        'p=$(cat ' + PID_FILE + ' 2>/dev/null || true); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
         '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + CONTROL;
 };
 

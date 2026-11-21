@@ -334,7 +334,10 @@ Updater.prototype._restoreLines = function (existing, added) {
 Updater.prototype._rollbackScript = function (meta) {
     var lines = ['set -e', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'rm -f "$W"/ok-* "$W/pending.json"']
         .concat(this._restoreLines(meta.files, meta.added));
-    if (meta.dock === true && this.dockStopCommand) lines.push(this.dockStopCommand);
+    // The launcher's and tuner's stop lines must not end Go back: under `set -e` one failed step (systemctl reset-failed on their
+    // transient unit, which is gone once stopped, exits 1) left the files put back but no result written and no restart (seen on a
+    // Q80A, 2026-11-22). In an `||` list `set -e` does not apply, so the stop is best effort, as in the watchdog.
+    if (meta.dock === true && this.dockStopCommand) lines.push('{', this.dockStopCommand, '} || true');
     lines.push("echo '" + JSON.stringify({ state: 'rolled-back', from: meta.to, to: meta.from, at: Date.now() }) + "' > \"$W/result.json\"",
         detached('sleep 3; ' + this.restartCommand), 'exit 0');
     return lines.join('\n') + '\n';
