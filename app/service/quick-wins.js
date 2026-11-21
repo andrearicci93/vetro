@@ -106,20 +106,58 @@ var AMBIENT_OFF = 'if ' + running(AMBIENT_ID) + '; then systemctl stop screend; 
 // The analytics, ad and viewing-data agents. Names are the process names (15 characters at most) as ps shows them.
 var TELEMETRY_DIR = '/opt/usr/share/systemd/system/';
 var TELEMETRY_BRAKES = ['canalysis-daemon', 'pisa-service', 'vision-data-recognition-service'].map(function (n) { return TELEMETRY_DIR + n; });
+var TELEMETRY_APPFW_BRAKES = ['canalysis-daemon', 'pisa-service'].map(function (n) { return TELEMETRY_DIR + n; });
+var TELEMETRY_CONTEXT_UNITS = ['com.samsung.tv.context-aware-agent', 'com.samsung.tv.context-aware-service'];
 var TELEMETRY_COND = '/tmp/eltlaunch.cond';
 var TELEMETRY_UNITS = ['canalysis-service', 'pisa-service', 'adagent-service', 'contents-recognition-service',
     'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
     'emergency-log-transmitter', 'devicetracker', 'data-service'];
+// Tizen 9 telemetry/diagnostic units without ConditionPathExists=! brakes (plus kdbus-activated data-service, media-analytics-service, psid-checker).
+// issue_report_agent.service must be unmasked/started before abnormal_user_behavior.service and devicetracker.service (RequiredBy).
+var TELEMETRY_T9_MASK_UNITS = [
+    'contents-cognition-service-manager.service',
+    'screen-analysis-service-manager.service',
+    'issue_report_agent.service',
+    'abnormal_user_behavior.service',
+    'org.tizen.tv.sp-kpi.service',
+    'data-service.service',
+    'stability-monitor.service',
+    'connman-logger.service',
+    'media-analytics-service.service',
+    'psid-checker.service'
+];
+var TELEMETRY_T9_START_UNITS = [
+    'issue_report_agent.service',
+    'abnormal_user_behavior.service',
+    'contents-cognition-service-manager.service',
+    'screen-analysis-service-manager.service',
+    'org.tizen.tv.sp-kpi.service',
+    'stability-monitor.service',
+    'connman-logger.service'
+];
 var TELEMETRY_PROCS = ['canalysis-daemo', 'pisa-service', 'adagent-servic', 'contents-recogn', 'mirroring-recog',
-    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker'];
+    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker', 'data-service',
+    'contents-cognit', 'screen-analysis', 'abnormal_user_b', 'kpifault_TH', 'ira_main', 'sp-kpi',
+    'stability-monit', 'connman-logger', 'context-aware-a', 'context-aware-s', 'media-analytics', 'psid-checker'];
 var TELEMETRY_HOST = 'lcprd1.samsungcloudsolution.net';
 var TELEMETRY_OFF = 'touch ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
-    'for u in ' + TELEMETRY_UNITS.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\n' +
-    'for n in ' + TELEMETRY_PROCS.join(' ') + '; do for p in $(pgrep -x $n); do kill -9 $p 2>/dev/null; done; done\n' +
+    'for u in ' + TELEMETRY_CONTEXT_UNITS.join(' ') + '; do if systemctl cat "$u.service" >/dev/null 2>&1; then touch "' + TELEMETRY_DIR + '$u"; fi; done\n' +
+    'for u in ' + TELEMETRY_T9_MASK_UNITS.join(' ') + '; do if systemctl cat "$u" >/dev/null 2>&1; then systemctl mask --runtime "$u" >/dev/null 2>&1 || true; fi; done\n' +
+    'for u in ' + TELEMETRY_UNITS.concat(TELEMETRY_CONTEXT_UNITS).concat(TELEMETRY_T9_MASK_UNITS).join(' ') + '; do systemctl stop --no-block "$u" 2>/dev/null; done\nsleep 1\n' +
+    'for n in ' + TELEMETRY_PROCS.join(' ') + '; do for p in $(pgrep -x "$n" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done; done\n' +
     'sleep 2\ntrue';
-var TELEMETRY_ON = 'rm -f ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
+// Preserve app_fw-owned ConditionPathExists=! sentinels (created by pkgcmd -D for disabled packages) so pisa-service.path does not fail on restore.
+var TELEMETRY_ON = 'rm -f ' + TELEMETRY_DIR + 'vision-data-recognition-service ' + TELEMETRY_COND + ' ' +
+    TELEMETRY_CONTEXT_UNITS.map(function (u) { return TELEMETRY_DIR + u; }).join(' ') + '\n' +
+    'for f in ' + TELEMETRY_APPFW_BRAKES.join(' ') + '; do [ -e "$f" ] || continue; ' +
+    'own=$(stat -c %U "$f" 2>/dev/null || ls -ld "$f" 2>/dev/null | awk \'{print $3}\'); ' +
+    '[ "$own" = "app_fw" ] && continue; ' +
+    'case "$f" in *pisa-service) dis=$(printf \'.timeout 5000\\nSELECT app_disable FROM package_app_info WHERE app_id=\\\'com.samsung.tv.pisa-service\\\';\\n\' | sqlite3 -readonly /opt/dbspace/.pkgmgr_parser.db 2>/dev/null); [ "$dis" = "true" ] && continue;; esac; ' +
+    'rm -f "$f"; done\n' +
+    'for u in ' + TELEMETRY_T9_MASK_UNITS.join(' ') + '; do systemctl unmask --runtime "$u" >/dev/null 2>&1 || true; done\n' +
     'systemctl reset-failed 2>/dev/null\n' +
-    'for u in ' + TELEMETRY_UNITS.slice(0, -1).join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue';
+    'for u in ' + TELEMETRY_UNITS.slice(0, -1).concat(TELEMETRY_CONTEXT_UNITS).concat(TELEMETRY_T9_START_UNITS).join(' ') + '; do ' +
+    'systemctl cat "$u" >/dev/null 2>&1 && systemctl start --no-block "$u" >/dev/null 2>&1 || true; done\nsleep 1\ntrue';
 // AirPlay (see the header). The web app's package id differs between stores and models; its app id always ends like this.
 var AIRPLAY_UNITS = ['com.samsung.tv.airplay-service', 'com.samsung.tv.airplay-service-2'];
 var AIRPLAY_FLAGS = AIRPLAY_UNITS.map(function (u) { return TELEMETRY_DIR + u; });
@@ -130,12 +168,12 @@ var AIRPLAY_FLAGS = AIRPLAY_UNITS.map(function (u) { return TELEMETRY_DIR + u; }
 function AIRPLAY_EACH(body, init) {
     return init + '; for u in ' + AIRPLAY_UNITS.join(' ') + '; do if systemctl cat $u.service >/dev/null 2>&1; then ' + body + '; fi; done;';
 }
-var AIRPLAY_WEB_RUNNING = 'app_launcher -S 2>/dev/null | grep -q "\\.AirPlayWebApp[[:space:]]"';
-var AIRPLAY_WEB_STOP = 'for w in $(app_launcher -S 2>/dev/null | awk \'{print $1}\' | grep "\\.AirPlayWebApp$"); do app_launcher -t "$w" >/dev/null 2>&1 || true; done';
+var AIRPLAY_WEB_RUNNING = 'app_launcher -S 2>/dev/null | grep -qE "(\\.AirPlayWebApp|com\\.samsung\\.tv\\.airplay-app(-2)?)[[:space:]]"';
+var AIRPLAY_WEB_STOP = 'for w in $(app_launcher -S 2>/dev/null | awk \'{print $1}\' | grep -E "(\\.AirPlayWebApp|^com\\.samsung\\.tv\\.airplay-app(-2)?)$"); do app_launcher -t "$w" >/dev/null 2>&1 || true; done';
 var AIRPLAY_OFF = 'set -e\ntouch ' + AIRPLAY_FLAGS.join(' ') + '\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl stop --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\n' +
     'sleep 1\n' + AIRPLAY_WEB_STOP + '\nsleep 1\ntrue';
-var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS[1] + '.service >/dev/null 2>&1\n' +
+var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS.map(function (u) { return u + '.service'; }).join(' ') + ' >/dev/null 2>&1\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl start --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\nsleep 1\ntrue';
 var IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', 'airplay'];
 var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000, FIRMWARE_RETRY_MS = 30000;
@@ -159,8 +197,10 @@ var READ = [
     '[ -e ' + MULTISCREEN_FLAG + ' ] && echo "MS|1" || echo "MS|0"',
     running(MULTISCREEN_ID) + ' && echo "MR|1" || echo "MR|0"',
     running(AMBIENT_ID) + ' && echo "AR|1" || echo "AR|0"',
-    'echo "TB|$(ls ' + TELEMETRY_BRAKES.join(' ') + ' 2>/dev/null | wc -l)"',
+    'tb=0; to=0; for f in ' + TELEMETRY_BRAKES.join(' ') + '; do if [ -e "$f" ]; then tb=$((tb+1)); own=$(stat -c %U "$f" 2>/dev/null || ls -ld "$f" 2>/dev/null | awk \'{print $3}\'); [ "$own" = "app_fw" ] || to=$((to+1)); fi; done; echo "TB|$tb"',
     'echo "TR|$(ps -eo comm | grep -c -E "^(' + TELEMETRY_PROCS.join('|') + ')$")"',
+    'cb=0; ct=0; for u in ' + TELEMETRY_CONTEXT_UNITS.join(' ') + '; do if systemctl cat "$u.service" >/dev/null 2>&1; then ct=$((ct+1)); [ -e "' + TELEMETRY_DIR + '$u" ] && cb=$((cb+1)); fi; done; ' +
+        'tm=0; tt=0; for u in ' + TELEMETRY_T9_MASK_UNITS.join(' ') + '; do ls=$(systemctl show -p LoadState "$u" 2>/dev/null); ls=${ls#LoadState=}; if [ -n "$ls" ] && [ "$ls" != "not-found" ]; then tt=$((tt+1)); [ "$ls" = "masked" ] && tm=$((tm+1)); fi; done; echo "T9|$to|$cb|$ct|$tm|$tt"',
     AIRPLAY_EACH('n=$((n+1)); systemctl cat $u.service 2>/dev/null | grep -q "^ConditionPathExists=!' + TELEMETRY_DIR + '$u$" || bad=$((bad+1))', 'n=0; bad=0') +
         ' [ $n -gt 0 ] && [ $bad -eq 0 ] && echo "AP|1" || echo "AP|0"',
     AIRPLAY_EACH('[ -e ' + TELEMETRY_DIR + '$u ] || f=0', 'f=1') + ' echo "AF|$f"',
@@ -173,7 +213,7 @@ var READ = [
 // Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
     var out = {autoupdate: null, fwService: null, fwUnits: {}, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
-        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null};
+        t9: null, airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
@@ -184,6 +224,9 @@ function parse(text) {
         else if (f[0] === 'AR') out.ambientRunning = f[1] === '1';
         else if (f[0] === 'TB' && DIGITS_RE.test(f[1])) out.telemetryBrakes = Number(f[1]);
         else if (f[0] === 'TR' && DIGITS_RE.test(f[1])) out.telemetryRunning = Number(f[1]);
+        else if (f[0] === 'T9' && f.length === 6 && DIGITS_RE.test(f[1]) && DIGITS_RE.test(f[2]) && DIGITS_RE.test(f[3]) && DIGITS_RE.test(f[4]) && DIGITS_RE.test(f[5])) {
+            out.t9 = {owned: Number(f[1]), ctxBrakes: Number(f[2]), ctxTotal: Number(f[3]), masked: Number(f[4]), maskTotal: Number(f[5])};
+        }
         else if (f[0] === 'AP') out.airplayPresent = f[1] === '1';
         else if (f[0] === 'AF') out.airplayFlag = f[1] === '1';
         else if (f[0] === 'AS') out.airplayService = (f[1] || '').trim() === 'active';
@@ -259,8 +302,15 @@ Wins.prototype.read = function () {
         var multiscreen = s.multiscreenFlag === null ? {status: 'unknown'} : {status: s.multiscreenFlag ? 'on' : 'off', running: s.multiscreenRunning === true};
         var ambient = s.ambientRunning === null ? {status: 'unknown'}
             : {status: !mine.ambient ? 'off' : s.ambientRunning ? 'partial' : 'on', running: s.ambientRunning, chosen: mine.ambient};
+        var t9 = s.t9;
+        var brakesOk = s.telemetryBrakes !== null && s.telemetryBrakes >= TELEMETRY_BRAKES.length && (!t9 || t9.ctxBrakes >= t9.ctxTotal);
+        var masksOk = !t9 || t9.masked >= t9.maskTotal;
+        var hasLeftovers = t9 ? (t9.owned > 0 || t9.ctxBrakes > 0 || t9.masked > 0) : s.telemetryBrakes > 0;
         var telemetry = s.telemetryRunning === null ? {status: 'unknown'}
-            : {status: !mine.telemetry ? 'off' : s.telemetryRunning ? 'partial' : 'on', running: s.telemetryRunning, brakes: s.telemetryBrakes, chosen: mine.telemetry};
+            : {status: !mine.telemetry ? (hasLeftovers ? 'partial' : 'off')
+                : (s.telemetryRunning || !brakesOk || !masksOk) ? 'partial' : 'on',
+               running: s.telemetryRunning, brakes: s.telemetryBrakes, chosen: mine.telemetry};
+        if (t9) { telemetry.masked = t9.masked; telemetry.maskTotal = t9.maskTotal; }
         // on: the flag files are there and nothing of the receiver runs; partial: the files are there but something runs.
         var airplay = s.airplayPresent !== true || s.airplayFlag === null ? {status: 'unknown'}
             : {status: !s.airplayFlag ? 'off' : (s.airplayService || s.airplayWeb) ? 'partial' : 'on',

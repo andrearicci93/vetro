@@ -36,10 +36,10 @@ function tv(start){
   if(sh.includes('touch '+qw.MULTISCREEN_FLAG)){s.ms=true;if(/app_launcher -t com.samsung.tv.multiscreen/.test(sh))s.msRun=false;}
   if(sh.includes('rm -f '+qw.MULTISCREEN_FLAG))s.ms=false;
   if(/^touch \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=3;s.telRun=s.telStays;s.telOffRuns=(s.telOffRuns||0)+1;}
-  if(/^rm -f \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=0;s.telRun=8;}
+  if(/^rm -f \/opt\/usr\/share\/systemd\/system\/(canalysis-daemon|vision-data-recognition-service)/.test(sh)){s.telBrakes=0;s.telRun=8;}
   if(/^set -e\ntouch \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=true;if(!s.apStays){s.apSvc=false;s.apWeb=false;}s.apOffRuns=(s.apOffRuns||0)+1;}
   if(/^rm -f \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=false;s.apSvc=true;}
-  if(/AirPlayWebApp\[\[:space:\]\]" && echo up/.test(sh))return {exit_code:0,stdout:s.apWeb?'up\n':'down\n'};
+  if(/AirPlayWebApp/.test(sh)&&/&& echo up/.test(sh))return {exit_code:0,stdout:s.apWeb?'up\n':'down\n'};
   if(/up \|\| echo down/.test(sh))return {exit_code:0,stdout:s.ambRun?'up\n':'down\n'};
   if(/systemctl stop screend;.*kill -9.*systemctl start screend/s.test(sh)&&s.ambRun&&!s.ambStays){s.ambRun=false;s.screendCycles=(s.screendCycles||0)+1;}
   if(/app_launcher -f org.tizen.ambientapp/.test(sh))s.ambRun=true;
@@ -50,9 +50,9 @@ function store(){let data=null;return {readFileSync(){if(data===null)throw Error
 const noWait=()=>Promise.resolve();
 (async()=>{
  // Reading
- assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
- assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
- assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null},'what cannot be read stays unknown');
+ assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,t9:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
+ assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,t9:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
+ assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,t9:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null},'what cannot be read stays unknown');
  let t=tv(),io=store(),w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'boot-1'});
  let st=await w.read();assert.deepEqual([st.wins.firmware.status,st.wins.multiscreen.status,st.wins.ambient.status],['off','off','off']);assert.equal(st.wins.telemetry.status,'off');
 
@@ -177,11 +177,11 @@ const noWait=()=>Promise.resolve();
  assert.ok(off.includes('/opt/usr/share/systemd/system/canalysis-daemon')&&off.includes('/opt/usr/share/systemd/system/pisa-service'),'the units\' own brake files');
  assert.ok(/for u in [^;]*contents-recognition-service[^;]*kpi-logging[^;]*; do systemctl stop/.test(off),'viewing-data and logging services are stopped');
  assert.ok(/contents-ui-detector-service/.test(off)&&/contents-ui-det /.test(off)&&/contents-ott-de /.test(off),'the picture detectors are stopped, including the one a recogniser starts without a unit');
- assert.ok(!/systemctl (mask|disable)|rm -rf|\/usr\/lib/.test(off),'nothing on the system image, nothing masked');
+ assert.ok(!/systemctl (mask [^-\s]|disable)|rm -rf|\/usr\/lib/.test(off)&&off.includes('systemctl mask --runtime'),'nothing on the system image, only runtime masks on tmpfs');
  assert.equal((await w.read()).wins.telemetry.dnsBlocked,true);
  t.s.telRun=2;assert.equal((await w.read()).wins.telemetry.status,'partial','chosen but running again');
  t.s.telRun=0;r=await w.apply('telemetry',false);assert.equal(r.dns,'removed');assert.deepEqual(dns.domains,['ads.example.com']);assert.equal(t.s.telBrakes,0,'brake files removed');assert.equal(JSON.parse(io.data).telemetry,false);
- assert.ok(t.s.calls.some(c=>/^rm -f /.test(c)&&/for u in [^;]*pisa-service[^;]*; do systemctl start/.test(c)&&!/systemctl start data-service/.test(c)),'undo starts the services again, data-service comes back by itself');
+ assert.ok(t.s.calls.some(c=>/^rm -f /.test(c)&&c.includes('systemctl unmask --runtime')&&/for u in [^;]*pisa-service[^;]*; do systemctl cat/.test(c)&&!/systemctl start --no-block data-service/.test(c)),'undo unmasks runtime masks and starts the services again without starting data-service');
  // A host the user saved on their own is left alone, a filter that is switched off only gets the entry saved
  dns=fakeDns({domains:[qw.TELEMETRY_HOST]});t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,dns});
  r=await w.apply('telemetry',true);assert.equal(r.dns,'saved');assert.equal(dns.calls.length,0,'already saved: no write');
@@ -219,7 +219,7 @@ const noWait=()=>Promise.resolve();
  w.remember('telemetry',true);w.busy=true;w.changing='firmware';
  assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
  // AirPlay (idea by zabique): the flag files keep the receiver down; partial while something still runs; boot stops the web app
- assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null}));
+ assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,t9:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null}));
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'ap-1',skipAmbient:true});
  assert.equal((await w.read()).wins.airplay.status,'off');
  r=await w.apply('airplay',true);assert.equal(r.status,'on');assert.equal(JSON.parse(io.data).airplay,true);
@@ -236,6 +236,15 @@ const noWait=()=>Promise.resolve();
  assert.deepEqual(await w.boot(null),[]);w.remember('airplay',true);assert.deepEqual(await w.boot(null),['airplay']);
  // Boot identity: boot_id alone is not enough after a snapshot restart, so btime is part of it
  const id1=qw.currentBoot();assert.ok(id1===null||/^[0-9a-f-]*@\d*$/.test(id1),'boot_id@btime');
+ // Tizen 9 telemetry: app_fw-owned sentinels do not leave off as partial, missing T9 masks mark chosen telemetry partial, and airplay-app-2 is matched.
+ const pT9 = qw.parse('TB|1\nTR|0\nT9|0|0|2|0|10');
+ assert.deepEqual(pT9.t9, {owned: 0, ctxBrakes: 0, ctxTotal: 2, masked: 0, maskTotal: 10});
+ t=tv({apPresent:true,apFlag:false});w=new qw.Wins(async cmd=>{if(Buffer.from(cmd.split(' ')[1],'base64').toString().includes('T9|'))return {exit_code:0,stdout:'TB|1\nTR|0\nT9|0|0|2|0|10\nAP|1\nAF|0\nAS|inactive\nAW|1\n'};return {exit_code:0,stdout:''};},{fs:store(),sleep:noWait});
+ const rOff = await w.read(); assert.equal(rOff.wins.telemetry.status, 'off', 'app_fw-owned sentinel alone is off, not partial');
+ assert.equal(rOff.wins.airplay.running, true);
+ w.remember('telemetry', true);
+ const rPart = await w.read(); assert.equal(rPart.wins.telemetry.status, 'partial', 'unmasked T9 daemons keep chosen telemetry partial');
+ assert.equal(rPart.wins.telemetry.masked, 0); assert.equal(rPart.wins.telemetry.maskTotal, 10);
  // Misuse
  await assert.rejects(w.apply('nope',true),/Unknown/);await assert.rejects(w.apply('firmware','yes'),/Invalid/);
  assert.throws(()=>w.remember('firmware',true),/Unknown/);

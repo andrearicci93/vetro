@@ -61,7 +61,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(memory,/<h3>Stop Ambient<\/h3>/);assert.doesNotMatch(memory,/partial block/,'Ambient is no longer sold as a partial block');assert.match(memory,/Stops Ambient now and after every restart/,'the detail says what it does');
  assert.match(memory,/Partly done · Samsung started it again/,'chosen but running again is shown as partly done');assert.doesNotMatch(memory,/data-win-switch="ambient" checked/);
  const tracking=el('quickTracking').innerHTML;
- assert.match(tracking,/<h3>Stop viewing-data collection<\/h3>/);assert.match(tracking,/data-win-switch="telemetry" checked/,'collection services stopped: the switch is on');assert.match(tracking,/Done · data-service may still run/);
+ assert.match(tracking,/<h3>Stop viewing-data collection<\/h3>/);assert.match(tracking,/data-win-switch="telemetry" checked/,'collection services stopped: the switch is on');assert.match(tracking,/Done · collectors and data-service stopped/);
  assert.match(tracking,/Uploads can resume · turn on Enable DNS blocking/,'the DNS entry is not applied: the state says so');assert.match(tracking,/lcprd1\.samsungcloudsolution\.net/);
  assert.match(tracking,/Disable advertising and tracking services/);assert.match(tracking,/Partly done · 2 of 3 components still enabled/,'the Smart Hub ad agent (role keep) is not a member');
  assert.doesNotMatch(tracking,/coba\.adagent/);
