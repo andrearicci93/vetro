@@ -1255,7 +1255,8 @@ var server = http.createServer(function (req, res) {
     if (url === '/pairing-mode') return handlePairingMode(req,res);
     if (url === '/sdb-access') return handleSdbAccess(req,res);
     if (url === '/keep-removed') return serveJson(res, keepRemoved.summary());
-    if (url === '/wins') return wins.read().then(function(d){return keyGuides.read().then(function(k){d.wins.keyguides=k;return d;},function(){d.wins.keyguides={status:'unknown'};return d;});}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
+    // The Disable tab's groups also need Samsung's own "do not start" files of their background services (quick-settings.js MARKERS).
+    if (url === '/wins') return wins.read().then(function(d){return keyGuides.read().then(function(k){d.wins.keyguides=k;return d;},function(){d.wins.keyguides={status:'unknown'};return d;});}).then(function(d){return quickSettings.readMarkers(agentExecute).then(function(m){d.markers=m;return d;},function(){d.markers=null;return d;});}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/factory-test') return handleFactoryTest(req,res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});

@@ -9,6 +9,16 @@
 - **Mute follows the remote's Mute key.** It was read from the audio library, which keeps saying "not muted" when the TV is muted with its own key; it now comes from the TV's own mute setting as well.
 - **DisplayPort** shows as a source on Samsung monitors (#215).
 
+### Quick settings
+
+Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A and re-written for Vetro.
+
+- **Voice services, Bixby and Samsung Health also use Samsung's own "do not start" files.** Their background services are started by units that skip the start when such a file exists; turning the switch off now puts the file down where the TV's units look for one, and on takes it away. The switch says *Partly done* when a file is missing while the apps are off (a switch turned off before 0.7.1: turn it off again), or left while the apps are on again. Restore the TV removes every file Vetro put down. Not yet tried with a voice remote on a TV.
+- **Stop viewing-data collection** also stops `abnormal_user_behavior`, `issue_report_agent` (diagnostic reports) and `media-analytics-service`, and the services without a file of their own are now masked until the next restart and masked again about 10 s into every boot, through the boot step the update lock uses, instead of being stopped once Vetro's service is up (about 95 s on a Q80A). `data-service` is still only stopped.
+- **New switches**: *Disable Samsung remote support* and *Disable Wi-Fi presence* (Privacy and ads), *Disable background app delivery* (General → Essential settings). Each shows only on a TV that has its services. Remote PC is left alone.
+- **Samsung TV Plus** off also turns off Samsung's "start TV Plus at power-on" setting; on, or Restore the TV, puts back the value it had.
+- **A stopped app is checked by its own process**: a switch turned off reports a member whose process is still there after the stop, by the process's label, instead of trusting the stop's answer.
+
 ### Updates
 
 - **From 0.5.0, install 0.7.1 with Apps2Samsung.** The 0.5.0 updater writes the whole update as one script, which the root agent takes up to 64 KiB only, and 0.7.1 changes more files than that holds. A TV on 0.5.0 now refuses the update as soon as it checks it (*Path not allowed in an update: payload/net6/…*), before anything changes, instead of failing half way through. TVs on 0.7.0 update from Quick settings as before.

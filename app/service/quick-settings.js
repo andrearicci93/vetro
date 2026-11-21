@@ -8,6 +8,8 @@ var RESTORE_FLAGS_FOR_RE = /^(\S+) (\d+|none)$/;
 // disabled flag on every installed member, as the Debloater does for a single
 // component. Disabling also stops members that are still running, so the
 // change takes effect now. Members come from the Q80A package manifests.
+// Since 0.7.1 (ideas from samshush, https://github.com/elithrar/samshush, BSD-3, re-written here): Samsung's own "do not start"
+// files for the groups' background services (markerUnits), the TV Plus power-on setting (vconf) and the process check after a stop.
 
 // A group with "area" has no fixed list: its members are every component the Task manager files under that area,
 // except the ones that role "keep" or the protection rules cover (Smart Hub's ad agent, Vetro itself).
@@ -17,7 +19,7 @@ var GROUPS = [
         ids: []},
     {id: 'voice-all', label: 'All voice assistants', section: 'voice', area: 'voice', microphone: true, everything: true,
         description: 'Stops Alexa, Bixby, Google Assistant and shared voice services, including search suggestions.',
-        ids: []},
+        ids: [], markerUnits: []},
     {id: 'alexa', label: 'Alexa', section: 'voice', microphone: true,
         description: 'Stops Alexa and its wake word.',
         ids: ['com.samsung.tv.alexa-client', 'com.samsung.tv.alexa-fullscreen-app', 'com.samsung.tv.alexa-jump-starter',
@@ -28,20 +30,28 @@ var GROUPS = [
     {id: 'bixby', label: 'Bixby', section: 'voice', microphone: true,
         description: 'Stops Bixby, its voice menus and wake word.',
         ids: ['com.samsung.tv.bixby-context-client', 'com.samsung.tv.bixby-prov', 'com.samsung.tv.bixbycapsuleviewer',
-            'com.samsung.tv.mybixby', 'com.samsung.tv.wakeup-engine-bixby']},
+            'com.samsung.tv.mybixby', 'com.samsung.tv.wakeup-engine-bixby'],
+        // Tizen 9 starts bixby-prov from a unit of its own that skips the start when Samsung's "do not start" file exists (see MARKERS).
+        markerUnits: ['com.samsung.tv.bixby-prov.service']},
     {id: 'voice', label: 'Voice services', section: 'voice', microphone: true,
         description: 'Stops speech-to-text, hands-free voice and other voice services.',
         ids: ['com.samsung.tv.vif', 'com.samsung.tv.farfieldvoice', 'com.samsung.tv.ondevice-voice',
             'com.samsung.tv.voiceassistant-music', 'com.samsung.tv.cnvoice', 'com.samsung.tv.cnvoice-assistant',
-            'org.tizen.voice-app', 'org.tizen.voice-app-service', 'org.tizen.voice-client', 'org.tizen.stt-client']},
+            'org.tizen.voice-app', 'org.tizen.voice-app-service', 'org.tizen.voice-client', 'org.tizen.stt-client'],
+        // The units that launch farfieldvoice, ondevice-voice, voice-app (and voice-client on Tizen 9) when a voice remote is ready.
+        markerUnits: ['com.samsung.tv.farfieldvoice.service', 'com.samsung.tv.ondevice-voice.service', 'org.tizen.voice-app.service',
+            'org.tizen.voice-client.service']},
     // Samsung TV Plus (free ad-supported channels): the app, its deep-link and OTA helpers, and the two services behind it.
     // slive-provider-daemon and bms-service are started by systemd with Restart=always, so a disabled flag is not enough:
     // Samsung's own units skip the start when a file exists in /opt/usr/share/systemd/system, which `services` lists.
     // These packages are not system packages, so Components can also uninstall them (pkgcmd -u).
     {id: 'tvplus', label: 'Samsung TV Plus', section: 'memory',
-        description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Stops Samsung TV Plus and its background services. Frees about 25 MB.',
+        description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Stops Samsung TV Plus and its background services, and it no longer starts at power-on. Frees about 25 MB.',
         ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
-        services: ['slive-provider-daemon', 'bms']},
+        services: ['slive-provider-daemon', 'bms'],
+        // Samsung's own "start TV Plus at power-on" setting (a vconf key in the Q80A firmware, idea from samshush): false while the
+        // group is off; the value it had is saved and written back when the group is on again, or by Restore the TV.
+        vconf: [{key: 'db/menu/autorun_tv_plus', type: 'bool', off: 'false'}]},
     // Vision AI (2024 and later TVs): holding Home for a second sends the AI key, the key of the AI button on 2025 remotes,
     // and these apps answer it with Click to Search or the AI companion. Bixby and the voice apps play no part in it. With them off
     // the key opens nothing; a short Home press is unchanged. Kept on: the Vision AI row of Samsung's Home (visionairow), live
@@ -69,7 +79,10 @@ var GROUPS = [
     {id: 'app-xbox', label: 'Xbox', section: 'apps', description: '', ids: ['GHI3a0zMSx.XboxGamePass', 'GHI3a0zMSx.Service']},
     {id: 'app-geforce', label: 'GeForce NOW', section: 'apps', description: '', ids: ['w0wZu3xkQq.GeForceNOW', 'w0wZu3xkQq.GeForceNOWService']},
     {id: 'app-luna', label: 'Amazon Luna', section: 'apps', description: '', ids: ['CmeyUlnhYY.LunaWebApp', 'CmeyUlnhYY.LunaService']},
-    {id: 'app-health', label: 'Samsung Health', section: 'apps', description: '', ids: ['com.samsung.tv.samsung-health']},
+    // Health's background service app is NOT a member (113 public diagnostics list it on TVs without Samsung Health: the switch would
+    // show where there is nothing to switch off). Its units skip their start on Samsung's own "do not start" file instead.
+    {id: 'app-health', label: 'Samsung Health', section: 'apps', description: '', ids: ['com.samsung.tv.samsung-health'],
+        markerUnits: ['samsunghealth-service-tv.service', 'samsunghealth-service-tv-path-activation.service', 'samsunghealth-service-tv-eventd.service']},
     // For people who run a third-party launcher: the Home key stops opening Samsung's Home. It does not turn on the
     // Vetro launcher (Launcher tab), which is a separate choice. The Home key has to be mapped to the other launcher by hand.
     {id: 'samsung-home', label: 'Samsung Home', section: 'home', confirm: true,
@@ -77,6 +90,9 @@ var GROUPS = [
         ids: ['com.samsung.tv.csfs']}
 ];
 var ALLOWED_IDS = GROUPS.reduce(function (all, g) { return all.concat(g.ids); }, []);
+// Every voice unit is also the "all voice assistants" switch's.
+find('voice-all').markerUnits = GROUPS.filter(function (g) { return g.section === 'voice' && g.markerUnits && g.markerUnits.length; })
+    .reduce(function (all, g) { return all.concat(g.markerUnits); }, []);
 var ID = /^[A-Za-z0-9_.-]{1,180}$/;
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
@@ -84,7 +100,7 @@ function find(id) { return GROUPS.filter(function (g) { return g.id === id; })[0
 
 // "on": every installed member enabled; "off": every one disabled and none of them left on boot or auto-restart.
 // A disabled member that still has a startup flag is "flagged": the group is only partly done until the flag is cleared.
-function state(group, rows) {
+function state(group, rows, markers) {
     var byId = {};
     (rows || []).forEach(function (r) { byId[r.appId] = r; });
     // This function is also sent to the dashboard as text, so it cannot call anything outside itself.
@@ -99,7 +115,15 @@ function state(group, rows) {
     var flagged = disabled.filter(function (id) { return byId[id].onboot === true || byId[id].autorestart === true; });
     var status = !installed.length ? 'unavailable' : unknown.length ? 'unknown'
         : !enabled.length ? (flagged.length ? 'partial' : 'off') : !disabled.length ? 'on' : 'partial';
-    return {id: group.id, status: status, installed: installed, enabled: enabled, disabled: disabled, flagged: flagged};
+    // Samsung's own "do not start" files for the group's units (markerUnits), read from the TV and passed in as
+    // {unit: {marker, present}}: only the units this TV has count. Off needs every file down; on, none of them.
+    var units = (group.markerUnits || []).filter(function (u) { return markers && markers[u]; });
+    var blocked = units.filter(function (u) { return markers[u].present === true; });
+    var open = units.filter(function (u) { return markers[u].present !== true; });
+    if (status === 'off' && open.length) status = 'partial';
+    else if (status === 'on' && blocked.length) status = 'partial';
+    return {id: group.id, status: status, installed: installed, enabled: enabled, disabled: disabled, flagged: flagged,
+        markersOpen: open, markersBlocked: blocked};
 }
 
 // One script for the whole group: per-ID exit codes, no per-command queueing.
@@ -130,14 +154,111 @@ function restoreFlagsCommand(ids) {
         ' q "BEGIN IMMEDIATE; UPDATE package_app_info SET app_onboot=\'$on\',app_autorestart=\'$re\' WHERE app_id=\'$id\'; COMMIT;" >/dev/null 2>&1; r=$?\n' +
         ' [ $r -eq 0 ] && rm -f "$f"; echo "$id $r"\ndone');
 }
-var SERVICE_DIR = '/opt/usr/share/systemd/system/', SERVICE_RE = /^[a-z0-9-]{1,40}$/;
+var SERVICE_DIR = '/opt/usr/share/systemd/system/', SERVICE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
+var UNIT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.(?:service|path)$/;
+var MARKER_LINE_RE = /^MK\|(\S+)\|(\S+)\|([01])$/;
+var VETRO_DIR = '/home/owner/share/vetro', MARKERS_LEDGER = VETRO_DIR + '/quick-markers';   // one name per line: the "do not start" files Vetro put down (Restore removes these)
+// Every unit any group can keep from starting (see markerUnits).
+var MARKER_UNITS = GROUPS.reduce(function (all, g) {
+    (g.markerUnits || []).forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); });
+    return all;
+}, []);
+// For each unit this TV has, the name of Samsung's "do not start" file as the unit itself names it
+// (ConditionPathExists=!/opt/usr/share/systemd/system/<name>) and whether it is there. Units without that line are left out:
+// Vetro never creates a file a unit does not look at (Tizen 9 names some differently, the Q80A has no Bixby one).
+function markersReadCommand(units) {
+    units.forEach(function (u) { if (!UNIT_RE.test(u)) throw new Error('Invalid unit'); });
+    return wrap('for u in ' + units.join(' ') + '; do m=$(systemctl cat "$u" 2>/dev/null | sed -n "s|^ConditionPathExists=!' + SERVICE_DIR +
+        '||p" | head -1); [ -n "$m" ] || continue; [ -e "' + SERVICE_DIR + '$m" ] && p=1 || p=0; echo "MK|$u|$m|$p"; done; true');
+}
+function parseMarkers(text) {
+    var out = {};
+    String(text || '').split('\n').forEach(function (l) {
+        var m = MARKER_LINE_RE.exec(l.trim());
+        if (m && UNIT_RE.test(m[1]) && SERVICE_RE.test(m[2])) out[m[1]] = {marker: m[2], present: m[3] === '1'};
+    });
+    return out;
+}
+// Off: put the files down (and note them), stop the units now. On: take the files away; the units' own .path units start
+// them again when they are needed (a voice remote, Samsung Health), so nothing is started here.
+function markersCommand(list, off) {
+    list.forEach(function (x) { if (!UNIT_RE.test(x.unit) || !SERVICE_RE.test(x.marker)) throw new Error('Invalid service'); });
+    var names = list.map(function (x) { return x.marker; }).filter(function (m, i, a) { return a.indexOf(m) === i; });
+    var files = names.map(function (m) { return SERVICE_DIR + m; }).join(' ');
+    return wrap(off
+        ? 'mkdir -p ' + SERVICE_DIR + ' ' + VETRO_DIR + '\ntouch ' + files + '\nfor m in ' + names.join(' ') + '; do grep -qx "$m" ' + MARKERS_LEDGER +
+            ' 2>/dev/null || echo "$m" >> ' + MARKERS_LEDGER + '; done\nfor u in ' + list.map(function (x) { return x.unit; }).join(' ') +
+            '; do systemctl stop --no-block "$u" 2>/dev/null; done\nsleep 1\ntrue'
+        : 'rm -f ' + files + '\nif [ -f ' + MARKERS_LEDGER + ' ]; then grep -vx -e ' + names.join(' -e ') + ' ' + MARKERS_LEDGER + ' > ' + MARKERS_LEDGER +
+            '.tmp; mv -f ' + MARKERS_LEDGER + '.tmp ' + MARKERS_LEDGER + '; fi\ntrue');
+}
+// Restore the TV: every file Vetro put down, whatever the switches say now.
+var MARKERS_CLEAR = 'if [ -f ' + MARKERS_LEDGER + ' ]; then while read -r m; do case "$m" in ""|*/*|.*) ;; *) rm -f "' + SERVICE_DIR + '$m";; esac; done < ' +
+    MARKERS_LEDGER + '; rm -f ' + MARKERS_LEDGER + '; fi; echo "MC|done"';
+function readMarkers(execute) {
+    return execute(markersReadCommand(MARKER_UNITS), 20000).then(function (r) {
+        if (r.timed_out || r.exit_code) throw new Error('Startup blocks unreadable');
+        return parseMarkers(r.stdout);
+    });
+}
+// A vconf setting a group changes while it is off (vconf: [{key, type: 'bool', off}]): the value found is saved once in
+// SAVED/vconf-<key> and the off value written; on writes the saved value back and forgets it. A key this TV does not have is skipped.
+var VCONF_KEY_RE = /^(?:db|memory)\/[A-Za-z0-9_\/.-]{1,120}$/;
+var VCONF_SAVED = VETRO_DIR + '/quick-vconf';
+function vconfFile(key) { return VCONF_SAVED + '/' + key.replace(/\//g, '_'); }
+function vconfCommand(items, off) {
+    items.forEach(function (x) { if (!VCONF_KEY_RE.test(x.key) || x.type !== 'bool' || (x.off !== 'true' && x.off !== 'false')) throw new Error('Invalid setting'); });
+    return wrap('mkdir -p ' + VCONF_SAVED + '\n' + items.map(function (x) {
+        var f = vconfFile(x.key);
+        return off
+            ? 'v=$(vconftool get ' + x.key + ' 2>/dev/null | sed -n "s/.*value = \\([A-Za-z0-9]*\\) (Boolean).*/\\1/p")\n' +
+              'if [ -z "$v" ]; then echo "VC|' + x.key + '|none"; else [ -f ' + f + ' ] || echo "$v" > ' + f + '; vconftool set -f -t bool ' + x.key + ' ' + (x.off === 'true' ? 1 : 0) +
+              ' >/dev/null 2>&1; echo "VC|' + x.key + '|$?"; fi'
+            : 'if [ -f ' + f + ' ]; then case "$(cat ' + f + ')" in True|true|1) n=1;; *) n=0;; esac; vconftool set -f -t bool ' + x.key +
+              ' $n >/dev/null 2>&1 && rm -f ' + f + '; echo "VC|' + x.key + '|$?"; else echo "VC|' + x.key + '|none"; fi';
+    }).join('\n') + '\ntrue');
+}
+// For Restore's plan: how many "do not start" files Vetro noted, how many vconf values it saved. Prints QL|<files>|<values>.
+var LEFTOVERS_READ = 'n=0; [ -f ' + MARKERS_LEDGER + ' ] && n=$(grep -c . ' + MARKERS_LEDGER + '); v=$(ls ' + VCONF_SAVED + ' 2>/dev/null | wc -l); echo "QL|$n|$v"';
+var LEFTOVERS_RE = /^QL\|(\d+)\|\s*(\d+)\s*$/m;
+function parseLeftovers(text) { var m = LEFTOVERS_RE.exec(String(text || '')); return m ? {markers: +m[1], settings: +m[2]} : null; }
+// Restore the TV: every saved vconf value of every group goes back, whatever the switches say now.
+function vconfRestoreAll() {
+    var items = GROUPS.reduce(function (all, g) { return all.concat(g.vconf || []); }, []);
+    return items.length ? vconfCommand(items, false) : null;
+}
 // Off: put Samsung's own "do not start" file down and stop the unit. On: take the file away and start it again.
 function servicesCommand(units, off) {
     units.forEach(function (u) { if (!SERVICE_RE.test(u)) throw new Error('Invalid service'); });
     var files = units.map(function (u) { return SERVICE_DIR + u; }).join(' ');
     return wrap(off
-        ? 'touch ' + files + '\nfor u in ' + units.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\ntrue'
+        ? 'mkdir -p ' + VETRO_DIR + '\ntouch ' + files + '\nfor m in ' + units.join(' ') + '; do grep -qx "$m" ' + MARKERS_LEDGER + ' 2>/dev/null || echo "$m" >> ' + MARKERS_LEDGER + '; done\n' +
+          'for u in ' + units.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\ntrue'
         : 'rm -f ' + files + '\nsystemctl reset-failed 2>/dev/null\nfor u in ' + units.join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue');
+}
+// After a stop: which members still run, by their own process. app_launcher -S gives each app's pid; the process counts as that
+// app only when its Smack label is the app's package (User::Pkg::<package>, as every app process on the Q80A had, native or
+// .NET), so a pid the list still shows but that is gone, or reused by something else, does not count. Prints ID|<id>|<label>.
+function identityCommand(ids) {
+    ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
+    return wrap('sleep 1\nL=$(app_launcher -S 2>/dev/null)\nfor id in ' + ids.join(' ') + '; do\n' +
+        ' p=$(echo "$L" | awk -v id="$id" \'$1==id {gsub(/[()]/,"",$2); print $2; exit}\')\n' +
+        ' case "$p" in ""|*[!0-9]*) continue;; esac\n [ -d /proc/$p ] || continue\n' +
+        ' echo "ID|$id|$(tr -d \'\\000\' < /proc/$p/attr/current 2>/dev/null)"\ndone\ntrue');
+}
+var IDENTITY_LINE_RE = /^ID\|([A-Za-z0-9_.-]+)\|(.*)$/;
+// The members whose process is still there: label unreadable (trust the app list) or the app's package.
+function stillRunning(text, rows) {
+    var pkg = {};
+    (rows || []).forEach(function (r) { pkg[r.appId] = r.packageId || r.appId; });
+    var out = [];
+    String(text || '').split('\n').forEach(function (l) {
+        var m = IDENTITY_LINE_RE.exec(l.trim());
+        if (!m) return;
+        var label = m[2].trim();
+        if (!label || label === 'User::Pkg::' + (pkg[m[1]] || m[1])) out.push(m[1]);
+    });
+    return out;
 }
 function stopCommand(ids) {
     ids.forEach(function (id) { if (!ID.test(id)) throw new Error('Invalid app ID'); });
@@ -166,7 +287,7 @@ function restoreFlagsFor(result, deps) {
         deps.invalidate();
         return deps.inventory(true);
     }).then(function (d) {
-        if (!d.registryError) { result.apps = d.apps; result.state = state(find(result.id), d.apps); }
+        if (!d.registryError) { result.apps = d.apps; result.state = state(find(result.id), d.apps, result.markerState); }
         return result;
     }).catch(function () { result.flagsNotRestored = ids.slice(); result.flagsRestored = []; return result; });
 }
@@ -240,27 +361,55 @@ function apply(groupId, off, deps) {
         });
     }).then(function (apps) {
         var result = {ok: true, verified: true, id: group.id, off: off, changed: targets, flagsCleared: off ? flagTargets : [], flagsRestored: [], flagsNotRestored: [],
-            stopped: [], stopFailed: [], state: state(group, apps), apps: apps};
+            stopped: [], stopFailed: [], stillRunning: [], state: state(group, apps), apps: apps};
         function services() {
             if (!group.services) return Promise.resolve();
             return deps.execute(servicesCommand(group.services, off), 30000).then(function (r) {
                 result.services = {off: off, ok: !r.exit_code && !r.timed_out};
             }, function () { result.services = {off: off, ok: false}; });
         }
-        if (!off) return services().then(function () { return restoreFlagsFor(result, deps); });
+        // Samsung's "do not start" files for the group's units, where this TV's units look for one; read back afterwards.
+        function markers() {
+            if (!group.markerUnits || !group.markerUnits.length) return Promise.resolve();
+            var read = function () { return deps.execute(markersReadCommand(group.markerUnits), 20000).then(function (r) { return parseMarkers(r.stdout); }); };
+            return read().then(function (found) {
+                var list = group.markerUnits.filter(function (u) { return found[u]; }).map(function (u) { return {unit: u, marker: found[u].marker}; });
+                if (!list.length) { result.markers = {off: off, units: 0, ok: true}; return; }
+                return deps.execute(markersCommand(list, off), 30000).then(read).then(function (after) {
+                    var wrong = list.filter(function (x) { return !after[x.unit] || after[x.unit].present !== off; });
+                    result.markerState = after;
+                    result.markers = {off: off, units: list.length, ok: !wrong.length};
+                    result.state = state(group, result.apps, after);
+                });
+            }).catch(function () { result.markers = {off: off, ok: false}; });
+        }
+        function settings() {
+            if (!group.vconf || !group.vconf.length) return Promise.resolve();
+            return deps.execute(vconfCommand(group.vconf, off), 20000).then(function (r) {
+                result.settings = {off: off, ok: !r.exit_code && !r.timed_out && !/\|[1-9]\d*$/m.test(r.stdout || '')};
+            }, function () { result.settings = {off: off, ok: false}; });
+        }
+        if (!off) return services().then(markers).then(settings).then(function () { return restoreFlagsFor(result, deps); });
         // A disabled flag does not end processes that are already running.
-        return services().then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
+        return services().then(markers).then(settings).then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
             if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
             var ids = running(r.stdout).filter(function (id) { return result.state.installed.indexOf(id) >= 0; });
             if (!ids.length) return result;
             return deps.execute(stopCommand(ids), 30000).then(function (k) {
                 var codes = exitCodes(k.stdout);
                 ids.forEach(function (id) { (codes[id] === 0 ? result.stopped : result.stopFailed).push(id); });
-                return result;
+                // "Done" only when the processes are gone: a stop that answered 0 but left the app running is not done.
+                return deps.execute(identityCommand(ids), 15000).then(function (c) {
+                    if (c.timed_out || c.exit_code) { result.stopUnconfirmed = true; return result; }
+                    result.stillRunning = stillRunning(c.stdout, result.apps);
+                    return result;
+                }, function () { result.stopUnconfirmed = true; return result; });
             });
         }).catch(function () { result.stopUnconfirmed = true; return result; });
     });
 }
 
 module.exports = {GROUPS: GROUPS, ALLOWED_IDS: ALLOWED_IDS, find: find, state: state, command: command,
-    stopCommand: stopCommand, servicesCommand: servicesCommand, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};
+    stopCommand: stopCommand, servicesCommand: servicesCommand, identityCommand: identityCommand, stillRunning: stillRunning,
+    MARKER_UNITS: MARKER_UNITS, markersReadCommand: markersReadCommand, parseMarkers: parseMarkers, markersCommand: markersCommand,
+    readMarkers: readMarkers, MARKERS_CLEAR: MARKERS_CLEAR, LEFTOVERS_READ: LEFTOVERS_READ, parseLeftovers: parseLeftovers, MARKERS_LEDGER: MARKERS_LEDGER, vconfCommand: vconfCommand, vconfRestoreAll: vconfRestoreAll, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};

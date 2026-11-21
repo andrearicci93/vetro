@@ -874,9 +874,15 @@ var winCopy={
  ambient:{title:'Stop Ambient',desc:'Stops Ambient now and after every restart; you can still open it yourself.',
   detail:'Stops Ambient now and after every restart. Switch off to start it again.'},
  telemetry:{title:'Stop viewing-data collection',desc:'Stops screen recognition, key-press logging and usage logs, now and after every restart.',
-  detail:'Stops contents-recognition-service (recognises the app, content type and channel on screen), canalysis, pisa-service and adagent-service (analytics and ads), mirroring-recognition-manager, contents-ui-detector-service and contents-ott-detector-service (find thumbnails and app screens in the picture), kpi-logging (key presses), emergency-log-transmitter and devicetracker. canalysis and pisa-service are kept off across restarts with the files their own start-up units check; the rest are stopped again at each boot. data-service collects KPI logs (its configuration lists remote keys, apps, channels, volume and the advertising ID among the sources) and its log endpoints are on lcprd1.samsungcloudsolution.net; other components start it again, so that host is also added to the saved list of the domain filter. What it sends was not inspected, the connection is encrypted. Turn on Enable DNS blocking to apply it. Switch off to start everything again and remove the host if Vetro added it. Some TV features that report back to Samsung, such as targeted suggestions, may stop updating. canalysis also works on logo recognition for HDMI inputs and pisa-service starts feature services and handles ad terms, so source recognition or some consent screens may change; neither was tested.'},
+  detail:'Stops contents-recognition-service (recognises the app, content type and channel on screen), canalysis, pisa-service and adagent-service (analytics and ads), mirroring-recognition-manager, contents-ui-detector-service and contents-ott-detector-service (find thumbnails and app screens in the picture), kpi-logging (key presses), emergency-log-transmitter and devicetracker. canalysis and pisa-service are kept off across restarts with the files their own start-up units check; the rest are masked until the next restart and masked again at about 10 s of every boot (through the AT-HUB boot step where the TV has it, otherwise when Vetro starts), together with abnormal_user_behavior and issue_report_agent (diagnostic reports) and media-analytics-service. data-service collects KPI logs (its configuration lists remote keys, apps, channels, volume and the advertising ID among the sources) and its log endpoints are on lcprd1.samsungcloudsolution.net; other components start it again, so that host is also added to the saved list of the domain filter. What it sends was not inspected, the connection is encrypted. Turn on Enable DNS blocking to apply it. Switch off to start everything again and remove the host if Vetro added it. Some TV features that report back to Samsung, such as targeted suggestions, may stop updating. canalysis also works on logo recognition for HDMI inputs and pisa-service starts feature services and handles ad terms, so source recognition or some consent screens may change; neither was tested.'},
  airplay:{title:'Disable AirPlay',desc:'Stops the AirPlay receiver now and after every restart. Casting from an Apple device to this TV does not work while this is on.',
   detail:'Stops the receiver and AirPlay app and prevents the receiver from starting at boot. Turning this off restarts the receiver. Method by zabique.'},
+ remotesupport:{title:'Disable Samsung remote support',desc:'Stops the services Samsung\u2019s support staff use to look at and control this TV from a distance, now and after every restart.',
+  detail:'Masks remote-management (remote control by Samsung\u2019s support), samsung-easy-support (Easy Support) and remote-shop-care-hub (remote care of shop TVs). They start only when something calls them; while this is on they cannot start. Remote PC, the TV\u2019s own remote desktop client, is left alone. The masks last until the next restart and are put back at every boot. Idea from samshush.'},
+ delivery:{title:'Disable background app delivery',desc:'Stops Samsung\u2019s background service that installs and updates its own apps without asking, now and after every restart.',
+  detail:'Masks was-background-update (Block firmware and software updates masks it too) and, on TVs that have them (2022 and later), disables the WAS app sync, app update and built-in upgrade apps. Turning this off unmasks the service and enables only the apps Vetro switched off. Idea from samshush.'},
+ wifipresence:{title:'Disable Wi-Fi presence',desc:'Stops Samsung\u2019s service that senses phones near the TV over Wi-Fi, now and after every restart. Features that react to someone near the TV may stop working.',
+  detail:'Masks com.samsung.tv.wifi-presence and the unit that starts it when a phone sets up the TV. Setting the TV up from a phone, and features that wake or dim the screen when someone is near, may need it. Idea from samshush.'},
  keyguides:{title:'Hide remote key guides',desc:'Stops the picture of the remote that pops up on Vol, Play and other keys (\u201cPress Volume: Mute\u201d), now and after every restart.',
   detail:'Samsung\u2019s volume and TV apps show the guide until they note it was seen; on 2024 and later TVs that note is lost at every power-on. Vetro marks the guides as seen now and after each restart. Switch off to let Samsung show them again.'},
  firmware:{title:'Block firmware and software updates',desc:'Samsung is actively trying to block root with remote firmware updates. This stops and masks every update service; turn it on if you do not want to lose root access.',
@@ -891,11 +897,19 @@ function quickItem(key,title,desc,state,control,extra,after){return '<div class=
 function winState(id){
  var w=quickData.wins&&quickData.wins.wins[id];return w?w.status:null}
 function hbbtvSwitch(h){var on=!h.off,blocked=h.off&&!h.canRestore;return switchMarkup('data-hbbtv-switch',on,settingBusy||blocked,'HbbTV')+(blocked?'<p class="section-note">The previous value was not saved by Vetro. Turn HbbTV on from the TV menu.</p>':'')}
+// What a group in the partial state still lacks: members enabled, startup flags, and Samsung's own "do not start" files for its
+// background services (missing while the members are off, or left behind while they are on).
+function partialText(s){var parts=[],open=s.markersOpen||[],left=s.markersBlocked||[],allOn=s.enabled.length&&!s.disabled.length;
+ if(s.enabled.length&&!(allOn&&left.length))parts.push(s.enabled.length+' of '+s.installed.length+' components still enabled');
+ if(s.flagged&&s.flagged.length)parts.push(s.flagged.length+' still start'+(s.flagged.length===1?'s':'')+' at boot or restart');
+ if(!s.enabled.length&&open.length)parts.push(open.length+' background service'+(open.length===1?'':'s')+' can still start');
+ if(allOn&&left.length)parts.push(left.length+' background service'+(left.length===1?' is':'s are')+' still kept from starting');
+ return ['Partly done'].concat(parts).join(' · ');}
 function groupItem(g,compact){
- var s=quickState(g,inventory),rows=s.installed.map(function(id){return inventory.find(function(a){return a.appId===id})});
+ var s=quickState(g,inventory,quickData.markers),rows=s.installed.map(function(id){return inventory.find(function(a){return a.appId===id})});
  var title=compact?g.label:groupTitles[g.id]||'Disable '+g.label;
  var done=s.status==='off';
- var state=!inventory.length?appsChip():s.status==='unavailable'?chip('Not installed on this TV'):s.status==='unknown'?chip('State unavailable · refresh the app list','partial'):done?chip(compact&&s.installed.length===1?'Done':'Done · '+s.installed.length+' component'+(s.installed.length===1?'':'s')+' disabled','on'):s.status==='on'?'':chip('Partly done · '+(s.enabled.length?s.enabled.length+' of '+s.installed.length+' components still enabled':'')+(s.enabled.length&&s.flagged&&s.flagged.length?' · ':'')+(s.flagged&&s.flagged.length?s.flagged.length+' still start'+(s.flagged.length===1?'s':'')+' at boot or restart':''),'partial');
+ var state=!inventory.length?appsChip():s.status==='unavailable'?chip('Not installed on this TV'):s.status==='unknown'?chip('State unavailable · refresh the app list','partial'):done?chip(compact&&s.installed.length===1?'Done':'Done · '+s.installed.length+' component'+(s.installed.length===1?'':'s')+' disabled','on'):s.status==='on'?'':chip(partialText(s),'partial');
  var homeLocked=g.id==='samsung-home'&&launcherEnabled!==false;
  var disabled=quickBusy||winsBusy||homeLocked||['on','off','partial'].indexOf(s.status)<0;
  if(homeLocked)state+=chip(launcherEnabled?'Turn off the launcher to change Samsung Home':'Reading launcher state…','partial');
@@ -909,6 +923,7 @@ function winPartial(id,w){
  if(id==='keyguides')return 'a guide can still show';
  if(id==='quickboot')return 'the early boot step is not installed';
  if(id==='telemetry')return w.running+' service'+(w.running===1?'':'s')+' started again';
+ if(id==='remotesupport'||id==='delivery'||id==='wifipresence')return w.running?'a service is running again':w.masked<w.units?w.masked+' of '+w.units+' services blocked':w.appsOff<w.apps?(w.apps-w.appsOff)+' app'+(w.apps-w.appsOff===1?' is':'s are')+' still on':'not every service is blocked';
  if(id!=='firmware')return 'Samsung started it again';
  var n=w.masked,m=w.units;
  if(m>0&&n>0&&n<m)return n+' of '+m+' update services blocked';
@@ -930,10 +945,13 @@ function winNoRoot(id){
   '<details><summary>What a firmware update can do</summary><p>Samsung is actively trying to block root with remote firmware updates: a patch can remove root and close the path Vetro uses. Turn this on as soon as root is available. The TV’s own Auto update setting does not stop the background update loop.</p></details>');
 }
 function winItem(id){
+ var mask=['remotesupport','delivery','wifipresence'].indexOf(id)>=0;
+ // A mask switch shows only where the TV has its services (and with root: without it there is nothing to tell).
+ if(mask&&(quickData.root===false||winState(id)==='unavailable'||!quickData.wins))return '';
  if(quickData.root===false)return winNoRoot(id);
  var c=winCopy[id],st=winState(id),w=quickData.wins&&quickData.wins.wins[id]||{},busy=quickBusy||winsBusy;
  var state=!quickData.wins?chip(quickData.winsError||'Reading…',quickData.winsError?'partial':''):st==='unknown'?chip('Not available on this TV','partial'):'';
- if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · updates are blocked':id==='quickboot'?'Done · boot starts earlier':id==='keyguides'?'Done · the guides count as seen':'Done · Multi View starts when you open it','on');
+ if(quickData.wins&&st==='on')state=chip(id==='ambient'?'Done · Ambient is stopped':id==='telemetry'?'Done · data-service may still run':id==='airplay'?'Done · AirPlay is stopped':id==='firmware'?'Done · updates are blocked':id==='quickboot'?'Done · boot starts earlier':id==='keyguides'?'Done · the guides count as seen':id==='remotesupport'?'Done · remote support cannot start':id==='delivery'?'Done · background delivery is blocked':id==='wifipresence'?'Done · Wi-Fi presence is stopped':'Done · Multi View starts when you open it','on');
  if(id==='telemetry'&&st==='on'&&w.dnsBlocked===false)state+=chip('Uploads can resume · turn on Enable DNS blocking','partial');
  if(st==='partial')state=chip('Partly done · '+winPartial(id,w),'partial');
  if(st==='off'&&w.running)state=chip('Running now','');
@@ -1001,8 +1019,8 @@ function renderQuick(){
  $('quickAppsGroup').hidden=!appGroups.length;paint($('quickApps'),appGroups.map(function(g){return groupItem(g,true)}).join(''));
  paint($('quickKeep'),keepItem());
  renderUninstall();
- paint($('quickControl'),winItem('firmware')+winItem('quickboot')+winItem('keyguides'));
- paint($('quickTracking'),winItem('telemetry')+quickGroups.filter(function(g){return g.section==='tracking'}).map(function(g){return groupItem(g)}).join('')+dns);
+ paint($('quickControl'),winItem('firmware')+winItem('delivery')+winItem('quickboot')+winItem('keyguides'));
+ paint($('quickTracking'),winItem('telemetry')+winItem('remotesupport')+winItem('wifipresence')+quickGroups.filter(function(g){return g.section==='tracking'}).map(function(g){return groupItem(g)}).join('')+dns);
  paint($('quickVoice'),quickGroups.filter(function(g){return g.section==='voice'}).map(function(g){return groupItem(g)}).join(''));
  renderCustom();
  var l=quickData.leftovers,files=l?l.files.filter(function(f){return f.isPackage}):[],extras=l&&l.extras||[],kinds=l&&l.extraKinds||{};
@@ -1022,7 +1040,7 @@ function loadWins(){var mine=++winsSeq;quickData.winsError=null;
  // Without root the wins cannot be read (503): the root agent is asked about first, and nothing privileged is called while it is down.
  // The first read waits for the page's own /status answer, so a TV without root is never asked for the wins at all.
  var first=quickData.root===false?api('/status').then(function(d){quickData.root=!!(d.agent&&d.agent.connected)}):quickData.root===null&&statusRead?statusRead:Promise.resolve();
- return first.then(function(){if(quickData.root===false)return;return api('/wins').then(function(d){if(!d.wins)throw Error('Quick wins unreadable');if(mine===winsSeq){quickData.wins=d;quickData.root=true;quickReadAt.wins=Date.now()}})}).catch(function(e){if(mine===winsSeq)quickData.winsError=e.message;}).finally(renderQuick);}
+ return first.then(function(){if(quickData.root===false)return;return api('/wins').then(function(d){if(!d.wins)throw Error('Quick wins unreadable');if(mine===winsSeq){quickData.wins=d;quickData.markers=d.markers||null;quickData.root=true;quickReadAt.wins=Date.now()}})}).catch(function(e){if(mine===winsSeq)quickData.winsError=e.message;}).finally(renderQuick);}
 /* #135: AgingApp can leave db/FactoryApp/Aging at 1; the TV then starts the colour test at every boot. Shown only when it reads exactly 1. */
 var factoryTestView={state:null,busy:false,message:''};
 function renderFactoryTest(){var b=$('factoryTestBanner');if(!b)return;var v=factoryTestView,on=!!v.state&&v.state.active===true;
@@ -1106,11 +1124,15 @@ function applyQuick(id,off){
   if(!off&&d.flagsNotRestored&&d.flagsNotRestored.length)parts.push('Could not put back the startup flags of '+d.flagsNotRestored.join(', ')+'; check them in Apps and processes.');
   if(d.stopped.length)parts.push(d.stopped.length+' running component'+(d.stopped.length===1?'':'s')+' stopped.');
   if(d.stopFailed.length)parts.push('Could not stop: '+d.stopFailed.join(', ')+'.');
+  if(d.stillRunning&&d.stillRunning.length)parts.push('Still running after the stop: '+d.stillRunning.join(', ')+'.');
   if(d.stopUnconfirmed)parts.push('Running components could not be checked.');
+  if(d.markers&&d.markers.units)parts.push(d.markers.ok?(off?'Samsung\u2019s own start-up block set for ':'Samsung\u2019s own start-up block removed for ')+d.markers.units+' background service'+(d.markers.units===1?'':'s')+'.':'Samsung\u2019s own start-up block could not be '+(off?'set':'removed')+' for every background service.');
+  if(d.markerState)quickData.markers=Object.assign({},quickData.markers||{},d.markerState);
+  if(d.settings)parts.push(d.settings.ok?(off?'The power-on setting is off.':'The power-on setting is back as it was.'):'The power-on setting could not be changed.');
   if(off&&g.microphone&&n)parts.push('Check Home and the remote before relying on this change.');
   if(off&&g.confirm&&n)parts.push('Map the Home key to your other launcher with the Remapper.');
   var message=parts.join(' ');mark(message,'Registry confirmed');
-  return loadApps(false,true).then(function(){read=true;if(bootData)loadStartup();return {state:d.stopFailed.length||(d.flagsNotRestored&&d.flagsNotRestored.length)?'warning':'success',resultLabel:'Registry confirmed',message:message}});
+  return loadApps(false,true).then(function(){read=true;if(bootData)loadStartup();return {state:d.stopFailed.length||(d.stillRunning&&d.stillRunning.length)||(d.markers&&!d.markers.ok)||(d.settings&&!d.settings.ok)||(d.flagsNotRestored&&d.flagsNotRestored.length)?'warning':'success',resultLabel:'Registry confirmed',message:message}});
  })}).finally(function(){quickBusy=false;renderQuick();if(!read)loadApps(true);});
 }
 function setHbbtv(on){
@@ -1133,7 +1155,7 @@ function setWin(id,on){
  var want=on?'on':'off',read=false;
  return runUiOperation('wins',(on?'':'Undo · ')+winCopy[id].title,'Quick settings',null,function(mark){return api('/wins',{id:id,on:on}).then(function(d){
   if(!d.status||d.status===want)mark(winMessage(id,on,d),'State read back');
-  return api('/wins').then(function(w){winsSeq++;quickData.wins=w;quickReadAt.wins=Date.now();read=true;
+  return api('/wins').then(function(w){winsSeq++;quickData.wins=w;quickData.markers=w.markers||null;quickReadAt.wins=Date.now();read=true;
    var now=w.wins&&w.wins[id]||{},st=d.status||now.status;
    if(!st||st===want)return {resultLabel:'State read back',message:winMessage(id,on,d)};
    return {state:'warning',resultLabel:st==='partial'?'Partly done':'Not confirmed',message:winCopy[id].title+': '+(st==='partial'?'partly done · '+winPartial(id,now.status?now:d):st==='unknown'?'the state could not be read back':'the TV did not keep the change')+'.'};

@@ -136,7 +136,8 @@ function harness(opts){
  assert.deepEqual(g.services,['slive-provider-daemon','bms']);
  g.ids.forEach(id=>assert.ok(quick.ALLOWED_IDS.includes(id),id));
  const off=decode(quick.servicesCommand(g.services,true)),on=decode(quick.servicesCommand(g.services,false));
- assert.ok(off.startsWith('touch /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl stop --no-block/.test(off));
+ assert.ok(off.includes('\ntouch /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms\n')&&/systemctl stop --no-block/.test(off));
+ assert.match(off,/echo "\$m" >> \/home\/owner\/share\/vetro\/quick-markers/,'the files Vetro puts down are noted for Restore');
  assert.ok(on.startsWith('rm -f /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl start --no-block/.test(on));
  assert.throws(()=>quick.servicesCommand(['x; reboot'],true),/Invalid service/);}
 // Vision AI: the apps that answer the AI key (held Home, the AI button), shown only where they are; Samsung Home's Vision AI row,

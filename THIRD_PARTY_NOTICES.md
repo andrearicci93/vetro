@@ -121,6 +121,17 @@ root research notice at `notices/LICENSE-samsung-tv-root.txt`; remote-helper not
 remain alongside the payload. Contributor acknowledgements are in the repository
 README and release changelog, including adapted contributions from still-open PRs.
 
+## samshush
+
+Source: https://github.com/elithrar/samshush (by elithrar)
+License: BSD-3-Clause. No code or text is copied: ideas only, checked against Vetro's own reading of the Q80A and Tizen 6.5/9
+firmware and re-written, each marked in the file header (0.7.1):
+
+- `app/service/quick-settings.js`: Samsung's own "do not start" files (`ConditionPathExists=!` in the units) for the voice,
+  Bixby and Samsung Health services; the TV Plus power-on setting; checking after a stop that the app's process is gone.
+- `app/service/quick-wins.js`: runtime masks applied early in the boot for the services without such a file, the reporting
+  services added to the viewing-data win, and the Samsung remote support, background app delivery and Wi-Fi presence switches.
+
 ## zabique's fork of Vetro
 
 Source: https://github.com/zabique/vetro (branch `fork/extras`)

@@ -56,6 +56,24 @@
 //             Idea and first implementation by zabique (https://github.com/zabique/vetro, branch fork/extras,
 //             tested there on a QN85A), re-written here for the Q80A.
 //
+//   masks     Units without a "do not start" file of their own are masked at runtime (one systemctl call: each call reloads systemd,
+//             ~2 s at boot): when the switch is turned on, at ~10 s of every boot by the AT-HUB hook (as the update lock), and by the
+//             root agent's boot pass where there is no hook. --runtime only: the masks live in /run and are gone at the next boot,
+//             so a TV with Vetro removed or Restore run is untouched. A unit two choices want masked stays masked until both are off.
+//             telemetry  also masks the units of its list that have no file (contents-recognition, kpi-logging, devicetracker...)
+//                        plus abnormal_user_behavior and issue_report_agent (diagnostic reports; devicetracker and
+//                        abnormal_user_behavior require the agent) and media-analytics-service. data-service is only stopped:
+//                        other components start it over D-Bus, and a masked unit would make them wait for a timeout.
+//             remotesupport  Samsung's remote support: remote-management (rmdemon), samsung-easy-support (ses-service),
+//                        remote-shop-care-hub (rscmdemon), all D-Bus services started on demand. Remote PC (org.tizen.remotepc,
+//                        the RDP client, also used by some root adapters) is left alone.
+//             delivery   Samsung's background app delivery: was-background-update (path and service; the update lock masks it
+//                        too) and, where they exist (2022 and later), the WAS app sync, app update and built-in upgrade apps,
+//                        disabled like a group's members and enabled again when the switch is off.
+//             wifipresence  com.samsung.tv.wifi-presence (phones nearby over Wi-Fi), opt-in: features that react to someone near
+//                        the TV may stop working.
+//             Ideas from samshush (https://github.com/elithrar/samshush, BSD-3), checked against the Q80A (fw 2310.0, 2026-11-21).
+//
 // HbbTV has its own module (hbbtv.js) because its menu value must be restored exactly.
 var execError = require('./exec-error.js');
 var fs = require('fs');
@@ -109,15 +127,40 @@ var TELEMETRY_BRAKES = ['canalysis-daemon', 'pisa-service', 'vision-data-recogni
 var TELEMETRY_COND = '/tmp/eltlaunch.cond';
 var TELEMETRY_UNITS = ['canalysis-service', 'pisa-service', 'adagent-service', 'contents-recognition-service',
     'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
-    'emergency-log-transmitter', 'devicetracker', 'data-service'];
+    'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service', 'data-service'];
 var TELEMETRY_PROCS = ['canalysis-daemo', 'pisa-service', 'adagent-servic', 'contents-recogn', 'mirroring-recog',
-    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker'];
+    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker', 'abnormal_user_b', 'issue_report_ag', 'media-analytics'];
+// The units of the list that have no "do not start" file: masked at runtime as well (see "masks" in the header).
+var TELEMETRY_MASK = ['contents-recognition-service', 'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
+    'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service'].map(function (u) { return u + '.service'; });
+// The switches that are only masks (see the header). start: what is started again when the switch is turned off.
+var MASK_WINS = {
+    remotesupport: {units: ['remote-management.service', 'samsung-easy-support.service', 'remote-shop-care-hub.service'], start: []},
+    delivery: {units: ['was-background-update.path', 'was-background-update.service'], start: ['was-background-update.path'],
+        apps: ['org.tizen.was-appsync', 'org.tizen.was-appupdate', 'org.tizen.was-builtinupgrade']},
+    wifipresence: {units: ['wifi-presence.path', 'wifi-presence.service'], start: ['wifi-presence.path', 'wifi-presence.service']}
+};
+var MASK_IDS = Object.keys(MASK_WINS);
+var APP_ID_RE = /^[A-Za-z0-9_.-]{1,180}$/;
+var PKGDB = '/opt/dbspace/.pkgmgr_parser.db';
+// One mask call, then the stops (as the update lock: systemd 244 masks a unit this firmware lacks with a warning and rc 0).
+// bin: '/usr/bin/' in the boot hook, which names every program by its path.
+function maskLines(units, bin) {
+    var sc = (bin || '') + 'systemctl';
+    return sc + ' mask --runtime ' + units.join(' ') + ' >/dev/null 2>&1 || for u in ' + units.join(' ') + '; do ' + sc + ' mask --runtime $u >/dev/null 2>&1; done; ' +
+        sc + ' stop --no-block ' + units.join(' ') + ' >/dev/null 2>&1';
+}
+function unmaskLines(units, start) {
+    return units.length ? 'systemctl unmask --runtime ' + units.join(' ') + ' >/dev/null 2>&1\nsystemctl reset-failed ' + units.join(' ') + ' >/dev/null 2>&1' +
+        (start && start.length ? '\nfor u in ' + start.join(' ') + '; do systemctl start --no-block $u >/dev/null 2>&1; done' : '') : 'true';
+}
 var TELEMETRY_HOST = 'lcprd1.samsungcloudsolution.net';
-var TELEMETRY_OFF = 'touch ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
+var TELEMETRY_OFF = 'touch ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' + maskLines(TELEMETRY_MASK) + '\n' +
     'for u in ' + TELEMETRY_UNITS.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\n' +
     'for n in ' + TELEMETRY_PROCS.join(' ') + '; do for p in $(pgrep -x $n); do kill -9 $p 2>/dev/null; done; done\n' +
     'sleep 2\ntrue';
 var TELEMETRY_ON = 'rm -f ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
+    'systemctl unmask --runtime ' + TELEMETRY_MASK.join(' ') + ' >/dev/null 2>&1\n' +
     'systemctl reset-failed 2>/dev/null\n' +
     'for u in ' + TELEMETRY_UNITS.slice(0, -1).join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue';
 // AirPlay (see the header). The web app's package id differs between stores and models; its app id always ends like this.
@@ -137,7 +180,11 @@ var AIRPLAY_OFF = 'set -e\ntouch ' + AIRPLAY_FLAGS.join(' ') + '\n' +
     'sleep 1\n' + AIRPLAY_WEB_STOP + '\nsleep 1\ntrue';
 var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS[1] + '.service >/dev/null 2>&1\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl start --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\nsleep 1\ntrue';
-var IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', 'airplay'];
+var IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', 'airplay'].concat(MASK_IDS);
+// Every unit whose state the read needs: the update lock's, the telemetry masks and the mask switches'.
+var READ_UNITS = FWUNITS.concat(TELEMETRY_MASK).concat(MASK_IDS.reduce(function (all, id) { return all.concat(MASK_WINS[id].units); }, []))
+    .filter(function (u, i, a) { return a.indexOf(u) === i; });
+var DELIVERY_APPS_SQL = MASK_WINS.delivery.apps.map(function (id) { return "'" + id + "'"; }).join(',');
 var BOOT_POLL_MS = 10000, BOOT_POLLS = 36, TELEMETRY_RETRY_MS = 45000, FIRMWARE_RETRY_MS = 30000;
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
@@ -155,7 +202,8 @@ function stop(id) {
 var READ = [
     'echo "AU|$(vconftool get ' + AUTOUPDATE + ' 2>&1)"',
     'echo "FWS|$(vconftool get ' + FWSERVICE + ' 2>&1)"',
-    'systemctl show -p Id -p LoadState -p ActiveState ' + FWUNITS.join(' ') + ' 2>/dev/null | awk -F= \'/^Id=/{id=$2} /^LoadState=/{l=$2} /^ActiveState=/{print "LS|" id "|" l "|" $2}\'',
+    'systemctl show -p Id -p LoadState -p ActiveState ' + READ_UNITS.join(' ') + ' 2>/dev/null | awk -F= \'/^Id=/{id=$2} /^LoadState=/{l=$2} /^ActiveState=/{print "LS|" id "|" l "|" $2}\'',
+    'sqlite3 -readonly ' + PKGDB + ' "SELECT \'DA|\'||app_id||\'|\'||app_disable FROM package_app_info WHERE app_id IN (' + DELIVERY_APPS_SQL + ');" 2>/dev/null',
     '[ -e ' + MULTISCREEN_FLAG + ' ] && echo "MS|1" || echo "MS|0"',
     running(MULTISCREEN_ID) + ' && echo "MR|1" || echo "MR|0"',
     running(AMBIENT_ID) + ' && echo "AR|1" || echo "AR|0"',
@@ -173,7 +221,7 @@ var READ = [
 // Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
     var out = {autoupdate: null, fwService: null, fwUnits: {}, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
-        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null};
+        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, apps: {}};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
@@ -189,6 +237,7 @@ function parse(text) {
         else if (f[0] === 'AS') out.airplayService = (f[1] || '').trim() === 'active';
         else if (f[0] === 'AW') out.airplayWeb = f[1] === '1';
         else if (f[0] === 'QB') out.quickbootHook = f[1] === '1';
+        else if (f[0] === 'DA' && APP_ID_RE.test(f[1] || '')) out.apps[f[1]] = (f[2] || '').trim() === 'true';
     });
     return out;
 }
@@ -231,9 +280,13 @@ Wins.prototype.load = function () {
             autoupdatePrevious: Number.isInteger(o.autoupdatePrevious) && o.autoupdatePrevious > 0 ? o.autoupdatePrevious : null,
             fwServicePrevious: Number.isInteger(o.fwServicePrevious) ? o.fwServicePrevious : null,
             firmwareBoot: typeof o.firmwareBoot === 'string' ? o.firmwareBoot : null,
-            ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null
+            ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null,
+            remotesupport: o.remotesupport === true, delivery: o.delivery === true, wifipresence: o.wifipresence === true,
+            // The delivery apps Vetro disabled itself: only these are enabled again when the switch is off.
+            deliveryApps: Array.isArray(o.deliveryApps) ? o.deliveryApps.filter(function (id) { return MASK_WINS.delivery.apps.indexOf(id) >= 0; }) : []
         };
-    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, quickboot: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null}; }
+    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, quickboot: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null,
+        remotesupport: false, delivery: false, wifipresence: false, deliveryApps: []}; }
 };
 Wins.prototype.save = function (patch) {
     var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
@@ -255,7 +308,7 @@ Wins.prototype.read = function () {
     var dnsAsked = mine.telemetry && self.dns ? self.dns.status().then(function (d) { return !!(d.enabled && d.applied && d.domains.indexOf(TELEMETRY_HOST) >= 0); }, function () { return null; }) : null;
     return read.then(function (r) {
         var s = parse(check(r));
-        var firmware = s.autoupdate === null ? {status: 'unknown'} : fwState(s);
+        var firmware = s.autoupdate === null ? {status: 'unknown'} : fwState(s, wantedMasks(mine, 'firmware'));
         var multiscreen = s.multiscreenFlag === null ? {status: 'unknown'} : {status: s.multiscreenFlag ? 'on' : 'off', running: s.multiscreenRunning === true};
         var ambient = s.ambientRunning === null ? {status: 'unknown'}
             : {status: !mine.ambient ? 'off' : s.ambientRunning ? 'partial' : 'on', running: s.ambientRunning, chosen: mine.ambient};
@@ -267,7 +320,9 @@ Wins.prototype.read = function () {
                running: s.airplayService === true || s.airplayWeb === true};
         var quickboot = s.quickbootHook === null ? {status: 'unknown'}
             : {status: !mine.quickboot ? 'off' : s.quickbootHook ? 'on' : 'partial'};
+        telemetry.masked = TELEMETRY_MASK.filter(function (u) { return s.fwUnits[u] && s.fwUnits[u].load === 'masked'; }).length;
         var wins = {firmware: firmware, quickboot: quickboot, multiscreen: multiscreen, ambient: ambient, telemetry: telemetry, airplay: airplay};
+        MASK_IDS.forEach(function (id) { wins[id] = maskState(id, mine, s); });
         if (!dnsAsked) return {ts: Date.now(), wins: wins};
         return dnsAsked.then(function (blocked) { telemetry.dnsBlocked = blocked; return {ts: Date.now(), wins: wins}; });
     });
@@ -280,17 +335,33 @@ Wins.prototype.apply = function (id, on) {
     if (this.busy) return Promise.reject(Error('A quick win is already being changed'));
     this.busy = true; this.changing = id;
     var task = Promise.resolve().then(function () {
-        return id === 'firmware' ? self.firmware(on) : id === 'quickboot' ? self.quickboot(on) : id === 'multiscreen' ? self.multiscreen(on) : id === 'telemetry' ? self.telemetry(on) : id === 'airplay' ? self.airplay(on) : self.ambient(on);
+        return MASK_WINS[id] ? self.maskWin(id, on) : id === 'firmware' ? self.firmware(on) : id === 'quickboot' ? self.quickboot(on) : id === 'multiscreen' ? self.multiscreen(on) : id === 'telemetry' ? self.telemetry(on) : id === 'airplay' ? self.airplay(on) : self.ambient(on);
     });
     return task.then(function (result) { self.busy = false; self.changing = null; return result; }, function (e) { self.busy = false; self.changing = null; throw e; });
 };
 
+// A mask switch: unavailable on a TV that has none of its units or apps (the dashboard hides it); off unless chosen; on when every
+// unit this TV has is masked and every app of its list is disabled; partial otherwise.
+function maskState(id, mine, s) {
+    var w = MASK_WINS[id];
+    var units = w.units.filter(function (u) { var x = s.fwUnits[u]; return x && x.load && x.load !== 'not-found'; });
+    var apps = (w.apps || []).filter(function (a) { return s.apps[a] !== undefined; });
+    if (!units.length && !apps.length) return {status: 'unavailable'};
+    var masked = units.filter(function (u) { return s.fwUnits[u].load === 'masked'; });
+    var running = units.filter(function (u) { var a = s.fwUnits[u].active; return a === 'active' || a === 'activating'; });
+    var appsOff = apps.filter(function (a) { return s.apps[a] === true; });
+    var done = masked.length === units.length && appsOff.length === apps.length && !running.filter(function (u) { return /\.service$/.test(u); }).length;
+    return {status: !mine[id] ? 'off' : done ? 'on' : 'partial', units: units.length, masked: masked.length, apps: apps.length, appsOff: appsOff.length,
+        running: running.length};
+}
+
 // The units cannot be renamed (the rootfs is mounted ro) and a plain "disable" is overridden by their targets, so they
 // are masked at runtime: /run/systemd/system is tmpfs, systemd honours it at once, and the mask is gone on reboot
 // (bootFirmware puts it back). swu-standalone stays out of the list: it is the USB recovery path.
-function fwState(s) {
+function fwState(s, keep) {
     var known = 0, masked = 0, running = 0;
     FWUNITS.forEach(function (u) {
+        if (keep && keep.indexOf(u) >= 0) return;   // masked for another switch (delivery): not the lock's to count
         var x = s.fwUnits && s.fwUnits[u];
         if (!x || !x.load || x.load === 'not-found') return;
         known++;
@@ -324,15 +395,29 @@ function fwMaskScript(stop) {
         'rm -f ' + FWMARKERS.join(' ') + ' 2>/dev/null\n' +
         'true';
 }
-function fwUnmaskScript() {
+// keep: units another switch still wants masked (the delivery switch's was-background-update): left masked and not started.
+function fwUnmaskScript(keep) {
+    var units = FWUNITS.filter(function (u) { return !keep || keep.indexOf(u) < 0; });
+    var start = ['swu-auto-upgrade.timer', 'swu-verifier-tv.service', 'was-background-update.path', 'fw-update-service.path',
+        'vdsystem-update-manager.timer', 'appbinary-manager.service'].filter(function (u) { return units.indexOf(u) >= 0; });
     return 'set +e\n' +
-        'systemctl unmask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1\n' +
-        'systemctl reset-failed ' + FWUNITS.join(' ') + ' >/dev/null 2>&1\n' +
+        'systemctl unmask --runtime ' + units.join(' ') + ' >/dev/null 2>&1\n' +
+        'systemctl reset-failed ' + units.join(' ') + ' >/dev/null 2>&1\n' +
         // Start again what the boot sequence would have started; the rest comes back through D-Bus when needed.
-        'systemctl start --no-block swu-auto-upgrade.timer swu-verifier-tv.service was-background-update.path ' +
-        'fw-update-service.path vdsystem-update-manager.timer appbinary-manager.service >/dev/null 2>&1\n' +
+        'systemctl start --no-block ' + start.join(' ') + ' >/dev/null 2>&1\n' +
         'true';
 }
+// The units each saved choice wants masked (see "masks" in the header). except: the switch being turned off.
+function wantedMasks(mine, except) {
+    var all = [];
+    function add(list) { list.forEach(function (u) { if (all.indexOf(u) < 0) all.push(u); }); }
+    if (mine.firmware && except !== 'firmware') add(FWUNITS);
+    if (mine.telemetry && except !== 'telemetry') add(TELEMETRY_MASK);
+    MASK_IDS.forEach(function (id) { if (mine[id] && except !== id) add(MASK_WINS[id].units); });
+    return all;
+}
+// Whether the AT-HUB hook is needed: every early boot task is in it.
+function hookWanted(mine) { return !!(mine.firmware || mine.quickboot || mine.telemetry || MASK_IDS.some(function (id) { return mine[id]; })); }
 function fwSet(key, value) {
     return 'vconftool set -f -t int ' + key + ' ' + value + ' >/dev/null 2>&1';
 }
@@ -345,9 +430,10 @@ function fwHookScript() {
         '# ' + FW_HOOK_MARK + ' - Vetro applies quick boot and/or the update lock before the boot continues.\n' +
         '# The replaced vendor script is kept in ' + FW_HOOK_BAK + ' and put back when the win is turned off.\n' +
         'BEGIN {\n' +
-        '    lock = 0; boot = 0\n' +
+        '    lock = 0; boot = 0; tel = 0' + MASK_IDS.map(function (id) { return '; ' + id + ' = 0'; }).join('') + '\n' +
         '    if (system("[ -d /opt/usr/apps/vetrotvapp ]") == 0) {\n' +
-        '        while ((getline l < "' + FILE + '") > 0) { if (l ~ /"firmware"[ \\t]*:[ \\t]*true/) lock = 1; if (l ~ /"quickboot"[ \\t]*:[ \\t]*true/) boot = 1 }\n' +
+        '        while ((getline l < "' + FILE + '") > 0) { if (l ~ /"firmware"[ \\t]*:[ \\t]*true/) lock = 1; if (l ~ /"quickboot"[ \\t]*:[ \\t]*true/) boot = 1; ' +
+        'if (l ~ /"telemetry"[ \\t]*:[ \\t]*true/) tel = 1' + MASK_IDS.map(function (id) { return '; if (l ~ /"' + id + '"[ \\t]*:[ \\t]*true/) ' + id + ' = 1'; }).join('') + ' }\n' +
         '        close("' + FILE + '")\n' +
         '    }\n' +
         '    if (boot) {\n' +
@@ -355,11 +441,18 @@ function fwHookScript() {
         // 6.5/9 replaced the default-target file unit with an lwipc event; setting it here is what the vendor unit does.
         '        system("[ -x /usr/bin/ewaiter ] && /usr/bin/ewaiter -d /run/systemd/system/default.target.done >/dev/null 2>&1")\n' +
         '    }\n' +
+        '    # Every unit the saved choices want masked, in ONE mask call: each call reloads systemd (~2 s this early).\n' +
+        '    units = ""; stops = ""\n' +
+        '    if (lock) units = units " ' + FWUNITS.join(' ') + '"\n' +
+        // The telemetry units without a file of their own and the mask switches: masked before the boot starts them (~10 s).
+        '    if (tel) { units = units " ' + TELEMETRY_MASK.join(' ') + '"; stops = stops " ' + TELEMETRY_MASK.join(' ') + '" }\n' +
+        MASK_IDS.map(function (id) { return '    if (' + id + ') { units = units " ' + MASK_WINS[id].units.join(' ') + '"; stops = stops " ' + MASK_WINS[id].units.join(' ') + '" }\n'; }).join('') +
+        '    if (units != "") system("/usr/bin/systemctl mask --runtime" units " >/dev/null 2>&1 || for u in" units "; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
         '    if (lock) {\n' +
-        '        system("/usr/bin/systemctl mask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1 || for u in ' + FWUNITS.join(' ') + '; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
         '        system("/usr/bin/systemctl stop --no-block ' + fwStoppable().join(' ') + ' >/dev/null 2>&1")\n' +
         '        system("/bin/rm -f ' + FWMARKERS.join(' ') + ' >/dev/null 2>&1")\n' +
         '    }\n' +
+        '    if (stops != "") system("/usr/bin/systemctl stop --no-block" stops " >/dev/null 2>&1")\n' +
         '    repo = ""; model = ""\n' +
         '    while ((getline l < "/etc/prd_info.ini") > 0) {\n' +
         '        if (l ~ /^Build=/) { split(l,a,"="); v=a[2]; sub(/;.*/,"",v); repo=v }\n' +
@@ -405,7 +498,7 @@ function fwHookRemoveScript() {
 
 // Installs or removes the shared early hook according to the saved choices. true only while the hook is installed.
 Wins.prototype.ensureHook = function () {
-    var mine = this.load(), wanted = !!(mine.firmware || mine.quickboot);
+    var mine = this.load(), wanted = hookWanted(mine);
     return this.execute(wrap(wanted ? fwHookInstallScript() : fwHookRemoveScript()), 20000).then(function (r) {
         return wanted && !!r && !r.exit_code && !r.timed_out && /vetro-hook: installed/.test(r.stdout || '');
     }, function () { return false; });
@@ -429,14 +522,14 @@ Wins.prototype.firmware = function (on) {
     function undo() {
         // Only values Vetro saved are written back: an owner who had Auto update off before the lock keeps it off.
         var mine = self.load();
-        return self.execute(wrap(fwUnmaskScript()), 30000).then(function () { return setHook(); }).then(function () {
+        return self.execute(wrap(fwUnmaskScript(wantedMasks(mine, 'firmware'))), 30000).then(function () { return setHook(); }).then(function () {
             return mine.autoupdatePrevious ? setKey(AUTOUPDATE, mine.autoupdatePrevious) : null;
         }).then(function () {
             return mine.fwServicePrevious !== null ? setKey(FWSERVICE, mine.fwServicePrevious) : null;
         });
     }
     return current().then(function (before) {
-        var state = fwState(before), mine = self.load();
+        var mine = self.load(), state = fwState(before, wantedMasks(mine, 'firmware'));
         // 0.5.0 turned Auto update off and saved the value it had; it masked nothing, so the switch reads off. Turning it off (Restore
         // the TV) still puts that value back, once.
         var leftover = !on && state.status === 'off' && !!mine.autoupdatePrevious && before.autoupdate === 0;
@@ -452,7 +545,7 @@ Wins.prototype.firmware = function (on) {
             fwServicePrevious: before.fwService > 0 ? before.fwService : self.load().fwServicePrevious});
         else self.save({firmware: false, firmwareBoot: null});
         return (on ? lock(before) : undo()).then(current).then(function (after) {
-            var st = fwState(after);
+            var st = fwState(after, wantedMasks(self.load(), 'firmware'));
             if (on && st.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
             if (!on && st.masked > 0) throw Error('The TV did not end the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' still masked)');
             // The values are back: forgotten, so a later Off or Restore never writes an old value over one the owner chose since.
@@ -464,7 +557,7 @@ Wins.prototype.firmware = function (on) {
             self.save(on ? {firmware: false, firmwareBoot: null} : {firmware: true});
             // Put the switches back the way they were found: undo if the lock failed, lock again if the undo failed.
             var back = on
-                ? self.execute(wrap(fwUnmaskScript()), 30000).then(function () { return setHook(); }).then(function () {
+                ? self.execute(wrap(fwUnmaskScript(wantedMasks(self.load(), 'firmware'))), 30000).then(function () { return setHook(); }).then(function () {
                     return setKey(AUTOUPDATE, before.autoupdate).then(function () {
                         return before.fwService !== null && before.fwService !== undefined ? setKey(FWSERVICE, before.fwService) : null;
                     });
@@ -549,7 +642,7 @@ Wins.prototype.telemetry = function (on) {
     var self = this;
     this.save({telemetry: on});
     if (!on) this.save({telemetryBoot: null});
-    return this.execute(wrap(on ? TELEMETRY_OFF : TELEMETRY_ON), 30000).then(check).then(function () { return self.telemetryDns(on); }).then(function (dns) {
+    return this.execute(wrap(on ? TELEMETRY_OFF : TELEMETRY_ON), 30000).then(check).then(function () { return self.ensureHook(); }).then(function () { return self.telemetryDns(on); }).then(function (dns) {
         return self.read().then(function (state) {
             if (on && state.wins.telemetry.running) throw Error(state.wins.telemetry.running + ' collector' + (state.wins.telemetry.running === 1 ? '' : 's') + ' started again; they are stopped again at the next boot');
             return {id: 'telemetry', changed: true, status: state.wins.telemetry.status, dns: dns};
@@ -570,6 +663,50 @@ Wins.prototype.airplay = function (on) {
     });
 };
 
+// A mask switch (see "masks" in the header): the units masked at runtime and stopped, the apps of its list disabled; the early hook
+// keeps the masks after each boot. Off unmasks what no other choice still wants and enables only the apps Vetro disabled.
+Wins.prototype.maskWin = function (id, on) {
+    var self = this, w = MASK_WINS[id];
+    function appsCommand(ids, disable) {
+        ids.forEach(function (a) { if (!APP_ID_RE.test(a)) throw Error('Invalid app ID'); });
+        return 'for id in ' + ids.join(' ') + '; do pkgcmd ' + (disable ? '-D' : '-A') + ' -t app -n "$id" --global >/dev/null 2>&1; echo "$id $?"; done';
+    }
+    return this.read().then(function (before) {
+        var st = before.wins[id];
+        if (st.status === 'unavailable') { var e = Error('Not on this TV'); e.statusCode = 409; throw e; }
+        var mine = self.load(), patch = {};
+        patch[id] = on;
+        if (on) {
+            self.save(patch);
+            // The apps of the list that are enabled now; the ones already off stay out of Vetro's list.
+            return self.execute(wrap('sqlite3 -readonly ' + PKGDB + ' "SELECT app_id FROM package_app_info WHERE app_disable=\'false\' AND app_id IN (' +
+                (w.apps || []).map(function (a) { return "'" + a + "'"; }).join(',') + ');" 2>/dev/null; true'), 10000).then(function (r) {
+                var ids = (w.apps && w.apps.length ? String(r.stdout || '').split('\n') : []).map(function (x) { return x.trim(); }).filter(function (x) { return w.apps.indexOf(x) >= 0; });
+                if (ids.length) self.save({deliveryApps: mine.deliveryApps.concat(ids).filter(function (a, i, all) { return all.indexOf(a) === i; })});
+                return self.execute(wrap('set +e\n' + maskLines(w.units) + (ids.length ? '\n' + appsCommand(ids, true) : '') + '\nsleep 2\ntrue'), 60000);
+            });
+        }
+        self.save(patch);
+        var keep = wantedMasks(self.load(), id), free = w.units.filter(function (u) { return keep.indexOf(u) < 0; });
+        var back = id === 'delivery' ? mine.deliveryApps : [];
+        return self.execute(wrap('set +e\n' + unmaskLines(free, w.start.filter(function (u) { return free.indexOf(u) >= 0; })) +
+            (back.length ? '\n' + appsCommand(back, false) : '') + '\ntrue'), 60000).then(function (r) {
+            if (back.length && !r.exit_code && !r.timed_out) self.save({deliveryApps: []});
+            return r;
+        });
+    }).then(function (r) {
+        if (r.exit_code || r.timed_out) throw Error('The TV did not finish the change');
+        return self.ensureHook();
+    }).then(function (hook) {
+        return self.read().then(function (state) {
+            var st = state.wins[id].status;
+            if (on && st !== 'on') throw Error(st === 'partial' ? 'Not every service could be stopped; it is stopped again at the next boot' : 'The TV did not keep the change');
+            if (!on && st !== 'off') throw Error('The TV did not keep the change');
+            return {id: id, changed: true, status: st, hook: !!hook};
+        });
+    });
+};
+
 // After each boot: HbbTV's flag lives in /tmp and AmbientApp is started by the firmware 15 s after boot,
 // so both are handled here, once the TV adapter is connected. AirPlay's files survive a boot; its web app is
 // stopped if something starts it in the first minutes. Resolves with what it did.
@@ -583,19 +720,23 @@ Wins.prototype.boot = function (hbbtv) {
 // before the SWU timer (OnActiveSec=120) and the background updater can do anything. No vconf write: that persisted.
 Wins.prototype.bootFirmware = function (mine, id, did) {
     var self = this;
-    if (!(mine.firmware || mine.quickboot) || (id && mine.firmwareBoot === id)) return Promise.resolve();
+    // Telemetry alone has its own boot pass (bootTelemetry), which also puts the hook back.
+    if (!(mine.firmware || mine.quickboot || MASK_IDS.some(function (x) { return mine[x]; })) || (id && mine.firmwareBoot === id)) return Promise.resolve();
     // bootLock (as soon as the agent is up) and boot (after the launcher) can both arrive: one run is enough.
     if (self.fwBootBusy) return Promise.resolve();
     self.fwBootBusy = true;
     function chosen() {
         var now = self.load();
-        return self.changing !== 'firmware' && self.changing !== 'quickboot' && (now.firmware || now.quickboot);
+        return self.changing !== 'firmware' && self.changing !== 'quickboot' && MASK_IDS.indexOf(self.changing) < 0 &&
+            (now.firmware || now.quickboot || MASK_IDS.some(function (x) { return now[x]; }));
     }
     function pass() {
         if (!chosen()) return Promise.resolve(false);
         // The early hook goes in the same command: an upgrade can have put the vendor script back. Only the firmware win
         // masks the update units; quick boot alone must leave them as they are (the vendor done units still fail).
-        var mask = self.load().firmware ? fwMaskScript(true) + '\n' : '';
+        // The telemetry masks and the mask switches go in the same command (where the TV has no hook, this is their first pass).
+        var now = self.load(), others = wantedMasks(now).filter(function (u) { return FWUNITS.indexOf(u) < 0; });
+        var mask = (now.firmware ? fwMaskScript(true) + '\n' : '') + (others.length ? maskLines(others) + '\n' : '');
         return self.execute(wrap(mask + fwHookInstallScript()), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
     }
     return pass().then(function (first) {
@@ -603,6 +744,7 @@ Wins.prototype.bootFirmware = function (mine, id, did) {
             if (!(first || second) || !chosen()) return;
             if (mine.firmware) did.push('firmware');
             if (mine.quickboot) did.push('quickboot');
+            MASK_IDS.forEach(function (x) { if (mine[x]) did.push(x); });
             if (id) self.save({firmwareBoot: id});
         });
     }).then(function (v) { self.fwBootBusy = false; return v; }, function (e) { self.fwBootBusy = false; throw e; });
@@ -642,7 +784,8 @@ Wins.prototype.bootTelemetry = function (mine, id, did) {
     // true only if the stop really ran: a command that came back with an error or a timeout is not a pass, and neither a rejection.
     function pass() {
         if (!chosen()) return Promise.resolve(false);
-        return self.execute(wrap(TELEMETRY_OFF), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
+        // The early hook goes in the same command, as in the firmware pass: an upgrade can have put the vendor script back.
+        return self.execute(wrap(TELEMETRY_OFF + '\n' + fwHookInstallScript()), 30000).then(function (r) { return !!r && !r.exit_code && !r.timed_out; }, function () { return false; });
     }
     return pass().then(function (first) {
         return self.sleep(TELEMETRY_RETRY_MS).then(pass).then(function (second) {
@@ -679,5 +822,6 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
     return poll();
 };
 
-module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, FILE: FILE, AUTOUPDATE: AUTOUPDATE, FWSERVICE: FWSERVICE, FWUNITS: FWUNITS, FWMARKERS: FWMARKERS, FW_HOOK: FW_HOOK, fwHookScript: fwHookScript, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
+module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, MASK_WINS: MASK_WINS, MASK_IDS: MASK_IDS, TELEMETRY_MASK: TELEMETRY_MASK,
+    wantedMasks: wantedMasks, hookWanted: hookWanted, maskState: maskState, fwUnmaskScript: fwUnmaskScript, FILE: FILE, AUTOUPDATE: AUTOUPDATE, FWSERVICE: FWSERVICE, FWUNITS: FWUNITS, FWMARKERS: FWMARKERS, FW_HOOK: FW_HOOK, fwHookScript: fwHookScript, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
     AIRPLAY_FLAGS: AIRPLAY_FLAGS, AIRPLAY_UNITS: AIRPLAY_UNITS, currentBoot: currentBoot};

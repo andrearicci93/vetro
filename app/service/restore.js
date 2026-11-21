@@ -117,7 +117,8 @@ Restore.prototype.plan = function () {
         attempt(function () { return d.pairing ? d.pairing.status() : null; }),
         attempt(function () { return d.factoryTest ? d.factoryTest.read() : {present: false, active: false}; }),
         attempt(function () { return d.keepRemoved ? d.keepRemoved.state() : null; }),
-        attempt(function () { return d.tuner ? d.tuner.readState() : null; })
+        attempt(function () { return d.tuner ? d.tuner.readState() : null; }),
+        attempt(function () { return d.execute(wrap(quickSettings.LEFTOVERS_READ), 8000).then(function (r) { return quickSettings.parseLeftovers(out(r, 'Startup blocks check')) || {markers: 0, settings: 0}; }); })
     ]).then(function (x) {
         var apps = x[0], wins = x[1], hb = x[2], dns = x[3], home = x[4], flags = x[5], led = x[6], plug = x[7], dock = x[8], input = x[9], mqtt = x[10], factory = x[13], keep = x[14];
         var items = [];
@@ -158,9 +159,9 @@ Restore.prototype.plan = function () {
             if (!x[12].error) flag(it, x[12].value.disabled);
         }
 
-        var groupIds = apps.error ? [] : groupMembers(apps.value);
-        it = add('groups', 'Quick settings groups', 'Switches on the components of the advertising, tracking and voice groups, with their start at boot and restart as they were. A group is Vetro’s own, so its components are switched on even if the firmware had them off.', apps);
-        if (!apps.error) flag(it, groupIds.length > 0, groupIds.length);
+        var groupIds = apps.error ? [] : groupMembers(apps.value), left = x[16].error ? null : x[16].value;
+        it = add('groups', 'Quick settings groups', 'Switches on the components of the advertising, tracking and voice groups, with their start at boot and restart as they were, removes the “do not start” files Vetro put down for their background services and puts back the TV Plus power-on setting. A group is Vetro’s own, so its components are switched on even if the firmware had them off.', apps);
+        if (!apps.error) flag(it, groupIds.length > 0 || !!(left && (left.markers || left.settings)), groupIds.length);
 
         var compIds = apps.error ? [] : provenComponents(apps.value, led.error ? [] : led.value).filter(function (id) { return groupIds.indexOf(id) < 0; });
         it = add('components', 'Components disabled in Apps and processes', 'Switches on again the components Vetro disabled one by one (its own list), the verified viewing-data set and apps you installed. Components the firmware ships disabled are left alone.', apps.error ? apps : led);
@@ -175,10 +176,15 @@ Restore.prototype.plan = function () {
             ['multiscreen', 'Multi View autostart', w && w.multiscreen && w.multiscreen.status === 'on', 'Removes the preload file, so Multi View loads at boot again.'],
             ['firmware', 'Firmware and software updates', w && w.firmware && (w.firmware.status !== 'off' || (autoSaved && w.firmware.value === 0)), 'Unmasks the update services and puts the automatic update value back to what it was.'],
             ['quickboot', 'Quick boot (experimental)', w && w.quickboot && w.quickboot.status !== 'off', 'Removes the four early boot markers, so the TV starts with its normal boot step again.'],
-            ['airplay', 'AirPlay receiver', w && w.airplay && w.airplay.status !== 'off', 'Removes the do-not-start files, so the AirPlay receiver can start again.']
+            ['airplay', 'AirPlay receiver', w && w.airplay && w.airplay.status !== 'off', 'Removes the do-not-start files, so the AirPlay receiver can start again.'],
+            ['remotesupport', 'Samsung remote support', w && w.remotesupport && w.remotesupport.status !== 'off', 'Unmasks the remote management, Easy Support and remote shop care services.'],
+            ['delivery', 'Background app delivery', w && w.delivery && w.delivery.status !== 'off', 'Unmasks the background app update service and enables the delivery apps Vetro switched off.'],
+            ['wifipresence', 'Wi-Fi presence', w && w.wifipresence && w.wifipresence.status !== 'off', 'Unmasks and starts Samsung’s Wi-Fi presence service again.']
         ].filter(function (c) {
-            // A TV without the AirPlay receiver has nothing to put back, so it gets no row.
-            return c[0] !== 'airplay' || wins.error || (w && w.airplay && w.airplay.status !== 'unknown');
+            // A TV without the AirPlay receiver, or without a mask switch's services, has nothing to put back, so it gets no row.
+            if (c[0] === 'airplay') return wins.error || (w && w.airplay && w.airplay.status !== 'unknown');
+            if (['remotesupport', 'delivery', 'wifipresence'].indexOf(c[0]) >= 0) return wins.error || (w && w[c[0]] && w[c[0]].status !== 'unavailable');
+            return true;
         }).forEach(function (c) {
             var item = add('win-' + c[0], c[1], c[3], wins);
             var win = w && w[c[0]];
@@ -270,6 +276,9 @@ Restore.prototype.run = function () {
             ['win-firmware', function () { return self.runWin('firmware', 'Update lock removed and the automatic update value put back.'); }],
             ['win-quickboot', function () { return self.runWin('quickboot', 'Quick boot off; the normal boot step is back.'); }],
             ['win-airplay', function () { return self.runWin('airplay', 'The AirPlay receiver can start again.'); }],
+            ['win-remotesupport', function () { return self.runWin('remotesupport', 'Samsung’s remote support services can start again.'); }],
+            ['win-delivery', function () { return self.runWin('delivery', 'Background app delivery can run again.'); }],
+            ['win-wifipresence', function () { return self.runWin('wifipresence', 'Wi-Fi presence is back.'); }],
             ['keep-removed', function () { return self.runKeepRemoved(); }],
             ['hbbtv', function () { return self.runHbbtv(); }],
             ['dns', function () {
@@ -317,6 +326,15 @@ Restore.prototype.runGroups = function () {
                 }, function (e) { errors.push(g.label + ': ' + e.message); });
             });
         }, Promise.resolve());
+    }).then(function () {
+        // Whatever the switches say now: every "do not start" file Vetro noted, and every saved vconf value (the TV Plus power-on setting).
+        var vconf = quickSettings.vconfRestoreAll();
+        return d.execute(wrap(quickSettings.MARKERS_CLEAR), 20000).then(function (r) {
+            if (r.exit_code || r.timed_out) errors.push('Startup blocks: not removed');
+            return vconf ? d.execute(vconf, 20000) : null;
+        }).then(function (r) {
+            if (r && (r.exit_code || r.timed_out || /\|[1-9]\d*$/m.test(r.stdout || ''))) errors.push('TV Plus power-on setting: not put back');
+        }, function (e) { errors.push('Startup blocks: ' + e.message); });
     }).then(function () {
         if (errors.length) throw new Error(errors.join(' · ') + (total ? ' · ' + total + ' component' + (total === 1 ? '' : 's') + ' switched on' : ''));
         return total + ' component' + (total === 1 ? '' : 's') + ' switched on.';

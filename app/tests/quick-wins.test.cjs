@@ -32,10 +32,11 @@ function tv(start){
    if(set[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=v;}else if(s.keep||v===1)s.autoupdate=v;return {exit_code:0,stdout:''};}
   if(/^set \+e\nsystemctl mask --runtime /.test(sh)){for(const u of qw.FWUNITS){if(!s.maskFails)s.fwMasked[u]=true;s.fwActive[u]=false;}s.markers=false;s.maskRuns=(s.maskRuns||0)+1;if(!s.failSet)for(const m of sh.matchAll(/vconftool set -f -t int (\S+) (-?\d+)/g)){if(m[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=Number(m[2]);}else if(s.keep||Number(m[2])===1)s.autoupdate=Number(m[2]);}return {exit_code:0,stdout:runHook(sh)};}
   if(/^set \+e\nsystemctl unmask/.test(sh)){s.fwMasked={};for(const u of ['swu-auto-upgrade.timer','swu-verifier-tv.service','was-background-update.path','fw-update-service.path','vdsystem-update-manager.timer','appbinary-manager.service'])s.fwActive[u]=true;s.unmaskRuns=(s.unmaskRuns||0)+1;return {exit_code:0,stdout:runHook(sh)};}
+  // The telemetry boot pass carries the hook install in the same command: both halves count.
+  if(/^touch \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=3;s.telRun=s.telStays;s.telOffRuns=(s.telOffRuns||0)+1;}
   if(sh.includes('vetro-hook:')||sh.includes('sha256sum'))return {exit_code:0,stdout:runHook(sh)};
   if(sh.includes('touch '+qw.MULTISCREEN_FLAG)){s.ms=true;if(/app_launcher -t com.samsung.tv.multiscreen/.test(sh))s.msRun=false;}
   if(sh.includes('rm -f '+qw.MULTISCREEN_FLAG))s.ms=false;
-  if(/^touch \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=3;s.telRun=s.telStays;s.telOffRuns=(s.telOffRuns||0)+1;}
   if(/^rm -f \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=0;s.telRun=8;}
   if(/^set -e\ntouch \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=true;if(!s.apStays){s.apSvc=false;s.apWeb=false;}s.apOffRuns=(s.apOffRuns||0)+1;}
   if(/^rm -f \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=false;s.apSvc=true;}
@@ -50,9 +51,9 @@ function store(){let data=null;return {readFileSync(){if(data===null)throw Error
 const noWait=()=>Promise.resolve();
 (async()=>{
  // Reading
- assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
- assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null});
- assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null},'what cannot be read stays unknown');
+ assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,apps:{}});
+ assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,apps:{}});
+ assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,apps:{}},'what cannot be read stays unknown');
  let t=tv(),io=store(),w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'boot-1'});
  let st=await w.read();assert.deepEqual([st.wins.firmware.status,st.wins.multiscreen.status,st.wins.ambient.status],['off','off','off']);assert.equal(st.wins.telemetry.status,'off');
 
@@ -82,7 +83,7 @@ const noWait=()=>Promise.resolve();
  assert.ok(t.s.calls.every(c=>!/systemctl mask (?!--runtime)/.test(c)),'no persistent mask');
  const stops=t.s.calls.join('\n').split('\n').filter(l=>l.includes('systemctl stop')).join('\n');
  assert.ok(t.s.calls.filter(c=>/systemctl mask --runtime/.test(c)&&/systemctl stop/.test(c)).every(c=>c.indexOf('systemctl mask --runtime')<c.indexOf('systemctl stop')),'masked before the stops, so a timer cannot start its unit again');
- assert.ok(/systemctl mask --runtime [^"]*swu-verifier-tv\.timer[^"]* >\/dev\/null 2>&1 \|\| for u in /.test(t.s.parseinfo)&&t.s.parseinfo.indexOf('mask --runtime')<t.s.parseinfo.indexOf('stop --no-block'),'the boot hook masks all units in one call, before its stop');
+ assert.ok(/if \(lock\) units = units " [^"]*swu-verifier-tv\.timer/.test(t.s.parseinfo)&&(t.s.parseinfo.match(/systemctl mask --runtime" units " >\/dev\/null 2>&1 \|\| for u in" units/g)||[]).length===1&&t.s.parseinfo.indexOf('mask --runtime')<t.s.parseinfo.indexOf('stop --no-block'),'the boot hook masks all units in one call, before its stop');
  assert.ok(/swu-auto-upgrade\.timer/.test(stops)&&/swu-core-tv\.service/.test(stops)&&/swu-service\.service/.test(stops)&&!/bootmode-system-update/.test(stops),'the installers are stopped, the boot-mode oneshot is left to the mask');
  // Early lock: the AT-HUB script is replaced by the awk one, the vendor original is kept and restored on Off
  assert.equal(r.hook,true);assert.equal(t.s.hookInstalled,true);assert.equal(t.s.parseinfoBak,PARSEINFO);
@@ -177,7 +178,9 @@ const noWait=()=>Promise.resolve();
  assert.ok(off.includes('/opt/usr/share/systemd/system/canalysis-daemon')&&off.includes('/opt/usr/share/systemd/system/pisa-service'),'the units\' own brake files');
  assert.ok(/for u in [^;]*contents-recognition-service[^;]*kpi-logging[^;]*; do systemctl stop/.test(off),'viewing-data and logging services are stopped');
  assert.ok(/contents-ui-detector-service/.test(off)&&/contents-ui-det /.test(off)&&/contents-ott-de /.test(off),'the picture detectors are stopped, including the one a recogniser starts without a unit');
- assert.ok(!/systemctl (mask|disable)|rm -rf|\/usr\/lib/.test(off),'nothing on the system image, nothing masked');
+ assert.ok(!/systemctl (mask (?!--runtime)|disable)|rm -rf|\/usr\/lib/.test(off),'nothing on the system image, runtime masks only');
+ assert.ok(/systemctl mask --runtime [^|]*issue_report_agent\.service[^|]*media-analytics-service\.service/.test(off)&&!/mask --runtime [^\n|]*data-service/.test(off),'units without a file of their own are masked at runtime (one call); data-service is only stopped');
+ assert.ok(off.indexOf('mask --runtime')<off.indexOf('do systemctl stop'),'masked before the stops');
  assert.equal((await w.read()).wins.telemetry.dnsBlocked,true);
  t.s.telRun=2;assert.equal((await w.read()).wins.telemetry.status,'partial','chosen but running again');
  t.s.telRun=0;r=await w.apply('telemetry',false);assert.equal(r.dns,'removed');assert.deepEqual(dns.domains,['ads.example.com']);assert.equal(t.s.telBrakes,0,'brake files removed');assert.equal(JSON.parse(io.data).telemetry,false);
@@ -219,7 +222,7 @@ const noWait=()=>Promise.resolve();
  w.remember('telemetry',true);w.busy=true;w.changing='firmware';
  assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
  // AirPlay (idea by zabique): the flag files keep the receiver down; partial while something still runs; boot stops the web app
- assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null}));
+ assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({apps:{},autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null}));
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'ap-1',skipAmbient:true});
  assert.equal((await w.read()).wins.airplay.status,'off');
  r=await w.apply('airplay',true);assert.equal(r.status,'on');assert.equal(JSON.parse(io.data).airplay,true);
