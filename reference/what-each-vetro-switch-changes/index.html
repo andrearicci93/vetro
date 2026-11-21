@@ -25,7 +25,7 @@
 <link rel="icon" type="image/png" href="/vetro/assets/icon.png">
 <link rel="apple-touch-icon" href="/vetro/assets/icon.png">
 <link rel="alternate" type="application/rss+xml" title="Vetro guides" href="/vetro/rss.xml">
-<link rel="stylesheet" href="/vetro/assets/site.css?v=mwqkrjzr">
+<link rel="stylesheet" href="/vetro/assets/site.css?v=mwqm03jd">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"What each Vetro switch changes on a Samsung TV (0.7.0)","description":"What each Vetro 0.7.0 Quick settings switch, Vetro UI option and Apps and processes action changes on a Samsung TV, how to undo it, and what is untested.","datePublished":"2026-11-10","dateModified":"2026-11-21","inLanguage":"en","keywords":"vetro quick settings, vetro switches, vetro apps and processes, vetro debloater","articleSection":"Reference","mainEntityOfPage":"https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/","image":"https://andrearicci93.github.io/vetro/assets/og.png","author":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]},"publisher":{"@type":"Organization","name":"Vetro","url":"https://andrearicci93.github.io/vetro/","logo":"https://andrearicci93.github.io/vetro/assets/icon.png","sameAs":["https://github.com/andrearicci93/vetro"]}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Vetro","item":"https://andrearicci93.github.io/vetro/"},{"@type":"ListItem","position":2,"name":"Reference","item":"https://andrearicci93.github.io/vetro/reference/"},{"@type":"ListItem","position":3,"name":"What each Vetro switch changes on a Samsung TV (0.7.0)","item":"https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/"}]}</script>
 </head>
@@ -79,7 +79,7 @@
 <td>Restore the TV and Remove Vetro</td>
 <td>Shows the changes Vetro recorded and puts them back after one confirmation, with a result for each step. Deleting saved data and pairing is a separate confirmation</td>
 <td>This is the undo</td>
-<td>Uninstalled apps, settings without a saved previous value and changes made by plugins need manual recovery. The 0.5.0 notes say it was not tried on a TV</td>
+<td>Uninstalled apps, settings without a saved previous value and changes made by Shards need manual recovery. The 0.5.0 notes say it was not tried on a TV</td>
 </tr>
 <tr>
 <td>Turn off the factory test</td>
@@ -98,13 +98,13 @@
 </thead><tbody><tr>
 <td>Block firmware and software updates</td>
 <td>Stops and masks every update service, not only the menu&#39;s Auto update: over-the-air firmware, Samsung&#39;s background app and package updates, app-binary downloads, system components and the preview updater. It turns the Auto update and app-binary switches off, removes download markers and applies the lock again after every restart: at power-on through the AT-HUB boot step where the TV has one (Tizen 6, 6.5 and 9), otherwise when Vetro&#39;s root agent starts</td>
-<td>Switch off: the services are unmasked and the previous Auto update value comes back. Restore the TV includes it</td>
-<td>Off by default and needs root. Read from the Tizen 6, 6.5 and 9 firmware; tried on a Q80A (firmware 2310.0) after a cold reboot; other models are not tried. While it is on, Samsung&#39;s firmware and app updates do not install. USB recovery is left working. A firmware update that lands anyway replaces everything it does (<a href="https://github.com/andrearicci93/vetro/issues/223" rel="noopener" target="_blank">#223</a>)</td>
+<td>Switch off: the services are unmasked and the previous Auto update value comes back. The vendor boot script returns once Quick boot is off too. Restore the TV turns both off</td>
+<td>Off by default and needs root. Read from the Tizen 6, 6.5 and 9 firmware. On a Q80A (firmware 2310.0) the masks were in place after a cold reboot, before Vetro&#39;s service; it was not tested against a forced update, and other models are not tried. While it is on, Samsung&#39;s firmware and app updates do not install. USB recovery is left working. A firmware update that lands anyway replaces everything it does (<a href="https://github.com/andrearicci93/vetro/issues/223" rel="noopener" target="_blank">#223</a>)</td>
 </tr>
 <tr>
 <td>Quick boot (Experimental)</td>
 <td>Creates the four boot-completion markers the TV waits for at about 10 seconds, through the same AT-HUB boot step, so Vetro and the launcher start earlier after power-on</td>
-<td>Switch off, or Restore the TV: the vendor boot step comes back</td>
+<td>Switch off. It shares the boot hook with Block firmware and software updates, so the vendor boot script comes back only once both are off. Restore the TV turns both off</td>
 <td>On a Q80A, Vetro started at 28 to 31 s instead of about 97 s, and the launcher at 42 to 45 s instead of about 103 s. Tested on a Q80A only; Tizen 6.5 and 9 untested, and a TV without the AT-HUB step cannot use it</td>
 </tr>
 <tr>
@@ -115,7 +115,7 @@
 </tr>
 <tr>
 <td>Allow SDB from the local network</td>
-<td>Lets developer tools on your network reach the TV&#39;s Samsung Debug Bridge, which installs apps and runs shell commands without Vetro pairing. The dashboard says turning it on improves compatibility with Apps2Samsung and TV-Store</td>
+<td>Opens Vetro&#39;s SDB tunnel to clients on your network, so developer tools reach the TV&#39;s Samsung Debug Bridge, which installs apps and runs shell commands. The tunnel does not use Vetro pairing. The dashboard says turning it on improves compatibility with Apps2Samsung and TV-Store</td>
 <td>Switch off, which disconnects them. Restore the TV turns it off</td>
 <td>Moved here from Developer settings in 0.7.0. Off by default, asks for confirmation and stays on after restarts until you switch it off. See <a href="/vetro/reference/vetro-security-model/">the security model</a></td>
 </tr>
@@ -237,8 +237,8 @@
 </tr>
 </thead><tbody><tr>
 <td>Require pairing</td>
-<td>Chooses automatic (default), always on or always off for the dashboard and API sign-in</td>
-<td>Choose another mode. Turning it off asks for confirmation. Restore the TV does not change it</td>
+<td>Decides whether the dashboard and API need a pairing code. It starts in automatic mode, where pairing turns on once Vetro has run on the TV; choosing On or Off overrides it</td>
+<td>Switch it back. Turning it off asks for confirmation. Restore the TV does not change it</td>
 <td>See <a href="/vetro/reference/vetro-security-model/">the security model</a></td>
 </tr>
 <tr>
@@ -260,7 +260,7 @@
 <li>Reported names come from public reports. None of them is in the firmware.</li>
 <li>One probable name, <code>gpm.samsungqbe.com</code>, is a guess at where the viewing-data service learns its servers. It is not in the firmware and not confirmed in traffic, so the dashboard labels it unverified.</li>
 </ul>
-<p>The filter refuses the names the TV uses for its internet check, its clock and Samsung&#39;s Certificate Manager. The software-update servers are not on that list, but blocking them stops firmware updates, so the project points to its Quick settings switch, now Block firmware and software updates, as the easier one to undo. The usage-log domain that Stop viewing-data collection adds to your saved list does not turn the filter on: DNS blocking stays your choice, and the data service can still run until it is on.</p>
+<p>The filter refuses the names the TV uses for its internet check, its clock and Samsung&#39;s Certificate Manager. The software-update servers are not on that list. The Q80A firmware references them, but blocking these names alone does not cover every update connection, so the project points to its Quick settings switch, now Block firmware and software updates, which covers the other update services and is easier to undo. The usage-log domain that Stop viewing-data collection adds to your saved list does not turn the filter on: DNS blocking stays your choice, and the data service can still run until it is on.</p>
 <h2 id="what-do-the-vetro-ui-options-change">What do the Vetro UI options change?<a class="anchor" href="#what-do-the-vetro-ui-options-change" aria-label="Link to section: What do the Vetro UI options change?">#</a></h2>
 <p>Everything Vetro draws on the TV is switched on the dashboard&#39;s Vetro UI page, which the side menu marks Preview: the launcher, live TV (Vetro TV Tuner), the volume bar and the number pad. Its Overview tab has one switch per part, and the <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/VETRO-UI.md" rel="noopener" target="_blank">Vetro UI guide</a> says some parts may not work on every TV yet. The page, the switch-over between launchers and the automatic remote interception are tested on the computer only. Report problems in a <a href="https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml" rel="noopener" target="_blank">GitHub issue</a> with the diagnostic report from Quick settings → Developer settings → Diagnostic report.</p>
 <p>The launcher is off until you turn it on, after an in-page warning. Turning it on closes Samsung&#39;s Home and switches off the Autorun Smart Hub setting so the TV no longer powers on to Samsung&#39;s Home. Vetro remembers the old value and puts it back only if it changed it. Nothing is removed: if the launcher stops, the Home key goes back to Samsung&#39;s Home. Only one launcher answers the Home key at a time: Samsung&#39;s Home, the Vetro launcher or another app. <a href="/vetro/reference/why-vetro-is-native/">Why the launcher is native</a> explains the design.</p>
@@ -281,9 +281,9 @@
 <tr>
 <td>Control center cards</td>
 <td>Launcher tab, Control center</td>
-<td>Down on the apps row opens up to three cards: Task manager (running apps by memory), Audio output, Picture mode and Sleep timer</td>
-<td>Each card has its own switch and is off until you turn it on</td>
-<td>The Vetro UI guide lists two or three cards and the Audio output card as still to be tried on a TV</td>
+<td>Once at least one card is on, Down on the apps row opens up to three cards side by side: Task manager (running apps by memory), Audio output, Picture mode and Sleep timer</td>
+<td>Each card has its own switch and is off until you turn it on. A Task manager that was on before the update stays on, as your only card</td>
+<td>The Vetro UI guide lists two or three cards side by side as still to be tried on a TV. Audio output: the Optical row and the switch to the TV speakers were tried on an S95C; the switch back and HDMI receivers are not tried yet</td>
 </tr>
 <tr>
 <td>Reduce motion</td>
@@ -328,10 +328,10 @@
 <td>The 0.5.0 notes said it was not tried by hand on a TV; owner reports on a <a href="/vetro/tested-tvs/qn90b/">QN90B</a> and a <a href="/vetro/tested-tvs/cu8070/">CU8070</a> say the Home key opened a custom launcher. It does not cover an app on the home screen at power-on (<a href="https://github.com/andrearicci93/vetro/issues/127" rel="noopener" target="_blank">#127</a>)</td>
 </tr>
 <tr>
-<td>Samsung Home switch</td>
-<td>Launcher tab</td>
+<td>Disable Samsung Home</td>
+<td>Launcher tab, Custom launcher, Samsung Home</td>
 <td>Disables Samsung&#39;s Home; asks for confirmation</td>
-<td>Switch Samsung Home back on</td>
+<td>Switch it off, and Samsung&#39;s Home is enabled again</td>
 <td>Keep Samsung&#39;s Home enabled: on the Q80A, disabling it can keep the TV from finishing its boot (see <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-0.5.0.md" rel="noopener" target="_blank">RELEASE-0.5.0.md</a>)</td>
 </tr>
 <tr>
@@ -339,7 +339,7 @@
 <td>Live TV tab</td>
 <td>One switch for Vetro&#39;s own tuner: Banner, Channel list, Channel pad, Info, TV guide and Audio toast drawn over the picture on the TV input. Samsung&#39;s tuner is never removed or changed</td>
 <td>Switch off: Samsung&#39;s tuner is back as it was</td>
-<td>The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/TUNER.md" rel="noopener" target="_blank">tuner guide</a> says it was developed and run on one Q80A with an antenna, that its wiring into Vetro is tested on the computer and not yet on a TV, and that cable and satellite are not covered</td>
+<td>The <a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/TUNER.md" rel="noopener" target="_blank">tuner guide</a> says it was developed and run on one Q80A with an antenna (DVB-T). The 0.7.0 CHANGELOG records Q80A tries of restarting the tuner, standby and wake, and the return from a Samsung TV Plus channel to the antenna. Cable, satellite and other models are untested</td>
 </tr>
 <tr>
 <td>Volume bar</td>
@@ -375,19 +375,19 @@
 </tr>
 <tr>
 <td>Uninstall</td>
-<td>Removes the package</td>
+<td>Removes the package and all its components</td>
 <td>Needs an installer to recover. Keep removed apps removed will keep it off until you select Allow again</td>
 </tr>
-</tbody></table></div><p>Protected system components cannot be touched, and uninstalling a package also protects its siblings. Quick settings and Apps and processes share one inventory, so an assistant disabled in one shows as disabled in the other.</p>
+</tbody></table></div><p>Protected system components cannot be touched. Uninstall removes the whole package with all its components, so Vetro refuses it when any component in that package is protected. Quick settings and Apps and processes share one inventory, so an assistant disabled in one shows as disabled in the other.</p>
 <h2 id="what-do-the-other-tabs-change">What do the other tabs change?<a class="anchor" href="#what-do-the-other-tabs-change" aria-label="Link to section: What do the other tabs change?">#</a></h2>
-<p>The Remapper turns a remote key into an app launch, or, since 0.7.0, into another key: an input (TV, HDMI 1 to 4), play and pause keys, Home, Back, OK, the arrows or volume (Send key in Step 2). Shortcuts survive restarts, and a key can also send an MQTT message (<a href="/vetro/control/remap-samsung-remote-buttons/">remapping Samsung remote buttons</a>). Settings and controls writes supported picture and advanced settings with read-back, and restore of saved values. The Home Assistant tab publishes the TV&#39;s state and accepts actions on exact topics (<a href="/vetro/control/home-assistant-samsung-tv/">Home Assistant and Samsung TV</a>). Vetro Shards (plugins) are third-party code with the same access as Vetro, off until you switch them on.</p>
+<p>The Remapper turns a remote key into an app launch, or, since 0.7.0, into another key: an input (TV, HDMI 1 to 4), play and pause keys, Home, Back, OK, the arrows or volume (Send key in Step 2). Shortcuts survive restarts, and a key can also send an MQTT message (<a href="/vetro/control/remap-samsung-remote-buttons/">remapping Samsung remote buttons</a>). Settings and controls writes supported picture and advanced settings with read-back, and restore of saved values. The Home Assistant tab publishes the TV&#39;s state and accepts actions on exact topics (<a href="/vetro/control/home-assistant-samsung-tv/">Home Assistant and Samsung TV</a>). Shards, on the dashboard&#39;s Vetro Shards page, are third-party extensions with the same access as Vetro, off until you switch them on.</p>
 <h2 id="is-every-switch-reversible">Is every switch reversible?<a class="anchor" href="#is-every-switch-reversible" aria-label="Link to section: Is every switch reversible?">#</a></h2>
 <p>Turning a switch back is the documented undo, but it only works while Vetro and its root helper stay reachable, and it is not a promise to recover from every failure, such as lost network access or a TV that stalls its boot. Restore the TV puts back what Vetro recorded and lists what needs manual recovery. A firmware update that installs anyway replaces the system software, and with it every change Vetro made, root included. Since 0.5.0 the dashboard asks for a six-digit code shown on the TV once the Vetro app has been seen; see <a href="/vetro/reference/vetro-security-model/">the security model</a>, and the <a href="/vetro/root/uninstall-vetro-samsung-tv/">uninstall guide</a> for removal.</p>
 <p>Next steps: <a href="/vetro/speed/remove-ads-samsung-tv-home-screen/">remove ads from the home screen</a>, <a href="/vetro/privacy/turn-off-acr-samsung-tv/">turn off ACR</a>, or check your model in the <a href="/vetro/tested-tvs/">tested TVs index</a>.</p>
 
 
 </div>
-<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what keeps installing anyway, how to block updates on the router, and what Vetro 0.7.0's update lock does when rooted.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Since 0.5.0 Vetro pairs browsers with a six-digit code shown on the TV, but traffic is plain HTTP. What pairing covers, what stays open, SDB, plugins.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a></div></section>
+<section class="related"><h2 id="rel-h">Related guides</h2><div class="cards"><a class="card" href="/vetro/speed/remove-ads-samsung-tv-home-screen/"><span class="eyebrow">Home screen and speed</span><strong>Remove ads from the Samsung TV home screen: your options</strong><span>Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home.</span></a><a class="card" href="/vetro/privacy/turn-off-acr-samsung-tv/"><span class="eyebrow">Privacy and tracking</span><strong>Turn off ACR on a Samsung TV: menu steps and limits</strong><span>Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs.</span></a><a class="card" href="/vetro/updates/stop-samsung-tv-auto-update/"><span class="eyebrow">Firmware updates</span><strong>Stop Samsung TV automatic firmware updates: options</strong><span>How to turn off Samsung TV Auto Update, what keeps installing anyway, how to block updates on the router, and what Vetro 0.7.0's update lock does when rooted.</span></a><a class="card" href="/vetro/control/remap-samsung-remote-buttons/"><span class="eyebrow">Remote, apps and smart home</span><strong>Remap Samsung remote buttons (Netflix, Prime and more)</strong><span>Samsung gives no setting to change the Netflix or Prime Video button. What the stock TV allows and how Vetro's Remapper reassigns keys on a rooted TV.</span></a><a class="card" href="/vetro/reference/vetro-security-model/"><span class="eyebrow">Reference</span><strong>Vetro security model: pairing, plain HTTP, trusted LAN</strong><span>Since 0.5.0 Vetro pairs browsers with a six-digit code shown on the TV, but traffic is plain HTTP. What pairing covers, what stays open, SDB, Shards.</span></a><a class="card" href="/vetro/root/uninstall-vetro-samsung-tv/"><span class="eyebrow">Rooting guides</span><strong>Uninstall Vetro from a Samsung TV and clean up leftovers</strong><span>Remove Vetro from a Samsung TV: restore its changes first, delete the app, turn Developer Mode off, and know what a plain uninstall leaves behind on the TV.</span></a></div></section>
 <nav class="pager" aria-label="More in this section"><a href="/vetro/reference/samsung-model-code-decoder/"><span>Previous</span>Samsung TV model number decoder: model code and firmware</a><a class="next" href="/vetro/reference/vetro-security-model/"><span>Next</span>Vetro security model: pairing, plain HTTP, trusted LAN</a></nav>
 <aside class="cta"><strong>Vetro is open source.</strong> It needs a rooted Samsung TV on Tizen 6 to 9 and is experimental software. <a href="/vetro/root/install-vetro-apps2samsung/">Install guide</a> · <a href="/vetro/tested-tvs/">Tested TVs</a> · <a href="https://github.com/andrearicci93/vetro" rel="noopener">GitHub</a></aside>
 </article>
