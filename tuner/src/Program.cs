@@ -61,7 +61,9 @@ namespace Tuner
             if (_shown != null && c != null && _shown.Id != c.Id) _previous = _shown;
             if (c != null && (_shown == null || _shown.Id != c.Id)) SubtitlesForget();
             _shown = c;
+            if (c != null && !c.Virtual) _lastAntenna = c;
         }
+        private static Channel _lastAntenna;   // the last channel on screen that is not a TV Plus one: where "live" goes back to
         private static int _startMajor;
         private static bool _resident, _active;
         // --quiet (the service adds it when this start replaces a tuner that was running: an update, a new build): for the first
@@ -994,6 +996,7 @@ namespace Tuner
         {
             _inputAt = Environment.TickCount64;
             Log("key " + code + (from != null ? " from " + from : ""));
+            if (code == KeyPower && _leftPlus) { _leftPlus = false; Log("live: Power, the TV input is read again"); }   // standby wakes on Samsung's last channel, maybe TV Plus
             Anim.FinishAll();                                           // a transition still running ends now: the key acts on the final screen
             if (!_active)
             {
@@ -1511,7 +1514,8 @@ namespace Tuner
                 case "guide": Activate(); if (GuideOpen) CloseGuide(); else OpenGuide(); break;
                 // As if the remote had sent it: for testing, and for a Remapper shortcut whose key would otherwise be injected into this window and lost.
                 case "key": int k; if (p.Length > 1 && int.TryParse(p[1], out k) && k > 0 && k < 768) OnKey(k, "pipe"); break;
-                case "resume": Resume(); break;                // the launcher closed without opening anything (see Resume)
+                case "resume": Resume(); break;
+                case "live": _liveAskedAt = Efl.ecore_time_get(); Resume(); LiveCheckChannel(); break;   // the launcher switched to the TV input: as resume, and see LeaveTvPlus                // the launcher closed without opening anything (see Resume)
                 case "rescan": WatchNodes(); break;            // the remote bridge has just made a new forwarding node: watch it now, not at the next 3 s scan
                 case "tune":
                     int n;
@@ -1702,9 +1706,15 @@ namespace Tuner
         {
             int status = ReadTargetStatus();
             if (_takeoverBroken) return;
-            bool tv = TvInput();
             FrontApp.Kind front = CurrentFront();
+            if (_leftPlus && front == FrontApp.Kind.Other) { _leftPlus = false; Log("live: another app came in front, the TV input is read again"); }
+            bool tv = TvInput();
             bool launcher = LauncherOpen();
+            if (_liveAskedAt >= 0)
+            {
+                if (_active || Efl.ecore_time_get() - _liveAskedAt > LiveWindowSeconds) _liveAskedAt = -1;
+                else if (!launcher && status >= 0 && Takeover.IsUp(status) && !tv && _lastSource == -1 && front == FrontApp.Kind.Tv && Ready()) { LeaveTvPlus("Samsung resumed a TV Plus channel (source -1)"); return; }
+            }
             if (launcher) front = FrontApp.Kind.Unknown;                 // the launcher has the keys: who else might is beside the point (Takeover)
             if (_active) KeysAreOurs();                                  // samples the focus, so the log shows when another window takes the keys
             bool up = status >= 0 && Takeover.IsUp(status) && tv;
@@ -1759,7 +1769,53 @@ namespace Tuner
                 return true;
             }
             if (source != _lastSource) { Log("input: source type " + (_lastSource == int.MinValue ? "first" : _lastSource.ToString()) + " -> " + source + (source == 0 ? " (TV)" : " (not the TV tuner)")); _lastSource = source; }
-            return source == 0;
+            if (source != -1 && _leftPlus) _leftPlus = false;            // a real input again (TV, HDMI): Samsung's own value counts
+            return source == 0 || (source == -1 && _leftPlus);
+        }
+
+        // ---- leaving Samsung TV Plus for the antenna when the TV input is chosen ----
+        // Samsung's live TV app resumes its last channel. When that is a Samsung TV Plus channel, the TV input chosen on the launcher (Live TV
+        // tile, Sources) brings TV Plus back, the source type stays -1 (an app's), and the tuner, which covers the antenna only, stays away.
+        // Seen on the Q80A (2026-11-21). The launcher then writes "live" instead of "resume": if within a few seconds Samsung's app is in front
+        // on such a channel, the tuner tunes the last antenna channel itself (that leaves TV Plus: checked on the Q80A) and shows. Samsung's
+        // own source type does not follow a tune made through the daemon (it stayed -1), so until another input or app comes, or Power, the
+        // tuner counts -1 with Samsung's app in front as its input.
+        private const double LiveWindowSeconds = 8;
+        private static double _liveAskedAt = -1;
+        private static bool _leftPlus;
+
+        /// <summary>
+        /// "live" with the source already 0: Samsung's app may still be on a TV Plus channel that the tuner itself tuned before (its own list
+        /// holds them; such a tune leaves the source at 0). The channel the daemon is on decides: a TV Plus one is left for the antenna.
+        /// </summary>
+        private static void LiveCheckChannel()
+        {
+            if (Tvs == null) return;
+            Work.Add(() =>
+            {
+                string status;
+                Channel cur = null;
+                try { cur = Tvs.ReadCurrent(out status); } catch (Exception ex) { Log("live: " + ex.Message); }
+                if (cur == null) return;
+                Ui(() =>
+                {
+                    Log("live: the TV is on " + cur.Major + (cur.Virtual ? " (TV Plus)" : " (antenna)"));
+                    if (!cur.Virtual || !Ready()) return;
+                    LeaveTvPlus("Samsung's app is on a TV Plus channel");
+                });
+            });
+        }
+
+        private static void LeaveTvPlus(string why)
+        {
+            _liveAskedAt = -1;
+            Channel c = _lastAntenna;
+            if (c == null && _list != null) for (int i = 0; i < _list.Count && c == null; i++) { Channel x = _list[i]; if (x != null && !x.Virtual) c = x; }
+            if (c == null) { Log("live: " + why + " and no antenna channel is known"); return; }
+            _leftPlus = true;
+            Log("live: " + why + ", tuning " + c.Major + " and showing the tuner");
+            Activate();
+            GoTo(c);   // not GoToOrShow: the tuner may think it is on that channel already while TV Plus plays
         }
 
         // ---- who has the keys: read on a thread of its own, the call asks the window manager over D-Bus ----

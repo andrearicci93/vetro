@@ -10,6 +10,7 @@ namespace Tuner.Core
         public int Major;       // the number the viewer types
         public string Name;
         public bool Hidden;     // not shown in the list and skipped by CH+/-
+        public bool Virtual;    // a Samsung TV Plus channel (TVS channel type Virtual): streamed and drawn by Samsung, not the antenna
         public int Onid = -1, Tsid = -1, Sid = -1;   // the DVB triplet when the daemon gave it (-1: not known); only the logo lookup uses it
     }
 

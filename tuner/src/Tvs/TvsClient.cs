@@ -110,7 +110,8 @@ namespace Tuner.Tvs
             return new Channel
             {
                 Id = d.GetServiceId(), Major = d.GetMajor(), Name = d.Get(ServiceDataTag.ServiceName) as string ?? "",
-                Onid = Number(d, ServiceDataTag.OriginalNetworkID), Tsid = Number(d, ServiceDataTag.TransportStreamID), Sid = Number(d, ServiceDataTag.ProgramNumber)
+                Onid = Number(d, ServiceDataTag.OriginalNetworkID), Tsid = Number(d, ServiceDataTag.TransportStreamID), Sid = Number(d, ServiceDataTag.ProgramNumber),
+                Virtual = Number(d, ServiceDataTag.ChannelType) == (int)ChannelType.Virtual
             };
         }
 
@@ -449,6 +450,7 @@ namespace Tuner.Tvs
             c.Fetch((int)ServiceDataTag.OriginalNetworkID);      // with the next two: the DVB triplet, the second way to find a channel's logo
             c.Fetch((int)ServiceDataTag.TransportStreamID);
             c.Fetch((int)ServiceDataTag.ProgramNumber);
+            c.Fetch((int)ServiceDataTag.ChannelType);            // Virtual = a Samsung TV Plus channel
             return c;
         }
     }

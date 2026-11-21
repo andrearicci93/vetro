@@ -542,16 +542,18 @@ namespace Launcher
         /// Without this, Home then Back left Samsung's own live TV app answering the remote until a CH key. Never sent while a window of ours
         /// is still on screen. A plain non-blocking write: nothing happens when the tuner is not running.
         /// </summary>
-        private static void ResumeTuner(string why)
+        /// <param name="live">The TV input was chosen (Live TV tile, Sources): "live", so that the tuner also leaves a Samsung TV Plus channel
+        /// that Samsung's app resumed (the TV input alone keeps it).</param>
+        private static void ResumeTuner(string why, bool live = false)
         {
             if (_dockMapped || (_pad != null && _pad.IsOnScreen)) return;
             int fd = Libc.open(TunerPipe, Libc.O_WRONLY | Libc.O_NONBLOCK);
             if (fd < 0) return;
             try
             {
-                byte[] b = System.Text.Encoding.ASCII.GetBytes("resume\n");
+                byte[] b = System.Text.Encoding.ASCII.GetBytes(live ? "live\n" : "resume\n");
                 Libc.write(fd, b, (UIntPtr)b.Length);
-                Log("tuner: resume (" + why + ")");
+                Log("tuner: " + (live ? "live" : "resume") + " (" + why + ")");
             }
             finally { Libc.close(fd); }
         }
@@ -1522,7 +1524,7 @@ namespace Launcher
                     _pendingLaunch = null;
                     if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
                     if (_hideFor123) _hideFor123 = false;
-                    else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId);
+                    else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId, pending != null && pending.SourceType == 0);
                     ReloadWhenHidden();
                     HomePictureOff();
                 }
