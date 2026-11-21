@@ -292,11 +292,17 @@ namespace Launcher
             catch (Exception) { }
         }
 
+        private static readonly byte[] SmackStar = { (byte)'*' };
+
         private static void SetupFifo()
         {
             Libc.unlink(_fifoPath);
             if (Libc.mkfifo(_fifoPath, 438u) != 0) { Log("mkfifo failed: " + Marshal.GetLastWin32Error()); return; }
             Libc.chmod(_fifoPath, 438u);   // 0666: it only accepts show/hide/toggle
+            // On Tizen 9 SMACK enforcing, /home/owner transmutes new files to User::Home (rxl-only for User::Pkg::vetrotvapp),
+            // blocking wrt-service from writing volume/123 commands to the FIFO. Labeling the FIFO "*" (matching /tmp) lets
+            // the unprivileged service write directly; safely ignored on non-SMACK systems.
+            Libc.setxattr(_fifoPath, "security.SMACK64", SmackStar, (UIntPtr)SmackStar.Length, 0);
             // O_RDWR keeps a writer open ourselves, so the descriptor never reports EOF when a client disconnects.
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
