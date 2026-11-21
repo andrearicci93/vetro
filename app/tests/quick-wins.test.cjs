@@ -182,6 +182,13 @@ const noWait=()=>Promise.resolve();
  assert.ok(/systemctl mask --runtime [^|]*issue_report_agent\.service[^|]*media-analytics-service\.service/.test(off)&&!/mask --runtime [^\n|]*data-service/.test(off),'units without a file of their own are masked at runtime (one call); data-service is only stopped');
  assert.ok(off.indexOf('mask --runtime')<off.indexOf('do systemctl stop'),'masked before the stops');
  assert.equal((await w.read()).wins.telemetry.dnsBlocked,true);
+ // The filter whose only domain was that host: off switches the filter off (nothing left to block), on switches it on again (Q80A, 2026-11-22)
+ {const d2=fakeDns({enabled:true,applied:true,domains:[qw.TELEMETRY_HOST]}),t2=tv(),w2=new qw.Wins(t2.execute,{fs:store(),sleep:noWait,dns:d2});
+  w2.save({telemetry:true,telemetryDns:true});
+  await w2.apply('telemetry',false);assert.equal(d2.enabled,false);assert.deepEqual(d2.domains,[]);
+  const back=await w2.apply('telemetry',true);assert.equal(back.dns,'blocked');assert.equal(d2.enabled,true,'the filter is on again');assert.deepEqual(d2.domains,[qw.TELEMETRY_HOST]);
+  const d3=fakeDns({enabled:false,domains:[]}),w3=new qw.Wins(tv().execute,{fs:store(),sleep:noWait,dns:d3});
+  assert.equal((await w3.apply('telemetry',true)).dns,'saved');assert.equal(d3.enabled,false,'a filter the owner keeps off stays off');}
  t.s.telRun=2;assert.equal((await w.read()).wins.telemetry.status,'partial','chosen but running again');
  t.s.telRun=0;r=await w.apply('telemetry',false);assert.equal(r.dns,'removed');assert.deepEqual(dns.domains,['ads.example.com']);assert.equal(t.s.telBrakes,0,'brake files removed');assert.equal(JSON.parse(io.data).telemetry,false);
  assert.ok(t.s.calls.some(c=>/^rm -f /.test(c)&&/for u in [^;]*pisa-service[^;]*; do systemctl start/.test(c)&&!/systemctl start data-service/.test(c)),'undo starts the services again, data-service comes back by itself');

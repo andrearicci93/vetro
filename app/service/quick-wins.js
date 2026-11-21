@@ -282,11 +282,12 @@ Wins.prototype.load = function () {
             firmwareBoot: typeof o.firmwareBoot === 'string' ? o.firmwareBoot : null,
             ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null,
             remotesupport: o.remotesupport === true, delivery: o.delivery === true, wifipresence: o.wifipresence === true,
+            telemetryDnsWasOn: o.telemetryDnsWasOn === true,
             // The delivery apps Vetro disabled itself: only these are enabled again when the switch is off.
             deliveryApps: Array.isArray(o.deliveryApps) ? o.deliveryApps.filter(function (id) { return MASK_WINS.delivery.apps.indexOf(id) >= 0; }) : []
         };
     } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, quickboot: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null,
-        remotesupport: false, delivery: false, wifipresence: false, deliveryApps: []}; }
+        remotesupport: false, delivery: false, wifipresence: false, deliveryApps: [], telemetryDnsWasOn: false}; }
 };
 Wins.prototype.save = function (patch) {
     var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
@@ -629,11 +630,13 @@ Wins.prototype.telemetryDns = function (on) {
         var has = d.domains.indexOf(TELEMETRY_HOST) >= 0;
         if (on) {
             if (has) return d.enabled && d.applied ? 'blocked' : 'saved';
-            return dns.apply(d.enabled, d.domains.concat([TELEMETRY_HOST])).then(function () { self.save({telemetryDns: true}); return d.enabled ? 'blocked' : 'saved'; });
+            // The filter Vetro switched off when this host was its only domain (below) is switched on again with it.
+            var enable = d.enabled || (self.load().telemetryDnsWasOn && !d.domains.length);
+            return dns.apply(enable, d.domains.concat([TELEMETRY_HOST])).then(function () { self.save({telemetryDns: true, telemetryDnsWasOn: false}); return enable ? 'blocked' : 'saved'; });
         }
         if (!has || !self.load().telemetryDns) { self.save({telemetryDns: false}); return 'unchanged'; }
         var rest = d.domains.filter(function (x) { return x !== TELEMETRY_HOST; });
-        return dns.apply(d.enabled && rest.length > 0, rest).then(function () { self.save({telemetryDns: false}); return 'removed'; });
+        return dns.apply(d.enabled && rest.length > 0, rest).then(function () { self.save({telemetryDns: false, telemetryDnsWasOn: !!d.enabled && !rest.length}); return 'removed'; });
     }).catch(function () { return 'failed'; });
 };
 

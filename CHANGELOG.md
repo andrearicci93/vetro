@@ -17,6 +17,7 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 - **Stop viewing-data collection** also stops `abnormal_user_behavior`, `issue_report_agent` (diagnostic reports) and `media-analytics-service`, and the services without a file of their own are now masked until the next restart and masked again about 10 s into every boot, through the boot step the update lock uses, instead of being stopped once Vetro's service is up (about 95 s on a Q80A). `data-service` is still only stopped.
 - **New switches**: *Disable Samsung remote support* and *Disable Wi-Fi presence* (Privacy and ads), *Disable background app delivery* (General → Essential settings). Each shows only on a TV that has its services. Remote PC is left alone.
 - **Samsung TV Plus** off also turns off Samsung's "start TV Plus at power-on" setting; on, or Restore the TV, puts back the value it had.
+- **Stop viewing-data collection, off and on again, keeps the DNS filter on.** When the usage-log host was the filter's only domain, turning the switch off emptied the list and switched the filter off, and turning it on again added the host back but left the filter off (found on a Q80A while benchmarking 0.7.1). Vetro now switches the filter back on if it was the one that switched it off.
 - **A stopped app is checked by its own process**: a switch turned off reports a member whose process is still there after the stop, by the process's label, instead of trusting the stop's answer.
 
 ### Updates
