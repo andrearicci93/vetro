@@ -331,7 +331,18 @@ var jobs = [
 ];
 var SERVICE_REACH = jobs.map(function (j) { return j[0]; }).indexOf('serviceReach');   // the one step that waits for another
 var later = ['packages', function () { return cb(function (ok, ko) { tizen.package.getPackagesInfo(ok, ko); }).then(function (p) {
-    report.packages = p.map(function (x) { return {id: x.id, version: x.version, totalSize: x.totalSize, author: x.author}; });
+    // On Tizen 9, PackageInformation.totalSize does a ~500 ms synchronous IPC check per package (400+ packages freeze the UI for >3 min).
+    // Stop reading totalSize once a getter is slow (>20 ms) or the 50 ms budget is spent; id/version/author still return in ~1 ms.
+    var readSize = true, deadline = Date.now() + 50;
+    report.packages = p.map(function (x) {
+      var sz = null;
+      if (readSize) {
+        var t0 = Date.now();
+        try { sz = x.totalSize; } catch (e) { sz = null; }
+        if (Date.now() - t0 > 20 || Date.now() > deadline) readSize = false;
+      }
+      return {id: x.id, version: x.version, totalSize: sz, author: x.author};
+    });
     return p.length; }); }, 30000, 'Package list'];
 var LABELS = {};
 jobs.concat([later]).forEach(function (j) { LABELS[j[0]] = j[3]; });
