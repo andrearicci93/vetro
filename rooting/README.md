@@ -57,8 +57,8 @@ in the [release audit](../app/docs/RELEASE-AUDIT.md), not a universal guarantee.
 
 The integration multiplexes its SDB connection through port 26201. Network access
 is off by default: only loopback clients are admitted. Enable **Quick settings →
-Developer settings → Developer access → Allow SDB from the local network** to connect from
-Apps2Samsung or Samsung's SDK. The choice persists across restarts in
+General → Essential settings → Allow SDB from the local network** to connect from
+Apps2Samsung, TV-Store or Samsung's SDK. The choice persists across restarts in
 `/opt/usr/home/owner/share/vetro-sdb-access.json`. Turning it off drops network
 clients immediately; Vetro's internal connection remains alive. Restore the TV
 also turns it off before data removal.

@@ -1047,14 +1047,19 @@ namespace Launcher.Tests
                 uint centre = tiled[s / 2 * s + s / 2];
                 T.True(((centre >> 16) & 0xFF) > 200, "the logo sits in the middle, still light");
                 T.True(((tiled[s / 2 * s + 6] >> 16) & 0xFF) < 100, "and the tile around it is dark");
-                // Not square: never cropped, always ends square.
+                // Not square but opaque: it fills the tile, cut to its middle square, and ends square.
                 var wide = new uint[100 * 50];
-                for (int i = 0; i < wide.Length; i++) wide[i] = 0xFFFF0000u;
+                for (int y = 0; y < 50; y++) for (int x = 0; x < 100; x++) wide[y * 100 + x] = x < 25 ? 0xFF0000FFu : x >= 75 ? 0xFF00FF00u : 0xFFFF0000u;
                 var sq = IconPrep.Prepare(wide, 100, 50);
                 T.Eq(sq.Length, 100 * 100, "a wide icon becomes a square of its longer side");
-                T.Eq(sq[50 * 100 + 50], 0xFFFF0000u, "the whole picture sits in the middle");
-                T.Eq(sq[5 * 100 + 50] >> 24, 255u, "the blurred fill covers the band above it (no transparent bars)");
+                T.Eq(sq[50 * 100 + 50], 0xFFFF0000u, "its middle fills the tile");
+                T.Eq(sq[5 * 100 + 50], 0xFFFF0000u, "up to the top: no band above it");
+                T.Eq(sq[50 * 100 + 3], 0xFFFF0000u, "the sides outside the middle square are cut");
                 T.Eq(sq[0] >> 24, 0u, "and the corners are rounded");
+                var tall = new uint[40 * 80];
+                for (int y = 0; y < 80; y++) for (int x = 0; x < 40; x++) tall[y * 40 + x] = y < 20 || y >= 60 ? 0xFF0000FFu : 0xFF00FF00u;
+                var tq = IconPrep.Prepare(tall, 40, 80);
+                T.Eq(tq[2 * 80 + 40], 0xFF00FF00u, "a tall one is cut the same way, top and bottom");
                 // A banner as big as the screen: brought down, then treated the same way.
                 var banner = new uint[1920 * 1080];
                 for (int i = 0; i < banner.Length; i++) banner[i] = (i / 1920) < 540 ? 0xFF40C0FFu : 0xFFC0E0FFu;

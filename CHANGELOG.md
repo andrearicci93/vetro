@@ -50,6 +50,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Quick settings
 
+- **Allow SDB from the local network is now in General → Essential settings**, no longer under Developer settings: turning it on improves compatibility with Apps2Samsung and TV-Store.
 - **Apps you don't use: switch them off or delete them.** Disable has a switch for Netflix, Prime Video, YouTube, Apple TV, Disney+, Spotify, Xbox, GeForce NOW, Amazon Luna, Samsung Health, the Internet browser and Gallery, with their background services. The new **Uninstall** tab deletes the same apps and the e-Manual (21 to 124 MB). Each TV only lists the apps it has and allows removing.
 - **Samsung TV Plus** is one switch (the app and the two services behind it, about 25 MB).
 - **Vision AI** (2024 and later TVs that have it). Holding Home, or the AI button of the newer remotes, opens Samsung's AI screens (Click to Search, the AI companion); turning off Bixby does not stop it. The new switch on the Disable tab turns those apps off, so nothing opens. A short Home press works as before, and the Vision AI row of Samsung's Home stays.
@@ -100,6 +101,7 @@ Vetro now draws its own TV: a launcher with your own row and a Control center, a
 
 ### Fixes
 
+- **App icons that are not square fill their tile.** A wide or tall icon was shown whole with blurred bands above and below it, which some TVs drew as coloured noise; it now fills the tile, cut to its middle.
 - **The diagnostic report keeps every part of the launcher, tuner and remote logs in place.** When two parts in a row were empty, the later ones moved up one, so the remote helper's result came back empty. The tuner's part now also says which input the TV reports and what Live TV did with a Samsung TV Plus channel.
 - **Live TV leaves Samsung TV Plus.** Samsung's live TV app goes back to its last channel, so after a Samsung TV Plus channel the Live TV tile and TV in Sources brought TV Plus back, with Samsung's own screens instead of Vetro's tuner. The launcher now tells the tuner that you chose the TV input; when the channel on air is a TV Plus one, the tuner switches to the last antenna channel you watched with it (or the first one) and comes up. The Samsung TV Plus tile still opens TV Plus. Tried on a Q80A.
 - **Holding Up or Down in the Channel list runs down the list again** ([#268](https://github.com/andrearicci93/vetro/pull/268), by [swiezaczek](https://github.com/swiezaczek)). On remotes that send a release for every key, the 0.7.0 previews moved one row only, because the guard against double steps also stopped the hold's own steps. Holding CH and moving in the TV guide were not affected. Tried on a Q80A.

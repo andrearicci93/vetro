@@ -15,6 +15,7 @@ The single record of how Vetro looks. Open `index.html` in a browser to see it; 
 - **Dashboard** (`app/service/dashboard.js`): the token block is copied into the page's `:root`, then short names (`--bg`, `--surface`, `--border`, `--accent`…) point at it. `app/tests/dashboard-v2.test.cjs` fails if the page and `tokens.css` drift apart, so change `tokens.css` first and then the page.
 - **Icon**: `app/icon.png` is the app icon. The service serves it at `/icon.png`; the dashboard shows it in the sidebar and as the page icon.
 - **Launcher** (`dock/`): it has its own look, chosen in `dock/designer` and recorded in `dock/designer/chosen.json`. `dock/src/Core/Design.cs` is the single source for the native code. Its colours follow the icons it shows, not these tokens.
+- **App icons in the launcher** (`dock/src/Core/IconPrep.cs`): a square icon fills its tile; an opaque icon that is not square (a banner) fills the tile too, cut to its middle square (never letterboxed: the blurred bands came out as noise on the TV); a logo on transparency sits smaller, whole, on a dark glass tile. Corners rounded and the thin rim on all three.
 
 ## Rules
 

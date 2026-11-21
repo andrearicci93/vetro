@@ -52,13 +52,10 @@ namespace Launcher.Core
                 outPx = w == side ? (uint[])src.Clone() : Scale(src, w, h, side, side);
             else if (filled)
             {
-                // Not square but opaque (a wide banner): never cropped. A blurred stretch of the picture fills
-                // the square and the whole picture sits in the middle of it.
-                outPx = Scale(src, w, h, side, side);
-                Blur(outPx, side, Math.Max(2, side / 10));
-                int fw = w >= h ? side : Math.Max(1, (int)Math.Round(side * (double)w / h));
-                int fh = h >= w ? side : Math.Max(1, (int)Math.Round(side * (double)h / w));
-                Over(outPx, side, Scale(src, w, h, fw, fh), fw, fh, (side - fw) / 2, (side - fh) / 2);
+                // Not square but opaque (a wide banner): it fills the tile, cut to its middle square. A blurred stretch of the
+                // picture above and below the whole one came out as coloured noise on the TV (a Discord report, 2026-11-21).
+                int c = Math.Min(w, h);
+                outPx = Scale(Crop(src, w, (w - c) / 2, (h - c) / 2, c, c), c, c, side, side);
             }
             else
             {
@@ -243,6 +240,14 @@ namespace Launcher.Core
         }
 
         /// <summary>Bilinear resize of premultiplied ARGB, with edge clamping.</summary>
+        /// <summary>The <paramref name="cw"/> x <paramref name="ch"/> part of a <paramref name="w"/>-wide picture that starts at (x, y).</summary>
+        public static uint[] Crop(uint[] src, int w, int x, int y, int cw, int ch)
+        {
+            var px = new uint[cw * ch];
+            for (int r = 0; r < ch; r++) Array.Copy(src, (y + r) * w + x, px, r * cw, cw);
+            return px;
+        }
+
         public static uint[] Scale(uint[] src, int w, int h, int dw, int dh)
         {
             var dst = new uint[dw * dh];

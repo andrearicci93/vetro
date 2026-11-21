@@ -19,7 +19,7 @@ that browser, so nobody is locked out; existing paired keys remain valid either 
 Restore the TV does not change it. This switch does not control SDB access.
 
 The experimental SDB tunnel accepts only loopback clients by default. A paired
-user can enable **Quick settings → Developer settings → Developer access → Allow SDB
+user can enable **Quick settings → General → Essential settings → Allow SDB
 from the local network**. The choice persists across service restarts. SDB itself
 has no Vetro pairing: any reachable client then gets developer access to the TV.
 Turning the switch off disconnects existing network SDB clients while retaining

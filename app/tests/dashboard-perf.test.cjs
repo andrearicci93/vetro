@@ -52,25 +52,25 @@ const since = n => calls.slice(n).filter(u => u !== '/status');
 
 (async () => {
   await settle();
-  // At start (Quick settings, General): the factory banner and General's two reads, nothing of the other tabs, no shortcut list
+  // At start (Quick settings, General): the factory banner and General's three reads (SDB access sits in Essential settings), nothing of the other tabs, no shortcut list
   const QUICK = ['/factory-test', '/leftovers', '/wins', '/hbbtv', '/dns', '/keep-removed', '/pairing-mode', '/sdb-access', '/quick/uninstall'];
-  assert.deepEqual(calls.filter(u => QUICK.includes(u)).sort(), ['/factory-test', '/leftovers', '/wins'], 'the first page reads only what General shows');
+  assert.deepEqual(calls.filter(u => QUICK.includes(u)).sort(), ['/factory-test', '/leftovers', '/sdb-access', '/wins'], 'the first page reads only what General shows');
   assert.ok(!calls.includes('/remap'), 'the shortcut list is read by the Remapper and Home Assistant pages, not at start');
   // Each tab reads its own, once: what another tab read in the last 30 s is not asked again
-  const tabs = [['privacy', ['/dns']], ['voice', []], ['memory', ['/hbbtv']], ['uninstall', ['/quick/uninstall', '/keep-removed']], ['developer', ['/pairing-mode', '/sdb-access']], ['general', []]];
+  const tabs = [['privacy', ['/dns']], ['voice', []], ['memory', ['/hbbtv']], ['uninstall', ['/quick/uninstall', '/keep-removed']], ['developer', ['/pairing-mode']], ['general', []]];
   for (const [t, want] of tabs) { const n = calls.length; sandbox.showQuickTab(t); await settle(); assert.deepEqual(since(n).sort(), want.slice().sort(), 'the ' + t + ' tab reads ' + (want.join(' ') || 'nothing')); }
   let n = calls.length; sandbox.switchPanel('vetroui'); await settle(); n = calls.length; sandbox.switchPanel('quick'); await settle();
   assert.deepEqual(since(n), [], 'Quick settings opened again within 30 s asks the TV nothing');
   // Answers older than 30 s are read again; a failed read is read again at the next open
   Object.keys(sandbox.quickReadAt).forEach(k => { sandbox.quickReadAt[k] -= 31000; });
   failLeftovers = 1; n = calls.length; sandbox.switchPanel('quick'); await settle();
-  assert.deepEqual(since(n).sort(), ['/factory-test', '/leftovers', '/wins'], 'old answers are read again');
+  assert.deepEqual(since(n).sort(), ['/factory-test', '/leftovers', '/sdb-access', '/wins'], 'old answers are read again');
   assert.match(el('quickStorage').innerHTML, /busy/, 'the failed read is said');
   n = calls.length; sandbox.switchPanel('quick'); await settle();
   assert.deepEqual(since(n), ['/leftovers'], 'only the failed read is asked again');
   // Restore forgets every answer: the tab on screen is read again at once
   n = calls.length; sandbox.loadQuick(true); await settle();
-  assert.deepEqual(since(n).sort(), ['/factory-test', '/leftovers', '/wins']);
+  assert.deepEqual(since(n).sort(), ['/factory-test', '/leftovers', '/sdb-access', '/wins']);
 
   // A section is written only when its markup changed
   const ids = ['quickStorage', 'quickControl', 'quickRestore', 'quickRemove', 'quickTracking', 'quickVoice', 'quickMemory', 'quickKeep', 'quickUninstall', 'quickPairing', 'quickSdb'];
