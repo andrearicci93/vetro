@@ -1,0 +1,10 @@
+{
+  "id": "youtube",
+  "name": "Ad-free YouTube",
+  "version": "0.3.0",
+  "apiVersion": 1,
+  "description": "Samsung's own YouTube with ads blocked, Shorts hidden and sponsors skipped (TizenTube). Local proxy; fetches one pinned script from cdn.jsdelivr.net.",
+  "author": "andrearicci93",
+  "permissions": ["exec"],
+  "ui": { "label": "Ad-free YouTube" }
+}

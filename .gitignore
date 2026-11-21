@@ -47,3 +47,8 @@ __pycache__/
 /dock/**/obj/
 /tuner/**/bin/
 /tuner/**/obj/
+
+# Design tooling and local firmware dumps
+.impeccable/
+/PRODUCT.md
+/dump/

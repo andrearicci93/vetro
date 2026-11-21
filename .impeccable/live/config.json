@@ -1,6 +1,0 @@
-{
-  "files": ["app/service/dashboard.js"],
-  "insertBefore": "</body>",
-  "commentSyntax": "html",
-  "cspChecked": true
-}
