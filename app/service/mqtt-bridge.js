@@ -159,6 +159,13 @@ MqttBridge.prototype._discover = function () {
         availability:[{topic:client.availabilityTopic},{topic:prefix+'/channel/availability'}],availability_mode:'all',
         payload_available:'online',payload_not_available:'offline'}),{retain:true});client.discoveryTopics.push(channelTopic);
 
+    // The control: a number box in Home Assistant (1-9999) that sends the channel to <prefix>/<identity>/channel/set. Not retained, no state
+    // of its own (the "Channel" sensor above shows what is on screen), so Home Assistant keeps the last value it sent.
+    var tuneTopic='homeassistant/number/'+client.identity+'/channel-set/config';
+    client.publish(tuneTopic,JSON.stringify({name:'Tune channel',command_topic:prefix+'/channel/set',unique_id:client.identity+'_channel-set',device:device,
+        icon:'mdi:television-guide',min:1,max:9999,step:1,mode:'box',retain:false,optimistic:true,
+        availability_topic:client.availabilityTopic,payload_available:'online',payload_not_available:'offline'}),{retain:true});client.discoveryTopics.push(tuneTopic);
+
     this.discovered = true;
 };
 
@@ -229,6 +236,11 @@ MqttBridge.prototype.start = function () {
     if (this.config && this.config.enabled !== false) this._connect();
 };
 
+// Where a client (Home Assistant, a script) sends "go to channel N": <prefix>/<identity>/channel/set, the payload is the number.
+MqttBridge.prototype.channelCommandTopic = function () {
+    return this.config && this.identity ? (this.config.topicPrefix || 'vetro') + '/' + this.identity + '/channel/set' : null;
+};
+
 MqttBridge.prototype._connect = function () {
     var self = this;
     this.stopClient();
@@ -253,6 +265,8 @@ MqttBridge.prototype._connect = function () {
         if (!self.running || self.client !== client) return;
         self.connected=true;self.state='connected';self.connectedAt=Date.now();self.lastError=null;self.event('connected','MQTT connection confirmed');
         self.subscriptions=self.topics.map(function(t){client.subscribe(t);return {topic:t,status:'pending'};});
+        // The channel command is always listened to (one extra subscription), whatever the rules are.
+        var cmd=self.channelCommandTopic();if(cmd&&self.topics.indexOf(cmd)<0){client.subscribe(cmd);self.subscriptions.push({topic:cmd,status:'pending'});}
         self.discovered = false;self.lastPresence = null;self.lastChannel = null;self.publish(self.availabilityTopic,'online',{retain:true});
         self._publishTelemetry();
         self._discover();
@@ -299,7 +313,7 @@ MqttBridge.prototype.stop = function () {
 MqttBridge.prototype.event=function(type,message){this.events.push({ts:Date.now(),type:type,message:message});if(this.events.length>50)this.events.shift();};
 MqttBridge.prototype.status=function(){return {identity:this.identity,identityPersistent:!!(this.config&&this.config.clientId)||this.legacyIdentity.persistent,availabilityTopic:this.availabilityTopic,state:this.state,connected:this.connected,lastError:this.lastError,connectedAt:this.connectedAt,retryAt:this.retryAt,lastMessageAt:this.lastMessageAt,lastPublishAt:this.lastPublishAt,sent:this.sent,received:this.received,subscriptions:this.subscriptions.slice(),events:this.events.slice()};};
 MqttBridge.prototype.configure=function(cfg){this.config=cfg;this._connect();};
-MqttBridge.prototype.setTopics=function(topics){var next=[],seen={};(topics||[]).forEach(function(t){if(t&&!seen[t]){seen[t]=true;next.push(t);}});next.sort();if(JSON.stringify(next)===JSON.stringify(this.topics))return;var prev=this.topics||[];this.topics=next;if(this.connected&&this.client){var client=this.client,self=this;prev.forEach(function(t){if(!seen[t]&&typeof client.unsubscribe==='function')client.unsubscribe(t);});this.subscriptions=this.subscriptions.filter(function(s){return !!seen[s.topic];});next.forEach(function(t){if(prev.indexOf(t)<0){self.subscriptions.push({topic:t,status:'pending'});client.subscribe(t);}});return;}if(this.running&&this.config)this._connect();};
+MqttBridge.prototype.setTopics=function(topics){var next=[],seen={};(topics||[]).forEach(function(t){if(t&&!seen[t]){seen[t]=true;next.push(t);}});next.sort();if(JSON.stringify(next)===JSON.stringify(this.topics))return;var prev=this.topics||[];this.topics=next;if(this.connected&&this.client){var client=this.client,self=this;prev.forEach(function(t){if(!seen[t]&&typeof client.unsubscribe==='function')client.unsubscribe(t);});var cmdTopic=this.channelCommandTopic();this.subscriptions=this.subscriptions.filter(function(s){return !!seen[s.topic]||s.topic===cmdTopic;});next.forEach(function(t){if(prev.indexOf(t)<0){self.subscriptions.push({topic:t,status:'pending'});client.subscribe(t);}});return;}if(this.running&&this.config)this._connect();};
 MqttBridge.prototype.publish=function(topic,payload,opts){if(!this.connected||!this.client)throw Error('MQTT disconnected');this.client.publish(topic,payload,opts);this.sent++;this.lastPublishAt=Date.now();};
 
 function parseMeminfo(s) {

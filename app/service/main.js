@@ -1535,7 +1535,16 @@ var inputRestoreTimer=setInterval(restoreInput,5000);if(inputRestoreTimer.unref)
 // MQTT bridge: publishes telemetry + Home Assistant discovery when a broker
 // is configured (persistent owner config, /tmp fallback). No-op without config.
 var mqttLastTrigger=Object.create(null);
+// <prefix>/<identity>/channel/set with a number: go to that channel (key-routing.js). Same limits as a rule: queue of 8, one per 500 ms.
+function runChannelCommand(m){
+ var n=keyRouting.channelNumber(m.payload.toString('utf8')),cmd=n&&keyRouting.channelCommand(n,control.injectCommand);
+ if(!cmd){bridge.event('error','Channel command ignored: '+m.payload.toString('utf8').slice(0,40));return;}
+ var now=Date.now();if(pendingActions>=8||now-(mqttLastTrigger[m.topic]||0)<500){bridge.event('throttled','Trigger rate limited: '+m.topic);return;}
+ mqttLastTrigger[m.topic]=now;pendingActions++;
+ actionQueue=actionQueue.then(function(){return agentExecute(cmd,10000);}).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'channel command failed');bridge.event('trigger','Channel '+n);}).catch(function(e){bridge.event('error','Channel command: '+e.message);}).finally(function(){pendingActions--;});
+}
 var bridge = new MqttBridge(readTelemetry,function(m){
+ if(m.topic===bridge.channelCommandTopic()){runChannelCommand(m);return;}
  var actions=remap.resolve(remapStore.rules,'mqtt',m.topic,m.payload.toString('utf8'));if(!actions.length)return;
  var now=Date.now();if(pendingActions>=8||now-(mqttLastTrigger[m.topic]||0)<500){bridge.event('throttled','Trigger rate limited: '+m.topic);return;}
  mqttLastTrigger[m.topic]=now;pendingActions++;

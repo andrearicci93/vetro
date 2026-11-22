@@ -65,5 +65,21 @@ function dockWordCommand(word) {
     return /^(?:volup|voldown|volmute|pad)$/.test(word) ? alive(DOCK_PID, DOCK_FIFO) + ' && ' + write(DOCK_FIFO, word) : null;
 }
 
-module.exports = {keyCommand: keyCommand, homeCommand: homeCommand, rescanCommand: rescanCommand, dockWordCommand: dockWordCommand, TUNER_KEYS: TUNER_KEYS, TUNER_PIPE: TUNER_PIPE,
+// "Go to channel N" (MQTT channel/set). Vetro's tuner when it is running with Samsung's live TV on screen (the same test as the 123 pad: its
+// `.tv` flag): one `tune` word, it shows itself and goes there at once. Otherwise the digits by name, which make Samsung's own TV app open
+// and tune (the 123 pad does the same when the tuner is not there). number: digits only, checked by channelNumber; inject: control.injectCommand.
+function channelNumber(payload) {
+    var t = String(payload == null ? '' : payload).trim();
+    if (/^\d{1,4}$/.test(t) && +t > 0) return String(+t);
+    var m = /^\{\s*"channel"\s*:\s*"?(\d{1,4})"?\s*\}$/.exec(t);   // {"channel": 31}, what a Home Assistant template can send
+    return m && +m[1] > 0 ? String(+m[1]) : null;
+}
+function channelCommand(number, inject) {
+    if (!/^[1-9]\d{0,3}$/.test(number)) return null;
+    var keys = number.split('').map(function (d) { return inject(d); });
+    if (keys.some(function (k) { return !k; })) return null;
+    return 'if ' + alive(TUNER_PID, TUNER_PIPE) + ' && [ -e ' + TUNER_PIPE + '.tv ]; then ' + write(TUNER_PIPE, 'tune ' + number) + '; else ' + keys.join('; ') + '; fi';
+}
+
+module.exports = {channelNumber: channelNumber, channelCommand: channelCommand, keyCommand: keyCommand, homeCommand: homeCommand, rescanCommand: rescanCommand, dockWordCommand: dockWordCommand, TUNER_KEYS: TUNER_KEYS, TUNER_PIPE: TUNER_PIPE,
     DOCK_FIFO: DOCK_FIFO, DOCK_CLAIM: DOCK_CLAIM};

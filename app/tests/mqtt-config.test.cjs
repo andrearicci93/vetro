@@ -10,7 +10,7 @@ saveConfig(config);assert.equal(writes[0][2].mode,0o600);assert.equal(writes[1].
 let received=0;const b=new MqttBridge(()=>({}),()=>received++);b.start();b.configure(config);assert.equal(b.connected,false);b.setTopics(['commands']);const c=b.client;c.emit('connect');assert.equal(b.connected,true);assert.equal(b.status().subscriptions[0].status,'pending');c.emit('subscribed',{topic:'commands',accepted:true});assert.equal(b.status().subscriptions[0].status,'active');
 for(const opts of [{retained:true},{duplicate:true},{}])c.emit('message',Object.assign({topic:'commands',payload:Buffer.from('secret-payload')},opts));assert.equal(received,1);assert.equal(JSON.stringify(b.status()).includes('secret-payload'),false);
 b.publish('state','active');assert.equal(c.last.topic,'state');assert.ok(c.last.opts===undefined);
-b.setTopics(['commands','extra']);assert.equal(b.client,c,'topic change while connected updates subscriptions in place without reconnecting');assert.deepEqual(c.subs,['commands','extra']);assert.equal(b.status().subscriptions.length,2);
-b.setTopics(['extra']);assert.deepEqual(c.unsubs,['commands']);assert.deepEqual(Array.from(b.status().subscriptions,s=>s.topic),['extra']);
+b.setTopics(['commands','extra']);assert.equal(b.client,c,'topic change while connected updates subscriptions in place without reconnecting');const cmd=b.channelCommandTopic();assert.deepEqual(c.subs,['commands',cmd,'extra'],'the channel command topic is subscribed on connect, rule topics are added in place');assert.equal(b.status().subscriptions.length,3);
+b.setTopics(['extra']);assert.deepEqual(c.unsubs,['commands']);assert.deepEqual(Array.from(b.status().subscriptions,s=>s.topic),[cmd,'extra']);
 b.stop();assert.equal(b.connected,false);assert.throws(()=>b.publish('state','active'),/disconnected/);
 console.log('PASS MQTT config: redaction, retained password, validation, atomic private storage, confirmed connection and stale-message rejection');

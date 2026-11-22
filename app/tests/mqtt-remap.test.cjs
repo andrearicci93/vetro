@@ -19,5 +19,10 @@ console.log('PASS MQTT rules: exact topic and payload, wildcard rejection and cr
  assert.deepEqual(commands,[launchCommand('selected.ui')]);assert.deepEqual(sent,[{topic:'state',payload:'opened'}]);
  context.bridge.onMessage({topic:'command',payload:Buffer.from('go')});await context.actionQueue;assert.equal(commands.length,1,'burst is throttled');
  context.bridge.publish=()=>{throw Error('MQTT disconnected')};await assert.rejects(context.runActions([{type:'mqtt',topic:'out',payload:'x'}]),/disconnected/);
+ // channel/set: a number goes to the tuner or the digits (key-routing.js), anything else is refused and runs nothing
+ commands.length=0;context.bridge.onMessage({topic:'vetro/tv/channel/set',payload:Buffer.from('31')});await context.actionQueue;
+ assert.equal(commands.length,1);assert.ok(commands[0].includes("echo 'tune 31' >&3")&&commands[0].includes('/usr/bin/input_keyevent 3; /usr/bin/input_keyevent 1'),'channel 31');
+ commands.length=0;await new Promise(r=>setTimeout(r,520));
+ for(const bad of ['0','31; reboot','abc','12345'])context.bridge.onMessage({topic:'vetro/tv/channel/set',payload:Buffer.from(bad)});await context.actionQueue;assert.equal(commands.length,0,'a payload that is not a channel number runs nothing');
  console.log('PASS automatic MQTT trigger: exact payload, selected native app, MQTT action, burst limit and explicit disconnected failure');
 })().catch(e=>{console.error(e);process.exitCode=1});

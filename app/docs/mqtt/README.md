@@ -65,6 +65,33 @@ Telemetry uses `<prefix>/<identity>/<metric>`. The retained availability topic i
 
 When reconfiguring or disabling MQTT, Vetro clears discovery records published by the current connection and sends `offline` before disconnecting. These QoS 0 writes are not broker acknowledgements. Legacy entities using the fixed `vetro` identity require manual cleanup; Vetro does not delete records that could belong to another installation. Explicit remapper topics do not change.
 
+### Change channel (control)
+
+Vetro always listens on one extra topic, `<prefix>/<identity>/channel/set` (for example `vetro/vetro-1a2b3c/channel/set`; the identity is shown in Vetro's MQTT page and in the discovery records). Publish a channel number as the payload, `31` or `{"channel": 31}`, not retained:
+
+```yaml
+action: mqtt.publish
+data:
+  topic: vetro/<identity>/channel/set
+  payload: "31"
+```
+
+Home Assistant also gets a **Tune channel** number entity (`number.<tv>_tune_channel`, 1–9999) from discovery; `number.set_value` on it sends the same message.
+
+- With Vetro's tuner running and Samsung's live TV on screen, the tuner goes to the channel at once (its channel numbers, as in the Channel list).
+- Otherwise Vetro sends the digits as remote keys, which opens Samsung's own TV app and tunes after its usual short wait. Which channel list that means is Samsung's.
+- Anything but digits 1–9999 is refused (logged in the MQTT events), and messages are limited like the MQTT rules (one per 500 ms).
+- It does **not** wake the TV: a TV in standby needs another action first, and the number box keeps the last value it sent (the **Channel** sensor shows what is really on screen).
+
+#### Alexa: "cambia canale a 31"
+
+Alexa reaches Home Assistant through the Alexa smart-home link (Home Assistant Cloud, or your own skill). Alexa can only pass a number to something it sees as a TV or a number control; a routine with a fixed phrase cannot take a variable. Two ways, from simplest:
+
+1. **Expose the number entity.** In Home Assistant's Alexa settings expose `number.<tv>_tune_channel` and rename it "Canale TV". Alexa treats it as a range control: *"Alexa, imposta Canale TV a 31"*.
+2. **A TV in Alexa** (for *"Alexa, cambia canale a 31"*). Alexa's channel control applies to a `media_player` entity that supports `play_media`; create one (for example a Universal media player whose play-media command calls `number.set_value` on the entity above) and expose it. Whether your Home Assistant version and Alexa language map "channel" to it should be checked in its Alexa integration docs.
+
+*"Metti canale 31"* exactly is not an Alexa phrase; the two above are the ones Alexa can parse with a number.
+
 ## 4. Try an automation
 
 In Vetro, create a rule with an **MQTT** trigger, topic `vetro/command/open-app`, exact payload `open`, and an **Open app** action. Choose the application to launch. In Home Assistant's developer tools, run:
@@ -77,7 +104,7 @@ data:
   retain: false
 ```
 
-Vetro subscribes only to the exact topics of enabled rules. Retained messages and messages marked as duplicates do not trigger actions. Trigger frequency and queue size are limited. Rules that directly connect an input topic to an output topic are rejected to prevent loops. Use separate topics for commands and state.
+Vetro subscribes only to the exact topics of enabled rules, plus the channel command topic above. Retained messages and messages marked as duplicates do not trigger actions. Trigger frequency and queue size are limited. Rules that directly connect an input topic to an output topic are rejected to prevent loops. Use separate topics for commands and state.
 
 A physical remote button can also publish an MQTT message. Enable physical input interception in **Remote** first. Incoming MQTT rules work in the background while the TV and Vetro service are running. MQTT commands do not use the remote WebSocket API.
 
