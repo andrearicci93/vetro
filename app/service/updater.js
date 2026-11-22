@@ -127,14 +127,33 @@ function Updater(opts) {
     // Shell text that stops the launcher (dock). Used when an update that changed the launcher's files is put back:
     // the dock is a separate process that keeps running the old binary until it is stopped, then the service starts it again.
     this.dockStopCommand = opts.dockStopCommand || null;
-    // Measured on the Q80A: killing the service is enough, the platform starts it again within about 3 seconds.
-    // The second part only matters if that did not happen (auto-restart flag off).
-    this.restartCommand = opts.restartCommand ||
-        ('app_launcher -k ' + SERVICE_ID + ' >/dev/null 2>&1; sleep 8; app_launcher -S 2>/dev/null | grep -q "' + SERVICE_ID + ' (" || app_launcher -s ' + SERVICE_ID + ' >/dev/null 2>&1');
+    if (!DIR.test(this.installDir || '') || !DIR.test(this.workDir || '')) throw fail('Unsafe update folders');
+    this.restartCommand = opts.restartCommand || restartLines(this.workDir, opts.procDir || '/proc');
     this.waitSteps = Math.max(1, Math.ceil((opts.waitSeconds || WAIT_SECONDS) / 2));
     this.busy = false;
-    if (!DIR.test(this.installDir || '') || !DIR.test(this.workDir || '')) throw fail('Unsafe update folders');
 }
+
+// How the service is restarted so that it runs the files now on disk. Measured on the Q80A (Tizen 6.0), where the service
+// is a process of its own: killing it is enough, the platform starts it again within about 3 seconds, and the start at the end
+// only matters if that did not happen (auto-restart flag off). On most Tizen 6.5 to 9 TVs the service's code runs inside
+// Samsung's shared wrt-service process (the vetrotvapp.svc process there is a 5 MB stub), and app_launcher -k / -s only stop
+// and start it inside that process, which keeps the code it loaded: the old version went on running, never confirmed the new
+// one, and the watchdog put the old files back (#296). There the process that runs the service (its pid, written by
+// notePid() at every start, and still a wrt-service when the restart runs) is ended after the stop, and the service started
+// again, so the next start loads the files from disk. Any other web service in that process is ended with it.
+function restartLines(workDir, procDir) {
+    var stop = 'app_launcher -k ' + SERVICE_ID + ' >/dev/null 2>&1';
+    return 'p=$(cat ' + sq(workDir + '/service.pid') + ' 2>/dev/null); case "$p" in ""|*[!0-9]*) p= ;; esac; ' +
+        'if [ -n "$p" ] && [ "$(cat ' + sq(procDir) + '/$p/comm 2>/dev/null)" = wrt-service ]; then ' +
+        stop + '; sleep 2; kill -9 "$p" 2>/dev/null; sleep 3; app_launcher -s ' + SERVICE_ID + ' >/dev/null 2>&1; ' +
+        'else ' + stop + '; sleep 8; app_launcher -S 2>/dev/null | grep -q "' + SERVICE_ID + ' (" || app_launcher -s ' + SERVICE_ID + ' >/dev/null 2>&1; fi';
+}
+
+// The pid of the process that runs this service, for restartLines(). Written by the copy that owns the port, at its start.
+Updater.prototype.notePid = function (pid) {
+    if (!(pid > 0)) return;
+    try { mkdirp(this.workDir); fs.writeFileSync(this._file('service.pid'), String(pid) + '\n'); } catch (e) { /* the restart falls back to app_launcher */ }
+};
 
 Updater.prototype._file = function (n) { return path.join(this.workDir, n); };
 Updater.prototype.status = function () {
@@ -259,6 +278,8 @@ Updater.prototype.apply = function (raw, expectedSha256) {
 // What the script leaves on disk (backup/, backup.json, pending.json, ok-*, rolled-back) is the same as 0.7.0's: the
 // watchdog of a 0.7.0 that installs this version, and a Go back from here over an update 0.7.0 applied, both rely on it.
 // Every name passed the bundle's okPath and every hash is hex, so nothing in the lists needs quoting or can expand.
+// The result of an earlier update (result.json) is removed too: left there, its "did not start" showed on the dashboard
+// while this update was still waiting for its confirmation (#296).
 Updater.prototype._applyScript = function (from, to, changed, existing, added, hashes, dock) {
     var I = sq(this.installDir), W = sq(this.workDir);
     // One line per changed file: hash, e (it exists here and is saved first) or a (added), its path. The folder is taken
@@ -268,7 +289,7 @@ Updater.prototype._applyScript = function (from, to, changed, existing, added, h
         return hashes[n] + ' ' + (existing.indexOf(n) >= 0 ? 'e' : 'a') + ' ' + listName(n);
     });
     var lines = ['set -e', 'I=' + I, 'W=' + W, 'S="$W/staging"', 'B="$W/backup"',
-        'rm -rf "$B"; mkdir -p "$B"; rm -f "$W"/ok-* "$W/pending.json" "$W/backup.json"',
+        'rm -rf "$B"; mkdir -p "$B"; rm -f "$W"/ok-* "$W/pending.json" "$W/backup.json" "$W/result.json"',
         "L='" + list.join('\n') + "'"];
     lines.push.apply(lines, overList('L', ['h', 'k', 'n'], [
         '[ "$(sha256sum "$S/$n" | cut -d" " -f1)" = "$h" ] || { echo "staged file changed: $n" >&2; exit 3; }']));
@@ -394,5 +415,5 @@ Updater.prototype.finish = function (restartDock) {
     });
 };
 
-module.exports = { Updater: Updater, packagePort: packagePort, verifyBundle: verifyBundle, compare: compare, okPath: okPath, sha256: sha256,
+module.exports = { Updater: Updater, restartLines: restartLines, packagePort: packagePort, verifyBundle: verifyBundle, compare: compare, okPath: okPath, sha256: sha256,
     parseBuildInfo: parseBuildInfo, ALLOWED: ALLOWED, FORMAT: FORMAT };

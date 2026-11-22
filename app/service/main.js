@@ -1324,6 +1324,7 @@ var serviceOwner = false;
 function becomeOwner() {
     if (serviceOwner) return;
     serviceOwner = true;
+    updater.notePid(process.pid);
     startBridge();
     platform.start();
     plugins.start();

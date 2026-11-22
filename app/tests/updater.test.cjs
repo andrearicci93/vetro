@@ -252,6 +252,48 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await wait(2500);
     assert.ok(!fs.existsSync(path.join(f.root, 'dockstops')), 'the launcher is not stopped when its files did not change');
 
-    console.log('PASS updater: signature, manifest paths, port kept, replace + confirm, watchdog rollback, manual rollback, tampered staging refused, launcher restarted and rolled back with the update');
+    // #296: the result of an earlier update that did not start is not shown while a new one waits for its confirmation
+    f = fixture('0.4.0');
+    fs.writeFileSync(path.join(f.work, 'result.json'), JSON.stringify({ state: 'rolled-back', from: '0.4.1', to: '0.4.0', at: 1 }));
+    await f.u.apply(bundle('0.4.1', { 'service/a.js': 'new a' }));
+    assert.equal(f.u.status().last, null, 'an apply clears the previous result');
+    assert.equal(f.u.status().pending.to, '0.4.1');
+
+    // #296: the restart. Where the service runs in Samsung's shared wrt-service process, that process is ended (app_launcher
+    // -k / -s alone keep the old code loaded), then the service is started; anywhere else, or without a valid pid, it is the
+    // app_launcher restart measured on the Q80A. Run for real with a fake app_launcher, sleep and /proc.
+    {
+        const { restartLines } = require('../service/updater.js');
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-restart-'));
+        const bin = path.join(root, 'bin'), proc = path.join(root, 'proc'), work = path.join(root, 'work'), log = path.join(root, 'log');
+        fs.mkdirSync(bin); fs.mkdirSync(proc); fs.mkdirSync(work);
+        fs.writeFileSync(path.join(bin, 'app_launcher'), '#!/bin/sh\necho "$*" >> ' + log + '\n', { mode: 0o755 });
+        fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+        const host = cp.spawn('/bin/sh', ['-c', 'while :; do /bin/sleep 1; done'], { stdio: 'ignore' });
+        const restart = (comm, pidText) => {
+            fs.rmSync(log, { force: true });
+            fs.rmSync(path.join(proc, String(host.pid)), { recursive: true, force: true });
+            if (comm) { fs.mkdirSync(path.join(proc, String(host.pid))); fs.writeFileSync(path.join(proc, String(host.pid), 'comm'), comm + '\n'); }
+            if (pidText === null) fs.rmSync(path.join(work, 'service.pid'), { force: true }); else fs.writeFileSync(path.join(work, 'service.pid'), pidText);
+            cp.spawnSync('sh', ['-c', restartLines(work, proc)], { env: Object.assign({}, process.env, { PATH: bin + ':' + process.env.PATH }) });
+            return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : [];
+        };
+        const alive = () => { try { process.kill(host.pid, 0); return true; } catch (e) { return false; } };
+        assert.deepEqual(restart('vetrotvapp.svc', host.pid + '\n'), ['-k vetrotvapp.svc', '-S', '-s vetrotvapp.svc'], 'own process: the Q80A restart');
+        assert.ok(alive(), 'a process of its own is left to app_launcher');
+        assert.deepEqual(restart('wrt-service', null), ['-k vetrotvapp.svc', '-S', '-s vetrotvapp.svc'], 'no pid written: the Q80A restart');
+        assert.deepEqual(restart('wrt-service', host.pid + '; reboot'), ['-k vetrotvapp.svc', '-S', '-s vetrotvapp.svc'], 'a pid file that is not a number is ignored');
+        assert.ok(alive());
+        assert.deepEqual(restart('wrt-service', host.pid + '\n'), ['-k vetrotvapp.svc', '-s vetrotvapp.svc'], 'shared process: stopped, ended, started');
+        await wait(200);
+        assert.ok(!alive(), 'the wrt-service process that ran the service is ended');
+        // the pid is written where the restart reads it
+        const u = new Updater({ publicKey: publicPem, installDir: path.join(root, 'wgt'), workDir: path.join(root, 'work2'), buildInfo: { version: '0.4.0', shell: 1 }, execute: () => Promise.reject(new Error('unused')) });
+        u.notePid(4242); u.notePid(0);
+        assert.equal(fs.readFileSync(path.join(root, 'work2', 'service.pid'), 'utf8'), '4242\n');
+        assert.match(u.restartCommand, /work2\/service\.pid/);
+    }
+
+    console.log('PASS updater: signature, manifest paths, port kept, replace + confirm, watchdog rollback, manual rollback, tampered staging refused, launcher restarted and rolled back with the update, shared wrt-service restart');
     process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });
