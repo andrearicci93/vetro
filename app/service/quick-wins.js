@@ -130,16 +130,17 @@ var TELEMETRY_UNITS = ['canalysis-service', 'pisa-service', 'adagent-service', '
     'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service', 'data-service'];
 var TELEMETRY_PROCS = ['canalysis-daemo', 'pisa-service', 'adagent-servic', 'contents-recogn', 'mirroring-recog',
     'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker', 'abnormal_user_b', 'issue_report_ag', 'media-analytics',
-    'contents-cognit', 'screen-analysis', 'sp-kpi', 'psid-checker'];
+    'contents-cognit', 'screen-analysis', 'psid-checker'];
 // The units of the list that have no "do not start" file: masked at runtime as well (see "masks" in the header).
 // Tizen 9 (from #279 by swiezaczek, checked in the NKLD 0090 tree): contents-cognition-service-manager (content recognition,
-// Restart=always), org.tizen.tv.sp-kpi (KPI events: HDMI, USB/BT, self-diagnosis, like kpi-logging), psid-checker (Samsung's
-// advertising id), screen-analysis-service-manager (on some 2024-2025 models). A name this TV lacks is masked harmlessly.
+// Restart=always), psid-checker (Samsung's advertising id), screen-analysis-service-manager (on some 2024-2025 models). A name this
+// TV lacks is masked harmlessly. Not sp-kpi: it is the hardware fault monitor behind self-diagnosis (HDMI cables, USB/BT/Wi-Fi
+// errors, chip temperature), runs on 2021 TVs too, and holds about 2 MiB on a Q80A.
 // Started again when the switch is turned off, as #279 does (psid-checker is left to start on its own).
-var TELEMETRY_T9_START = ['contents-cognition-service-manager', 'screen-analysis-service-manager', 'org.tizen.tv.sp-kpi'];
+var TELEMETRY_T9_START = ['contents-cognition-service-manager', 'screen-analysis-service-manager'];
 var TELEMETRY_MASK = ['contents-recognition-service', 'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
     'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service',
-    'contents-cognition-service-manager', 'screen-analysis-service-manager', 'org.tizen.tv.sp-kpi', 'psid-checker'].map(function (u) { return u + '.service'; });
+    'contents-cognition-service-manager', 'screen-analysis-service-manager', 'psid-checker'].map(function (u) { return u + '.service'; });
 // The switches that are only masks (see the header). start: what is started again when the switch is turned off.
 var MASK_WINS = {
     remotesupport: {units: ['remote-management.service', 'samsung-easy-support.service', 'remote-shop-care-hub.service'], start: []},

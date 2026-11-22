@@ -40,6 +40,7 @@ const noWait = () => Promise.resolve();
     assert.ok(!qw.wantedMasks({delivery: true}, 'delivery').length);
     assert.ok(qw.hookWanted({telemetry: true}) && qw.hookWanted({wifipresence: true}) && !qw.hookWanted({ambient: true, airplay: true}));
     assert.ok(!qw.TELEMETRY_MASK.includes('data-service.service'), 'data-service is never masked');
+    assert.ok(!qw.TELEMETRY_MASK.includes('org.tizen.tv.sp-kpi.service'), 'sp-kpi is the hardware fault monitor, not viewing data');
     assert.ok(qw.TELEMETRY_MASK.includes('issue_report_agent.service') && qw.TELEMETRY_MASK.includes('abnormal_user_behavior.service'));
     assert.ok(!qw.MASK_WINS.remotesupport.units.some(u => /remotepc/.test(u)), 'Remote PC is left alone (root adapters use it)');
     const unmask = qw.fwUnmaskScript(['was-background-update.path', 'was-background-update.service']);
