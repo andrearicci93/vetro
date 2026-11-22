@@ -1419,7 +1419,9 @@ if (updateConfirmTimer.unref) updateConfirmTimer.unref();
 var plugins = new PluginHost({registryKey: require('./plugin-key.js'), developerAllowed: function () { return platform.status().mode !== 'app-only'; }, dir: process.env.VETRO_PLUGIN_DIR || '/opt/usr/home/owner/share/vetro-plugins', execute: agentExecute,
     registry: process.env.VETRO_PLUGIN_REGISTRY || 'https://raw.githubusercontent.com/andrearicci93/vetro-plugins/catalog/index.json',
     services: {agentConnected: function () { return platform.status().agent.connected; }, json: serveJson, readJson: readJsonBody}});
-plugins.register(require('./plugin-launcher.js').definition(dock));
+// A custom tile's actions are a Remapper rule's: the same checks (no factory app) and the same key routing.
+dock.packageOf = packageOf;
+plugins.register(require('./plugin-launcher.js').definition(dock, {runActions: function (actions) { return runActions(actions); }}));
 dock.setShards(plugins);       // plugins that take over an app's launcher tile (manifest "intercepts")
 plugins.register(require('./plugin-tuner.js').definition(tuner));
 // A plugin's timer or socket callback throws outside every guard the host has. Without this the whole service ended with it

@@ -165,7 +165,7 @@ const tick = () => new Promise(r => setImmediate(r));
         {appId: 'org.example.hidden', name: 'Hidden Tool', system: false, removable: true, show: false, disabled: false},
         {appId: 'org.example.off', name: 'Switched Off', system: false, removable: true, show: true, disabled: true}];
     sandbox.renderDock();
-    assert.match(html, /role="tab" id="dtab-vetro" data-dock-tab="vetro"[^>]*>Vetro launcher<\/button><button type="button" role="tab" id="dtab-cards" data-dock-tab="cards"[^>]*>Control center<\/button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom"[^>]*>Custom launcher<\/button>/, 'three sub-tabs on the Launcher tab: the Vetro launcher, its Control center, or another app');
+    assert.match(html, /role="tab" id="dtab-vetro" data-dock-tab="vetro"[^>]*>Vetro launcher<\/button><button type="button" role="tab" id="dtab-cards" data-dock-tab="cards"[^>]*>Control center<\/button><button type="button" role="tab" id="dtab-tiles" data-dock-tab="tiles"[^>]*>Tiles<\/button><button type="button" role="tab" id="dtab-custom" data-dock-tab="custom"[^>]*>Custom launcher<\/button>/, 'four sub-tabs on the Launcher tab: the Vetro launcher, its Control center, custom tiles, or another app');
     assert.equal(el('dockCustom').hidden, true, 'the Vetro launcher tab is the one open first');
     el('dock').onclick({target: {closest: () => ({dataset: {dockTab: 'custom'}})}});
     assert.equal(el('dockCustom').hidden, false); assert.equal(el('dockBody').hidden, true);

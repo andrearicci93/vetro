@@ -102,6 +102,24 @@ namespace Launcher.Tests
                 T.Eq(ShardLaunch.Command(evil2, 8099), null, "an app id with shell characters is refused");
             });
 
+            T.Run("catalog: custom tiles are handed to Vetro", () =>
+            {
+                var r = Catalog.Parse("plex\tPlex\ttile:plex\t\t/opt/usr/home/owner/share/vetro-tile-plex.png\t\t\ttile:plex\n" +
+                    "bad\tBad\ttile:a;reboot\nupper\tUpper\ttile:Plex\nfar\tFar\ttile:far\t\t/opt/usr/home/owner/share/other.png\n");
+                T.Eq(r.Entries.Length, 1, "only the good tile is kept");
+                T.Eq(r.Problems.Length, 3, "a tile id with shell characters, capitals or an icon outside the tile pictures is refused");
+                AppEntry e = r.Entries[0];
+                T.Eq(e.Tile, "plex", "tile id read");
+                T.Eq(e.AppId, null, "a tile has no app of its own");
+                T.Eq(e.IconPath, "/opt/usr/home/owner/share/vetro-tile-plex.png", "its uploaded picture is accepted");
+                T.Eq(e.RowKey, "tile:plex", "it can be moved and taken out like any tile");
+                T.True(!e.IsSystem, "it sits with the apps, not the pills");
+                T.Eq(ShardLaunch.TileCommand(e, 8099), "( /usr/bin/curl -sf -m 5 -X POST 'http://127.0.0.1:8099/plugins/launcher/api/tile?id=plex' >/dev/null 2>&1 ) &", "the press goes to Vetro, nothing starts here");
+                T.Eq(ShardLaunch.TileCommand(new AppEntry("ok", "x", "a.b", null), 8099), null, "an app tile is not a custom tile");
+                T.Eq(ShardLaunch.TileCommand(null, 8099), null, "null is refused");
+                T.True(!Catalog.ValidRowKey("tile:a;b") && Catalog.ValidRowKey("tile:my-tile-2"), "row keys follow the same rule");
+            });
+
             T.Run("catalog: HbbTV link in the ninth field (#200, by genesai)", () =>
             {
                 const string svt = "https://hbbtv.play.svt.se/v2/index.xhtml";
