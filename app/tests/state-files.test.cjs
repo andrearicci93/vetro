@@ -9,12 +9,17 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-state-'));
 
 // A disk that dies in the middle of any write: half of the data lands, then the call fails.
 function crashDuringWrite(body) {
-    const original = fs.writeFileSync;
+    const origWriteFile = fs.writeFileSync, origWriteSync = fs.writeSync;
     fs.writeFileSync = function (file, data) {
-        original.call(fs, file, String(data).slice(0, Math.floor(String(data).length / 2)));
+        origWriteFile.call(fs, file, String(data).slice(0, Math.floor(String(data).length / 2)));
         throw new Error('power cut');
     };
-    try { body(); } finally { fs.writeFileSync = original; }
+    fs.writeSync = function (fd, buf, off, len) {
+        const half = Math.max(1, Math.floor((len || buf.length) / 2));
+        origWriteSync.call(fs, fd, buf, off || 0, half);
+        throw new Error('power cut');
+    };
+    try { body(); } finally { fs.writeFileSync = origWriteFile; fs.writeSync = origWriteSync; }
 }
 
 // --- the helper ------------------------------------------------------------------------------------------------
