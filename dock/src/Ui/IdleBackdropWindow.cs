@@ -20,8 +20,8 @@ namespace Launcher.Ui
         private const int WindowLayer = 850;
         private const double OrbitSeconds = 30.0;
         private const double HintSeconds = 4.0;
-        private const double ActiveAnimInterval = 1.0 / 15.0;
-        private const double DimAnimInterval = 1.0 / 7.5;
+        private const double ActiveAnimInterval = 1.0 / 30.0;
+        private const double DimAnimInterval = 1.0 / 15.0;
         private const double SwAnimInterval = 2.0;
         private const int ClockW = 280, ClockH = 175;
         private const int LakeTileSize = 128, VignetteSize = 64;
