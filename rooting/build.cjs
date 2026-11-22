@@ -46,6 +46,18 @@ function loadP12(der, password, forge) {
 }
 
 async function main() {
+    // UNSIGNED=1: the same files with no signature, for an installer that signs the package itself (Apps2Samsung's custom WGT install).
+    if (process.env.UNSIGNED === '1') {
+        const JSZip = signingRequire('jszip');
+        const zip = new JSZip();
+        const contents = collectIntegration();
+        for (const file of contents) zip.file(decodeURIComponent(file.uri), file.data);
+        const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+        fs.mkdirSync(path.dirname(OUT), { recursive: true });
+        fs.writeFileSync(OUT, buffer);
+        console.log('wrote ' + OUT + ' (' + buffer.length + ' bytes, ' + contents.length + ' files, UNSIGNED)');
+        return;
+    }
     if (!process.env.AUTHOR_P12 || !process.env.DIST_P12 || !AUTHOR_PW || !DISTRIBUTOR_PW) {
         throw new Error('Set AUTHOR_P12, DIST_P12, AUTHOR_PW and DIST_PW using your own signing profile');
     }

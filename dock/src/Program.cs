@@ -1740,6 +1740,139 @@ namespace Launcher
 
         private const string MuteKey = "memory/org.tizen.tv-viewer/mute_status";
 
+        // --- A receiver or soundbar on HDMI (speaker selection 2) with Vetro's bar on: Vetro writes Vol to the TV's CEC device itself
+        // (ReceiverVolume.Pressed/Released), keeps volume-app from running so Samsung's bar is never drawn (VolumeAppBlock), and draws its
+        // own bar with the level the receiver reports (ReceiverVolume.Key). If the CEC write is refused, the key goes to Samsung as before
+        // and Samsung's bar is hidden while it shows (ReceiverHideBody; enlightenment_info prints "safety check failed" even when it works).
+        // Tried on an S95B (Tizen 6.5) with a HW-Q-Series soundbar on 2026-11-22: Up, Down and Mute, the bar on and off.
+        private const int ReceiverArc = 2;
+        private const string ReceiverStamp = "/tmp/vetro-receiver-bar.stamp";
+        // One copy at a time (mkdir lock). It finds volume-app's object, hides its window whenever it is drawn, and 30 s after the last
+        // press (the stamp's time; at 6 s Samsung's bar was still drawn and came back, S95B) shows it again, so a launcher that stops never leaves Samsung's bar hidden for good.
+        // Given to sh -c, never written to a file: the TV's UEP refuses to run an unsigned script file ("the file is NOT signed!!",
+        // S95B 2026-11-22). No single quote inside: the whole body is single-quoted for sh -c.
+        private const string ReceiverHideBody =
+            "L=/tmp/vetro-receiver-bar.lock; " +
+            "mkdir $L 2>/dev/null || exit 0; " +
+            "trap \"rmdir $L\" EXIT; " +
+            "o=$(enlightenment_info -compobjs 2>/dev/null | grep \" volume-app \" | sed -n \"s/^ *[0-9]* *\\([0-9a-f]*\\) .*/\\1/p\" | head -n 1);" +
+            "[ -n \"$o\" ] || exit 0; " +
+            "h=0; " +
+            "while :; do " +
+            "last=$(stat -c %Y " + ReceiverStamp + " 2>/dev/null || echo 0); " +
+            "[ $(( $(date +%s) - last )) -ge 30 ] && break; " +
+            "case \"$(enlightenment_info -topvwins 2>/dev/null | grep volume-app)\" in " +
+            "*\" DV \"*|*\" CL \"*) enlightenment_info -set_force_visible 0x$o 0 >/dev/null 2>&1; h=1;; " +
+            "esac; " +
+            "if [ $h = 1 ]; then usleep 500000 2>/dev/null || sleep 1; else usleep 50000 2>/dev/null || sleep 1; fi; " +
+            "done; " +
+            "[ $h = 1 ] && enlightenment_info -set_force_visible 0x$o 1 >/dev/null 2>&1; " +
+            "exit 0";
+        private static readonly Efl.TaskCb ReceiverPollCb = OnReceiverPoll;
+        private static IntPtr _receiverTimer;
+        private static int _receiverTicks, _receiverShownLevel = -1;
+        private static bool _receiverShownMute;
+
+        private static bool ReadReceiverVolume(out int level, out bool muted)
+        {
+            level = 0; muted = false;
+            IntPtr p = IntPtr.Zero;
+            try
+            {
+                p = Efl.vconf_get_str(ReceiverVolume.Key);
+                if (p == IntPtr.Zero) return false;
+                return ReceiverVolume.TryParse(System.Runtime.InteropServices.Marshal.PtrToStringAnsi(p), out level, out muted);
+            }
+            catch (Exception) { return false; }
+            finally { if (p != IntPtr.Zero) Libc.free(p); }
+        }
+
+        private static void ShowReceiverPill(int level, bool muted)
+        {
+            if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge);
+            _pill.Show(level, muted);
+            _receiverShownLevel = level; _receiverShownMute = muted;
+        }
+
+        // volume-app swapped for /usr/bin/true in the TV's own mount namespace (the method of github.com/ntotten/samsung-tv-volume): its
+        // supervisor and hdmicec-service start it as before and it exits at once, so Samsung's bar is never drawn. Lasts until the TV
+        // restarts or the launcher lifts it. Without volume-app the TV's own Vol no longer reaches the soundbar (S95B, 2026-11-22), so
+        // it is set only while Vetro sends Vol over CEC itself.
+        private const string VolumeAppBin = "/usr/apps/org.tizen.volume-app/bin/volume-app";
+        // Read inside pid 1's namespace: /proc/1/mountinfo read from the launcher's own namespace leaves the bind out (S95B, 2026-11-22),
+        // so the block was never seen, never lifted, and Vol stayed dead once Vetro's bar was turned off.
+        private const string VolumeAppMounted = "nsenter -t 1 -m grep -q \" " + VolumeAppBin + " \" /proc/self/mountinfo";
+        private const string VolumeAppBlock =
+            VolumeAppMounted + " || { nsenter -t 1 -m mount --bind /usr/bin/true " + VolumeAppBin + " && { killall volume-app; true; }; }";
+        private const string VolumeAppUnblock =
+            "while " + VolumeAppMounted + "; do nsenter -t 1 -m umount " + VolumeAppBin + " || break; done; " +
+            // volume-app.sh waits in app_launcher on a launch made during the swap and never starts the real volume-app again (S95B,
+            // 2026-11-22): end that wait. The bracket keeps grep from matching this command.
+            "pidof volume-app >/dev/null || for p in $(ps -o pid,args | grep \"[a]pp_launcher -f org.tizen.volume-app\" | sed \"s/^ *\\([0-9]*\\).*/\\1/\"); do kill $p; done; true";
+        private static bool _volumeAppBlocked;
+
+        private static void BlockVolumeApp(bool block)
+        {
+            if (block == _volumeAppBlocked) return;
+            int rc = -1;
+            try { rc = Libc.system((block ? VolumeAppBlock : VolumeAppUnblock) + " >/dev/null 2>&1"); } catch (Exception) { }
+            Log("volume-app " + (block ? "blocked" : "given back") + " rc=" + rc);
+            _volumeAppBlocked = block && rc == 0;
+        }
+
+        private static bool CecWrite(byte[] frame)
+        {
+            int fd = Libc.open(ReceiverVolume.CecDevice, Libc.O_WRONLY);
+            if (fd < 0) return false;
+            try { return (long)Libc.write(fd, frame, (UIntPtr)frame.Length) == frame.Length; }
+            finally { Libc.close(fd); }
+        }
+
+        /// <summary>Vol as a CEC press and release to the audio system; false when the device refuses (the caller falls back to Samsung).</summary>
+        private static bool CecVolumeKey(Command key)
+        {
+            BlockVolumeApp(true);
+            if (!_volumeAppBlocked) return false;
+            byte ui = key == Command.VolUp ? ReceiverVolume.UiVolumeUp : key == Command.VolDown ? ReceiverVolume.UiVolumeDown : ReceiverVolume.UiMute;
+            bool ok = CecWrite(ReceiverVolume.Pressed(ui)) && CecWrite(ReceiverVolume.Released());
+            Log("volume: CEC " + key + (ok ? " sent" : " refused"));
+            return ok;
+        }
+
+        /// <summary>After Vol for a receiver on HDMI: show Vetro's bar with the receiver's level. hideSamsung: Vol went through Samsung,
+        /// so its bar is up and is hidden while it shows.</summary>
+        private static void ReceiverBarAfterKey(bool hideSamsung)
+        {
+            if (_volumeEdge == VolumeEdge.Hidden) return;   // no Vetro bar wanted: Samsung's stays
+            int level; bool muted;
+            if (!ReadReceiverVolume(out level, out muted)) { Log("receiver bar: no level in " + ReceiverVolume.Key + ", Samsung's bar stays"); return; }
+            if (hideSamsung)
+            {
+                try
+                {
+                    Libc.system("touch " + ReceiverStamp + "; sh -c '" + ReceiverHideBody + "' >/dev/null 2>&1 &");
+                }
+                catch (Exception ex) { Log("receiver bar: hide script " + ex.Message); }
+            }
+            ShowReceiverPill(level, muted);
+            // The receiver answers over CEC a little later: read again every 100 ms for 1.5 s after the last press.
+            _receiverTicks = 15;
+            if (_receiverTimer == IntPtr.Zero) _receiverTimer = Efl.ecore_timer_add(0.1, ReceiverPollCb, IntPtr.Zero);
+        }
+
+        private static byte OnReceiverPoll(IntPtr data)
+        {
+            try
+            {
+                int level; bool muted;
+                if (ReadReceiverVolume(out level, out muted) && (level != _receiverShownLevel || muted != _receiverShownMute)) ShowReceiverPill(level, muted);
+                if (--_receiverTicks > 0) return 1;
+            }
+            catch (Exception ex) { Log("receiver bar: " + ex.Message); }
+            _receiverTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            return 0;
+        }
+
         /// <summary>Samsung's own mute state (tv-viewer keeps it in a vconf bool; the sound manager does not know it).</summary>
         private static bool SamsungMuted()
         {
@@ -2040,6 +2173,14 @@ namespace Launcher
             // The Audio card offers the external output again only once it has been seen playing; the card read it only when it opened, so
             // a TV switched to the TV speakers from Samsung's menu lost its Optical row (S95C, 2026-11-20). Vol reads it at every press.
             if (known) LastExternal(output);
+            // A receiver on HDMI with Vetro's bar on: Vetro sends the key over CEC itself and keeps volume-app (Samsung's bar) from running.
+            // Any other case gives volume-app back, since Samsung's own path to the soundbar goes through it.
+            if (known && output == ReceiverArc && _volumeEdge != VolumeEdge.Hidden)
+            {
+                if (CecVolumeKey(key)) { ReceiverBarAfterKey(false); return; }
+                BlockVolumeApp(false);
+            }
+            else if (_volumeAppBlocked) BlockVolumeApp(false);
             if (known && !OutputPickerModel.VetroSetsLevel(output))
             {
                 string native = key == Command.VolUp ? "XF86AudioRaiseVolume" : key == Command.VolDown ? "XF86AudioLowerVolume" : "XF86AudioMute";
@@ -2048,7 +2189,7 @@ namespace Launcher
                 Log("volume: sound on output " + output + ", key passed to Samsung" + (detached ? " in the background" : "") + " rc=" + rc);
                 // input_keyevent is only known on 2021 firmware: if it is missing or refuses, Vetro changes the TV's level itself, as before,
                 // rather than leaving Vol dead.
-                if (VolumePassOn.Passed(rc, detached)) return;
+                if (VolumePassOn.Passed(rc, detached)) { if (output == ReceiverArc) ReceiverBarAfterKey(true); return; }
             }
             int volume;
             if (!Sound.TryGetVolume(out volume)) { Log("volume: the level cannot be read"); return; }
@@ -2563,6 +2704,8 @@ namespace Launcher
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
+            // A block left by an earlier launcher run is lifted: it comes back on the first Vol sent over CEC.
+            try { Libc.system(VolumeAppUnblock + " >/dev/null 2>&1 &"); } catch (Exception) { }
             _fifoPath = Path.Combine(_dir, "tvlauncher.fifo");
             _claimPath = Path.Combine(_dir, "tvlauncher.homeclaim");
             TrimLog();

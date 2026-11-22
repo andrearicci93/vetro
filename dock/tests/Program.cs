@@ -734,6 +734,14 @@ namespace Launcher.Tests
 
             T.Run("volume model: step, clamp, mute, picture, bar", () =>
             {
+                int rl; bool rm;
+                T.True(ReceiverVolume.TryParse("{\"mute\":\"off\",\"volumekey\":\"none\",\"volumelevel\":\"8\"}", out rl, out rm) && rl == 8 && !rm, "receiver level, S95B shape");
+                T.True(ReceiverVolume.TryParse("{\"mute\":\"on\",\"volumekey\":\"none\",\"volumelevel\":\"29\"}", out rl, out rm) && rl == 29 && rm, "receiver muted");
+                T.True(!ReceiverVolume.TryParse("", out rl, out rm) && !ReceiverVolume.TryParse("{\"mute\":\"off\"}", out rl, out rm), "no level: Samsung's bar stays");
+                T.True(!ReceiverVolume.TryParse("{\"volumelevel\":\"150\"}", out rl, out rm), "out of range refused");
+                T.True(string.Join(",", ReceiverVolume.Pressed(ReceiverVolume.UiVolumeUp)) == "3,5,68,65", "CEC Vol Up press: 03 05 44 41");
+                T.True(string.Join(",", ReceiverVolume.Pressed(ReceiverVolume.UiVolumeDown)) == "3,5,68,66", "CEC Vol Down press: 03 05 44 42");
+                T.True(string.Join(",", ReceiverVolume.Released()) == "2,5,69", "CEC release: 02 05 45");
                 T.Eq(VolumeModel.Next(50, 1, 1), 51, "up"); T.Eq(VolumeModel.Next(50, -1, 1), 49, "down");
                 T.Eq(VolumeModel.Next(100, 1, 1), 100, "no more than 100"); T.Eq(VolumeModel.Next(0, -1, 1), 0, "no less than 0");
                 T.Eq(VolumeModel.IconLevel(0, false), 0, "silent"); T.Eq(VolumeModel.IconLevel(30, true), 0, "muted");

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### On-screen displays
+
+- **Vetro's volume bar for a soundbar or receiver on HDMI.** With the sound on an HDMI (ARC/eARC) receiver and the volume bar on, Vol +, Vol − and Mute go to the receiver over HDMI-CEC from the launcher itself, and the bar shows the receiver's own level. Samsung's volume bar is kept from running meanwhile, so it no longer appears over Vetro's; turning the bar off gives Samsung's back. Tried on an S95B with a Samsung HW-Q-Series soundbar; other receivers are not tried. [Details](app/docs/VETRO-UI.md).
+
 ## 0.7.0 — 2026-11-21
 
 Vetro now draws its own TV: a launcher with your own row and a Control center, a live TV screen, and its own volume bar and number pad, all in one place in the dashboard (Vetro UI).

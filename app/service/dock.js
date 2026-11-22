@@ -1150,6 +1150,20 @@ Dock.prototype.tellReload = function () {
 
 // The launcher's process draws Vetro UI's volume bar and number pad, so when it comes or goes (from the dashboard, the TV screen's tile,
 // Restore the TV or the supervision) the keys the remote bridge holds back change too: the service is told, and the answer waits for it.
+// The launcher swaps volume-app for /usr/bin/true while it sends a soundbar's Vol over CEC itself (dock Program.cs, VolumeAppBlock).
+// Once Vol is no longer held back for the launcher (the volume bar off, or the launcher stopped) the keys go to Samsung, whose path to
+// the soundbar runs through volume-app: the swap is undone here, since the launcher no longer sees a key to undo it (S95B, 2026-11-22).
+var VOLUME_APP_BIN = '/usr/apps/org.tizen.volume-app/bin/volume-app';
+var VOLUME_APP_UNBLOCK = 'while nsenter -t 1 -m grep -q " ' + VOLUME_APP_BIN + ' " /proc/self/mountinfo 2>/dev/null; do nsenter -t 1 -m umount ' +
+    VOLUME_APP_BIN + ' || break; done; ' +
+    // The supervisor (volume-app.sh) waits in app_launcher on a launch made while the swap was in place and never starts volume-app again
+    // (S95B, 2026-11-22): that wait is ended, so its loop starts the real one. The bracket keeps grep from matching this command.
+    'pidof volume-app >/dev/null || for p in $(ps -o pid,args | grep "[a]pp_launcher -f org.tizen.volume-app" | sed "s/^ *\\([0-9]*\\).*/\\1/"); do kill $p; done; true';
+Dock.prototype.volumeAppBack = function () {
+    var s = this.readState();
+    if ((s.enabled === true || !!s.customApp) && s.volumePill === true) return Promise.resolve();   // Vol still held back (main.js keyFlags)
+    return this.execute(VOLUME_APP_UNBLOCK, 5000).catch(function () {});
+};
 Dock.prototype.keysChanged = function () {
     var follow = null;
     if (this.onVolumeChange) { try { follow = this.onVolumeChange(); } catch (e) {} }
@@ -1163,6 +1177,15 @@ Dock.prototype.keysChanged = function () {
             return self.keysChanged().then(function () { return status; });
         }, function (error) {
             return self.keysChanged().then(function () { throw error; });
+        });
+    };
+});
+['disable', 'disableCustom'].forEach(function (name) {
+    var inner = Dock.prototype[name];
+    Dock.prototype[name] = function () {
+        var self = this;
+        return inner.apply(this, arguments).then(function (status) {
+            return self.volumeAppBack().then(function () { return status; });
         });
     };
 });
@@ -1188,6 +1211,7 @@ Dock.prototype.setKeyOption = function (name, on) {
     var patch = {}; patch[name] = on;
     try { this.patchState(patch); }
     catch (e) { return Promise.reject(e); }
+    if (name === 'volumePill' && !on) this.volumeAppBack();
     var self = this, follow = null;
     if (this.onVolumeChange) { try { follow = this.onVolumeChange(on); } catch (e) {} }
     // The service may turn the remote interception on for these keys: the answer waits for that, so the page reads the result.
@@ -1199,6 +1223,7 @@ Dock.prototype.setKeys = function (on) {
     if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
     try { this.patchState({volumePill: on, numberPad: on}); }
     catch (e) { return Promise.reject(e); }
+    if (!on) this.volumeAppBack();
     var self = this, follow = null;
     if (this.onVolumeChange) { try { follow = this.onVolumeChange(on); } catch (e) {} }
     return Promise.resolve(follow).catch(function () {}).then(function () { return self.status(); });
