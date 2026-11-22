@@ -135,6 +135,8 @@ var TELEMETRY_PROCS = ['canalysis-daemo', 'pisa-service', 'adagent-servic', 'con
 // Tizen 9 (from #279 by swiezaczek, checked in the NKLD 0090 tree): contents-cognition-service-manager (content recognition,
 // Restart=always), org.tizen.tv.sp-kpi (KPI events: HDMI, USB/BT, self-diagnosis, like kpi-logging), psid-checker (Samsung's
 // advertising id), screen-analysis-service-manager (on some 2024-2025 models). A name this TV lacks is masked harmlessly.
+// Started again when the switch is turned off, as #279 does (psid-checker is left to start on its own).
+var TELEMETRY_T9_START = ['contents-cognition-service-manager', 'screen-analysis-service-manager', 'org.tizen.tv.sp-kpi'];
 var TELEMETRY_MASK = ['contents-recognition-service', 'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
     'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service',
     'contents-cognition-service-manager', 'screen-analysis-service-manager', 'org.tizen.tv.sp-kpi', 'psid-checker'].map(function (u) { return u + '.service'; });
@@ -170,7 +172,7 @@ var TELEMETRY_ON = 'for f in ' + TELEMETRY_BRAKES.join(' ') + '; do [ -e "$f" ] 
     '[ "$o" = 0 ] && rm -f "$f"; done\nrm -f ' + TELEMETRY_COND + '\n' +
     'systemctl unmask --runtime ' + TELEMETRY_MASK.join(' ') + ' >/dev/null 2>&1\n' +
     'systemctl reset-failed 2>/dev/null\n' +
-    'for u in ' + TELEMETRY_UNITS.slice(0, -1).join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue';
+    'for u in ' + TELEMETRY_UNITS.slice(0, -1).concat(TELEMETRY_T9_START).join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue';
 // AirPlay (see the header). The web app's package id differs between stores and models; its app id always ends like this.
 var AIRPLAY_UNITS = ['com.samsung.tv.airplay-service', 'com.samsung.tv.airplay-service-2'];
 var AIRPLAY_FLAGS = AIRPLAY_UNITS.map(function (u) { return TELEMETRY_DIR + u; });

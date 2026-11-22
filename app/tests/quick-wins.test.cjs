@@ -191,7 +191,7 @@ const noWait=()=>Promise.resolve();
   assert.equal((await w3.apply('telemetry',true)).dns,'saved');assert.equal(d3.enabled,false,'a filter the owner keeps off stays off');}
  t.s.telRun=2;assert.equal((await w.read()).wins.telemetry.status,'partial','chosen but running again');
  t.s.telRun=0;r=await w.apply('telemetry',false);assert.equal(r.dns,'removed');assert.deepEqual(dns.domains,['ads.example.com']);assert.equal(t.s.telBrakes,0,'brake files removed');assert.equal(JSON.parse(io.data).telemetry,false);
- assert.ok(t.s.calls.some(c=>/^for f in \/opt\/usr\/share\/systemd\/system\//.test(c)&&/for u in [^;]*pisa-service[^;]*; do systemctl start/.test(c)&&!/systemctl start data-service/.test(c)),'undo starts the services again, data-service comes back by itself');
+ assert.ok(t.s.calls.some(c=>/^for f in \/opt\/usr\/share\/systemd\/system\//.test(c)&&/for u in [^;]*pisa-service[^;]*contents-cognition-service-manager[^;]*; do systemctl start/.test(c)&&!/systemctl start data-service/.test(c)&&!/for u in [^;]*psid-checker[^;]*; do systemctl start/.test(c)),'undo starts the services again, data-service comes back by itself');
  // A host the user saved on their own is left alone, a filter that is switched off only gets the entry saved
  dns=fakeDns({domains:[qw.TELEMETRY_HOST]});t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,dns});
  r=await w.apply('telemetry',true);assert.equal(r.dns,'saved');assert.equal(dns.calls.length,0,'already saved: no write');
