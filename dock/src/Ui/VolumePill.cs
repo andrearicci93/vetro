@@ -57,6 +57,7 @@ namespace Launcher.Ui
             }
             else if (now - _shownAt < FadeInSeconds + 0.01) { /* still fading in: keep going */ }
             else _shownAt = now - FadeInSeconds;   // came back during the fade-out: full again at once
+            Efl.elm_win_raise(_win);
             // The hold starts again from now: the timer of the old one must not start the fade-out early. The animator runs at least one
             // frame, which draws the new level (the fill and the icon follow it in Apply), then stops again while the bar is held.
             CancelHold();

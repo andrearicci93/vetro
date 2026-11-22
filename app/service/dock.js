@@ -514,9 +514,9 @@ Dock.prototype.startScript = function () {
         this.stopLines(),
         'rm -f ' + FIFO,
         'cd ' + q(this.dir),
-        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
+        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p Nice=-10 -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
-        '{ ' + env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
+        '{ ' + env + ' nice -n -10 setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
         PREVIEW_OFF,
         'echo started'
     ].join('\n');
