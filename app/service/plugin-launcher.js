@@ -16,6 +16,11 @@
 //   POST api/open     ?slug=<tile>  start the app of a tile a plugin has taken over (the launcher calls this; answers 202 at once)
 //   POST api/row      {row: [key...]}  the launcher's row as the user left it (moved, taken out, added from All apps)
 //   POST api/relist   an app was installed or removed: the launcher asks for its lists again (answers 202 at once)
+//   GET  api/tiles      the custom tiles {tiles, maxTiles, maxTileActions}
+//   POST api/tiles      {action: save, tile: {id?, label, actions}} | {action: delete, id}   (the dashboard's Launcher > Tiles)
+//   GET  api/tile-icon  ?id=<tile>  the picture uploaded for a tile
+//   POST api/tile-icon  ?id=<tile>  {png: <base64>} a new picture, or {png: null} to go back to the launcher's letter
+//   POST api/tile       ?id=<tile>  the launcher reports a press of a custom tile; its actions run here (from the TV only; answers 202 at once)
 //
 // Plain ES5, like every module the TV loads.
 
@@ -23,7 +28,10 @@
 var homeCleanup = require('./home-cleanup.js');
 
 var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
-var PLUGIN_QUERY_RE = /[?&]plugin=([^&#]*)/, ROW_QUERY_RE = /[?&]row=([^&#]*)/;
+var PLUGIN_QUERY_RE = /[?&]plugin=([^&#]*)/, ROW_QUERY_RE = /[?&]row=([^&#]*)/, ID_QUERY_RE = /[?&]id=([^&#]*)/;
+var auth = require('./auth.js');
+// A tile's picture is sent as base64 in JSON: 512 KB of PNG is about 683 KB of text.
+var TILE_ICON_BODY = 768 * 1024;
 function queryOf(re, rawUrl) {
     var m = re.exec(rawUrl || '');
     if (!m) return undefined;
@@ -45,7 +53,8 @@ var ROUND_TICKS = 5;         // every 5th tick (10 s) the launcher is checked ev
 var SLOW_AFTER = 3;          // rounds in a row found running before each step
 function roundTicks(streak) { return streak < SLOW_AFTER ? ROUND_TICKS : streak < 2 * SLOW_AFTER ? 15 : 30; }
 
-// dock: a Dock from dock.js. options.tickMs: the supervision interval (tests). Everything else the plugin needs from the shell comes in ctx.vetro (bundled plugins only):
+// dock: a Dock from dock.js. options.tickMs: the supervision interval (tests). options.runActions(actions): carries out a custom tile's
+// actions (main.js runActions, the Remapper's); without it a tile press is answered and does nothing. Everything else the plugin needs from the shell comes in ctx.vetro (bundled plugins only):
 //   agentConnected()          whether the root agent is connected
 //   json(res, obj, code)      Vetro's JSON answer
 //   readJson(req, res, cb)    reads and checks a JSON object body, answers 400/408/413 itself
@@ -168,6 +177,50 @@ function definition(dock, options) {
                     if (sub === 'relist' && req.method === 'POST') {
                         vetro.json(res, { ok: true }, 202);
                         dock.relist().catch(function () { /* the next time the launcher comes on screen it asks again */ });
+                        return true;
+                    }
+                    if (sub === 'tiles' && req.method === 'GET') {
+                        var st = dock.statusTiles();
+                        vetro.json(res, st);
+                        return true;
+                    }
+                    if (sub === 'tiles' && req.method === 'POST') {
+                        vetro.readJson(req, res, function (p) {
+                            var work = p.action === 'save' ? dock.saveTile(p.tile) : p.action === 'delete' ? dock.deleteTile(p.id) : Promise.reject(new Error('Unknown tile action'));
+                            work.then(function (d) { vetro.json(res, d); }).catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
+                        });
+                        return true;
+                    }
+                    if (sub === 'tile-icon' && req.method === 'GET') {
+                        var pic = dock.tileIcon(queryOf(ID_QUERY_RE, req.url));
+                        if (!pic) { vetro.json(res, { error: 'icon unavailable' }, 404); return true; }
+                        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store', 'content-length': pic.length, 'X-Content-Type-Options': 'nosniff' });
+                        res.end(pic);
+                        return true;
+                    }
+                    if (sub === 'tile-icon' && req.method === 'POST') {
+                        var iconId = queryOf(ID_QUERY_RE, req.url);
+                        vetro.readJson(req, res, function (p) {
+                            var png = null;
+                            if (p.png !== null) {
+                                if (typeof p.png !== 'string' || !/^[A-Za-z0-9+\/]+={0,2}$/.test(p.png)) return vetro.json(res, { ok: false, error: 'The picture must be a PNG file' }, 400);
+                                png = Buffer.from(p.png, 'base64');
+                            }
+                            dock.setTileIcon(iconId, png).then(function (d) { vetro.json(res, d); }).catch(function (e) { vetro.json(res, { ok: false, error: e.message }, 409); });
+                        }, TILE_ICON_BODY);
+                        return true;
+                    }
+                    // The launcher hands over a press of a custom tile (appId tile:<id> in its list). Only the TV itself may ask: the actions
+                    // switch inputs, open apps and send MQTT messages. Answers at once, so the launcher never waits on them.
+                    if (sub === 'tile' && req.method === 'POST') {
+                        if (!auth.fromThisTv(req.socket && req.socket.remoteAddress)) { vetro.json(res, { ok: false, error: 'Tile presses are accepted from the TV only' }, 403); return true; }
+                        var actions = dock.tilePressed(queryOf(ID_QUERY_RE, req.url));
+                        if (!actions) { vetro.json(res, { ok: false, error: 'No tile with that id' }, 404); return true; }
+                        vetro.json(res, { ok: true }, 202);
+                        if (options && typeof options.runActions === 'function') {
+                            Promise.resolve().then(function () { return options.runActions(actions); })
+                                .then(function (r) { dock.lastTilePress.result = r; }, function (e) { dock.lastTilePress.error = e.message; });
+                        }
                         return true;
                     }
                     if (sub === 'icon' && req.method === 'GET') {

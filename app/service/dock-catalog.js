@@ -70,7 +70,13 @@ var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MIN_PACKAGES = 20;         // fewer package rows than this means the read failed, not that the TV has no apps
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
-var ICON_FILE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
+var ICON_FILE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps)\/[A-Za-z0-9_.\/-]{1,160}\.png$|^\/opt\/usr\/home\/owner\/share\/vetro-tile-[a-z0-9-]{1,24}\.png$/;
+// Custom tiles (the dashboard's Launcher > Tiles): a name, a picture the user uploaded and actions Vetro runs when the tile is pressed.
+// The picture is kept next to Vetro's other launcher files; the launcher rounds and sizes it like an app's icon. The launcher (Catalog.cs)
+// accepts the same place.
+var TILE_ICON_PREFIX = '/opt/usr/home/owner/share/vetro-tile-';
+var TILE_ID = /^[a-z0-9-]{1,24}$/;
+function tileIconPath(id) { return TILE_ICON_PREFIX + id + '.png'; }
 var VIEWER = 'org.tizen.tv-viewer';
 // Fix TizenTube: TizenTube is a sideloaded app that stands in for YouTube. Samsung's own YouTube
 // (a Cobalt process) has to be closed before TizenTube starts, and the tile borrows the icon
@@ -110,8 +116,8 @@ var TV_STORE = 'A2STVStore.Store';
 var TV_STORE_ROW = 'tvstore\tTV-Store\tsys:' + TV_STORE + '\tcom.samsung.tv.store';
 var APP_STORES = ['tvstore', 'samsung'];
 var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'store', 'tvstore'];
-// A row key: what the user's own order and hidden list refer to (app:<id>, live:<TVPLUS|RF>, source:<type>).
-var ROW_KEY = /^(?:app:[A-Za-z0-9_.-]{1,120}|live:[A-Z]{1,12}|source:\d{1,5})$/;
+// A row key: what the user's own order and hidden list refer to (app:<id>, live:<TVPLUS|RF>, source:<type>, tile:<custom tile id>).
+var ROW_KEY = /^(?:app:[A-Za-z0-9_.-]{1,120}|live:[A-Z]{1,12}|source:\d{1,5}|tile:[a-z0-9-]{1,24})$/;
 var VETRO_APP = /^vetrotvapp(\.|$)/;
 // The Samsung Home pill always opens csfs. com.samsung.tv.coba.newhome, which an older Vetro started instead where it was installed,
 // is a package of Home components whose app has no entry point (2022 firmware, 2025 update): it started and died, nothing showed
@@ -316,6 +322,13 @@ function build(parsed, options) {
                 add(slugify(x.reg.title), cleanLabel(x.reg.title, x.reg.appId), x.reg.appId, parsed.icons[x.id] || parsed.packageIcons[x.reg.appId]);
             });
     }
+    // Custom tiles join Samsung's row at its end, as a newly installed app does: the user's own order then places them, and one taken out
+    // of the row (hold OK, Down) stays in All apps, where it can be added again. appId tile:<id> tells the launcher to hand the press to Vetro.
+    (Array.isArray(options.tiles) ? options.tiles : []).forEach(function (t) {
+        if (!t || !TILE_ID.test(t.id) || !cleanLabel(t.label, '')) return;
+        if (entries.length >= MAX_ENTRIES - SYSTEM_ROWS.length) { skipped.push({item: 'tile:' + t.id, reason: 'The dock holds ' + MAX_ENTRIES + ' entries'}); return; }
+        add(slugify(t.label), cleanLabel(t.label, t.id), 'tile:' + t.id, t.icon && iconOk(tileIconPath(t.id)) ? tileIconPath(t.id) : null, 'tile:' + t.id);
+    });
     // Every app the user can put in the row (the All apps page): Samsung's row as it is, then each visible app of the registry
     // that Samsung's own Apps screen would list (app_featured 1 or 2, installed, not hidden, not Vetro), one entry per key.
     var samsungKeys = entries.map(function (e) { return e.key; });
@@ -439,5 +452,5 @@ function load(execute, options) {
     });
 }
 
-module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {TILE_ID: TILE_ID, tileIconPath: tileIconPath, hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
 

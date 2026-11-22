@@ -22,6 +22,7 @@ var os = require('os');
 var path = require('path');
 var catalog = require('./dock-catalog.js');
 var atomicFile = require('./atomic-file.js');
+var remap = require('./remap.js');
 // Regular expressions compiled once at module load, not on every call.
 var QUOTE_RE = /'/g;
 var AUTORUN_VALUE_RE = /value = (\d+)/;
@@ -106,6 +107,7 @@ function Dock(options) {
     this.dir = options.dir || path.join(__dirname, '..', 'native', 'dock');
     this.stateFile = options.stateFile || STATE_FILE;
     this.appsFile = options.appsFile || APPS_FILE;
+    this.tileIconFile = options.tileIconFile || catalog.tileIconPath;   // where a custom tile's picture is kept (tests: a temp folder)
     this.customAppsFile = options.customAppsFile || CUSTOM_APPS_FILE;
     // Custom mode needs two things from the shell: appCheck(appId) -> {ok, label|reason} for the chosen app (rejects
     // when the registry cannot be read now), and home {restore()} to put Samsung's Home back when an earlier build
@@ -185,6 +187,38 @@ function cleanRow(r) {
     if (r.labels && typeof r.labels === 'object') Object.keys(r.labels).forEach(function (k) { if (catalog.ROW_KEY.test(k) && typeof r.labels[k] === 'string') labels[k] = catalog.cleanLabel(r.labels[k], ''); });
     return {order: keys(r.order).slice(0, MAX_ROW), hidden: keys(r.hidden), labels: labels};
 }
+// Custom tiles: {id, label, actions, icon}. The actions are the Remapper's (remap.validateAction: a key such as KEY_HDMI1, an app to open,
+// an MQTT message) and run in the service when the tile is pressed; icon says whether the user uploaded a picture (tileIconFile).
+var MAX_TILES = 20, MAX_TILE_ACTIONS = 5;
+var TILE_ICON_MAX_BYTES = 512 * 1024, TILE_ICON_MIN_SIDE = 32, TILE_ICON_MAX_SIDE = 1024;
+var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+function cleanTile(t) {
+    if (!t || typeof t !== 'object' || typeof t.id !== 'string' || !catalog.TILE_ID.test(t.id)) return null;
+    var label = catalog.cleanLabel(t.label, ''), actions = [];
+    (Array.isArray(t.actions) ? t.actions : []).forEach(function (a) {
+        if (actions.length >= MAX_TILE_ACTIONS) return;
+        try { actions.push(remap.validateAction(a)); } catch (e) { /* a saved action this build does not know is left out */ }
+    });
+    return label && actions.length ? {id: t.id, label: label, actions: actions, icon: t.icon === true} : null;
+}
+function cleanTiles(list) {
+    var out = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (t) { var c = cleanTile(t); if (c && !seen[c.id] && out.length < MAX_TILES) { seen[c.id] = true; out.push(c); } });
+    return out;
+}
+// A new tile's id: its name as a slug, numbered when another tile has it. It never changes afterwards, so a rename keeps the tile's place in the row.
+function newTileId(label, tiles) {
+    var base = catalog.slugify(label).slice(0, 20), id = base, n = 2;
+    while (tiles.some(function (t) { return t.id === id; })) id = base + '-' + n++;
+    return id;
+}
+// A PNG the launcher can draw: the file's own signature and its IHDR size, read here so a wrong file is refused at upload, not on the TV.
+function checkTileIcon(png) {
+    if (!Buffer.isBuffer(png) || png.length < 33 || !png.slice(0, 8).equals(PNG_SIGNATURE) || png.toString('ascii', 12, 16) !== 'IHDR') throw new Error('The picture must be a PNG file');
+    if (png.length > TILE_ICON_MAX_BYTES) throw new Error('The picture must be at most ' + (TILE_ICON_MAX_BYTES / 1024) + ' KB');
+    var w = png.readUInt32BE(16), h = png.readUInt32BE(20);
+    if (w < TILE_ICON_MIN_SIDE || h < TILE_ICON_MIN_SIDE || w > TILE_ICON_MAX_SIDE || h > TILE_ICON_MAX_SIDE) throw new Error('The picture must be between ' + TILE_ICON_MIN_SIDE + ' and ' + TILE_ICON_MAX_SIDE + ' pixels on each side');
+}
 // Before the Control center there was one switch, the Task manager: it reads as that card alone.
 // The row the user left (keys in order) over Samsung's row: their order, and every Samsung tile they left out as taken out.
 // A tile they put back is no longer taken out; custom names stay.
@@ -216,7 +250,7 @@ Dock.prototype.readState = function () {
     try {
         var s = this.readStateFile();
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), row: cleanRow(s && s.row), tiles: cleanTiles(s && s.tiles), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
@@ -230,7 +264,7 @@ Dock.prototype.readState = function () {
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, tiles: [], autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
 };
 
@@ -426,6 +460,7 @@ Dock.prototype.statusNow = function () {
         error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
+        tiles: state.tiles, maxTiles: MAX_TILES, maxTileActions: MAX_TILE_ACTIONS, lastTilePress: this.lastTilePress || null,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
         runningCheck: this.cheapBroken ? 'full' : 'cheap'};   // which check the supervision uses (see runningNow)
     return this.probe().then(function (p) {
@@ -535,7 +570,7 @@ Dock.prototype.writeCatalog = function () {
 // launcher that left the store choice out would put TV-Store back on a TV where the user chose Samsung's store).
 Dock.prototype.catalogOptions = function (state, row) {
     return {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
-        intercepted: this.shards ? this.shards.intercepted() : {}, row: row === undefined ? state.row : row, appStore: state.appStore};
+        intercepted: this.shards ? this.shards.intercepted() : {}, row: row === undefined ? state.row : row, appStore: state.appStore, tiles: state.tiles};
 };
 // Writes the three lists the launcher reads. Returns true when one of them is not what was there before.
 Dock.prototype.saveLists = function (c) {
@@ -1092,6 +1127,73 @@ Dock.prototype.drainRows = function () {
     });
 };
 
+// --- custom tiles (the dashboard's Launcher > Tiles) -------------------------------------------------------------------------------------
+// After a change the launcher's lists are written again and, when it runs, it is told to read them (relist): no restart, no rebuild.
+// With the launcher off only the preview's lists are written, when there are any.
+Dock.prototype.tilesChanged = function () {
+    var state = this.readState();
+    if (state.enabled && !state.customApp) return this.relist(true);
+    if (this.busy || !this.entries().length) return Promise.resolve({ok: true});
+    return this.writeCatalog().then(function () { return {ok: true}; }, function () { return {ok: true}; });
+};
+// New ({label, actions}) or changed ({id, label, actions}). The actions are checked as a new Remapper rule's are: no factory, hotel or shop
+// app, no part of Samsung's Settings (remap.checkLaunchable). Answers the saved tile.
+Dock.prototype.saveTile = function (input) {
+    var self = this, state = this.readState(), tiles = state.tiles.slice();
+    if (!input || typeof input !== 'object') return Promise.reject(new Error('Invalid tile'));
+    var label = catalog.cleanLabel(input.label, '');
+    if (!label) return Promise.reject(new Error('A tile needs a name'));
+    if (!Array.isArray(input.actions) || !input.actions.length || input.actions.length > MAX_TILE_ACTIONS) return Promise.reject(new Error('A tile needs 1 to ' + MAX_TILE_ACTIONS + ' actions'));
+    var actions;
+    try { actions = input.actions.map(remap.validateAction); remap.checkLaunchable([{actions: actions}], this.packageOf); }
+    catch (e) { return Promise.reject(e); }
+    var at = -1;
+    if (input.id !== undefined && input.id !== null) {
+        tiles.forEach(function (t, i) { if (t.id === input.id) at = i; });
+        if (at < 0) return Promise.reject(new Error('No tile with that id'));
+    } else if (tiles.length >= MAX_TILES) return Promise.reject(new Error('At most ' + MAX_TILES + ' tiles'));
+    var tile = {id: at >= 0 ? tiles[at].id : newTileId(label, tiles), label: label, actions: actions, icon: at >= 0 ? tiles[at].icon : false};
+    if (at >= 0) tiles[at] = tile; else tiles.push(tile);
+    try { this.patchState({tiles: tiles}); } catch (e) { return Promise.reject(e); }
+    return this.tilesChanged().then(function () { return {ok: true, tile: tile, tiles: self.readState().tiles}; });
+};
+// Deletes the tile, its picture and its place in the user's row.
+Dock.prototype.deleteTile = function (id) {
+    var self = this, state = this.readState(), key = 'tile:' + id;
+    if (!state.tiles.some(function (t) { return t.id === id; })) return Promise.reject(new Error('No tile with that id'));
+    var row = state.row ? {order: state.row.order.filter(function (k) { return k !== key; }), hidden: state.row.hidden.filter(function (k) { return k !== key; }), labels: Object.assign({}, state.row.labels)} : null;
+    if (row) delete row.labels[key];
+    try { this.patchState({tiles: state.tiles.filter(function (t) { return t.id !== id; }), row: row}); } catch (e) { return Promise.reject(e); }
+    try { fs.unlinkSync(this.tileIconFile(id)); } catch (e) { /* it had none */ }
+    return this.tilesChanged().then(function () { return {ok: true, tiles: self.readState().tiles}; });
+};
+// A tile's picture (a PNG Buffer), or null to go back to the launcher's letter.
+Dock.prototype.setTileIcon = function (id, png) {
+    var self = this, state = this.readState(), tiles = state.tiles.slice(), at = -1;
+    tiles.forEach(function (t, i) { if (t.id === id) at = i; });
+    if (at < 0) return Promise.reject(new Error('No tile with that id'));
+    try {
+        if (png) { checkTileIcon(png); atomicFile.write(fs, this.tileIconFile(id), png); }
+        else { try { fs.unlinkSync(this.tileIconFile(id)); } catch (e) { /* it had none */ } }
+    } catch (e) { return Promise.reject(e.code ? new Error('The picture could not be saved: ' + e.message) : e); }
+    tiles[at] = Object.assign({}, tiles[at], {icon: !!png});
+    try { this.patchState({tiles: tiles}); } catch (e) { return Promise.reject(e); }
+    return this.tilesChanged().then(function () { return {ok: true, tiles: self.readState().tiles}; });
+};
+Dock.prototype.tileIcon = function (id) {
+    var tile = this.readState().tiles.filter(function (t) { return t.id === id; })[0];
+    if (!tile || !tile.icon) return null;
+    try { var png = fs.readFileSync(this.tileIconFile(id)); return png.slice(0, 8).equals(PNG_SIGNATURE) ? png : null; } catch (e) { return null; }
+};
+Dock.prototype.statusTiles = function () { return {tiles: this.readState().tiles, maxTiles: MAX_TILES, maxTileActions: MAX_TILE_ACTIONS, lastTilePress: this.lastTilePress || null}; };
+// The actions of the tile the launcher reports pressed (null for a tile that is gone). runActions (main.js) carries them out.
+Dock.prototype.tilePressed = function (id) {
+    var tile = this.readState().tiles.filter(function (t) { return t.id === id; })[0];
+    if (!tile) return null;
+    this.lastTilePress = {id: id, at: this.now()};
+    return tile.actions;
+};
+
 // Back to Samsung's row as it is (the dashboard's Reset), without restarting the launcher: the next start shows it.
 Dock.prototype.resetRow = function () {
     var self = this;
@@ -1339,5 +1441,5 @@ Dock.prototype.checkCustomApp = function (appId) {
     }, function () { return null; });
 };
 
-module.exports = {HOME_PICTURE_SCRIPT: HOME_PICTURE_SCRIPT, parseAudio: parseAudio, rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
+module.exports = {MAX_TILES: MAX_TILES, checkTileIcon: checkTileIcon, cleanTiles: cleanTiles, HOME_PICTURE_SCRIPT: HOME_PICTURE_SCRIPT, parseAudio: parseAudio, rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck, hexLabel: hexLabel, LOG_FILE: LOG_FILE, shardCardText: shardCardText, cleanCards: cleanCards};

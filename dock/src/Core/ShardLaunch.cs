@@ -17,6 +17,16 @@ namespace Launcher.Core
             return text != null && int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out port) && port >= 1024 && port <= 65535 ? port : 8099;
         }
 
+        /// <summary>
+        /// A custom tile (<see cref="AppEntry.Tile"/>): Vetro runs the actions the user chose for it. Nothing is started here when the service
+        /// does not answer: the tile has no app of its own. The id is checked (letters, digits and '-'), so it is safe in the URL.
+        /// </summary>
+        public static string TileCommand(AppEntry e, int port)
+        {
+            if (e == null || !Catalog.IsTileId(e.Tile)) return null;
+            return "( /usr/bin/curl -sf -m 5 -X POST 'http://127.0.0.1:" + port + "/plugins/launcher/api/tile?id=" + e.Tile + "' >/dev/null 2>&1 ) &";
+        }
+
         public static string Command(AppEntry e, int port)
         {
             if (e == null || !e.ViaShard || !Catalog.ValidSlug(e.Slug) || !Catalog.ValidAppId(e.AppId)) return null;

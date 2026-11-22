@@ -62,6 +62,12 @@ namespace Launcher.Core
         /// </summary>
         public readonly string HbbtvLink;
 
+        /// <summary>
+        /// The id of a custom tile (app id <c>tile:&lt;id&gt;</c>, made in the dashboard's Launcher &gt; Tiles), or null. Such a tile has no app of its
+        /// own: the dock tells Vetro it was pressed (POST api/tile), and Vetro carries out the actions the user chose for it.
+        /// </summary>
+        public readonly string Tile;
+
         public AppEntry(string slug, string label, string appId, string fallbackAppId)
             : this(slug, label, appId, fallbackAppId, null) { }
 
@@ -87,9 +93,12 @@ namespace Launcher.Core
             : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, viaShard, rowKey, null) { }
 
         public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard, string rowKey, string hbbtvLink)
+            : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, viaShard, rowKey, hbbtvLink, null) { }
+
+        public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard, string rowKey, string hbbtvLink, string tile)
         {
             Slug = slug; Label = label; AppId = appId; FallbackAppId = fallbackAppId; Key = key;
-            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard; RowKey = rowKey; HbbtvLink = hbbtvLink;
+            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard; RowKey = rowKey; HbbtvLink = hbbtvLink; Tile = tile;
         }
     }
 
@@ -130,7 +139,8 @@ namespace Launcher.Core
 
         private static readonly string[] IconRoots =
         {
-            "/opt/share/webappservice/apps_icon/", "/opt/usr/apps/", "/usr/apps/"
+            "/opt/share/webappservice/apps_icon/", "/opt/usr/apps/", "/usr/apps/",
+            "/opt/usr/home/owner/share/vetro-tile-"   // a custom tile's picture, uploaded in the dashboard (dock-catalog.js tileIconPath)
         };
 
         /// <summary>
@@ -152,13 +162,14 @@ namespace Launcher.Core
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
 
         /// <summary>
-        /// A row key as Vetro writes it: <c>app:</c> and an app id, <c>live:</c> and capitals, or <c>source:</c> and digits. It goes into a
+        /// A row key as Vetro writes it: <c>app:</c> and an app id, <c>live:</c> and capitals, <c>source:</c> and digits, or <c>tile:</c> and a custom tile's id. It goes into a
         /// command line (the row sent back to Vetro), so nothing else passes.
         /// </summary>
         public static bool ValidRowKey(string s)
         {
             if (s == null) return false;
             if (s.StartsWith("app:", StringComparison.Ordinal)) return IsAppId(s.Substring(4));
+            if (s.StartsWith("tile:", StringComparison.Ordinal)) return IsTileId(s.Substring(5));
             if (s.StartsWith("live:", StringComparison.Ordinal))
             {
                 string v = s.Substring(5);
@@ -190,6 +201,14 @@ namespace Launcher.Core
         /// <summary>True for a plain Tizen app id (letters, digits, dot, dash, underscore): safe to put on a command line.</summary>
         public static bool ValidAppId(string s) { return s != null && IsAppId(s); }
         public static bool ValidSlug(string s) { return s != null && IsSlug(s); }
+
+        /// <summary>A custom tile's id: lower-case letters, digits and '-', at most 24 (dock-catalog.js TILE_ID). It goes into a URL as it is.</summary>
+        public static bool IsTileId(string s)
+        {
+            if (s == null || s.Length == 0 || s.Length > 24) return false;
+            foreach (char c in s) if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+            return true;
+        }
         // Plain digits, at most five: it is only ever formatted back into a number string.
         private static bool IsSourceType(string s, out int value)
         {
@@ -231,7 +250,7 @@ namespace Launcher.Core
                 string via = f.Length > 6 ? f[6].Trim() : "";     // "shard", or blank; anything else is a later version's word and is ignored
                 string rowKey = f.Length > 7 ? f[7].Trim() : "";  // the row key; a bad one only means this tile cannot be edited
                 string hbbtvLink = f.Length > 8 ? f[8].Trim() : ""; // #200: the HbbTV link of an app that is only a doorway (SVT Play)
-                string key = null, panel = null;
+                string key = null, panel = null, tile = null;
                 int sourceType = -1;
                 bool special = false, systemApp = false;
                 if (appId.StartsWith("sys:", StringComparison.Ordinal))
@@ -248,6 +267,12 @@ namespace Launcher.Core
                 else if (appId.StartsWith("source:", StringComparison.Ordinal))
                 {
                     if (!IsSourceType(appId.Substring(7), out sourceType)) { problems.Add("line " + (n + 1) + ": bad source number"); continue; }
+                    special = true;
+                }
+                else if (appId.StartsWith("tile:", StringComparison.Ordinal))
+                {
+                    tile = appId.Substring(5);
+                    if (!IsTileId(tile)) { problems.Add("line " + (n + 1) + ": bad tile id"); continue; }
                     special = true;
                 }
                 else if (appId.StartsWith("panel:", StringComparison.Ordinal))
@@ -272,7 +297,7 @@ namespace Launcher.Core
                 if (entries.Count >= MaxEntries) { problems.Add("line " + (n + 1) + ": more than " + MaxEntries + " entries, ignored"); continue; }
                 bool viaShard = via == "shard" && !special && !systemApp && appId.Length > 0;   // a plain app tile only
                 entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null, viaShard,
-                    ValidRowKey(rowKey) ? rowKey : null, hbbtvLink.Length > 0 ? hbbtvLink : null));
+                    ValidRowKey(rowKey) ? rowKey : null, hbbtvLink.Length > 0 ? hbbtvLink : null, tile));
             }
             return new CatalogResult(entries.ToArray(), problems.ToArray());
         }

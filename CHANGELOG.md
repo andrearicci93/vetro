@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Launcher
+
+- **Custom tiles.** Launcher > Tiles in the dashboard makes tiles of your own for the launcher's row: a name, a picture (a PNG you upload; the launcher rounds it like an app's icon) and up to five actions, the ones a Remapper shortcut has: switch to an input or press a key, open an app, send an MQTT message. A Plex tile can switch to the HDMI input of a streaming box and tell Home Assistant to open Plex on it. A new tile joins the end of the row; hold OK on it to move or remove it, and a removed tile stays in All apps. Saving a tile, its picture or a deletion reaches the launcher without a restart. The actions run in the service with the Remapper's checks (no factory, hotel or shop app), and only the TV itself can press a tile. Tried on an LS03B (The Frame, Tizen 6.5): five tiles with pictures made from the dashboard reached the launcher without a restart, and a tile pressed with the remote switched to HDMI 1 and sent its MQTT message to Home Assistant.
+
 ## 0.7.0 — 2026-11-21
 
 Vetro now draws its own TV: a launcher with your own row and a Control center, a live TV screen, and its own volume bar and number pad, all in one place in the dashboard (Vetro UI).

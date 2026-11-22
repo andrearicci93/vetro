@@ -2445,6 +2445,12 @@ namespace Launcher
         {
             try
             {
+                if (e.Tile != null)
+                {
+                    string tileCmd = ShardLaunch.TileCommand(e, ShardLaunch.ServicePort);
+                    Log("tile " + e.Tile + (tileCmd != null ? " handed to Vetro rc=" + Libc.system(tileCmd) : ": bad id"));
+                    return;
+                }
                 if (e.ViaShard)
                 {
                     string viaService = ShardLaunch.Command(e, ShardLaunch.ServicePort);
