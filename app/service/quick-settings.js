@@ -60,6 +60,30 @@ var GROUPS = [
         description: 'Holding Home, or pressing the remote’s AI button, no longer opens Samsung’s AI screens (Click to Search and the AI companion). Nothing opens in their place.',
         ids: ['com.samsung.tv.AICompanionAgent', 'com.samsung.tv.AICompanionUI', 'com.samsung.tv.AICompanionUILauncher', 'com.samsung.tv.AICompanionUINotice',
             'com.samsung.tv.ai-discovery-ui', 'com.samsung.tv.ai-discovery-service', 'com.samsung.tv.ai-discovery-sceneanalyzer', 'com.samsung.tv.download-content']},
+    // From samshush's optional controls (elithrar/samshush), checked against 184 public diagnostics on 2026-11-22. Each shows only on a TV
+    // that has its apps. Gaming Hub: the UI apps (2022 and later) and the daemon and service that nearly every TV runs (ghdaemon on 114 of
+    // 122 process lists, ~11 MB). ghdaemon.service restarts every 2 s on failure (Restart=on-failure, RestartSec=2 in the 6.0, 6.5 and 9
+    // firmware): a disabled ghdaemon without Samsung's "do not start" file loops for ever (1509 restarts in 1 h 51 min on a Q80A).
+    {id: 'gaming-hub', label: 'Gaming Hub', section: 'memory', onlyInstalled: true,
+        description: 'Samsung Gaming Hub, the cloud gaming screen, and its background service, which runs on most TVs (about 11 MB). Game Mode is a picture setting and stays as it is.',
+        ids: ['com.samsung.tv.gaminghub', 'com.samsung.tv.gamehome', 'com.samsung.tv.home.game', 'com.samsung.tv.ghdaemon', 'com.samsung.tv.ghservice'],
+        markerUnits: ['com.samsung.tv.ghdaemon.service']},
+    // SmartThings: the thing and client run on almost every TV (8 and 11 MB); the hub, plugins and iot-hub-control on 2022 and later.
+    // Its units start the apps without Restart=, so a disabled app does not loop.
+    {id: 'smartthings', label: 'SmartThings', section: 'memory', onlyInstalled: true, confirm: true,
+        confirmText: 'The SmartThings app on your phone can no longer find or control this TV, and neither can anything else that goes through SmartThings. Turn this off again to bring them back.',
+        description: 'The SmartThings services. The SmartThings app on a phone, and anything that controls the TV through SmartThings, can no longer find or control it, and the TV stops showing SmartThings devices. Together they hold about 20 MB on most TVs.',
+        ids: ['com.samsung.tizen.smartthings-client', 'com.samsung.tizen.smartthings-thing', 'com.samsung.tizen.smartthings-hub', 'com.samsung.tizen.smartthings-plugin',
+            'com.samsung.tizen.smartthings-plugin-platform', 'com.samsung.tizen.smartthings-streaming', 'com.samsung.tv.iot-hub-control', 'com.samsung.tv.coba.smartthings',
+            'com.samsung.tv.SmartThingsApp', 'com.samsung.tv.smartthings-partial-app']},
+    {id: 'smartthings-find', label: 'SmartThings Find', section: 'memory', onlyInstalled: true,
+        description: 'The service that lets SmartThings Find use this TV to locate lost Galaxy phones, tags and earbuds nearby (about 6 MB where it runs).',
+        ids: ['com.samsung.tv.smartthingsfind-daemon', 'com.samsung.tv.smartthingsfind-ondemand']},
+    // Sound Sensor (ambient-sound) and the Pet Care widget: 2023 and later TVs; they start on demand. Not members: tvsensor-iot-service
+    // (it also runs the light sensor's sync, samshush keeps it) and aisound-app (the TV's adaptive sound).
+    {id: 'sound-sensor', label: 'Sound Sensor and Pet Care', section: 'memory', onlyInstalled: true,
+        description: 'Sound Sensor, the sound detection the TV offers to SmartThings, and the Pet Care widget. The light sensor and the TV’s adaptive sound are not part of it.',
+        ids: ['com.samsung.tv.ambient-sound', 'com.samsung.tv.iotwidget-petcare']},
     // Apps that come with the TV and that Samsung's own Apps screen does not let you delete. One switch each (section
     // "apps", the second group of the Disable tab): the app is disabled like any member of a group, and the same switch,
     // or Restore the TV, enables it again. The ids are the Q80A's; a TV without the app does not show its switch. The row
