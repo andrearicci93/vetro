@@ -14,11 +14,19 @@
 Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A and re-written for Vetro.
 
 - **Voice services, Bixby and Samsung Health also use Samsung's own "do not start" files.** Their background services are started by units that skip the start when such a file exists; turning the switch off now puts the file down where the TV's units look for one, and on takes it away. The switch says *Partly done* when a file is missing while the apps are off (a switch turned off before 0.7.1: turn it off again), or left while the apps are on again. Restore the TV removes every file Vetro put down. Not yet tried with a voice remote on a TV.
+- **Stop viewing-data collection on Tizen 9** also masks `contents-cognition-service-manager`, `org.tizen.tv.sp-kpi`, `psid-checker` and `screen-analysis-service-manager`, and leaves alone a "do not start" file the TV's installer wrote for a disabled package; **Disable AirPlay** also stops Tizen 9's `airplay-app-2` ([#279](https://github.com/andrearicci93/vetro/pull/279) by swiezaczek, the parts that fit Vetro's masks).
 - **Stop viewing-data collection** also stops `abnormal_user_behavior`, `issue_report_agent` (diagnostic reports) and `media-analytics-service`, and the services without a file of their own are now masked until the next restart and masked again about 10 s into every boot, through the boot step the update lock uses, instead of being stopped once Vetro's service is up (about 95 s on a Q80A). `data-service` is still only stopped.
 - **New switches**: *Disable Samsung remote support* and *Disable Wi-Fi presence* (Privacy and ads), *Disable background app delivery* (General → Essential settings). Each shows only on a TV that has its services. Remote PC is left alone.
 - **Samsung TV Plus** off also turns off Samsung's "start TV Plus at power-on" setting; on, or Restore the TV, puts back the value it had.
 - **Stop viewing-data collection, off and on again, keeps the DNS filter on.** When the usage-log host was the filter's only domain, turning the switch off emptied the list and switched the filter off, and turning it on again added the host back but left the filter off (found on a Q80A while benchmarking 0.7.1). Vetro now switches the filter back on if it was the one that switched it off.
 - **A stopped app is checked by its own process**: a switch turned off reports a member whose process is still there after the stop, by the process's label, instead of trusting the stop's answer.
+
+### Launcher
+
+- **Close idle Samsung Home** (Vetro UI → Launcher, on by default): while Vetro's launcher is on, Samsung Home and its background parts are closed 25 s after the TV wakes from standby, or after 10 minutes unused, never while Samsung Home is on screen. Samsung Home takes about 67 MiB on a Q80A; on 2022 and later TVs its media hub, the Home you see there, 63-118 MiB in the diagnostics ([#281](https://github.com/andrearicci93/vetro/pull/281) by [swiezaczek](https://github.com/swiezaczek)).
+- **The Samsung Home closed after a boot is closed whole and never from the screen**: the media hub and sidebar go too, and not while Samsung Home is the app on screen; if it is, Vetro asks again later ([#278](https://github.com/andrearicci93/vetro/pull/278) by swiezaczek).
+- **Smoother launcher on busy TVs**: the checks that started a shell on the launcher's own loop now run beside it, so an opening no longer waits for them (on an S90C the longest step of an opening went from up to 1 s to under 8 ms); the launcher and the Volume bar are raised over other windows when they open ([#285](https://github.com/andrearicci93/vetro/pull/285) by swiezaczek).
+- **The Task manager leaves Tizen 9's volume app and quick launch alone** ([#281](https://github.com/andrearicci93/vetro/pull/281)).
 
 ### Updates
 
