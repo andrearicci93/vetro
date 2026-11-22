@@ -112,6 +112,11 @@ assert.equal(ytStaleReg.skipped.length, 0);
         ['xvvl3S1TT1.TizenTubeStandalone', 'org.tizen.netflix-app', '9Ur5IzDKqV.TizenYouTube', 'PvWgqxV3Xa.YouTubeTV'], 'off: YouTube is appended');
     assert.deepEqual(catalog.build(Object.assign({}, media, {order: []}), {fixTizenTube: true}).entries.map(e => e.appId),
         ['org.tizen.netflix-app', 'xvvl3S1TT1.TizenTubeStandalone', '9Ur5IzDKqV.TizenYouTube', 'PvWgqxV3Xa.YouTubeTV'], 'no TizenTube in the row: YouTube is appended');
+    const ttGone = catalog.build(Object.assign({}, media, {installedCount: 28,
+        installed: Object.assign({'org.tizen.netflix-app': true, '9Ur5IzDKqV.TizenYouTube': true, 'PvWgqxV3Xa.YouTubeTV': true}, pkgs)}), {fixTizenTube: true});
+    assert.deepEqual(ttGone.entries.map(e => e.appId), ['org.tizen.netflix-app', '9Ur5IzDKqV.TizenYouTube', 'PvWgqxV3Xa.YouTubeTV'],
+        'TizenTube in the row but uninstalled: no tile stands in, so YouTube is appended');
+    assert.ok(ttGone.skipped.some(s => s.item === 'd/webapp@tt' && s.reason === 'Not installed'));
 }
 
 // load(): one read of the Home data, one check that the icon files exist; errors are explicit
