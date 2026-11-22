@@ -27,6 +27,11 @@ function fixture(options) {
         tv.scripts.push(cmd);
         if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
         const script = /^echo \S+ \| base64 -d \| sh$/.test(cmd) ? Buffer.from(cmd.split(' ')[1], 'base64').toString() : cmd;   // the running check goes unwrapped
+        // Samsung's Home closed by the launcher's script (closeHomeOnce, Close idle Samsung Home): not while it is on screen
+        if (script.includes('current_fullscreen_appid') && script.includes('app_launcher -k')) {
+            if (tv.fullscreenHome) return {exit_code: 0, stdout: 'fg\n'};
+            const was = tv.csfs; tv.csfs = false; return {exit_code: 0, stdout: was ? 'closed:csfs\n' : 'off\n'};
+        }
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
@@ -350,6 +355,23 @@ function fixture(options) {
     f.dock.uptime = () => 1000;
     assert.equal(await f.dock.supervise(true), 'running');
     assert.equal(f.tv.csfs, false, 'settled: Samsung Home closed');
+    // #278: not while Samsung's Home is the app on screen, and asked again at the next round
+    {
+        const g = fixture({running: true});
+        g.dock.patchState({enabled: true});
+        g.dock.serviceStart = 95; g.dock.uptime = () => 1000; g.tv.fullscreenHome = true;
+        await g.dock.supervise(true);
+        assert.equal(g.tv.csfs, true, 'Samsung Home on screen: left alone');
+        assert.ok(!g.dock.homeClosed, 'and not marked done');
+        g.tv.fullscreenHome = false;
+        await g.dock.supervise(true);
+        assert.equal(g.tv.csfs, false, 'closed at the next round once it is in the background');
+        assert.equal(g.dock.homeClosed, true);
+        assert.match(g.dock.startScript(), /DOTNET_EnableDiagnostics=0/);
+        const all = g.tv.scripts.map(c => /^echo \S+ \| base64 -d \| sh$/.test(c) ? Buffer.from(c.split(' ')[1], 'base64').toString() : c).join('\n');
+        assert.ok(all.includes('app_launcher -k com.samsung.tv.home.media') && all.includes('app_launcher -k com.samsung.tv.home.sidebar'), 'Home\'s media hub and sidebar too (the Home of 2022 and later TVs)');
+        assert.match(all, /grep -qE "\(\^\|\[\._\]\)\(csfs\|home\\\.media\|home\\\.sidebar\)\$"/, 'the probe counts the media hub and the sidebar as Samsung Home');
+    }
     f.tv.csfs = true;                                   // opened again on purpose from the dock
     assert.equal(await f.dock.supervise(true), 'running');
     assert.equal(f.tv.csfs, true, 'closed only once per service run');

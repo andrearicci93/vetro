@@ -314,7 +314,8 @@ Dock.prototype.probe = function () {
         'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then echo "dock=$p"; else echo "dock="; fi',
         // Samsung's Home is a .NET app: its process is the TV's dotnet launcher and its name the tail of the app id after "DN_"
         // (DN_sung.tv.csfs on a 2021 TV), so pidof never finds it and the name is not "csfs" alone. Both spellings count.
-        'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || grep -qE "(^|[._])csfs$" /proc/[0-9]*/comm 2>/dev/null; then echo "home=1"; else echo "home=0"; fi',
+        // Its media hub and sidebar count too: on 2022 and later TVs the media hub is the Home on screen (#40) and the bigger process.
+        'if pidof ' + HOME_KILL.join(' ') + ' >/dev/null 2>&1 || grep -qE "(^|[._])(csfs|home\\.media|home\\.sidebar)$" /proc/[0-9]*/comm 2>/dev/null; then echo "home=1"; else echo "home=0"; fi',
         // No log file yet is normal. Without || true the missing file failed the whole read, and the user saw its raw
         // output, "dock= home=0 log:", as the error (#82).
         'echo "log:"; tail -n 6 ' + LOG_FILE + ' 2>/dev/null || true'
@@ -497,7 +498,8 @@ Dock.prototype.cardsShown = function () {
 // agent had been relaunched at wake). In its own unit it survives standby. KillSignal is SIGKILL because the
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
-    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
+    // DOTNET_EnableDiagnostics=0 (#278): no diagnostics IPC socket and thread in the launcher; nothing attaches a debugger on a TV.
+    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR + ' DOTNET_EnableDiagnostics=0';
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
@@ -1315,13 +1317,20 @@ Dock.prototype.maintainIdleHome = function (state) {
 // After a boot Samsung's own Home is started by the TV and sits idle (~140 MB); the dock closes it only after a Home press,
 // and enable() only when the switch is turned on. So once per service run, when the dock is up and the boot has settled, close
 // it. Never during the boot window (the Q80A stalls without it), and only once: opening it again from the dock is deliberate.
+// From #278 by swiezaczek: never while Samsung's Home is the app on screen (memory/appfw/current_fullscreen_appid), Home's
+// sidebar and media hub too (on 2022 and later TVs the media hub is the Home you see, 63-118 MiB in the diagnostics) and the preview
+// updater, with idleHomeScript; and done only once the command ran: a Home on screen, a busy agent or a failure is asked again
+// at the next round. The probe counts the media hub and the sidebar as Samsung's Home as well.
 Dock.prototype.closeHomeOnce = function (samsungHome) {
     if (this.homeClosed || this.uptime() < BOOT_WINDOW_S) return Promise.resolve();
-    this.homeClosed = true;
     // Only the run of the service that came up with the TV does it: after a later restart (an update, a crash) a Samsung
     // Home on screen is one the user opened from the launcher, and closing it would take it away from them.
-    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) return Promise.resolve();
-    return this.execute('app_launcher -k ' + HOME_APP, 8000).catch(function () {});
+    if (!samsungHome || this.serviceStart >= BOOT_WINDOW_S) { this.homeClosed = true; return Promise.resolve(); }
+    var self = this;
+    return this.execute(wrap(idleHomeScript(true)), 8000).then(function (r) {
+        if (!r || r.exit_code || r.timed_out || String(r.stdout || '').trim() === 'fg') return;
+        self.homeClosed = true;
+    }).catch(function () {});
 };
 
 // The Vetro launcher at power-on (#206; the owner's choice of 2026-11-19). Firmware that boots through a "root app" (2022 and later:
