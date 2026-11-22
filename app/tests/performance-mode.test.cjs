@@ -4,8 +4,11 @@
 const assert = require('assert').strict;
 const pm = require('../service/performance-mode.js');
 
-const TV_READ = ['FG|com.samsung.tv.cobalt-yt', 'MEM|916464', 'BG|org.tizen.welcome-mode|1506|-1000', 'BG|org.tizen.ScreenMirroring-app-tv|2083|600',
-    'BG|com.samsung.tv.aria-video|4416|600', 'BG|org.tizen.netflix-app|9893|600', 'BG|com.samsung.tv.cobalt-yt|16032|200', 'BG|com.samsung.hitcomp|24618|480'].join('\n');
+const TV_READ = ['FG|com.samsung.tv.cobalt-yt', 'MEM|916464', 'CG|0', 'BG|org.tizen.welcome-mode|1506|-1000|0', 'BG|org.tizen.ScreenMirroring-app-tv|2083|600|0',
+    'BG|com.samsung.tv.aria-video|4416|600|0', 'BG|org.tizen.netflix-app|9893|600|0', 'BG|com.samsung.tv.cobalt-yt|16032|200|0', 'BG|com.samsung.hitcomp|24618|480|0',
+    'BG|ContentServiceManager|1474|600|0'].join('\n');
+const UI = ['org.tizen.welcome-mode', 'org.tizen.ScreenMirroring-app-tv', 'com.samsung.tv.aria-video', 'org.tizen.netflix-app', 'com.samsung.tv.cobalt-yt', 'com.samsung.hitcomp'];
+const ids = list => list.map(a => a.id);
 
 function store(init) { let data = init ? JSON.stringify(init) : null; return {readFileSync() { if (data === null) throw Error('absent'); return data; }, writeFileSync(f, t) { data = t; }, renameSync() {}, get json() { return JSON.parse(data); }}; }
 function fakeDock(state) {
@@ -24,23 +27,30 @@ function fakeWins(status) {
     // the read: what is on screen, memory, background apps with their oom_score_adj, sound
     const s = pm.parse(TV_READ + '\nAUD|777\nMC|rJeHak5zRg.Spotify\nBG|bad id|1|600');
     assert.equal(s.fg, 'com.samsung.tv.cobalt-yt'); assert.equal(s.memKiB, 916464);
-    assert.equal(s.background.length, 6, 'a malformed line is dropped'); assert.deepEqual(s.audioPids, [777]); assert.deepEqual(s.playing, ['rJeHak5zRg.Spotify']);
-    assert.doesNotMatch(pm.READ, /cpu:\/background/, 'no cgroup test: a 2021 Q80A has no cpu:/background group');
-    assert.match(pm.READ, /oom_score_adj/); assert.match(pm.READ, /pactl list sink-inputs/); assert.match(pm.READ, /media_controller\.db/);
+    assert.equal(s.background.length, 7, 'a malformed line is dropped'); assert.equal(s.cgroupInUse, false); assert.deepEqual(s.audioPids, [777]); assert.deepEqual(s.playing, ['rJeHak5zRg.Spotify']);
+    assert.match(pm.READ, /cgroup\.procs/, 'the background cgroup counts only where resourced uses it');
+    assert.doesNotMatch(pm.READ, /\$\(cat |grep -Fxq/, 'no process started per app');
+    assert.match(pm.READ, /oom_score_adj/); assert.match(pm.UIAPPS, /app_component='uiapp'/); assert.match(pm.READ, /pactl list sink-inputs/); assert.match(pm.READ, /media_controller\.db/);
 
     // choose: idle long enough, never the app on screen, the TV's own apps, sound, kept-open, or an app resourced keeps in use
     const now = 100 * 60000, front = {'org.tizen.netflix-app': now - 16 * 60000, 'com.samsung.tv.aria-video': now - 20 * 60000, 'com.samsung.tv.cobalt-yt': now - 30 * 60000};
-    assert.deepEqual(pm.choose(s, front, now, []), ['com.samsung.tv.aria-video', 'org.tizen.netflix-app'], 'longest idle first; YouTube on screen and the TV\'s apps stay');
-    assert.deepEqual(pm.choose(s, front, now, ['org.tizen.netflix-app']), ['com.samsung.tv.aria-video'], 'an app kept open stays');
-    assert.deepEqual(pm.choose(Object.assign({}, s, {audioPids: [9893]}), front, now, []), ['com.samsung.tv.aria-video'], 'a native app with a playing stream stays');
-    assert.deepEqual(pm.choose(Object.assign({}, s, {playing: ['com.samsung.tv.aria-video']}), front, now, []), ['org.tizen.netflix-app'], 'a media-controller player that plays stays');
-    assert.deepEqual(pm.choose(s, {}, now, []), [], 'first seen now: nothing is idle yet');
+    front.ContentServiceManager = now - 60 * 60000;
+    assert.deepEqual(pm.choose(s, front, now, [], UI), [{id: 'com.samsung.tv.aria-video', pid: 4416}, {id: 'org.tizen.netflix-app', pid: 9893}], 'longest idle first; YouTube on screen, the TV\'s apps and a non-UI service stay');
+    assert.deepEqual(pm.choose(s, front, now, [], null), [], 'UI apps not known yet: nothing is closed');
+    assert.deepEqual(ids(pm.choose(s, front, now, ['org.tizen.netflix-app'], UI)), ['com.samsung.tv.aria-video'], 'an app kept open stays');
+    assert.deepEqual(ids(pm.choose(Object.assign({}, s, {audioPids: [9893]}), front, now, [], UI)), ['com.samsung.tv.aria-video'], 'a native app with a playing stream stays');
+    assert.deepEqual(ids(pm.choose(Object.assign({}, s, {playing: ['com.samsung.tv.aria-video']}), front, now, [], UI)), ['org.tizen.netflix-app'], 'a media-controller player that plays stays');
+    assert.deepEqual(pm.choose(s, {}, now, [], UI), [], 'first seen now: nothing is idle yet');
     const fresh = {'org.tizen.netflix-app': now - 3 * 60000, 'com.samsung.tv.aria-video': now - 60000};
-    assert.deepEqual(pm.choose(s, fresh, now, []), [], 'plenty of memory: 3 minutes is not long enough');
-    assert.deepEqual(pm.choose(Object.assign({}, s, {memKiB: 400 * 1024}), fresh, now, []), ['org.tizen.netflix-app'], 'low memory: the longest idle past 2 minutes goes at once');
-    assert.deepEqual(pm.choose(Object.assign({}, s, {background: [{id: 'org.tizen.netflix-app', pid: 9893, adj: 200}]}), front, now, []), [], 'adj under 300: resourced counts it as in use');
+    assert.deepEqual(pm.choose(s, fresh, now, [], UI), [], 'plenty of memory: 3 minutes is not long enough');
+    assert.deepEqual(ids(pm.choose(Object.assign({}, s, {memKiB: 400 * 1024}), fresh, now, [], UI)), ['org.tizen.netflix-app'], 'low memory: the longest idle past 2 minutes goes at once');
+    assert.deepEqual(pm.choose(Object.assign({}, s, {background: [{id: 'org.tizen.netflix-app', pid: 9893, adj: 200, cg: false}]}), front, now, [], UI), [], 'adj under 300: resourced counts it as in use');
+    const tizen9 = Object.assign({}, s, {cgroupInUse: true, background: [{id: 'org.tizen.netflix-app', pid: 9893, adj: 600, cg: false}, {id: 'com.samsung.tv.aria-video', pid: 4416, adj: 600, cg: true}]});
+    assert.deepEqual(ids(pm.choose(tizen9, front, now, [], UI)), ['com.samsung.tv.aria-video'], 'where resourced uses the background cgroup (#281\'s S90C), an app outside it stays');
     ['org.tizen.tv-viewer', 'com.samsung.tv.csfs', 'vetrotvapp.Vetro', 'org.tizen.chromium-efl.wrt-client', 'org.tizen.volume-app'].forEach(id => assert.ok(pm.isProtected(id), id));
-    assert.match(pm.closeScript(['org.tizen.netflix-app']), /app_launcher -t org\.tizen\.netflix-app[\s\S]*app_launcher -k org\.tizen\.netflix-app[\s\S]*CLOSED\|org\.tizen\.netflix-app/);
+    const cs = pm.closeScript([{id: 'org.tizen.netflix-app', pid: 9893}]);
+    assert.match(cs, /app_launcher -t org\.tizen\.netflix-app[\s\S]*\[ -d \/proc\/9893 \][\s\S]*app_launcher -k org\.tizen\.netflix-app/);
+    assert.match(cs, /if \[ -d \/proc\/9893 \]; then echo "LEFT\|org\.tizen\.netflix-app"; else echo "CLOSED\|org\.tizen\.netflix-app"; fi/, 'closed only when the process is gone');
 
     // on: only what was off becomes the mode's; off: only the mode's, and only if still as it left it
     let io = store(), dock = fakeDock({noMotion: false, closeIdleHome: true}), wins = fakeWins({telemetry: 'on'});
@@ -79,12 +89,15 @@ function fakeWins(status) {
     m = new pm.PerformanceMode(async cmd => {
         const sh = Buffer.from(cmd.split(' ')[1], 'base64').toString(); sent.push(sh);
         if (sh.includes('echo "FG|')) return {exit_code: 0, stdout: TV_READ};
-        return {exit_code: 0, stdout: (sh.match(/CLOSED\|[^"]+/g) || []).join('\n')};
+        if (sh.includes("app_component='uiapp'")) return {exit_code: 0, stdout: UI.join('\n')};
+        // Netflix survives -t and -k on this fake TV: reported as left, not counted
+        return {exit_code: 0, stdout: (sh.match(/echo "(?:CLOSED|LEFT)\|[^"]+"/g) || []).map(x => x.slice(6, -1)).map(x => x === 'CLOSED|org.tizen.netflix-app' ? 'LEFT|org.tizen.netflix-app' : x).join('\n')};
     }, {fs: io, now: () => clock});
     assert.deepEqual(await m.tick(), [], 'first look: everything is new');
     clock += 14 * 60000; assert.deepEqual(await m.tick(), []);
-    clock += 60000; assert.deepEqual(await m.tick(), ['com.samsung.tv.aria-video', 'org.tizen.netflix-app']);
-    r = await m.read(); assert.equal(r.closed, 2); assert.equal(r.recent[0].id, 'org.tizen.netflix-app');
+    clock += 60000; assert.deepEqual(await m.tick(), ['com.samsung.tv.aria-video'], 'Netflix did not go: not counted');
+    r = await m.read(); assert.equal(r.closed, 1); assert.equal(r.recent[0].id, 'com.samsung.tv.aria-video');
+    assert.equal(sent.filter(x => x.includes("app_component='uiapp'")).length, 1, 'the UI app list is asked once an hour, not every minute');
     io = store({on: false}); const before = sent.length;
     m = new pm.PerformanceMode(async () => { throw Error('must not run'); }, {fs: io});
     assert.deepEqual(await m.tick(), []); assert.equal(sent.length, before);

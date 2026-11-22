@@ -9,9 +9,9 @@
 // Turning it off puts back only what it turned on, and only what is still as it left it (the ledger in FILE). Measured on a
 // Q80A (2026-11-22, one run each): Netflix ~100 MiB and NOW ~95 MiB in background; Samsung's own memory killer already closes
 // background apps under pressure, so the cleanup frees memory earlier (less swap), at the cost of a cold start on reopening.
-// The app selection follows #281's Free up RAM by swiezaczek (UI apps only, oom_score_adj >= 300). Its background cgroup check is left
-// out: a 2021 Q80A has no cpu:/background group (apps sit in resourced_cgroup:/Apps); there resourced gives a background app 600 and
-// the app on screen 200 (Netflix behind YouTube, 2026-11-22).
+// The app selection follows #281's Free up RAM by swiezaczek: UI apps only, oom_score_adj >= 300, and in the cpu background cgroup
+// where resourced uses it (#281's S90C). A 2021 Q80A has that group but leaves it empty (Netflix in background sat in the root
+// group): there resourced's oom_score_adj alone tells them apart, 600 in background and 200 on screen (2026-11-22).
 var fs = require('fs');
 
 var FILE = '/opt/usr/home/owner/share/vetro-performance.json';
@@ -33,16 +33,21 @@ function isProtected(id) { return PROTECTED.indexOf(id) >= 0 || /^vetrotvapp/.te
 
 function wrap(s) { return 'echo ' + Buffer.from(s).toString('base64') + ' | base64 -d | sh'; }
 
-// One read of what runs: the app on screen, available memory, the running UI apps in the background (pid, oom_score_adj), the
-// PulseAudio streams that play (pid), and the media-controller servers that play (app id; Spotify registers there).
+// The UI apps a person can open (the package database): asked once an hour, they change only with installs.
+var UIAPPS = 'sqlite3 -readonly -cmd ".timeout 3000" ' + PKGDB + ' "SELECT app_id FROM package_app_info WHERE app_component=\'uiapp\' AND ifnull(app_nodisplay,\'false\')!=\'true\';" 2>/dev/null; true';
+var UIAPPS_MS = 3600000;
+// One read of what runs, with no process started per app (shell builtins read /proc): the app on screen, available memory, whether
+// resourced uses the cpu background cgroup, every running app (pid, oom_score_adj, in that cgroup), the PulseAudio streams that play
+// (pid), and the media-controller servers that play (app id; Spotify registers there). About 0.3 s on a Q80A before this rewrite.
 var READ = [
     'f=$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null | sed -n "s/.*value = \\([^ (]*\\).*/\\1/p"); echo "FG|$f"',
     'echo "MEM|$(awk \'/^MemAvailable:/{print $2}\' /proc/meminfo 2>/dev/null)"',
-    'ui=$(sqlite3 -readonly -cmd ".timeout 3000" ' + PKGDB + ' "SELECT app_id FROM package_app_info WHERE app_component=\'uiapp\' AND ifnull(app_nodisplay,\'false\')!=\'true\';" 2>/dev/null)',
+    '[ -s /sys/fs/cgroup/cpu/background/cgroup.procs ] && echo "CG|1" || echo "CG|0"',
     'app_launcher -S 2>/dev/null | sed -n "s/^[[:space:]]*\\([^[:space:]]*\\)[[:space:]]*(\\([0-9]*\\)).*/\\1 \\2/p" | while read -r id pid; do',
-    '  [ -n "$pid" ] && [ -d "/proc/$pid" ] || continue',
-    '  printf "%s\\n" "$ui" | grep -Fxq "$id" || continue',
-    '  echo "BG|$id|$pid|$(cat /proc/$pid/oom_score_adj 2>/dev/null)"',
+    '  [ -n "$pid" ] && [ -r "/proc/$pid/oom_score_adj" ] || continue',
+    '  read -r a < "/proc/$pid/oom_score_adj"; c=0',
+    '  while read -r l; do case "$l" in *:cpu:/background*|*:cpu,cpuacct:/background*) c=1;; esac; done < "/proc/$pid/cgroup"',
+    '  echo "BG|$id|$pid|$a|$c"',
     'done',
     'PULSE_SERVER=unix:/run/pulse/native pactl list sink-inputs 2>/dev/null | awk \'/^Sink Input/{c=""} /Corked:/{c=$2} /application.process.id/{gsub(/"/,"",$3); if(c=="no") print "AUD|" $3}\'',
     '[ -r ' + MCDB + ' ] && sqlite3 -readonly ' + MCDB + ' "SELECT name FROM server_info WHERE playback_state NOT IN (0,2,3);" 2>/dev/null | sed "s/^/MC|/"',
@@ -50,40 +55,48 @@ var READ = [
 ].join('\n');
 
 function parse(out) {
-    var s = {fg: null, memKiB: null, background: [], audioPids: [], playing: []};
+    var s = {fg: null, memKiB: null, cgroupInUse: false, background: [], audioPids: [], playing: []};
     String(out || '').split('\n').forEach(function (line) {
         var f = line.split('|');
         if (f[0] === 'FG') s.fg = f[1] || null;
         else if (f[0] === 'MEM' && /^\d+$/.test(f[1])) s.memKiB = Number(f[1]);
-        else if (f[0] === 'BG' && APP_ID_RE.test(f[1]) && /^\d+$/.test(f[2])) s.background.push({id: f[1], pid: Number(f[2]), adj: /^-?\d+$/.test(f[3]) ? Number(f[3]) : null});
+        else if (f[0] === 'CG') s.cgroupInUse = f[1] === '1';
+        else if (f[0] === 'BG' && APP_ID_RE.test(f[1]) && /^\d+$/.test(f[2])) s.background.push({id: f[1], pid: Number(f[2]), adj: /^-?\d+$/.test(f[3]) ? Number(f[3]) : null, cg: f[4] === '1'});
         else if (f[0] === 'AUD' && /^\d+$/.test(f[1])) s.audioPids.push(Number(f[1]));
         else if (f[0] === 'MC' && APP_ID_RE.test(f[1])) s.playing.push(f[1]);
     });
     return s;
 }
 
-// The apps to close now, longest idle first. lastFront: app id -> ms the app was last seen on screen (or first seen at all).
-function choose(s, lastFront, now, keepOpen) {
+// The apps to close now, longest idle first: {id, pid}. lastFront: app id -> ms the app was last seen on screen (or first seen at all).
+// uiApps: the openable UI apps (null: not known yet, nothing is closed).
+function choose(s, lastFront, now, keepOpen, uiApps) {
     var keep = keepOpen || [];
+    if (!uiApps) return [];
     var candidates = s.background.filter(function (a) {
-        if (a.id === s.fg || isProtected(a.id) || keep.indexOf(a.id) >= 0) return false;
+        if (a.id === s.fg || isProtected(a.id) || keep.indexOf(a.id) >= 0 || uiApps.indexOf(a.id) < 0) return false;
+        if (s.cgroupInUse && !a.cg) return false;                                  // resourced puts background apps there: this one is not
         if (a.adj === null || a.adj < 300) return false;                       // resourced still counts it as in use (or says nothing)
         if (s.audioPids.indexOf(a.pid) >= 0 || s.playing.indexOf(a.id) >= 0) return false;   // playing sound
         return true;
-    }).map(function (a) { return {id: a.id, idle: now - (lastFront[a.id] === undefined ? now : lastFront[a.id])}; });
+    }).map(function (a) { return {id: a.id, pid: a.pid, idle: now - (lastFront[a.id] === undefined ? now : lastFront[a.id])}; });
     candidates.sort(function (x, y) { return y.idle - x.idle; });
-    var out = candidates.filter(function (c) { return c.idle >= IDLE_MS; }).map(function (c) { return c.id; });
+    var out = candidates.filter(function (c) { return c.idle >= IDLE_MS; });
     if (s.memKiB !== null && s.memKiB < LOW_MEMORY_KIB) {
-        var first = candidates.filter(function (c) { return c.idle >= LOW_IDLE_MS && out.indexOf(c.id) < 0; })[0];
-        if (first) out.push(first.id);
+        var first = candidates.filter(function (c) { return c.idle >= LOW_IDLE_MS && out.indexOf(c) < 0; })[0];
+        if (first) out.push(first);
     }
-    return out;
+    return out.map(function (c) { return {id: c.id, pid: c.pid}; });
 }
 
-function closeScript(ids) {
-    return ids.map(function (id) {
-        return 'app_launcher -t ' + id + ' >/dev/null 2>&1; sleep 0.3; if app_launcher -r ' + id + ' 2>/dev/null | grep -q "result: running"; then ' +
-            'app_launcher -k ' + id + ' >/dev/null 2>&1; fi; echo "CLOSED|' + id + '"';
+// Asked to end (-t), then killed (-k) if its process is still there; counted as closed only when the process is gone. An app can take
+// over a second to leave after -k (Apple TV on the Q80A, 2026-11-22: still there at 1 s, gone at 2 s), so each step waits up to 2 s.
+function closeScript(apps) {
+    function wait(p) { return 'i=0; while [ -d ' + p + ' ] && [ $i -lt 8 ]; do sleep 0.25; i=$((i+1)); done'; }
+    return apps.map(function (a) {
+        var p = '/proc/' + a.pid;
+        return 'app_launcher -t ' + a.id + ' >/dev/null 2>&1; ' + wait(p) + '; if [ -d ' + p + ' ]; then app_launcher -k ' + a.id + ' >/dev/null 2>&1; ' + wait(p) + '; fi; ' +
+            'if [ -d ' + p + ' ]; then echo "LEFT|' + a.id + '"; else echo "CLOSED|' + a.id + '"; fi';
     }).join('\n') + '\ntrue';
 }
 
@@ -100,7 +113,18 @@ function PerformanceMode(execute, options) {
     this.lastFront = {};
     this.closedCount = 0;
     this.recent = [];   // the last closes: {id, at}
+    this.uiApps = null; this.uiAt = 0;
 }
+
+PerformanceMode.prototype.loadUiApps = function () {
+    var self = this, now = this.now();
+    if (this.uiApps && now - this.uiAt < UIAPPS_MS) return Promise.resolve(this.uiApps);
+    return this.execute(wrap(UIAPPS), 15000).then(function (r) {
+        var ids = String(r && r.stdout || '').split('\n').filter(function (id) { return APP_ID_RE.test(id); });
+        if (ids.length) { self.uiApps = ids; self.uiAt = now; }
+        return self.uiApps;
+    }, function () { return self.uiApps; });
+};
 
 PerformanceMode.prototype.load = function () {
     try {
@@ -234,7 +258,8 @@ PerformanceMode.prototype.tick = function () {
     var st = this.load();
     if (!st.on) { this.lastFront = {}; return Promise.resolve([]); }
     this.ticking = true;
-    return this.execute(wrap(READ), 20000).then(function (r) {
+    var ui = null;
+    return this.loadUiApps().then(function (u) { ui = u; return self.execute(wrap(READ), 20000); }).then(function (r) {
         if (!r || r.exit_code || r.timed_out) return [];
         var s = parse(r.stdout), now = self.now();
         if (s.fg) self.lastFront[s.fg] = now;
@@ -242,17 +267,19 @@ PerformanceMode.prototype.tick = function () {
         Object.keys(self.lastFront).forEach(function (id) {   // forget apps that are gone, so a reopened one starts a new count
             if (id !== s.fg && !s.background.some(function (a) { return a.id === id; })) delete self.lastFront[id];
         });
-        var ids = choose(s, self.lastFront, now, st.keepOpen);
-        if (!ids.length) return [];
-        return self.execute(wrap(closeScript(ids)), 30000).then(function (c) {
+        var apps = choose(s, self.lastFront, now, st.keepOpen, ui);
+        if (!apps.length) return [];
+        return self.execute(wrap(closeScript(apps)), 30000).then(function (c) {
             var closed = String(c && c.stdout || '').split('\n').filter(function (l) { return l.indexOf('CLOSED|') === 0; }).map(function (l) { return l.slice(7); });
             closed.forEach(function (id) { delete self.lastFront[id]; self.closedCount++; self.recent.unshift({id: id, at: now}); });
             self.recent = self.recent.slice(0, 5);
+            var left = String(c && c.stdout || '').split('\n').filter(function (l) { return l.indexOf('LEFT|') === 0; }).map(function (l) { return l.slice(5); });
             if (closed.length) self.log('performance: closed ' + closed.join(', ') + (s.memKiB !== null ? ' (available ' + Math.round(s.memKiB / 1024) + ' MiB)' : ''));
+            if (left.length) self.log('performance: still running after -t and -k: ' + left.join(', '));
             return closed;
         });
     }).then(function (x) { self.ticking = false; return x; }, function () { self.ticking = false; return []; });
 };
 
-module.exports = {PerformanceMode: PerformanceMode, parse: parse, choose: choose, closeScript: closeScript, READ: READ, FILE: FILE,
+module.exports = {PerformanceMode: PerformanceMode, parse: parse, choose: choose, closeScript: closeScript, READ: READ, UIAPPS: UIAPPS, FILE: FILE,
     WINS: WINS, IDLE_MS: IDLE_MS, LOW_MEMORY_KIB: LOW_MEMORY_KIB, LOW_IDLE_MS: LOW_IDLE_MS, TICK_MS: TICK_MS, isProtected: isProtected};

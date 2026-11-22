@@ -971,7 +971,7 @@ function perfItem(){
  var detail='<details><summary>What this changes</summary><p>Each part is turned on only if it was off. Turning the mode off turns back only those, and leaves alone a part you changed by hand since.</p>'+parts+
   '<p>Background apps are closed after '+d.idleMinutes+' minutes off screen, or the one idle longest after 2 minutes when the TV has less than '+d.lowMemoryMiB+' MiB available. A closed app starts from the beginning when you open it again, a few seconds slower.</p></details>';
  var apps=keepOpenChoices(d);
- var keep='<details><summary>Apps never closed ('+d.keepOpen.length+' chosen)</summary><p>Never closed in any case: the app on screen, apps playing sound, Vetro, the TV’s own apps and Samsung Home (it has its own switch). Tick the others to keep open.</p>'+
+ var keep='<details><summary>Apps never closed ('+d.keepOpen.length+' chosen)</summary><p>Never closed in any case: the app on screen, apps that report playing sound, Vetro, the TV’s own apps and Samsung Home (it has its own switch). Tick the others to keep open.</p>'+
   (apps.length?'<div class="perf-keep">'+apps.map(function(a){return '<label><input type="checkbox" data-perf-keep="'+esc(a.appId)+'"'+(d.keepOpen.indexOf(a.appId)>=0?' checked':'')+(perfBusy?' disabled':'')+'> '+esc(a.name)+'</label>'}).join('')+'</div>':'<p class="section-note">The list comes from the launcher’s All apps page: it appears once the launcher has been on.</p>')+'</details>';
  return quickItem('performance',title,desc,state,switchMarkup('data-perf-switch',d.on,perfBusy||quickBusy||winsBusy||!!d.busy,title),detail+keep);
 }
