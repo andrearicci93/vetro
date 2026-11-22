@@ -36,8 +36,11 @@ namespace Launcher.Ui
         private IntPtr _win, _rim, _body, _focus, _typed, _typedBg, _doneBg, _doneText, _tipBg, _tipText;
         private readonly Slot[][] _slots = new Slot[2][];
         private IntPtr _animator, _idle;
-        private readonly Efl.TaskCb _tick, _idleCb;
-        private readonly Efl.EvasCb _keyCb;
+        private readonly Efl.TaskCb _tick, _idleCb, _backCb;
+        private readonly Efl.EvasCb _keyCb, _keyUpCb;
+        // Back and Exit close the pad when the key comes up (BackRelease, #284): the app under it must not get the rest of the key.
+        private readonly BackRelease _backUp = new BackRelease();
+        private IntPtr _backTimer;
         private bool _built, _failed, _shown, _closing;
         // The fade and the capsule's slide. At rest (open, opaque, capsule on its cell) the animator stops; a key starts it again, and its
         // first tick advances by one frame interval of the earlier run (FrameStep), so the next movement starts exactly as it did before.
@@ -59,7 +62,7 @@ namespace Launcher.Ui
         public NumberPad(string assets, Action<string> log, int screenW, int screenH, Action<PadResult, string> send, Action<bool> closed = null)
         {
             _assets = assets; _log = log; _screenW = screenW; _screenH = screenH; _send = send; _closed = closed;
-            _tick = Tick; _idleCb = OnIdle; _keyCb = OnKey;
+            _tick = Tick; _idleCb = OnIdle; _keyCb = OnKey; _keyUpCb = OnKeyUp; _backCb = OnBackTick;
         }
 
         public bool IsShown { get { return _shown && !_closing; } }
@@ -92,6 +95,7 @@ namespace Launcher.Ui
 
         public void Close()
         {
+            StopBack();
             if (!_shown || _closing) return;
             _closing = true;
             DisarmIdle();
@@ -154,6 +158,7 @@ namespace Launcher.Ui
                 _tipText = Text(evas, "", 26);
                 _typed = Text(evas, "", TypedSize);
                 Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyDown, _keyCb, IntPtr.Zero);
+                Efl.evas_object_event_callback_add(_win, Efl.EvasCallbackKeyUp, _keyUpCb, IntPtr.Zero);
                 _built = true;
                 _log("pad: ready");
                 return true;
@@ -367,7 +372,10 @@ namespace Launcher.Ui
                 PadResult r = _model.Key(key);
                 switch (r)
                 {
-                    case PadResult.Close: Close(); break;
+                    case PadResult.Close:
+                        if (_backUp.Press(key, Efl.ecore_time_get())) { if (_backTimer == IntPtr.Zero) _backTimer = Efl.ecore_timer_add(0.05, _backCb, IntPtr.Zero); }
+                        else Close();
+                        break;
                     case PadResult.Send: { string typed = _model.Typed; Close(); _pendingKind = r; _pendingWhat = typed; break; }
                     case PadResult.SendKey: { string k = _model.PendingKey; Close(); _pendingKind = r; _pendingWhat = k; break; }
                     case PadResult.None: break;
@@ -380,6 +388,31 @@ namespace Launcher.Ui
                 Wake();   // whatever the key did, the next frame draws it (and the capsule slides from where it is)
             }
             catch (Exception ex) { _log("pad key: " + ex.Message); }
+        }
+
+        private void OnKeyUp(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo)
+        {
+            try
+            {
+                string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
+                if (_backUp.WindowRelease(key)) Close();
+            }
+            catch (Exception ex) { _log("pad key up: " + ex.Message); }
+        }
+
+        private byte OnBackTick(IntPtr data)
+        {
+            if (!_backUp.Pending) { _backTimer = IntPtr.Zero; return 0; }
+            if (!_backUp.Due(Efl.ecore_time_get())) return 1;
+            _backTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+            Close();
+            return 0;
+        }
+
+        private void StopBack()
+        {
+            _backUp.Cancel();
+            if (_backTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backTimer); _backTimer = IntPtr.Zero; }
         }
 
         private void MarkOpen(bool on) { OverlayFlag.Mark(OpenFlag, on, _log); }

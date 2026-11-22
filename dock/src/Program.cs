@@ -989,6 +989,7 @@ namespace Launcher
                         ArmGuard();
                         break;
                     }
+                    if (BackUp.Press(key, Efl.ecore_time_get())) { StartBackWait(); break; }   // Exit: on its release (#284)
                     HideDock();
                     break;
             }
