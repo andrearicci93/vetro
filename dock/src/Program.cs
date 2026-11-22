@@ -525,6 +525,7 @@ namespace Launcher
         // The window is mapped for the Dock or the Task manager (not for the start-up pre-map): its flag (OverlayFlag) tells the tuner the keys
         // are the launcher's. Set when the window is shown, cleared when the fade has ended and the window is hidden.
         private static bool _dockMapped;
+        private static double _lastDockFlagMark = -100;
 
         // The remote's 123 key as evdev reports it. Vetro's osd 123 holds it back in the remote bridge, so when it is read here Samsung's own
         // 123 pad is opening (Vetro's is off, or the key came on a part of the remote the bridge does not hold).
@@ -533,6 +534,7 @@ namespace Launcher
         private static void MarkDock(bool on)
         {
             _dockMapped = on;
+            _lastDockFlagMark = on ? Efl.ecore_time_get() : -100;
             OverlayFlag.Mark(OverlayFlag.DockPath, on, Log);
         }
 
@@ -590,6 +592,7 @@ namespace Launcher
             _hideFor123 = false;
             MarkDock(true);
             Efl.evas_object_show(_win);
+            Efl.elm_win_raise(_win);
             Efl.elm_win_activate(_win);
             ClaimHome();   // once, on the window a real Home press brings up (the claim needs a mapped window)
             StartClock();
@@ -607,20 +610,47 @@ namespace Launcher
             catch (Exception) { return DateTime.MinValue; }
         }
 
+        private static IntPtr _listsAskTimer;
+        private static readonly Efl.TaskCb ListsAskCb = OnListsAsk;
+
         /// <summary>
-        /// The package database is newer than the lists Vetro wrote: an app was installed or removed since. Vetro is asked once (in the
-        /// background) to read the TV again; it answers with "reload" when the lists changed. Two stat calls when nothing changed.
+        /// Schedules a background check 0.8 s after the dock opens (never stalling the entrance animation):
+        /// if the package database is newer than the lists Vetro wrote, asks Vetro in a worker task to refresh them.
         /// </summary>
         private static void AskForLists()
         {
-            if (_allAppsWatch == null || _homeLaunch != null) return;
-            DateTime db = FileDate(ListWatch.PackageDb);
-            double now = Efl.ecore_time_get();
-            if (!ListWatch.ShouldAsk(db, FileDate(_allAppsWatch), _listsAskedFor, now - _listsAskedAt)) return;
-            string cmd = ListWatch.Command(ShardLaunch.ServicePort);
-            if (cmd == null) return;
-            _listsAskedFor = db; _listsAskedAt = now;
-            Log("lists: the package database changed, asking Vetro rc=" + Libc.system(cmd));
+            if (_allAppsWatch == null || _homeLaunch != null || _listsAskTimer != IntPtr.Zero) return;
+            _listsAskTimer = Efl.ecore_timer_add(0.8, ListsAskCb, IntPtr.Zero);
+        }
+
+        private static byte OnListsAsk(IntPtr data)
+        {
+            _listsAskTimer = IntPtr.Zero;
+            try
+            {
+                if (_allAppsWatch == null || _homeLaunch != null) return 0;
+                double now = Efl.ecore_time_get();
+                string allAppsWatch = _allAppsWatch;
+                int port = ShardLaunch.ServicePort;
+                DateTime askedFor = _listsAskedFor;
+                double elapsed = now - _listsAskedAt;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        DateTime db = FileDate(ListWatch.PackageDb);
+                        if (!ListWatch.ShouldAsk(db, FileDate(allAppsWatch), askedFor, elapsed)) return;
+                        string cmd = ListWatch.Command(port);
+                        if (cmd == null) return;
+                        _listsAskedFor = db;
+                        _listsAskedAt = now;
+                        Log("lists: the package database changed, asking Vetro rc=" + Libc.system(cmd));
+                    }
+                    catch (Exception ex) { Log("lists: " + ex.Message); }
+                });
+            }
+            catch (Exception ex) { Log("lists timer: " + ex.Message); }
+            return 0;
         }
 
         // A reload that waited for a moved tile, a held OK or the Control center runs a moment after the dock has gone, not in front of its
@@ -1458,7 +1488,15 @@ namespace Launcher
         {
             if (_idle == IntPtr.Zero) _idle = Efl.ecore_timer_add(Controller.IdleHideSeconds, IdleCb, IntPtr.Zero);
             else Efl.ecore_timer_reset(_idle);
-            if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, true, Log);   // touched on every key: the tuner trusts it for the idle time
+            if (_dockMapped)
+            {
+                double now = Efl.ecore_time_get();
+                if (now - _lastDockFlagMark >= 5.0)
+                {
+                    _lastDockFlagMark = now;
+                    OverlayFlag.Mark(OverlayFlag.DockPath, true, Log);   // throttled touch so rapid nav avoids filesystem overhead
+                }
+            }
         }
 
         private static void CancelIdle()
@@ -1478,11 +1516,19 @@ namespace Launcher
             return again;
         }
 
-        // Samsung's Home picture mode handed back once the launcher has gone (Core/HomePicture.cs): in the background, so the frame never waits.
+        // Samsung's Home picture mode handed back once the launcher has gone (Core/HomePicture.cs): offloaded from the main loop.
         private static void HomePictureOff()
         {
-            int rc = Libc.system(HomePicture.Command());
-            if (rc != 0) Log("home: picture check not started rc=" + rc);
+            string cmd = HomePicture.Command();
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    int rc = Libc.system(cmd);
+                    if (rc != 0) Log("home: picture check not started rc=" + rc);
+                }
+                catch (Exception ex) { Log("home: picture check: " + ex.Message); }
+            });
         }
 
         private static byte Frame()
@@ -2250,13 +2296,23 @@ namespace Launcher
         private static readonly Efl.EventCb EcoreKeyCb = OnEcoreKey;
         private static int _ecoreKeyDown = -1;
 
-        private static void WatchEcoreKeys()
+        private static void PreloadEcoreKeyEvent()
         {
+            if (_ecoreKeyDown >= 0) return;
             try
             {
                 IntPtr lib = System.Runtime.InteropServices.NativeLibrary.Load("libecore_input.so.1");
                 _ecoreKeyDown = Marshal.ReadInt32(System.Runtime.InteropServices.NativeLibrary.GetExport(lib, "ECORE_EVENT_KEY_DOWN"));
-                bool ok = Efl.ecore_event_handler_add(_ecoreKeyDown, EcoreKeyCb, IntPtr.Zero) != IntPtr.Zero;
+            }
+            catch (Exception ex) { Log("home: preload key event: " + ex.Message); }
+        }
+
+        private static void WatchEcoreKeys()
+        {
+            try
+            {
+                PreloadEcoreKeyEvent();
+                bool ok = _ecoreKeyDown >= 0 && Efl.ecore_event_handler_add(_ecoreKeyDown, EcoreKeyCb, IntPtr.Zero) != IntPtr.Zero;
                 Log("home: window keys " + (ok ? "on" : "refused"));
             }
             catch (Exception ex) { Log("home: window keys unavailable"); Log("home claim: " + ex.GetType().Name + " " + ex.Message); }
@@ -2299,8 +2355,15 @@ namespace Launcher
                 string cmd = GuardSpawn.Take();
                 if (cmd == null) return 0;
                 long t0 = _perf ? Stopwatch.GetTimestamp() : 0;
-                Libc.system(cmd);   // returns at once: the shell puts the whole chain in the background
-                if (_perf) Log("perf guard: shell started in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        Libc.system(cmd);
+                        if (_perf) Log("perf guard: shell started in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+                    }
+                    catch (Exception ex) { Log("guard: " + ex.Message); }
+                });
             }
             catch (Exception ex) { Log("guard: " + ex.Message); }
             return 0;
@@ -2723,6 +2786,8 @@ namespace Launcher
 
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
+                System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+                if (_claimHome) PreloadEcoreKeyEvent();
                 DrainStartupInput();   // after the collection: a Home answered here goes straight to its first frame
                 Log("elm_run");
                 Efl.elm_run();

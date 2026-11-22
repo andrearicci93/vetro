@@ -43,6 +43,7 @@ namespace Launcher.Native
         [DllImport(Elm)] public static extern void elm_win_layer_set(IntPtr win, int layer);
         [DllImport(Elm)] public static extern int elm_win_aux_hint_add(IntPtr win, string hint, string val);
         [DllImport(Elm)] public static extern void elm_win_activate(IntPtr win);
+        [DllImport(Elm)] public static extern void elm_win_raise(IntPtr win);
         // The Home claim (--claim-home). Exported by libelementary on the Q80A (Tizen 6.0) and in the 6.5 (PTMD 1720) and 9 (NKLD 0090)
         // dumps. Evas_Modifier_Mask is an unsigned long long; the mode is an Elm_Win_Keygrab_Mode bit (EXCLUSIVE = 1 << 10).
         [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_set(IntPtr win, string key, ulong modifiers, ulong notModifiers, int priority, int grabMode);
