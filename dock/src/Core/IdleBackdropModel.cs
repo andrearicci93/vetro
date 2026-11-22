@@ -540,7 +540,7 @@ namespace Launcher.Core
             int periodMs = periodSec * 1000;
             int rem = timeMs % periodMs;
             if (rem < 0) rem += periodMs;
-            return ((rem * 8192) / periodMs << 3) + offsetQ16;
+            return (int)(((long)rem * 65536L) / periodMs) + offsetQ16;
         }
 
         private static double Hash2(int ix, int iy, int seed)
@@ -748,23 +748,21 @@ namespace Launcher.Core
         public static void ComputeLakeFrame(int timeMs, int screenW, int screenH, bool dimmed, out LakeFrame frame)
         {
             frame = default(LakeFrame);
-            int sA = 16384 + ((SinQ14(PhaseFromTimeMs(timeMs, 47, 0)) * 983) >> 14);
-            int sB = 16384 + ((CosQ14(PhaseFromTimeMs(timeMs, 59, 0)) * 1147) >> 14);
-
-            int wA = (((screenW * 560) / 640) * sA) >> 14;
-            int hA = (((screenH * 235) / 360) * sA) >> 14;
-            int wB = (((screenW * 440) / 640) * sB) >> 14;
-            int hB = (((screenH * 195) / 360) * sB) >> 14;
+            int wA = (screenW * 560) / 640;
+            int hA = (screenH * 235) / 360;
+            int wB = (screenW * 440) / 640;
+            int hB = (screenH * 195) / 360;
             if (wA < 1) wA = 1;
             if (hA < 1) hA = 1;
             if (wB < 1) wB = 1;
             if (hB < 1) hB = 1;
 
-            int swayA = (screenH * 27 * SinQ14(PhaseFromTimeMs(timeMs, 107, 0))) / (360 * 16384);
-            int rawOxA = (timeMs * screenW * 34) / (640 * 10000);
-            int rawOyA = (timeMs * screenH * 15) / (360 * 10000) + swayA;
-            int rawOxB = -(timeMs * screenW * 29) / (640 * 10000);
-            int rawOyB = -(timeMs * screenH * 19) / (360 * 10000);
+            int swayA = (screenH * 36 * SinQ14(PhaseFromTimeMs(timeMs, 149, 0))) / (360 * 16384);
+            int swayB = (screenH * 28 * CosQ14(PhaseFromTimeMs(timeMs, 193, 9123))) / (360 * 16384);
+            int rawOxA = (int)(((long)timeMs * screenW * 20L) / (640L * 10000L));
+            int rawOyA = (int)(((long)timeMs * screenH * 9L) / (360L * 10000L)) + swayA;
+            int rawOxB = -(int)(((long)timeMs * screenW * 17L) / (640L * 10000L));
+            int rawOyB = -(int)(((long)timeMs * screenH * 11L) / (360L * 10000L)) + swayB;
 
             int fxA = ((rawOxA % wA) + wA) % wA - wA;
             int fyA = ((rawOyA % hA) + hA) % hA - hA;
@@ -776,27 +774,27 @@ namespace Launcher.Core
             frame.FillAY = fyA;
             frame.FillAW = wA;
             frame.FillAH = hA;
-            frame.AlphaA = (22 * dimScale) >> 8;
+            frame.AlphaA = (64 * dimScale) >> 8;
 
             frame.FillBX = fxB;
             frame.FillBY = fyB;
             frame.FillBW = wB;
             frame.FillBH = hB;
-            frame.AlphaB = (19 * dimScale) >> 8;
+            frame.AlphaB = (56 * dimScale) >> 8;
 
             int vigW = (screenW * 148) / 100;
             int vigH = (screenH * 142) / 100;
-            int cx = (screenW >> 1) + (((screenW * 14) / 100) * SinQ14(PhaseFromTimeMs(timeMs, 73, 0)) >> 14);
-            int cy = (screenH >> 1) + (((screenH * 12) / 100) * SinQ14(PhaseFromTimeMs(timeMs, 107, 12517)) >> 14);
+            int cx = (screenW >> 1) + (((screenW * 14) / 100) * SinQ14(PhaseFromTimeMs(timeMs, 137, 0)) >> 14);
+            int cy = (screenH >> 1) + (((screenH * 12) / 100) * SinQ14(PhaseFromTimeMs(timeMs, 179, 12517)) >> 14);
             frame.VigX = cx - (vigW >> 1);
             frame.VigY = cy - (vigH >> 1);
             frame.VigW = vigW;
             frame.VigH = vigH;
-            frame.VigAlpha = 224;
+            frame.VigAlpha = 170;
         }
 
-        private static readonly int[] RibbonPerX = { 79, 97, 89 };
-        private static readonly int[] RibbonPerY = { 113, 137, 127 };
+        private static readonly int[] RibbonPerX = { 131, 167, 193 };
+        private static readonly int[] RibbonPerY = { 179, 211, 241 };
         private static readonly int[] RibbonOffY = { 8344, 41720, 15645 };
         private static readonly int[] RibbonOffX = { 0, 21902, 35461 };
         private static readonly int[] RibbonAmpX = { 34, 36, 32 };
@@ -804,10 +802,10 @@ namespace Launcher.Core
         private static readonly int[] RibbonCenterY = { 48, 52, 50 };
         private static readonly int[] RibbonWPct = { 126, 118, 122 };
         private static readonly int[] RibbonHPct = { 56, 52, 54 };
-        private static readonly int[] RibbonBreathPer = { 41, 53, 61 };
+        private static readonly int[] RibbonBreathPer = { 67, 89, 109 };
         private static readonly int[] RibbonBreathOff = { 0, 14602, 30246 };
         private static readonly int[] RibbonBreathDepth = { 2949, 3277, 2621 };
-        private static readonly int[] RibbonBaseAlpha = { 24, 18, 17 };
+        private static readonly int[] RibbonBaseAlpha = { 68, 54, 50 };
 
         public static void ComputeAuroraRibbon(int index, int timeMs, int screenW, int screenH, bool dimmed, out AuroraRibbonFrame frame)
         {
@@ -838,8 +836,8 @@ namespace Launcher.Core
         private static readonly int[] MoteVxQ10 = { 8, -2, 4, 8, -2, 2, 8, -2, 4, 8 };
         private static readonly int[] MoteVyQ10 = { -11, -5, -5, -11, -5, -5, -11, -5, -5, -11 };
         private static readonly int[] MoteSize360 = { 15, 8, 10, 20, 6, 25, 15, 8, 10, 15 };
-        private static readonly int[] MotePeriodSec = { 20, 26, 32, 38, 44, 20, 26, 32, 38, 44 };
-        private static readonly int[] MoteMaxAlpha = { 56, 87, 87, 56, 87, 56, 87, 87, 56, 87 };
+        private static readonly int[] MotePeriodSec = { 38, 46, 54, 62, 70, 38, 46, 54, 62, 70 };
+        private static readonly int[] MoteMaxAlpha = { 105, 150, 150, 105, 150, 105, 150, 150, 105, 150 };
         private static readonly int[] MoteColR = { 228, 110, 255, 120 };
         private static readonly int[] MoteColG = { 242, 178, 224, 240 };
         private static readonly int[] MoteColB = { 255, 255, 176, 225 };

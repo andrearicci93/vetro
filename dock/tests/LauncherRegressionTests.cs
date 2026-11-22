@@ -373,7 +373,12 @@ namespace Launcher.Tests
                 IdleBackdropModel.ComputeLakeFrame(10000, 1920, 1080, true, out lfDim);
                 T.True(lf1.FillAX != lf2.FillAX || lf1.FillAY != lf2.FillAY, "ComputeLakeFrame advances ripple fill offsets smoothly");
                 T.True(lf1.VigX <= 0 && lf1.VigX + lf1.VigW >= 1920 && lf1.VigY <= 0 && lf1.VigY + lf1.VigH >= 1080, "lake vignette always covers 100% of 1080p screen");
-                T.True(lfDim.AlphaA < lf1.AlphaA && lf1.AlphaA <= 24, "lake frame keeps OLED peak ultra-dark and dims further at 10 min");
+                T.True(lfDim.AlphaA < lf1.AlphaA && lf1.AlphaA <= 68, "lake frame keeps OLED peak safe and dims further at 10 min");
+                IdleBackdropModel.LakeFrame lfWrapA, lfWrapB;
+                IdleBackdropModel.ComputeLakeFrame(32800, 1920, 1080, false, out lfWrapA);
+                IdleBackdropModel.ComputeLakeFrame(33000, 1920, 1080, false, out lfWrapB);
+                int dxWrap = Math.Abs(lfWrapB.FillAX - lfWrapA.FillAX);
+                T.True(dxWrap <= 20 || Math.Abs(dxWrap - lfWrapA.FillAW) <= 20, "lake fill has no int32 wrap jump around 32.9s");
 
                 IdleBackdropModel.AuroraRibbonFrame rf1, rf2;
                 IdleBackdropModel.ComputeAuroraRibbon(0, 10000, 1920, 1080, false, out rf1);
