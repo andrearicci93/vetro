@@ -50,12 +50,22 @@ namespace Launcher.Core
     {
         public const double FadeSeconds = 0.12, SlideRate = 18;
 
+        /// <summary>Reduce motion (--no-motion): the pad appears, goes and moves its capsule at once.</summary>
+        public static bool Instant;
+
         public double Fade, FocusX;
 
         /// <summary>Advances by <paramref name="dt"/>. Returns false once the pad has faded out (closing) or is at rest (open, opaque, capsule on its cell).</summary>
         /// <param name="target">The x the capsule goes to; ignored while the focus is on Done (the capsule stays where it is).</param>
         public bool Step(double dt, bool closing, bool onDone, double target, out bool gone)
         {
+            if (Instant)
+            {
+                gone = closing;
+                Fade = closing ? 0 : 1;
+                if (!onDone) FocusX = target;
+                return false;
+            }
             Fade = closing ? Fade - dt / FadeSeconds : Math.Min(1, Fade + dt / FadeSeconds);
             gone = closing && Fade <= 0;
             if (gone) { Fade = 0; return false; }
@@ -76,8 +86,12 @@ namespace Launcher.Core
     {
         public const double HoldSeconds = 1.6, FadeInSeconds = 0.12, FadeOutSeconds = 0.22;
 
+        /// <summary>Reduce motion (--no-motion): the bar is full while it holds and gone after, with no fade.</summary>
+        public static bool Instant;
+
         public static double Alpha(double now, double shownAt, double until)
         {
+            if (Instant) return now > until ? 0 : 1;
             double a = Math.Min(1.0, (now - shownAt) / FadeInSeconds);
             if (now > until) a = Math.Min(a, 1.0 - (now - until) / FadeOutSeconds);
             return a;

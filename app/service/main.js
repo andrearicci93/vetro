@@ -87,6 +87,9 @@ var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var factoryApps = require('./factory-apps.js');
 var factoryTest = new factoryApps.FactoryTest(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter});
+// Extra performance mode (Quick settings, Experimental): its ledger, and the background app cleanup every minute while it is on.
+var perfModule = require('./performance-mode.js');
+var perfMode = new perfModule.PerformanceMode(agentExecute, {dock: dock, wins: wins, log: function (s) { console.log('VETRO ' + s); }});
 // Remote key guides: the capsule with a picture of the remote ("Press Volume: Mute", the play/pause wheel) that Samsung's
 // volume-app and tv-viewer show on a key press. Each shows its guide while its own "done" flag is false and then sets it; on
 // Tizen 9 the flags are memory keys (memory/volume-app/key_guide_status, memory/tv-viewer/key_guide_status), cleared at every
@@ -864,7 +867,7 @@ var restoreTvObject = null;
 function restoreTv() { return restoreTvObject || (restoreTvObject = new (require('./restore.js').Restore)(restoreOptions())); }
 function restoreOptions() { return {
     execute: agentExecute, inventory: inventory, invalidate: function(){invalidateInventory();},
-    wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock, tuner: tuner,
+    wins: wins, keepRemoved: keepRemoved, hbbtv: hbbtv, dns: dnsFilter, homeOrder: homeOrder, dock: dock, tuner: tuner, performance: perfMode,
     plugins: {list: function(){return plugins.list();}, setEnabled: function(id,on){return plugins.setEnabled(id,on);}},
     input: {active: function(){return inputPreference().enabled===true||inputObservers.length>0;},
         off: function(){stopInput('quick');inputPaused=false;saveInputPreference({enabled:false});}},
@@ -1222,6 +1225,10 @@ var server = http.createServer(function (req, res) {
         if (url === '/pairing-mode') return handlePairingMode(req,res);
         if (url === '/sdb-access') return handleSdbAccess(req,res);
         if (url === '/wins') return handleWins(req,res);
+        if (url === '/performance') return readJsonBody(req,res,function(p){
+            var task=Array.isArray(p.keepOpen)?perfMode.setKeepOpen(p.keepOpen):perfMode.apply(p.on);
+            task.then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},/already/.test(e.message)?409:400);});
+        });
         if (url === '/keep-removed') return handleKeepRemoved(req,res);
         if (url === '/restore') return handleRestore(req,res);
         if (url === '/factory-test') return handleFactoryTest(req,res);
@@ -1256,6 +1263,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/sdb-access') return handleSdbAccess(req,res);
     if (url === '/keep-removed') return serveJson(res, keepRemoved.summary());
     // The Disable tab's groups also need Samsung's own "do not start" files of their background services (quick-settings.js MARKERS).
+    if (url === '/performance') return perfMode.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
     if (url === '/wins') return wins.read().then(function(d){return keyGuides.read().then(function(k){d.wins.keyguides=k;return d;},function(){d.wins.keyguides={status:'unknown'};return d;});}).then(function(d){return quickSettings.readMarkers(agentExecute).then(function(m){d.markers=m;return d;},function(){d.markers=null;return d;});}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/factory-test') return handleFactoryTest(req,res);
@@ -1451,6 +1459,7 @@ var tvStateTimer=setInterval(function(){
  if(!bridge.connected)return;
  tvState.read().then(function(d){bridge.publishTvState(d);}).catch(function(){bridge.publishTvState(null);});
 },10000);if(tvStateTimer.unref)tvStateTimer.unref();
+var perfTimer=setInterval(function(){perfMode.tick();},perfModule.TICK_MS);if(perfTimer.unref)perfTimer.unref();
 
 // Boot tasks below also wait for the launcher (dock.bootSettled(): off, up, or 60 s after the agent connected): the root agent runs
 // one command at a time, so their long commands would otherwise queue in front of the dock's start.

@@ -240,6 +240,8 @@ Restore.prototype.publicPlan = function () {
 // One restore, steps in a fixed order. A step that fails does not stop the next one.
 Restore.prototype.run = function () {
     var self = this, d = this.d, steps = [];
+    // Extra performance mode: what it turned on is turned back below with everything else; its ledger goes, and its cleanup stops.
+    if (d.performance) { try { d.performance.forget(); } catch (e) { /* the ledger file is only a record */ } }
     function record(item, status, message) { steps.push({id: item.id, label: item.label, status: status, message: message || ''}); }
     return this.plan().then(function (plan) {
         var byId = {};

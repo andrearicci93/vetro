@@ -2663,7 +2663,7 @@ namespace Launcher
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
             ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
-            if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
+            if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; PadMotion.Instant = true; VolumeFade.Instant = true; }
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");

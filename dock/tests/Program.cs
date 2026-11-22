@@ -1652,6 +1652,22 @@ namespace Launcher.Tests
                 T.True(HoldKey.HoldSeconds >= 0.5 && HoldKey.HoldSeconds <= 1.5, "hold long enough not to fire on a click");
             });
 
+            T.Run("reduce motion: the osd 123 and the Volume bar appear and go at once", () =>
+            {
+                bool gone;
+                var m = new PadMotion { FocusX = 0 };
+                PadMotion.Instant = true; VolumeFade.Instant = true;
+                try
+                {
+                    T.True(!m.Step(0.016, false, false, 300, out gone) && !gone && m.Fade == 1 && m.FocusX == 300, "opens full, capsule on its cell, at rest");
+                    T.True(!m.Step(0.016, true, false, 300, out gone) && gone && m.Fade == 0, "closes in one frame");
+                    T.Eq(VolumeFade.Alpha(10.0, 10.0, 11.6), 1.0, "full from the first frame");
+                    T.Eq(VolumeFade.Alpha(11.7, 10.0, 11.6), 0.0, "gone right after the hold");
+                }
+                finally { PadMotion.Instant = false; VolumeFade.Instant = false; }
+                T.True(VolumeFade.Alpha(10.05, 10.0, 11.6) < 1.0, "with motion the bar still fades in");
+            });
+
             T.Run("back: the launcher closes on Back's release, never on its press (#284)", () =>
             {
                 var b = new BackRelease();

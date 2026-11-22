@@ -260,6 +260,8 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .quick-state{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;margin-top:var(--s2)}
 .quick-state:empty{display:none}
 .quick-item details{margin-top:var(--s2);font-size:var(--fs-s)}
+.perf-keep{display:grid;grid-template-columns:repeat(auto-fill,minmax(12rem,1fr));gap:var(--s1) var(--s3);margin-top:var(--s2)}
+.perf-keep label{display:flex;gap:var(--s1);align-items:center}
 .quick-item summary,.drawer-about summary{cursor:pointer;color:var(--muted);width:max-content;max-width:100%}
 .quick-item summary:hover{color:var(--text)}
 .member-list{list-style:none;margin:var(--s2) 0 0;padding:0;display:grid;gap:var(--s1)}
@@ -944,6 +946,48 @@ function winNoRoot(id){
   '<ol class="fw-steps">'+FW_NO_ROOT_STEPS.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ol>'+
   '<details><summary>What a firmware update can do</summary><p>Samsung is actively trying to block root with remote firmware updates: a patch can remove root and close the path Vetro uses. Turn this on as soon as root is available. The TV’s own Auto update setting does not stop the background update loop.</p></details>');
 }
+// Extra performance mode (performance-mode.js): one switch, the parts it turned on, the apps it never closes.
+var perfData=null,perfBusy=false;
+var PERF_PARTS=[['motion','Reduce motion'],['idleHome','Close idle Samsung Home'],['telemetry','Stop viewing-data collection'],['multiscreen','Disable Multi View autostart'],['ambient','Stop Ambient']];
+function perfPartName(k){var p=PERF_PARTS.filter(function(x){return x[0]===k})[0];return p?p[1]:k}
+function loadPerf(){return api('/performance').then(function(d){if(typeof d.on!=='boolean'||!d.parts)throw Error('Extra performance mode unreadable');perfData=d;quickReadAt.perf=Date.now();}).catch(function(e){perfData={error:e.message};}).finally(function(){renderQuick();});}
+// The apps of the launcher's All apps page (the service reads its list), plus any already kept that the list lacks.
+function keepOpenChoices(d){
+ var seen={},out=[];
+ (d.choices||[]).forEach(function(a){if(!seen[a.appId]){seen[a.appId]=1;out.push({appId:a.appId,name:a.name});}});
+ (d.keepOpen||[]).forEach(function(id){if(!seen[id]){seen[id]=1;out.push({appId:id,name:id});}});
+ return out.sort(function(x,y){return x.name.localeCompare(y.name)});
+}
+function perfItem(){
+ var d=perfData,title='Extra performance mode';
+ var desc='Turns on Reduce motion and Close idle Samsung Home, stops viewing-data collection, Multi View autostart and Ambient, and closes apps left in the background for 15 minutes, sooner when memory runs low. Turning it off puts back only what it changed.';
+ if(quickData.root===false)return quickItem('performance',title,desc,chip('Root required','partial'),'');
+ if(!d)return quickItem('performance',title,desc,chip('Reading…'),'');
+ if(d.error)return quickItem('performance',title,desc,chip(d.error,'partial'),'');
+ var state=d.status==='on'?chip('On','on'):d.status==='partial'?chip('Partly on · '+d.changed.map(perfPartName).join(', ')+' turned off by hand','partial'):chip('Off');
+ if(d.on&&d.closed)state+=chip('Closed '+d.closed+(d.closed===1?' app':' apps')+' since Vetro started');
+ if(d.on&&!d.launcher)state+=chip('Reduce motion and Close idle Samsung Home apply when the launcher is on');
+ var parts='<ul class="member-list">'+PERF_PARTS.map(function(p){var x=d.parts[p[0]]||{};return '<li>'+esc(p[1])+': '+(x.applied===null||x.applied===undefined?'not known':x.applied?'on':'off')+(x.owned?' · turned on by this mode':'')+'</li>'}).join('')+'</ul>';
+ var detail='<details><summary>What this changes</summary><p>Each part is turned on only if it was off. Turning the mode off turns back only those, and leaves alone a part you changed by hand since.</p>'+parts+
+  '<p>Background apps are closed after '+d.idleMinutes+' minutes off screen, or the one idle longest after 2 minutes when the TV has less than '+d.lowMemoryMiB+' MiB available. A closed app starts from the beginning when you open it again, a few seconds slower.</p></details>';
+ var apps=keepOpenChoices(d);
+ var keep='<details><summary>Apps never closed ('+d.keepOpen.length+' chosen)</summary><p>Never closed in any case: the app on screen, apps playing sound, Vetro, the TV’s own apps and Samsung Home (it has its own switch). Tick the others to keep open.</p>'+
+  (apps.length?'<div class="perf-keep">'+apps.map(function(a){return '<label><input type="checkbox" data-perf-keep="'+esc(a.appId)+'"'+(d.keepOpen.indexOf(a.appId)>=0?' checked':'')+(perfBusy?' disabled':'')+'> '+esc(a.name)+'</label>'}).join('')+'</div>':'<p class="section-note">The list comes from the launcher’s All apps page: it appears once the launcher has been on.</p>')+'</details>';
+ return quickItem('performance',title,desc,state,switchMarkup('data-perf-switch',d.on,perfBusy||quickBusy||winsBusy||!!d.busy,title),detail+keep);
+}
+function setPerf(on){
+ if(perfBusy||quickBusy||winsBusy)return;perfBusy=true;renderQuick();
+ return runUiOperation('performance',(on?'':'Undo · ')+'Extra performance mode','Quick settings',null,function(mark){return api('/performance',{on:on}).then(function(d){
+  perfData=d;quickReadAt.perf=Date.now();
+  var msg='Extra performance mode '+(d.on?'on':'off')+'.'+(d.errors&&d.errors.length?' Not done: '+d.errors.join(' · ')+'.':'');
+  mark(msg,'State read back');
+  return {state:d.errors&&d.errors.length?'warning':'success',resultLabel:d.errors&&d.errors.length?'Partly done':'State read back',message:msg};
+ })}).finally(function(){perfBusy=false;delete quickReadAt.wins;loadWins();renderQuick();});
+}
+function setKeepOpen(id,on){
+ if(perfBusy||!perfData||perfData.error)return;var list=perfData.keepOpen.filter(function(x){return x!==id});if(on)list.push(id);perfBusy=true;renderQuick();
+ return api('/performance',{keepOpen:list}).then(function(d){perfData=d;}).catch(function(e){perfData.error=e.message;}).finally(function(){perfBusy=false;renderQuick();});
+}
 function winItem(id){
  var mask=['remotesupport','delivery','wifipresence'].indexOf(id)>=0;
  // A mask switch shows only where the TV has its services (and with root: without it there is nothing to tell).
@@ -1019,7 +1063,7 @@ function renderQuick(){
  paint($('quickKeep'),keepItem());
  renderUninstall();
  paint($('quickControl'),winItem('firmware')+winItem('delivery'));
- paint($('quickExperimental'),winItem('quickboot')+winItem('keyguides'));
+ paint($('quickExperimental'),perfItem()+winItem('quickboot')+winItem('keyguides'));
  paint($('quickTracking'),winItem('telemetry')+winItem('remotesupport')+winItem('wifipresence')+quickGroups.filter(function(g){return g.section==='tracking'}).map(function(g){return groupItem(g)}).join('')+dns);
  paint($('quickVoice'),quickGroups.filter(function(g){return g.section==='voice'}).map(function(g){return groupItem(g)}).join(''));
  renderCustom();
@@ -1097,8 +1141,8 @@ function setSdbAccess(on){
 // Quick settings reads only what the tab on screen shows (each read runs commands on the TV), and not again within 30 s
 // of a good answer. Refresh buttons and the switches read again at once; force (after Restore) forgets every answer.
 var QUICK_FRESH_MS=30000,quickReadAt={},quickReading={};
-var QUICK_TAB_READS={general:['leftovers','wins','sdb'],privacy:['wins','dns'],voice:[],memory:['hbbtv','wins'],uninstall:['uninstall','keep'],experimental:['wins'],developer:['pairing']};
-var QUICK_READERS={factory:loadFactoryTest,leftovers:loadLeftovers,wins:loadWins,dns:loadQuickDns,hbbtv:loadQuickHbbtv,uninstall:loadUninstall,keep:loadKeep,pairing:loadPairingMode,sdb:loadSdbAccess};
+var QUICK_TAB_READS={general:['leftovers','wins','sdb'],privacy:['wins','dns'],voice:[],memory:['hbbtv','wins'],uninstall:['uninstall','keep'],experimental:['wins','perf'],developer:['pairing']};
+var QUICK_READERS={factory:loadFactoryTest,leftovers:loadLeftovers,wins:loadWins,dns:loadQuickDns,hbbtv:loadQuickHbbtv,uninstall:loadUninstall,keep:loadKeep,pairing:loadPairingMode,sdb:loadSdbAccess,perf:loadPerf};
 function quickRead(k){
  if(quickReading[k]||quickReadAt[k]&&Date.now()-quickReadAt[k]<QUICK_FRESH_MS)return;
  quickReading[k]=true;Promise.resolve(QUICK_READERS[k]()).catch(function(){}).then(function(){quickReading[k]=false});
@@ -1186,6 +1230,8 @@ $('quick').onchange=function(e){var x=e.target,ds=x.dataset||{};
  if(ds.quickToggle!=null){var g=quickGroups.filter(function(y){return y.id===ds.quickToggle})[0];if(x.checked&&g&&(g.microphone||g.confirm)){x.checked=false;quickConfirm=g.id;renderQuick();var c=document.querySelector('[data-quick-confirm]');if(c)c.focus();return}return applyQuick(ds.quickToggle,x.checked);}
  if(ds.hbbtvDisable!=null)return setHbbtv(!x.checked);
  if(ds.winSwitch!=null)return setWin(ds.winSwitch,x.checked);
+ if(ds.perfSwitch!=null)return setPerf(x.checked);
+ if(ds.perfKeep!=null)return setKeepOpen(ds.perfKeep,x.checked);
  if(ds.keepSwitch!=null)return setKeep(x.checked?'enable':'disable');
  if(ds.dnsSwitch!=null)return setDns(x.checked);
 };

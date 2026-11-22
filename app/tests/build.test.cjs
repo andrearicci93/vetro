@@ -30,7 +30,7 @@ assert.deepEqual(names.filter(name => !name.startsWith('native/dock/res/') && !n
     'native/dock/tvlauncher-dotnet.dll', 'native/dock/tvlauncher-dotnet.runtimeconfig.json', 'service/dock.js', 'service/dock-catalog.js',
     'native/tuner/vetro-tuner.dll', 'native/tuner/vetro-tuner.runtimeconfig.json', 'service/tuner.js', 'service/plugin-tuner.js', 'service/tuner-page.js', 'service/vetro-ui.js', 'service/osd-page.js',
     'service/auth.js', 'service/build-info.js', 'service/blocklist.js', 'service/exec-error.js', 'service/factory-apps.js', 'service/device-info.js', 'service/component-facts.js', 'service/about-photo.js','service/app-catalog.js', 'service/app-facts.js', 'service/app-groups.js','service/app-registry.js', 'service/atomic-file.js', 'service/dashboard.js', 'service/physical-input.js', 'service/presence.js', 'service/apps.js', 'service/component-actions.js','service/control.js',     'service/debloat.js', 'service/diagnostic-report.js', 'service/hbbtv.js','service/home-order.js','service/home-cleanup.js','service/local-dns.js','service/menu-settings.js','service/main.js',
-    'service/mqtt-bridge.js', 'service/mqtt.js', 'service/compat.js', 'service/package-info.js',
+    'service/mqtt-bridge.js', 'service/mqtt.js', 'service/compat.js', 'service/package-info.js', 'service/performance-mode.js',
     'service/platform.js',
     'service/plugin-host.js',
     'service/plugin-launcher.js', 'service/disabled-ledger.js', 'service/restore.js',
