@@ -83,6 +83,10 @@ var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
 var OFFICIAL_YOUTUBE_ROW = '111299001912';
 // The dock repeats this check, but the file is written here, so refuse a bad path here as well.
 function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0; }
+// An input's picture: Samsung keeps the pictures of the devices it recognises (consoles, boxes) in canalysis' folder, on 6.0, 6.5 and
+// 9 alike (#297: they were refused, so HDMI source images never showed). Its device-type icons are SVG, which the launcher cannot draw.
+var SOURCE_ICON_FILE = /^\/usr\/share\/canalysis\/Icon\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
+function sourceIconOk(p) { return iconOk(p) || (SOURCE_ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0); }
 
 // Live TV entries in the Home row are not web apps. The icon comes from the package of the same
 // name when the TV has one; the dock draws its own generic one otherwise.
@@ -125,8 +129,10 @@ function script() {
         'if [ -s "$B/.appLayerCache.1" ] || [ -s "$B/.appLayerCache.2" ]; then F=csfs; elif [ -s "$M/.appLayerCache.1" ] || [ -s "$M/.appLayerCache.2" ]; then B=$M; F=media; fi',
         'echo "F|$F"',
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
+        // Both Homes may keep a source list: on newer firmware the one in csfs/data can be an old copy without the names the user gave
+        // the inputs (#297), so each is sent with its modification time and the newer one wins, key by key.
         'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
-        '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
+        '  if [ -f "$B/.sourceCache" ]; then printf "S|%s|" "$(stat -c %Y "$B/.sourceCache" 2>/dev/null || echo 0)"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; fi; done',
         // app_featured last: 1 downloaded, 2 Samsung's partners; what Samsung's own Apps screen lists, so All apps lists them too.
         // The column is only confirmed on the Q80A (Tizen 6.0): where it is missing sqlite refuses the whole query, so the
         // 0.5.0 query runs instead (five fields, featured unknown: All apps then lists every registry app, the row is the same).
@@ -156,6 +162,7 @@ function unhex(v) {
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
     var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}, disabled: {}, installedCount: 0, hbbtvLinks: {}, sources: {}, homeApp: null, rowFrom: null};
+    var sourceFiles = [];
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
         var f = line.split('|');
@@ -165,9 +172,9 @@ function parse(text) {
             } else if (f[0] === 'O') {
                 var entry = f.slice(1).join('|').trim();
                 if (SOURCE_ID_RE.test(entry)) out.order.push(entry);
-            } else if (f[0] === 'S' && f.length === 2) {
-                var sources = JSON.parse(Buffer.from(f[1], 'base64').toString('utf8'));
-                if (sources && typeof sources === 'object' && !Array.isArray(sources)) out.sources = sources;
+            } else if (f[0] === 'S' && (f.length === 2 || f.length === 3)) {
+                var sources = JSON.parse(Buffer.from(f[f.length - 1], 'base64').toString('utf8'));
+                if (sources && typeof sources === 'object' && !Array.isArray(sources)) sourceFiles.push({at: f.length === 3 ? +f[1] || 0 : 0, sources: sources});
             } else if (f[0] === 'R' && (f.length === 5 || f.length === 6)) {
                 out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1', featured: f.length === 6 ? +f[5] || 0 : null};
             } else if (f[0] === 'I' && f.length === 3) {
@@ -185,6 +192,15 @@ function parse(text) {
             }
         } catch (e) { /* skip the line */ }
     });
+    // The older list first; an input the newer one has replaces every older entry of the same input, whatever its key ("HDMI1" in
+    // an old copy, "HDMI1/0" once a device was recognised). A stable sort keeps the script's order for equal times.
+    sourceFiles.map(function (s, i) { return {at: s.at, i: i, sources: s.sources}; }).sort(function (a, b) { return a.at - b.at || a.i - b.i; })
+        .forEach(function (s) {
+            var keys = Object.keys(s.sources), types = {};
+            keys.forEach(function (k) { var v = s.sources[k]; if (v && typeof v === 'object' && typeof v.SourceType === 'number') types[v.SourceType] = true; });
+            Object.keys(out.sources).forEach(function (k) { var v = out.sources[k]; if (v && types[v.SourceType]) delete out.sources[k]; });
+            keys.forEach(function (k) { out.sources[k] = s.sources[k]; });
+        });
     return out;
 }
 
@@ -205,9 +221,12 @@ var EXTRA_SOURCES = [{type: 33, slug: 'in-dp', base: 'DisplayPort'}];
 // device found on it ("HDMI2/0", CoBA's GenerateSourceID): the exact name first, then any entry of that source type.
 function sourceMeta(sources, type, key) {
     sources = sources || {};
-    if (sources[key] && typeof sources[key] === 'object') return sources[key];
+    function named(v) { return !!(v.EditName || v.DetectedName); }
+    var exact = sources[key] && typeof sources[key] === 'object' ? sources[key] : null;
+    if (exact && named(exact)) return exact;
     var keys = Object.keys(sources).filter(function (k) { return sources[k] && typeof sources[k] === 'object' && sources[k].SourceType === type; });
-    return keys.length ? sources[keys[0]] : null;
+    var withName = keys.filter(function (k) { return named(sources[k]); });
+    return withName.length ? sources[withName[0]] : exact || (keys.length ? sources[keys[0]] : null);
 }
 
 // Sources retain their physical port identity and Samsung-provided names.
@@ -219,7 +238,7 @@ function sourceEntries(parsed, options) {
         var meta = sourceMeta(parsed.sources, type, key) || {};
         var name = cleanLabel(meta.EditName || meta.DetectedName, base);
         var useImages = options && options.useSourceImages === true && type >= 13;
-        var samsung = useImages ? [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(iconOk)[0] || null : null;
+        var samsung = useImages ? [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(sourceIconOk)[0] || null : null;
         // The row key (source:<type>, TV is source:0) lets the launcher add the input to the user's row from the Sources page (hold OK).
         var entry = {slug: type === 0 ? 'in-tv' : extra ? extra.slug : 'in-hdmi' + (type - 12), label: name,
             appId: 'source:' + type, icon: samsung, killFirst: null, key: 'source:' + type};

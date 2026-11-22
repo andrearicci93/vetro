@@ -130,7 +130,9 @@ namespace Launcher.Core
 
         private static readonly string[] IconRoots =
         {
-            "/opt/share/webappservice/apps_icon/", "/opt/usr/apps/", "/usr/apps/"
+            "/opt/share/webappservice/apps_icon/", "/opt/usr/apps/", "/usr/apps/",
+            // Samsung's pictures of the devices it recognises on an input (consoles, boxes): an HDMI tile with Samsung's images (#297).
+            "/usr/share/canalysis/Icon/"
         };
 
         /// <summary>
