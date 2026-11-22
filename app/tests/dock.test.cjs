@@ -30,6 +30,7 @@ function fixture(options) {
         if (script.includes('vconftool set') && script.includes('auto_start')) { tv.autorun = +/auto_start (\d)/.exec(script)[1]; return {exit_code: 0, stdout: ''}; }
         if (script.includes('vconftool get') && script.includes('auto_start')) return {exit_code: 0, stdout: 'db/menu/smart_hub/ontvsetting/auto_start, value = ' + tv.autorun + ' (Int32)\n'};
         if (script.includes('.appLayerCache')) return {exit_code: 0, stdout: tv.homeData};
+        if (script.includes('umount /usr/apps/org.tizen.volume-app/bin/volume-app')) { tv.volumeAppBack = (tv.volumeAppBack || 0) + 1; return {exit_code: 0, stdout: ''}; }
         if (script.includes('setsid nohup')) { tv.started = script; tv.running = !tv.neverStarts; return {exit_code: 0, stdout: 'started\n'}; }
         if (script.includes('kill -9') && !script.includes('echo "dock=')) { tv.running = false; tv.stopped = (tv.stopped || 0) + 1; return {exit_code: 0, stdout: ''}; }
         if (script.includes('get_root_app')) { tv.powerOnShows = (tv.powerOnShows || 0) + 1; return {exit_code: 0, stdout: tv.rootApp ? 'shown\n' : ''}; }
@@ -572,4 +573,31 @@ function fixture(options) {
     const down = new Dock({execute: () => Promise.reject(Error('no root agent connected'))});
     assert.equal(await down.audioOutput(), null);
     console.log('PASS dock audio output: parsed, cached, null when unreadable');
+})().catch(e => { console.error(e); process.exitCode = 1; });
+
+// volume-app is given back (the launcher's swap for /usr/bin/true undone) once Vol is no longer held back for Vetro's bar: the bar
+// turned off, from the dashboard or the TV screen's tile, or the launcher switched off. Never while the bar stays on.
+(async () => {
+    const {Dock} = require('../service/dock.js');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-dock-vapp-'));
+    const stateFile = path.join(tmp, 'state.json');
+    const ran = [];
+    const d = new Dock({execute: cmd => { ran.push(cmd); return Promise.resolve({exit_code: 0, stdout: ''}); }, stateFile: stateFile, dir: tmp});
+    const lifts = () => ran.filter(c => c.includes('umount /usr/apps/org.tizen.volume-app/bin/volume-app')).length;
+    fs.writeFileSync(stateFile, JSON.stringify({enabled: true, volumePill: false}));
+    await d.setVolumePill(true);
+    assert.equal(lifts(), 0, 'bar on: volume-app stays as the launcher left it');
+    await d.setNumberPad(false);
+    assert.equal(lifts(), 0, 'the number pad alone does not touch it');
+    await d.setVolumePill(false);
+    assert.equal(lifts(), 1, 'bar off: given back');
+    await d.setKeys(true); await d.setKeys(false);
+    assert.equal(lifts(), 2, 'the TV tile off: given back');
+    fs.writeFileSync(stateFile, JSON.stringify({enabled: false, customApp: 'org.example.app', volumePill: true}));
+    assert.equal((await d.volumeAppBack(), lifts()), 2, 'custom launcher mode with the bar on: Vol still held back');
+    fs.writeFileSync(stateFile, JSON.stringify({enabled: false, volumePill: true}));
+    await d.volumeAppBack();
+    assert.equal(lifts(), 3, 'launcher off: given back');
+    assert.ok(ran.every(c => !c.includes('volume-app') || /\[a\]pp_launcher/.test(c)), 'the supervisor lookup cannot match its own command');
+    console.log('PASS dock volume-app: given back when the bar or the launcher goes off, kept while the bar is on');
 })().catch(e => { console.error(e); process.exitCode = 1; });
