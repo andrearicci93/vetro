@@ -74,6 +74,10 @@ function fixture(options) {
         f.tv.started.indexOf('systemctl stop --no-block vetro-dock.service') < f.tv.started.indexOf('systemd-run'), 'a previous unit is stopped non-blockingly first');
     assert.ok(f.tv.started.includes('systemctl is-active vetro-dock.service 2>/dev/null') && f.tv.started.includes('active|activating|deactivating|reloading') && f.tv.started.includes('systemctl reset-failed vetro-dock.service'),
         'unit stop polls is-active states including deactivating and resets failed unit state');
+    assert.ok(f.tv.started.includes('tvlauncher.longpress') && f.tv.started.includes('wm.keyroutertv.longpress.info.unset_longpress_key_info string:"XF86Back" double:1.0 int32:"$u"') && f.tv.started.indexOf('unset_longpress_key_info') > f.tv.started.indexOf('kill -9 $p') && f.tv.started.indexOf('unset_longpress_key_info') < f.tv.started.indexOf('rm -f /home/owner/tvlauncher.pid'),
+        'stopLines cleans up stale XF86Back longpress registration after stopping the dock and before removing state files');
+    assert.ok(require('../service/restore.js').ERASE_SCRIPT.includes('/home/owner/tvlauncher.longpress'),
+        'restore ERASE_SCRIPT removes tvlauncher.longpress alongside tvlauncher.pid');
     assert.ok(/systemd-run [^\n]*\|\| \{ [^\n]*setsid nohup \/usr\/bin\/dotnet [^\n]*<\/dev\/null >\/dev\/null 2>&1 & \}/.test(f.tv.started), 'the detached start remains as a braced fallback');
     assert.equal(f.tv.csfs, false, 'Samsung Home closed once the dock is up');
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.tmp, 'state.json'), 'utf8')).enabled, true);
@@ -615,6 +619,8 @@ function fixture(options) {
         assert.equal(d.readState().idlePictureOffMin, 5);
         const script = d.startScript();
         assert.ok(script.includes('--idle-mode clock --idle-autodock --idle-potoff 5'), 'startScript carries idle flags when enabled');
+        assert.ok(script.includes('DOTNET_EnableDiagnostics=0'), 'startScript keeps DOTNET_EnableDiagnostics=0');
+        assert.ok(!script.includes('DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1'), 'startScript omits rejected DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 (#278)');
 
         powerOnCmds = 0;
         await d.showAtPowerOn({enabled: true, customApp: null, idleMode: 'clock', idleAutoDock: true});

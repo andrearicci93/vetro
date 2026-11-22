@@ -26,13 +26,14 @@ namespace Launcher.Ui
         private IdleConfig _cfg;
         private readonly Action<string> _log;
         private readonly int _screenW, _screenH;
-        private readonly Efl.TaskCb _orbitCb, _hintCb;
+        private readonly Efl.TaskCb _orbitCb, _hintCb, _clockCb;
 
         private IntPtr _win, _bg, _wall, _primary, _dateDay, _dateSep, _dateNum, _meta, _hint;
-        private IntPtr _orbitTimer, _hintTimer;
+        private IntPtr _orbitTimer, _hintTimer, _clockTimer;
         private bool _built, _failed, _shown, _dimmed, _dockOverlay, _displayOff, _wallLoaded, _hintShown;
         private int _haltonStep = 1;
         private int _lastTint = -1, _lastStep = -1;
+        private int _lastMinute = -1, _lastHour = -1, _lastDay = -1;
         private bool _textShown, _lastDimmed;
         private IdleMode _lastMode = IdleMode.Off;
         private string _lastTime, _lastDate;
@@ -45,10 +46,27 @@ namespace Launcher.Ui
             _screenH = screenH;
             _orbitCb = OnOrbitTick;
             _hintCb = OnHintEnd;
+            _clockCb = OnClockTick;
         }
 
         public bool IsShown { get { return _shown; } }
         public Action OnShown;
+
+        /// <summary>
+        /// Refreshes the displayed clock/date immediately whenever wall-clock time advances (including after
+        /// Tizen STR suspend, where monotonic timers freeze while <see cref="DateTime.Now"/> jumps forward).
+        /// Zero Evas redraws when the minute has not changed.
+        /// </summary>
+        public void SyncClock()
+        {
+            if (!_shown || _displayOff || !_cfg.ShowsClock) return;
+            DateTime now = DateTime.Now;
+            if (now.Minute != _lastMinute || now.Hour != _lastHour || now.Day != _lastDay)
+            {
+                if (!_dockOverlay) _haltonStep++;
+                ApplyVisuals();
+            }
+        }
 
         /// <summary>
         /// Pre-builds and transparently maps the Wayland surface once at startup so the first real Show()
@@ -60,6 +78,7 @@ namespace Launcher.Ui
             if (_bg != IntPtr.Zero) Efl.evas_object_hide(_bg);
             if (_wall != IntPtr.Zero) Efl.evas_object_hide(_wall);
             Efl.evas_object_show(_win);
+            Efl.HideCursor(_win, true);
             Efl.evas_object_hide(_win);
             if (_bg != IntPtr.Zero) Efl.evas_object_show(_bg);
             if (_wall != IntPtr.Zero && _cfg.UsesWallpaper) Efl.evas_object_show(_wall);
@@ -74,11 +93,18 @@ namespace Launcher.Ui
             {
                 _shown = true;
                 Efl.evas_object_show(_win);
+                Efl.HideCursor(_win, true);
                 StartHint();
                 if (OnShown != null) OnShown();
             }
+            Efl.elm_win_raise(_win);
             ApplyVisuals();
             UpdateTimers();
+        }
+
+        public void Raise()
+        {
+            if (_shown && _win != IntPtr.Zero) Efl.elm_win_raise(_win);
         }
 
         public void Hide()
@@ -186,6 +212,7 @@ namespace Launcher.Ui
                 Efl.evas_object_move(_win, 0, 0);
                 Efl.evas_object_resize(_win, _screenW, _screenH);
                 Efl.evas_object_pass_events_set(_win, true);
+                Efl.HideCursor(_win, true);
 
                 IntPtr evas = Efl.evas_object_evas_get(_win);
                 _bg = Efl.evas_object_rectangle_add(evas);
@@ -265,6 +292,9 @@ namespace Launcher.Ui
 
             if (!_cfg.ShowsClock)
             {
+                _lastMinute = -1;
+                _lastHour = -1;
+                _lastDay = -1;
                 if (_textShown)
                 {
                     _textShown = false;
@@ -278,6 +308,9 @@ namespace Launcher.Ui
             }
 
             DateTime now = DateTime.Now;
+            _lastMinute = now.Minute;
+            _lastHour = now.Hour;
+            _lastDay = now.Day;
             string timeText = now.ToString("HH:mm", CultureInfo.InvariantCulture);
             string dayAbbr, dateStr;
             IdleBackdropModel.FormatDate(now, out dayAbbr, out dateStr);
@@ -362,6 +395,16 @@ namespace Launcher.Ui
                 Efl.ecore_timer_del(_orbitTimer);
                 _orbitTimer = IntPtr.Zero;
             }
+
+            if (_shown && !_displayOff && _cfg.ShowsClock)
+            {
+                if (_clockTimer == IntPtr.Zero) _clockTimer = Efl.ecore_timer_add(1.0, _clockCb, IntPtr.Zero);
+            }
+            else if (_clockTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_clockTimer);
+                _clockTimer = IntPtr.Zero;
+            }
         }
 
         private void StartHint()
@@ -378,9 +421,17 @@ namespace Launcher.Ui
         private void StopTimers()
         {
             if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
+            if (_clockTimer != IntPtr.Zero) { Efl.ecore_timer_del(_clockTimer); _clockTimer = IntPtr.Zero; }
             if (_hintTimer != IntPtr.Zero) { Efl.ecore_timer_del(_hintTimer); _hintTimer = IntPtr.Zero; }
             if (_hintShown && _hint != IntPtr.Zero) Efl.evas_object_hide(_hint);
             _hintShown = false;
+        }
+
+        private byte OnClockTick(IntPtr data)
+        {
+            try { SyncClock(); }
+            catch (Exception ex) { _log("idle clock: " + ex.Message); }
+            return 1;
         }
 
         private byte OnOrbitTick(IntPtr data)

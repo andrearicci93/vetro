@@ -42,10 +42,13 @@ var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
 var FIFO_READY = FIFO + '.ready';
 var CLAIM_FILE = RUN_DIR + '/tvlauncher.homeclaim';
+var LONGPRESS_FILE = RUN_DIR + '/tvlauncher.longpress';
 var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
 var HOME_APP = 'com.samsung.tv.csfs';
+var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
+var WRAPPER_YOUTUBE = '9Ur5IzDKqV.TizenYouTube';
 // 2025 (RSM/CoBA) firmware runs the sidebar and media rows as separate processes that stay on top of the dock
 // when only csfs is closed, so the guard and the enable-time kill target all three.
 var HOME_KILL = [HOME_APP, 'com.samsung.tv.home.sidebar', 'com.samsung.tv.home.media'];
@@ -545,7 +548,7 @@ Dock.prototype.cardsShown = function () {
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR +
-        ' DOTNET_EnableDiagnostics=0 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1';
+        ' DOTNET_EnableDiagnostics=0';
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
@@ -574,11 +577,16 @@ Dock.prototype.startScript = function () {
 // The dock ignores SIGTERM, so it takes kill -9; only a pid that is really our dll is touched.
 // --no-block avoids blocking on Tizen 9 systemd/SMACK D-Bus JobRemoved; poll is-active text so deactivating still waits.
 Dock.prototype.stopLines = function () {
-    return 'systemctl stop --no-block ' + UNIT + '.service >/dev/null 2>&1; ' +
+    return 'lp=$(cat ' + LONGPRESS_FILE + ' 2>/dev/null); ' +
+        'p=$(cat ' + PID_FILE + ' 2>/dev/null); m=; ' +
+        'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then m=1; fi; ' +
+        'systemctl stop --no-block ' + UNIT + '.service >/dev/null 2>&1; ' +
         'i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active ' + UNIT + '.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; ' +
         'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1; ' +
-        'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
-        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + FIFO + ' ' + FIFO_READY + ' ' + CLAIM_FILE;
+        'if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + '; then kill -9 $p; sleep 0.3; m=1; fi; ' +
+        '[ -n "$m" ] && [ "$lp" = "$p" ] && lp=; ' +
+        'for u in "${m:+$p}" "$lp"; do case "$u" in ""|*[!0-9]*) ;; *) dbus-send --system --reply-timeout=1000 --print-reply=literal --dest=keyrouter.dbus.server /com/burtonini/dbus/ping wm.keyroutertv.longpress.info.unset_longpress_key_info string:"XF86Back" double:1.0 int32:"$u" >/dev/null 2>&1 || true ;; esac; done; ' +
+        'rm -f ' + PID_FILE + ' ' + FIFO + ' ' + FIFO_READY + ' ' + CLAIM_FILE + ' ' + LONGPRESS_FILE;
 };
 
 Dock.prototype.writeCatalog = function () {
@@ -709,6 +717,12 @@ Dock.prototype.setShards = function (host) {
     });
 };
 
+function shardTargetAppId(claimed, appId) {
+    if (claimed && Object.prototype.hasOwnProperty.call(claimed, appId)) return appId;
+    if (appId === WRAPPER_YOUTUBE && claimed && Object.prototype.hasOwnProperty.call(claimed, COBALT_YOUTUBE)) return COBALT_YOUTUBE;
+    return null;
+}
+
 // True when the saved row marks as taken exactly the apps that running plugins claim now.
 Dock.prototype.claimsShown = function () {
     var claimed;
@@ -718,7 +732,7 @@ Dock.prototype.claimsShown = function () {
     for (var i = 0; i < entries.length; i++) {
         var e = entries[i];
         if (e.system || e.panel || e.source !== null) continue;
-        if (e.shard !== Object.prototype.hasOwnProperty.call(claimed, e.appId)) return false;
+        if (e.shard !== !!shardTargetAppId(claimed, e.appId)) return false;
     }
     return true;
 };
@@ -735,8 +749,12 @@ Dock.prototype.shardEntry = function (slug) {
 Dock.prototype.openEntry = function (slug) {
     var self = this, entry = this.shardEntry(slug);
     if (!entry) return Promise.resolve({ok: false, via: null, reason: 'No such tile'});
+    var targetId = entry.appId;
+    if (this.shards && typeof this.shards.intercepted === 'function') {
+        try { targetId = shardTargetAppId(this.shards.intercepted() || {}, entry.appId) || entry.appId; } catch (e) { /* keep entry.appId */ }
+    }
     var asked;
-    try { asked = this.shards ? Promise.resolve(this.shards.launch(entry.appId)) : Promise.resolve({handled: false, reason: 'Plugins are not available'}); }
+    try { asked = this.shards ? Promise.resolve(this.shards.launch(targetId)) : Promise.resolve({handled: false, reason: 'Plugins are not available'}); }
     catch (e) { asked = Promise.reject(e); }
     // A host that fails is the same as a plugin that cannot: the app still has to start.
     return asked.then(null, function (e) { return {handled: false, reason: String(e && e.message || e)}; }).then(function (r) {

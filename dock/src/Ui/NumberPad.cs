@@ -85,6 +85,7 @@ namespace Launcher.Ui
             Refresh();
             bool fresh = !_shown;
             if (!_shown) { _shown = true; _motion.Fade = 0; _step.Begin(Efl.ecore_time_get()); _tinted = false; _focusDrawnX = int.MinValue; Apply(); Efl.evas_object_show(_win); }
+            Efl.elm_win_raise(_win);
             Efl.elm_win_activate(_win);
             ArmIdle();
             if (_animator == IntPtr.Zero) { if (!fresh) _step.Resume(); _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero); }

@@ -15,6 +15,7 @@ namespace Launcher.Native
         private const string Evas = "libevas.so.1";
         private const string Ecore = "libecore.so.1";
         private const string EcoreEvas = "libecore_evas.so.1";
+        private const string EcoreWl2 = "libecore_wl2.so.1";
         private const string EflUtil = "libcapi-ui-efl-util.so.0";
         private const string AppControl = "libcapi-appfw-app-control.so.0";
 
@@ -47,6 +48,7 @@ namespace Launcher.Native
         // The Home claim (--claim-home). Exported by libelementary on the Q80A (Tizen 6.0) and in the 6.5 (PTMD 1720) and 9 (NKLD 0090)
         // dumps. Evas_Modifier_Mask is an unsigned long long; the mode is an Elm_Win_Keygrab_Mode bit (EXCLUSIVE = 1 << 10).
         [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_set(IntPtr win, string key, ulong modifiers, ulong notModifiers, int priority, int grabMode);
+        [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_unset(IntPtr win, string key, ulong modifiers, ulong notModifiers);
         [DllImport(Elm)] public static extern void elm_win_screen_size_get(IntPtr win, out int x, out int y, out int w, out int h);
 
         // --- evas: generic objects ---
@@ -111,9 +113,41 @@ namespace Launcher.Native
         // the process here even when the window is not shown, if the compositor sends it at all.
         [DllImport(Ecore)] public static extern IntPtr ecore_event_handler_add(int type, EventCb func, IntPtr data);
 
-        // --- diagnostics ---
+        // --- diagnostics & cursor ---
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_ecore_evas_get(IntPtr evas);
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_engine_name_get(IntPtr ee);
+        [DllImport(EcoreEvas)] public static extern void ecore_evas_ignore_events_set(IntPtr ee, [MarshalAs(UnmanagedType.U1)] bool ignore);
+        [DllImport(EcoreEvas)] public static extern void ecore_evas_default_cursor_hide(IntPtr ee);
+        [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_wayland2_window_get(IntPtr ee);
+        [DllImport(EcoreWl2)] public static extern void ecore_wl2_window_cursor_visible_set(IntPtr win, [MarshalAs(UnmanagedType.U1)] bool visible);
+
+        /// <summary>
+        /// Prevents Enlightenment/Wayland from attaching a persistent default pointer cursor surface to this window
+        /// after an app that enables pointer mode (such as Samsung Internet Browser) exits.
+        /// </summary>
+        public static void HideCursor(IntPtr win, bool ignoreEvents)
+        {
+            if (win == IntPtr.Zero) return;
+            try
+            {
+                IntPtr evas = evas_object_evas_get(win);
+                if (evas == IntPtr.Zero) return;
+                IntPtr ee = ecore_evas_ecore_evas_get(evas);
+                if (ee == IntPtr.Zero) return;
+                if (ignoreEvents)
+                {
+                    try { ecore_evas_ignore_events_set(ee, true); } catch (Exception) { }
+                }
+                try { ecore_evas_default_cursor_hide(ee); } catch (Exception) { }
+                try
+                {
+                    IntPtr wlWin = ecore_evas_wayland2_window_get(ee);
+                    if (wlWin != IntPtr.Zero) ecore_wl2_window_cursor_visible_set(wlWin, false);
+                }
+                catch (Exception) { }
+            }
+            catch (Exception) { }
+        }
 
         // --- platform ---
         [DllImport(EflUtil)] public static extern int efl_util_set_notification_window_level(IntPtr win, int level);

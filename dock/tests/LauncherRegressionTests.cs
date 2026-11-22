@@ -377,6 +377,302 @@ namespace Launcher.Tests
                 T.True(hdmiModel.Evaluate(onHdmi, 20.0, false, false, false) == IdleAction.None, "records last known source = HDMI (13)");
                 T.True(hdmiModel.Evaluate(inAppSnap, 21.0, false, false, false) == IdleAction.None, "app over HDMI stays hidden");
                 T.True(hdmiModel.Evaluate(exitingAppToTv, 21.1, false, false, false) == IdleAction.None && !hdmiModel.Visible, "does not show over HDMI when last known source was HDMI and source_type is still -1");
+
+                // Unrequested Samsung Smart Hub after long-press Back force-close: Art Mode excluded, cooldown/backoff & reset.
+                T.True(IdleBackdropModel.IsGuardedSamsungHome("com.samsung.tv.csfs"), "csfs is guarded Samsung Home");
+                T.True(IdleBackdropModel.IsGuardedSamsungHome("com.samsung.tv.coba.newhome"), "coba newhome is guarded Samsung Home");
+                T.True(IdleBackdropModel.IsGuardedSamsungHome("com.samsung.tv.home.sidebar"), "home.sidebar is guarded Samsung Home");
+                T.True(!IdleBackdropModel.IsGuardedSamsungHome("com.samsung.tv.coba.art"), "Frame Art Mode (coba.art) is excluded from Home guard");
+                T.True(!IdleBackdropModel.IsGuardedSamsungHome("com.samsung.tv.home.art"), "Frame Art Mode (home.art) is excluded from Home guard");
+                T.True(IdleBackdropModel.IsGuardedSamsungHomeWindow("/opt/usr/apps/com.samsung.tv.csfs/bin/csfs.dll"), "matches Tizen 9 csfs.dll window title");
+                T.True(IdleBackdropModel.IsGuardedSamsungHomeWindow("/opt/usr/apps/com.samsung.tv.home.sidebar/bin/HomeSidebar.dll"), "matches Tizen 9 HomeSidebar.dll window title");
+                T.True(IdleBackdropModel.IsGuardedSamsungHomeWindow("/opt/usr/apps/com.samsung.tv.home.media/bin/HomeMedia.dll"), "matches Tizen 9 HomeMedia.dll window title");
+                T.True(!IdleBackdropModel.IsGuardedSamsungHomeWindow("/opt/usr/apps/com.samsung.tv.home.art/bin/HomeArt.dll"), "excludes home.art window title");
+                T.True(!IdleBackdropModel.IsGuardedSamsungHomeWindow("/opt/usr/apps/com.samsung.tv.coba.art/bin/Art.dll"), "excludes coba.art window title");
+                T.True(!IdleBackdropModel.IsGuardedSamsungHomeWindow("tv-viewer"), "non-home window is not guarded");
+
+                var dismissModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", false, "0", "10"));
+                T.True(dismissModel.ShouldDismissGuardedHome(csfsSnap, 30.0), "dismisses unrequested Smart Hub after force-close");
+                T.True(!dismissModel.ShouldDismissGuardedHome(csfsSnap, 31.0), "respects 2.0 s cooldown before retry");
+                T.True(dismissModel.ShouldDismissGuardedHome(csfsSnap, 32.0), "fires 2nd attempt after 2.0 s cooldown");
+                T.True(dismissModel.ShouldDismissGuardedHome(csfsSnap, 34.0), "fires 3rd fast attempt after 2.0 s cooldown");
+                T.True(!dismissModel.ShouldDismissGuardedHome(csfsSnap, 40.0), "backs off to 10.0 s after 3rd attempt");
+                T.True(dismissModel.ShouldDismissGuardedHome(csfsSnap, 44.0), "fires 4th attempt once 10.0 s backoff elapses");
+                T.True(!dismissModel.ShouldDismissGuardedHome(onTv, 45.0), "resets dismissal backoff once tv-viewer returns");
+                T.True(dismissModel.ShouldDismissGuardedHome(csfsSnap, 45.1), "fires immediately again on next unrequested csfs");
+
+                T.True(!dismissModel.ShouldDismissGuardedHome(csfsIntentional, 46.0), "never dismisses Samsung Home when requested intentionally from Dock");
+                T.True(!hdmiModel.ShouldDismissGuardedHome(csfsSnap, 50.0), "never dismisses Smart Hub on HDMI source");
+                var offModel = new IdleBackdropModel(IdleConfig.Parse("off", false, "0", "10"));
+                T.True(!offModel.ShouldDismissGuardedHome(csfsSnap, 60.0), "never dismisses Smart Hub when Empty TV screen is Off");
+
+                // Post-csfs dying-app holdover: killing csfs briefly exposes the dying app (src=-1) before tv-viewer settles,
+                // while a different newly opened app (e.g. via phone/CEC/remote button) still hides the backdrop immediately.
+                var holdModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                var csfsNegSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "com.samsung.tv.csfs", PartialAppId = "", DisplayState = 1 };
+                var dyingYtSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "com.samsung.tv.cobalt-yt", PartialAppId = "", DisplayState = 1 };
+                T.True(holdModel.Evaluate(dyingYtSnap, 99.0, false, false, false) == IdleAction.None && !holdModel.Visible, "records running app before force-close");
+                T.True(holdModel.Evaluate(csfsNegSnap, 100.0, false, false, false) == IdleAction.ShowWithDock && holdModel.Visible, "covers csfs on force-close");
+                T.True(holdModel.Evaluate(dyingYtSnap, 101.0, true, false, false) == IdleAction.None && holdModel.Visible, "holds backdrop steady while dying app tears down after csfs kill");
+                T.True(holdModel.Evaluate(onTv, 101.5, true, false, false) == IdleAction.None && holdModel.Visible, "stays shown seamlessly when tv-viewer settles");
+                T.True(holdModel.Evaluate(dyingYtSnap, 109.0, false, false, false) == IdleAction.Hide && !holdModel.Visible, "hides when entering YouTube again");
+                T.True(holdModel.Evaluate(csfsNegSnap, 110.0, false, false, false) == IdleAction.ShowWithDock && holdModel.Visible, "re-arms holdover on guarded home");
+                T.True(holdModel.Evaluate(dyingYtSnap, 112.6, true, false, false) == IdleAction.Hide && !holdModel.Visible, "hides cleanly once 2.5 s holdover expires if app stayed alive");
+                // A different newly opened app hides immediately even within the 2.5 s holdover window.
+                T.True(holdModel.Evaluate(csfsNegSnap, 115.0, false, false, false) == IdleAction.ShowWithDock && holdModel.Visible, "shows on csfs after dying app");
+                T.True(holdModel.Evaluate(inAppSnap, 115.5, true, false, false) == IdleAction.Hide && !holdModel.Visible, "different app hides backdrop immediately during holdover");
+                // Launching the same app from Dock cancels holdover immediately.
+                T.True(holdModel.Evaluate(dyingYtSnap, 119.0, false, false, false) == IdleAction.None && !holdModel.Visible, "in YouTube again");
+                T.True(holdModel.Evaluate(csfsNegSnap, 120.0, false, false, false) == IdleAction.ShowWithDock && holdModel.Visible, "shows again on guarded home");
+                holdModel.OnLaunchApp(120.2);
+                T.True(holdModel.Evaluate(dyingYtSnap, 120.3, false, false, false) == IdleAction.Hide && !holdModel.Visible, "OnLaunchApp cancels holdover so relaunched app hides backdrop immediately");
+
+                // Launch suppression: KillFirst (fixTizenTube) brief tv-viewer gap does not flash backdrop or reopen Dock.
+                var launchModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                T.True(launchModel.Evaluate(dyingYtSnap, 200.0, false, false, false) == IdleAction.None && !launchModel.Visible, "hidden while in app");
+                launchModel.OnLaunchApp(200.5);
+                T.True(launchModel.Evaluate(dyingYtSnap, 200.55, false, false, false) == IdleAction.None && !launchModel.Visible, "immediate post-launch poll does not cancel launch suppression");
+                T.True(launchModel.Evaluate(onTv, 201.0, false, false, false) == IdleAction.None && !launchModel.Visible, "suppresses ShowWithDock during 2.0 s KillFirst launch window");
+                T.True(launchModel.Evaluate(onTv, 202.6, false, false, false) == IdleAction.ShowWithDock && launchModel.Visible, "restores backdrop if launched app fails to appear after 2.0 s");
+
+                // TriggerLcdOff marks Dimmed=true immediately and OnRawKey while DisplayStateOff resets Dimmed/lcdOffSent.
+                var dimSyncModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", false, "5", "10"));
+                T.True(dimSyncModel.Evaluate(onTv, 300.0, false, false, false) == IdleAction.Show, "shows backdrop");
+                T.True(dimSyncModel.Evaluate(onTv, 605.0, false, false, false) == IdleAction.TriggerLcdOff && dimSyncModel.Dimmed, "TriggerLcdOff sets Dimmed=true immediately");
+                T.True(dimSyncModel.OnRawKey(63, 63, 610.0, true, false, out hideBg) && !dimSyncModel.Dimmed, "OnRawKey while DisplayStateOff clears Dimmed and consumes wake key");
+
+                // Issues 1-3: foreground apps (YouTube, Browser) never match IsEmptyTvContext; CanClaimBackKey is strictly gated.
+                var backModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                var ytSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "com.samsung.tv.cobalt-yt", PartialAppId = "", DisplayState = 1 };
+                var browserSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "org.tizen.browser", PartialAppId = "", DisplayState = 1 };
+                T.True(backModel.Evaluate(ytSnap, 10.0, false, false, false) == IdleAction.None && !backModel.IsEmptyTvContext, "fresh model in YouTube (src=-1) is never Empty TV");
+                T.True(backModel.Evaluate(onTv, 20.0, false, false, false) == IdleAction.ShowWithDock && backModel.IsEmptyTvContext, "shows backdrop on Empty TV");
+                T.True(backModel.CanClaimBackKey(true, false, "", false, false), "claims Back only on unobstructed shown vetro-idle");
+                T.True(!backModel.CanClaimBackKey(false, false, "", false, false), "does not claim Back if window is not shown");
+                T.True(!backModel.CanClaimBackKey(true, true, "", false, false), "does not claim Back while Dock is active");
+                T.True(!backModel.CanClaimBackKey(true, false, "com.samsung.tv.shortcut", false, false), "does not claim Back over Samsung partial overlay");
+                T.True(!backModel.CanClaimBackKey(true, false, "", true, false), "does not claim Back while 123 pad is open");
+                T.True(!backModel.CanClaimBackKey(true, false, "", false, true), "does not claim Back in custom launcher mode");
+                T.True(backModel.Evaluate(ytSnap, 30.0, false, false, false) == IdleAction.Hide && !backModel.IsEmptyTvContext && !backModel.CanClaimBackKey(true, false, "", false, false), "YouTube hides backdrop and clears Empty TV / Back claim");
+                T.True(backModel.ShouldDismissGuardedHome(csfsNegSnap, 35.0), "post-exit guarded Home dismissal still works after YouTube closes");
+                T.True(backModel.Evaluate(onTv, 36.0, false, false, false) == IdleAction.ShowWithDock && backModel.IsEmptyTvContext, "restores backdrop + Dock after YouTube exits");
+                T.True(backModel.Evaluate(browserSnap, 40.0, false, false, false) == IdleAction.Hide && !backModel.IsEmptyTvContext && !backModel.CanClaimBackKey(true, false, "", false, false), "Browser hides backdrop and clears Empty TV / Back claim");
+                T.True(backModel.Evaluate(onHdmi, 50.0, false, false, false) == IdleAction.None && !backModel.IsEmptyTvContext && !backModel.CanClaimBackKey(true, false, "", false, false), "HDMI never matches Empty TV or Back claim");
+
+                // Issue 4: DisplayState wake & STR OnWake clear Dimmed, trigger restack, and hold transient empty FullscreenAppId for 1.5 s.
+                var wakeModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                T.True(wakeModel.Evaluate(onTv, 100.0, false, false, false) == IdleAction.ShowWithDock, "initial backdrop");
+                T.True(wakeModel.Evaluate(onTv, 705.0, false, false, false) == IdleAction.Dim && wakeModel.Dimmed, "dims after 10 min");
+                T.True(wakeModel.Evaluate(standbySnap, 710.0, false, false, false) == IdleAction.None && wakeModel.Visible, "stays visible in DisplayStateOff");
+                var wakeEmptySnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "", PartialAppId = "", DisplayState = 1 };
+                T.True(wakeModel.Evaluate(wakeEmptySnap, 720.0, false, false, false) == IdleAction.None && wakeModel.Visible && !wakeModel.Dimmed, "wake clears Dimmed and preserves Visible across transient empty appid");
+                T.True(wakeModel.ConsumeWakeRestack() && !wakeModel.ConsumeWakeRestack(), "ConsumeWakeRestack fires once on DisplayStateOff -> On");
+                T.True(wakeModel.Evaluate(onTv, 720.8, false, false, false) == IdleAction.None && wakeModel.Visible, "returns to tv-viewer seamlessly without spurious Hide or ShowWithDock");
+                T.True(wakeModel.OnWake(800.0) && wakeModel.Evaluate(wakeEmptySnap, 801.0, false, false, false) == IdleAction.None && wakeModel.Visible, "STR OnWake holds transient empty appid within 1.5 s grace");
+                T.True(wakeModel.Evaluate(ytSnap, 801.2, false, false, false) == IdleAction.Hide && !wakeModel.Visible, "real foreground app still hides immediately during wake grace");
+                T.True(wakeModel.Evaluate(onTv, 805.0, false, false, false) == IdleAction.ShowWithDock, "shows again on tv-viewer");
+                T.True(wakeModel.OnWake(810.0) && wakeModel.Evaluate(wakeEmptySnap, 811.6, false, false, false) == IdleAction.Hide && !wakeModel.Visible, "empty appid after 1.5 s grace expires hides normally");
+
+                // Iteration 2 (Finding 1): OnWake called BEFORE Evaluate preserves Visible even when _lastDisplayState == 1 (STR before pm==3).
+                var strOnlyModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                T.True(strOnlyModel.Evaluate(onTv, 10.0, false, false, false) == IdleAction.ShowWithDock, "strOnlyModel starts visible");
+                T.True(strOnlyModel.Evaluate(onTv, 620.0, false, false, false) == IdleAction.Dim && strOnlyModel.Dimmed, "strOnlyModel dimmed before STR freeze");
+                T.True(strOnlyModel.OnWake(700.0), "STR OnWake runs before Evaluate while _lastDisplayState is still 1");
+                T.True(strOnlyModel.Evaluate(wakeEmptySnap, 700.1, false, false, false) == IdleAction.None && strOnlyModel.Visible && !strOnlyModel.Dimmed, "OnWake before Evaluate keeps Visible and undims across transient empty FullscreenAppId when _lastDisplayState == 1");
+
+                // Iteration 2: Launchscreen Winsys in IsGuardedSamsungHomeWindow & narrow IsOverlayLaunchKey.
+                T.True(IdleBackdropModel.IsGuardedSamsungHomeWindow("Launchscreen Winsys"), "Launchscreen Winsys is recognized as guarded Samsung Home window");
+                T.True(IdleBackdropModel.IsOverlayLaunchKey(139) && IdleBackdropModel.IsOverlayLaunchKey(140) && IdleBackdropModel.IsOverlayLaunchKey(490) && IdleBackdropModel.IsOverlayLaunchKey(524), "overlay launch keys match Menu/123/QuickMenu/Source");
+                T.True(!IdleBackdropModel.IsOverlayLaunchKey(103) && !IdleBackdropModel.IsOverlayLaunchKey(105) && !IdleBackdropModel.IsOverlayLaunchKey(106) && !IdleBackdropModel.IsOverlayLaunchKey(108) && !IdleBackdropModel.IsOverlayLaunchKey(28), "D-pad and OK do not trigger eager Back-claim release");
+
+                // Samsung original glscreensaver cooperation: hides while screensaver is active and restores without Dock.
+                var ssModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                T.True(ssModel.Evaluate(onTv, 900.0, false, false, false) == IdleAction.ShowWithDock && ssModel.Visible, "initial backdrop on Empty TV");
+                var ssActiveSnap = new TvSnapshot { SourceType = 0, FullscreenAppId = IdleBackdropModel.TvViewerAppId, PartialAppId = "", DisplayState = 1, ScreensaverActive = true };
+                T.True(ssModel.Evaluate(ssActiveSnap, 910.0, false, false, false) == IdleAction.Hide && !ssModel.Visible, "hides cleanly when Samsung screensaver activates");
+                T.True(ssModel.Evaluate(onTv, 920.0, false, false, false) == IdleAction.Show && ssModel.Visible, "restores cleanly without reopening Dock when screensaver ends");
+
+                // Iteration 3: Boolean vconf primary read with Int32 fallback & OnEcoreKey live screensaver forwarding.
+                bool fallbackCalled = false;
+                T.True(IdleBackdropModel.ReadBoolOrInt((out int v) => { v = 1; return true; }, (out int v) => { fallbackCalled = true; v = 0; return true; }) && !fallbackCalled, "ReadBoolOrInt returns true on bool=1 without calling int fallback");
+                T.True(!IdleBackdropModel.ReadBoolOrInt((out int v) => { v = 0; return true; }, (out int v) => { fallbackCalled = true; v = 1; return true; }) && !fallbackCalled, "ReadBoolOrInt respects valid bool=0 without falling back to int");
+                T.True(IdleBackdropModel.ReadBoolOrInt((out int v) => { v = 0; return false; }, (out int v) => { v = 1; return true; }), "ReadBoolOrInt falls back to int=1 when bool read fails");
+                T.True(!IdleBackdropModel.ReadBoolOrInt((out int v) => { v = 0; return false; }, (out int v) => { v = 0; return true; }), "ReadBoolOrInt falls back to int=0 -> false");
+                T.True(!IdleBackdropModel.ReadBoolOrInt((out int v) => { v = 1; return false; }, (out int v) => { v = 1; return false; }), "ReadBoolOrInt returns false when both bool and int fail");
+
+                T.True(!IdleBackdropModel.ShouldForwardGrabbedBack("", IdleBackdropModel.TvViewerAppId, () => false), "does not forward Back on unobstructed tv-viewer");
+                T.True(IdleBackdropModel.ShouldForwardGrabbedBack("", IdleBackdropModel.TvViewerAppId, () => true), "forwards grabbed Back when screensaver activates in 0..1.5s poll gap");
+                T.True(!IdleBackdropModel.ShouldForwardGrabbedBack("", "com.samsung.tv.csfs", () => false), "does not forward Back for guarded Samsung Home when screensaver is inactive");
+                bool ssChecked = false;
+                T.True(IdleBackdropModel.ShouldForwardGrabbedBack("org.tizen.menu", IdleBackdropModel.TvViewerAppId, () => { ssChecked = true; return false; }) && !ssChecked, "partial app short-circuits before screensaver check");
+                T.True(IdleBackdropModel.ShouldForwardGrabbedBack("", "com.samsung.tv.cobalt-yt", () => { ssChecked = true; return false; }) && !ssChecked, "foreground app short-circuits before screensaver check");
+
+                // Iteration 4: CollectStaleLongpressPids deduplicates, excludes current/invalid PIDs, and parses whitespace/newlines.
+                int[] stale = IdleBackdropModel.CollectStaleLongpressPids(12303, "11590\n", " 11590\t12303 0 -5 abc 9981 \r\n", null, "");
+                T.True(stale.Length == 2 && stale[0] == 11590 && stale[1] == 9981, "CollectStaleLongpressPids returns distinct valid stale PIDs in order");
+                T.True(IdleBackdropModel.CollectStaleLongpressPids(12303, "12303\n", "", "not-a-pid").Length == 0, "CollectStaleLongpressPids returns empty when only current or invalid PIDs exist");
+            });
+
+            T.Run("WmStackLogic: LayerShield default, layerChanged forces SetWindowStack, and Launchscreen/tvvideosink tracking", () =>
+            {
+                // Case 1: LayerShield (250) -> LayerNormal (200) when partialActive=true forces SetWindowStack even when pre-change idleIndex < topTvIndex.
+                var cmds = new List<string>();
+                int currentLayer = WmStackLogic.LayerShield;
+                string winsAboveTv =
+                    "struct {\n uint32 1554\n vetro-idle         \n int32 0\n int32 250\n}\n" +
+                    "struct {\n uint32 1553\n tvlauncher         \n int32 0\n int32 900\n}\n" +
+                    "struct {\n uint32 1767\n tvvideosink-area         \n int32 0\n int32 200\n}\n" +
+                    "struct {\n uint32 1\n tv-viewer         \n int32 0\n int32 200\n}\n";
+                Func<string, string> fakeShell = cmd =>
+                {
+                    cmds.Add(cmd);
+                    if (cmd.Contains("GetWinsInfo")) return winsAboveTv;
+                    if (cmd.Contains("GetWindowNotiLevel")) return "int32 " + currentLayer;
+                    if (cmd.Contains("SetWindowNotiLevel"))
+                    {
+                        if (cmd.Contains("int32:200")) currentLayer = WmStackLogic.LayerNormal;
+                        else if (cmd.Contains("int32:250")) currentLayer = WmStackLogic.LayerShield;
+                        return "";
+                    }
+                    return "";
+                };
+                bool active = false, probed = false;
+                uint idleWinId = 0;
+                WmStackLogic.Step(fakeShell, false, false, true, false, ref active, ref probed, ref idleWinId, null);
+                T.True(active && idleWinId == 1554 && currentLayer == WmStackLogic.LayerNormal, "partialActive drops vetro-idle from LayerShield to LayerNormal");
+                T.True(cmds.Exists(c => c.Contains("SetWindowStack uint32:1554 uint32:1767 int32:1")), "layerChanged forces SetWindowStack above topTv (tvvideosink-area) despite stale pre-change idleIndex=0");
+
+                // Case 2: LayerNormal (200) -> LayerShield (250) when partialActive=false places vetro-idle strictly below bottomOverlayWin (tvlauncher).
+                cmds.Clear();
+                WmStackLogic.Step(fakeShell, false, false, false, false, ref active, ref probed, ref idleWinId, null);
+                T.True(currentLayer == WmStackLogic.LayerShield, "unobstructed vetro-idle rises back to LayerShield (250)");
+                T.True(cmds.Exists(c => c.Contains("SetWindowStack uint32:1554 uint32:1553 int32:0")), "LayerShield stacks vetro-idle below tvlauncher");
+
+                // Case 3: Launchscreen Winsys is tracked on LayerNormal when !allowSamsungHome and ignored when allowSamsungHome=true.
+                cmds.Clear();
+                currentLayer = WmStackLogic.LayerNormal;
+                winsAboveTv =
+                    "struct {\n uint32 1702\n Launchscreen Winsys         \n int32 0\n int32 200\n}\n" +
+                    "struct {\n uint32 1554\n vetro-idle         \n int32 0\n int32 200\n}\n" +
+                    "struct {\n uint32 1\n tv-viewer         \n int32 0\n int32 200\n}\n";
+                WmStackLogic.Step(fakeShell, false, false, true, false, ref active, ref probed, ref idleWinId, null);
+                T.True(cmds.Exists(c => c.Contains("SetWindowStack uint32:1554 uint32:1702 int32:1")), "stacks vetro-idle above Launchscreen Winsys when !allowSamsungHome");
+
+                cmds.Clear();
+                WmStackLogic.Step(fakeShell, true, false, false, false, ref active, ref probed, ref idleWinId, null);
+                T.True(!cmds.Exists(c => c.Contains("SetWindowStack uint32:1554 uint32:1702 int32:1")), "does not stack above Launchscreen Winsys when allowSamsungHome=true");
+            });
+
+            T.Run("idle: GuardedHomeDyingAppId and BuildGuardedHomeRestoreCommand", () =>
+            {
+                var model = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                var browserSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "org.tizen.browser", PartialAppId = "", DisplayState = 1 };
+                var csfsSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "com.samsung.tv.csfs", PartialAppId = "", DisplayState = 1 };
+                var onTv = new TvSnapshot { SourceType = 0, FullscreenAppId = IdleBackdropModel.TvViewerAppId, PartialAppId = "", DisplayState = 1 };
+
+                T.Eq(model.GuardedHomeDyingAppId, "", "starts empty");
+                model.Evaluate(browserSnap, 10.0, false, false, false);
+                model.Evaluate(csfsSnap, 11.0, false, false, false);
+                T.Eq(model.GuardedHomeDyingAppId, "org.tizen.browser", "captures browser as dying app when guarded csfs opens");
+                model.Evaluate(onTv, 12.0, true, false, false);
+                T.Eq(model.GuardedHomeDyingAppId, "", "clears dying app once tv-viewer settles on source 0");
+
+                T.Eq(IdleBackdropModel.BuildGuardedHomeRestoreCommand("startup", "org.tizen.browser", Catalog.ValidAppId, "", true), "", "startup sweep does not relaunch tv-viewer");
+                T.Eq(IdleBackdropModel.BuildGuardedHomeRestoreCommand("", "org.tizen.browser", Catalog.ValidAppId, "", true), "", "empty fullApp is ignored");
+                T.Eq(IdleBackdropModel.BuildGuardedHomeRestoreCommand(null, "org.tizen.browser", Catalog.ValidAppId, "", true), "", "null fullApp is ignored");
+                T.Eq(IdleBackdropModel.BuildGuardedHomeRestoreCommand(IdleBackdropModel.TvViewerAppId, "org.tizen.browser", Catalog.ValidAppId, "", true), "", "already on tv-viewer does not relaunch tv-viewer");
+                T.Eq(IdleBackdropModel.BuildGuardedHomeRestoreCommand("com.samsung.tv.home.art", "org.tizen.browser", Catalog.ValidAppId, "", true), "", "Art Mode is never restored away");
+
+                string genPrefix = "[ \"$(cat '/home/owner/tvlauncher.guard' 2>/dev/null)\" = 3 ] || exit 0; ";
+                string firstCmd = IdleBackdropModel.BuildGuardedHomeRestoreCommand("com.samsung.tv.csfs", "org.tizen.browser", Catalog.ValidAppId, genPrefix, true);
+                T.True(firstCmd.StartsWith(genPrefix, System.StringComparison.Ordinal), "preserves guard generation check");
+                T.True(firstCmd.Contains("vconftool get memory/appfw/current_fullscreen_appid"), "guards against racing a newly launched unrelated app");
+                T.True(firstCmd.Contains("*com.samsung.tv.csfs*") && firstCmd.Contains("*org.tizen.browser*"), "matches csfs and dying browser app");
+                T.True(firstCmd.Contains("/usr/bin/app_launcher -s org.tizen.tv-viewer"), "restores tv-viewer to foreground so graceful stop completes");
+
+                string tailCmd = IdleBackdropModel.BuildGuardedHomeRestoreCommand("com.samsung.tv.csfs", "org.tizen.browser", Catalog.ValidAppId, genPrefix, false);
+                T.True(tailCmd.Contains("*com.samsung.tv.csfs*") && !tailCmd.Contains("org.tizen.browser"), "tail check omits dying app so subsequent relaunch is never overridden");
+
+                string unsafeDying = IdleBackdropModel.BuildGuardedHomeRestoreCommand("com.samsung.tv.csfs", "bad;rm -rf /", Catalog.ValidAppId, "", true);
+                T.True(!unsafeDying.Contains("bad;rm") && unsafeDying.Contains("*com.samsung.tv.csfs*"), "rejects unsafe dyingApp characters while preserving csfs restore");
+
+                string dupTv = IdleBackdropModel.BuildGuardedHomeRestoreCommand("com.samsung.tv.coba.newhome", IdleBackdropModel.TvViewerAppId, Catalog.ValidAppId, "", true);
+                T.True(dupTv.IndexOf(IdleBackdropModel.TvViewerAppId, System.StringComparison.Ordinal) == dupTv.LastIndexOf(IdleBackdropModel.TvViewerAppId, System.StringComparison.Ordinal), "does not duplicate tv-viewer in pattern list");
+            });
+
+            T.Run("idle: TeardownHoldAppId prevents transient Hide flicker after onTv and clears safely", () =>
+            {
+                var browserSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "org.tizen.browser", PartialAppId = "", DisplayState = 1 };
+                var browserSrc0Snap = new TvSnapshot { SourceType = 0, FullscreenAppId = "org.tizen.browser", PartialAppId = "", DisplayState = 1 };
+                var csfsSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "com.samsung.tv.csfs", PartialAppId = "", DisplayState = 1 };
+                var onTv = new TvSnapshot { SourceType = 0, FullscreenAppId = IdleBackdropModel.TvViewerAppId, PartialAppId = "", DisplayState = 1 };
+                var ytSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "org.tizen.cobalt-app", PartialAppId = "", DisplayState = 1 };
+                var ssSnap = new TvSnapshot { SourceType = 0, FullscreenAppId = "org.tizen.browser", PartialAppId = "", DisplayState = 1, ScreensaverActive = true };
+
+                var model = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                model.Evaluate(browserSnap, 10.0, false, false, false);
+                T.Eq(model.Evaluate(csfsSnap, 11.0, false, false, false), IdleAction.ShowWithDock, "shows on csfs");
+                T.Eq(model.TeardownHoldAppId, "org.tizen.browser", "captures browser in teardown hold");
+                T.Eq(model.Evaluate(onTv, 11.2, true, false, false), IdleAction.None, "stays visible on tv-viewer");
+                T.Eq(model.GuardedHomeDyingAppId, "", "clears public GuardedHomeDyingAppId on tv-viewer settle");
+                T.Eq(model.TeardownHoldAppId, "org.tizen.browser", "retains internal teardown hold across tv-viewer settle");
+                T.Eq(model.Evaluate(browserSnap, 12.4, true, false, false), IdleAction.None, "suppresses transient browser pulse (src=-1) within 2.5s");
+                T.True(model.Visible, "remains visible after src=-1 pulse");
+                T.Eq(model.Evaluate(browserSrc0Snap, 12.8, true, false, false), IdleAction.None, "suppresses transient browser pulse (src=0) within 2.5s");
+                T.True(model.Visible, "remains visible after src=0 pulse");
+                T.Eq(model.Evaluate(browserSnap, 13.5, true, false, false), IdleAction.Hide, "hides once teardown hold expires at >= 2.5s");
+                T.Eq(model.TeardownHoldAppId, "", "clears teardown hold after expiry");
+
+                // Different app clears teardown hold immediately
+                var m2 = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                m2.Evaluate(browserSnap, 10.0, false, false, false);
+                m2.Evaluate(csfsSnap, 11.0, false, false, false);
+                m2.Evaluate(onTv, 11.2, true, false, false);
+                T.Eq(m2.Evaluate(ytSnap, 11.5, false, false, false), IdleAction.Hide, "different app hides immediately");
+                T.Eq(m2.TeardownHoldAppId, "", "different app clears teardown hold");
+
+                // ScreensaverActive clears teardown hold and hides immediately
+                var m3 = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                m3.Evaluate(browserSnap, 10.0, false, false, false);
+                m3.Evaluate(csfsSnap, 11.0, false, false, false);
+                m3.Evaluate(onTv, 11.2, true, false, false);
+                T.Eq(m3.Evaluate(ssSnap, 11.5, false, false, false), IdleAction.Hide, "screensaver hides immediately despite browser id");
+                T.Eq(m3.TeardownHoldAppId, "", "screensaver clears teardown hold");
+
+                // OnLaunchApp clears teardown hold so explicit relaunch of same app hides immediately
+                var m4 = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                m4.Evaluate(browserSnap, 10.0, false, false, false);
+                m4.Evaluate(csfsSnap, 11.0, false, false, false);
+                m4.Evaluate(onTv, 11.2, true, false, false);
+                m4.OnLaunchApp(11.3);
+                T.Eq(m4.TeardownHoldAppId, "", "OnLaunchApp clears teardown hold");
+                T.Eq(m4.Evaluate(browserSnap, 11.6, false, false, false), IdleAction.Hide, "relaunched browser hides immediately after OnLaunchApp");
+            });
+
+            T.Run("idle: BuildReadAppPidCommand and BuildCloseStuckAppCommand validate and preserve preload recovery", () =>
+            {
+                T.Eq(IdleBackdropModel.BuildReadAppPidCommand("", Catalog.ValidAppId), "", "rejects empty appId");
+                T.Eq(IdleBackdropModel.BuildReadAppPidCommand(null, Catalog.ValidAppId), "", "rejects null appId");
+                T.Eq(IdleBackdropModel.BuildReadAppPidCommand(IdleBackdropModel.TvViewerAppId, Catalog.ValidAppId), "", "rejects tv-viewer");
+                T.Eq(IdleBackdropModel.BuildReadAppPidCommand("com.samsung.tv.csfs", Catalog.ValidAppId), "", "rejects guarded home");
+                T.Eq(IdleBackdropModel.BuildReadAppPidCommand("bad;id", Catalog.ValidAppId), "", "rejects unsafe appId");
+
+                string readCmd = IdleBackdropModel.BuildReadAppPidCommand("org.tizen.browser", Catalog.ValidAppId);
+                T.True(readCmd.Contains("/usr/bin/app_launcher -S") && readCmd.Contains("awk -v a='org.tizen.browser'"), "builds exact app_launcher -S awk reader");
+
+                T.Eq(IdleBackdropModel.BuildCloseStuckAppCommand("org.tizen.browser", "", Catalog.ValidAppId, ""), "", "rejects empty pid");
+                T.Eq(IdleBackdropModel.BuildCloseStuckAppCommand("org.tizen.browser", "0", Catalog.ValidAppId, ""), "", "rejects zero pid");
+                T.Eq(IdleBackdropModel.BuildCloseStuckAppCommand("org.tizen.browser", "123;rm", Catalog.ValidAppId, ""), "", "rejects non-digit pid");
+                T.Eq(IdleBackdropModel.BuildCloseStuckAppCommand("bad;id", "1234", Catalog.ValidAppId, ""), "", "rejects invalid appId");
+
+                string genPrefix = "[ \"$(cat '/home/owner/tvlauncher.guard' 2>/dev/null)\" = 4 ] || exit 0; ";
+                string closeCmd = IdleBackdropModel.BuildCloseStuckAppCommand("org.tizen.browser", "15842", Catalog.ValidAppId, genPrefix);
+                T.True(closeCmd.StartsWith(genPrefix, System.StringComparison.Ordinal), "prepends guard generation check");
+                T.True(closeCmd.Contains("dp=15842; cur=$("), "captures live PID for comparison against original dying PID");
+                T.True(closeCmd.Contains("\"$cur\" = \"$dp\""), "only kills if live PID still matches original dying PID");
+                T.True(closeCmd.Contains("/usr/bin/app_launcher -k org.tizen.browser"), "kills stuck app via app_launcher -k");
+                T.True(closeCmd.Contains("/usr/bin/app_launcher -s org.tizen.tv-viewer"), "restores tv-viewer if fullscreen app matches dying app or guarded home");
+                T.True(closeCmd.Contains("echo KILLED; fi"), "emits KILLED marker when stuck PID is terminated");
             });
         }
     }
