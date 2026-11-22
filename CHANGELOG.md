@@ -41,6 +41,10 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 - **Go back works after an update of the launcher or the tuner.** In 0.7.0 it put the previous files back and then stopped with an error before restarting Vetro: the launcher and tuner run as temporary system units, and the step that clears a stopped unit's failure state fails once such a unit is gone. Go back now carries on whatever that step says (found on a Q80A while testing 0.7.1).
 - **The .NET 6 root helpers are in updates again** (`payload/net6`, #226). They have not changed since 0.5.0, so a TV on 0.7.0 already has the same files and nothing is copied.
 
+### Shards
+
+- **A Shard file can be chosen on an iPhone or iPad.** Safari greyed out `.vplugin` files in the file picker, because the page asked for that extension and iOS knows no file type for it. The picker now shows every file and Vetro checks the name after the choice.
+
 ## 0.7.0 — 2026-11-21
 
 Vetro now draws its own TV: a launcher with your own row and a Control center, a live TV screen, and its own volume bar and number pad, all in one place in the dashboard (Vetro UI).

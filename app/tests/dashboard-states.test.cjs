@@ -35,6 +35,7 @@ vm.runInNewContext(html.match(/<script>([\s\S]*?)<\/script>/)[1],sandbox);
  assert.match(add,/data-plugin-file disabled/);assert.match(add,/Not signed/);
  add=sandbox.pluginAddPanel({plugins:[],signed:false,developer:true});
  assert.doesNotMatch(add,/data-plugin-file disabled/);assert.match(add,/>Install<\/button>/);
+ assert.doesNotMatch(add,/<input type="file"[^>]*accept=/,'no accept filter: iOS Safari greys out a .vplugin file it has no type for');
  sandbox.sdbData={available:true,enabled:false,active:false,port:26201};sandbox.sdbError=null;sandbox.renderSdbAccess();
  assert.match(el('quickSdb').innerHTML,/Allow SDB from the local network/);
  const toggles=[];sandbox.setSdbAccess=on=>toggles.push(on);
