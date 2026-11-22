@@ -338,11 +338,19 @@ namespace Tuner
                 Interlocked.Exchange(ref _listReading, 0);
                 if (!usable)
                 {
-                    if (_list != null && _list.Count > 0) return;      // the list we have stays
+                    if (all != null && all.Count == 0)
+                    {
+                        _list = null;
+                        _grid = null;
+                        MarkChannels(false);
+                        if (_resident && _active) Deactivate(false);
+                    }
+                    else if (_list != null && _list.Count > 0) return;      // transient read failure: the list we have stays
                     Restart(ref _listRetryTimer, Math.Min(300.0, 5.0 * Math.Pow(2, Math.Min(_listRetries++, 6))), OnListRetry);
                     return;
                 }
                 _listRetries = 0;
+                MarkChannels(true);
                 bool had = _list != null && _list.Count > 0;
                 if (had && (_listView.Visible || _padView.Visible || GuideOpen)) return;   // something on screen is walking the old list: the next time
                 _list = new ChannelList(all);
@@ -360,6 +368,7 @@ namespace Tuner
                 if (_guideView == null) Restart(ref _guideBuildTimer, IdleWork.FirstDelay, OnGuideBuild);   // the guide's objects, made while nothing happens
                 // A tuner that is not resident shows itself at start (Activate waits for the list); a resident one is shown by the takeover poll.
                 if (!_resident && !_active && Ready()) Activate();
+                else if (_resident && _takeoverApp != null) PollTakeover();
             });
             if (!usable) return;
             string logoStatus = "";
@@ -1721,8 +1730,8 @@ namespace Tuner
             // Samsung's live TV is what is on screen: the osd 123 sends its digits to the tuner only then (over another app they are that app's keys).
             // Not touched while a launcher window is open: it has the keys then, and what counts is what was in front when it opened (the osd 123
             // opened over YouTube must not start sending its digits to the tuner).
-            if (!launcher) MarkTvUp(up && front != FrontApp.Kind.Other);
-            else if (!up) MarkTvUp(false);
+            if (!launcher) MarkTvUp(Ready() && up && front != FrontApp.Kind.Other);
+            else if (!up || !Ready()) MarkTvUp(false);
             switch (TakeoverState.Poll(status, _active, tv, front))
             {
                 case Takeover.Step.Show:
@@ -1768,7 +1777,12 @@ namespace Tuner
                 Log("input: " + SourceKey + " cannot be read (" + ex.GetType().Name + "), every input counts as the TV tuner");
                 return true;
             }
-            if (source != _lastSource) { Log("input: source type " + (_lastSource == int.MinValue ? "first" : _lastSource.ToString()) + " -> " + source + (source == 0 ? " (TV)" : " (not the TV tuner)")); _lastSource = source; }
+            if (source != _lastSource)
+            {
+                Log("input: source type " + (_lastSource == int.MinValue ? "first" : _lastSource.ToString()) + " -> " + source + (source == 0 ? " (TV)" : " (not the TV tuner)"));
+                if (source == 0 && !Ready() && _listRetries > 0) { _listRetries = 0; QueueListRead(); }
+                _lastSource = source;
+            }
             if (source != -1 && _leftPlus) _leftPlus = false;            // a real input again (TV, HDMI): Samsung's own value counts
             return source == 0 || (source == -1 && _leftPlus);
         }
@@ -1900,6 +1914,17 @@ namespace Tuner
             string flag = _controlPath + ".tv";
             try { if (on) File.WriteAllText(flag, "1"); else File.Delete(flag); }
             catch (Exception ex) { Log("tv flag: " + ex.Message); }
+        }
+
+        private static bool? _channelsMarked;
+
+        /// <summary>Records whether tvs-daemon reported at least one channel ("1") or zero channels ("0") so dock's idle screen separates tuner liveness from channel count.</summary>
+        private static void MarkChannels(bool hasChannels)
+        {
+            if (!_resident || _controlPath == null || _channelsMarked == hasChannels) return;
+            _channelsMarked = hasChannels;
+            try { File.WriteAllText(_controlPath + ".channels", hasChannels ? "1" : "0"); }
+            catch (Exception ex) { Log("channels flag: " + ex.Message); }
         }
 
         // ---- a flag for the launcher: is the tuner on screen? ----
