@@ -1343,6 +1343,7 @@ Dock.prototype.closeHomeOnce = function (samsungHome) {
 var POWER_ON_WINDOW_S = 420;
 Dock.prototype.showAtPowerOn = function (state) {
     if (this.powerOnShown || !state || state.customApp || state.enabled !== true || (state.idleMode !== 'off' && state.idleAutoDock === true) || this.serviceStart >= BOOT_WINDOW_S || this.uptime() > POWER_ON_WINDOW_S) return Promise.resolve();
+    this.powerOnShown = true;
     var line = '[ -e /usr/bin/get_root_app ] || exit 0; ' +
         'case "$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)" in *"value = org.tizen.tv-viewer ("*) ;; *) exit 0;; esac; ' +
         'if ' + dockAliveCmd() + ' && [ "$(cat ' + FIFO_READY + ' 2>/dev/null)" = "$p" ]; then ( exec 3<>' + FIFO + ' && echo show >&3 ) && echo shown; fi; true';
