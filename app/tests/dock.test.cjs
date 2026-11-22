@@ -3,7 +3,8 @@ const assert = require('assert').strict;
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {Dock} = require('../service/dock.js');
+const dockModule = require('../service/dock.js');
+const {Dock} = dockModule;
 
 const hex = s => Buffer.from(s).toString('hex');
 const HOME_DATA = [
@@ -355,6 +356,22 @@ function fixture(options) {
     f.dock.uptime = () => 1000;
     assert.equal(await f.dock.supervise(true), 'running');
     assert.equal(f.tv.csfs, false, 'settled: Samsung Home closed');
+    // Samsung's Home on screen by its window (Q80A 2026-11-22, enlightenment_info -topvwins rows as printed there): on 2021 firmware the
+    // fullscreen app key kept naming YouTube with Home open over it
+    {
+        const awk = dockModule.HOME_ON_SCREEN_AWK;
+        const shown = '  3 0x008feb30    158  30887   1920  1080      0      0   O         32  -1    0    0   1   V     1      DV     0          /usr/apps/com.samsung.tv.csfs/bin/csfs.dll';
+        const afterBack = ' 13 0x008feb30    158  30887   1920  1080      0      0             32  -1    2    1   1   V     0      NO     0          /usr/apps/com.samsung.tv.csfs/bin/csfs.dll';
+        const youtube = '  3 0x00a57fc8    110  16032   1920  1080      0      0   O         24  -1    0    0   1   V     1      DV     0          cobalt-app';
+        const media = '  4 0x00a57fc9    111  16040   1920  1080      0      0             24  -1    0    0   1   V     1      DV     0          com.samsung.tv.home.media';
+        const onScreen = rows => require('child_process').spawnSync('awk', [awk], {input: rows.join('\n') + '\n'}).status === 0;
+        assert.equal(onScreen([youtube, shown]), true, 'Home open over YouTube');
+        assert.equal(onScreen([youtube, afterBack, afterBack]), false, 'after Back: iconified and covered');
+        assert.equal(onScreen([youtube, media]), false, 'only csfs\'s window counts');
+        assert.equal(onScreen([]), false, 'no enlightenment_info: nothing on screen');
+        const probe = dockModule.idleHomeScript(true);
+        assert.ok(probe.indexOf('topvwins') > probe.indexOf('current_fullscreen_appid') && probe.indexOf('topvwins') < probe.indexOf('app_launcher -k'), 'asked before anything is closed');
+    }
     // #278: not while Samsung's Home is the app on screen, and asked again at the next round
     {
         const g = fixture({running: true});

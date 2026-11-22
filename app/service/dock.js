@@ -1251,11 +1251,20 @@ Dock.prototype.iconFile = function (slug) {
     return null;
 };
 
+// Samsung's Home on screen as the window manager sees it. On 2021 firmware the fullscreen app key keeps naming the app under Samsung
+// Home's bar (Q80A 2026-11-22: com.samsung.tv.cobalt-yt with Home open over YouTube; csfs itself reads that key to learn what is under
+// it), so csfs's own window is asked too: shown, it is not iconified (Icon 0) and not fully covered (Vsbt 0); after Back it stays mapped
+// with Icon 1 and Vsbt 2. Columns are counted from the end of the row (the title, csfs's dll path, has no space; the Foc and InReg
+// columns before can be blank). Only csfs's window: on 2022 and later the key names the Home already, and a preloaded media hub
+// window must not keep the Home open. About 40 ms on the Q80A. A TV without enlightenment_info answers from the key alone.
+var HOME_ON_SCREEN_AWK = '$NF ~ /com[.]samsung[.]tv[.]csfs.bin.csfs[.]dll$/ && $(NF-6) == 0 && $(NF-7) != 2 { f = 1 } END { exit !f }';
+
 function idleHomeScript(allowKill) {
     var kill = allowKill ? (PREVIEW_OFF + '; ' + HOME_KILL.concat([PREVIEW_UNIT]).map(function (id) { return 'app_launcher -k ' + id + ' >/dev/null 2>&1'; }).join('; ') + '; ') : '';
     return [
         'f=$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null | sed -n "s/.*value = \\([^ (]*\\).*/\\1/p")',
         'case "$f" in com.samsung.tv.csfs|com.samsung.tv.home.*|com.samsung.tv.coba.*) echo fg; exit 0;; esac',
+        'enlightenment_info -topvwins 2>/dev/null | awk \'' + HOME_ON_SCREEN_AWK + '\' && { echo fg; exit 0; }',
         'csfs=0; help=0',
         'if pidof ' + HOME_APP + ' >/dev/null 2>&1 || grep -qE "(^|[._])csfs$" /proc/[0-9]*/comm 2>/dev/null; then csfs=1; fi',
         'if pidof com.samsung.tv.home.sidebar com.samsung.tv.home.media ' + PREVIEW_UNIT + ' >/dev/null 2>&1 || grep -qE "(home\\.sidebar|home\\.media|view-updater)$" /proc/[0-9]*/comm 2>/dev/null; then help=1; fi',
@@ -1438,5 +1447,5 @@ Dock.prototype.checkCustomApp = function (appId) {
     }, function () { return null; });
 };
 
-module.exports = {HOME_PICTURE_SCRIPT: HOME_PICTURE_SCRIPT, parseAudio: parseAudio, rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
+module.exports = {HOME_PICTURE_SCRIPT: HOME_PICTURE_SCRIPT, HOME_ON_SCREEN_AWK: HOME_ON_SCREEN_AWK, idleHomeScript: idleHomeScript, parseAudio: parseAudio, rowAfter: rowAfter, cleanRow: cleanRow, Dock: Dock, runningCheck: runningCheck, parseCheck: parseCheck, STATE_FILE: STATE_FILE, APPS_FILE: APPS_FILE, CUSTOM_APPS_FILE: CUSTOM_APPS_FILE,
     customCandidate: customCandidate, customAppCheck: customAppCheck, hexLabel: hexLabel, LOG_FILE: LOG_FILE, shardCardText: shardCardText, cleanCards: cleanCards};
