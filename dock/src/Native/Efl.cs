@@ -105,6 +105,7 @@ namespace Launcher.Native
         // --- ecore ---
         [DllImport(Ecore)] public static extern double ecore_time_get();
         [DllImport(Ecore)] public static extern IntPtr ecore_animator_add(TaskCb func, IntPtr data);
+        [DllImport(Ecore)] public static extern IntPtr ecore_animator_del(IntPtr animator);
         [DllImport(Ecore)] public static extern double ecore_animator_frametime_get();
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_add(double inSeconds, TaskCb func, IntPtr data);
         [DllImport(Ecore)] public static extern void ecore_timer_reset(IntPtr timer);

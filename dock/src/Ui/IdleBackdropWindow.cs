@@ -48,7 +48,7 @@ namespace Launcher.Ui
 
         private IntPtr _win, _bg, _lakeA, _lakeB, _vignette, _silkA, _silkB, _silkC;
         private IntPtr _primary, _dateDay, _dateSep, _dateNum, _meta, _hint;
-        private IntPtr _orbitTimer, _hintTimer, _clockTimer, _animTimer;
+        private IntPtr _orbitTimer, _hintTimer, _clockTimer, _animTimer, _animAnimator;
         private bool _built, _failed, _shown, _dimmed, _dockOverlay, _displayOff, _softwareEngine;
         private bool _lakeLoaded, _auroraLoaded, _hintShown, _textShown, _lastDimmed, _forceBackdropSync;
         private int _haltonStep = 1, _lastStep = -1, _animTimeMs = 9000, _animFrameCount;
@@ -608,32 +608,43 @@ namespace Launcher.Ui
             {
                 if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
                 if (_clockTimer != IntPtr.Zero) { Efl.ecore_timer_del(_clockTimer); _clockTimer = IntPtr.Zero; }
+                if (_animAnimator != IntPtr.Zero) { Efl.ecore_animator_del(_animAnimator); _animAnimator = IntPtr.Zero; }
                 if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; }
                 _animInterval = 0;
                 return;
             }
 
-            if (_dockOverlay)
+            if (_cfg.UsesWallpaper)
             {
                 if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
-                if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; _animInterval = 0; }
-            }
-            else if (_cfg.UsesWallpaper)
-            {
-                if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
-                double targetInterval = _softwareEngine ? SwAnimInterval : (_dimmed ? DimAnimInterval : ActiveAnimInterval);
-                if (_animTimer == IntPtr.Zero || Math.Abs(_animInterval - targetInterval) > 0.001)
+                if (!_softwareEngine)
                 {
-                    if (_animTimer != IntPtr.Zero) Efl.ecore_timer_del(_animTimer);
-                    _animInterval = targetInterval;
-                    _lastAnimTickMono = -1.0;
-                    _animTimer = Efl.ecore_timer_add(targetInterval, _animCb, IntPtr.Zero);
+                    if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; }
+                    _animInterval = 1.0 / 60.0;
+                    if (_animAnimator == IntPtr.Zero)
+                    {
+                        _lastAnimTickMono = -1.0;
+                        _animAnimator = Efl.ecore_animator_add(_animCb, IntPtr.Zero);
+                    }
+                }
+                else
+                {
+                    if (_animAnimator != IntPtr.Zero) { Efl.ecore_animator_del(_animAnimator); _animAnimator = IntPtr.Zero; }
+                    if (_animTimer == IntPtr.Zero || Math.Abs(_animInterval - SwAnimInterval) > 0.001)
+                    {
+                        if (_animTimer != IntPtr.Zero) Efl.ecore_timer_del(_animTimer);
+                        _animInterval = SwAnimInterval;
+                        _lastAnimTickMono = -1.0;
+                        _animTimer = Efl.ecore_timer_add(SwAnimInterval, _animCb, IntPtr.Zero);
+                    }
                 }
             }
             else
             {
-                if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; _animInterval = 0; }
-                if (_cfg.ShowsClock)
+                if (_animAnimator != IntPtr.Zero) { Efl.ecore_animator_del(_animAnimator); _animAnimator = IntPtr.Zero; }
+                if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; }
+                _animInterval = 0;
+                if (_cfg.ShowsClock && !_dockOverlay)
                 {
                     if (_orbitTimer == IntPtr.Zero) _orbitTimer = Efl.ecore_timer_add(OrbitSeconds, _orbitCb, IntPtr.Zero);
                 }
@@ -644,8 +655,8 @@ namespace Launcher.Ui
                 }
             }
 
-            // Coalesce 1s clock updates into _animTimer when active; otherwise keep _clockTimer for Clock mode or Dock-over-idle.
-            if (_cfg.ShowsClock && _animTimer == IntPtr.Zero)
+            // Coalesce 1s clock updates into active animation tick when running; otherwise keep _clockTimer for Clock mode.
+            if (_cfg.ShowsClock && _animTimer == IntPtr.Zero && _animAnimator == IntPtr.Zero)
             {
                 if (_clockTimer == IntPtr.Zero) _clockTimer = Efl.ecore_timer_add(1.0, _clockCb, IntPtr.Zero);
             }
@@ -671,7 +682,9 @@ namespace Launcher.Ui
         {
             if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
             if (_clockTimer != IntPtr.Zero) { Efl.ecore_timer_del(_clockTimer); _clockTimer = IntPtr.Zero; }
-            if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; _animInterval = 0; }
+            if (_animAnimator != IntPtr.Zero) { Efl.ecore_animator_del(_animAnimator); _animAnimator = IntPtr.Zero; }
+            if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; }
+            _animInterval = 0;
             if (_hintTimer != IntPtr.Zero) { Efl.ecore_timer_del(_hintTimer); _hintTimer = IntPtr.Zero; }
             if (_hintShown && _hint != IntPtr.Zero) Efl.evas_object_hide(_hint);
             _hintShown = false;
@@ -689,10 +702,11 @@ namespace Launcher.Ui
             try
             {
                 double now = Efl.ecore_time_get();
-                double dt = _lastAnimTickMono < 0.0 ? _animInterval : now - _lastAnimTickMono;
+                double fallbackDt = _softwareEngine ? SwAnimInterval : (1.0 / 60.0);
+                double dt = _lastAnimTickMono < 0.0 ? fallbackDt : now - _lastAnimTickMono;
                 _lastAnimTickMono = now;
-                if (dt < 0.0) dt = _animInterval;
-                if (dt > 0.25 && !_softwareEngine) dt = 0.25;
+                if (dt < 0.0) dt = fallbackDt;
+                if (dt > 0.05 && !_softwareEngine) dt = 0.05;
                 if (dt > 2.5 && _softwareEngine) dt = 2.5;
 
                 int advMs = (int)(dt * (_dimmed ? 500.0 : 1000.0));
@@ -705,14 +719,17 @@ namespace Launcher.Ui
                 if (_cfg.ShowsClock)
                 {
                     _clockAccumSec += dt;
-                    _orbitAccumSec += dt;
                     bool checkClock = _clockAccumSec >= 1.0;
                     if (checkClock) _clockAccumSec %= 1.0;
-                    if (_orbitAccumSec >= OrbitSeconds)
+                    if (!_dockOverlay)
                     {
-                        _orbitAccumSec %= OrbitSeconds;
-                        _haltonStep++;
-                        checkClock = true;
+                        _orbitAccumSec += dt;
+                        if (_orbitAccumSec >= OrbitSeconds)
+                        {
+                            _orbitAccumSec %= OrbitSeconds;
+                            _haltonStep++;
+                            checkClock = true;
+                        }
                     }
                     if (checkClock) ApplyClockVisuals();
                 }
