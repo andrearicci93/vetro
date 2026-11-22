@@ -1417,10 +1417,10 @@ function renderDock(){
  var look='<h2 class="section-title" id="dockLookTitle">${sectionIcon('home')}Customization</h2>'+row+store+sourceOptions+still+fix;
  // The preview (a TV picture and the app icons) is drawn again only when it changes; a busy or changed switch redraws the
  // switches beside it, not the pictures.
- var preview=previewMarkup(d),lay=box.firstChild,group=lay&&lay.lastChild,sec=$('dockLookSec'),idleSec=$('dockIdleSec');
+ var preview=previewMarkup(d),lay=box.firstChild,group=lay&&lay.lastChild,sec=box.lastChild,idleSec=$('dockIdleSec');
  if(box.vetroPreview===preview&&box.vetroFirst===lay&&group&&sec&&idleSec){paint(group,main);paint(sec,look);paint(idleSec,idleBox)}
- else if(paint(box,'<div class="dock-layout">'+preview+'<div class="quick-group">'+main+'</div></div><section id="dockLookSec" class="quick-group ui-cols" aria-labelledby="dockLookTitle">'+look+'</section><section id="dockIdleSec" class="quick-group" aria-labelledby="dockIdleTitle">'+idleBox+'</section>')){
-  box.vetroPreview=preview;lay=box.firstChild;group=lay&&lay.lastChild;sec=$('dockLookSec');idleSec=$('dockIdleSec');
+ else if(paint(box,'<div class="dock-layout">'+preview+'<div class="quick-group">'+main+'</div></div><section id="dockIdleSec" class="quick-group" aria-labelledby="dockIdleTitle">'+idleBox+'</section><section id="dockLookSec" class="quick-group ui-cols" aria-labelledby="dockLookTitle">'+look+'</section>')){
+  box.vetroPreview=preview;lay=box.firstChild;group=lay&&lay.lastChild;sec=box.lastChild;idleSec=$('dockIdleSec');
   if(group&&sec&&idleSec){group.vetroHtml=main;group.vetroFirst=group.firstChild;sec.vetroHtml=look;sec.vetroFirst=sec.firstChild;idleSec.vetroHtml=idleBox;idleSec.vetroFirst=idleSec.firstChild}
   setTimeout(fitPreview,0);
  }
