@@ -129,10 +129,15 @@ var TELEMETRY_UNITS = ['canalysis-service', 'pisa-service', 'adagent-service', '
     'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
     'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service', 'data-service'];
 var TELEMETRY_PROCS = ['canalysis-daemo', 'pisa-service', 'adagent-servic', 'contents-recogn', 'mirroring-recog',
-    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker', 'abnormal_user_b', 'issue_report_ag', 'media-analytics'];
+    'contents-ui-det', 'contents-ott-de', 'kpi-logging', 'emergencyLogTr', 'devicetracker', 'abnormal_user_b', 'issue_report_ag', 'media-analytics',
+    'contents-cognit', 'screen-analysis', 'sp-kpi', 'psid-checker'];
 // The units of the list that have no "do not start" file: masked at runtime as well (see "masks" in the header).
+// Tizen 9 (from #279 by swiezaczek, checked in the NKLD 0090 tree): contents-cognition-service-manager (content recognition,
+// Restart=always), org.tizen.tv.sp-kpi (KPI events: HDMI, USB/BT, self-diagnosis, like kpi-logging), psid-checker (Samsung's
+// advertising id), screen-analysis-service-manager (on some 2024-2025 models). A name this TV lacks is masked harmlessly.
 var TELEMETRY_MASK = ['contents-recognition-service', 'mirroring-recognition-manager', 'contents-ui-detector-service', 'kpi-logging',
-    'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service'].map(function (u) { return u + '.service'; });
+    'emergency-log-transmitter', 'devicetracker', 'abnormal_user_behavior', 'issue_report_agent', 'media-analytics-service',
+    'contents-cognition-service-manager', 'screen-analysis-service-manager', 'org.tizen.tv.sp-kpi', 'psid-checker'].map(function (u) { return u + '.service'; });
 // The switches that are only masks (see the header). start: what is started again when the switch is turned off.
 var MASK_WINS = {
     remotesupport: {units: ['remote-management.service', 'samsung-easy-support.service', 'remote-shop-care-hub.service'], start: []},
@@ -159,7 +164,10 @@ var TELEMETRY_OFF = 'touch ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND
     'for u in ' + TELEMETRY_UNITS.join(' ') + '; do systemctl stop --no-block $u 2>/dev/null; done\nsleep 1\n' +
     'for n in ' + TELEMETRY_PROCS.join(' ') + '; do for p in $(pgrep -x $n); do kill -9 $p 2>/dev/null; done; done\n' +
     'sleep 2\ntrue';
-var TELEMETRY_ON = 'rm -f ' + TELEMETRY_BRAKES.join(' ') + ' ' + TELEMETRY_COND + '\n' +
+// Only the "do not start" files Vetro put down (root's) are taken away: the package installer writes the same file, as app_fw, for a
+// package that is disabled (libvd-tpk-installer; #279 by swiezaczek), and removing that one would let its unit start and fail.
+var TELEMETRY_ON = 'for f in ' + TELEMETRY_BRAKES.join(' ') + '; do [ -e "$f" ] || continue; o=$(stat -c %u "$f" 2>/dev/null || ls -ln "$f" 2>/dev/null | awk \'{print $3}\'); ' +
+    '[ "$o" = 0 ] && rm -f "$f"; done\nrm -f ' + TELEMETRY_COND + '\n' +
     'systemctl unmask --runtime ' + TELEMETRY_MASK.join(' ') + ' >/dev/null 2>&1\n' +
     'systemctl reset-failed 2>/dev/null\n' +
     'for u in ' + TELEMETRY_UNITS.slice(0, -1).join(' ') + '; do systemctl start --no-block $u 2>/dev/null; done\nsleep 1\ntrue';
@@ -173,12 +181,13 @@ var AIRPLAY_FLAGS = AIRPLAY_UNITS.map(function (u) { return TELEMETRY_DIR + u; }
 function AIRPLAY_EACH(body, init) {
     return init + '; for u in ' + AIRPLAY_UNITS.join(' ') + '; do if systemctl cat $u.service >/dev/null 2>&1; then ' + body + '; fi; done;';
 }
-var AIRPLAY_WEB_RUNNING = 'app_launcher -S 2>/dev/null | grep -q "\\.AirPlayWebApp[[:space:]]"';
-var AIRPLAY_WEB_STOP = 'for w in $(app_launcher -S 2>/dev/null | awk \'{print $1}\' | grep "\\.AirPlayWebApp$"); do app_launcher -t "$w" >/dev/null 2>&1 || true; done';
+// Tizen 9 runs the receiver's app as com.samsung.tv.airplay-app-2 (#279 by swiezaczek, seen in the fleet's process lists).
+var AIRPLAY_WEB_RUNNING = 'app_launcher -S 2>/dev/null | grep -qE "(\\.AirPlayWebApp|com\\.samsung\\.tv\\.airplay-app(-2)?)[[:space:]]"';
+var AIRPLAY_WEB_STOP = 'for w in $(app_launcher -S 2>/dev/null | awk \'{print $1}\' | grep -E "(\\.AirPlayWebApp|^com\\.samsung\\.tv\\.airplay-app(-2)?)$"); do app_launcher -t "$w" >/dev/null 2>&1 || true; done';
 var AIRPLAY_OFF = 'set -e\ntouch ' + AIRPLAY_FLAGS.join(' ') + '\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl stop --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\n' +
     'sleep 1\n' + AIRPLAY_WEB_STOP + '\nsleep 1\ntrue';
-var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS[1] + '.service >/dev/null 2>&1\n' +
+var AIRPLAY_ON = 'rm -f ' + AIRPLAY_FLAGS.join(' ') + '\nsystemctl reset-failed ' + AIRPLAY_UNITS.map(function (u) { return u + '.service'; }).join(' ') + ' >/dev/null 2>&1\n' +
     AIRPLAY_UNITS.map(function (u) { return 'systemctl start --no-block ' + u + '.service >/dev/null 2>&1 || true'; }).join('\n') + '\nsleep 1\ntrue';
 var IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', 'airplay'].concat(MASK_IDS);
 // Every unit whose state the read needs: the update lock's, the telemetry masks and the mask switches'.

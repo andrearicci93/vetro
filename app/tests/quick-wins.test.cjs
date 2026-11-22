@@ -37,10 +37,10 @@ function tv(start){
   if(sh.includes('vetro-hook:')||sh.includes('sha256sum'))return {exit_code:0,stdout:runHook(sh)};
   if(sh.includes('touch '+qw.MULTISCREEN_FLAG)){s.ms=true;if(/app_launcher -t com.samsung.tv.multiscreen/.test(sh))s.msRun=false;}
   if(sh.includes('rm -f '+qw.MULTISCREEN_FLAG))s.ms=false;
-  if(/^rm -f \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=0;s.telRun=8;}
+  if(/^for f in \/opt\/usr\/share\/systemd\/system\/canalysis-daemon .*\[ "\$o" = 0 \] && rm -f "\$f"/.test(sh)){s.telBrakes=0;s.telRun=8;}   // only root's files (the installer writes the same file as app_fw)
   if(/^set -e\ntouch \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=true;if(!s.apStays){s.apSvc=false;s.apWeb=false;}s.apOffRuns=(s.apOffRuns||0)+1;}
   if(/^rm -f \/opt\/usr\/share\/systemd\/system\/com.samsung.tv.airplay-service /.test(sh)){s.apFlag=false;s.apSvc=true;}
-  if(/AirPlayWebApp\[\[:space:\]\]" && echo up/.test(sh))return {exit_code:0,stdout:s.apWeb?'up\n':'down\n'};
+  if(/AirPlayWebApp/.test(sh)&&/airplay-app\(-2\)/.test(sh)&&/ && echo up/.test(sh))return {exit_code:0,stdout:s.apWeb?'up\n':'down\n'};   // the web app check, Tizen 9's airplay-app-2 included (#279)
   if(/up \|\| echo down/.test(sh))return {exit_code:0,stdout:s.ambRun?'up\n':'down\n'};
   if(/systemctl stop screend;.*kill -9.*systemctl start screend/s.test(sh)&&s.ambRun&&!s.ambStays){s.ambRun=false;s.screendCycles=(s.screendCycles||0)+1;}
   if(/app_launcher -f org.tizen.ambientapp/.test(sh))s.ambRun=true;
@@ -191,7 +191,7 @@ const noWait=()=>Promise.resolve();
   assert.equal((await w3.apply('telemetry',true)).dns,'saved');assert.equal(d3.enabled,false,'a filter the owner keeps off stays off');}
  t.s.telRun=2;assert.equal((await w.read()).wins.telemetry.status,'partial','chosen but running again');
  t.s.telRun=0;r=await w.apply('telemetry',false);assert.equal(r.dns,'removed');assert.deepEqual(dns.domains,['ads.example.com']);assert.equal(t.s.telBrakes,0,'brake files removed');assert.equal(JSON.parse(io.data).telemetry,false);
- assert.ok(t.s.calls.some(c=>/^rm -f /.test(c)&&/for u in [^;]*pisa-service[^;]*; do systemctl start/.test(c)&&!/systemctl start data-service/.test(c)),'undo starts the services again, data-service comes back by itself');
+ assert.ok(t.s.calls.some(c=>/^for f in \/opt\/usr\/share\/systemd\/system\//.test(c)&&/for u in [^;]*pisa-service[^;]*; do systemctl start/.test(c)&&!/systemctl start data-service/.test(c)),'undo starts the services again, data-service comes back by itself');
  // A host the user saved on their own is left alone, a filter that is switched off only gets the entry saved
  dns=fakeDns({domains:[qw.TELEMETRY_HOST]});t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,dns});
  r=await w.apply('telemetry',true);assert.equal(r.dns,'saved');assert.equal(dns.calls.length,0,'already saved: no write');
