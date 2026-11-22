@@ -20,6 +20,7 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 - **Samsung TV Plus** off also turns off Samsung's "start TV Plus at power-on" setting; on, or Restore the TV, puts back the value it had.
 - **Stop viewing-data collection, off and on again, keeps the DNS filter on.** When the usage-log host was the filter's only domain, turning the switch off emptied the list and switched the filter off, and turning it on again added the host back but left the filter off (found on a Q80A while benchmarking 0.7.1). Vetro now switches the filter back on if it was the one that switched it off.
 - **A stopped app is checked by its own process**: a switch turned off reports a member whose process is still there after the stop, by the process's label, instead of trusting the stop's answer.
+- **A new Experimental tab** holds *Quick boot* and *Hide remote key guides*: the settings that are new or may not work on every TV, said once in the tab instead of on each card.
 
 ### Launcher
 

@@ -12,9 +12,9 @@ apps.push({appId:'com.samsung.tv.acr-service-app',packageId:'com.samsung.tv.acr-
 // Quick settings are split in horizontal tabs, one panel each, with the usual tab semantics
 assert.match(html,/<div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings">/);
 const qtabs=[...html.matchAll(/data-quick-tab="(\w+)" aria-controls="quickPanel-(\w+)" aria-selected="(true|false)" tabindex="(0|-1)"/g)];
-assert.deepEqual(qtabs.map(m=>m[1]),['general','privacy','voice','memory','uninstall','developer'],'Uninstall comes right after Disable');assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
-assert.deepEqual(qtabs.map(m=>m[3]),['true','false','false','false','false','false'],'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0','-1','-1','-1','-1','-1'],'roving tabindex');
-['quickTracking','quickVoice','quickMemory','quickKeep','quickStorage','quickControl'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
+assert.deepEqual(qtabs.map(m=>m[1]),['general','privacy','voice','memory','uninstall','experimental','developer'],'Uninstall comes right after Disable; Experimental before Developer settings');assert.ok(qtabs.every(m=>m[1]===m[2]),'each tab controls its own panel');
+assert.deepEqual(qtabs.map(m=>m[3]),['true'].concat(Array(qtabs.length-1).fill('false')),'one tab selected at a time');assert.deepEqual(qtabs.map(m=>m[4]),['0'].concat(Array(qtabs.length-1).fill('-1')),'roving tabindex');
+['quickTracking','quickVoice','quickMemory','quickKeep','quickStorage','quickControl','quickExperimental'].forEach(id=>assert.ok(html.includes('id="'+id+'"'),id+' is still rendered'));
 assert.ok(!html.includes('qtab-home')&&!html.includes('quickPanel-home')&&!html.includes('id="quickHome"'),'Quick settings has no Home tab any more');
 let restoreDone=false;
 const restoreState=()=>({ok:true,pending:restoreDone?0:2,notes:['Packages removed from the Task manager cannot be brought back from here.'],items:[
@@ -68,7 +68,9 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(voice,/Disable all voice assistants/);assert.match(voice,/Partly done · 4 of 5 components still enabled/,'the assistant hub is a member of the all-in switch');
  assert.match(el('quickControl').innerHTML,/Block firmware and software updates/);assert.doesNotMatch(el('quickControl').innerHTML,/data-win-switch="firmware" checked/);
  assert.match(html,/Essential settings/);assert.doesNotMatch(html,/Firmware updates<\/h2>/,'the section is now Essential settings');
- assert.match(el('quickControl').innerHTML,/<h3>Quick boot<\/h3>/);assert.match(el('quickControl').innerHTML,/Experimental · may not work on this TV/);assert.match(el('quickControl').innerHTML,/data-win-switch="quickboot"/);
+ assert.match(el('quickExperimental').innerHTML,/<h3>Quick boot<\/h3>/);assert.doesNotMatch(el('quickExperimental').innerHTML,/Experimental · may not work on this TV/,'the tab says it once, not each card');assert.match(el('quickExperimental').innerHTML,/data-win-switch="quickboot"/);
+ assert.match(el('quickExperimental').innerHTML,/<h3>Hide remote key guides<\/h3>/,'the key guides switch sits in Experimental');
+ assert.doesNotMatch(el('quickControl').innerHTML,/Quick boot|Hide remote key guides/,'Essential settings keeps only the update lock and app delivery');
  assert.doesNotMatch(html,/quick wins applied|quickScore/,'no progress counter');
  assert.doesNotMatch(html,/quickPrivacy|Disable viewing-data tracking/,'one Advertising and tracking section: the ACR switch is covered by the all-in switch');
  assert.equal((tracking.match(/data-quick-toggle=/g)||[]).length,1,'a single tracking group switch');
@@ -198,6 +200,7 @@ const tick=()=>new Promise(r=>setImmediate(r));
  assert.match(control,/A firmware file on a USB stick still works for recovery/);
  assert.match(control,/What a firmware update can do[\s\S]*does not stop the background update loop/);
  assert.doesNotMatch(control,/data-win-switch=/,'no other win switch without root either');
+ assert.doesNotMatch(el2('quickExperimental').innerHTML,/data-win-switch=/,'nor in Experimental');
  assert.ok(!calls2.includes('/wins'),'/wins is not asked while the root agent is down');
  console.log('PASS quick UI without root: firmware card says Root required, network checklist, no switch, no /wins');
 })().catch(e=>{console.error(e);process.exitCode=1});

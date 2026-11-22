@@ -65,10 +65,11 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 
 **Quick settings** groups them in tabs:
 
-- **General**: Software update, Storage (*Clear leftovers*), and **Essential settings**: *Block firmware and software updates*, *Hide remote key guides*, *Allow SDB from the local network* (helps Apps2Samsung and TV-Store reach the TV) and *Quick boot* (Experimental: starts Vetro and the launcher earlier after power-on; measured on a Q80A only). *Restore the TV* and *Remove Vetro* are here too.
+- **General**: Software update, Storage (*Clear leftovers*), and **Essential settings**: *Block firmware and software updates*, *Disable background app delivery* and *Allow SDB from the local network* (helps Apps2Samsung and TV-Store reach the TV). *Restore the TV* and *Remove Vetro* are here too.
 - **Privacy and ads**: *Stop viewing-data collection* (screen recognition, key-press logging and usage logs, now and after every restart), *Disable advertising and tracking services* and *Enable DNS blocking*, a filter on the TV itself that keeps your DNS servers.
 - **Voice**: turn off all voice assistants, or Alexa, Google Assistant, Bixby and the other voice services one by one.
 - **Disable**: HbbTV, Multi View autostart, Ambient, AirPlay, Samsung TV Plus, Vision AI (the AI screens that a long Home press opens on newer TVs), and apps you don't use, with their background services.
+- **Experimental**: *Quick boot* (starts Vetro and the launcher earlier after power-on; measured on a Q80A only) and *Hide remote key guides*: new settings, or settings that may not work on every TV.
 - **Uninstall**: delete some of the apps that came with the TV (Netflix, Prime Video, Disney+ and others, Samsung TV Plus) and the e-Manual, where the TV allows it. YouTube is not on this list: switch it off under Disable. **Keep removed apps removed** keeps them off the TV.
 
 Each switch shows what it did (*Done*, *Partly done*) or why it is not available on your TV. Turning voice off also turns off the remote's microphone button; Vetro asks you to confirm. Domain filtering does not guarantee that every app's ads or telemetry are blocked.
