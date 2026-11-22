@@ -1652,6 +1652,32 @@ namespace Launcher.Tests
                 T.True(HoldKey.HoldSeconds >= 0.5 && HoldKey.HoldSeconds <= 1.5, "hold long enough not to fire on a click");
             });
 
+            T.Run("back: the launcher closes on Back's release, never on its press (#284)", () =>
+            {
+                var b = new BackRelease();
+                T.True(!b.Press("Left", 0), "an arrow is not held back");
+                T.True(b.Press("XF86Back", 10.0), "Back waits for its release");
+                T.True(b.Pending && !b.Due(10.5), "still open while Back is down");
+                T.True(b.Press("XF86Back", 10.2) && b.Pending, "a repeat while held changes nothing");
+                T.True(!b.WindowRelease("Left"), "another key's release does not close");
+                T.True(b.WindowRelease("XF86Back") && !b.Pending, "the window's release closes at once");
+                T.True(!b.WindowRelease("XF86Back"), "a second release does nothing");
+
+                T.True(b.Press("Escape", 20.0), "Escape too");
+                b.KernelRelease(20.3);
+                T.True(!b.Due(20.3 + BackRelease.KernelGraceSeconds / 2), "the kernel's release waits for the window's copy");
+                T.True(b.Due(20.3 + BackRelease.KernelGraceSeconds + 0.001), "then closes without it");
+                b.Cancel();
+
+                T.True(b.Press("XF86Exit", 30.0), "Exit too");
+                T.True(!b.Due(30.0 + BackRelease.LimitSeconds - 0.01) && b.Due(30.0 + BackRelease.LimitSeconds + 0.001), "a release that never comes: closed at the limit");
+                b.Cancel();
+                T.True(!b.Pending && !b.Due(99), "cancelled (the launcher closed another way): nothing left");
+                b.KernelRelease(40);
+                T.True(!b.Due(41), "a stray kernel release with nothing waiting does nothing");
+                T.True(BackRelease.KernelGraceSeconds < 0.5 && BackRelease.LimitSeconds >= 1.0, "grace short, limit long enough for a normal press");
+            });
+
             T.Run("evdev: releases are reported when asked for, repeats never", () =>
             {
                 var r = new EvdevReader(16);

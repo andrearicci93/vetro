@@ -81,6 +81,7 @@ namespace Launcher
         private static readonly Efl.EvasCb KeyUpCb = OnKeyUp;
         private static readonly List<int> InputReleases = new List<int>();
         private const int RawOkCode = 28;   // KEY_ENTER, the code NavigationInput maps to Return
+        private const int RawBackCode = 1;  // KEY_ESC, the code NavigationInput maps to XF86Back
         private static readonly CommandBuffer Commands = new CommandBuffer();
         private static readonly byte[] ReadBuf = new byte[128];
 
@@ -764,6 +765,7 @@ namespace Launcher
         private static void HideDock()
         {
             if (_moveIndex >= 0) FinishMove(true);   // leaving while a tile is being moved keeps where it is now
+            StopBackWait();
             CancelRowOk();
             _pendingLaunch = null;
             CancelIdle();
@@ -1710,6 +1712,7 @@ namespace Launcher
                 // Evas_Event_Key_Up starts with `const char *keyname` too.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
                 if (IsOkKey(key)) { TaskOkUp(); RowOkUp(); }
+                if (BackUp.WindowRelease(key)) { StopBackWait(); HideDock(); }
             }
             catch (Exception ex) { Log("key up: " + ex); }
         }
@@ -1773,11 +1776,44 @@ namespace Launcher
                             ArmGuard();
                             break;
                         }
+                        // Back and Exit close on their release (BackRelease, #284): the app under the launcher must not get them.
+                        if (BackUp.Press(key, Efl.ecore_time_get())) { StartBackWait(); break; }
                         HideDock();
                         break;
                 }
             }
             catch (Exception ex) { Log("key: " + ex); }
+        }
+
+        private static readonly BackRelease BackUp = new BackRelease();
+        private static IntPtr _backTimer;
+        private static readonly Efl.TaskCb BackTickCb = OnBackTick;
+
+        private static void StartBackWait()
+        {
+            ResetIdle();
+            if (_backTimer == IntPtr.Zero) _backTimer = Efl.ecore_timer_add(0.05, BackTickCb, IntPtr.Zero);
+        }
+
+        private static void StopBackWait()
+        {
+            BackUp.Cancel();
+            if (_backTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backTimer); _backTimer = IntPtr.Zero; }
+        }
+
+        private static byte OnBackTick(IntPtr data)
+        {
+            try
+            {
+                if (!BackUp.Pending) { _backTimer = IntPtr.Zero; return 0; }
+                if (!BackUp.Due(Efl.ecore_time_get())) return 1;
+                _backTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
+                BackUp.Cancel();
+                Log("back: closed on the remote's release (no window key up)");
+                HideDock();
+            }
+            catch (Exception ex) { _backTimer = IntPtr.Zero; Log("back: " + ex); }
+            return 0;
         }
 
         private static VolumePill _pill;
@@ -2195,7 +2231,11 @@ namespace Launcher
                         RawHome();
                     }
                     // The kernel always reports the release: it ends a held OK even when the window's key up is late.
-                    for (int k = 0; k < InputReleases.Count; k++) if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
+                    for (int k = 0; k < InputReleases.Count; k++)
+                    {
+                        if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
+                        else if (InputReleases[k] == RawBackCode) BackUp.KernelRelease(Efl.ecore_time_get());
+                    }
                 }
             }
             catch (Exception ex) { Log("input: " + ex); }
