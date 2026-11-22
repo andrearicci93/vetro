@@ -573,3 +573,88 @@ function fixture(options) {
     assert.equal(await down.audioOutput(), null);
     console.log('PASS dock audio output: parsed, cached, null when unreadable');
 })().catch(e => { console.error(e); process.exitCode = 1; });
+
+(async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const {Dock} = require('../service/dock.js');
+    const launcher = require('../service/plugin-launcher.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-idle-test-'));
+    try {
+        const stateFile = path.join(dir, 'state.json');
+        let powerOnCmds = 0, pipeLive = false, execLog = [];
+        const d = new Dock({
+            dir: path.join(__dirname, '..', 'native', 'dock'),
+            stateFile: stateFile,
+            appsFile: path.join(dir, 'apps.tsv'),
+            inputsFile: path.join(dir, 'inputs.tsv'),
+            customAppsFile: path.join(dir, 'custom.tsv'),
+            uptime: () => 60,
+            execute: cmd => {
+                powerOnCmds++;
+                execLog.push(cmd);
+                return Promise.resolve({exit_code: 0, stdout: pipeLive && cmd.indexOf('echo "idle ') >= 0 ? 'live\n' : ''});
+            }
+        });
+        assert.deepEqual(
+            {m: d.readState().idleMode, a: d.readState().idleAutoDock, p: d.readState().idlePictureOffMin},
+            {m: 'off', a: false, p: 0},
+            'idleScreen defaults to off / false / 0'
+        );
+        assert.ok(!d.startScript().includes('--idle-mode'), 'off mode omits --idle-mode from startScript');
+
+        await assert.rejects(() => d.setIdleScreen({mode: 'aurora'}), /Invalid idle mode/);
+        await assert.rejects(() => d.setIdleScreen({mode: 'beacon'}), /Invalid idle mode/);
+        await assert.rejects(() => d.setIdleScreen({autoDock: 'yes'}), /Invalid auto-dock/);
+        await assert.rejects(() => d.setIdleScreen({pictureOffMin: 30}), /Invalid idle picture-off/);
+
+        await d.setIdleScreen({mode: 'clock', autoDock: true, pictureOffMin: 5});
+        assert.equal(d.readState().idleMode, 'clock');
+        assert.equal(d.readState().idleAutoDock, true);
+        assert.equal(d.readState().idlePictureOffMin, 5);
+        const script = d.startScript();
+        assert.ok(script.includes('--idle-mode clock --idle-autodock --idle-potoff 5'), 'startScript carries idle flags when enabled');
+
+        powerOnCmds = 0;
+        await d.showAtPowerOn({enabled: true, customApp: null, idleMode: 'clock', idleAutoDock: true});
+        assert.equal(powerOnCmds, 0, 'showAtPowerOn backs off when idleAutoDock owns arrival');
+
+        const pl = launcher.definition(d).create({vetro: {agentConnected: () => false, json: (res, obj, code) => { res.code = code || 200; res.body = obj; }, readJson: (req, res, cb) => cb(req.body)}});
+        const plRes = {code: 0, body: null};
+        pl.route({method: 'POST', url: '/plugins/launcher/api/action', body: {action: 'idleScreen', mode: 'wallpaper', autoDock: false, pictureOffMin: 0}}, plRes, 'action');
+        await new Promise(r => setTimeout(r, 30));
+        assert.equal(plRes.code, 200);
+        assert.equal(d.readState().idleMode, 'wallpaper');
+
+        await d.setIdleScreen({mode: 'clean'});
+        assert.equal(d.readState().idleMode, 'clean');
+        assert.ok(d.startScript().includes('--idle-mode clean'), 'startScript carries clean mode');
+
+        // Enabled launcher: live FIFO update succeeds without calling refreshOr / restart.
+        d.patchState({enabled: true});
+        pipeLive = true;
+        execLog = [];
+        let refreshed = 0;
+        const origRefreshOr = d.refreshOr.bind(d);
+        d.refreshOr = undo => { refreshed++; return origRefreshOr(undo); };
+        await d.setIdleScreen({mode: 'wallpaper', autoDock: true, pictureOffMin: 5});
+        assert.equal(refreshed, 0, 'live FIFO update avoids launcher restart');
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 5" >&3')), 'FIFO command carries mode, autoDock, and potOff');
+        assert.ok(!execLog.some(cmd => cmd.includes('kill -9')), 'live FIFO update does not kill or restart launcher');
+
+        // Fallback to refreshOr when launcher pipe is unavailable.
+        pipeLive = false;
+        d.refreshOr = () => { refreshed++; return Promise.resolve(d.status()); };
+        await d.setIdleScreen({mode: 'clock', autoDock: false, pictureOffMin: 0});
+        assert.equal(refreshed, 1, 'falls back to restart when FIFO is not live');
+        d.patchState({enabled: false});
+        d.refreshOr = origRefreshOr;
+
+        const dashHtml = require('../service/dashboard.js')();
+        assert.ok(!dashHtml.includes('Minimal Beacon') && dashHtml.includes('data-dock-idle-mode') && dashHtml.includes('data-dock-idle-autodock') && dashHtml.includes('data-dock-idle-potoff') && dashHtml.includes('Empty TV screen') && dashHtml.includes('dockIdleSec') && dashHtml.includes('Pure Black + Clock (OLED)') && dashHtml.includes('Clean Gradient + Clock') && dashHtml.includes('Clean Gradient (No text)'), 'dashboard includes Empty TV screen section and updated backdrop mode labels without beacon');
+        console.log('PASS dock idleScreen: defaults, validation, startScript flags, showAtPowerOn guard, plugin route, dashboard');
+    } finally {
+        fs.rmSync(dir, {recursive: true, force: true});
+    }
+})().catch(e => { console.error(e); process.exitCode = 1; });

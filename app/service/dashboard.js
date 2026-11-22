@@ -60,6 +60,7 @@ input[type=file]{height:auto;max-width:100%;padding:var(--s2);color:var(--muted)
 input[type=file]::file-selector-button{min-height:44px;height:auto;margin-right:var(--s3);padding:0 var(--s3);border:1px solid var(--vetro-control-border);border-radius:var(--r);background:var(--surface);color:var(--text);font:inherit;cursor:pointer}
 button,input,select,textarea{font:inherit;color:var(--text);border:1px solid var(--vetro-control-border);border-radius:var(--r);background:var(--raised)}
 button,select,input:not([type=checkbox]){min-height:var(--vetro-control-height);height:auto;padding:var(--s2) var(--s4)}
+select{padding-right:2.25rem;max-width:100%}
 input:not([type=checkbox]),select,textarea{font-size:var(--fs-m)}
 button{cursor:pointer;max-width:100%;overflow-wrap:anywhere;scroll-margin-block:var(--scroll-clearance)}
 input,select,textarea{caret-color:var(--accent);scroll-margin-block:var(--scroll-clearance)}
@@ -252,7 +253,8 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .quick-item+.quick-item{border-top:1px solid var(--border)}
 .quick-group>#quickControl+#quickSdb>.quick-item:first-child{margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--border)}
 .quick-sub{padding-left:var(--s5)}
-.quick-edge{grid-column:1/-1;display:flex;align-items:center;gap:var(--s3);color:var(--muted)}
+.quick-item-wide{grid-column:1/-1}
+.quick-edge{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s3);color:var(--muted)}
 .quick-item .notice{margin-top:var(--s2)}
 .quick-item p{font-size:var(--fs-s);line-height:1.6;color:var(--muted);margin-top:2px;max-width:60ch;text-wrap:pretty}
 .quick-item .switch{margin:0;align-self:start}
@@ -1404,14 +1406,22 @@ function renderDock(){
  }
  var sourceOptions=sourceOption('showHomeSources','HDMI sources on Home','Copies the HDMI tiles and their positions from Samsung Home.');
  sourceOptions+=sourceOption('useSourceImages','HDMI source images','Uses Samsung’s images for HDMI tiles on the Dock and Sources.');
+ var iMode=d.idleMode||'off',iAuto=!!d.idleAutoDock,iPot=[0,5,10,15].indexOf(d.idlePictureOffMin)>=0?d.idlePictureOffMin:0;
+ var iState=iMode==='clock'?chip('On · Pure Black + Clock','on'):iMode==='wallpaper'?chip('On · Clean Gradient + Clock','on'):iMode==='clean'?chip('On · Clean Gradient','on'):chip('Off');
+ var iStyle='<div class="quick-item" data-quick-item="idle-screen"><div><h3>Backdrop style</h3><p>Choose an OLED-black screen or a clean Samsung-style gradient without the antenna warning.</p><div class="quick-state">'+iState+chip('Experimental')+(iMode!=='off'&&!d.enabled?chip('Applies when the launcher is on','partial'):'')+'</div><label class="field"><span>Style</span><select data-dock-idle-mode aria-label="Empty TV screen style"'+(dockBusy||!d.installed?' disabled':'')+'>'+
+  [['off','Off (Samsung default)'],['clock','Pure Black + Clock (OLED)'],['wallpaper','Clean Gradient + Clock'],['clean','Clean Gradient (No text)']].map(function(o){return '<option value="'+o[0]+'"'+(iMode===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label></div></div>';
+ var iExtras=iMode==='off'?'':'<div class="quick-item" data-quick-item="idle-potoff"><div><h3>After idle</h3><p>Dims the backdrop after 10 min while keeping it visible, or switches off the OLED panel.</p><div class="quick-state">'+chip(iPot?'Picture Off after '+iPot+' min':'Dim after 10 min')+'</div><label class="field"><span>Action</span><select data-dock-idle-potoff aria-label="After idle"'+(dockBusy||!d.installed?' disabled':'')+'>'+
+  [[0,'Dim after 10 min (Keep visible)'],[5,'Picture Off after 5 min'],[10,'Picture Off after 10 min'],[15,'Picture Off after 15 min']].map(function(o){return '<option value="'+o[0]+'"'+(iPot===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label></div></div>'+
+  '<div class="quick-item quick-item-wide" data-quick-item="idle-autodock"><div><h3>Open Dock on arrival</h3><p>Opens the app bar for 20 s at power-on or after closing an app, then fades back to the backdrop.</p><div class="quick-state">'+chip(iAuto?'On':'Off',iAuto?'on':'')+'</div></div>'+switchMarkup('data-dock-idle-autodock',iAuto,dockBusy||!d.installed,'Open Dock on arrival')+'</div>';
+ var idleBox='<h2 class="section-title" id="dockIdleTitle">${sectionIcon('tv')}Empty TV screen</h2><p class="section-note">Replaces Samsung’s “Aerial Cable: Disconnected” screen when the TV input has no live tuner active.</p>'+iStyle+iExtras;
  var look='<h2 class="section-title" id="dockLookTitle">${sectionIcon('home')}Customization</h2>'+row+store+sourceOptions+still+fix;
  // The preview (a TV picture and the app icons) is drawn again only when it changes; a busy or changed switch redraws the
  // switches beside it, not the pictures.
- var preview=previewMarkup(d),lay=box.firstChild,group=lay&&lay.lastChild,sec=box.lastChild;
- if(box.vetroPreview===preview&&box.vetroFirst===lay&&group&&sec&&sec!==lay){paint(group,main);paint(sec,look)}
- else if(paint(box,'<div class="dock-layout">'+preview+'<div class="quick-group">'+main+'</div></div><section class="quick-group ui-cols" aria-labelledby="dockLookTitle">'+look+'</section>')){
-  box.vetroPreview=preview;lay=box.firstChild;group=lay&&lay.lastChild;sec=box.lastChild;
-  if(group&&sec){group.vetroHtml=main;group.vetroFirst=group.firstChild;sec.vetroHtml=look;sec.vetroFirst=sec.firstChild}
+ var preview=previewMarkup(d),lay=box.firstChild,group=lay&&lay.lastChild,sec=$('dockLookSec'),idleSec=$('dockIdleSec');
+ if(box.vetroPreview===preview&&box.vetroFirst===lay&&group&&sec&&idleSec){paint(group,main);paint(sec,look);paint(idleSec,idleBox)}
+ else if(paint(box,'<div class="dock-layout">'+preview+'<div class="quick-group">'+main+'</div></div><section id="dockLookSec" class="quick-group ui-cols" aria-labelledby="dockLookTitle">'+look+'</section><section id="dockIdleSec" class="quick-group" aria-labelledby="dockIdleTitle">'+idleBox+'</section>')){
+  box.vetroPreview=preview;lay=box.firstChild;group=lay&&lay.lastChild;sec=$('dockLookSec');idleSec=$('dockIdleSec');
+  if(group&&sec&&idleSec){group.vetroHtml=main;group.vetroFirst=group.firstChild;sec.vetroHtml=look;sec.vetroFirst=sec.firstChild;idleSec.vetroHtml=idleBox;idleSec.vetroFirst=idleSec.firstChild}
   setTimeout(fitPreview,0);
  }
  paint(cbox,cardsMarkup(d));
@@ -1459,7 +1469,7 @@ function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;customConfirm=false;renderDock();renderUi();   // the Overview's and the displays' switches lock too
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;
-  var message=action==='appStore'?'All apps now opens '+(d.appStore==='samsung'?'Samsung’s store':'TV-Store')+(d.enabled?'; the launcher was restarted.':'.'):action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Home opens Samsung Home.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Home opens Samsung Home.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='resetRow'?'Samsung’s row is back'+(d.enabled?'; the launcher was restarted.':'.'):action==='cards'?'Control center: '+(dockCards(d).length?dockCards(d).map(function(c){return cardInfo(c,d).name}).join(', '):'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?(d.volumeEdge==='hidden'?'The volume bar is hidden: Vol changes the level without a bar':'The volume bar moves to the '+(d.volumeEdge||'left')+' edge')+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='idleScreen'?(d.idleMode==='off'?'Empty TV screen off.':('Empty TV screen: '+(d.idleMode==='clean'?'Clean Gradient':d.idleMode==='wallpaper'?'Clean Gradient + Clock':'Pure Black + Clock')+(d.idleAutoDock?', Dock on arrival':'')+(d.idlePictureOffMin?', Picture Off '+d.idlePictureOffMin+'m':', dim 10m')+'.')):action==='appStore'?'All apps now opens '+(d.appStore==='samsung'?'Samsung’s store':'TV-Store')+(d.enabled?'; the launcher was restarted.':'.'):action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Home opens Samsung Home.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Home opens Samsung Home.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='resetRow'?'Samsung’s row is back'+(d.enabled?'; the launcher was restarted.':'.'):action==='cards'?'Control center: '+(dockCards(d).length?dockCards(d).map(function(c){return cardInfo(c,d).name}).join(', '):'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?(d.volumeEdge==='hidden'?'The volume bar is hidden: Vol changes the level without a bar':'The volume bar moves to the '+(d.volumeEdge||'left')+' edge')+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();renderUi();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
@@ -1826,6 +1836,9 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.dockStore!=null)return setDock('appStore',x.checked?'Use TV-Store in All apps':'Use Samsung’s store in All apps',{store:x.checked?'tvstore':'samsung'});
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
  if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+(x.dataset.dockSourceOption==='showHomeSources'?'HDMI sources on Home':'HDMI source images'),{on:!!x.checked});
+ if(x.dataset.dockIdleMode!=null)return setDock('idleScreen',x.value==='off'?'Turn off Empty TV screen':'Set Empty TV screen style',{mode:x.value});
+ if(x.dataset.dockIdleAutodock!=null)return setDock('idleScreen',x.checked?'Turn on Open Dock on arrival':'Turn off Open Dock on arrival',{autoDock:!!x.checked});
+ if(x.dataset.dockIdlePotoff!=null)return setDock('idleScreen','Set Empty TV screen idle action',{pictureOffMin:parseInt(x.value,10)||0});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
  return setDock('disable','Turn off the launcher');

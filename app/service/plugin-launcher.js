@@ -100,6 +100,7 @@ function definition(dock, options) {
                 if (p.action === 'resetRow') return dock.resetRow();
                 if (p.action === 'appStore') return dock.setAppStore(p.store);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages') return dock.setSourceOption(p.action, p.on);
+                if (p.action === 'idleScreen') return dock.setIdleScreen(p);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();
                 return Promise.reject(new Error('Invalid dock action'));

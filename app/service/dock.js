@@ -40,6 +40,8 @@ var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
+var FIFO_READY = FIFO + '.ready';
+var CLAIM_FILE = RUN_DIR + '/tvlauncher.homeclaim';
 var LOG_FILE = RUN_DIR + '/tvlauncher.log';
 var DLL = 'tvlauncher-dotnet.dll';
 var UNIT = 'vetro-dock';                              // the dock's own systemd unit
@@ -155,6 +157,8 @@ Dock.prototype.installed = function () {
 };
 
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom', 'hidden'];   // where the volume bar sits (the dock's --volume-edge); hidden: the level changes, no bar
+var IDLE_MODES = ['off', 'clock', 'wallpaper', 'clean'];
+var IDLE_POTOFF_MINS = [0, 5, 10, 15];
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
 var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;
 // A Shard (plugin) can add one card (manifest "controlCenter"): it is named "shard:<plugin id>". A saved list keeps such a name even while
@@ -195,16 +199,61 @@ function rowAfter(before, list, samsungKeys) {
 }
 function stateCards(s) { return s && Array.isArray(s.cards) ? cleanCards(s.cards) : (s && s.taskManager === true ? ['tasks'] : []); }
 
+function isPlainStateObject(v) {
+    return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+function isValidStateJson(text) {
+    try { return isPlainStateObject(JSON.parse(text)); } catch (e) { return false; }
+}
+function readJsonObject(file) {
+    var parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!isPlainStateObject(parsed)) throw new Error('Invalid launcher state');
+    return parsed;
+}
+function dockAliveCmd() {
+    return 'p=$(cat ' + PID_FILE + ' 2>/dev/null); [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + ' && [ -p ' + FIFO + ' ]';
+}
+
 // Read on every remote key the bridge forwards (volume, 123) and by most routes, so the parsed file is kept and read again
 // only when the file changed: a write through writeState drops it, and a write by anyone else changes the file's inode
 // (atomic writes rename a new file), its size or its modification time. A missing file is read again each time.
+Dock.prototype.readRawStateStrict = function () {
+    var primaryErr;
+    try {
+        var st = fs.statSync(this.stateFile);
+        var key = st.ino + ':' + st.size + ':' + (st.mtimeMs !== undefined ? st.mtimeMs : +st.mtime);
+        if (this.stateCache && this.stateCache.key === key) return this.stateCache.value;
+        var value = readJsonObject(this.stateFile);
+        this.stateCache = {key: key, value: value};
+        this.stateCorrupt = false;
+        return value;
+    } catch (e) {
+        primaryErr = e;
+    }
+    try {
+        var bak = readJsonObject(this.stateFile + '.bak');
+        this.stateCache = null;
+        this.stateCorrupt = false;
+        return bak;
+    } catch (bakErr) {
+        if (primaryErr && primaryErr.code === 'ENOENT' && bakErr && bakErr.code === 'ENOENT') {
+            this.stateCorrupt = false;
+            return null;
+        }
+        var err = new Error('Cannot read launcher preferences: ' + ((primaryErr && primaryErr.message) || 'corrupt'));
+        err.code = 'STATE_CORRUPT';
+        throw err;
+    }
+};
+
 Dock.prototype.readStateFile = function () {
-    var st = fs.statSync(this.stateFile);
-    var key = st.ino + ':' + st.size + ':' + (st.mtimeMs !== undefined ? st.mtimeMs : +st.mtime);
-    if (this.stateCache && this.stateCache.key === key) return this.stateCache.value;
-    var value = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-    this.stateCache = {key: key, value: value};
-    return value;
+    var raw = this.readRawStateStrict();
+    if (!raw) {
+        var e = new Error('ENOENT');
+        e.code = 'ENOENT';
+        throw e;
+    }
+    return raw;
 };
 
 Dock.prototype.legacy = function (which) {
@@ -229,24 +278,31 @@ Dock.prototype.readState = function () {
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacy('home'),
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
-            appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
-        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
+            appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore',
+            idleMode: s && IDLE_MODES.indexOf(s.idleMode) >= 0 ? s.idleMode : 'off',
+            idleAutoDock: s && s.idleAutoDock === true,
+            idlePictureOffMin: s && IDLE_POTOFF_MINS.indexOf(s.idlePictureOffMin) >= 0 ? s.idlePictureOffMin : 0};
+    } catch (e) {
+        if (e && e.code === 'STATE_CORRUPT') {
+            this.stateCorrupt = true;
+            this.lastError = e.message;
+        }
+        return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+            showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore', idleMode: 'off', idleAutoDock: false, idlePictureOffMin: 0};
+    }
 };
 
 // Source-option migration must never overwrite an unreadable or malformed existing state.
 Dock.prototype.validateSourcePreferenceState = function () {
-    try {
-        var state = JSON.parse(fs.readFileSync(this.stateFile, 'utf8'));
-        if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Invalid launcher state');
-    } catch (e) {
-        if (e.code !== 'ENOENT') throw new Error('Cannot read launcher preferences: ' + e.message);
-    }
+    this.readRawStateStrict();
 };
 
-// Change some fields of the saved state and keep the rest.
+// Change some fields of the saved state and keep the rest (preserving raw unknown fields from newer builds).
 Dock.prototype.patchState = function (patch) {
-    this.writeState(Object.assign({}, this.readState(), patch));
+    var base = this.readRawStateStrict();
+    var next = Object.assign({}, base || {}, patch);
+    delete next.sourceOptionOriginal;
+    this.writeState(next);
 };
 
 // Samsung's "Autorun Smart Hub" (power-on shows Samsung's Home) would put Samsung's Home in front of
@@ -286,7 +342,10 @@ Dock.prototype.restoreAutorun = function () {
 // write would lose it and leave that TV setting off for good. Written whole or not at all, and no temporary file is left behind.
 Dock.prototype.writeState = function (state) {
     this.stateCache = null;
-    try { atomicFile.write(fs, this.stateFile, JSON.stringify(state)); }
+    try {
+        atomicFile.write(fs, this.stateFile, JSON.stringify(state), {backup: true, validate: isValidStateJson});
+        this.stateCorrupt = false;
+    }
     catch (e) { throw new Error('The dock setting could not be saved: ' + e.message); }
 };
 
@@ -423,7 +482,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, idleMode: state.idleMode, idleAutoDock: state.idleAutoDock, idlePictureOffMin: state.idlePictureOffMin, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -485,7 +544,8 @@ Dock.prototype.cardsShown = function () {
 // agent had been relaunched at wake). In its own unit it survives standby. KillSignal is SIGKILL because the
 // dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
-    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR;
+    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR +
+        ' DOTNET_EnableDiagnostics=0 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1';
     var state = this.readState();
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
@@ -496,15 +556,16 @@ Dock.prototype.startScript = function () {
         // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
         (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
+        (!state.customApp && state.idleMode !== 'off' ? ' --idle-mode ' + state.idleMode + (state.idleAutoDock ? ' --idle-autodock' : '') + (state.idlePictureOffMin > 0 ? ' --idle-potoff ' + state.idlePictureOffMin : '') : '') +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
         (!state.customApp && this.cardsArg(state) ? ' --cards ' + this.cardsArg(state) : ' --no-tasks');
     return [
         this.stopLines(),
         'rm -f ' + FIFO,
         'cd ' + q(this.dir),
-        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null ' +
+        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p Nice=-10 -p StandardOutput=null -p StandardError=null ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
-        '{ ' + env + ' setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
+        '{ ' + env + ' nice -n -10 setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
         PREVIEW_OFF,
         'echo started'
     ].join('\n');
@@ -517,7 +578,7 @@ Dock.prototype.stopLines = function () {
         'i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active ' + UNIT + '.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; ' +
         'systemctl reset-failed ' + UNIT + '.service >/dev/null 2>&1; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL +
-        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE;
+        '; then kill -9 $p; sleep 0.3; fi; rm -f ' + PID_FILE + ' ' + FIFO + ' ' + FIFO_READY + ' ' + CLAIM_FILE;
 };
 
 Dock.prototype.writeCatalog = function () {
@@ -923,7 +984,7 @@ Dock.prototype.setSourceOption = function (key, on) {
     if (SOURCE_OPTION_KEYS.indexOf(key) < 0 || typeof on !== 'boolean') return Promise.reject(new Error('Invalid source option'));
     if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
     try { this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
-    var before = this.readState();
+    var before = this.readState(), hadBefore = Object.prototype.hasOwnProperty.call(this.readRawStateStrict() || {}, key), prevVal = before[key];
     if (before[key] === on) return this.status();
     var patch = {};
     patch[key] = on;
@@ -934,7 +995,11 @@ Dock.prototype.setSourceOption = function (key, on) {
         if (self.readState()[key] !== on) throw new Error('Source option readback failed');
         return self.status();
     }).catch(function (error) {
-        try { self.writeState(before); } catch (restoreError) { throw new Error(error.message + '; settings restore failed: ' + restoreError.message); }
+        try {
+            var undo = {};
+            undo[key] = hadBefore ? prevVal : undefined;
+            self.patchState(undo);
+        } catch (restoreError) { throw new Error(error.message + '; settings restore failed: ' + restoreError.message); }
         return Promise.resolve().then(rebuild).catch(function (restoreError) {
             self.lastError = error.message + '; catalog restore failed: ' + restoreError.message;
             throw new Error(self.lastError);
@@ -1144,7 +1209,7 @@ Dock.prototype.relistLater = function () {
 // "reload" down the launcher's control pipe, when it runs: it reads its three lists again and makes its pages again if they changed.
 Dock.prototype.tellReload = function () {
     this.reloadedAt = this.now();
-    var line = 'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo reload >&3 ); fi; true';
+    var line = 'if ' + dockAliveCmd() + '; then ( exec 3<>' + FIFO + ' && echo reload >&3 ); fi; true';
     return this.execute(line, 5000).catch(function () {});
 };
 
@@ -1180,6 +1245,38 @@ Dock.prototype.setVolumeEdge = function (edge) {
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.status();
     return this.refreshOr(function () { self.patchState({volumeEdge: state.volumeEdge}); });
+};
+// "idle" down the launcher's control pipe so Empty TV screen settings apply live with zero restart flash.
+Dock.prototype.tellIdle = function (mode, autoDock, potOff) {
+    var cmd = 'idle ' + mode + ' ' + (autoDock ? 1 : 0) + ' ' + potOff;
+    var line = 'if ' + dockAliveCmd() + ' && [ "$(cat ' + FIFO_READY + ' 2>/dev/null)" = "$p" ]; then ( exec 3<>' + FIFO + ' && echo "' + cmd + '" >&3 ) && echo live; fi; true';
+    return this.execute(line, 5000).then(function (r) {
+        return !!(r && /\blive\b/.test(r.stdout || ''));
+    }, function () { return false; });
+};
+
+// Empty TV screen ("No Live TV" backdrop) shown over Samsung's "Aerial Cable: Disconnected" screen when no tuner is active.
+Dock.prototype.setIdleScreen = function (opts) {
+    var self = this, o = opts && typeof opts === 'object' ? opts : {}, state = this.readState();
+    var mode = o.mode !== undefined ? o.mode : state.idleMode;
+    var autoDock = o.autoDock !== undefined ? o.autoDock : state.idleAutoDock;
+    var potOff = o.pictureOffMin !== undefined ? o.pictureOffMin : state.idlePictureOffMin;
+    if (IDLE_MODES.indexOf(mode) < 0) return Promise.reject(new Error('Invalid idle mode'));
+    if (typeof autoDock !== 'boolean') return Promise.reject(new Error('Invalid auto-dock setting'));
+    if (IDLE_POTOFF_MINS.indexOf(potOff) < 0) return Promise.reject(new Error('Invalid idle picture-off interval'));
+    try { this.patchState({idleMode: mode, idleAutoDock: autoDock, idlePictureOffMin: potOff}); }
+    catch (e) { return Promise.reject(e); }
+    var run = function () {
+        var cur = self.readState();
+        if (!cur.enabled || cur.customApp) return self.status();
+        return self.tellIdle(cur.idleMode, cur.idleAutoDock, cur.idlePictureOffMin).then(function (live) {
+            if (live) return self.status();
+            if (self.busy) return self.status();
+            return self.refreshOr(function () {});
+        });
+    };
+    this.idleQueue = (this.idleQueue || Promise.resolve()).then(run, run);
+    return this.idleQueue;
 };
 // The same for the number pad that replaces Samsung's 123 pad.
 Dock.prototype.setNumberPad = function (on) { return this.setKeyOption('numberPad', on); };
@@ -1245,13 +1342,12 @@ Dock.prototype.closeHomeOnce = function (samsungHome) {
 // mode, never on 2021 firmware (there the same setting only shows the last input, as before).
 var POWER_ON_WINDOW_S = 420;
 Dock.prototype.showAtPowerOn = function (state) {
-    if (this.powerOnShown || !state || state.customApp || state.enabled !== true || this.serviceStart >= BOOT_WINDOW_S || this.uptime() > POWER_ON_WINDOW_S) return Promise.resolve();
-    this.powerOnShown = true;
+    if (this.powerOnShown || !state || state.customApp || state.enabled !== true || (state.idleMode !== 'off' && state.idleAutoDock === true) || this.serviceStart >= BOOT_WINDOW_S || this.uptime() > POWER_ON_WINDOW_S) return Promise.resolve();
     var line = '[ -e /usr/bin/get_root_app ] || exit 0; ' +
         'case "$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)" in *"value = org.tizen.tv-viewer ("*) ;; *) exit 0;; esac; ' +
-        'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo show >&3 ) && echo shown; fi; true';
+        'if ' + dockAliveCmd() + ' && [ "$(cat ' + FIFO_READY + ' 2>/dev/null)" = "$p" ]; then ( exec 3<>' + FIFO + ' && echo show >&3 ) && echo shown; fi; true';
     var self = this;
-    return this.execute(wrap(line), 6000).then(function (r) { if (r && /shown/.test(r.stdout || '')) self.mark('shownAtPowerOn'); }).catch(function () {});
+    return this.execute(wrap(line), 6000).then(function (r) { if (r && /shown/.test(r.stdout || '')) { self.powerOnShown = true; self.mark('shownAtPowerOn'); } }).catch(function () {});
 };
 
 // Called every few seconds by the service, and at once when the root agent connects. Starts the
@@ -1272,6 +1368,7 @@ var HOME_PICTURE_SCRIPT = 'h=$(vconftool get memory/avoc/home_shown 2>/dev/null 
 
 Dock.prototype.supervise = function (agentConnected) {
     var self = this, state = this.readState(), custom = !!state.customApp;
+    if (this.stateCorrupt) return Promise.resolve(null);
     if ((!state.enabled && !custom) || this.busy || !agentConnected || this.now() < this.nextTry) return Promise.resolve(null);
     if (!this.installed()) return Promise.resolve(null);
     this.busy = true;

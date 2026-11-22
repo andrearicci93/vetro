@@ -33,5 +33,6 @@ namespace Launcher.Native
         [DllImport(C)] public static extern int system(string command);
         [DllImport(C, SetLastError = true)] public static extern int inotify_init1(int flags);
         [DllImport(C, SetLastError = true)] public static extern int inotify_add_watch(int fd, string path, uint mask);
+        [DllImport(C)] public static extern void free(IntPtr ptr);
     }
 }

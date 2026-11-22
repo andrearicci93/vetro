@@ -271,6 +271,113 @@ namespace Launcher.Tests
                 T.Eq(OutputPickerModel.ActionFor(null), OutputAction.None, "no row, no action");
                 T.Eq(OutputPickerModel.ActionFor(new OutputEntry { Kind = OutputKind.ScreenOff, Label = "x" }), OutputAction.ScreenOff, "the last row turns the screen off");
             });
+
+            T.Run("IdleBackdropModel: 5 gates, Halton orbit, lcdoff wake guard, key handling, and tuner flag", () =>
+            {
+                IdleConfig cfg = IdleConfig.Parse("clock", true, "0", "12");
+                T.True(cfg.Mode == IdleMode.Clock && cfg.AutoDock && cfg.PictureOffMinutes == 0 && cfg.NotificationLevel == 12, "parses idle config");
+                T.True(IdleConfig.Parse("invalid", false, "99", "999").Mode == IdleMode.Off, "rejects invalid mode");
+                T.True(IdleConfig.Parse("beacon", false, "0", "10").Mode == IdleMode.Off, "removed beacon parses as Off");
+                T.Eq(IdleConfig.Parse("wallpaper", false, "5", "99").NotificationLevel, 40, "clamps notification level");
+
+                var model = new IdleBackdropModel(cfg);
+                var onTv = new TvSnapshot { SourceType = 0, FullscreenAppId = IdleBackdropModel.TvViewerAppId, PartialAppId = "", DisplayState = 1, TunerActive = false };
+                T.True(model.Evaluate(onTv, 10.0, false, false, false) == IdleAction.ShowWithDock, "first arrival opens Dock over backdrop");
+                T.True(model.Evaluate(onTv, 12.0, false, false, false) == IdleAction.None, "stays shown without reopening dock");
+                T.True(model.Evaluate(onTv, 615.0, false, false, false) == IdleAction.Dim, "dims after 10 min when potOff=0");
+
+                var standbySnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "", PartialAppId = "", DisplayState = IdleBackdropModel.DisplayStateOff, TunerActive = false };
+                T.True(model.Evaluate(standbySnap, 615.2, false, false, false) == IdleAction.None && model.Visible, "stays mapped through standby/lcdoff for zero-ms wake");
+
+                var blipSnap = onTv; blipSnap.SourceType = -1;
+                T.True(model.Evaluate(blipSnap, 615.4, false, false, false) == IdleAction.None && model.Visible, "survives transient source_type=-1 while tv-viewer stays fullscreen");
+
+                var otherApp = onTv; otherApp.FullscreenAppId = "vetrotvapp.app";
+                T.True(model.Evaluate(otherApp, 615.6, false, false, false) == IdleAction.Hide && !model.Visible, "hides immediately when another app takes fullscreen");
+                T.True(model.Evaluate(onTv, 615.8, false, false, false) == IdleAction.ShowWithDock, "returns after other app closes");
+
+                var withOverlay = onTv; withOverlay.PartialAppId = "com.samsung.tv.menu";
+                T.True(model.Evaluate(withOverlay, 616.0, false, false, false) == IdleAction.Hide, "hides on Samsung partial overlay");
+                var onHdmi = onTv; onHdmi.SourceType = 13;
+                T.True(model.Evaluate(onHdmi, 617.0, false, false, false) == IdleAction.None, "stays hidden on HDMI");
+                T.True(model.Evaluate(onTv, 620.0, false, false, false) == IdleAction.ShowWithDock, "returning from HDMI opens Dock once");
+
+                T.True(model.Evaluate(onTv, 1225.0, false, false, false) == IdleAction.Dim, "dims again after 10 min idle");
+                bool hideBg;
+                T.True(!model.OnRawKey(108, 63, 1226.0, false, false, out hideBg) && !hideBg && model.Visible && !model.Dimmed, "non-Home key keeps backdrop visible and undims");
+                T.True(model.Evaluate(onTv, 1230.0, false, false, false) == IdleAction.None, "backdrop stays visible continuously");
+
+                T.True(model.OnRawKey(63, 63, 1300.0, true, false, out hideBg) && !hideBg, "consumes wake key while DisplayStateOff");
+                T.True(model.OnRawKey(63, 63, 1300.2, false, false, out hideBg), "suppresses echo within 0.5 s");
+
+                var potModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", false, "5", "10"));
+                T.True(potModel.Evaluate(onTv, 100.0, false, false, false) == IdleAction.Show, "wallpaper shows without auto-dock");
+                T.True(potModel.Evaluate(onTv, 405.0, false, false, false) == IdleAction.TriggerLcdOff, "triggers lcdoff after 5 min");
+                T.True(potModel.OnLcdOffVerify(1) == IdleAction.FallbackDim, "falls back to dim if deviced refused");
+
+                IdleConfig wallCfg = IdleConfig.Parse("wallpaper", false, "0", "10");
+                T.True(wallCfg.Mode == IdleMode.Wallpaper && wallCfg.UsesWallpaper && wallCfg.ShowsClock, "parses wallpaper mode");
+                IdleConfig cleanCfg = IdleConfig.Parse("clean", false, "0", "10");
+                T.True(cleanCfg.Mode == IdleMode.Clean && cleanCfg.UsesWallpaper && !cleanCfg.ShowsClock, "parses clean mode");
+                uint[] wallPx = IdleBackdropModel.BuildWallpaperPixels(320, 180);
+                T.Eq(wallPx.Length, 320 * 180, "builds full wallpaper pixel buffer");
+                T.True((wallPx[0] >> 24) == 0xFF, "wallpaper pixels are opaque");
+                uint centerPx = wallPx[(180 * 36 / 100) * 320 + 160];
+                uint cornerPx = wallPx[(179 * 320) + 0];
+                T.True((centerPx & 0xFF) > (cornerPx & 0xFF), "wallpaper center glow is brighter than corner");
+
+                var seen = new System.Collections.Generic.HashSet<string>();
+                for (int s = 1; s <= 40; s++)
+                {
+                    int hx, hy;
+                    IdleBackdropModel.HaltonPosition(s, 1920, 1080, 280, 140, out hx, out hy);
+                    T.True(hx >= 96 && hx <= 1920 - 96 - 280 && hy >= 96 && hy <= 1080 - 280 - 140, "Halton clears 280px bottom Dock band");
+                    T.True(seen.Add(hx + "," + hy), "Halton position unique");
+                }
+
+                T.True(IdleBackdropModel.IsTunerReady(p => p == IdleBackdropModel.TunerTvFlag || p == IdleBackdropModel.TunerPidPath, p => "4242\n", pid => pid == 4242), "detects live tuner");
+                T.True(!IdleBackdropModel.IsTunerReady(p => p == IdleBackdropModel.TunerTvFlag || p == IdleBackdropModel.TunerPidPath, p => "4242\n", pid => false), "ignores stale tuner pid");
+
+                string dDay, dNum;
+                IdleBackdropModel.FormatDate(new DateTime(2026, 11, 21, 22, 53, 0), out dDay, out dNum);
+                T.Eq(dDay, "SAT", "formats uppercase 3-letter weekday");
+                T.Eq(dNum, "21.11.26", "formats dd.MM.yy date");
+
+                model.Reconfigure(IdleConfig.Parse("wallpaper", false, "0", "10"), 1350.0);
+                T.True(model.Visible && !model.Dimmed, "Reconfigure preserves Visible across live style change and resets dim");
+                T.True(model.Evaluate(onTv, 1960.0, false, false, false) == IdleAction.Dim, "dims 10 min after live reconfigure");
+                model.Reconfigure(IdleConfig.Parse("clean", true, "5", "10"), 1970.0);
+                T.True(model.Visible && !model.Dimmed, "Reconfigure keeps Visible when toggling clean/autoDock/potOff");
+                T.True(model.Evaluate(onTv, 2275.0, false, false, false) == IdleAction.TriggerLcdOff, "uses updated potOff=5 after live reconfigure");
+                model.Reconfigure(IdleConfig.Parse("off", false, "0", "10"), 2280.0);
+                T.True(!model.Visible, "Reconfigure to Off hides backdrop immediately");
+
+                var cmdBuf = new CommandBuffer();
+                byte[] cmdBytes = System.Text.Encoding.ASCII.GetBytes("idle wallpaper 1 5\nshow\n");
+                var parsedCmds = cmdBuf.Feed(cmdBytes, cmdBytes.Length);
+                T.True(parsedCmds.Count == 2 && parsedCmds[0] == Command.Idle && parsedCmds[1] == Command.Show, "CommandBuffer parses live idle command");
+                T.Eq(cmdBuf.TakeIdleArgs(), "wallpaper 1 5", "CommandBuffer captures idle command arguments");
+
+                var homeModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", true, "0", "10"));
+                T.True(homeModel.Evaluate(onTv, 10.0, false, false, false) == IdleAction.ShowWithDock, "shows on empty TV");
+                var csfsSnap = new TvSnapshot { SourceType = 0, FullscreenAppId = "com.samsung.tv.csfs", PartialAppId = "", DisplayState = 1, TunerActive = false, SamsungHomeRequested = false };
+                T.True(homeModel.Evaluate(csfsSnap, 11.0, true, false, false) == IdleAction.None && homeModel.Visible, "suppresses guarded Samsung Home flash while visible");
+                var csfsIntentional = csfsSnap; csfsIntentional.SamsungHomeRequested = true;
+                T.True(homeModel.Evaluate(csfsIntentional, 12.0, false, false, false) == IdleAction.Hide && !homeModel.Visible, "hides immediately when user requests Samsung Home pill");
+                T.True(homeModel.Evaluate(csfsSnap, 13.0, true, false, false) == IdleAction.Show && homeModel.Visible, "covers csfs again when DockActive returns after guard");
+
+                // Fast app-exit recovery when source_type is still -1 while tv-viewer regains fullscreen.
+                var inAppSnap = new TvSnapshot { SourceType = -1, FullscreenAppId = "vetrotvapp.app", PartialAppId = "", DisplayState = 1, TunerActive = false };
+                T.True(homeModel.Evaluate(inAppSnap, 14.0, false, false, false) == IdleAction.Hide && !homeModel.Visible, "hides when entering app");
+                var exitingAppToTv = new TvSnapshot { SourceType = -1, FullscreenAppId = IdleBackdropModel.TvViewerAppId, PartialAppId = "", DisplayState = 1, TunerActive = false };
+                T.True(homeModel.Evaluate(exitingAppToTv, 14.1, false, false, false) == IdleAction.ShowWithDock && homeModel.Visible, "restores immediately on app exit even before source_type settles to 0");
+
+                // Never covers HDMI when returning from an app while source_type is transiently -1.
+                var hdmiModel = new IdleBackdropModel(IdleConfig.Parse("wallpaper", false, "0", "10"));
+                T.True(hdmiModel.Evaluate(onHdmi, 20.0, false, false, false) == IdleAction.None, "records last known source = HDMI (13)");
+                T.True(hdmiModel.Evaluate(inAppSnap, 21.0, false, false, false) == IdleAction.None, "app over HDMI stays hidden");
+                T.True(hdmiModel.Evaluate(exitingAppToTv, 21.1, false, false, false) == IdleAction.None && !hdmiModel.Visible, "does not show over HDMI when last known source was HDMI and source_type is still -1");
+            });
         }
     }
 }

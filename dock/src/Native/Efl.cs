@@ -43,6 +43,7 @@ namespace Launcher.Native
         [DllImport(Elm)] public static extern void elm_win_layer_set(IntPtr win, int layer);
         [DllImport(Elm)] public static extern int elm_win_aux_hint_add(IntPtr win, string hint, string val);
         [DllImport(Elm)] public static extern void elm_win_activate(IntPtr win);
+        [DllImport(Elm)] public static extern void elm_win_raise(IntPtr win);
         // The Home claim (--claim-home). Exported by libelementary on the Q80A (Tizen 6.0) and in the 6.5 (PTMD 1720) and 9 (NKLD 0090)
         // dumps. Evas_Modifier_Mask is an unsigned long long; the mode is an Elm_Win_Keygrab_Mode bit (EXCLUSIVE = 1 << 10).
         [DllImport(Elm)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool elm_win_keygrab_set(IntPtr win, string key, ulong modifiers, ulong notModifiers, int priority, int grabMode);
@@ -124,8 +125,23 @@ namespace Launcher.Native
         [DllImport(AppControl)] public static extern int app_control_add_extra_data(IntPtr ac, string key, string value);
         [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
         [DllImport("libvconf.so.0")] public static extern int vconf_get_bool(string key, out int value);
+        [DllImport("libvconf.so.0")] public static extern IntPtr vconf_get_str(string key);
         /// <summary>Read-only: the app the TV treats as Home for the "main" operation (what the Home key launches).</summary>
         [DllImport("libcapi-appfw-app-operation-tv.so.0")] public static extern int app_operation_get_current_app(string operation, out IntPtr appId);
+
+        /// <summary>Reads a string vconf key and frees the native buffer, returning empty string when unset or unavailable.</summary>
+        public static string VconfGetString(string key)
+        {
+            IntPtr ptr = IntPtr.Zero;
+            try
+            {
+                ptr = vconf_get_str(key);
+                if (ptr == IntPtr.Zero) return "";
+                return Marshal.PtrToStringUTF8(ptr) ?? "";
+            }
+            catch (Exception) { return ""; }
+            finally { if (ptr != IntPtr.Zero) Libc.free(ptr); }
+        }
 
         /// <summary>Name of the evas engine in use, or null when it cannot be read.</summary>
         public static string EngineName(IntPtr evas)

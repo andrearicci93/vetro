@@ -142,6 +142,199 @@ namespace Launcher
         private static readonly byte[] InputBuf = new byte[16 * 32];
         private static readonly List<int> InputPresses = new List<int>();
 
+        private static IdleConfig _idleConfig;
+        private static IdleBackdropModel _idleModel;
+        private static IdleBackdropWindow _idleWin;
+        private static WmStackController _wmStack;
+        private static bool _samsungHomeRequested, _samsungHomeObserved, _tvPlusActive;
+        private static double _samsungHomeRequestedUntil, _pendingTvSourceUntil;
+        private static string _lastPartialApp = "";
+        private static string _fifoReadyPath;
+        private static IntPtr _idleWatchTimer, _idleLcdVerifyTimer;
+        private static double _idleWatchInterval;
+        private static readonly Efl.TaskCb IdleWatchCb = OnIdleWatch;
+        private static readonly Efl.TaskCb IdleLcdVerifyCb = OnIdleLcdVerify;
+        private static readonly Func<string, bool> FileExistsFn = File.Exists;
+        private static readonly Func<string, string> ReadTextFn = path => { try { return File.ReadAllText(path); } catch (Exception) { return ""; } };
+        private static readonly Func<int, bool> PidAliveFn = pid => Directory.Exists("/proc/" + pid);
+
+        private static bool IsDisplayOff()
+        {
+            int state;
+            try { return Efl.vconf_get_int("memory/pm/state", out state) == 0 && state == IdleBackdropModel.DisplayStateOff; }
+            catch (Exception) { return false; }
+        }
+
+        private static void UpdateIdleWatchTimer(double interval)
+        {
+            if (_idleWatchTimer != IntPtr.Zero && Math.Abs(_idleWatchInterval - interval) < 0.01) return;
+            if (_idleWatchTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleWatchTimer); _idleWatchTimer = IntPtr.Zero; }
+            _idleWatchInterval = interval;
+            _idleWatchTimer = Efl.ecore_timer_add(interval, IdleWatchCb, IntPtr.Zero);
+        }
+
+        private static void CancelIdleTimers()
+        {
+            _idleWatchInterval = 0;
+            if (_idleWatchTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleWatchTimer); _idleWatchTimer = IntPtr.Zero; }
+            if (_idleLcdVerifyTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleLcdVerifyTimer); _idleLcdVerifyTimer = IntPtr.Zero; }
+        }
+
+        private static void InitIdleBackdrop()
+        {
+            if (_idleModel != null && _idleWin != null) return;
+            _idleModel = new IdleBackdropModel(_idleConfig);
+            _idleWin = new IdleBackdropWindow(_idleConfig, Log, _screenW, _screenH);
+            if (_wmStack == null) _wmStack = new WmStackController(Log);
+            _idleWin.OnShown = () => _wmStack.EnsureStack(true);
+            _idleWin.Prewarm();
+            _wmStack.EnsureStack(false);
+        }
+
+        private static void ApplyLiveIdleConfig(string argsLine)
+        {
+            if (_homeLaunch != null || string.IsNullOrEmpty(argsLine)) return;
+            string[] parts = argsLine.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3) return;
+            string lvl = (_idleConfig != null ? _idleConfig.NotificationLevel : 10).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            IdleConfig next = IdleConfig.Parse(parts[0], parts[1] == "1" || parts[1] == "true", parts[2], lvl);
+            _idleConfig = next;
+            if (next.Mode == IdleMode.Off)
+            {
+                CancelIdleTimers();
+                if (_idleModel != null) _idleModel.Reconfigure(next, Efl.ecore_time_get());
+                if (_idleWin != null) _idleWin.Hide();
+                Log("idle: live off");
+                return;
+            }
+            if (_idleModel == null || _idleWin == null)
+            {
+                InitIdleBackdrop();
+            }
+            else
+            {
+                _idleModel.Reconfigure(_idleConfig, Efl.ecore_time_get());
+                _idleWin.Reconfigure(_idleConfig);
+            }
+            PollIdleBackdrop();
+        }
+
+        private static void PollIdleBackdrop()
+        {
+            if (_idleModel == null || _idleWin == null || _homeLaunch != null) return;
+            double now = Efl.ecore_time_get();
+            int pm = 1;
+            try { if (Efl.vconf_get_int("memory/pm/state", out pm) != 0) pm = 1; } catch (Exception) { pm = 1; }
+            _idleWin.SetDisplayOff(pm == IdleBackdropModel.DisplayStateOff);
+            if (pm != IdleBackdropModel.DisplayStateOff && _idleLcdVerifyTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_idleLcdVerifyTimer);
+                _idleLcdVerifyTimer = IntPtr.Zero;
+            }
+
+            int src = -1, srcRc = -1;
+            try { srcRc = Efl.vconf_get_int("memory/system/source_type", out src); if (srcRc != 0) src = -1; } catch (Exception) { src = -1; }
+            if (src == 0) _tvPlusActive = false;
+
+            string fullApp = pm != IdleBackdropModel.DisplayStateOff ? Efl.VconfGetString("memory/appfw/current_fullscreen_appid") : null;
+            if (_samsungHomeRequested && pm != IdleBackdropModel.DisplayStateOff)
+            {
+                if (IdleBackdropModel.IsGuardedSamsungHome(fullApp)) _samsungHomeObserved = true;
+                if (src > 0
+                    || (_samsungHomeObserved && fullApp == IdleBackdropModel.TvViewerAppId)
+                    || (!_samsungHomeObserved && now >= _samsungHomeRequestedUntil))
+                {
+                    _samsungHomeRequested = false;
+                    _samsungHomeObserved = false;
+                }
+            }
+
+            var snap = new TvSnapshot
+            {
+                SourceType = src,
+                DisplayState = pm,
+                FullscreenAppId = fullApp,
+                SamsungHomeRequested = _samsungHomeRequested,
+                WmStackActive = _wmStack != null && _wmStack.IsActive,
+                PendingTvSource = now < _pendingTvSourceUntil,
+                TvPlusActive = _tvPlusActive
+            };
+            if (pm != IdleBackdropModel.DisplayStateOff && src <= 0)
+            {
+                if (fullApp == IdleBackdropModel.TvViewerAppId || IdleBackdropModel.IsGuardedSamsungHome(fullApp))
+                {
+                    snap.PartialAppId = Efl.VconfGetString("memory/appfw/current_partial_appid");
+                    snap.TunerActive = IdleBackdropModel.IsTunerReady(FileExistsFn, ReadTextFn, PidAliveFn);
+                }
+            }
+            string partialNow = snap.PartialAppId ?? "";
+            if (partialNow != _lastPartialApp)
+            {
+                _lastPartialApp = partialNow;
+                if (_wmStack != null) _wmStack.EnsureStack(true);
+            }
+
+            bool padOpen = _pad != null && _pad.IsOnScreen;
+            bool pillOpen = _pill != null && _pill.IsOnScreen;
+            IdleAction action = _idleModel.Evaluate(snap, now, DockActive, padOpen, pillOpen);
+            _idleWin.SetDimmed(_idleModel.Dimmed);
+            if (action != IdleAction.None)
+            {
+                string fullLog = (action == IdleAction.Hide && snap.FullscreenAppId == null) ? Efl.VconfGetString("memory/appfw/current_fullscreen_appid") : (snap.FullscreenAppId ?? "");
+                string partialLog = (action == IdleAction.Hide && snap.PartialAppId == null) ? Efl.VconfGetString("memory/appfw/current_partial_appid") : (snap.PartialAppId ?? "");
+                Log("idle: " + action + " src=" + snap.SourceType + " srcRc=" + srcRc + " full=" + fullLog + " partial=" + partialLog + " pm=" + snap.DisplayState + " tuner=" + snap.TunerActive + " dock=" + DockActive + " pad=" + padOpen + " pill=" + pillOpen + " wm=" + snap.WmStackActive);
+            }
+            switch (action)
+            {
+                case IdleAction.Show:
+                    _idleWin.Show(_idleModel.Dimmed, DockActive);
+                    break;
+                case IdleAction.ShowWithDock:
+                    _idleWin.Show(_idleModel.Dimmed, true);
+                    _perfWhy = "idle-arrival";
+                    ShowDock();
+                    break;
+                case IdleAction.Hide:
+                    _idleWin.Hide();
+                    break;
+                case IdleAction.Dim:
+                    _idleWin.SetDimmed(true);
+                    break;
+                case IdleAction.TriggerLcdOff:
+                    _idleWin.SetDimmed(true);
+                    TurnScreenOff();
+                    if (_idleLcdVerifyTimer != IntPtr.Zero) Efl.ecore_timer_del(_idleLcdVerifyTimer);
+                    _idleLcdVerifyTimer = Efl.ecore_timer_add(1.5, IdleLcdVerifyCb, IntPtr.Zero);
+                    break;
+            }
+
+            if (pm == IdleBackdropModel.DisplayStateOff) UpdateIdleWatchTimer(1.0);
+            else if (src <= 0 && !_idleModel.Visible) UpdateIdleWatchTimer(0.10);
+            else if (src == 0 || _idleModel.Visible) UpdateIdleWatchTimer(1.5);
+            else UpdateIdleWatchTimer(5.0);
+        }
+
+        private static byte OnIdleWatch(IntPtr data)
+        {
+            if (_anim != IntPtr.Zero) return 1;
+            try { PollIdleBackdrop(); } catch (Exception ex) { Log("idle watch: " + ex.Message); }
+            return 1;
+        }
+
+        private static byte OnIdleLcdVerify(IntPtr data)
+        {
+            _idleLcdVerifyTimer = IntPtr.Zero;
+            try
+            {
+                if (_idleModel == null || _idleWin == null) return 0;
+                int pm = 1;
+                try { if (Efl.vconf_get_int("memory/pm/state", out pm) != 0) pm = 1; } catch (Exception) { pm = 1; }
+                if (_idleModel.OnLcdOffVerify(pm) == IdleAction.FallbackDim) _idleWin.SetDimmed(true);
+            }
+            catch (Exception ex) { Log("idle lcd verify: " + ex.Message); }
+            return 0;
+        }
+
         // ------------------------------------------------------------------ logging
 
         // The process stays resident for weeks, so the file is cut down as it grows and not only at start. Callbacks run
@@ -284,6 +477,7 @@ namespace Launcher
                 {
                     File.Delete(_pidPath);
                     Libc.unlink(_fifoPath);
+                    if (_fifoReadyPath != null) Libc.unlink(_fifoReadyPath);
                     if (_claimPath != null) Libc.unlink(_claimPath);
                 }
                 if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, false, null);
@@ -307,6 +501,16 @@ namespace Launcher
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
             _fifoHandler = Efl.ecore_main_fd_handler_add(_fifoFd, Efl.EcoreFdRead, FifoCb, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            if (_fifoReadyPath != null)
+            {
+                try
+                {
+                    File.WriteAllText(_fifoReadyPath, Libc.getpid().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    Libc.chmod(_fifoReadyPath, 420u);   // 0644
+                    Libc.setxattr(_fifoReadyPath, "security.SMACK64", SmackStar, (UIntPtr)SmackStar.Length, 0);
+                }
+                catch (Exception ex) { Log("fifo ready: " + ex.Message); }
+            }
         }
 
         /// <summary>
@@ -525,6 +729,7 @@ namespace Launcher
         // The window is mapped for the Dock or the Task manager (not for the start-up pre-map): its flag (OverlayFlag) tells the tuner the keys
         // are the launcher's. Set when the window is shown, cleared when the fade has ended and the window is hidden.
         private static bool _dockMapped;
+        private static double _lastDockFlagMark = -100;
 
         // The remote's 123 key as evdev reports it. Vetro's osd 123 holds it back in the remote bridge, so when it is read here Samsung's own
         // 123 pad is opening (Vetro's is off, or the key came on a part of the remote the bridge does not hold).
@@ -533,6 +738,7 @@ namespace Launcher
         private static void MarkDock(bool on)
         {
             _dockMapped = on;
+            _lastDockFlagMark = on ? Efl.ecore_time_get() : -100;
             OverlayFlag.Mark(OverlayFlag.DockPath, on, Log);
         }
 
@@ -564,8 +770,8 @@ namespace Launcher
             finally { Libc.close(fd); }
         }
 
-        /// <summary>A launch that leaves the viewer on live TV: the TV input, or Samsung's live TV app itself.</summary>
-        private static bool StaysOnLiveTv(AppEntry e) { return e == null || e.SourceType == 0 || e.AppId == "org.tizen.tv-viewer"; }
+        /// <summary>A launch that leaves the viewer on live TV: the TV input, or Samsung's live TV app itself (excluding TV Plus).</summary>
+        private static bool StaysOnLiveTv(AppEntry e) { return e == null || e.SourceType == 0 || (e.AppId == "org.tizen.tv-viewer" && e.Slug != "tvplus" && e.RowKey != "live:TVPLUS"); }
 
         private static void ShowDock()
         {
@@ -589,7 +795,9 @@ namespace Launcher
             _dock.Apply(_ctl);
             _hideFor123 = false;
             MarkDock(true);
+            if (_idleWin != null) _idleWin.SetDockOverlay(true);
             Efl.evas_object_show(_win);
+            Efl.elm_win_raise(_win);
             Efl.elm_win_activate(_win);
             ClaimHome();   // once, on the window a real Home press brings up (the claim needs a mapped window)
             StartClock();
@@ -607,20 +815,47 @@ namespace Launcher
             catch (Exception) { return DateTime.MinValue; }
         }
 
+        private static IntPtr _listsAskTimer;
+        private static readonly Efl.TaskCb ListsAskCb = OnListsAsk;
+
         /// <summary>
-        /// The package database is newer than the lists Vetro wrote: an app was installed or removed since. Vetro is asked once (in the
-        /// background) to read the TV again; it answers with "reload" when the lists changed. Two stat calls when nothing changed.
+        /// Schedules a background check 0.8 s after the dock opens (never stalling the entrance animation):
+        /// if the package database is newer than the lists Vetro wrote, asks Vetro in a worker task to refresh them.
         /// </summary>
         private static void AskForLists()
         {
-            if (_allAppsWatch == null || _homeLaunch != null) return;
-            DateTime db = FileDate(ListWatch.PackageDb);
-            double now = Efl.ecore_time_get();
-            if (!ListWatch.ShouldAsk(db, FileDate(_allAppsWatch), _listsAskedFor, now - _listsAskedAt)) return;
-            string cmd = ListWatch.Command(ShardLaunch.ServicePort);
-            if (cmd == null) return;
-            _listsAskedFor = db; _listsAskedAt = now;
-            Log("lists: the package database changed, asking Vetro rc=" + Libc.system(cmd));
+            if (_allAppsWatch == null || _homeLaunch != null || _listsAskTimer != IntPtr.Zero) return;
+            _listsAskTimer = Efl.ecore_timer_add(0.8, ListsAskCb, IntPtr.Zero);
+        }
+
+        private static byte OnListsAsk(IntPtr data)
+        {
+            _listsAskTimer = IntPtr.Zero;
+            try
+            {
+                if (_allAppsWatch == null || _homeLaunch != null) return 0;
+                double now = Efl.ecore_time_get();
+                string allAppsWatch = _allAppsWatch;
+                int port = ShardLaunch.ServicePort;
+                DateTime askedFor = _listsAskedFor;
+                double elapsed = now - _listsAskedAt;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        DateTime db = FileDate(ListWatch.PackageDb);
+                        if (!ListWatch.ShouldAsk(db, FileDate(allAppsWatch), askedFor, elapsed)) return;
+                        string cmd = ListWatch.Command(port);
+                        if (cmd == null) return;
+                        _listsAskedFor = db;
+                        _listsAskedAt = now;
+                        Log("lists: the package database changed, asking Vetro rc=" + Libc.system(cmd));
+                    }
+                    catch (Exception ex) { Log("lists: " + ex.Message); }
+                });
+            }
+            catch (Exception ex) { Log("lists timer: " + ex.Message); }
+            return 0;
         }
 
         // A reload that waited for a moved tile, a held OK or the Control center runs a moment after the dock has gone, not in front of its
@@ -1029,6 +1264,7 @@ namespace Launcher
                 // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
                 Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
                 Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
+                if (_idleWin != null) UpdateIdleWatchTimer(0.10);
             }
             ResetIdle();
         }
@@ -1458,7 +1694,15 @@ namespace Launcher
         {
             if (_idle == IntPtr.Zero) _idle = Efl.ecore_timer_add(Controller.IdleHideSeconds, IdleCb, IntPtr.Zero);
             else Efl.ecore_timer_reset(_idle);
-            if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, true, Log);   // touched on every key: the tuner trusts it for the idle time
+            if (_dockMapped)
+            {
+                double now = Efl.ecore_time_get();
+                if (now - _lastDockFlagMark >= 5.0)
+                {
+                    _lastDockFlagMark = now;
+                    OverlayFlag.Mark(OverlayFlag.DockPath, true, Log);   // throttled touch so rapid nav avoids filesystem overhead
+                }
+            }
         }
 
         private static void CancelIdle()
@@ -1478,11 +1722,19 @@ namespace Launcher
             return again;
         }
 
-        // Samsung's Home picture mode handed back once the launcher has gone (Core/HomePicture.cs): in the background, so the frame never waits.
+        // Samsung's Home picture mode handed back once the launcher has gone (Core/HomePicture.cs): offloaded from the main loop.
         private static void HomePictureOff()
         {
-            int rc = Libc.system(HomePicture.Command());
-            if (rc != 0) Log("home: picture check not started rc=" + rc);
+            string cmd = HomePicture.Command();
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    int rc = Libc.system(cmd);
+                    if (rc != 0) Log("home: picture check not started rc=" + rc);
+                }
+                catch (Exception ex) { Log("home: picture check: " + ex.Message); }
+            });
         }
 
         private static byte Frame()
@@ -1508,10 +1760,14 @@ namespace Launcher
                         AppEntry chosen = _pendingLaunch;
                         _pendingLaunch = null;
                         if (chosen != null) Launch(chosen);
+                        if (_idleModel != null && chosen != null && !StaysOnLiveTv(chosen)) _idleModel.OnLaunchApp(now);
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
                         ReloadWhenHidden();
                         HomePictureOff();
+                        if (_idleWin != null) _idleWin.SetDockOverlay(false);
+                        PollIdleBackdrop();
+                        if (_idleWin != null && chosen != null && !StaysOnLiveTv(chosen)) UpdateIdleWatchTimer(0.25);
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     ProbeTick(now, !more);
@@ -1528,11 +1784,25 @@ namespace Launcher
                     // The fade has already rendered on earlier frames; a slow platform launch cannot freeze it.
                     AppEntry pending = _pendingLaunch;
                     _pendingLaunch = null;
-                    if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
+                    if (pending != null)
+                    {
+                        if (pending.SourceType == 0) { _pendingTvSourceUntil = now + 3.0; _tvPlusActive = false; }
+                        else if (pending.Slug == "tvplus" || pending.RowKey == "live:TVPLUS") { _tvPlusActive = true; _pendingTvSourceUntil = 0; }
+                        if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending);
+                        if (pending.SourceType == 0 && _wmStack != null) _wmStack.EnsureStack(true);
+                    }
+                    if (_idleModel != null && pending != null && !StaysOnLiveTv(pending)) _idleModel.OnLaunchApp(now);
                     if (_hideFor123) _hideFor123 = false;
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId, pending != null && pending.SourceType == 0);
                     ReloadWhenHidden();
                     HomePictureOff();
+                    if (_idleWin != null) _idleWin.SetDockOverlay(false);
+                    PollIdleBackdrop();
+                    if (_idleWin != null && pending != null)
+                    {
+                        if (pending.SourceType == 0) UpdateIdleWatchTimer(0.10);
+                        else if (!StaysOnLiveTv(pending)) UpdateIdleWatchTimer(0.25);
+                    }
                 }
                 else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
                 if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
@@ -1850,6 +2120,12 @@ namespace Launcher
         private static readonly Efl.TaskCb ScreenOffCb = OnScreenOff;
         private static IntPtr _screenOffTimer;
 
+        private static void CancelPendingScreenOff()
+        {
+            if (_screenOffTimer != IntPtr.Zero) { Efl.ecore_timer_del(_screenOffTimer); _screenOffTimer = IntPtr.Zero; }
+            if (_idleLcdVerifyTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleLcdVerifyTimer); _idleLcdVerifyTimer = IntPtr.Zero; }
+        }
+
         private static void TurnScreenOff()
         {
             HideDock();
@@ -2097,13 +2373,14 @@ namespace Launcher
                         switch (c)
                         {
                             // As with the remote's Home (RawHome): an open osd 123 closes, or it stayed drawn under the Dock until its idle time.
-                            case Command.Show: ClosePad(); _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
+                            case Command.Show: CancelPendingScreenOff(); ClosePad(); _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
-                            case Command.Toggle: ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
-                            case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
-                            case Command.Pad: TogglePad(); break;
+                            case Command.Toggle: CancelPendingScreenOff(); ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
+                            case Command.VolUp: case Command.VolDown: case Command.VolMute: CancelPendingScreenOff(); VolumeKey(c); break;
+                            case Command.Pad: CancelPendingScreenOff(); TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
                             case Command.Reload: ReloadLists(); break;
+                            case Command.Idle: ApplyLiveIdleConfig(Commands.TakeIdleArgs()); break;
                         }
                     }
                 }
@@ -2130,6 +2407,31 @@ namespace Launcher
                     {
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
+                        if (_idleModel != null)
+                        {
+                            CancelPendingScreenOff();
+                            bool hideBg;
+                            bool wasDimmed = _idleModel.Dimmed;
+                            double keyNow = Efl.ecore_time_get();
+                            bool displayOff = IsDisplayOff();
+                            bool consumed = _idleModel.OnRawKey(code, _homeCode, keyNow, displayOff, DockActive, out hideBg);
+                            if (consumed && displayOff && code == _homeCode) _lastRawHome = keyNow;
+                            if (wasDimmed && !_idleModel.Dimmed && _idleWin != null) _idleWin.SetDimmed(false);
+                            if (hideBg || consumed) Log("idle: key=" + code + " hideBg=" + hideBg + " consumed=" + consumed);
+                            if (hideBg && _idleWin != null) _idleWin.Hide();
+                            if ((code == 116 || code == 112 || code == 142) && _idleWin != null)
+                            {
+                                PollIdleBackdrop();
+                                UpdateIdleWatchTimer(0.25);
+                            }
+                            else if (_idleWin != null && !_idleModel.Visible
+                                && (code == 1 || code == 158 || code == 174 || code == 28 || code == 353 || code == _homeCode))
+                            {
+                                PollIdleBackdrop();
+                                UpdateIdleWatchTimer(0.10);
+                            }
+                            if (consumed) continue;
+                        }
                         if (code != _homeCode)
                         {
                             // The osd 123 has the keyboard focus and answers through its own window: the Dock or the Task manager under it
@@ -2250,13 +2552,23 @@ namespace Launcher
         private static readonly Efl.EventCb EcoreKeyCb = OnEcoreKey;
         private static int _ecoreKeyDown = -1;
 
-        private static void WatchEcoreKeys()
+        private static void PreloadEcoreKeyEvent()
         {
+            if (_ecoreKeyDown >= 0) return;
             try
             {
                 IntPtr lib = System.Runtime.InteropServices.NativeLibrary.Load("libecore_input.so.1");
                 _ecoreKeyDown = Marshal.ReadInt32(System.Runtime.InteropServices.NativeLibrary.GetExport(lib, "ECORE_EVENT_KEY_DOWN"));
-                bool ok = Efl.ecore_event_handler_add(_ecoreKeyDown, EcoreKeyCb, IntPtr.Zero) != IntPtr.Zero;
+            }
+            catch (Exception ex) { Log("home: preload key event: " + ex.Message); }
+        }
+
+        private static void WatchEcoreKeys()
+        {
+            try
+            {
+                PreloadEcoreKeyEvent();
+                bool ok = _ecoreKeyDown >= 0 && Efl.ecore_event_handler_add(_ecoreKeyDown, EcoreKeyCb, IntPtr.Zero) != IntPtr.Zero;
                 Log("home: window keys " + (ok ? "on" : "refused"));
             }
             catch (Exception ex) { Log("home: window keys unavailable"); Log("home claim: " + ex.GetType().Name + " " + ex.Message); }
@@ -2276,6 +2588,9 @@ namespace Launcher
 
         private static void ArmGuard()
         {
+            _samsungHomeRequested = false;
+            _samsungHomeObserved = false;
+            if (_idleModel != null && !_idleModel.Visible && _idleWin != null) PollIdleBackdrop();
             if (_guardApps == null) return;
             try
             {
@@ -2299,8 +2614,15 @@ namespace Launcher
                 string cmd = GuardSpawn.Take();
                 if (cmd == null) return 0;
                 long t0 = _perf ? Stopwatch.GetTimestamp() : 0;
-                Libc.system(cmd);   // returns at once: the shell puts the whole chain in the background
-                if (_perf) Log("perf guard: shell started in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        Libc.system(cmd);
+                        if (_perf) Log("perf guard: shell started in " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+                    }
+                    catch (Exception ex) { Log("guard: " + ex.Message); }
+                });
             }
             catch (Exception ex) { Log("guard: " + ex.Message); }
             return 0;
@@ -2309,6 +2631,9 @@ namespace Launcher
         /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
         private static void CancelGuard()
         {
+            _samsungHomeRequested = true;
+            _samsungHomeObserved = false;
+            _samsungHomeRequestedUntil = Efl.ecore_time_get() + 5.0;
             if (_guardApps == null) return;
             try { NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
             catch (Exception ex) { Log("guard cancel: " + ex.Message); }
@@ -2557,6 +2882,7 @@ namespace Launcher
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
+            _idleConfig = IdleConfig.Parse(Arg(args, "--idle-mode"), Flag(args, "--idle-autodock"), Arg(args, "--idle-potoff"), Arg(args, "--idle-level"));
             ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; }
@@ -2564,10 +2890,13 @@ namespace Launcher
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
             _fifoPath = Path.Combine(_dir, "tvlauncher.fifo");
+            _fifoReadyPath = _fifoPath + ".ready";
             _claimPath = Path.Combine(_dir, "tvlauncher.homeclaim");
             TrimLog();
 
             if (!AcquireInstance()) return 0;
+            Libc.unlink(_fifoPath);
+            Libc.unlink(_fifoReadyPath);
             AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupFiles();
 
             try
@@ -2664,6 +2993,10 @@ namespace Launcher
                 // Only what this run can show is built: in custom launcher mode the dock is never drawn (no pages, no cards), and of the
                 // Control center only the cards --cards names. Every use of a card is behind HasCard or the list of cards.
                 if (_homeLaunch == null) BuildPages();
+                if (_homeLaunch == null && _idleConfig.Mode != IdleMode.Off)
+                {
+                    InitIdleBackdrop();
+                }
                 int cardsN = Math.Max(1, _cards.Length);
                 if (HasCard(CardKind.Tasks))
                 {
@@ -2723,10 +3056,15 @@ namespace Launcher
 
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
+                System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+                if (_claimHome) PreloadEcoreKeyEvent();
                 DrainStartupInput();   // after the collection: a Home answered here goes straight to its first frame
+                if (_idleWin != null) PollIdleBackdrop();
                 Log("elm_run");
                 Efl.elm_run();
                 Log("elm_run returned");
+                CancelIdleTimers();
+                if (_idleWin != null) _idleWin.Hide();
                 Efl.elm_shutdown();
             }
             catch (Exception ex)
