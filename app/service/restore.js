@@ -95,7 +95,8 @@ function groupMembers(apps) {
         var s = quickSettings.state(g, apps);
         if (s.status === 'off' || s.status === 'partial') ids = ids.concat(s.disabled);
     });
-    return unique(ids);
+    // Former members an earlier Vetro left off (content-grab-service in the tracking switch until 0.7.1).
+    return unique(ids.concat(quickSettings.allFormersOff(apps)));
 }
 
 // The plan. Read-only. Each item: {id, label, detail, state: changed|clean|unknown|manual, count?}.
@@ -327,7 +328,18 @@ Restore.prototype.runGroups = function () {
                     if (res.flagsNotRestored && res.flagsNotRestored.length) errors.push(g.label + ': startup flags not put back for ' + res.flagsNotRestored.join(', '));
                 }, function (e) { errors.push(g.label + ': ' + e.message); });
             });
-        }, Promise.resolve());
+        }, Promise.resolve()).then(function () {
+            // Former members still off (their group was on, so apply did not run for it).
+            var formers = quickSettings.allFormersOff(apps);
+            if (!formers.length) return;
+            return d.execute(quickSettings.command(formers, false), 30000).then(function (r) {
+                var codes = quickSettings.exitCodes(r && r.stdout);
+                var failed = formers.filter(function (id) { return codes[id] !== 0; });
+                total += formers.length - failed.length;
+                if (failed.length) errors.push('Not switched on: ' + failed.join(', '));
+                d.invalidate();
+            }, function (e) { errors.push('Former group members: ' + e.message); });
+        });
     }).then(function () {
         // Whatever the switches say now: every "do not start" file Vetro noted, and every saved vconf value (the TV Plus power-on setting).
         var vconf = quickSettings.vconfRestoreAll();

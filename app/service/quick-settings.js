@@ -16,7 +16,10 @@ var RESTORE_FLAGS_FOR_RE = /^(\S+) (\d+|none)$/;
 var GROUPS = [
     {id: 'tracking-all', label: 'All advertising and tracking', section: 'tracking', area: 'tracking',
         description: 'Stops viewing data, ad players, analytics, personalised content and privacy screens. Samsung Home still uses Smart Hub’s ad agent.',
-        ids: []},
+        // Former members (formerIds): no longer switched off, and switched on again where an earlier Vetro left them off, whenever this
+        // switch is used and by Restore the TV. content-grab-service passes remote keys to a cable or satellite box (it was filed as a
+        // picture grabber until 0.7.1).
+        ids: [], formerIds: ['content-grab-service']},
     {id: 'voice-all', label: 'All voice assistants', section: 'voice', area: 'voice', microphone: true, everything: true,
         description: 'Stops Alexa, Bixby, Google Assistant and shared voice services, including search suggestions.',
         ids: [], markerUnits: []},
@@ -216,6 +219,27 @@ function markersCommand(list, off) {
         : 'rm -f ' + files + '\nif [ -f ' + MARKERS_LEDGER + ' ]; then grep -vx -e ' + names.join(' -e ') + ' ' + MARKERS_LEDGER + ' > ' + MARKERS_LEDGER +
             '.tmp; mv -f ' + MARKERS_LEDGER + '.tmp ' + MARKERS_LEDGER + '; fi\ntrue');
 }
+// One component switched off or on by itself (Apps and processes): the unit named after it, when a group keeps that unit from
+// starting with Samsung's "do not start" file (MARKER_UNITS). com.samsung.tv.ghdaemon.service restarts every 2 s once its app is
+// disabled (Restart=on-failure, RestartSec=2 on 6.0, 6.5 and 9) and only the file ends that; the voice units get theirs as the
+// Voice services group does. Off: file down, unit stopped; on: file away. Resolves {units, ok}; never rejects.
+function componentMarkers(appId, off, execute) {
+    var units = ID.test(appId || '') && MARKER_UNITS.indexOf(appId + '.service') >= 0 ? [appId + '.service'] : [];
+    if (!units.length) return Promise.resolve({units: 0, ok: true});
+    var read = function () {
+        return execute(markersReadCommand(units), 20000).then(function (r) {
+            if (r.timed_out || r.exit_code) throw new Error('Startup blocks unreadable');
+            return parseMarkers(r.stdout);
+        });
+    };
+    return read().then(function (found) {
+        var list = units.filter(function (u) { return found[u]; }).map(function (u) { return {unit: u, marker: found[u].marker}; });
+        if (!list.length) return {units: 0, ok: true};
+        return execute(markersCommand(list, off), 30000).then(read).then(function (after) {
+            return {units: list.length, ok: list.every(function (x) { return after[x.unit] && after[x.unit].present === off; })};
+        });
+    }).catch(function () { return {units: units.length, ok: false}; });
+}
 // Restore the TV: every file Vetro put down, whatever the switches say now.
 var MARKERS_CLEAR = 'if [ -f ' + MARKERS_LEDGER + ' ]; then while read -r m; do case "$m" in ""|*/*|.*) ;; *) rm -f "' + SERVICE_DIR + '$m";; esac; done < ' +
     MARKERS_LEDGER + '; rm -f ' + MARKERS_LEDGER + '; fi; echo "MC|done"';
@@ -316,6 +340,28 @@ function restoreFlagsFor(result, deps) {
     }).catch(function () { result.flagsNotRestored = ids.slice(); result.flagsRestored = []; return result; });
 }
 
+// The former members (formerIds) of the groups that are installed and off: the ids to switch on again.
+function formersOff(group, rows) {
+    var byId = {};
+    (rows || []).forEach(function (r) { byId[r.appId] = r; });
+    return ((group && group.formerIds) || []).filter(function (id) { return ID.test(id) && byId[id] && byId[id].disabled === true; });
+}
+function allFormersOff(rows) {
+    return GROUPS.reduce(function (all, g) { return all.concat(formersOff(g, rows).filter(function (id) { return all.indexOf(id) < 0; })); }, []);
+}
+// Best effort, after the group's own change: a failure is reported in the result, nothing is undone.
+function enableFormers(result, deps) {
+    var ids = formersOff(find(result.id), result.apps);
+    if (!ids.length) return Promise.resolve(result);
+    return deps.execute(command(ids, false), 30000).then(function (r) {
+        var codes = exitCodes(r.stdout);
+        result.formersEnabled = ids.filter(function (id) { return codes[id] === 0; });
+        result.formersFailed = ids.filter(function (id) { return codes[id] !== 0; });
+        deps.invalidate();
+        return deps.inventory(true).then(function (d) { if (!d.registryError) result.apps = d.apps; return result; });
+    }).catch(function () { result.formersFailed = ids; return result; });
+}
+
 // deps: execute(cmd, timeoutMs), inventory(refresh) -> {apps, registryError}, invalidate().
 function apply(groupId, off, deps) {
     var group = find(groupId);
@@ -413,7 +459,8 @@ function apply(groupId, off, deps) {
                 result.settings = {off: off, ok: !r.exit_code && !r.timed_out && !/\|[1-9]\d*$/m.test(r.stdout || '')};
             }, function () { result.settings = {off: off, ok: false}; });
         }
-        if (!off) return services().then(markers).then(settings).then(function () { return restoreFlagsFor(result, deps); });
+        if (!off) return services().then(markers).then(settings).then(function () { return restoreFlagsFor(result, deps); })
+            .then(function (res) { return enableFormers(res, deps); });
         // A disabled flag does not end processes that are already running.
         return services().then(markers).then(settings).then(function () { return deps.execute('app_launcher -S', 10000); }).then(function (r) {
             if (r.exit_code || r.timed_out) throw new Error('running apps unreadable');
@@ -429,11 +476,11 @@ function apply(groupId, off, deps) {
                     return result;
                 }, function () { result.stopUnconfirmed = true; return result; });
             });
-        }).catch(function () { result.stopUnconfirmed = true; return result; });
+        }).catch(function () { result.stopUnconfirmed = true; return result; }).then(function (res) { return enableFormers(res, deps); });
     });
 }
 
-module.exports = {GROUPS: GROUPS, ALLOWED_IDS: ALLOWED_IDS, find: find, state: state, command: command,
+module.exports = {GROUPS: GROUPS, ALLOWED_IDS: ALLOWED_IDS, find: find, state: state, command: command, formersOff: formersOff, allFormersOff: allFormersOff,
     stopCommand: stopCommand, servicesCommand: servicesCommand, identityCommand: identityCommand, stillRunning: stillRunning,
-    MARKER_UNITS: MARKER_UNITS, markersReadCommand: markersReadCommand, parseMarkers: parseMarkers, markersCommand: markersCommand,
+    MARKER_UNITS: MARKER_UNITS, componentMarkers: componentMarkers, markersReadCommand: markersReadCommand, parseMarkers: parseMarkers, markersCommand: markersCommand,
     readMarkers: readMarkers, MARKERS_CLEAR: MARKERS_CLEAR, LEFTOVERS_READ: LEFTOVERS_READ, parseLeftovers: parseLeftovers, MARKERS_LEDGER: MARKERS_LEDGER, vconfCommand: vconfCommand, vconfRestoreAll: vconfRestoreAll, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};

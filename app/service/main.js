@@ -659,6 +659,11 @@ function handleDebloatAction(req, res) {
             if(d.changed===false&&desired)return d;
             var ledger;try{ledger=desired?disabledLedger.addCommand(id):disabledLedger.removeCommand(id);}catch(e){return d;}
             return agentExecute(ledger,8000).then(function(){return d;},function(){return d;});
+        }).then(function(d){
+            // Samsung's "do not start" file for the unit that launches this component, where a group uses one (ghdaemon, voice units):
+            // without it a disabled ghdaemon restarts every 2 s for ever. Best effort, reported, the flag change is not undone. Also when
+            // the flag was already as asked: a ghdaemon disabled another way still needs its file.
+            return quickSettings.componentMarkers(id,desired,agentExecute).then(function(m){if(m.units)d.markers=m;return d;});
         }).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},e.statusCode||503);});
 
     });

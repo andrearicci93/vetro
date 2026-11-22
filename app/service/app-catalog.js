@@ -35,7 +35,7 @@ var AREA_ROLE = {tracking: 'tracking', voice: 'optional', tv: 'keep', home: 'kee
 // Ordered: the first matching rule wins. Patterns match the package ID.
 var RULES = [
     ['system', /^vetrotvapp/],
-    ['tracking', /acr-service|^com\.samsung\.tv\.acr$|canalysis|^com\.samsung\.tv\.iacr$|screen-analysis|contents-recognition|nvision-analysis|vision-data-recognition|targeted-ad|ad-web-framework|^adplatform$|adplayer|samsung-analytics|cis-service-app|cis-api-service-app|coba\.adagent|adagent-service|pisa-service|pisa-control-service|privacy_app|coba\.privacychoice|PrivacyChoices|tv6pbVMQFF|content-grab-service|contents-ott-detector|contents-ui-detector/],
+    ['tracking', /acr-service|^com\.samsung\.tv\.acr$|canalysis|^com\.samsung\.tv\.iacr$|screen-analysis|contents-recognition|nvision-analysis|vision-data-recognition|targeted-ad|ad-web-framework|^adplatform$|adplayer|samsung-analytics|cis-service-app|cis-api-service-app|coba\.adagent|adagent-service|pisa-service|pisa-control-service|privacy_app|coba\.privacychoice|PrivacyChoices|tv6pbVMQFF|contents-ott-detector|contents-ui-detector/],
     ['voice', /alexa|Alexa|device-assistant|salute-(assistant|fullscreen)|google-fullscreen|tts-download|vc-elm|bixby|google-assistant|wakeup-engine|voice|vif$|farfieldvoice|aov-|cnvoice|utterance-recommender|action-planner|fuzzy-search-engine|intelligent-action|stt-|tts-engine|multi-assistant/],
     ['commercial', /^com\.samsung\.ep[.-]|ep-hotel|ephotel|ep-boot|ep-event|ep-system|^ep-|hotel|factory|AgingApp|cloning|demo-player|remote-shop-care|rscm-|UsbSyncDisplay|plateau|automation-(alert|app|viewer)|widget_viewer_sdk|hitcomp|remote-service-logging/],
     ['support', /TVDeviceCare|easy-support|remote-management|request-support|smarthub-connection-test|picture-test|sound-test|video-test|hdmi-troubleshooting|built-in-app-info-viewer|RunningApps|remoteguide|emanual|LzU5yAFXeg/],
@@ -43,7 +43,9 @@ var RULES = [
     ['sharing', /coba\.mv|multiview|multiscreen|ScreenMirroring|p2p-asm|airplay|NRi6kdBYJ0|soundmirroring|mobilebff|remoteworkspace|coss|csfw\.provider|SMSourceAPP|5-way-function|remote-workspace|remotepc|remoteapp|knox-browser-autofill|camera-launcher|XPkceUl3N4|coba\.usbcam/],
     ['devices', /\bbt|btapp|btaudio|bmplayer|NetworkSpeaker|hdmicec|SmartRC|mbr-|registerav|register-device|registertv|connection-guide|easysetup|aispeaker|nfc-|av-sync|waapp|aisound|aitech-app|wifi-motion|ocf-d2d|samsunghealth/],
     ['samsung', /samsung-(account|cloud|pass-agent|service-manager)|smartthings|content-continuity|content-panel|autofill|\.sso|ssoservice|sso-menu|CSAccount|CSBilling|billing-helper|account-extra|cms-service|WykOS4t4F0|ZODRT12q2l|csft-service|coba\.samsungaccount|iot-service|digitalbutler|mde-framework|vd-sc-client|heremaps|provider-resetpsid|csa$/],
-    ['tv', /tv-viewer|channel|epg|pvr|ci-app|nagsam|hbbtv|ttxUG|antenna|autosetup-channel|stand-by-scan|reminder|schedule-manager|tv-scheduler|tvplus|tvPlusDeeplinker|w2VwCK465D|slive|broadcastingmenu|coba\.livetv|coba\.source|aoc-enabler|preview-downloader|tvkey-preview|rct-|AVControl/],
+    // content-grab-service hands remote keys to a cable or satellite box (GrabKey, HandleMvpdService, HandleDishSource in the Q80A
+    // binary; it starts only on /run/user/5001/.cs_keygrab_launch). It is not a picture grabber: kept, out of the tracking switch.
+    ['tv', /^content-grab-service$|tv-viewer|channel|epg|pvr|ci-app|nagsam|hbbtv|ttxUG|antenna|autosetup-channel|stand-by-scan|reminder|schedule-manager|tv-scheduler|tvplus|tvPlusDeeplinker|w2VwCK465D|slive|broadcastingmenu|coba\.livetv|coba\.source|aoc-enabler|preview-downloader|tvkey-preview|rct-|AVControl/],
     ['home', /coba\.(home|apps|search|setting|dhcategory|remoteguide|smartthings|soundmirroring|home-notification)|csfs|org\.tizen\.menu$|function-osd|quickpanel|searchall|\.store$|notification|wizard|homesetting|swu-ui|smarthub-reset|alert-syspopup|volume-setting|shortcut|gamebar|welcome-mode|tvlaunch|graphiczoom|screen-reader|sboard-app/],
     ['media', /ContentsBrowser|cobalt|netflix|primevideo|aria-video|30IKH0OX8U|lib-ariafw|browser|gallery|mycontent|photo-player|video-player|usb-launcher|ghdaemon|ghservice|pvod|^[A-Za-z0-9]{10}$/]
 ];
@@ -66,7 +68,7 @@ var PURPOSE = {
     'com.samsung.tv.pisa-service': 'Personalised content and advertising service for Smart Hub.',
     'com.samsung.tv.coba.privacy_app': 'Privacy choices screen.',
     'tv6pbVMQFF': 'Privacy choices web app.',
-    'content-grab-service': 'Captures frames of the current picture for content services.',
+    'content-grab-service': 'Passes remote control keys to a cable or satellite box connected to the TV.',
     'org.tizen.multi-assistant-service': 'Hub that switches between voice assistants and handles the microphone.',
     'com.samsung.tv.action-planner-service': 'Turns voice requests into TV actions.',
     'com.samsung.tv.aov-service': 'Always-on voice: listens for wake words.',
