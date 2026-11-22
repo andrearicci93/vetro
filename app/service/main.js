@@ -912,80 +912,6 @@ function handleLeftovers(req,res) {
         leftovers.clear().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
     });
 }
-var memoryFreeBusy = false;
-function memoryFreeScript(includeHome) {
-    var minAdj = includeHome ? 270 : 300;
-    var selfPid = Number(process.pid);
-    if (typeof selfPid !== 'number' || selfPid % 1 !== 0 || selfPid <= 0) selfPid = 0;
-    return [
-        'meminfo() { awk \'/^MemAvailable:/{a=$2} /^SwapFree:/{s=$2} END{print (a?a:0) "|" (s?s:0)}\' /proc/meminfo 2>/dev/null; }',
-        'echo "BEFORE|$(meminfo)"',
-        'self_pid=' + selfPid,
-        'self_ppid=$([ "$self_pid" -gt 0 ] && awk \'/^PPid:/{print $2}\' "/proc/$self_pid/status" 2>/dev/null)',
-        'fg=$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null | sed -n "s/.*value = \\([^ (]*\\).*/\\1/p")',
-        'uiapps=$(sqlite3 -readonly -cmd ".timeout 5000" /opt/dbspace/.pkgmgr_parser.db "SELECT app_id FROM package_app_info WHERE app_component=\'uiapp\' AND ifnull(app_nodisplay,\'false\')!=\'true\';" 2>/dev/null)',
-        'app_launcher -S 2>/dev/null | awk \'/\\([0-9]+\\)/{gsub(/^[ \\t]+/,""); sub(/[ \\t]+\\(/,"\\t"); sub(/\\).*/,""); print}\' | while IFS="$(printf \'\\t\')" read -r id pid; do',
-        '  [ -n "$id" ] && [ -n "$pid" ] || continue',
-        '  case "$pid" in *[!0-9]*) continue;; esac',
-        '  if [ "$pid" = "$self_pid" ] || [ "$pid" = "$self_ppid" ]; then continue; fi',
-        '  [ "$id" = "$fg" ] && continue',
-        '  case "$id" in vetrotvapp*|org.tizen.chromium-efl*|org.tizen.autofilld|org.tizen.litewebappservice|com.samsung.tv.preview-updater|org.tizen.tv-viewer|org.tizen.menu|org.tizen.function-osd|com.samsung.tv.sboard-app|org.tizen.hbbtv|org.tizen.ScreenMirroring-app-tv|com.samsung.hitcomp|org.tizen.volume|org.tizen.volume-app|org.tizen.screen-saver|com.samsung.tv.notification|com.samsung.tv.coba.adagent|org.tizen.ambientapp|com.samsung.tv.bixbycapsuleviewer|com.samsung.tv.quicklaunch|com.samsung.tv.airplay-app-2|org.tizen.voice-app|org.tizen.welcome-mode) continue;; esac',
-        includeHome ? '' : '  case "$id" in com.samsung.tv.csfs|com.samsung.tv.home.sidebar|com.samsung.tv.home.media) continue;; esac',
-        '  [ -d "/proc/$pid" ] || continue',
-        '  grep -q ":cpu:/background" "/proc/$pid/cgroup" 2>/dev/null || continue',
-        '  adj=$(cat "/proc/$pid/oom_score_adj" 2>/dev/null)',
-        '  case "$adj" in \'\'|*[!0-9-]*) continue;; esac',
-        '  [ "$adj" -ge ' + minAdj + ' ] || continue',
-        '  if [ -n "$uiapps" ]; then printf \'%s\\n\' "$uiapps" | grep -Fxq "$id" || continue; else [ -r "/run/resourced/appinfo/$id/type" ] && [ "$(cat "/run/resourced/appinfo/$id/type" 2>/dev/null)" = "2" ] || continue; fi',
-        '  rss=$(awk \'/^VmRSS:/{print $2}\' "/proc/$pid/status" 2>/dev/null)',
-        '  app_launcher -t "$id" >/dev/null 2>&1 || true',
-        '  sleep 0.3',
-        '  if app_launcher -r "$id" 2>/dev/null | grep -q "result: running"; then app_launcher -k "$id" >/dev/null 2>&1 || true; sleep 0.2; fi',
-        '  echo "CLOSED|$id|${rss:-0}"',
-        'done',
-        'echo 1 > /proc/sys/vm/compact_memory 2>/dev/null || true',
-        'sleep 0.5',
-        'echo "AFTER|$(meminfo)"',
-        'true'
-    ].filter(Boolean).join('\n');
-}
-function lookupAppName(appId) {
-    var lists = [registryCache && registryCache.apps, state.apps], k, i, list;
-    for (k = 0; k < lists.length; k++) {
-        list = lists[k] || [];
-        for (i = 0; i < list.length; i++) {
-            if (list[i] && (list[i].id === appId || list[i].appId === appId) && list[i].name) return list[i].name;
-        }
-    }
-    return appId === 'com.samsung.tv.store' ? 'Apps' : appId === 'com.samsung.tv.cobalt-yt' ? 'YouTube' : appId === 'com.samsung.tv.csfs' ? 'Samsung Home' : appId;
-}
-function parseMemoryFree(stdout) {
-    var before = null, after = null, closed = [];
-    String(stdout || '').split('\n').forEach(function (line) {
-        var f = line.trim().split('|');
-        if (f[0] === 'BEFORE' && f.length >= 3) before = { availableBytes: Number(f[1]) * 1024, swapFreeBytes: Number(f[2]) * 1024 };
-        else if (f[0] === 'AFTER' && f.length >= 3) after = { availableBytes: Number(f[1]) * 1024, swapFreeBytes: Number(f[2]) * 1024 };
-        else if (f[0] === 'CLOSED' && f.length >= 3 && f[1]) closed.push({ appId: f[1], name: lookupAppName(f[1]), rssBytes: (Number(f[2]) || 0) * 1024 });
-    });
-    return { ok: true, before: before, after: after, closed: closed };
-}
-function handleMemoryFree(req, res) {
-    readJsonBody(req, res, function (p) {
-        if (memoryFreeBusy) return serveJson(res, { ok: false, error: 'Memory cleanup already in progress' }, 409);
-        var dockState = dock.readState();
-        var includeHome = typeof p.includeHome === 'boolean' ? p.includeHome : !!(dockState.enabled || dockState.customApp);
-        memoryFreeBusy = true;
-        var script = memoryFreeScript(includeHome);
-        agentExecute('echo ' + Buffer.from(script).toString('base64') + ' | base64 -d | sh', 30000).then(function (r) {
-            if (!r || r.exit_code || r.timed_out) throw new Error((r && (r.stderr || r.stdout)) || 'Memory cleanup failed');
-            return parseMemoryFree(r.stdout);
-        }).finally(function () { memoryFreeBusy = false; }).then(function (d) {
-            serveJson(res, d);
-        }).catch(function (e) {
-            serveJson(res, { ok: false, error: (e && e.message) || String(e) }, 503);
-        });
-    });
-}
 function handleApps(req,res) {inventory(REFRESH_QUERY_RE.test(req.url)).then(function(data){serveJson(res,data);});}
 var iconCache = {};
 // ?appId=... read straight from the query string: the one parameter does not need a URL parser.
@@ -1309,7 +1235,6 @@ var server = http.createServer(function (req, res) {
         if (url === '/quick') return handleQuick(req,res);
         if (url === '/quick/uninstall') return handleQuickUninstall(req,res);
         if (url === '/leftovers') return handleLeftovers(req,res);
-        if (url === '/memory/free') return handleMemoryFree(req,res);
         if (url === '/mqtt') return handleMqttConfig(req, res);
         if (url === '/control') return handleControl(req, res);
         if (url === '/install') return handleInstall(req, res);
