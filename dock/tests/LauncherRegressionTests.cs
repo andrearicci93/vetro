@@ -316,15 +316,79 @@ namespace Launcher.Tests
                 T.True(potModel.OnLcdOffVerify(1) == IdleAction.FallbackDim, "falls back to dim if deviced refused");
 
                 IdleConfig wallCfg = IdleConfig.Parse("wallpaper", false, "0", "10");
-                T.True(wallCfg.Mode == IdleMode.Wallpaper && wallCfg.UsesWallpaper && wallCfg.ShowsClock, "parses wallpaper mode");
+                T.True(wallCfg.Mode == IdleMode.Wallpaper && wallCfg.UsesWallpaper && wallCfg.UsesLake && !wallCfg.UsesAurora && wallCfg.ShowsClock, "parses wallpaper (Midnight Lake + Clock)");
                 IdleConfig cleanCfg = IdleConfig.Parse("clean", false, "0", "10");
-                T.True(cleanCfg.Mode == IdleMode.Clean && cleanCfg.UsesWallpaper && !cleanCfg.ShowsClock, "parses clean mode");
-                uint[] wallPx = IdleBackdropModel.BuildWallpaperPixels(320, 180);
-                T.Eq(wallPx.Length, 320 * 180, "builds full wallpaper pixel buffer");
-                T.True((wallPx[0] >> 24) == 0xFF, "wallpaper pixels are opaque");
-                uint centerPx = wallPx[(180 * 36 / 100) * 320 + 160];
-                uint cornerPx = wallPx[(179 * 320) + 0];
-                T.True((centerPx & 0xFF) > (cornerPx & 0xFF), "wallpaper center glow is brighter than corner");
+                T.True(cleanCfg.Mode == IdleMode.Clean && cleanCfg.UsesWallpaper && cleanCfg.UsesLake && !cleanCfg.UsesAurora && !cleanCfg.ShowsClock, "parses clean (Midnight Lake)");
+                IdleConfig auroraCfg = IdleConfig.Parse("aurora", false, "0", "10");
+                T.True(auroraCfg.Mode == IdleMode.Aurora && auroraCfg.UsesWallpaper && auroraCfg.UsesAurora && !auroraCfg.UsesLake && auroraCfg.ShowsClock, "parses aurora (Aurora Silk + Clock)");
+                IdleConfig auroraCleanCfg = IdleConfig.Parse("aurora-clean", false, "0", "10");
+                T.True(auroraCleanCfg.Mode == IdleMode.AuroraClean && auroraCleanCfg.UsesWallpaper && auroraCleanCfg.UsesAurora && !auroraCleanCfg.UsesLake && !auroraCleanCfg.ShowsClock, "parses aurora-clean (Aurora Silk)");
+
+                T.Eq(IdleBackdropModel.SinQ14(0), 0, "SinQ14(0) == 0");
+                T.Eq(IdleBackdropModel.SinQ14(16384), 16384, "SinQ14(pi/2) == 16384");
+                T.Eq(IdleBackdropModel.SinQ14(32768), 0, "SinQ14(pi) == 0");
+                T.Eq(IdleBackdropModel.CosQ14(0), 16384, "CosQ14(0) == 16384");
+                T.Eq(IdleBackdropModel.CosQ14(32768), -16384, "CosQ14(pi) == -16384");
+
+                uint[] lakePx = IdleBackdropModel.BuildLakeTilePixels(128, 64, 128, 225, 3, 2.0, 11);
+                T.Eq(lakePx.Length, 128 * 128, "builds 128x128 Midnight Lake tile");
+                bool lakePremulOk = true, lakeHasGlow = false;
+                for (int i = 0; i < lakePx.Length; i++)
+                {
+                    uint p = lakePx[i];
+                    uint a = (p >> 24) & 0xFF, r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                    if (r > a || g > a || b > a) { lakePremulOk = false; break; }
+                    if (a > 64) lakeHasGlow = true;
+                }
+                T.True(lakePremulOk && lakeHasGlow, "lake tile pixels are valid premultiplied ARGB with wave crests");
+
+                uint[] vigPx = IdleBackdropModel.BuildVignettePixels(64);
+                T.Eq(vigPx.Length, 64 * 64, "builds 64x64 OLED vignette mask");
+                uint vigCenterA = vigPx[32 * 64 + 32] >> 24;
+                uint vigCornerA = vigPx[0] >> 24;
+                T.True(vigCenterA < 10 && vigCornerA > 240 && (vigPx[0] & 0xFFFFFFu) == 0u, "vignette has transparent center and pure #000000 edges");
+
+                uint[] silkPx = IdleBackdropModel.BuildSilkRibbonPixels(192, 64, 79, 148, 255, 1.35, 0.13, 0.4, -0.06);
+                T.Eq(silkPx.Length, 192 * 64, "builds 192x64 Aurora Silk ribbon");
+                T.True((silkPx[0] >> 24) == 0 && (silkPx[191] >> 24) == 0 && (silkPx[63 * 192 + 96] >> 24) == 0, "silk ribbon has zero alpha on all borders");
+                bool silkPremulOk = true, silkHasCore = false;
+                for (int i = 0; i < silkPx.Length; i++)
+                {
+                    uint p = silkPx[i];
+                    uint a = (p >> 24) & 0xFF, r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                    if (r > a || g > a || b > a) { silkPremulOk = false; break; }
+                    if (a > 120) silkHasCore = true;
+                }
+                T.True(silkPremulOk && silkHasCore, "silk ribbon pixels are valid premultiplied ARGB");
+
+                uint[] crispPx = IdleBackdropModel.BuildBokehPixels(16, true);
+                uint[] orbPx = IdleBackdropModel.BuildBokehPixels(24, false);
+                T.Eq(crispPx.Length, 16 * 16, "builds 16x16 starlight bokeh");
+                T.Eq(orbPx.Length, 24 * 24, "builds 24x24 near bokeh orb");
+                T.True((crispPx[0] >> 24) == 0 && (crispPx[8 * 16 + 8] >> 24) > 100, "bokeh sprite has zero edge and glowing center");
+
+                IdleBackdropModel.LakeFrame lf1, lf2, lfDim;
+                IdleBackdropModel.ComputeLakeFrame(10000, 1920, 1080, false, out lf1);
+                IdleBackdropModel.ComputeLakeFrame(12000, 1920, 1080, false, out lf2);
+                IdleBackdropModel.ComputeLakeFrame(10000, 1920, 1080, true, out lfDim);
+                T.True(lf1.FillAX != lf2.FillAX || lf1.FillAY != lf2.FillAY, "ComputeLakeFrame advances ripple fill offsets smoothly");
+                T.True(lf1.VigX <= 0 && lf1.VigX + lf1.VigW >= 1920 && lf1.VigY <= 0 && lf1.VigY + lf1.VigH >= 1080, "lake vignette always covers 100% of 1080p screen");
+                T.True(lfDim.AlphaA < lf1.AlphaA && lf1.AlphaA <= 24, "lake frame keeps OLED peak ultra-dark and dims further at 10 min");
+
+                IdleBackdropModel.AuroraRibbonFrame rf1, rf2;
+                IdleBackdropModel.ComputeAuroraRibbon(0, 10000, 1920, 1080, false, out rf1);
+                IdleBackdropModel.ComputeAuroraRibbon(0, 15000, 1920, 1080, false, out rf2);
+                T.True(rf1.X != rf2.X || rf1.Y != rf2.Y, "ComputeAuroraRibbon drifts on Lissajous orbit");
+
+                bool sawZeroMote = false, sawVisibleMote = false;
+                for (int t = 0; t < 40000; t += 1000)
+                {
+                    IdleBackdropModel.MoteFrame mf;
+                    IdleBackdropModel.ComputeMoteFrame(0, t, 1920, 1080, false, out mf);
+                    if (mf.Alpha == 0) sawZeroMote = true;
+                    if (mf.Alpha > 20) sawVisibleMote = true;
+                }
+                T.True(sawZeroMote && sawVisibleMote, "ComputeMoteFrame fades smoothly through zero alpha (hide) and visible peak");
 
                 var seen = new System.Collections.Generic.HashSet<string>();
                 for (int s = 1; s <= 40; s++)

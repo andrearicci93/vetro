@@ -20,21 +20,40 @@ namespace Launcher.Ui
         private const int WindowLayer = 850;
         private const double OrbitSeconds = 30.0;
         private const double HintSeconds = 4.0;
+        private const double ActiveAnimInterval = 1.0 / 15.0;
+        private const double DimAnimInterval = 1.0 / 7.5;
+        private const double SwAnimInterval = 2.0;
         private const int ClockW = 280, ClockH = 175;
-        private const int WallW = 320, WallH = 180;
+        private const int LakeTileSize = 128, VignetteSize = 64;
+        private const int SilkW = 192, SilkH = 64;
+        private const int MoteCrispSize = 16, MoteOrbSize = 24;
+
+        // LayerCache indices: 0=_lakeA, 1=_lakeB, 2=_vignette, 3..5=_silkA..C, 6..15=_motes[0..9]
+        private const int CacheLakeA = 0, CacheLakeB = 1, CacheVignette = 2;
+        private const int CacheSilkBase = 3, CacheMoteBase = 6, TotalLayerCache = 16;
+
+        private struct LayerCache
+        {
+            public bool Visible;
+            public int X, Y, W, H, Fx, Fy, Fw, Fh, R, G, B, A;
+            public void Reset() { Visible = false; X = Y = W = H = Fx = Fy = Fw = Fh = R = G = B = A = int.MinValue; }
+        }
 
         private IdleConfig _cfg;
         private readonly Action<string> _log;
         private readonly int _screenW, _screenH;
-        private readonly Efl.TaskCb _orbitCb, _hintCb, _clockCb;
+        private readonly Efl.TaskCb _orbitCb, _hintCb, _clockCb, _animCb;
+        private readonly LayerCache[] _cache = new LayerCache[TotalLayerCache];
+        private readonly IntPtr[] _motes = new IntPtr[IdleBackdropModel.AuroraMoteCount];
 
-        private IntPtr _win, _bg, _wall, _primary, _dateDay, _dateSep, _dateNum, _meta, _hint;
-        private IntPtr _orbitTimer, _hintTimer, _clockTimer;
-        private bool _built, _failed, _shown, _dimmed, _dockOverlay, _displayOff, _wallLoaded, _hintShown;
-        private int _haltonStep = 1;
-        private int _lastTint = -1, _lastStep = -1;
+        private IntPtr _win, _bg, _lakeA, _lakeB, _vignette, _silkA, _silkB, _silkC;
+        private IntPtr _primary, _dateDay, _dateSep, _dateNum, _meta, _hint;
+        private IntPtr _orbitTimer, _hintTimer, _clockTimer, _animTimer;
+        private bool _built, _failed, _shown, _dimmed, _dockOverlay, _displayOff, _softwareEngine;
+        private bool _lakeLoaded, _auroraLoaded, _hintShown, _textShown, _lastDimmed, _forceBackdropSync;
+        private int _haltonStep = 1, _lastStep = -1, _animTimeMs = 9000, _animFrameCount;
         private int _lastMinute = -1, _lastHour = -1, _lastDay = -1;
-        private bool _textShown, _lastDimmed;
+        private double _animInterval, _lastAnimTickMono = -1.0, _clockAccumSec, _orbitAccumSec;
         private IdleMode _lastMode = IdleMode.Off;
         private string _lastTime, _lastDate;
 
@@ -47,6 +66,8 @@ namespace Launcher.Ui
             _orbitCb = OnOrbitTick;
             _hintCb = OnHintEnd;
             _clockCb = OnClockTick;
+            _animCb = OnAnimTick;
+            for (int i = 0; i < _cache.Length; i++) _cache[i].Reset();
         }
 
         public bool IsShown { get { return _shown; } }
@@ -64,7 +85,7 @@ namespace Launcher.Ui
             if (now.Minute != _lastMinute || now.Hour != _lastHour || now.Day != _lastDay)
             {
                 if (!_dockOverlay) _haltonStep++;
-                ApplyVisuals();
+                ApplyClockVisuals();
             }
         }
 
@@ -76,12 +97,11 @@ namespace Launcher.Ui
         {
             if (_shown || !Build()) return;
             if (_bg != IntPtr.Zero) Efl.evas_object_hide(_bg);
-            if (_wall != IntPtr.Zero) Efl.evas_object_hide(_wall);
+            HideBackdropObjects();
             Efl.evas_object_show(_win);
             Efl.HideCursor(_win, true);
             Efl.evas_object_hide(_win);
             if (_bg != IntPtr.Zero) Efl.evas_object_show(_bg);
-            if (_wall != IntPtr.Zero && _cfg.UsesWallpaper) Efl.evas_object_show(_wall);
         }
 
         public void Show(bool dimmed, bool dockOverlay)
@@ -89,6 +109,8 @@ namespace Launcher.Ui
             if (!Build()) return;
             _dimmed = dimmed;
             _dockOverlay = dockOverlay;
+            _forceBackdropSync = true;
+            _lastAnimTickMono = -1.0;
             if (!_shown)
             {
                 _shown = true;
@@ -126,6 +148,7 @@ namespace Launcher.Ui
                 if (_hint != IntPtr.Zero) Efl.evas_object_hide(_hint);
             }
             if (!_shown) return;
+            if (!dockOpen) _lastAnimTickMono = -1.0;
             UpdateTimers();
         }
 
@@ -133,15 +156,22 @@ namespace Launcher.Ui
         {
             if (_dimmed == dimmed) return;
             _dimmed = dimmed;
+            _forceBackdropSync = true;
             if (!_shown) return;
             ApplyVisuals();
+            UpdateTimers();
         }
 
         public void SetDisplayOff(bool off)
         {
             if (_displayOff == off) return;
             _displayOff = off;
-            if (_shown && !off) ApplyVisuals();
+            if (_shown && !off)
+            {
+                _forceBackdropSync = true;
+                _lastAnimTickMono = -1.0;
+                ApplyVisuals();
+            }
             UpdateTimers();
         }
 
@@ -149,16 +179,10 @@ namespace Launcher.Ui
         {
             _cfg = cfg ?? _cfg;
             _dimmed = false;
+            _forceBackdropSync = true;
+            _lastAnimTickMono = -1.0;
             if (!_built) return;
-            if (_cfg.UsesWallpaper)
-            {
-                EnsureWallpaperLoaded();
-                if (_wall != IntPtr.Zero) Efl.evas_object_show(_wall);
-            }
-            else if (_wall != IntPtr.Zero)
-            {
-                Efl.evas_object_hide(_wall);
-            }
+            SyncActiveThemeAssets();
             if (_primary != IntPtr.Zero)
                 Efl.evas_object_text_font_set(_primary, _cfg.ShowsClock ? FontLight : FontMedium, _cfg.ShowsClock ? 96 : 26);
             if (_shown)
@@ -169,25 +193,119 @@ namespace Launcher.Ui
             _log("idle: reconfigured mode=" + _cfg.Mode + " autoDock=" + _cfg.AutoDock + " potOff=" + _cfg.PictureOffMinutes);
         }
 
-        private void EnsureWallpaperLoaded()
+        private void SyncActiveThemeAssets()
         {
-            if (_wallLoaded || _wall == IntPtr.Zero) return;
-            Efl.evas_object_image_size_set(_wall, WallW, WallH);
-            IntPtr dst = Efl.evas_object_image_data_get(_wall, true);
-            if (dst != IntPtr.Zero)
+            if (!_cfg.UsesLake) ReleaseLakeAssets();
+            else EnsureLakeLoaded();
+
+            if (!_cfg.UsesAurora) ReleaseAuroraAssets();
+            else EnsureAuroraLoaded();
+        }
+
+        private void HideBackdropObjects()
+        {
+            HideLayer(_lakeA, CacheLakeA);
+            HideLayer(_lakeB, CacheLakeB);
+            HideLayer(_vignette, CacheVignette);
+            HideLayer(_silkA, CacheSilkBase);
+            HideLayer(_silkB, CacheSilkBase + 1);
+            HideLayer(_silkC, CacheSilkBase + 2);
+            for (int i = 0; i < _motes.Length; i++) HideLayer(_motes[i], CacheMoteBase + i);
+        }
+
+        private static void UploadArgbPixels(IntPtr img, int w, int h, uint[] pixels, int[] rowScratch)
+        {
+            if (img == IntPtr.Zero || pixels == null) return;
+            Efl.evas_object_image_size_set(img, w, h);
+            IntPtr dst = Efl.evas_object_image_data_get(img, true);
+            if (dst == IntPtr.Zero) return;
+            int stride = Math.Max(w * 4, Efl.evas_object_image_stride_get(img));
+            for (int y = 0; y < h; y++)
             {
-                uint[] pixels = IdleBackdropModel.BuildWallpaperPixels(WallW, WallH);
-                int stride = Math.Max(WallW * 4, Efl.evas_object_image_stride_get(_wall));
-                int[] row = new int[WallW];
-                for (int y = 0; y < WallH; y++)
-                {
-                    Buffer.BlockCopy(pixels, y * WallW * 4, row, 0, WallW * 4);
-                    Marshal.Copy(row, 0, IntPtr.Add(dst, y * stride), WallW);
-                }
-                Efl.evas_object_image_data_set(_wall, dst);
-                Efl.evas_object_image_data_update_add(_wall, 0, 0, WallW, WallH);
-                _wallLoaded = true;
+                Buffer.BlockCopy(pixels, y * w * 4, rowScratch, 0, w * 4);
+                Marshal.Copy(rowScratch, 0, IntPtr.Add(dst, y * stride), w);
             }
+            Efl.evas_object_image_data_set(img, dst);
+            Efl.evas_object_image_data_update_add(img, 0, 0, w, h);
+        }
+
+        private static void ReleaseImageBuffer(IntPtr img)
+        {
+            if (img == IntPtr.Zero) return;
+            Efl.evas_object_hide(img);
+            Efl.evas_object_image_size_set(img, 0, 0);
+        }
+
+        private void EnsureLakeLoaded()
+        {
+            if (_lakeLoaded || _lakeA == IntPtr.Zero || _lakeB == IntPtr.Zero || _vignette == IntPtr.Zero) return;
+            int[] scratch = new int[LakeTileSize];
+            UploadArgbPixels(_lakeA, LakeTileSize, LakeTileSize, IdleBackdropModel.BuildLakeTilePixels(LakeTileSize, 64, 128, 225, 3, 2.0, 11), scratch);
+            UploadArgbPixels(_lakeB, LakeTileSize, LakeTileSize, IdleBackdropModel.BuildLakeTilePixels(LakeTileSize, 44, 148, 178, 4, 2.2, 131), scratch);
+            UploadArgbPixels(_vignette, VignetteSize, VignetteSize, IdleBackdropModel.BuildVignettePixels(VignetteSize), scratch);
+            _lakeLoaded = true;
+            _forceBackdropSync = true;
+        }
+
+        private void ReleaseLakeAssets()
+        {
+            if (!_lakeLoaded) return;
+            ReleaseImageBuffer(_lakeA);
+            ReleaseImageBuffer(_lakeB);
+            ReleaseImageBuffer(_vignette);
+            _cache[CacheLakeA].Reset();
+            _cache[CacheLakeB].Reset();
+            _cache[CacheVignette].Reset();
+            _lakeLoaded = false;
+        }
+
+        private void EnsureAuroraLoaded()
+        {
+            if (_auroraLoaded || _silkA == IntPtr.Zero || _silkB == IntPtr.Zero || _silkC == IntPtr.Zero) return;
+            int[] scratch = new int[SilkW];
+            UploadArgbPixels(_silkA, SilkW, SilkH, IdleBackdropModel.BuildSilkRibbonPixels(SilkW, SilkH, 79, 148, 255, 1.35, 0.13, 0.4, -0.06), scratch);
+            UploadArgbPixels(_silkB, SilkW, SilkH, IdleBackdropModel.BuildSilkRibbonPixels(SilkW, SilkH, 50, 230, 214, 1.65, 0.11, 2.2, 0.08), scratch);
+            UploadArgbPixels(_silkC, SilkW, SilkH, IdleBackdropModel.BuildSilkRibbonPixels(SilkW, SilkH, 154, 107, 255, 1.15, 0.14, 4.1, -0.04), scratch);
+
+            uint[] crispPx = IdleBackdropModel.BuildBokehPixels(MoteCrispSize, true);
+            uint[] orbPx = IdleBackdropModel.BuildBokehPixels(MoteOrbSize, false);
+            for (int i = 0; i < _motes.Length; i++)
+            {
+                if (_motes[i] == IntPtr.Zero) continue;
+                bool crisp = IdleBackdropModel.IsMoteCrisp(i);
+                int sz = crisp ? MoteCrispSize : MoteOrbSize;
+                UploadArgbPixels(_motes[i], sz, sz, crisp ? crispPx : orbPx, scratch);
+            }
+            _auroraLoaded = true;
+            _forceBackdropSync = true;
+        }
+
+        private void ReleaseAuroraAssets()
+        {
+            if (!_auroraLoaded) return;
+            ReleaseImageBuffer(_silkA);
+            ReleaseImageBuffer(_silkB);
+            ReleaseImageBuffer(_silkC);
+            _cache[CacheSilkBase].Reset();
+            _cache[CacheSilkBase + 1].Reset();
+            _cache[CacheSilkBase + 2].Reset();
+            for (int i = 0; i < _motes.Length; i++)
+            {
+                ReleaseImageBuffer(_motes[i]);
+                _cache[CacheMoteBase + i].Reset();
+            }
+            _auroraLoaded = false;
+        }
+
+        private static IntPtr CreateBackdropImage(IntPtr evas, bool filled)
+        {
+            IntPtr img = Efl.evas_object_image_add(evas);
+            Efl.evas_object_image_alpha_set(img, true);
+            Efl.evas_object_image_filled_set(img, filled);
+            Efl.evas_object_image_smooth_scale_set(img, true);
+            Efl.evas_object_image_scale_hint_set(img, Efl.EvasImageScaleHintStatic);
+            Efl.evas_object_pass_events_set(img, true);
+            return img;
         }
 
         private bool Build()
@@ -215,6 +333,8 @@ namespace Launcher.Ui
                 Efl.HideCursor(_win, true);
 
                 IntPtr evas = Efl.evas_object_evas_get(_win);
+                _softwareEngine = string.Equals(Efl.EngineName(evas), "wayland_shm", StringComparison.OrdinalIgnoreCase);
+
                 _bg = Efl.evas_object_rectangle_add(evas);
                 Efl.evas_object_color_set(_bg, 0, 0, 0, 255);
                 Efl.evas_object_move(_bg, 0, 0);
@@ -222,23 +342,21 @@ namespace Launcher.Ui
                 Efl.evas_object_pass_events_set(_bg, true);
                 Efl.evas_object_show(_bg);
 
-                // Always allocate _wall before text objects so live mode switching keeps clock labels above the wallpaper.
-                _wall = Efl.evas_object_image_add(evas);
-                Efl.evas_object_image_alpha_set(_wall, false);
-                Efl.evas_object_image_filled_set(_wall, true);
-                Efl.evas_object_image_smooth_scale_set(_wall, true);
-                Efl.evas_object_move(_wall, 0, 0);
-                Efl.evas_object_resize(_wall, _screenW, _screenH);
-                Efl.evas_object_pass_events_set(_wall, true);
-                if (_cfg.UsesWallpaper)
-                {
-                    EnsureWallpaperLoaded();
-                    Efl.evas_object_show(_wall);
-                }
-                else
-                {
-                    Efl.evas_object_hide(_wall);
-                }
+                // Allocate empty Evas image handles strictly BEFORE text objects so live mode switching keeps clock above backdrops.
+                _lakeA = CreateBackdropImage(evas, false);
+                Efl.evas_object_move(_lakeA, 0, 0);
+                Efl.evas_object_resize(_lakeA, _screenW, _screenH);
+                _lakeB = CreateBackdropImage(evas, false);
+                Efl.evas_object_move(_lakeB, 0, 0);
+                Efl.evas_object_resize(_lakeB, _screenW, _screenH);
+                _vignette = CreateBackdropImage(evas, true);
+
+                _silkA = CreateBackdropImage(evas, true);
+                _silkB = CreateBackdropImage(evas, true);
+                _silkC = CreateBackdropImage(evas, true);
+                for (int i = 0; i < _motes.Length; i++) _motes[i] = CreateBackdropImage(evas, true);
+
+                SyncActiveThemeAssets();
 
                 _primary = Efl.evas_object_text_add(evas);
                 Efl.evas_object_text_font_set(_primary, _cfg.ShowsClock ? FontLight : FontMedium, _cfg.ShowsClock ? 96 : 26);
@@ -271,25 +389,125 @@ namespace Launcher.Ui
                 Efl.evas_object_move(_hint, _screenW - 96 - (hw > 0 ? hw : 240), _screenH - 96 - (hh > 0 ? hh : 30));
 
                 _built = true;
-                _log("idle: built mode=" + _cfg.Mode + " level=" + _cfg.NotificationLevel + " rc=" + lvlRc);
+                _log("idle: built mode=" + _cfg.Mode + " shm=" + _softwareEngine + " level=" + _cfg.NotificationLevel + " rc=" + lvlRc);
                 return true;
             }
             catch (Exception ex) { _failed = true; _log("idle: " + ex.Message); return false; }
         }
 
+        private void HideLayer(IntPtr obj, int idx)
+        {
+            if (obj == IntPtr.Zero || !_cache[idx].Visible) return;
+            _cache[idx].Visible = false;
+            Efl.evas_object_hide(obj);
+        }
+
+        private void ApplyTiledColor(IntPtr obj, int idx, int fx, int fy, int fw, int fh, int alpha)
+        {
+            if (obj == IntPtr.Zero) return;
+            if (alpha <= 0) { HideLayer(obj, idx); return; }
+            ref LayerCache c = ref _cache[idx];
+            if (c.Fx != fx || c.Fy != fy || c.Fw != fw || c.Fh != fh)
+            {
+                c.Fx = fx; c.Fy = fy; c.Fw = fw; c.Fh = fh;
+                Efl.evas_object_image_fill_set(obj, fx, fy, fw, fh);
+            }
+            if (c.R != alpha || c.G != alpha || c.B != alpha || c.A != alpha)
+            {
+                c.R = c.G = c.B = c.A = alpha;
+                Efl.evas_object_color_set(obj, alpha, alpha, alpha, alpha);
+            }
+            if (!c.Visible) { c.Visible = true; Efl.evas_object_show(obj); }
+        }
+
+        private void ApplyMoveResizeColor(IntPtr obj, int idx, int x, int y, int w, int h, int r, int g, int b, int a)
+        {
+            if (obj == IntPtr.Zero) return;
+            if (a <= 0) { HideLayer(obj, idx); return; }
+            ref LayerCache c = ref _cache[idx];
+            if (c.X != x || c.Y != y)
+            {
+                c.X = x; c.Y = y;
+                Efl.evas_object_move(obj, x, y);
+            }
+            if (c.W != w || c.H != h)
+            {
+                c.W = w; c.H = h;
+                Efl.evas_object_resize(obj, w, h);
+            }
+            if (c.R != r || c.G != g || c.B != b || c.A != a)
+            {
+                c.R = r; c.G = g; c.B = b; c.A = a;
+                Efl.evas_object_color_set(obj, r, g, b, a);
+            }
+            if (!c.Visible) { c.Visible = true; Efl.evas_object_show(obj); }
+        }
+
+        private void ApplyBackdropFrame(bool stagger)
+        {
+            if (!_built) return;
+            if (_cfg.UsesLake)
+            {
+                EnsureLakeLoaded();
+                IdleBackdropModel.LakeFrame lf;
+                IdleBackdropModel.ComputeLakeFrame(_animTimeMs, _screenW, _screenH, _dimmed, out lf);
+                ApplyTiledColor(_lakeA, CacheLakeA, lf.FillAX, lf.FillAY, lf.FillAW, lf.FillAH, lf.AlphaA);
+                ApplyTiledColor(_lakeB, CacheLakeB, lf.FillBX, lf.FillBY, lf.FillBW, lf.FillBH, lf.AlphaB);
+                if (!stagger || _forceBackdropSync || (_animFrameCount & 7) == 0)
+                    ApplyMoveResizeColor(_vignette, CacheVignette, lf.VigX, lf.VigY, lf.VigW, lf.VigH, lf.VigAlpha, lf.VigAlpha, lf.VigAlpha, lf.VigAlpha);
+            }
+            else if (_cfg.UsesAurora)
+            {
+                EnsureAuroraLoaded();
+                if (!stagger || _forceBackdropSync)
+                {
+                    for (int i = 0; i < IdleBackdropModel.AuroraRibbonCount; i++) ApplySingleRibbon(i);
+                }
+                else
+                {
+                    ApplySingleRibbon(_animFrameCount % IdleBackdropModel.AuroraRibbonCount);
+                }
+
+                for (int i = 0; i < IdleBackdropModel.AuroraMoteCount; i++)
+                {
+                    IdleBackdropModel.MoteFrame mf;
+                    IdleBackdropModel.ComputeMoteFrame(i, _animTimeMs, _screenW, _screenH, _dimmed, out mf);
+                    if (mf.Alpha <= 0)
+                    {
+                        HideLayer(_motes[i], CacheMoteBase + i);
+                        continue;
+                    }
+                    int pr = (mf.R * mf.Alpha) / 255;
+                    int pg = (mf.G * mf.Alpha) / 255;
+                    int pb = (mf.B * mf.Alpha) / 255;
+                    ApplyMoveResizeColor(_motes[i], CacheMoteBase + i, mf.X, mf.Y, mf.Size, mf.Size, pr, pg, pb, mf.Alpha);
+                }
+            }
+            else
+            {
+                HideBackdropObjects();
+            }
+            _forceBackdropSync = false;
+        }
+
+        private void ApplySingleRibbon(int idx)
+        {
+            IdleBackdropModel.AuroraRibbonFrame rf;
+            IdleBackdropModel.ComputeAuroraRibbon(idx, _animTimeMs, _screenW, _screenH, _dimmed, out rf);
+            IntPtr obj = idx == 0 ? _silkA : (idx == 1 ? _silkB : _silkC);
+            ApplyMoveResizeColor(obj, CacheSilkBase + idx, rf.X, rf.Y, rf.W, rf.H, rf.Alpha, rf.Alpha, rf.Alpha, rf.Alpha);
+        }
+
         private void ApplyVisuals()
         {
             if (!_built) return;
-            if (_wall != IntPtr.Zero)
-            {
-                int tint = _dimmed ? 96 : 255;
-                if (tint != _lastTint)
-                {
-                    _lastTint = tint;
-                    Efl.evas_object_color_set(_wall, tint, tint, tint, 255);
-                }
-            }
+            ApplyBackdropFrame(false);
+            ApplyClockVisuals();
+        }
 
+        private void ApplyClockVisuals()
+        {
+            if (!_built) return;
             if (!_cfg.ShowsClock)
             {
                 _lastMinute = -1;
@@ -327,7 +545,7 @@ namespace Launcher.Ui
 
             bool isClock = _cfg.Mode == IdleMode.Clock;
             Efl.evas_object_text_text_set(_primary, timeText);
-            SetIceColor(_primary, isClock ? (_dimmed ? 51 : 97) : (_dimmed ? 68 : 155));
+            SetIceColor(_primary, isClock ? (_dimmed ? 82 : 97) : (_dimmed ? 108 : 128));
             int clockW = Efl.evas_object_text_horiz_advance_get(_primary);
             if (clockW <= 0) clockW = 240;
             int clockH = Efl.evas_object_text_vert_advance_get(_primary);
@@ -347,9 +565,9 @@ namespace Launcher.Ui
             if (dateH <= 0) dateH = 34;
 
             int dateY = y + (clockH * 82) / 100;
-            SetIceColor(_dateDay, isClock ? (_dimmed ? 28 : 56) : (_dimmed ? 38 : 84));
-            SetIceColor(_dateNum, isClock ? (_dimmed ? 34 : 68) : (_dimmed ? 46 : 106));
-            SetIceColor(_dateSep, isClock ? (_dimmed ? 12 : 24) : (_dimmed ? 16 : 36));
+            SetIceColor(_dateDay, isClock ? (_dimmed ? 46 : 56) : (_dimmed ? 62 : 74));
+            SetIceColor(_dateNum, isClock ? (_dimmed ? 56 : 68) : (_dimmed ? 76 : 90));
+            SetIceColor(_dateSep, isClock ? (_dimmed ? 20 : 24) : (_dimmed ? 26 : 30));
 
             int inkW = Math.Max(160, clockW - 16);
             int gap = (inkW - dayW - numW - 1) / 2;
@@ -374,7 +592,7 @@ namespace Launcher.Ui
             {
                 int metaW = Efl.evas_object_text_horiz_advance_get(_meta);
                 if (metaW <= 0) metaW = 140;
-                SetIceColor(_meta, _dimmed ? 24 : 48);
+                SetIceColor(_meta, _dimmed ? 40 : 48);
                 Efl.evas_object_move(_meta, x + (clockW - metaW) / 2, dateY + dateH + 8);
                 Efl.evas_object_show(_meta);
             }
@@ -386,17 +604,48 @@ namespace Launcher.Ui
 
         private void UpdateTimers()
         {
-            if (_shown && !_displayOff && !_dockOverlay && _cfg.Mode != IdleMode.Clean)
+            if (!_shown || _displayOff)
             {
-                if (_orbitTimer == IntPtr.Zero) _orbitTimer = Efl.ecore_timer_add(OrbitSeconds, _orbitCb, IntPtr.Zero);
-            }
-            else if (_orbitTimer != IntPtr.Zero)
-            {
-                Efl.ecore_timer_del(_orbitTimer);
-                _orbitTimer = IntPtr.Zero;
+                if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
+                if (_clockTimer != IntPtr.Zero) { Efl.ecore_timer_del(_clockTimer); _clockTimer = IntPtr.Zero; }
+                if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; }
+                _animInterval = 0;
+                return;
             }
 
-            if (_shown && !_displayOff && _cfg.ShowsClock)
+            if (_dockOverlay)
+            {
+                if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
+                if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; _animInterval = 0; }
+            }
+            else if (_cfg.UsesWallpaper)
+            {
+                if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
+                double targetInterval = _softwareEngine ? SwAnimInterval : (_dimmed ? DimAnimInterval : ActiveAnimInterval);
+                if (_animTimer == IntPtr.Zero || Math.Abs(_animInterval - targetInterval) > 0.001)
+                {
+                    if (_animTimer != IntPtr.Zero) Efl.ecore_timer_del(_animTimer);
+                    _animInterval = targetInterval;
+                    _lastAnimTickMono = -1.0;
+                    _animTimer = Efl.ecore_timer_add(targetInterval, _animCb, IntPtr.Zero);
+                }
+            }
+            else
+            {
+                if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; _animInterval = 0; }
+                if (_cfg.ShowsClock)
+                {
+                    if (_orbitTimer == IntPtr.Zero) _orbitTimer = Efl.ecore_timer_add(OrbitSeconds, _orbitCb, IntPtr.Zero);
+                }
+                else if (_orbitTimer != IntPtr.Zero)
+                {
+                    Efl.ecore_timer_del(_orbitTimer);
+                    _orbitTimer = IntPtr.Zero;
+                }
+            }
+
+            // Coalesce 1s clock updates into _animTimer when active; otherwise keep _clockTimer for Clock mode or Dock-over-idle.
+            if (_cfg.ShowsClock && _animTimer == IntPtr.Zero)
             {
                 if (_clockTimer == IntPtr.Zero) _clockTimer = Efl.ecore_timer_add(1.0, _clockCb, IntPtr.Zero);
             }
@@ -422,6 +671,7 @@ namespace Launcher.Ui
         {
             if (_orbitTimer != IntPtr.Zero) { Efl.ecore_timer_del(_orbitTimer); _orbitTimer = IntPtr.Zero; }
             if (_clockTimer != IntPtr.Zero) { Efl.ecore_timer_del(_clockTimer); _clockTimer = IntPtr.Zero; }
+            if (_animTimer != IntPtr.Zero) { Efl.ecore_timer_del(_animTimer); _animTimer = IntPtr.Zero; _animInterval = 0; }
             if (_hintTimer != IntPtr.Zero) { Efl.ecore_timer_del(_hintTimer); _hintTimer = IntPtr.Zero; }
             if (_hintShown && _hint != IntPtr.Zero) Efl.evas_object_hide(_hint);
             _hintShown = false;
@@ -434,12 +684,49 @@ namespace Launcher.Ui
             return 1;
         }
 
+        private byte OnAnimTick(IntPtr data)
+        {
+            try
+            {
+                double now = Efl.ecore_time_get();
+                double dt = _lastAnimTickMono < 0.0 ? _animInterval : now - _lastAnimTickMono;
+                _lastAnimTickMono = now;
+                if (dt < 0.0) dt = _animInterval;
+                if (dt > 0.25 && !_softwareEngine) dt = 0.25;
+                if (dt > 2.5 && _softwareEngine) dt = 2.5;
+
+                int advMs = (int)(dt * (_dimmed ? 500.0 : 1000.0));
+                if (advMs < 1) advMs = 1;
+                _animTimeMs += advMs;
+                _animFrameCount++;
+
+                ApplyBackdropFrame(true);
+
+                if (_cfg.ShowsClock)
+                {
+                    _clockAccumSec += dt;
+                    _orbitAccumSec += dt;
+                    bool checkClock = _clockAccumSec >= 1.0;
+                    if (checkClock) _clockAccumSec %= 1.0;
+                    if (_orbitAccumSec >= OrbitSeconds)
+                    {
+                        _orbitAccumSec %= OrbitSeconds;
+                        _haltonStep++;
+                        checkClock = true;
+                    }
+                    if (checkClock) ApplyClockVisuals();
+                }
+            }
+            catch (Exception ex) { _log("idle anim: " + ex.Message); }
+            return 1;
+        }
+
         private byte OnOrbitTick(IntPtr data)
         {
             try
             {
                 _haltonStep++;
-                ApplyVisuals();
+                ApplyClockVisuals();
             }
             catch (Exception ex) { _log("idle orbit: " + ex.Message); }
             return 1;

@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace Launcher.Core
 {
-    internal enum IdleMode { Off, Clock, Wallpaper, Clean }
+    internal enum IdleMode { Off, Clock, Wallpaper, Clean, Aurora, AuroraClean }
 
     internal enum IdleAction { None, Show, ShowWithDock, Hide, Dim, TriggerLcdOff, FallbackDim }
 
@@ -16,8 +16,10 @@ namespace Launcher.Core
         /// <summary>0 = dim after 10 min (keep visible); 5/10/15 = trigger Samsung lcdoff Picture Off after N minutes.</summary>
         public int PictureOffMinutes { get; private set; }
         public int NotificationLevel { get; private set; }
-        public bool UsesWallpaper { get { return Mode == IdleMode.Wallpaper || Mode == IdleMode.Clean; } }
-        public bool ShowsClock { get { return Mode == IdleMode.Clock || Mode == IdleMode.Wallpaper; } }
+        public bool UsesWallpaper { get { return UsesLake || UsesAurora; } }
+        public bool UsesLake { get { return Mode == IdleMode.Wallpaper || Mode == IdleMode.Clean; } }
+        public bool UsesAurora { get { return Mode == IdleMode.Aurora || Mode == IdleMode.AuroraClean; } }
+        public bool ShowsClock { get { return Mode == IdleMode.Clock || Mode == IdleMode.Wallpaper || Mode == IdleMode.Aurora; } }
 
         public IdleConfig(IdleMode mode, bool autoDock, int pictureOffMinutes, int notificationLevel)
         {
@@ -33,6 +35,8 @@ namespace Launcher.Core
             if (string.Equals(mode, "clock", StringComparison.OrdinalIgnoreCase)) m = IdleMode.Clock;
             else if (string.Equals(mode, "wallpaper", StringComparison.OrdinalIgnoreCase)) m = IdleMode.Wallpaper;
             else if (string.Equals(mode, "clean", StringComparison.OrdinalIgnoreCase)) m = IdleMode.Clean;
+            else if (string.Equals(mode, "aurora", StringComparison.OrdinalIgnoreCase)) m = IdleMode.Aurora;
+            else if (string.Equals(mode, "aurora-clean", StringComparison.OrdinalIgnoreCase)) m = IdleMode.AuroraClean;
 
             int po = 0;
             int parsedPo;
@@ -500,53 +504,393 @@ namespace Launcher.Core
             return IdleAction.None;
         }
 
-        /// <summary>
-        /// Builds a Samsung-style dark midnight-slate gradient (#070B14 to #1D2E4D) with a 4x4 Bayer dither
-        /// using strictly 32-bit integer math for smooth OLED rendering without color banding.
-        /// </summary>
-        public static uint[] BuildWallpaperPixels(int w, int h)
+        public const int AuroraRibbonCount = 3;
+        public const int AuroraMoteCount = 10;
+
+        private static readonly int[] SinLut256 = BuildSinLut256();
+
+        private static int[] BuildSinLut256()
         {
-            var px = new uint[w * h];
-            int cx = w / 2;
-            int cy = (h * 36) / 100;
-            int rx = w > 2 ? w / 2 : 1;
-            int ry = (h * 65) / 100;
-            if (ry < 1) ry = 1;
+            var lut = new int[256];
+            for (int i = 0; i < 256; i++)
+                lut[i] = (int)Math.Round(Math.Sin((2.0 * Math.PI * i) / 256.0) * 16384.0);
+            return lut;
+        }
 
-            for (int y = 0; y < h; y++)
+        /// <summary>
+        /// Q14 fixed-point sine (-16384..+16384) for phaseQ16 in [0..65536) representing 0..2*pi,
+        /// linearly interpolated from a 256-entry table using strictly 32-bit integer math.
+        /// </summary>
+        public static int SinQ14(int phaseQ16)
+        {
+            int idx = (phaseQ16 >> 8) & 255;
+            int frac = phaseQ16 & 255;
+            int a = SinLut256[idx];
+            int b = SinLut256[(idx + 1) & 255];
+            return a + (((b - a) * frac) >> 8);
+        }
+
+        public static int CosQ14(int phaseQ16)
+        {
+            return SinQ14(phaseQ16 + 16384);
+        }
+
+        public static int PhaseFromTimeMs(int timeMs, int periodSec, int offsetQ16)
+        {
+            int periodMs = periodSec * 1000;
+            int rem = timeMs % periodMs;
+            if (rem < 0) rem += periodMs;
+            return ((rem * 8192) / periodMs << 3) + offsetQ16;
+        }
+
+        private static double Hash2(int ix, int iy, int seed)
+        {
+            unchecked
             {
-                int dy = y - cy;
-                int ny = (dy * 256) / ry;
-                int nySq = ny * ny;
-                int vert = (256 * (h - y)) / h;
+                uint n = (uint)(ix * 374761393 + iy * 668265263 + seed * 1442695041);
+                n ^= n >> 13;
+                n *= 1274126177u;
+                n ^= n >> 16;
+                return n / 4294967296.0;
+            }
+        }
+
+        private static double TileNoise(double u, double v, int freqX, int freqY, int seed)
+        {
+            double x = u * freqX;
+            double y = v * freqY;
+            int fx = (int)Math.Floor(x);
+            int fy = (int)Math.Floor(y);
+            int x0 = ((fx % freqX) + freqX) % freqX;
+            int y0 = ((fy % freqY) + freqY) % freqY;
+            int x1 = (x0 + 1) % freqX;
+            int y1 = (y0 + 1) % freqY;
+            double tx = x - fx;
+            double ty = y - fy;
+            double sx = tx * tx * (3.0 - 2.0 * tx);
+            double sy = ty * ty * (3.0 - 2.0 * ty);
+            double n00 = Hash2(x0, y0, seed);
+            double n10 = Hash2(x1, y0, seed);
+            double n01 = Hash2(x0, y1, seed);
+            double n11 = Hash2(x1, y1, seed);
+            double nx0 = n00 + sx * (n10 - n00);
+            double nx1 = n01 + sx * (n11 - n01);
+            return nx0 + sy * (nx1 - nx0);
+        }
+
+        private static uint PremultiplyArgb(int a, int rCol, int gCol, int bCol)
+        {
+            if (a <= 0) return 0u;
+            if (a > 255) a = 255;
+            int r = (rCol * a) / 255;
+            int g = (gCol * a) / 255;
+            int b = (bCol * a) / 255;
+            return ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | (uint)b;
+        }
+
+        /// <summary>
+        /// Builds a seamless toroidal lake-ripple tile (128x128) in premultiplied ARGB with 4x4 Bayer micro-dither.
+        /// </summary>
+        public static uint[] BuildLakeTilePixels(int size, int rCol, int gCol, int bCol, int wavesY, double sharpness, int seed)
+        {
+            var px = new uint[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                double v = (double)y / size;
                 int yRow = (y & 3) << 2;
-                int rowOffset = y * w;
-
-                for (int x = 0; x < w; x++)
+                int rowOffset = y * size;
+                for (int x = 0; x < size; x++)
                 {
-                    int dx = x - cx;
-                    int nx = (dx * 256) / rx;
-                    int inv = 65536 - (nx * nx + nySq);
-                    int radial = 0;
-                    if (inv > 0)
-                    {
-                        int t = inv / 256;
-                        radial = (t * t) / 256;
-                    }
-                    int mix = (radial * 205 + vert * 51) / 256;
+                    double u = (double)x / size;
+                    double nLow = TileNoise(u, v, 2, 6, seed);
+                    double nMid = TileNoise(u, v, 4, 12, seed + 19);
+                    double phase = v * wavesY + nLow * 1.65 + nMid * 0.55;
+                    double crest = 0.5 + 0.5 * Math.Sin(phase * Math.PI * 2.0);
+                    double breakMask = 0.42 + 0.58 * TileNoise(u, v, 3, 5, seed + 41);
+                    double val = Math.Pow(crest, sharpness) * breakMask;
+                    if (val < 0.0) val = 0.0;
+                    if (val > 1.0) val = 1.0;
                     int dither = Bayer4x4[yRow | (x & 3)];
-
-                    int r = (112 + (mix * 352) / 256 + dither) / 16;
-                    int g = (176 + (mix * 560) / 256 + dither) / 16;
-                    int b = (320 + (mix * 912) / 256 + dither) / 16;
-                    if (r > 255) r = 255;
-                    if (g > 255) g = 255;
-                    if (b > 255) b = 255;
-
-                    px[rowOffset + x] = 0xFF000000u | ((uint)r << 16) | ((uint)g << 8) | (uint)b;
+                    int a = ((int)(val * 4080.0) + dither) >> 4;
+                    px[rowOffset + x] = PremultiplyArgb(a, rCol, gCol, bCol);
                 }
             }
             return px;
+        }
+
+        /// <summary>
+        /// Builds a 64x64 radial OLED black vignette (transparent center A=0, opaque #000000 edges A=255).
+        /// </summary>
+        public static uint[] BuildVignettePixels(int size)
+        {
+            var px = new uint[size * size];
+            double half = size * 0.5;
+            for (int y = 0; y < size; y++)
+            {
+                double ny = (y - half + 0.5) / half;
+                int yRow = (y & 3) << 2;
+                int rowOffset = y * size;
+                for (int x = 0; x < size; x++)
+                {
+                    double nx = (x - half + 0.5) / half;
+                    double r2 = nx * nx + ny * ny;
+                    double t = 1.0 - r2;
+                    double clear = t > 0.0 ? t * t : 0.0;
+                    int dither = Bayer4x4[yRow | (x & 3)];
+                    int a = ((int)((1.0 - clear) * 4080.0) + dither) >> 4;
+                    if (a < 0) a = 0;
+                    if (a > 255) a = 255;
+                    px[rowOffset + x] = (uint)a << 24;
+                }
+            }
+            return px;
+        }
+
+        /// <summary>
+        /// Builds a tight-cropped S-curve silk aurora ribbon (192x64) with caustic ridge and 0 alpha on all 4 borders.
+        /// </summary>
+        public static uint[] BuildSilkRibbonPixels(int w, int h, int rCol, int gCol, int bCol, double freq, double amp, double phase, double skew)
+        {
+            var px = new uint[w * h];
+            for (int x = 0; x < w; x++)
+            {
+                double u = w > 1 ? (double)x / (w - 1) : 0.5;
+                double taper = Math.Pow(Math.Max(0.0, Math.Sin(Math.PI * u)), 1.45);
+                double ridgeY = 0.44 + amp * Math.Sin(u * Math.PI * freq + phase) + skew * (u - 0.5);
+                double widthUp = 0.095 + 0.03 * Math.Cos(u * Math.PI * 2.0 + phase);
+                double widthDown = 0.27 + 0.06 * Math.Sin(u * Math.PI * 1.5 - phase);
+                for (int y = 0; y < h; y++)
+                {
+                    double v = h > 1 ? (double)y / (h - 1) : 0.5;
+                    double dy = v - ridgeY;
+                    double core;
+                    if (dy < 0.0)
+                    {
+                        double k = -dy / widthUp;
+                        core = Math.Exp(-k * k * 2.4);
+                    }
+                    else
+                    {
+                        double k = dy / widthDown;
+                        core = 0.72 * Math.Exp(-k * k * 1.5) + 0.28 * Math.Exp(-k * 2.6);
+                    }
+                    double caustic = Math.Exp(-Math.Pow(dy / 0.034, 2.0)) * (0.45 + 0.55 * Math.Sin(u * Math.PI * 5.0 + phase));
+                    double vFade = Math.Max(0.0, Math.Sin(Math.PI * v));
+                    double alpha = taper * vFade * (core * 0.78 + caustic * 0.28);
+                    if (alpha < 0.0) alpha = 0.0;
+                    if (alpha > 1.0) alpha = 1.0;
+                    int dither = Bayer4x4[((y & 3) << 2) | (x & 3)];
+                    int a = ((int)(alpha * 4080.0) + dither) >> 4;
+                    if (x == 0 || x == w - 1 || y == 0 || y == h - 1) a = 0;
+                    px[y * w + x] = PremultiplyArgb(a, rCol, gCol, bCol);
+                }
+            }
+            return px;
+        }
+
+        /// <summary>
+        /// Builds a white-luminance premultiplied ARGB bokeh/starlight sprite (R=G=B=A) tinted on GPU via color_set.
+        /// </summary>
+        public static uint[] BuildBokehPixels(int size, bool crisp)
+        {
+            var px = new uint[size * size];
+            double half = size * 0.5;
+            for (int y = 0; y < size; y++)
+            {
+                double ny = (y - half + 0.5) / half;
+                int rowOffset = y * size;
+                for (int x = 0; x < size; x++)
+                {
+                    double nx = (x - half + 0.5) / half;
+                    double r = Math.Sqrt(nx * nx + ny * ny);
+                    double alpha = 0.0;
+                    if (r < 1.0)
+                    {
+                        if (crisp)
+                        {
+                            alpha = Math.Exp(-r * r * 12.0) * 0.92 + Math.Pow(1.0 - r, 3.0) * 0.25;
+                        }
+                        else
+                        {
+                            double disc = Math.Pow(1.0 - r * r, 2.2);
+                            double halo = Math.Exp(-Math.Pow((r - 0.68) / 0.16, 2.0)) * 0.14;
+                            alpha = (disc * 0.86 + halo) * (1.0 - r);
+                        }
+                    }
+                    if (alpha < 0.0) alpha = 0.0;
+                    if (alpha > 1.0) alpha = 1.0;
+                    int a = (int)Math.Round(alpha * 255.0);
+                    if (x == 0 || x == size - 1 || y == 0 || y == size - 1) a = 0;
+                    uint u = (uint)a;
+                    px[rowOffset + x] = (u << 24) | (u << 16) | (u << 8) | u;
+                }
+            }
+            return px;
+        }
+
+        internal struct LakeFrame
+        {
+            public int FillAX, FillAY, FillAW, FillAH, AlphaA;
+            public int FillBX, FillBY, FillBW, FillBH, AlphaB;
+            public int VigX, VigY, VigW, VigH, VigAlpha;
+        }
+
+        internal struct AuroraRibbonFrame
+        {
+            public int X, Y, W, H, Alpha;
+        }
+
+        internal struct MoteFrame
+        {
+            public int X, Y, Size, R, G, B, Alpha;
+        }
+
+        public static void ComputeLakeFrame(int timeMs, int screenW, int screenH, bool dimmed, out LakeFrame frame)
+        {
+            frame = default(LakeFrame);
+            int sA = 16384 + ((SinQ14(PhaseFromTimeMs(timeMs, 47, 0)) * 983) >> 14);
+            int sB = 16384 + ((CosQ14(PhaseFromTimeMs(timeMs, 59, 0)) * 1147) >> 14);
+
+            int wA = (((screenW * 560) / 640) * sA) >> 14;
+            int hA = (((screenH * 235) / 360) * sA) >> 14;
+            int wB = (((screenW * 440) / 640) * sB) >> 14;
+            int hB = (((screenH * 195) / 360) * sB) >> 14;
+            if (wA < 1) wA = 1;
+            if (hA < 1) hA = 1;
+            if (wB < 1) wB = 1;
+            if (hB < 1) hB = 1;
+
+            int swayA = (screenH * 27 * SinQ14(PhaseFromTimeMs(timeMs, 107, 0))) / (360 * 16384);
+            int rawOxA = (timeMs * screenW * 34) / (640 * 10000);
+            int rawOyA = (timeMs * screenH * 15) / (360 * 10000) + swayA;
+            int rawOxB = -(timeMs * screenW * 29) / (640 * 10000);
+            int rawOyB = -(timeMs * screenH * 19) / (360 * 10000);
+
+            int fxA = ((rawOxA % wA) + wA) % wA - wA;
+            int fyA = ((rawOyA % hA) + hA) % hA - hA;
+            int fxB = ((rawOxB % wB) + wB) % wB - wB;
+            int fyB = ((rawOyB % hB) + hB) % hB - hB;
+
+            int dimScale = dimmed ? 97 : 256;
+            frame.FillAX = fxA;
+            frame.FillAY = fyA;
+            frame.FillAW = wA;
+            frame.FillAH = hA;
+            frame.AlphaA = (22 * dimScale) >> 8;
+
+            frame.FillBX = fxB;
+            frame.FillBY = fyB;
+            frame.FillBW = wB;
+            frame.FillBH = hB;
+            frame.AlphaB = (19 * dimScale) >> 8;
+
+            int vigW = (screenW * 148) / 100;
+            int vigH = (screenH * 142) / 100;
+            int cx = (screenW >> 1) + (((screenW * 14) / 100) * SinQ14(PhaseFromTimeMs(timeMs, 73, 0)) >> 14);
+            int cy = (screenH >> 1) + (((screenH * 12) / 100) * SinQ14(PhaseFromTimeMs(timeMs, 107, 12517)) >> 14);
+            frame.VigX = cx - (vigW >> 1);
+            frame.VigY = cy - (vigH >> 1);
+            frame.VigW = vigW;
+            frame.VigH = vigH;
+            frame.VigAlpha = 224;
+        }
+
+        private static readonly int[] RibbonPerX = { 79, 97, 89 };
+        private static readonly int[] RibbonPerY = { 113, 137, 127 };
+        private static readonly int[] RibbonOffY = { 8344, 41720, 15645 };
+        private static readonly int[] RibbonOffX = { 0, 21902, 35461 };
+        private static readonly int[] RibbonAmpX = { 34, 36, 32 };
+        private static readonly int[] RibbonAmpY = { 28, 30, 26 };
+        private static readonly int[] RibbonCenterY = { 48, 52, 50 };
+        private static readonly int[] RibbonWPct = { 126, 118, 122 };
+        private static readonly int[] RibbonHPct = { 56, 52, 54 };
+        private static readonly int[] RibbonBreathPer = { 41, 53, 61 };
+        private static readonly int[] RibbonBreathOff = { 0, 14602, 30246 };
+        private static readonly int[] RibbonBreathDepth = { 2949, 3277, 2621 };
+        private static readonly int[] RibbonBaseAlpha = { 24, 18, 17 };
+
+        public static void ComputeAuroraRibbon(int index, int timeMs, int screenW, int screenH, bool dimmed, out AuroraRibbonFrame frame)
+        {
+            frame = default(AuroraRibbonFrame);
+            if (index < 0 || index >= AuroraRibbonCount) return;
+
+            int rw = (screenW * RibbonWPct[index]) / 100;
+            int rh = (screenH * RibbonHPct[index]) / 100;
+            int cx = (screenW >> 1) + (((screenW * RibbonAmpX[index]) / 100) * SinQ14(PhaseFromTimeMs(timeMs, RibbonPerX[index], RibbonOffX[index])) >> 14);
+            int cy = ((screenH * RibbonCenterY[index]) / 100) + (((screenH * RibbonAmpY[index]) / 100) * SinQ14(PhaseFromTimeMs(timeMs, RibbonPerY[index], RibbonOffY[index])) >> 14);
+
+            int breathQ14 = 16384 + ((RibbonBreathDepth[index] * SinQ14(PhaseFromTimeMs(timeMs, RibbonBreathPer[index], RibbonBreathOff[index]))) >> 14);
+            int dimScale = dimmed ? 97 : 256;
+            int alpha = (((RibbonBaseAlpha[index] * breathQ14) >> 14) * dimScale) >> 8;
+
+            frame.X = cx - (rw >> 1);
+            frame.Y = cy - (rh >> 1);
+            frame.W = rw;
+            frame.H = rh;
+            frame.Alpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
+        }
+
+        // Precomputed 10 deterministic bokeh motes (matching HTML preview):
+        // kind: 0=Ice crisp (16x16), 1=Sapphire near (24x24), 2=Gold near (24x24), 3=Aqua crisp (16x16)
+        private static readonly int[] MoteKind = { 0, 1, 3, 0, 0, 2, 1, 3, 0, 1 };
+        private static readonly int[] MoteBaseXQ10 = { 0, 444, 591, 907, 456, 398, 224, 987, 369, 681 };
+        private static readonly int[] MoteBaseYQ10 = { 0, 622, 221, 804, 151, 597, 899, 610, 58, 922 };
+        private static readonly int[] MoteVxQ10 = { 8, -2, 4, 8, -2, 2, 8, -2, 4, 8 };
+        private static readonly int[] MoteVyQ10 = { -11, -5, -5, -11, -5, -5, -11, -5, -5, -11 };
+        private static readonly int[] MoteSize360 = { 15, 8, 10, 20, 6, 25, 15, 8, 10, 15 };
+        private static readonly int[] MotePeriodSec = { 20, 26, 32, 38, 44, 20, 26, 32, 38, 44 };
+        private static readonly int[] MoteMaxAlpha = { 56, 87, 87, 56, 87, 56, 87, 87, 56, 87 };
+        private static readonly int[] MoteColR = { 228, 110, 255, 120 };
+        private static readonly int[] MoteColG = { 242, 178, 224, 240 };
+        private static readonly int[] MoteColB = { 255, 255, 176, 225 };
+
+        public static bool IsMoteCrisp(int index)
+        {
+            int k = MoteKind[index % AuroraMoteCount];
+            return k == 0 || k == 3;
+        }
+
+        public static void ComputeMoteFrame(int index, int timeMs, int screenW, int screenH, bool dimmed, out MoteFrame frame)
+        {
+            frame = default(MoteFrame);
+            if (index < 0 || index >= AuroraMoteCount) return;
+
+            int periodMs = MotePeriodSec[index] * 1000;
+            int phaseMs = (MoteBaseXQ10[index] * 25000) >> 10;
+            int totalMs = timeMs + phaseMs;
+            int cycle = totalMs / periodMs;
+            int ageMs = totalMs % periodMs;
+            if (ageMs < 0) { ageMs += periodMs; cycle--; }
+
+            // sin^2(pi * age/period) = (1 - cos(2*pi * age/period)) / 2
+            int phaseQ16 = (ageMs * 8192) / periodMs << 3;
+            int fadeQ14 = (16384 - CosQ14(phaseQ16)) >> 1;
+            int dimScale = dimmed ? 97 : 256;
+            int alpha = (((MoteMaxAlpha[index] * fadeQ14) >> 14) * dimScale) >> 8;
+
+            int sz = (MoteSize360[index] * screenH) / 360;
+            if (sz < 4) sz = 4;
+
+            if (alpha <= 1)
+            {
+                frame.Alpha = 0;
+                frame.Size = sz;
+                return;
+            }
+
+            int oxQ10 = (MoteBaseXQ10[index] + cycle * 379) & 1023;
+            int oyQ10 = (MoteBaseYQ10[index] + cycle * 625) & 1023;
+            int pxQ10 = ((oxQ10 + ((MoteVxQ10[index] * ageMs) / 1000) + 1229) % 1106) - 41;
+            int pyQ10 = ((oyQ10 + ((MoteVyQ10[index] * ageMs) / 1000) + 1229) % 1106) - 41;
+
+            int kind = MoteKind[index];
+            frame.X = ((pxQ10 * screenW) >> 10) - (sz >> 1);
+            frame.Y = ((pyQ10 * screenH) >> 10) - (sz >> 1);
+            frame.Size = sz;
+            frame.R = MoteColR[kind];
+            frame.G = MoteColG[kind];
+            frame.B = MoteColB[kind];
+            frame.Alpha = alpha > 255 ? 255 : alpha;
         }
 
         public static double Halton(int index, int radix)

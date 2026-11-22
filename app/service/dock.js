@@ -160,7 +160,7 @@ Dock.prototype.installed = function () {
 };
 
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom', 'hidden'];   // where the volume bar sits (the dock's --volume-edge); hidden: the level changes, no bar
-var IDLE_MODES = ['off', 'clock', 'wallpaper', 'clean'];
+var IDLE_MODES = ['off', 'clock', 'wallpaper', 'clean', 'aurora', 'aurora-clean'];
 var IDLE_POTOFF_MINS = [0, 5, 10, 15];
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
 var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;

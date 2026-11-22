@@ -25,6 +25,7 @@ namespace Launcher.Native
         public const int EcoreFdRead = 1;
         public const int EvasLoadErrorNone = 0;
         public const int EvasImageScaleHintDynamic = 1;
+        public const int EvasImageScaleHintStatic = 2;
 
         // --- delegates (kept alive by their owners; the GC must not collect a callback in use) ---
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte TaskCb(IntPtr data);
@@ -70,6 +71,7 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_image_file_set(IntPtr img, string file, string key);
         [DllImport(Evas)] public static extern int evas_object_image_load_error_get(IntPtr img);
         [DllImport(Evas)] public static extern void evas_object_image_filled_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool filled);
+        [DllImport(Evas)] public static extern void evas_object_image_fill_set(IntPtr img, int x, int y, int w, int h);
         [DllImport(Evas)] public static extern void evas_object_image_border_set(IntPtr img, int l, int r, int t, int b);
         [DllImport(Evas)] public static extern void evas_object_image_border_center_fill_set(IntPtr img, int mode);
         /// <summary>Draws the nine-slice borders at this scale, so a corner made for a large tile fits a short row.</summary>

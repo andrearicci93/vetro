@@ -608,10 +608,18 @@ function fixture(options) {
         );
         assert.ok(!d.startScript().includes('--idle-mode'), 'off mode omits --idle-mode from startScript');
 
-        await assert.rejects(() => d.setIdleScreen({mode: 'aurora'}), /Invalid idle mode/);
+        await assert.rejects(() => d.setIdleScreen({mode: 'invalid'}), /Invalid idle mode/);
         await assert.rejects(() => d.setIdleScreen({mode: 'beacon'}), /Invalid idle mode/);
         await assert.rejects(() => d.setIdleScreen({autoDock: 'yes'}), /Invalid auto-dock/);
         await assert.rejects(() => d.setIdleScreen({pictureOffMin: 30}), /Invalid idle picture-off/);
+
+        await d.setIdleScreen({mode: 'aurora'});
+        assert.equal(d.readState().idleMode, 'aurora');
+        assert.ok(d.startScript().includes('--idle-mode aurora'), 'startScript carries aurora mode');
+        await d.setIdleScreen({mode: 'aurora-clean'});
+        assert.equal(d.readState().idleMode, 'aurora-clean');
+        assert.ok(d.startScript().includes('--idle-mode aurora-clean'), 'startScript carries aurora-clean mode');
+        await d.setIdleScreen({mode: 'off'});
 
         await d.setIdleScreen({mode: 'clock', autoDock: true, pictureOffMin: 5});
         assert.equal(d.readState().idleMode, 'clock');
@@ -658,7 +666,7 @@ function fixture(options) {
         d.refreshOr = origRefreshOr;
 
         const dashHtml = require('../service/dashboard.js')();
-        assert.ok(!dashHtml.includes('Minimal Beacon') && dashHtml.includes('data-dock-idle-mode') && dashHtml.includes('data-dock-idle-autodock') && dashHtml.includes('data-dock-idle-potoff') && dashHtml.includes('Empty TV screen') && dashHtml.includes('dockIdleSec') && dashHtml.includes('Pure Black + Clock (OLED)') && dashHtml.includes('Clean Gradient + Clock') && dashHtml.includes('Clean Gradient (No text)'), 'dashboard includes Empty TV screen section and updated backdrop mode labels without beacon');
+        assert.ok(!dashHtml.includes('Minimal Beacon') && dashHtml.includes('data-dock-idle-mode') && dashHtml.includes('data-dock-idle-autodock') && dashHtml.includes('data-dock-idle-potoff') && dashHtml.includes('Empty TV screen') && dashHtml.includes('dockIdleSec') && dashHtml.includes('Pure Black + Clock (OLED)') && dashHtml.includes('Midnight Lake + Clock') && dashHtml.includes('Midnight Lake (No text)') && dashHtml.includes('Aurora Silk + Clock') && dashHtml.includes('Aurora Silk (No text)'), 'dashboard includes Empty TV screen section and updated backdrop mode labels without beacon');
         console.log('PASS dock idleScreen: defaults, validation, startScript flags, showAtPowerOn guard, plugin route, dashboard');
     } finally {
         fs.rmSync(dir, {recursive: true, force: true});
