@@ -20,13 +20,15 @@ namespace Tuner.Tvs
         private const string ClientRoot = "/opt/usr/dotnet/Tizen.TV.Broadcast.TVService/";   // one folder per version: 1.1.12 on the Q80A
         private static readonly string[] FixedDirs =
         {
-            "/usr/apps/com.samsung.tv.gamebar/bin/",
             "/usr/apps/csapi-tv-tizenfx/shared/lib/",
             "/usr/share/dotnet.tizen/framework/",
+            // Last: Game Bar ships its own copies of the client and of Tizen.TV.Security (seen in the Q80A image), the only ones on
+            // an AU7105 (#306). Ahead of the firmware folders they would replace the copies the Q80A loads from csapi-tv-tizenfx.
+            "/usr/apps/com.samsung.tv.gamebar/bin/",
         };
         private static string[] _dirs;
 
-        /// <summary>Where assemblies are looked for: the version folders of the client (newest first), then the two firmware library folders.</summary>
+        /// <summary>Where assemblies are looked for: the version folders of the client (newest first), then the firmware library folders and Game Bar's.</summary>
         private static string[] Dirs
         {
             get
