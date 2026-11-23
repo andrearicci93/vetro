@@ -31,9 +31,13 @@ namespace Launcher.Ui
         private double _shownAt, _until;
         private int _fillLength, _iconLevel = -1;
 
+        private readonly VolumeEdge _edge;
+        private readonly int _screenW;
+
         public VolumePill(string assets, Action<string> log, int screenW, int screenH, VolumeEdge edge)
         {
             _assets = assets; _log = log; _p = VolumePlacement.For(edge, screenW, screenH);
+            _edge = edge; _screenW = screenW;
             _tick = Tick; _holdEnd = OnHoldEnd;
         }
 
@@ -93,7 +97,9 @@ namespace Launcher.Ui
                 Efl.elm_win_layer_set(_win, WindowLayer);
                 Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
                 Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
-                Efl.evas_object_move(_win, _p.WinX, _p.WinY);
+                // Move only the window; its contents retain their local coordinates and dimensions.
+                int edgeOffset = VolumeScreenProbe.HorizontalOffset(_edge, _screenW, _log);
+                Efl.evas_object_move(_win, _p.WinX + edgeOffset, _p.WinY);
                 Efl.evas_object_resize(_win, _p.WinW, _p.WinH);
                 Efl.evas_object_pass_events_set(_win, true);
                 IntPtr evas = Efl.evas_object_evas_get(_win);

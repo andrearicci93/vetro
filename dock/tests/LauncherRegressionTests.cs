@@ -180,6 +180,29 @@ namespace Launcher.Tests
                 finally { Directory.Delete(dir, true); }
             });
 
+            T.Run("volume screen: G9 compositor centring and safe fallbacks", () =>
+            {
+                string info = "Transform : transform count: 2\n" +
+                    "[ 0] [base_output_resolution ] [ 0, 0] [2.000, 1.000] [ 0]\n" +
+                    "[ 1] [alignment_for_base_outp] [ 960, 0] [0.500, 1.000] [ 0]";
+                foreach (var edge in new[] { VolumeEdge.Left, VolumeEdge.Right, VolumeEdge.Top, VolumeEdge.Bottom, VolumeEdge.Hidden })
+                {
+                    int shift = VolumeScreen.HorizontalOffset(edge, 1920, info);
+                    T.Eq(shift, edge == VolumeEdge.Left ? -960 : edge == VolumeEdge.Right ? 960 : 0, "edge correction");
+                    T.Eq(VolumeScreen.HorizontalOffset(edge, 1920, null), 0, "missing probe");
+                }
+                var left = VolumePlacement.For(VolumeEdge.Left, 1920, 1080);
+                var right = VolumePlacement.For(VolumeEdge.Right, 1920, 1080);
+                T.Eq(left.BodyX - 960 + 960, 96, "left final compositor margin");
+                T.Eq(3840 - (right.BodyX + 960 + 960 + right.BodyW), 96, "right final compositor margin");
+                foreach (string invalid in new[] { "", info.Replace("count: 2", "count: 3"),
+                    info.Replace("2.000", "1.000"), info.Replace("0.500", "1.000"),
+                    info.Replace("960, 0", "960, 20"), info.Replace("960, 0", "480, 0"),
+                    info.Replace("[ 0]\n", "[ 90]\n") })
+                    T.Eq(VolumeScreen.HorizontalOffset(VolumeEdge.Left, 1920, invalid), 0, "unknown transform unchanged");
+                T.Eq(VolumeScreen.HorizontalOffset(VolumeEdge.Left, 3840, info), 0, "explicit screen override unchanged");
+            });
+
             T.Run("volume pill: four edges, 96 px safe margin, parts inside the body, unknown edge falls back to left", () =>
             {
                 T.True(VolumePlacement.ParseEdge("right") == VolumeEdge.Right && VolumePlacement.ParseEdge(" TOP ") == VolumeEdge.Top, "edge names");
