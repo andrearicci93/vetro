@@ -65,5 +65,32 @@ const decode = cmd => { const m = /^echo (\S+) \| base64 -d \| sh$/.exec(cmd); r
         assert.equal(apps.find(r => r.appId === 'content-grab-service').disabled, false);
         assert.ok(!ran.some(s => /pkgcmd -D/.test(s) && /content-grab-service/.test(s)), 'never disabled');
     }
-    console.log('PASS loop fixes: a component disabled alone gets Samsung\'s file where a group uses one; content-grab-service out of tracking, switched on again');
+    // 4. #299: Samsung TV Plus keeps the channel service (live TV is one of its clients). Whichever way the switch goes, a channel
+    // service an earlier Vetro left off is switched on, then its unit's "do not start" file goes and the unit starts, in that order.
+    const tvplus = qs.find('tvplus');
+    assert.ok(!tvplus.ids.includes('com.samsung.tv.slive-daemon') && tvplus.services.indexOf('slive-provider-daemon') < 0);
+    for (const off of [true, false]) {
+        const apps = tvplus.ids.map(id => row(id, !off)).concat([row('com.samsung.tv.slive-daemon', true)]);
+        const ran = [];
+        const deps = {
+            invalidate() {},
+            inventory: () => Promise.resolve({apps: apps.map(r => Object.assign({}, r))}),
+            execute: (cmd) => {
+                const s = decode(cmd); ran.push(s);
+                const fm = /for id in (.+); do pkgcmd (-[DA])/.exec(s);
+                if (fm) { fm[1].split(' ').forEach(id => { const r = apps.find(a => a.appId === id); if (r) r.disabled = fm[2] === '-D'; });
+                    return Promise.resolve({exit_code: 0, stdout: fm[1].split(' ').map(id => id + ' 0').join('\n')}); }
+                if (/echo "FS\|\$u"/.test(s)) return Promise.resolve({exit_code: 0, stdout: 'FS|slive-provider-daemon\n'});
+                return Promise.resolve({exit_code: 0, stdout: ''});
+            }
+        };
+        const res = await qs.apply('tvplus', off, deps);
+        assert.deepEqual(res.formersEnabled, ['com.samsung.tv.slive-daemon'], 'off=' + off);
+        assert.deepEqual(res.formerServicesStarted, ['slive-provider-daemon'], 'off=' + off);
+        const flag = ran.findIndex(s => /pkgcmd -A/.test(s) && /com\.samsung\.tv\.slive-daemon/.test(s)), unit = ran.findIndex(s => /echo "FS\|\$u"/.test(s));
+        assert.ok(flag >= 0 && unit > flag, 'the flag first, then the unit');
+        assert.ok(!ran.some(s => /pkgcmd -D/.test(s) && /slive-daemon/.test(s)) && !ran.some(s => /touch [^\n]*slive-provider-daemon/.test(s)), 'never switched off');
+    }
+
+    console.log('PASS loop fixes: a component disabled alone gets Samsung\'s file where a group uses one; content-grab-service out of tracking, switched on again; TV Plus keeps the channel service (#299)');
 })().catch(e => { console.error(e); process.exit(1); });

@@ -44,14 +44,18 @@ var GROUPS = [
         // The units that launch farfieldvoice, ondevice-voice, voice-app (and voice-client on Tizen 9) when a voice remote is ready.
         markerUnits: ['com.samsung.tv.farfieldvoice.service', 'com.samsung.tv.ondevice-voice.service', 'org.tizen.voice-app.service',
             'org.tizen.voice-client.service']},
-    // Samsung TV Plus (free ad-supported channels): the app, its deep-link and OTA helpers, and the two services behind it.
-    // slive-provider-daemon and bms-service are started by systemd with Restart=always, so a disabled flag is not enough:
-    // Samsung's own units skip the start when a file exists in /opt/usr/share/systemd/system, which `services` lists.
+    // Samsung TV Plus (free ad-supported channels): the app, its deep-link and OTA helpers, and the streaming player behind it.
+    // bms-service is started by systemd with Restart=always, so a disabled flag is not enough: Samsung's own units skip the start
+    // when a file exists in /opt/usr/share/systemd/system, which `services` lists.
+    // slive-provider-daemon (com.samsung.tv.slive-daemon) is no longer a member: Samsung's live TV app is one of its clients
+    // (tv-viewer links libslive-provider, as do the channel info and channel indicator libraries, Q80A image), and with it stopped
+    // CH +/- stopped working on a 2024 The Frame (#299). It is a former member: switched on and started again where an earlier
+    // Vetro stopped it, whenever this switch is used, and by Restore the TV.
     // These packages are not system packages, so Components can also uninstall them (pkgcmd -u).
     {id: 'tvplus', label: 'Samsung TV Plus', section: 'memory',
-        description: 'The app, its helpers, the channel service and the streaming player with its ad beacons. Stops Samsung TV Plus and its background services, and it no longer starts at power-on. Frees about 25 MB.',
-        ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'com.samsung.tv.slive-daemon', 'org.tizen.bms-service'],
-        services: ['slive-provider-daemon', 'bms'],
+        description: 'The app, its helpers and the streaming player with its ad beacons. Stops Samsung TV Plus and its player, and it no longer starts at power-on. The channel service stays on: live TV needs it to change channels. Frees about 15 MB.',
+        ids: ['com.samsung.tv.tvplus', 'com.samsung.tv.tvPlusDeeplinker', 'w2VwCK465D.OTApp', 'org.tizen.bms-service'],
+        services: ['bms'], formerIds: ['com.samsung.tv.slive-daemon'], formerServices: ['slive-provider-daemon'],
         // Samsung's own "start TV Plus at power-on" setting (a vconf key in the Q80A firmware, idea from samshush): false while the
         // group is off; the value it had is saved and written back when the group is on again, or by Restore the TV.
         vconf: [{key: 'db/menu/autorun_tv_plus', type: 'bool', off: 'false'}]},
@@ -349,8 +353,28 @@ function formersOff(group, rows) {
 function allFormersOff(rows) {
     return GROUPS.reduce(function (all, g) { return all.concat(formersOff(g, rows).filter(function (id) { return all.indexOf(id) < 0; })); }, []);
 }
-// Best effort, after the group's own change: a failure is reported in the result, nothing is undone.
+// A former member's unit (formerServices) that an earlier Vetro kept from starting: its "do not start" file is taken away, the
+// name leaves the ledger, and the unit is started. Units without the file are left alone.
+function formerServicesCommand(units) {
+    units.forEach(function (u) { if (!SERVICE_RE.test(u)) throw new Error('Invalid service'); });
+    return wrap('for u in ' + units.join(' ') + '; do if [ -e ' + SERVICE_DIR + '$u ]; then rm -f ' + SERVICE_DIR + '$u; ' +
+        'systemctl reset-failed $u 2>/dev/null; systemctl start --no-block $u 2>/dev/null; echo "FS|$u"; fi; done\n' +
+        'if [ -f ' + MARKERS_LEDGER + ' ]; then grep -vx -e ' + units.join(' -e ') + ' ' + MARKERS_LEDGER + ' > ' + MARKERS_LEDGER + '.tmp; ' +
+        'mv -f ' + MARKERS_LEDGER + '.tmp ' + MARKERS_LEDGER + '; fi\ntrue');
+}
+// Best effort, after the group's own change: a failure is reported in the result, nothing is undone. The flags first, then the units.
 function enableFormers(result, deps) {
+    var group = find(result.id);
+    return enableFormerIds(result, deps).then(function (res) {
+        if (!group || !group.formerServices || !group.formerServices.length) return res;
+        return deps.execute(formerServicesCommand(group.formerServices), 20000).then(function (r) {
+            res.formerServicesStarted = String(r.stdout || '').split('\n').map(function (l) { return /^FS\|(.+)$/.exec(l.trim()); })
+                .filter(Boolean).map(function (m) { return m[1]; });
+            return res;
+        }, function () { res.formerServicesFailed = group.formerServices.slice(); return res; });
+    });
+}
+function enableFormerIds(result, deps) {
     var ids = formersOff(find(result.id), result.apps);
     if (!ids.length) return Promise.resolve(result);
     return deps.execute(command(ids, false), 30000).then(function (r) {
@@ -481,6 +505,6 @@ function apply(groupId, off, deps) {
 }
 
 module.exports = {GROUPS: GROUPS, ALLOWED_IDS: ALLOWED_IDS, find: find, state: state, command: command, formersOff: formersOff, allFormersOff: allFormersOff,
-    stopCommand: stopCommand, servicesCommand: servicesCommand, identityCommand: identityCommand, stillRunning: stillRunning,
+    stopCommand: stopCommand, servicesCommand: servicesCommand, formerServicesCommand: formerServicesCommand, identityCommand: identityCommand, stillRunning: stillRunning,
     MARKER_UNITS: MARKER_UNITS, componentMarkers: componentMarkers, markersReadCommand: markersReadCommand, parseMarkers: parseMarkers, markersCommand: markersCommand,
     readMarkers: readMarkers, MARKERS_CLEAR: MARKERS_CLEAR, LEFTOVERS_READ: LEFTOVERS_READ, parseLeftovers: parseLeftovers, MARKERS_LEDGER: MARKERS_LEDGER, vconfCommand: vconfCommand, vconfRestoreAll: vconfRestoreAll, clearFlagsCommand: clearFlagsCommand, restoreFlagsCommand: restoreFlagsCommand, exitCodes: exitCodes, running: running, apply: apply};

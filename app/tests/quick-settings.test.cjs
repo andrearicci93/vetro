@@ -132,13 +132,20 @@ function harness(opts){
 
 {const g=quick.find('tvplus');
  assert.equal(g.section,'memory');assert.ok(!g.microphone&&!g.confirm);
- assert.deepEqual(g.ids,['com.samsung.tv.tvplus','com.samsung.tv.tvPlusDeeplinker','w2VwCK465D.OTApp','com.samsung.tv.slive-daemon','org.tizen.bms-service']);
- assert.deepEqual(g.services,['slive-provider-daemon','bms']);
+ assert.deepEqual(g.ids,['com.samsung.tv.tvplus','com.samsung.tv.tvPlusDeeplinker','w2VwCK465D.OTApp','org.tizen.bms-service']);
+ assert.deepEqual(g.services,['bms']);
+ // #299: live TV is a client of the channel service, so it is a former member, switched on and started again
+ assert.deepEqual(g.formerIds,['com.samsung.tv.slive-daemon']);assert.deepEqual(g.formerServices,['slive-provider-daemon']);
+ assert.ok(quick.allFormersOff([{appId:'com.samsung.tv.slive-daemon',disabled:true}]).includes('com.samsung.tv.slive-daemon'),'Restore switches it on again where an earlier Vetro left it off');
+ const back=decode(quick.formerServicesCommand(g.formerServices));
+ assert.ok(back.includes('if [ -e /opt/usr/share/systemd/system/$u ]; then rm -f /opt/usr/share/systemd/system/$u; ')&&/systemctl start --no-block \$u/.test(back),'only a unit Vetro kept from starting is started');
+ assert.match(back,/grep -vx -e slive-provider-daemon \/home\/owner\/share\/vetro\/quick-markers/,'and it leaves the ledger');
+ assert.throws(()=>quick.formerServicesCommand(['x; reboot']),/Invalid service/);
  g.ids.forEach(id=>assert.ok(quick.ALLOWED_IDS.includes(id),id));
  const off=decode(quick.servicesCommand(g.services,true)),on=decode(quick.servicesCommand(g.services,false));
- assert.ok(off.includes('\ntouch /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms\n')&&/systemctl stop --no-block/.test(off));
+ assert.ok(off.includes('\ntouch /opt/usr/share/systemd/system/bms\n')&&/systemctl stop --no-block/.test(off));
  assert.match(off,/echo "\$m" >> \/home\/owner\/share\/vetro\/quick-markers/,'the files Vetro puts down are noted for Restore');
- assert.ok(on.startsWith('rm -f /opt/usr/share/systemd/system/slive-provider-daemon /opt/usr/share/systemd/system/bms')&&/systemctl start --no-block/.test(on));
+ assert.ok(on.startsWith('rm -f /opt/usr/share/systemd/system/bms')&&/systemctl start --no-block/.test(on));
  assert.throws(()=>quick.servicesCommand(['x; reboot'],true),/Invalid service/);}
 // Vision AI: the apps that answer the AI key (held Home, the AI button), shown only where they are; Samsung Home's Vision AI row,
 // live translation and the AI picture and sound settings stay out of it.
