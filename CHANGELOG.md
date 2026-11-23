@@ -8,6 +8,7 @@
 - **No more program started every 10 seconds.** Volume, mute and input were read by starting a small .NET program at each read, which costs memory and processor time on 2 GB TVs. Vetro now reads the TV's own settings for them in one short command (about 34 ms on a Q80A); the program is only the fallback for a TV where those settings cannot be read.
 - **Mute follows the remote's Mute key.** It was read from the audio library, which keeps saying "not muted" when the TV is muted with its own key; it now comes from the TV's own mute setting as well.
 - **DisplayPort** shows as a source on Samsung monitors (#215).
+- **Power and DisplayPort as keys to send**, for a Home Assistant rule or a Remapper shortcut ([#303](https://github.com/andrearicci93/vetro/pull/303) by [bmfurtado](https://github.com/bmfurtado)). Power is the remote's power key; on a monitor that toggles standby, so check the state before sending it again. DisplayPort asks the TV to switch to it the way the launcher's input tile does; it is for Samsung monitors, a TV has none.
 
 ### Quick settings
 
@@ -34,6 +35,13 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 - **Back no longer reaches the app under the launcher.** Back and Exit close the launcher, the Task manager and the osd 123 when the key comes up, not when it goes down: closed on the press, the launcher handed the rest of the key to the app below, and YouTube left the video it was playing (reported on an S95F in [#284](https://github.com/andrearicci93/vetro/issues/284) by tpreston1989, reproduced on a Q80A).
 - **The Task manager leaves Tizen 9's volume app and quick launch alone** ([#281](https://github.com/andrearicci93/vetro/pull/281)).
 - **HDMI names and pictures from Samsung's Connected Devices** ([#297](https://github.com/andrearicci93/vetro/issues/297)). Vetro read only the first of the two source lists Samsung Home keeps, which on newer TVs can be an old copy without the names you gave the inputs; it now reads both and uses the newer one. *HDMI source images* now shows the pictures Samsung keeps for the devices it recognises (consoles, boxes), which were refused before; Samsung's generic device-type icons are SVG files the launcher cannot draw, so those inputs keep Vetro's own icon.
+
+- **One YouTube tile with Fix TizenTube on** ([#298](https://github.com/andrearicci93/vetro/pull/298) by [chemicalsno](https://github.com/chemicalsno)). On TVs whose row does not come from Samsung's Home row, Samsung's YouTube was added next to the TizenTube tile, which already wears YouTube's icon. It stays in All apps. **Fix TizenTube also covers All apps and your own row** ([#306](https://github.com/andrearicci93/vetro/pull/306) by [adri0894-web](https://github.com/adri0894-web)): TizenTube added from there gets YouTube's icon and closes Samsung's YouTube first, as in Samsung's row.
+- **The Volume bar on the left or right edge of a Samsung ultrawide monitor** (Odyssey OLED G9) sits at the panel's edge, not at the edge of a 16:9 area in the middle ([#305](https://github.com/andrearicci93/vetro/pull/305) by [bmfurtado](https://github.com/bmfurtado)). The screen check runs beside the launcher, so no TV waits for it.
+
+### Live TV
+
+- **The tuner starts on a UE55AU7105 (2021, Tizen 6.0)**, where it stopped with a stack overflow before reading the channels ([#306](https://github.com/andrearicci93/vetro/pull/306) by [adri0894-web](https://github.com/adri0894-web)). Samsung's TV client is also looked for in Game Bar's folder, after the firmware's own folders.
 
 ### Updates
 
