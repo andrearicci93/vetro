@@ -125,7 +125,9 @@ var FW_GUARD = 'vetro-update-lock-guard';
 var FW_GUARD_FILES = {
     path: '[Unit]\nDescription=Vetro update lock: Samsung standalone update request\nDefaultDependencies=no\n\n' +
         '[Path]\nPathExists=' + STANDALONE_FLAG + '\nUnit=' + FW_GUARD + '.service\n',
-    service: '[Unit]\nDescription=Vetro update lock: remove the standalone update request\nDefaultDependencies=no\n\n' +
+    // No start limit: a request written again and again must not push the service into its default 5-in-10-s limit, which would fail
+    // the path unit and leave the guard dead until the next restart.
+    service: '[Unit]\nDescription=Vetro update lock: remove the standalone update request\nDefaultDependencies=no\nStartLimitIntervalSec=0\n\n' +
         '[Service]\nType=oneshot\nExecStart=/bin/rm -f ' + STANDALONE_FLAG + '\n'
 };
 // Which version of the lock a TV has had applied. A newer one (2: the guard and fw-update-init-download) is applied again once in the
@@ -635,14 +637,16 @@ Wins.prototype.firmware = function (on) {
         else self.save({firmware: false, firmwareBoot: null});
         return (on ? lock(before) : undo()).then(current).then(function (after) {
             var st = fwState(after, wantedMasks(self.load(), 'firmware'));
-            if (on && st.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
+            // Only what the lock needed before the guard (masks, Auto update, the EMP switch) makes it fail and roll back. A guard that did
+            // not start (not tried on every model yet) leaves the rest of the lock on, reads partial, and is tried again at the next restart.
+            var core = fwState(Object.assign({}, after, {fwGuard: null}), wantedMasks(self.load(), 'firmware'));
+            if (on && core.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
             if (!on && st.masked > 0) throw Error('The TV did not end the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' still masked)');
-            if (!on && st.guard === true) throw Error('The TV did not end the lock (the standalone update guard is still running)');
             // The values are back: forgotten, so a later Off or Restore never writes an old value over one the owner chose since.
             self.save(on ? {firmwareRev: FW_LOCK_REV} : {autoupdatePrevious: null, fwServicePrevious: null, firmwareRev: 0});
             // The DNS part follows the lock and never undoes it: a filter that cannot be changed is reported in dns.
             return self.firmwareDns(on).then(function (dns) {
-                return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate, hook: hookOn, dns: dns};
+                return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate, hook: hookOn, dns: dns, guard: st.guard};
             });
         }).catch(function (e) {
             // A lock that did not hold is not the owner's choice any more: the boot must not mask the units again.

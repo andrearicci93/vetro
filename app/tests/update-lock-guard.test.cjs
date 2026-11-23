@@ -50,6 +50,7 @@ const noWait = () => Promise.resolve();
   assert.ok(!qw.FWUNITS.some(u => /swu-standalone|bootmode-swu-standalone|system-rw-update|os-upgrade/.test(u)), 'the standalone and OS-upgrade boots are not masked');
   assert.match(qw.FW_GUARD_FILES.path, /^\[Unit\][\s\S]*DefaultDependencies=no[\s\S]*\[Path\]\nPathExists=\/mnt\/systemrw\/org\.tizen\.tv\.swu\/data\/tv\/STANDALONE\nUnit=vetro-update-lock-guard\.service\n$/);
   assert.match(qw.FW_GUARD_FILES.service, /DefaultDependencies=no[\s\S]*Type=oneshot\nExecStart=\/bin\/rm -f \/mnt\/systemrw\/org\.tizen\.tv\.swu\/data\/tv\/STANDALONE\n$/);
+  assert.match(qw.FW_GUARD_FILES.service, /\nStartLimitIntervalSec=0\n/, 'no start limit: a request written again and again must not kill the guard');
 
   // The read: the guard and the request file, both yes/no.
   assert.deepEqual([qw.parse('GD|active\nSF|0').fwGuard, qw.parse('GD|active\nSF|0').standaloneFlag], [true, false]);
@@ -92,10 +93,17 @@ const noWait = () => Promise.resolve();
   w = new qw.Wins(t.execute, {fs: store(), sleep: noWait, bootId: () => 'b5', dns: f});
   r = await w.apply('firmware', true); assert.equal(r.status, 'on'); assert.equal(r.dns, 'failed');
 
-  // A guard that does not start: the lock is not kept, and the previous state is put back.
-  t = tv({guardFails: true}); w = new qw.Wins(t.execute, {fs: store(), sleep: noWait, bootId: () => 'b6'});
+  // A guard that does not start (not tried on every model): the rest of the lock stays on and reads partial; the boot tries the guard again.
+  t = tv({guardFails: true}); io = store(); w = new qw.Wins(t.execute, {fs: io, sleep: noWait, bootId: () => 'b6'});
+  r = await w.apply('firmware', true);
+  assert.equal(r.status, 'partial'); assert.equal(r.guard, false);
+  assert.equal(t.s.masked['swu-core-tv.service'], true, 'the masks stay'); assert.equal(io.data.firmware, true, 'still the owner\u2019s choice');
+  assert.equal(t.s.autoupdate, 0);
+  // What 0.7.0 already needed still rolls back: masks that do not hold.
+  t = tv(); t.execute = (orig => async cmd => { const r = await orig(cmd); const sh = Buffer.from(cmd.split(' ')[1], 'base64').toString(); if (/systemctl mask --runtime swu-auto-upgrade/.test(sh)) t.s.masked = {}; return r; })(t.execute);
+  io = store(); w = new qw.Wins(t.execute, {fs: io, sleep: noWait, bootId: () => 'b7'});
   await assert.rejects(w.apply('firmware', true), /did not keep the lock/);
-  assert.equal(t.s.masked['swu-core-tv.service'], undefined, 'unmasked again');
+  assert.equal(io.data.firmware, false);
 
   // A TV that had the lock from 0.7.0: same boot, older pass record, no revision. The boot pass runs again once, masks the new
   // unit, starts the guard, adds the hosts once; the switch then reads "on" without being touched.
