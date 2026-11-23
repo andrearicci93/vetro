@@ -996,10 +996,6 @@ function runActions(actions, direct, dispatchGuard) {
         // #200: an app that is only an HbbTV link (SVT Play) opens the way Samsung's Home opens it; any other app by its id.
         if(a.type==='launch')command=hbbtvLink.launchCommand(a.appId);
         // A named key goes to the window with the focus; with Vetro TV Tuner on screen that is the tuner's, so its keys go to it (key-routing.js).
-        else if (a.type === 'key' && a.key === 'KEY_DISPLAYPORT') {
-            var helper = path.join(__dirname, '..', 'native', 'TvState.dll');
-            command = "/usr/bin/dotnet '" + helper.replace(/'/g, "'\\''") + "' select-displayport";
-        }
         else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&keyRouting.keyCommand(key,control.injectCommand(key));if(!command)throw new Error('unsupported native key: '+a.key);}
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
