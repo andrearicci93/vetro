@@ -51,9 +51,9 @@ function store(){let data=null;return {readFileSync(){if(data===null)throw Error
 const noWait=()=>Promise.resolve();
 (async()=>{
  // Reading
- assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,apps:{}});
- assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,apps:{}});
- assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,apps:{}},'what cannot be read stays unknown');
+ assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,standaloneOtn:null,apps:{}});
+ assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,standaloneOtn:null,apps:{}});
+ assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,standaloneOtn:null,apps:{}},'what cannot be read stays unknown');
  let t=tv(),io=store(),w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'boot-1'});
  let st=await w.read();assert.deepEqual([st.wins.firmware.status,st.wins.multiscreen.status,st.wins.ambient.status],['off','off','off']);assert.equal(st.wins.telemetry.status,'off');
 
@@ -229,7 +229,7 @@ const noWait=()=>Promise.resolve();
  w.remember('telemetry',true);w.busy=true;w.changing='firmware';
  assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
  // AirPlay (idea by zabique): the flag files keep the receiver down; partial while something still runs; boot stops the web app
- assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({apps:{},autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null,fwGuard:null,standaloneFlag:null}));
+ assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({apps:{},autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null,fwGuard:null,standaloneFlag:null,standaloneOtn:null}));
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'ap-1',skipAmbient:true});
  assert.equal((await w.read()).wins.airplay.status,'off');
  r=await w.apply('airplay',true);assert.equal(r.status,'on');assert.equal(JSON.parse(io.data).airplay,true);

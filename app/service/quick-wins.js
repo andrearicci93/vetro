@@ -94,6 +94,7 @@ var fs = require('fs');
 var DOT_RE = /\./g;
 var CR_END_RE = /\r$/;
 var VCONF_INT32_RE = /value = (-?\d+) \(Int32\)/;
+var VCONF_BOOL_RE = /value = (True|False) \(Boolean\)/;
 var DIGITS_RE = /^\d+$/;
 var UP_RE = /up/;
 var BTIME_RE = /^btime (\d+)$/m;
@@ -113,6 +114,12 @@ var FWUNITS = ['swu-auto-upgrade.timer', 'swu-auto-upgrade.path', 'swu-auto-upgr
     'fw-update-init-download.service'];
 // Present on 6.0 and later; missing keys stay untouched.
 var FWSERVICE = 'db/fw-update-service/service_onoff';
+// Whether the update stack may hand an update to its standalone boot (see the header). Read by CSystemControl::m_isStandaloneOTNEnabled
+// (6.0, 6.5 and 9): when an update does not fit in the TV's own storage, true skips the download in the normal session ("returning
+// nullptr location to skip downloading in normal mode") so the standalone boot fetches it; false refuses it ("NOT allowed, throwing").
+// False in the factory settings of all three, and on the Q80A; a persistent value, so it holds in the standalone boot too. The lock keeps
+// it false and puts back true only if it was true when the lock was turned on.
+var FW_STANDALONE_OTN = 'db/menu/support/softwareupdate/enable_standaloneOTN';
 // Files the update stacks look at before they download or install. All on tmpfs; removing them is harmless.
 var FWMARKERS = ['/tmp/fw_update_ready', '/tmp/.fw_download_ready', '/run/user/5001/.swu-auto-upgrade-launch'];
 // Samsung's standalone update request (see the header). Absent in a normal boot: init.wrapper would have started the update instead.
@@ -250,6 +257,7 @@ function stop(id) {
 var READ = [
     'echo "AU|$(vconftool get ' + AUTOUPDATE + ' 2>&1)"',
     'echo "FWS|$(vconftool get ' + FWSERVICE + ' 2>&1)"',
+    'echo "SO|$(vconftool get ' + FW_STANDALONE_OTN + ' 2>&1)"',
     'systemctl show -p Id -p LoadState -p ActiveState ' + READ_UNITS.join(' ') + ' 2>/dev/null | awk -F= \'/^Id=/{id=$2} /^LoadState=/{l=$2} /^ActiveState=/{print "LS|" id "|" l "|" $2}\'',
     'sqlite3 -readonly ' + PKGDB + ' "SELECT \'DA|\'||app_id||\'|\'||app_disable FROM package_app_info WHERE app_id IN (' + DELIVERY_APPS_SQL + ');" 2>/dev/null',
     '[ -e ' + MULTISCREEN_FLAG + ' ] && echo "MS|1" || echo "MS|0"',
@@ -271,11 +279,12 @@ var READ = [
 // Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
     var out = {autoupdate: null, fwService: null, fwUnits: {}, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
-        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, fwGuard: null, standaloneFlag: null, apps: {}};
+        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, fwGuard: null, standaloneFlag: null, standaloneOtn: null, apps: {}};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
         else if (f[0] === 'FWS') { var n = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (n) out.fwService = Number(n[1]); }
+        else if (f[0] === 'SO') { var b = VCONF_BOOL_RE.exec(f.slice(1).join('|')); if (b) out.standaloneOtn = b[1] === 'True'; }
         else if (f[0] === 'LS' && f[1]) out.fwUnits[f[1]] = {load: f[2] || '', active: f[3] || ''};
         else if (f[0] === 'MS') out.multiscreenFlag = f[1] === '1';
         else if (f[0] === 'MR') out.multiscreenRunning = f[1] === '1';
@@ -331,6 +340,8 @@ Wins.prototype.load = function () {
             telemetryBoot: typeof o.telemetryBoot === 'string' ? o.telemetryBoot : null,
             autoupdatePrevious: Number.isInteger(o.autoupdatePrevious) && o.autoupdatePrevious > 0 ? o.autoupdatePrevious : null,
             fwServicePrevious: Number.isInteger(o.fwServicePrevious) ? o.fwServicePrevious : null,
+            // true only when the lock found Samsung's standalone OTN switch on and turned it off: the only case Off puts it back.
+            fwStandaloneOtnPrevious: o.fwStandaloneOtnPrevious === true,
             firmwareBoot: typeof o.firmwareBoot === 'string' ? o.firmwareBoot : null,
             ambientBoot: typeof o.ambientBoot === 'string' ? o.ambientBoot : null,
             remotesupport: o.remotesupport === true, delivery: o.delivery === true, wifipresence: o.wifipresence === true,
@@ -342,7 +353,7 @@ Wins.prototype.load = function () {
             firmwareDnsWasOn: o.firmwareDnsWasOn === true,
             firmwareRev: Number.isInteger(o.firmwareRev) && o.firmwareRev > 0 ? o.firmwareRev : 0
         };
-    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, quickboot: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null,
+    } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, quickboot: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, fwStandaloneOtnPrevious: false, firmwareBoot: null, ambientBoot: null,
         remotesupport: false, delivery: false, wifipresence: false, deliveryApps: [], telemetryDnsWasOn: false, firmwareDnsAdded: [], firmwareDnsWasOn: false, firmwareRev: 0}; }
 };
 Wins.prototype.save = function (patch) {
@@ -435,14 +446,18 @@ function fwState(s, keep) {
     // No service_onoff key means this TV has no EMP/app-binary service: that half is then not required.
     var serviceOk = s.fwService === null || s.fwService === 0;
     // The standalone guard is part of the lock wherever the update units are (a read without its line, null, does not count against it).
-    var on = s.autoupdate === 0 && serviceOk && (known === 0 || (masked === known && s.fwGuard !== false));
+    // Samsung's standalone OTN switch (FW_STANDALONE_OTN) counts the same way: true while the lock is on is a gap.
+    var on = s.autoupdate === 0 && serviceOk && (known === 0 || (masked === known && s.fwGuard !== false && s.standaloneOtn !== true));
     // Off means no lock of Vetro's: no unit masked and no guard. Samsung's own Auto update value is then the owner's setting, whatever it is.
     // Firmware without any of the units falls back to the 0.5.0 meaning, the Auto update value alone.
     var off = known === 0 ? s.autoupdate !== 0 : masked === 0 && s.fwGuard !== true;
     return {status: s.autoupdate === null ? 'unknown' : on ? 'on' : off ? 'off' : 'partial',
         value: s.autoupdate, masked: masked, units: known, running: running,
-        guard: typeof s.fwGuard === 'boolean' ? s.fwGuard : null, standalone: typeof s.standaloneFlag === 'boolean' ? s.standaloneFlag : null};
+        guard: typeof s.fwGuard === 'boolean' ? s.fwGuard : null, standalone: typeof s.standaloneFlag === 'boolean' ? s.standaloneFlag : null,
+        standaloneOtn: typeof s.standaloneOtn === 'boolean' ? s.standaloneOtn : null};
 }
+// Turns Samsung's standalone OTN switch off where it is on (a TV without the key is left alone). Persistent, so also in the boot pass.
+var FW_STANDALONE_OTN_OFF = 'vconftool get ' + FW_STANDALONE_OTN + ' 2>/dev/null | grep -q "value = True" && vconftool set -f -t bool ' + FW_STANDALONE_OTN + ' 0 >/dev/null 2>&1\n';
 // The guard's two unit files written into /run (one base64 line each, no here-document), for a shell under `set +e`. The single
 // mask call after them reloads systemd, which is when the guard is read; fwGuardStart() then starts it.
 function fwGuardWrite() {
@@ -471,7 +486,7 @@ function fwMaskScript(stop) {
     return 'set +e\n' + fwGuardWrite() +
         'systemctl mask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1 || for u in ' + FWUNITS.join(' ') + '; do systemctl mask --runtime $u >/dev/null 2>&1; done\n' +
         (stop ? 'for u in ' + fwStoppable().join(' ') + '; do systemctl stop --no-block $u >/dev/null 2>&1; done\n' : '') +
-        fwGuardStart() +
+        fwGuardStart() + FW_STANDALONE_OTN_OFF +
         'rm -f ' + FWMARKERS.join(' ') + ' 2>/dev/null\n' +
         'true';
 }
@@ -538,6 +553,7 @@ function fwHookScript() {
         '    if (lock) {\n' +
         '        system("/usr/bin/systemctl stop --no-block ' + fwStoppable().join(' ') + ' >/dev/null 2>&1")\n' +
         '        system("/usr/bin/systemctl start --no-block ' + FW_GUARD + '.path >/dev/null 2>&1")\n' +
+        '        system("/usr/bin/vconftool get ' + FW_STANDALONE_OTN + ' 2>/dev/null | grep -q True && /usr/bin/vconftool set -f -t bool ' + FW_STANDALONE_OTN + ' 0 >/dev/null 2>&1")\n' +
         '        system("/bin/rm -f ' + FWMARKERS.concat([STANDALONE_FLAG]).join(' ') + ' >/dev/null 2>&1")\n' +
         '    }\n' +
         '    if (stops != "") system("/usr/bin/systemctl stop --no-block" stops " >/dev/null 2>&1")\n' +
@@ -614,6 +630,8 @@ Wins.prototype.firmware = function (on) {
             return mine.autoupdatePrevious ? setKey(AUTOUPDATE, mine.autoupdatePrevious) : null;
         }).then(function () {
             return mine.fwServicePrevious !== null ? setKey(FWSERVICE, mine.fwServicePrevious) : null;
+        }).then(function () {
+            return mine.fwStandaloneOtnPrevious ? self.execute(wrap('vconftool set -f -t bool ' + FW_STANDALONE_OTN + ' 1 >/dev/null 2>&1'), 6000) : null;
         });
     }
     return current().then(function (before) {
@@ -633,17 +651,18 @@ Wins.prototype.firmware = function (on) {
         }
         // A value of 0 found now may be an earlier lock's (a reboot whose re-apply failed): the value saved then is kept.
         if (on) self.save({firmware: true, autoupdatePrevious: before.autoupdate > 0 ? before.autoupdate : self.load().autoupdatePrevious,
-            fwServicePrevious: before.fwService > 0 ? before.fwService : self.load().fwServicePrevious});
+            fwServicePrevious: before.fwService > 0 ? before.fwService : self.load().fwServicePrevious,
+            fwStandaloneOtnPrevious: before.standaloneOtn === true || self.load().fwStandaloneOtnPrevious});
         else self.save({firmware: false, firmwareBoot: null});
         return (on ? lock(before) : undo()).then(current).then(function (after) {
             var st = fwState(after, wantedMasks(self.load(), 'firmware'));
             // Only what the lock needed before the guard (masks, Auto update, the EMP switch) makes it fail and roll back. A guard that did
             // not start (not tried on every model yet) leaves the rest of the lock on, reads partial, and is tried again at the next restart.
-            var core = fwState(Object.assign({}, after, {fwGuard: null}), wantedMasks(self.load(), 'firmware'));
+            var core = fwState(Object.assign({}, after, {fwGuard: null, standaloneOtn: null}), wantedMasks(self.load(), 'firmware'));
             if (on && core.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
             if (!on && st.masked > 0) throw Error('The TV did not end the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' still masked)');
             // The values are back: forgotten, so a later Off or Restore never writes an old value over one the owner chose since.
-            self.save(on ? {firmwareRev: FW_LOCK_REV} : {autoupdatePrevious: null, fwServicePrevious: null, firmwareRev: 0});
+            self.save(on ? {firmwareRev: FW_LOCK_REV} : {autoupdatePrevious: null, fwServicePrevious: null, fwStandaloneOtnPrevious: false, firmwareRev: 0});
             // The DNS part follows the lock and never undoes it: a filter that cannot be changed is reported in dns.
             return self.firmwareDns(on).then(function (dns) {
                 return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate, hook: hookOn, dns: dns, guard: st.guard};
@@ -959,4 +978,4 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
 module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, MASK_WINS: MASK_WINS, MASK_IDS: MASK_IDS, TELEMETRY_MASK: TELEMETRY_MASK,
     wantedMasks: wantedMasks, hookWanted: hookWanted, maskState: maskState, fwUnmaskScript: fwUnmaskScript, FILE: FILE, AUTOUPDATE: AUTOUPDATE, FWSERVICE: FWSERVICE, FWUNITS: FWUNITS, FWMARKERS: FWMARKERS, FW_HOOK: FW_HOOK, fwHookScript: fwHookScript, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
     AIRPLAY_FLAGS: AIRPLAY_FLAGS, AIRPLAY_UNITS: AIRPLAY_UNITS, currentBoot: currentBoot,
-    STANDALONE_FLAG: STANDALONE_FLAG, FW_GUARD: FW_GUARD, FW_GUARD_DIR: FW_GUARD_DIR, FW_GUARD_FILES: FW_GUARD_FILES, FW_DNS_HOSTS: FW_DNS_HOSTS, FW_LOCK_REV: FW_LOCK_REV};
+    STANDALONE_FLAG: STANDALONE_FLAG, FW_GUARD: FW_GUARD, FW_GUARD_DIR: FW_GUARD_DIR, FW_GUARD_FILES: FW_GUARD_FILES, FW_DNS_HOSTS: FW_DNS_HOSTS, FW_LOCK_REV: FW_LOCK_REV, FW_STANDALONE_OTN: FW_STANDALONE_OTN};

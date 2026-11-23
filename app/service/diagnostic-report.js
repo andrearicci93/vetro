@@ -213,7 +213,7 @@ var projectors = {
             legacyParts:Array.isArray(d.legacy)?Math.min(d.legacy.length,9):null,idleMinutes:count(d.idleMinutes,999)};},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient','telemetry','airplay','keyguides'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});
         var f=w.firmware||{};function count(v){return Number.isInteger(v)&&v>=0&&v<=99?v:null;}
-        Object.assign(out.firmware,{units:count(f.units),masked:count(f.masked)},flags(f,['guard','standalone','dnsBlocked']));return out;},
+        Object.assign(out.firmware,{units:count(f.units),masked:count(f.masked)},flags(f,['guard','standalone','standaloneOtn','dnsBlocked']));return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});out.screen=screenProgress(d);return out;},
     // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
     components:function(d){return {requested:true,complete:boolean(d.complete),packageCount:numeric(d.packageCount),totalUnknown:numeric(d.totalUnknown),truncated:boolean(d.truncated),

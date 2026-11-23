@@ -5,12 +5,13 @@
 const assert = require('assert').strict, qw = require('../service/quick-wins.js');
 
 function tv(start) {
-  const s = Object.assign({autoupdate: 1, fwsvc: 1, masked: {}, guard: false, guardFiles: 0, flag: false, guardFails: false, calls: []}, start);
+  const s = Object.assign({autoupdate: 1, fwsvc: 1, masked: {}, guard: false, guardFiles: 0, flag: false, guardFails: false, otn: false, calls: []}, start);
   const execute = async cmd => {
     const sh = Buffer.from(cmd.split(' ')[1], 'base64').toString(); s.calls.push(sh);
     if (sh.includes('echo "AU|')) return {exit_code: 0, stdout: 'AU|value = ' + s.autoupdate + ' (Int32)\nFWS|value = ' + s.fwsvc + ' (Int32)\n' +
       qw.FWUNITS.map(u => 'LS|' + u + '|' + (s.masked[u] ? 'masked' : 'loaded') + '|inactive').join('\n') +
-      '\nQB|0\nGD|' + (s.guard ? 'active' : 'inactive') + '\nSF|' + (s.flag ? 1 : 0) + '\n'};
+      '\nQB|0\nGD|' + (s.guard ? 'active' : 'inactive') + '\nSF|' + (s.flag ? 1 : 0) + '\n' +
+      (s.otn === null ? 'SO|Error: no such key\n' : 'SO|' + qw.FW_STANDALONE_OTN + ', value = ' + (s.otn ? 'True' : 'False') + ' (Boolean)\n')};
     if (/systemctl mask --runtime swu-auto-upgrade\.timer/.test(sh)) {
       // The guard's files come before the one mask call (its reload reads them), the start and the removal after it.
       const write = sh.indexOf('base64 -d > ' + qw.FW_GUARD_DIR + '/' + qw.FW_GUARD + '.path'), mask = sh.indexOf('systemctl mask --runtime');
@@ -20,6 +21,7 @@ function tv(start) {
       for (const u of qw.FWUNITS) s.masked[u] = true;
       if (!s.guardFails) s.guard = true;
       if (sh.includes('rm -f ' + qw.STANDALONE_FLAG)) s.flag = false;
+      if (s.otn === true && sh.includes('grep -q "value = True" && vconftool set -f -t bool ' + qw.FW_STANDALONE_OTN + ' 0')) s.otn = false;
       for (const m of sh.matchAll(/vconftool set -f -t int (\S+) (-?\d+)/g)) { if (m[1] === qw.FWSERVICE) s.fwsvc = +m[2]; else s.autoupdate = +m[2]; }
       s.maskRuns = (s.maskRuns || 0) + 1;
       return {exit_code: 0, stdout: ''};
@@ -29,6 +31,7 @@ function tv(start) {
       assert.ok(sh.includes('rm -f ' + qw.FW_GUARD_DIR + '/' + qw.FW_GUARD + '.path ' + qw.FW_GUARD_DIR + '/' + qw.FW_GUARD + '.service'));
       s.masked = {}; s.guard = false; return {exit_code: 0, stdout: ''};
     }
+    if (sh.startsWith('vconftool set -f -t bool ' + qw.FW_STANDALONE_OTN + ' 1')) { s.otn = true; s.otnRestores = (s.otnRestores || 0) + 1; return {exit_code: 0, stdout: ''}; }
     const set = /^vconftool set -f -t int (\S+) (-?\d+)/.exec(sh);
     if (set) { if (set[1] === qw.FWSERVICE) s.fwsvc = +set[2]; else s.autoupdate = +set[2]; }
     if (sh.includes('sha256sum')) return {exit_code: 0, stdout: 'vetro-hook: installed\n'};
@@ -104,6 +107,21 @@ const noWait = () => Promise.resolve();
   io = store(); w = new qw.Wins(t.execute, {fs: io, sleep: noWait, bootId: () => 'b7'});
   await assert.rejects(w.apply('firmware', true), /did not keep the lock/);
   assert.equal(io.data.firmware, false);
+
+  // Samsung's standalone OTN switch: on -> off with the lock (and remembered), on again only when the lock found it on; a TV without
+  // the key is left alone; a switch Samsung turns on again while the lock is on reads partial and is turned off by the boot pass.
+  t = tv({otn: true}); io = store(); w = new qw.Wins(t.execute, {fs: io, sleep: noWait, bootId: () => 'o1'});
+  r = await w.apply('firmware', true); assert.equal(r.status, 'on'); assert.equal(t.s.otn, false); assert.equal(io.data.fwStandaloneOtnPrevious, true);
+  assert.equal((await w.read()).wins.firmware.standaloneOtn, false);
+  t.s.otn = true; assert.equal((await w.read()).wins.firmware.status, 'partial', 'switched on again by Samsung');
+  w = new qw.Wins(t.execute, {fs: io, sleep: noWait, bootId: () => 'o2'}); await w.boot(null); assert.equal(t.s.otn, false, 'the boot pass turns it off again');
+  r = await w.apply('firmware', false); assert.equal(r.status, 'off'); assert.equal(t.s.otn, true, 'put back: it was on before the lock');
+  assert.equal(io.data.fwStandaloneOtnPrevious, false);
+  t = tv({otn: false}); io = store(); w = new qw.Wins(t.execute, {fs: io, sleep: noWait, bootId: () => 'o3'});
+  await w.apply('firmware', true); await w.apply('firmware', false); assert.equal(t.s.otn, false); assert.equal(t.s.otnRestores || 0, 0, 'never turned on by Vetro when it was off');
+  t = tv({otn: null}); w = new qw.Wins(t.execute, {fs: store(), sleep: noWait, bootId: () => 'o4'});
+  r = await w.apply('firmware', true); assert.equal(r.status, 'on', 'a TV without the key'); assert.equal((await w.read()).wins.firmware.standaloneOtn, null);
+  assert.ok(qw.fwHookScript().includes('/usr/bin/vconftool set -f -t bool ' + qw.FW_STANDALONE_OTN + ' 0'), 'the hook turns it off at ~10 s too');
 
   // A TV that had the lock from 0.7.0: same boot, older pass record, no revision. The boot pass runs again once, masks the new
   // unit, starts the guard, adds the hosts once; the switch then reads "on" without being touched.
