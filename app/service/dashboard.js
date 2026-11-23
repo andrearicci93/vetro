@@ -457,7 +457,7 @@ ${tunerPage.css}</style></head><body>
 <main class="main"><div class="page"><header class="page-head"><div><h1 id="pageHeading" tabindex="-1"><span id="pageTitle">Quick settings</span><span id="pageTag" class="state-chip" hidden>Experimental · some parts may not work on your TV</span></h1><p id="pageSubtitle">Privacy, background services and maintenance.</p><details id="shardNotice" class="shard-notice" data-plugin-warning hidden><summary>Full notice</summary><p id="shardNoticeText"></p></details></div><div class="actions"><span id="shardLinks" class="shard-links" hidden><a href="https://github.com/andrearicci93/vetro-plugins" target="_blank" rel="noopener noreferrer">Repository ↗</a><a href="https://github.com/andrearicci93/vetro/blob/main/app/docs/plugins.md" target="_blank" rel="noopener noreferrer">Guide ↗</a></span><span id="sampleStatus" class="live" hidden>Live updates off</span><button id="liveToggle" hidden>Start live · 2 min</button></div></header>
 <div id="debloatModes" class="segmented" role="group" aria-label="Apps and processes views" hidden><button data-mode="apps" aria-pressed="true">Apps</button><button data-mode="processes" aria-pressed="false">Processes</button><button data-mode="startup" aria-pressed="false">Startup</button></div>
 <section id="quick"><div id="factoryTestBanner" class="inline-confirm" role="status" hidden></div><div id="quickTabs" class="tabs" role="tablist" aria-label="Quick settings"><button type="button" role="tab" id="qtab-general" data-quick-tab="general" aria-controls="quickPanel-general" aria-selected="true" tabindex="0">General</button><button type="button" role="tab" id="qtab-privacy" data-quick-tab="privacy" aria-controls="quickPanel-privacy" aria-selected="false" tabindex="-1">Privacy and ads</button><button type="button" role="tab" id="qtab-voice" data-quick-tab="voice" aria-controls="quickPanel-voice" aria-selected="false" tabindex="-1">Voice</button><button type="button" role="tab" id="qtab-memory" data-quick-tab="memory" aria-controls="quickPanel-memory" aria-selected="false" tabindex="-1">Disable</button><button type="button" role="tab" id="qtab-uninstall" data-quick-tab="uninstall" aria-controls="quickPanel-uninstall" aria-selected="false" tabindex="-1">Uninstall</button><button type="button" role="tab" id="qtab-experimental" data-quick-tab="experimental" aria-controls="quickPanel-experimental" aria-selected="false" tabindex="-1">Experimental</button><button type="button" role="tab" id="qtab-developer" data-quick-tab="developer" aria-controls="quickPanel-developer" aria-selected="false" tabindex="-1">Developer settings</button></div>
-<div id="quickPanel-general" class="stack" role="tabpanel" aria-labelledby="qtab-general"><div class="panel"><h2 class="section-title">${sectionIcon('update')}Software update</h2><p id="updateVersion" class="notice">Reading…</p><p class="notice">Signed updates from GitHub. Vetro restores the previous version if an update fails to start.</p><div class="row"><button id="checkUpdate" disabled>Check for update</button><button id="applyUpdate" class="primary" hidden>Update</button><button id="rollbackUpdate" hidden>Go back to the previous version</button></div><p id="updateStatus" class="notice" role="status" aria-live="polite"></p></div><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 class="section-title" id="quickStorageTitle">${sectionIcon('storage')}Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group general-wide" aria-labelledby="quickControlTitle"><h2 class="section-title" id="quickControlTitle">${sectionIcon('firmware')}Essential settings</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div><div id="quickSdb"></div></section><section class="quick-group general-wide" aria-labelledby="quickRestoreTitle"><h2 class="section-title" id="quickRestoreTitle">${sectionIcon('restore')}Restore the TV</h2><div id="quickRestore"></div></section><section class="quick-group general-wide" aria-labelledby="quickRemoveTitle"><h2 class="section-title" id="quickRemoveTitle">${sectionIcon('remove')}Remove Vetro</h2><div id="quickRemove"></div></section></div>
+<div id="quickPanel-general" class="stack" role="tabpanel" aria-labelledby="qtab-general"><div class="panel"><h2 class="section-title">${sectionIcon('update')}Software update</h2><p id="updateVersion" class="notice">Reading…</p><p class="notice">Signed updates from GitHub. Vetro restores the previous version if an update fails to start.</p><div class="row"><button id="checkUpdate" disabled>Check for update</button><button id="applyUpdate" class="primary" hidden>Update</button><button id="rollbackUpdate" hidden>Go back to the previous version</button></div><p id="updateStatus" class="notice" role="status" aria-live="polite"></p></div><section class="quick-group" aria-labelledby="quickStorageTitle"><h2 class="section-title" id="quickStorageTitle">${sectionIcon('storage')}Storage</h2><div id="quickStorage"><p class="section-note">Reading the TV…</p></div></section><section class="quick-group general-wide" aria-labelledby="quickControlTitle"><h2 class="section-title" id="quickControlTitle">${sectionIcon('firmware')}Essential settings</h2><div id="quickControl"><p class="section-note">Reading the TV…</p></div><div id="quickSdb"></div></section><section class="quick-group general-wide" aria-labelledby="quickBackupTitle"><h2 class="section-title" id="quickBackupTitle">${sectionIcon('storage')}Settings file</h2><div id="quickBackup"></div></section><section class="quick-group general-wide" aria-labelledby="quickRestoreTitle"><h2 class="section-title" id="quickRestoreTitle">${sectionIcon('restore')}Restore the TV</h2><div id="quickRestore"></div></section><section class="quick-group general-wide" aria-labelledby="quickRemoveTitle"><h2 class="section-title" id="quickRemoveTitle">${sectionIcon('remove')}Remove Vetro</h2><div id="quickRemove"></div></section></div>
 <div id="quickPanel-privacy" class="stack" role="tabpanel" aria-labelledby="qtab-privacy" hidden><section class="quick-group" aria-labelledby="quickTrackingTitle"><h2 class="section-title" id="quickTrackingTitle">${sectionIcon('privacy')}Advertising and tracking</h2><div id="quickTracking"></div></section></div>
 <div id="quickPanel-voice" class="stack" role="tabpanel" aria-labelledby="qtab-voice" hidden><section class="quick-group" aria-labelledby="quickVoiceTitle"><h2 class="section-title" id="quickVoiceTitle">${sectionIcon('voice')}Voice assistants</h2><p class="quick-callout">Disabling one also turns off the remote’s microphone button and voice control.</p><div id="quickVoice"></div></section></div>
 <div id="quickPanel-memory" class="stack" role="tabpanel" aria-labelledby="qtab-memory" hidden><section class="quick-group" aria-labelledby="quickMemoryTitle"><h2 class="section-title" id="quickMemoryTitle">${sectionIcon('disable')}Disable what you don’t use</h2><p class="section-note">Each switch stops something that starts by itself.</p><div id="quickMemory"><p class="section-note">Reading the TV…</p></div></section><section id="quickAppsGroup" class="quick-group" aria-labelledby="quickAppsTitle" hidden><h2 class="section-title" id="quickAppsTitle">${sectionIcon('disable')}Apps you don’t use</h2><p class="section-note">A disabled app cannot start, from its tile or its button on the remote.</p>${quickPair('memory')}<div id="quickApps"></div></section></div>
@@ -1048,6 +1048,7 @@ function loadKeep(){quickData.keepError=null;return api('/keep-removed').then(fu
 function renderQuick(){
  if(!$('quickTracking'))return;
  renderRestore();
+ renderBackup();
  var d=quickData.dns;
  var dnsOn=!!(d&&d.enabled),dnsNoDomains=!!d&&!d.domains.length;
  var dns=quickItem('dns','Enable DNS blocking','Blocks the saved ad and tracking domains. DNS servers stay unchanged.',
@@ -1227,6 +1228,7 @@ function clearLeftovers(){
 $('quick').onchange=function(e){var x=e.target,ds=x.dataset||{};
  if(ds.pairingEnabled!=null){if(pairingBusy)return;pairingConfirm=x.checked?'on':'off';pairingStep=null;pairingMsg='';x.checked=!x.checked;renderPairingMode();return}
  if(ds.sdbAccess!=null){if(sdbBusy)return;if(x.checked){x.checked=false;sdbConfirm=true;renderSdbAccess();return}return setSdbAccess(false);}
+ if(ds.backupFile!=null){var bf=x.files&&x.files[0];x.value='';if(bf)loadBackupFile(bf);return}
  if(ds.quickToggle!=null){var g=quickGroups.filter(function(y){return y.id===ds.quickToggle})[0];if(x.checked&&g&&(g.microphone||g.confirm)){x.checked=false;quickConfirm=g.id;renderQuick();var c=document.querySelector('[data-quick-confirm]');if(c)c.focus();return}return applyQuick(ds.quickToggle,x.checked);}
  if(ds.hbbtvDisable!=null)return setHbbtv(!x.checked);
  if(ds.winSwitch!=null)return setWin(ds.winSwitch,x.checked);
@@ -1266,6 +1268,10 @@ $('quick').onclick=function(e){
  if(ds.eraseAsk!=null){restoreView.eraseConfirm=true;renderRestore();var ec=document.querySelector('[data-erase-confirm]');if(ec)ec.focus();return}
  if(ds.eraseCancel!=null){restoreView.eraseConfirm=false;renderRestore();return}
  if(ds.eraseConfirm!=null)return eraseVetroData();
+ if(ds.backupSave!=null)return saveBackup();
+ if(ds.backupAsk!=null){backupView.confirm=true;renderBackup();var bc=document.querySelector('[data-backup-confirm]');if(bc)bc.focus();return}
+ if(ds.backupCancel!=null){backupView.confirm=false;renderBackup();var ba=document.querySelector('[data-backup-ask]');if(ba)ba.focus();return}
+ if(ds.backupConfirm!=null)return runBackup();
  if(ds.appsRetry!=null)return loadApps(true);
 };
 
@@ -1378,6 +1384,71 @@ function eraseVetroData(){
  return runUiOperation('restore','Remove Vetro’s saved data','TV',null,function(mark){return api('/restore',{action:'erase'}).then(function(d){
   restoreView.erased=d;var message='Vetro’s saved data was removed.';mark(message,'Removed');return {resultLabel:'Removed',message:message};
  })}).finally(function(){quickBusy=false;renderRestore()});
+}
+// --- Save settings / Load settings (settings-backup.js): the service reads the file and says what would change; the page then
+// makes those requests itself, one at a time, the same ones its own switches make. Nothing changes until Apply is confirmed. ---
+var backupView={plan:null,name:'',error:null,note:'',confirm:false,result:null,busy:false};
+var BACKUP_LABELS={launcher:'Launcher',tuner:'Vetro TV Tuner',remapper:'Remapper',essentials:'Essential settings',performance:'Extra performance mode',keepRemoved:'Keep removed apps removed',quickSettings:'Quick settings',dns:'DNS blocking',mqtt:'MQTT',shards:'Shards'};
+function backupNames(list){return list.map(function(n){return BACKUP_LABELS[n]||n}).join(', ')}
+function renderBackup(){
+ if(!$('quickBackup'))return;
+ var v=backupView,p=v.plan,busy=v.busy||quickBusy,n=p?p.steps.length:0;
+ var html='<p class="section-note">Saves your Vetro choices to a file, to load them again after a firmware update, a reset or on another TV. It has your MQTT server and user name, Remapper rules and blocked domains, never passwords or pairing: keep it private.</p>'
+  +'<div class="quick-actions"><button data-backup-save '+(busy?'disabled':'')+'>Save settings</button></div><label class="file-pick">Load settings (.json) <input type="file" accept=".json,application/json" data-backup-file'+(busy?' disabled':'')+'></label>';
+ if(v.note)html+='<p class="section-note" role="status">'+esc(v.note)+'</p>';
+ if(v.error)html+='<p class="section-note" role="alert">'+esc(v.error)+'</p>';
+ if(p){
+  html+='<h4>'+esc(v.name||'Settings file')+(p.appVersion?' · Vetro '+esc(p.appVersion):'')+(p.savedAt?' · '+esc(p.savedAt.slice(0,10)):'')+'</h4>';
+  if(n)html+='<ul class="member-list">'+p.steps.map(function(s){return '<li><span><strong>'+esc(s.label)+'</strong><br><span class="muted">'+esc(BACKUP_LABELS[s.section]||s.section)+'</span></span>'+chip(s.confirm?'Switches apps off':'Will change','partial')+'</li>'}).join('')+'</ul>';
+  else html+='<p class="section-note">Nothing to change: this TV already has these settings'+(p.blocked.length||p.skipped.length?', apart from what is listed below':'')+'.</p>';
+  var other=p.blocked.map(function(b){return [b,'Needs root']}).concat(p.skipped.map(function(b){return [b,'Not loaded']}));
+  if(other.length)html+='<details'+(n?'':' open')+'><summary>'+other.length+' item'+(other.length===1?'':'s')+' not loaded</summary><ul class="member-list">'+other.map(function(o){return '<li><span><strong>'+esc(o[0].label)+'</strong><br><span class="muted">'+esc(o[0].reason)+'</span></span>'+chip(o[1],'partial')+'</li>'}).join('')+'</ul></details>';
+  if(p.dropped.length)html+='<p class="section-note">Not readable in the file: '+esc(backupNames(p.dropped))+'.</p>';
+  if(p.notRead.length)html+='<p class="section-note">Not in the file (the TV it came from could not read them): '+esc(backupNames(p.notRead))+'.</p>';
+  var off=p.steps.filter(function(s){return s.confirm}).length;
+  if(v.confirm&&n)html+='<div class="inline-confirm" role="group" aria-label="Confirm loading the settings"><p><strong>Apply '+n+' change'+(n===1?'':'s')+'?</strong> Vetro makes them one at a time and continues if one fails.'+(off?' <strong>This switches off '+off+' Quick settings group'+(off===1?'':'s')+' on this TV.</strong>':'')+'</p><div class="row"><button class="primary" data-backup-confirm>Apply</button><button data-backup-cancel>Cancel</button></div></div>';
+  else if(n)html+='<div class="quick-actions"><button class="primary" data-backup-ask '+(busy?'disabled':'')+'>Apply '+n+' change'+(n===1?'':'s')+'…</button></div>';
+ }
+ var r=v.result;
+ if(r&&r.length)html+='<h4>Last load</h4><ul class="member-list">'+r.map(function(s){return '<li><span><strong>'+esc(s.label)+'</strong><br><span class="muted">'+esc(s.message)+'</span></span>'+chip(s.ok?'Done':'Failed',s.ok?'on':'partial')+'</li>'}).join('')+'</ul>';
+ replaceControls($('quickBackup'),html,['data-backup-save','data-backup-file','data-backup-ask','data-backup-confirm','data-backup-cancel']);
+}
+function saveBackup(){
+ if(backupView.busy)return;backupView.busy=true;backupView.error=null;backupView.note='Reading the settings…';renderBackup();
+ return api('/settings-file').then(function(d){
+  if(d.format!=='vetro-settings'||!d.sections)throw Error('Unexpected answer from the TV.');
+  var url=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)+'\\n'],{type:'application/json'})),a=document.createElement('a');
+  a.href=url;a.download='vetro-settings-'+String(d.savedAt||'').slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},60000);
+  var missing=Object.keys(d.notRead||{}),root=missing.filter(function(k){return d.notRead[k]==='needs-root'});
+  backupView.note='Settings saved.'+(missing.length?' Not in the file: '+backupNames(missing)+(root.length===missing.length?' (they need Root access).':'.'):'')+' Nothing was uploaded.';
+ }).catch(function(e){backupView.note='';backupView.error='Not saved: '+e.message}).finally(function(){backupView.busy=false;renderBackup()});
+}
+function loadBackupFile(f){
+ if(backupView.busy)return;backupView.plan=null;backupView.result=null;backupView.confirm=false;backupView.note='';backupView.error=null;backupView.name=f.name||'';
+ if(f.size>262144){backupView.error=f.name+' is larger than 256 KB, so it is not a Vetro settings file.';return renderBackup()}
+ var rd=new FileReader();
+ rd.onerror=function(){backupView.error='Could not read '+f.name+'.';renderBackup()};
+ rd.onload=function(){var file;try{file=JSON.parse(String(rd.result))}catch(x){backupView.error=f.name+' is not a Vetro settings file.';return renderBackup()}
+  backupView.busy=true;backupView.note='Comparing the file with this TV…';renderBackup();
+  api('/settings-file/plan',{file:file}).then(function(p){if(!p||!Array.isArray(p.steps))throw Error('Unexpected answer from the TV.');backupView.plan=p;backupView.note=''})
+   .catch(function(e){backupView.note='';backupView.error=e.message}).finally(function(){backupView.busy=false;renderBackup()});
+ };
+ rd.readAsText(f);
+}
+function runBackup(){
+ var p=backupView.plan;if(!p||backupView.busy)return;
+ if(quickBusy||winsBusy||keepBusy||uiOperationBusy.restore){say('Wait for the current action to finish.');return}
+ backupView.confirm=false;backupView.busy=true;backupView.result=[];renderBackup();
+ return runUiOperation('backup','Load settings','TV',null,function(mark){
+  return p.steps.reduce(function(chain,s){return chain.then(function(){
+   return api(s.path,s.body).then(function(){backupView.result.push({label:s.label,ok:true,message:'Done.'})},function(e){backupView.result.push({label:s.label,ok:false,message:e.message})}).then(renderBackup);
+  })},Promise.resolve()).then(function(){
+   var bad=backupView.result.filter(function(s){return !s.ok}).length,done=backupView.result.length-bad;
+   var message=done+' change'+(done===1?'':'s')+' made'+(bad?', '+bad+' failed':'')+'.';
+   mark(message,'Checked on the TV');backupView.plan=null;
+   return {state:bad?'warning':'success',resultLabel:bad?'Partly loaded':'Loaded',message:message};
+  });
+ }).finally(function(){backupView.busy=false;renderBackup();loadQuick(true);[loadDock,loadRules,loadMqtt,loadPerf,function(){return loadPlugins(true)}].forEach(function(f){try{Promise.resolve(f()).catch(function(){})}catch(e){}})});
 }
 // --- Launcher: a minimal launcher for the Home key. The service builds its app list from Samsung's Home row. ---
 var dockData=null,dockError=null,dockBusy=false,dockConfirm=false,dockTab='vetro',customConfirm=false,customChoice=null,customChosen='';

@@ -116,7 +116,8 @@ var keyGuides=(function(){
         apply:function(on){
             try{atomicFile.write(fs,FILE,JSON.stringify({on:on===true}));}catch(e){return Promise.reject(Error('The setting could not be saved: '+e.message));}
             return run(on?1:0).then(status);},
-        boot:function(){return chosen()?run(1):Promise.resolve(null);}
+        boot:function(){return chosen()?run(1):Promise.resolve(null);},
+        chosen:chosen
     };
 })();
 // Apps removed through Vetro stay removed (keep-removed.js; idea and mechanism by zabique, github.com/zabique/vetro).
@@ -296,6 +297,39 @@ function serveDashboard(req, res) {
     out['content-encoding'] = 'gzip';
     res.writeHead(200, out);
     res.end(dashboardCache.gzip);
+}
+
+// Save settings / Load settings (settings-backup.js, issue #307). GET /settings-file gives the file; POST /settings-file/plan
+// {file} says what loading it would change on this TV, as the requests the dashboard then makes itself, one at a time.
+// Reads only: files Vetro keeps, and with the root agent the Quick settings states, domain blocking, MultiScreen and HbbTV.
+var settingsBackup = require('./settings-backup.js');
+function settingsNow(forPlan) {
+    function safe(fn) { try { return fn(); } catch (e) { return null; } }
+    var root = safe(function () { return platform.status().agent.connected === true; }) === true;
+    var src = {appVersion: buildInfo.version, now: new Date().toISOString(), root: root,
+        dock: safe(function () { return dock.readState(); }), tuner: safe(function () { return tuner.readState(); }),
+        rules: remapStore.rules, wins: safe(function () { return wins.load(); }), keyGuides: safe(function () { return keyGuides.chosen(); }),
+        perf: safe(function () { return perfMode.load(); }), keepRemoved: safe(function () { return keepRemoved.state().enabled; }),
+        mqtt: safe(function () { var m = require('./mqtt-bridge.js'); return m.publicConfig(m.readConfig()); }),
+        shards: safe(function () { return {developer: plugins._readState().developer === true, list: plugins.list()}; })};
+    var quick = {}, hbbtvValue = null;
+    var reads = !root ? Promise.resolve() : inventory(false).then(function (inv) {
+        return quickSettings.readMarkers(agentExecute).then(function (markers) {
+            quickSettings.GROUPS.forEach(function (g) { try { quick[g.id] = quickSettings.state(g, inv.apps, markers).status; } catch (e) { quick[g.id] = 'unknown'; } });
+            src.quickOff = Object.keys(quick).filter(function (id) { return quick[id] === 'off'; });
+        });
+    }).catch(function () { quick = {}; })
+        .then(function () { return dnsFilter.status().then(function (d) { src.dns = {enabled: d.enabled === true, domains: Array.isArray(d.domains) ? d.domains : []}; }, function () {}); })
+        .then(function () { return wins.read().then(function (d) { var m = d && d.wins && d.wins.multiscreen; src.multiscreen = m && m.status === 'on' ? true : m && m.status === 'off' ? false : null; }, function () {}); })
+        .then(function () { if (forPlan) return hbbtv.read().then(function (d) { hbbtvValue = typeof d.value === 'number' ? d.value : null; }, function () {}); });
+    return reads.then(function () {
+        if (!forPlan) return {src: src};
+        var shards = {}, labels = {};
+        ((src.shards && src.shards.list) || []).forEach(function (p) { if (p && !p.bundled) shards[p.id] = {enabled: p.enabled === true, version: p.version || null}; });
+        quickSettings.GROUPS.forEach(function (g) { labels[g.id] = g.label; });
+        var cur = settingsBackup.build(src);
+        return {src: src, cur: {sections: cur.sections, root: root, shards: shards, quick: quick, quickLabels: labels, hbbtvValue: hbbtvValue}};
+    });
 }
 
 var diagnosticPending = null, diagnosticComponents = false;
@@ -1205,6 +1239,18 @@ var server = http.createServer(function (req, res) {
     if (PLUGIN_SESSION_API_RE.test(url)) return plugins.handle(req, res, url, serveJson, readBody);
     if (auth.gate(req, res, url, {open: platform.status().mode === 'app-only', onPair: function () { showPairingCode(0); }})) return;
     if (url === '/plugins' || url.indexOf('/plugins/') === 0) return plugins.handle(req, res, url, serveJson, readBody);
+    if (url === '/settings-file') {
+        if (req.method !== 'GET') return serveJson(res, {error:'Use GET to save the settings'}, 405);
+        return settingsNow(false).then(function (n) { serveJson(res, settingsBackup.build(n.src)); }, function (e) { serveJson(res, {error:'Settings unreadable: ' + e.message}, 503); });
+    }
+    if (url === '/settings-file/plan') {
+        if (req.method !== 'POST') return serveJson(res, {error:'Use POST with the file'}, 405);
+        return readJsonBody(req, res, function (p) {
+            var want;
+            try { want = settingsBackup.parse(p && p.file); } catch (e) { return serveJson(res, {ok:false, error:e.message}, 400); }
+            settingsNow(true).then(function (n) { serveJson(res, settingsBackup.plan(want, n.cur)); }, function (e) { serveJson(res, {ok:false, error:'This TV could not be read: ' + e.message}, 503); });
+        }, settingsBackup.MAX_BYTES + 4096);
+    }
     if (url === '/diagnostics/download') {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res, COMPONENTS_QUERY_RE.test(req.url || ''));

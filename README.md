@@ -65,7 +65,7 @@ Samsung TVs ship with advertising, viewing-data collection, voice assistants and
 
 **Quick settings** groups them in tabs:
 
-- **General**: Software update, Storage (*Clear leftovers*), and **Essential settings**: *Block firmware and software updates*, *Disable background app delivery* and *Allow SDB from the local network* (helps Apps2Samsung and TV-Store reach the TV). *Restore the TV* and *Remove Vetro* are here too.
+- **General**: Software update, Storage (*Clear leftovers*), and **Essential settings**: *Block firmware and software updates*, *Disable background app delivery* and *Allow SDB from the local network* (helps Apps2Samsung and TV-Store reach the TV). *Settings file* (save your Vetro choices to a file and load them again after a firmware update, a reset or on another TV), *Restore the TV* and *Remove Vetro* are here too.
 - **Privacy and ads**: *Stop viewing-data collection* (screen recognition, key-press logging and usage logs, now and after every restart), *Disable advertising and tracking services* and *Enable DNS blocking*, a filter on the TV itself that keeps your DNS servers.
 - **Voice**: turn off all voice assistants, or Alexa, Google Assistant, Bixby and the other voice services one by one.
 - **Disable**: HbbTV, Multi View autostart, Ambient, AirPlay, Samsung TV Plus, Vision AI (the AI screens that a long Home press opens on newer TVs), Gaming Hub, SmartThings, SmartThings Find, Sound Sensor and Pet Care, and apps you don't use, with their background services.

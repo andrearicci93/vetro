@@ -10,6 +10,11 @@
 - **DisplayPort** shows as a source on Samsung monitors (#215).
 - **Power and DisplayPort as keys to send**, for a Home Assistant rule or a Remapper shortcut ([#303](https://github.com/andrearicci93/vetro/pull/303) by [bmfurtado](https://github.com/bmfurtado)). Power is the remote's power key; on a monitor that toggles standby, so check the state before sending it again. DisplayPort asks the TV to switch to it the way the launcher's input tile does; it is for Samsung monitors, a TV has none.
 
+### Settings file
+
+- **Save settings / Load settings** (General → Settings file, [#307](https://github.com/andrearicci93/vetro/issues/307), asked by MaomaoADHD): one JSON file with your Vetro choices, to keep before a firmware update, a Smart Hub reset or a move to another TV. It holds the launcher and its switches, the Control center cards, Vetro TV Tuner on or off, the Remapper rules, Essential settings, HbbTV, Extra performance mode, Keep removed apps removed, the Quick settings groups you switched off, DNS blocking, MQTT and which Shards are on. It never holds passwords, pairing, the device id or what Vetro recorded to put back later (the apps it disabled, the previous values, the uninstall list), so Restore the TV keeps working after a load. Quick settings and DNS blocking are saved only while Root access is connected.
+- **Loading shows what would change first** and makes the changes only after you confirm, one at a time, with the same checks as the switches on the page; a group of apps is switched off again only after its own confirmation, and nothing is switched back on. What needs root is listed as not loaded while Root access is away; Shards that are not installed, apps a group does not find on this TV and Samsung Home are listed too, with what to do. A file from a newer Vetro is refused. Not tried on a TV yet: tested on the dashboard preview and with the service tests.
+
 ### Quick settings
 
 Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A and re-written for Vetro.
