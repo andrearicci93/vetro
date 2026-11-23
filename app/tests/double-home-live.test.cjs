@@ -12,6 +12,7 @@ function fixture(enabled = true) {
     const state = {enabled, customApp: null, doubleHome: {...initial}, homeShortcut: {appId:'Tile.Home',label:'Tile'}, autorunWas:1};
     const dock = Object.create(Dock.prototype), applied = [], writes = [];
     dock.readState = () => JSON.parse(JSON.stringify(state));
+    dock.validateSourcePreferenceState = () => {}; // This fixture keeps its preference store in memory.
     dock.patchState = patch => { writes.push(patch); Object.assign(state, patch); };
     dock.status = async () => dock.readState();
     dock.probe = async () => ({running: true, pid: 4242});

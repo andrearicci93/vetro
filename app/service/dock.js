@@ -963,7 +963,7 @@ Dock.prototype.setSourceOption = function (key, on) {
 // Save the overlay tile independently of the physical Home destination.
 Dock.prototype.setHomeShortcut = function (value) {
     var self = this, shortcut;
-    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    try { shortcut = catalog.homeShortcut(value); this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
     if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
     if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
     var previous = this.readState(); this.busy = true;
@@ -985,7 +985,7 @@ Dock.prototype.setHomeShortcut = function (value) {
 // Apply double-press settings to the running launcher before persisting them.
 Dock.prototype.setDoubleHome = function (value) {
     var self = this, setting;
-    try { setting = doubleHome.normalize(value); } catch (e) { return Promise.reject(e); }
+    try { setting = doubleHome.normalize(value); this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
     if (this.busy || this.homeChanging) return Promise.reject(Error('Another launcher change is in progress'));
     var previous = this.readState(), livePid = null, attempted = false, saved = false;
     this.busy = true;
