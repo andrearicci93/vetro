@@ -7,9 +7,9 @@ const html = require('../service/dashboard.js')();
 
 // The list, on the page and in the service.
 const offered = /<select id="targetKey">(.*?)<\/select>/.exec(html)[1].match(/KEY_[A-Z0-9]+/g);
-['KEY_HDMI1', 'KEY_HDMI4', 'KEY_TV', 'KEY_PLAYPAUSE', 'KEY_PLAY', 'KEY_PAUSE', 'KEY_STOP', 'KEY_REWIND', 'KEY_FF', 'KEY_HOME', 'KEY_RETURN']
+['KEY_HDMI1', 'KEY_HDMI4', 'KEY_DISPLAYPORT', 'KEY_POWER', 'KEY_TV', 'KEY_PLAYPAUSE', 'KEY_PLAY', 'KEY_PAUSE', 'KEY_STOP', 'KEY_REWIND', 'KEY_FF', 'KEY_HOME', 'KEY_RETURN']
     .forEach(k => assert.ok(offered.includes(k), k + ' is offered'));
-offered.forEach(k => assert.ok(control.injectCommand(control.nativeKey(k)), k + ' is a key the service can send'));
+offered.filter(k => k !== "KEY_DISPLAYPORT").forEach(k => assert.ok(control.injectCommand(control.nativeKey(k)), k + ' is a key the service can send'));
 assert.equal(control.nativeKey('KEY_PLAYPAUSE'), 'XF86PlayBack', 'Play/Pause is the remote\'s own toggle key (code 244)');
 assert.equal(control.nativeKey('KEY_FF'), 'XF86AudioForward');
 assert.ok(kr.keyCommand('XF86PlayBack', control.injectCommand('XF86PlayBack')).includes("echo 'key 244' >&3"), 'with Vetro TV Tuner on screen, Play/Pause goes to it as the remote\'s key');

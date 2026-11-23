@@ -25,9 +25,9 @@ memory:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M
 function quickPair(here){var line=function(id,name,text){return '<p>'+(id===here?'<strong>'+name+'</strong>':'<button type="button" class="link-button" data-quick-goto="'+id+'">'+name+'</button>')+': '+text+'</p>'};return '<div class="tab-pair">'+line('memory','Disable','switched off, still on the TV.')+line('uninstall','Uninstall','deleted from the TV, to free space.')+'</div>'}
 function sectionIcon(name){return '<svg class="section-icon" viewBox="0 0 24 24" aria-hidden="true">'+sectionIcons[name]+'</svg>'}
 // The keys a Remapper shortcut or a Home Assistant rule can send, grouped as on the remote; control.js turns each name into the TV's own key.
-var SEND_KEYS=[['Inputs',[['KEY_TV','TV'],['KEY_HDMI1','HDMI 1'],['KEY_HDMI2','HDMI 2'],['KEY_HDMI3','HDMI 3'],['KEY_HDMI4','HDMI 4']]],
+var SEND_KEYS=[['Inputs',[['KEY_TV','TV'],['KEY_HDMI1','HDMI 1'],['KEY_HDMI2','HDMI 2'],['KEY_HDMI3','HDMI 3'],['KEY_HDMI4','HDMI 4'],['KEY_DISPLAYPORT','DisplayPort']]],
  ['Playback',[['KEY_PLAYPAUSE','Play/Pause'],['KEY_PLAY','Play'],['KEY_PAUSE','Pause'],['KEY_STOP','Stop'],['KEY_REWIND','Rewind'],['KEY_FF','Fast forward']]],
- ['Remote',[['KEY_HOME','Home'],['KEY_RETURN','Back'],['KEY_EXIT','Exit'],['KEY_UP','Up'],['KEY_DOWN','Down'],['KEY_LEFT','Left'],['KEY_RIGHT','Right'],['KEY_ENTER','OK'],['KEY_VOLUP','Volume up'],['KEY_VOLDOWN','Volume down'],['KEY_MUTE','Mute']]]];
+ ['Remote',[['KEY_POWER','Power'],['KEY_HOME','Home'],['KEY_RETURN','Back'],['KEY_EXIT','Exit'],['KEY_UP','Up'],['KEY_DOWN','Down'],['KEY_LEFT','Left'],['KEY_RIGHT','Right'],['KEY_ENTER','OK'],['KEY_VOLUP','Volume up'],['KEY_VOLDOWN','Volume down'],['KEY_MUTE','Mute']]]];
 function keyOptions(){return SEND_KEYS.map(function(g){return '<optgroup label="'+g[0]+'">'+g[1].map(function(k){return '<option value="'+k[0]+'">'+k[1]+'</option>'}).join('')+'</optgroup>'}).join('')}
 var sendKeyLabels={};SEND_KEYS.forEach(function(g){g[1].forEach(function(k){sendKeyLabels[k[0]]=k[1]})});
 var aboutPhoto=require('./about-photo.js');
