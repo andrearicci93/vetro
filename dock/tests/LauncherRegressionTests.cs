@@ -196,6 +196,7 @@ namespace Launcher.Tests
                 T.Eq(left.BodyX - 960 + 960, 96, "left final compositor margin");
                 T.Eq(3840 - (right.BodyX + 960 + 960 + right.BodyW), 96, "right final compositor margin");
                 foreach (string invalid in new[] { "", info.Replace("count: 2", "count: 3"),
+                    info.Replace("2.000", "2..0"), info.Replace("0.500", "0..5"),
                     info.Replace("2.000", "1.000"), info.Replace("0.500", "1.000"),
                     info.Replace("960, 0", "960, 20"), info.Replace("960, 0", "480, 0"),
                     info.Replace("[ 0]\n", "[ 90]\n") })

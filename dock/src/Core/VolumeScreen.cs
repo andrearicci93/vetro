@@ -18,7 +18,7 @@ namespace Launcher.Core
             if (!scale.Success || !align.Success) return 0;
             double sx = Number(scale, 3), inverse = Number(align, 3);
             int offset = (int)Number(align, 1);
-            if (screenW <= 0 || sx <= 1 || sx > 4 || offset <= 0 ||
+            if (double.IsNaN(sx) || double.IsNaN(inverse) || screenW <= 0 || sx <= 1 || sx > 4 || offset <= 0 ||
                 Number(scale, 1) != 0 || Number(scale, 2) != 0 || Number(align, 2) != 0 ||
                 Number(scale, 4) != 1 || Number(align, 4) != 1 ||
                 Math.Abs(sx * inverse - 1) > 0.005 ||
