@@ -3,6 +3,7 @@ const assert=require('assert').strict,fs=require('fs'),vm=require('vm'),EventEmi
 const {Store,decode}=require('../service/tv-state.js');
 assert.deepEqual(decode('{"volume":7,"muted":true,"sourceType":0}'),{volume:7,muted:true,source:'TV',sourceType:0});
 assert.equal(decode('{"volume":0,"muted":false,"sourceType":13}').source,'HDMI1');
+assert.equal(decode('{"sourceType":33}').source,'DisplayPort');
 assert.deepEqual(decode('{"volume":101,"muted":1,"sourceType":99}'),{volume:null,muted:null,source:null,sourceType:99});
 assert.throws(()=>decode('native error'));
 let calls=0,command;
@@ -22,6 +23,12 @@ const store=new Store(async c=>{calls++;command=c;return {exit_code:0,stdout:'{"
  assert(sent.some(x=>x.topic.endsWith('/volume')&&x.payload==='0'&&x.retain));
  assert(sent.some(x=>x.topic.endsWith('/muted')&&x.payload==='OFF'));
  assert(sent.some(x=>x.topic.endsWith('/source')&&x.payload==='TV'));
+ sent=[];bridge.publishTvState(decode('{"sourceType":33}'));
+ assert(sent.some(x=>x.topic.endsWith('/source')&&x.payload==='DisplayPort'&&x.retain));
+ assert(sent.some(x=>x.topic.endsWith('/source/availability')&&x.payload==='online'));
+ sent=[];bridge.publishTvState(decode('{"sourceType":99}'));
+ assert(sent.some(x=>x.topic.endsWith('/source/availability')&&x.payload==='offline'));
+ assert(sent.some(x=>x.topic.endsWith('/source')&&x.payload===''&&x.retain));
  sent=[];bridge.publishTvState({volume:9,muted:null,source:null});
  assert(sent.some(x=>x.topic.endsWith('/muted/availability')&&x.payload==='offline'));
  assert(sent.some(x=>x.topic.endsWith('/muted')&&x.payload===''&&x.retain),'unavailable reads delete stale retained state');

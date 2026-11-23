@@ -18,7 +18,7 @@ var LEGACY_IDENTITY_RE_2 = /^vetro-[a-f0-9]{16,32}$/;
 var HOST_RE = /^[A-Za-z0-9:._-]+$/;
 var TOPIC_RE = /^[-A-Za-z0-9_.]+(?:\/[-A-Za-z0-9_.]+)*$/;
 var WHITESPACE_RE = /\s+/;
-var TV_SOURCE_RE = /^(TV|HDMI[1-4])$/;
+var TV_SOURCE_RE = /^(TV|HDMI[1-4]|DisplayPort)$/;
 var PERCENT_RE = /%/g;
 var MEMINFO_LINE_RE = /^(\S+):\s*(\d+)/;
 
