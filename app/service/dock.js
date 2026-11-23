@@ -958,7 +958,7 @@ Dock.prototype.setSourceOption = function (key, on) {
 // Save the overlay tile independently of the physical Home destination.
 Dock.prototype.setHomeShortcut = function (value) {
     var self = this, shortcut;
-    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    try { shortcut = catalog.homeShortcut(value); this.validateSourcePreferenceState(); } catch (e) { return Promise.reject(e); }
     if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
     if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
     var previous = this.readState(); this.busy = true;
