@@ -21,6 +21,8 @@ jobs:
           dotnet-version: 10.0.x
       - name: Native launcher checks
         run: dotnet run -c Release --project dock/tests
+      - name: Compile TV launcher from source
+        run: dotnet build dock/Launcher.csproj -c Release -p:UseAppHost=false
       - name: Diagnostic parser tests
         run: python3 .github/scripts/test_parse_log.py
       - name: Release hygiene and architecture

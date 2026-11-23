@@ -112,6 +112,7 @@ function Dock(options) {
     // of the mode had disabled it (state flag customHomeDisabled, never set by this version).
     this.home = options.home || null;
     this.appCheck = options.appCheck || null;
+    this.shortcutCheck = options.shortcutCheck || null;
     this.onVolumeChange = options.onVolumeChange || null;
     this.port = options.port || null;                         // the service's port (a number or a function), for the launcher's own calls to Vetro
     this.build = options.build || null;                       // this Vetro build: a launcher started by another one is restarted (supervise)
@@ -215,7 +216,8 @@ Dock.prototype.legacy = function (which) {
 Dock.prototype.readState = function () {
     try {
         var s = this.readStateFile();
-        return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
+        var shortcut = null; try { shortcut = catalog.homeShortcut(s && s.homeShortcut); } catch (ignored) {}
+        return {homeShortcut: shortcut, enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
             noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
@@ -230,7 +232,7 @@ Dock.prototype.readState = function () {
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {homeShortcut: null, enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
 };
 
@@ -422,7 +424,7 @@ Dock.prototype.bootSettled = function () {
 
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
-    var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
+    var base = {homeShortcut: state.homeShortcut, homeLabelMax: catalog.HOME_LABEL_MAX, installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
         error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
@@ -525,7 +527,7 @@ Dock.prototype.writeCatalog = function () {
     var state = this.readState();
     // Persist defaults/migration before generating lists, so a fresh preview cannot be mistaken for legacy data later.
     try { this.validateSourcePreferenceState(); this.patchState({showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages}); } catch (e) { return Promise.reject(e); }
-    return catalog.load(this.execute, this.catalogOptions(state)).then(function (c) {
+    return this.loadCatalog(state).then(function (c) {
         self.saveLists(c);
         return c;
     });
@@ -537,6 +539,18 @@ Dock.prototype.catalogOptions = function (state, row) {
     return {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
         intercepted: this.shards ? this.shards.intercepted() : {}, row: row === undefined ? state.row : row, appStore: state.appStore};
 };
+// Recheck the shortcut on every catalog path, including row edits and package refreshes.
+Dock.prototype.loadCatalog = function (state, row) {
+    var self = this, options = this.catalogOptions(state, row);
+    var checked = state.homeShortcut && this.shortcutCheck ? Promise.resolve().then(function () {
+        return self.shortcutCheck(state.homeShortcut.appId, true);
+    }).catch(function () { return {ok: false}; }) : Promise.resolve({ok: false});
+    return checked.then(function (result) {
+        options.homeShortcut = result && result.ok ? state.homeShortcut : null;
+        return catalog.load(self.execute, options);
+    });
+};
+
 // Writes the three lists the launcher reads. Returns true when one of them is not what was there before.
 Dock.prototype.saveLists = function (c) {
     var files = [[this.appsFile, c.tsv], [this.inputsFile, c.inputsTsv], [this.allAppsFile, c.allAppsTsv]];
@@ -941,6 +955,28 @@ Dock.prototype.setSourceOption = function (key, on) {
         }).then(function () { throw error; });
     }).finally(function () { self.busy = false; });
 };
+// Save the overlay tile independently of the physical Home destination.
+Dock.prototype.setHomeShortcut = function (value) {
+    var self = this, shortcut;
+    try { shortcut = catalog.homeShortcut(value); } catch (e) { return Promise.reject(e); }
+    if (this.busy) return Promise.reject(Error('Another launcher change is in progress'));
+    if (!this.installed()) return Promise.reject(Error('The dock files are not in this Vetro package'));
+    var previous = this.readState(); this.busy = true;
+    var check = shortcut && this.shortcutCheck ? Promise.resolve().then(function () { return self.shortcutCheck(shortcut.appId, true); }) : Promise.resolve({ok: !shortcut});
+    var changed = false;
+    return check.then(function (result) {
+        if (!result.ok) throw Error('Choose an installed, enabled app with a visible launch entry');
+        self.patchState({homeShortcut: shortcut}); changed = true;
+        return previous.enabled ? self.launch() : self.writeCatalog();
+    }).then(function () { return self.status(); }).catch(function (error) {
+        if (!changed) throw error;
+        self.patchState({homeShortcut: previous.homeShortcut});
+        return (previous.enabled ? self.launch() : self.writeCatalog()).then(function () { throw error; }, function (recovery) {
+            throw Error(error.message + '; launcher recovery needs attention: ' + recovery.message);
+        });
+    }).finally(function () { self.busy = false; });
+};
+
 // Turn the TizenTube fix on or off. It only changes the list, so a running dock is rebuilt.
 Dock.prototype.setFixTizenTube = function (on) {
     var self = this;
@@ -1076,7 +1112,7 @@ Dock.prototype.drainRows = function () {
     var list = this.pendingRow, state = this.readState(), before = state.row;
     this.pendingRow = null;
     this.rowRunning = true; this.busy = true;
-    return catalog.load(this.execute, this.catalogOptions(state, {order: list, hidden: [], exact: true, labels: before && before.labels || {}})).then(function (c) {
+    return this.loadCatalog(state, {order: list, hidden: [], exact: true, labels: before && before.labels || {}}).then(function (c) {
         self.saveLists(c);
         self.patchState({row: rowAfter(before, list, c.samsungKeys || [])});
     }).finally(function () {
@@ -1113,7 +1149,7 @@ Dock.prototype.relist = function (followUp) {
     if (this.busy) { this.relistPending = true; this.relistWhenFree(); return Promise.resolve({queued: true}); }
     this.busy = true; this.relistPending = false;
     var changed = false;
-    return catalog.load(this.execute, this.catalogOptions(state)).then(function (c) {
+    return this.loadCatalog(state).then(function (c) {
         changed = self.saveLists(c);
     }).finally(function () {
         self.busy = false;
