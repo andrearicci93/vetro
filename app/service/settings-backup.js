@@ -170,6 +170,8 @@ function plan(want, cur) {
             else step('launcher', 'Control center cards', '/dock', {action: 'cards', cards: f.cards}, running);
         }
         if (f.mode !== now.mode || (f.mode === 'custom' && f.customApp !== now.customApp)) {
+            // The two launchers exclude each other (dock.enable / enableCustom refuse while the other is on): the one on goes first.
+            if (f.mode !== 'off' && now.mode !== 'off') step('launcher', now.mode === 'custom' ? 'Turn off the custom launcher' : 'Turn off the launcher', '/dock', {action: now.mode === 'custom' ? 'disableCustom' : 'disable'}, false);
             if (f.mode === 'vetro') step('launcher', 'Turn on the Vetro launcher', '/dock', {action: 'enable'}, true);
             else if (f.mode === 'custom') step('launcher', 'Turn on the custom launcher (' + f.customApp + ')', '/dock', {action: 'enableCustom', appId: f.customApp}, true);
             else step('launcher', 'Turn off the launcher', '/dock', {action: now.mode === 'custom' ? 'disableCustom' : 'disable'}, false);

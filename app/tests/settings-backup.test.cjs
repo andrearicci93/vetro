@@ -65,6 +65,13 @@ assert.deepEqual(p.steps.find(s => s.path === '/hbbtv').body, {off: true, expect
 assert.deepEqual(p.steps.find(s => s.label === 'Disable Multi View autostart off').body, {id: 'multiscreen', on: false});
 assert.ok(p.steps.every(s => ['/plugins/clock/enable', '/mqtt', '/remap', '/dock', '/tuner', '/wins', '/hbbtv', '/quick', '/dns', '/keep-removed', '/performance'].indexOf(s.path) >= 0));
 
+// The two launchers exclude each other: the one that is on is turned off first
+const toCustom = JSON.parse(text); Object.assign(toCustom.sections.launcher, {mode: 'custom', customApp: 'org.example.home'});
+const swap = b.plan(b.parse(toCustom), curOf(src)).steps.filter(s => s.path === '/dock' && /able/.test(s.body.action)).map(s => s.body.action);
+assert.deepEqual(swap, ['disable', 'enableCustom']);
+const backToVetro = b.plan(b.parse(text), curOf(Object.assign({}, src, {dock: Object.assign({}, dock, {customApp: 'org.example.home'})}))).steps.filter(s => s.path === '/dock' && /able/.test(s.body.action)).map(s => s.body.action);
+assert.deepEqual(backToVetro, ['disableCustom', 'enable']);
+
 // 5. Without root: what needs it is blocked, the rest still loads
 const q = b.plan(b.parse(text), Object.assign(curOf(Object.assign({}, fresh, {root: false, quickOff: undefined, dns: undefined, multiscreen: undefined})), {root: false, hbbtvValue: null}));
 assert.ok(q.steps.length && q.steps.every(s => !s.root));

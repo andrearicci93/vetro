@@ -1441,7 +1441,7 @@ function runBackup(){
  backupView.confirm=false;backupView.busy=true;backupView.result=[];renderBackup();
  return runUiOperation('backup','Load settings','TV',null,function(mark){
   return p.steps.reduce(function(chain,s){return chain.then(function(){
-   return api(s.path,s.body).then(function(){backupView.result.push({label:s.label,ok:true,message:'Done.'})},function(e){backupView.result.push({label:s.label,ok:false,message:e.message})}).then(renderBackup);
+   return api(s.path,s.body).then(function(d){if(d&&d.plugin&&d.plugin.state==='failed')throw Error('It could not start: '+d.plugin.lastError);backupView.result.push({label:s.label,ok:true,message:'Done.'})},function(e){backupView.result.push({label:s.label,ok:false,message:e.message})}).then(renderBackup);
   })},Promise.resolve()).then(function(){
    var bad=backupView.result.filter(function(s){return !s.ok}).length,done=backupView.result.length-bad;
    var message=done+' change'+(done===1?'':'s')+' made'+(bad?', '+bad+' failed':'')+'.';
