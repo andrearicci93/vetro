@@ -204,7 +204,11 @@ var projectors = {
     // What differs between firmware generations (the root app, Samsung's Home and its picture mode, the sound output, the screen and its
     // saver, the remote key guides, the .NET runtime, which of Samsung's apps exist, how many input helpers run). See firmwareSection().
     firmware:firmwareSection,
-    quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient','telemetry','airplay','keyguides'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});return out;},
+    // The update lock also says how much of it holds: unit counts, its standalone guard, whether Samsung's standalone update request is
+    // there (it should never be while the lock is on) and whether the update hosts are blocked. Numbers and yes/no only.
+    quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient','telemetry','airplay','keyguides'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});
+        var f=w.firmware||{};function count(v){return Number.isInteger(v)&&v>=0&&v<=99?v:null;}
+        Object.assign(out.firmware,{units:count(f.units),masked:count(f.masked)},flags(f,['guard','standalone','dnsBlocked']));return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});out.screen=screenProgress(d);return out;},
     // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
     components:function(d){return {requested:true,complete:boolean(d.complete),packageCount:numeric(d.packageCount),totalUnknown:numeric(d.totalUnknown),truncated:boolean(d.truncated),

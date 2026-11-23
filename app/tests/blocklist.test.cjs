@@ -31,7 +31,11 @@ assert.deepStrictEqual(dns.validate(['samsungcloudsolution.com']), ['samsungclou
 
 // Dashboard data carries evidence and notes but not component names.
 const groups = blocklist.publicGroups();
-assert.deepStrictEqual(groups.map(g => g.evidence), ['firmware', 'firmware', 'firmware', 'firmware', 'reported', 'unverified', 'reported']);
+assert.deepStrictEqual(groups.map(g => g.evidence), ['firmware', 'firmware', 'firmware', 'firmware', 'reported', 'reported', 'unverified', 'reported']);
+// #308: the update hosts the lock adds are the same group, and they are in the exported lists (a router covers the standalone boot)
+assert.deepStrictEqual(groups.find(g => g.id === 'updates').hosts, require('../service/quick-wins.js').FW_DNS_HOSTS);
+assert.ok(exported.includes('otn2.samsungcloudcdn.com') && exported.includes('qoe.samsungcloud.tv'));
+assert.deepStrictEqual(dns.validate(require('../service/quick-wins.js').FW_DNS_HOSTS), require('../service/quick-wins.js').FW_DNS_HOSTS, 'the local filter accepts them');
 // #79: the Home ad picture server is offered on its own, never in the exported lists
 const home = groups.find(g => g.id === 'home-images');
 assert.deepStrictEqual(home.hosts, ['cdn-stv.adgrx.com']);

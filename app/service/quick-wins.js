@@ -19,11 +19,24 @@
 //             (the original is kept as parseinfo.sh.vetro-orig and restored when the win is turned off). It acts only
 //             while the choice is saved and the app is still installed; it is installed only where the file is the
 //             known one (or a bash script that writes /proc/target_version); on other firmware the lock still starts
-//             with Vetro's root agent. swu-standalone.* is left alone: it is the USB recovery path.
+//             with Vetro's root agent. swu-standalone.* is not masked (a mask could not reach it, see below).
+//             Samsung's standalone update (#308, 6.0, 6.5 and 9 alike): any part of the update stack, its UI apps and
+//             the library apps use (libSoftwareUpgradeAPI) can ask for it by writing STANDALONE_FLAG on the persistent
+//             systemrw partition and restarting the TV. At the next start init.wrapper, before systemd, sees the file
+//             and boots in "otn2.0" mode: /run/.standalone is created, bootmode-graphical (which starts starter.target,
+//             so AT-HUB and Vetro) is skipped, and bootmode-swu-standalone isolates swu-standalone.target, where
+//             SWUStandalone searches Samsung's OTN2 servers and installs, also an update it downloaded earlier and
+//             postponed. No runtime mask survives that restart and no Vetro code runs in that boot, so while the lock
+//             is on the file is not allowed to stay: it is removed when the lock is applied and at every boot, and a
+//             runtime path unit (FW_GUARD, in /run like the masks) removes it as soon as it appears. The "otm" boot
+//             (/mnt/systemrw/upgrade/.key) is the data migration after an OS upgrade has been written and is left alone.
+//             The two hosts one owner blocked to stop the "update available" notice go into the local DNS filter's
+//             list too (FW_DNS_HOSTS); the filter only exists while Vetro runs, so it is not there in that boot.
 //             Evidence: topics/firmware-update-channels.md in the private wiki (dump + live Q80A, 2026-11-19 and
-//             2026-11-20). Tried on a Q80A fw 2310.0 after a cold reboot: the masks were in place 15 s after boot,
-//             before Vetro's service; other models are not tried. A firmware update that lands anyway replaces
-//             everything this win did.
+//             2026-11-20; standalone path from the 6.0, 6.5 and 9 trees, 2026-11-23). Tried on a Q80A fw 2310.0
+//             after a cold reboot: the masks were in place 15 s after boot, before Vetro's service; other models are
+//             not tried, and the standalone guard is not tried on a TV yet. A firmware update that lands anyway
+//             replaces everything this win did.
 //   multiscreen  Samsung's own unit com.samsung.tv.multiscreen.service has ConditionPathExists=! on
 //             .../data/disable_preloading, so that file stops the preload at boot. The first Multi View
 //             after that starts cold. Nothing is replaced: removing the file puts everything back.
@@ -95,11 +108,32 @@ var FWUNITS = ['swu-auto-upgrade.timer', 'swu-auto-upgrade.path', 'swu-auto-upgr
     'swu-verifier-tv.timer', 'swu-verifier-tv.service', 'swu-core-tv.service', 'swu-service.service',
     'was-background-update.path', 'was-background-update.service', 'fw-update-service.path', 'fw-update-service.service',
     'appbinary-manager.service', 'vdsystem-update-manager.timer', 'vdsystem-update-manager.service',
-    'com.samsung.tv.preview-updater.service', 'bootmode-system-update.service'];
+    'com.samsung.tv.preview-updater.service', 'bootmode-system-update.service',
+    // The app-binary updater's D-Bus helper (org.tizen.tv.initdownload, 6.0 to 9): it signals that a download is ready.
+    'fw-update-init-download.service'];
 // Present on 6.0 and later; missing keys stay untouched.
 var FWSERVICE = 'db/fw-update-service/service_onoff';
 // Files the update stacks look at before they download or install. All on tmpfs; removing them is harmless.
 var FWMARKERS = ['/tmp/fw_update_ready', '/tmp/.fw_download_ready', '/run/user/5001/.swu-auto-upgrade-launch'];
+// Samsung's standalone update request (see the header). Absent in a normal boot: init.wrapper would have started the update instead.
+var STANDALONE_FLAG = '/mnt/systemrw/org.tizen.tv.swu/data/tv/STANDALONE';
+// The runtime guard: a path unit that starts a oneshot removing the request as soon as it is written. In /run/systemd/system like the
+// masks, so it is gone after a restart and put back by the hook and the boot pass. DefaultDependencies=no: the update stack restarts
+// the TV right after the write, and the guard must not be one of the units the shutdown stops first.
+var FW_GUARD_DIR = '/run/systemd/system';
+var FW_GUARD = 'vetro-update-lock-guard';
+var FW_GUARD_FILES = {
+    path: '[Unit]\nDescription=Vetro update lock: Samsung standalone update request\nDefaultDependencies=no\n\n' +
+        '[Path]\nPathExists=' + STANDALONE_FLAG + '\nUnit=' + FW_GUARD + '.service\n',
+    service: '[Unit]\nDescription=Vetro update lock: remove the standalone update request\nDefaultDependencies=no\n\n' +
+        '[Service]\nType=oneshot\nExecStart=/bin/rm -f ' + STANDALONE_FLAG + '\n'
+};
+// Which version of the lock a TV has had applied. A newer one (2: the guard and fw-update-init-download) is applied again once in the
+// same boot, so a TV that updated Vetro with the lock on reads "on" without the switch being turned off and on.
+var FW_LOCK_REV = 2;
+// Reported by one owner (2026-11-20): blocking both stopped the "update available" notice and nothing else broke. otn2 fits the OTN2
+// search of the update stack by name; qoe's role is unknown. Neither is a string in the firmware: the servers are named at run time.
+var FW_DNS_HOSTS = ['otn2.samsungcloudcdn.com', 'qoe.samsungcloud.tv'];
 // The four markers the boot waits for (system graphical, user default, system delayed, user delayed). Creating them at
 // ~10 s lets wait-target-done return immediately; the vendor units still fail, so their targets are not delayed.
 var BOOT_MARKERS = ['/run/systemd/system/graphical.target.done', '/run/systemd/system/delayed.target.done',
@@ -227,13 +261,15 @@ var READ = [
     AIRPLAY_EACH('systemctl is-active $u.service >/dev/null 2>&1 && a=active', 'a=inactive') + ' echo "AS|$a"',
     AIRPLAY_WEB_RUNNING + ' && echo "AW|1" || echo "AW|0"',
     '[ -f ' + FW_HOOK + ' ] && grep -q ' + FW_HOOK_MARK + ' ' + FW_HOOK + ' 2>/dev/null && echo "QB|1" || echo "QB|0"',
+    'echo "GD|$(systemctl is-active ' + FW_GUARD + '.path 2>/dev/null)"',
+    '[ -e ' + STANDALONE_FLAG + ' ] && echo "SF|1" || echo "SF|0"',
     'true'
 ].join('\n');
 
 // Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
     var out = {autoupdate: null, fwService: null, fwUnits: {}, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
-        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, apps: {}};
+        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, fwGuard: null, standaloneFlag: null, apps: {}};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
@@ -249,6 +285,8 @@ function parse(text) {
         else if (f[0] === 'AS') out.airplayService = (f[1] || '').trim() === 'active';
         else if (f[0] === 'AW') out.airplayWeb = f[1] === '1';
         else if (f[0] === 'QB') out.quickbootHook = f[1] === '1';
+        else if (f[0] === 'GD') out.fwGuard = (f[1] || '').trim() === 'active';
+        else if (f[0] === 'SF') out.standaloneFlag = f[1] === '1';
         else if (f[0] === 'DA' && APP_ID_RE.test(f[1] || '')) out.apps[f[1]] = (f[2] || '').trim() === 'true';
     });
     return out;
@@ -296,10 +334,14 @@ Wins.prototype.load = function () {
             remotesupport: o.remotesupport === true, delivery: o.delivery === true, wifipresence: o.wifipresence === true,
             telemetryDnsWasOn: o.telemetryDnsWasOn === true,
             // The delivery apps Vetro disabled itself: only these are enabled again when the switch is off.
-            deliveryApps: Array.isArray(o.deliveryApps) ? o.deliveryApps.filter(function (id) { return MASK_WINS.delivery.apps.indexOf(id) >= 0; }) : []
+            deliveryApps: Array.isArray(o.deliveryApps) ? o.deliveryApps.filter(function (id) { return MASK_WINS.delivery.apps.indexOf(id) >= 0; }) : [],
+            // The update hosts Vetro itself added to the DNS filter's list with the lock: only these are taken out again.
+            firmwareDnsAdded: Array.isArray(o.firmwareDnsAdded) ? o.firmwareDnsAdded.filter(function (h) { return FW_DNS_HOSTS.indexOf(h) >= 0; }) : [],
+            firmwareDnsWasOn: o.firmwareDnsWasOn === true,
+            firmwareRev: Number.isInteger(o.firmwareRev) && o.firmwareRev > 0 ? o.firmwareRev : 0
         };
     } catch (e) { return {hbbtv: false, ambient: false, telemetry: false, telemetryDns: false, airplay: false, firmware: false, quickboot: false, telemetryBoot: null, autoupdatePrevious: null, fwServicePrevious: null, firmwareBoot: null, ambientBoot: null,
-        remotesupport: false, delivery: false, wifipresence: false, deliveryApps: [], telemetryDnsWasOn: false}; }
+        remotesupport: false, delivery: false, wifipresence: false, deliveryApps: [], telemetryDnsWasOn: false, firmwareDnsAdded: [], firmwareDnsWasOn: false, firmwareRev: 0}; }
 };
 Wins.prototype.save = function (patch) {
     var next = Object.assign(this.load(), patch), tmp = this.file + '.tmp';
@@ -318,7 +360,9 @@ Wins.prototype.read = function () {
     var self = this, mine = this.load(), read = this.execute(wrap(READ), 10000);
     // The DNS filter's answer needs nothing from the TV read, and whether it is asked depends only on the saved choice:
     // start both together so the second does not wait for the first to come back.
-    var dnsAsked = mine.telemetry && self.dns ? self.dns.status().then(function (d) { return !!(d.enabled && d.applied && d.domains.indexOf(TELEMETRY_HOST) >= 0); }, function () { return null; }) : null;
+    // One filter read serves both switches that put hosts in it.
+    var dnsAsked = (mine.telemetry || mine.firmware) && self.dns ? self.dns.status().then(function (d) { return d; }, function () { return null; }) : null;
+    function blocks(d, hosts) { return d ? !!(d.enabled && d.applied && hosts.every(function (h) { return d.domains.indexOf(h) >= 0; })) : null; }
     return read.then(function (r) {
         var s = parse(check(r));
         var firmware = s.autoupdate === null ? {status: 'unknown'} : fwState(s, wantedMasks(mine, 'firmware'));
@@ -337,7 +381,11 @@ Wins.prototype.read = function () {
         var wins = {firmware: firmware, quickboot: quickboot, multiscreen: multiscreen, ambient: ambient, telemetry: telemetry, airplay: airplay};
         MASK_IDS.forEach(function (id) { wins[id] = maskState(id, mine, s); });
         if (!dnsAsked) return {ts: Date.now(), wins: wins};
-        return dnsAsked.then(function (blocked) { telemetry.dnsBlocked = blocked; return {ts: Date.now(), wins: wins}; });
+        return dnsAsked.then(function (d) {
+            if (mine.telemetry) telemetry.dnsBlocked = blocks(d, [TELEMETRY_HOST]);
+            if (mine.firmware && firmware.status !== 'unknown') firmware.dnsBlocked = blocks(d, FW_DNS_HOSTS);
+            return {ts: Date.now(), wins: wins};
+        });
     });
 };
 
@@ -370,7 +418,8 @@ function maskState(id, mine, s) {
 
 // The units cannot be renamed (the rootfs is mounted ro) and a plain "disable" is overridden by their targets, so they
 // are masked at runtime: /run/systemd/system is tmpfs, systemd honours it at once, and the mask is gone on reboot
-// (bootFirmware puts it back). swu-standalone stays out of the list: it is the USB recovery path.
+// (bootFirmware puts it back). swu-standalone stays out of the list: a mask is gone by the time that boot starts, so the
+// standalone request is kept off by the guard instead (see the header).
 function fwState(s, keep) {
     var known = 0, masked = 0, running = 0;
     FWUNITS.forEach(function (u) {
@@ -383,12 +432,26 @@ function fwState(s, keep) {
     });
     // No service_onoff key means this TV has no EMP/app-binary service: that half is then not required.
     var serviceOk = s.fwService === null || s.fwService === 0;
-    var on = s.autoupdate === 0 && serviceOk && (known === 0 || masked === known);
-    // Off means no lock of Vetro's: no unit masked. Samsung's own Auto update value is then the owner's setting, whatever it is.
+    // The standalone guard is part of the lock wherever the update units are (a read without its line, null, does not count against it).
+    var on = s.autoupdate === 0 && serviceOk && (known === 0 || (masked === known && s.fwGuard !== false));
+    // Off means no lock of Vetro's: no unit masked and no guard. Samsung's own Auto update value is then the owner's setting, whatever it is.
     // Firmware without any of the units falls back to the 0.5.0 meaning, the Auto update value alone.
-    var off = known === 0 ? s.autoupdate !== 0 : masked === 0;
+    var off = known === 0 ? s.autoupdate !== 0 : masked === 0 && s.fwGuard !== true;
     return {status: s.autoupdate === null ? 'unknown' : on ? 'on' : off ? 'off' : 'partial',
-        value: s.autoupdate, masked: masked, units: known, running: running};
+        value: s.autoupdate, masked: masked, units: known, running: running,
+        guard: typeof s.fwGuard === 'boolean' ? s.fwGuard : null, standalone: typeof s.standaloneFlag === 'boolean' ? s.standaloneFlag : null};
+}
+// The guard's two unit files written into /run (one base64 line each, no here-document), for a shell under `set +e`. The single
+// mask call after them reloads systemd, which is when the guard is read; fwGuardStart() then starts it.
+function fwGuardWrite() {
+    return ['path', 'service'].map(function (k) {
+        return 'echo ' + Buffer.from(FW_GUARD_FILES[k]).toString('base64') + ' | base64 -d > ' + FW_GUARD_DIR + '/' + FW_GUARD + '.' + k + ' 2>/dev/null';
+    }).join('\n') + '\n';
+}
+function fwGuardStart() { return 'systemctl start --no-block ' + FW_GUARD + '.path >/dev/null 2>&1\nrm -f ' + STANDALONE_FLAG + ' 2>/dev/null\n'; }
+// Stopped and its files removed before the unmask call, whose reload then forgets it.
+function fwGuardRemove() {
+    return 'systemctl stop ' + FW_GUARD + '.path ' + FW_GUARD + '.service >/dev/null 2>&1\nrm -f ' + FW_GUARD_DIR + '/' + FW_GUARD + '.path ' + FW_GUARD_DIR + '/' + FW_GUARD + '.service\n';
 }
 
 // Only the boot-mode oneshot is never stopped: it is already isolating system-update.target, so a stop would not
@@ -402,9 +465,11 @@ function fwMaskScript(stop) {
     // Masks first, then the stops, so a timer cannot start its unit again in between. One mask call for all units: each call reloads
     // systemd (~2 s at boot on the Q80A, 16 calls took 12.5 -> 39.3 s and swu-verifier-tv ran meanwhile); systemd 244 masks a unit
     // this firmware lacks with a warning and rc 0, and the per-unit loop is only the fallback.
-    return 'set +e\n' +
+    // The guard's files go first, so the reload of that one call reads them too.
+    return 'set +e\n' + fwGuardWrite() +
         'systemctl mask --runtime ' + FWUNITS.join(' ') + ' >/dev/null 2>&1 || for u in ' + FWUNITS.join(' ') + '; do systemctl mask --runtime $u >/dev/null 2>&1; done\n' +
         (stop ? 'for u in ' + fwStoppable().join(' ') + '; do systemctl stop --no-block $u >/dev/null 2>&1; done\n' : '') +
+        fwGuardStart() +
         'rm -f ' + FWMARKERS.join(' ') + ' 2>/dev/null\n' +
         'true';
 }
@@ -413,7 +478,7 @@ function fwUnmaskScript(keep) {
     var units = FWUNITS.filter(function (u) { return !keep || keep.indexOf(u) < 0; });
     var start = ['swu-auto-upgrade.timer', 'swu-verifier-tv.service', 'was-background-update.path', 'fw-update-service.path',
         'vdsystem-update-manager.timer', 'appbinary-manager.service'].filter(function (u) { return units.indexOf(u) >= 0; });
-    return 'set +e\n' +
+    return 'set +e\n' + fwGuardRemove() +
         'systemctl unmask --runtime ' + units.join(' ') + ' >/dev/null 2>&1\n' +
         'systemctl reset-failed ' + units.join(' ') + ' >/dev/null 2>&1\n' +
         // Start again what the boot sequence would have started; the rest comes back through D-Bus when needed.
@@ -460,10 +525,18 @@ function fwHookScript() {
         // The telemetry units without a file of their own and the mask switches: masked before the boot starts them (~10 s).
         '    if (tel) { units = units " ' + TELEMETRY_MASK.join(' ') + '"; stops = stops " ' + TELEMETRY_MASK.join(' ') + '" }\n' +
         MASK_IDS.map(function (id) { return '    if (' + id + ') { units = units " ' + MASK_WINS[id].units.join(' ') + '"; stops = stops " ' + MASK_WINS[id].units.join(' ') + '" }\n'; }).join('') +
+        // The standalone guard's two files before that call, so its reload reads them (the shell's printf turns \n into lines; a
+        // failed write only leaves the guard out, the boot goes on).
+        '    if (lock) {\n' +
+        ['path', 'service'].map(function (k) {
+            return '        system("printf \'' + FW_GUARD_FILES[k].replace(/\n/g, '\\\\n') + '\' 2>/dev/null > ' + FW_GUARD_DIR + '/' + FW_GUARD + '.' + k + '")\n';
+        }).join('') +
+        '    }\n' +
         '    if (units != "") system("/usr/bin/systemctl mask --runtime" units " >/dev/null 2>&1 || for u in" units "; do /usr/bin/systemctl mask --runtime $u >/dev/null 2>&1; done")\n' +
         '    if (lock) {\n' +
         '        system("/usr/bin/systemctl stop --no-block ' + fwStoppable().join(' ') + ' >/dev/null 2>&1")\n' +
-        '        system("/bin/rm -f ' + FWMARKERS.join(' ') + ' >/dev/null 2>&1")\n' +
+        '        system("/usr/bin/systemctl start --no-block ' + FW_GUARD + '.path >/dev/null 2>&1")\n' +
+        '        system("/bin/rm -f ' + FWMARKERS.concat([STANDALONE_FLAG]).join(' ') + ' >/dev/null 2>&1")\n' +
         '    }\n' +
         '    if (stops != "") system("/usr/bin/systemctl stop --no-block" stops " >/dev/null 2>&1")\n' +
         '    repo = ""; model = ""\n' +
@@ -549,8 +622,11 @@ Wins.prototype.firmware = function (on) {
         if (!leftover && (on ? state.status === 'on' : state.status === 'off')) {
             // A TV that is already locked still gets the early hook: an upgrade can have restored the vendor script.
             // Off also keeps it when quick boot is on, so the shared hook state is read either way.
+            // The update hosts are checked too: a list changed by hand or by a loaded settings file may have lost them.
             return self.ensureHook().then(function (early) {
-                return {id: 'firmware', changed: false, status: state.status, value: before.autoupdate, hook: !!early};
+                return self.firmwareDns(on).then(function (dns) {
+                    return {id: 'firmware', changed: false, status: state.status, value: before.autoupdate, hook: !!early, dns: dns};
+                });
             });
         }
         // A value of 0 found now may be an earlier lock's (a reboot whose re-apply failed): the value saved then is kept.
@@ -561,9 +637,13 @@ Wins.prototype.firmware = function (on) {
             var st = fwState(after, wantedMasks(self.load(), 'firmware'));
             if (on && st.status !== 'on') throw Error('The TV did not keep the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' masked)');
             if (!on && st.masked > 0) throw Error('The TV did not end the lock (' + st.masked + ' of ' + st.units + ' update unit' + (st.units === 1 ? '' : 's') + ' still masked)');
+            if (!on && st.guard === true) throw Error('The TV did not end the lock (the standalone update guard is still running)');
             // The values are back: forgotten, so a later Off or Restore never writes an old value over one the owner chose since.
-            if (!on) self.save({autoupdatePrevious: null, fwServicePrevious: null});
-            return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate, hook: hookOn};
+            self.save(on ? {firmwareRev: FW_LOCK_REV} : {autoupdatePrevious: null, fwServicePrevious: null, firmwareRev: 0});
+            // The DNS part follows the lock and never undoes it: a filter that cannot be changed is reported in dns.
+            return self.firmwareDns(on).then(function (dns) {
+                return {id: 'firmware', changed: true, status: st.status, value: after.autoupdate, previous: before.autoupdate, hook: hookOn, dns: dns};
+            });
         }).catch(function (e) {
             // A lock that did not hold is not the owner's choice any more: the boot must not mask the units again.
             // An undo that failed is locked again below, so the boot must keep re-applying it.
@@ -652,6 +732,34 @@ Wins.prototype.telemetryDns = function (on) {
     }).catch(function () { return 'failed'; });
 };
 
+// The update hosts (FW_DNS_HOSTS) go into the local DNS filter's saved list with the lock, as the telemetry host does: the filter's
+// own On/Off is the owner's and is not turned on for them (except back on after Vetro switched it off, below). Off takes out only the
+// hosts Vetro added; one the owner had in the list already stays. The filter works only while Vetro runs (a bind mount over the hosts
+// file put back when the service starts), so it covers the normal session, not Samsung's standalone boot. Never throws.
+Wins.prototype.firmwareDns = function (on) {
+    var self = this, dns = this.dns;
+    if (!dns) return Promise.resolve('unavailable');
+    return dns.status().then(function (d) {
+        var mine = self.load();
+        if (on) {
+            var missing = FW_DNS_HOSTS.filter(function (h) { return d.domains.indexOf(h) < 0; });
+            if (!missing.length) return d.enabled && d.applied ? 'blocked' : 'saved';
+            var enable = d.enabled || (mine.firmwareDnsWasOn && !d.domains.length);
+            return dns.apply(enable, d.domains.concat(missing)).then(function () {
+                self.save({firmwareDnsAdded: mine.firmwareDnsAdded.concat(missing).filter(function (h, i, a) { return a.indexOf(h) === i; }), firmwareDnsWasOn: false});
+                return enable ? 'blocked' : 'saved';
+            });
+        }
+        var drop = mine.firmwareDnsAdded.filter(function (h) { return d.domains.indexOf(h) >= 0; });
+        if (!drop.length) { if (mine.firmwareDnsAdded.length) self.save({firmwareDnsAdded: []}); return 'unchanged'; }
+        var rest = d.domains.filter(function (x) { return drop.indexOf(x) < 0; });
+        return dns.apply(d.enabled && rest.length > 0, rest).then(function () {
+            self.save({firmwareDnsAdded: [], firmwareDnsWasOn: !!d.enabled && !rest.length});
+            return 'removed';
+        });
+    }).catch(function () { return 'failed'; });
+};
+
 // Stops the viewing-data, analytics and usage-log services now and at every boot (see the header for what each one is).
 Wins.prototype.telemetry = function (on) {
     var self = this;
@@ -735,8 +843,11 @@ Wins.prototype.boot = function (hbbtv) {
 // before the SWU timer (OnActiveSec=120) and the background updater can do anything. No vconf write: that persisted.
 Wins.prototype.bootFirmware = function (mine, id, did) {
     var self = this;
+    // The pass is remembered with the lock's revision: a Vetro that brings a newer lock applies it once more in the same boot
+    // (an update restarts the service, not the TV), so a TV that had the lock on reads "on" again without a toggle.
+    var key = id ? id + '#' + FW_LOCK_REV : null;
     // Telemetry alone has its own boot pass (bootTelemetry), which also puts the hook back.
-    if (!(mine.firmware || mine.quickboot || MASK_IDS.some(function (x) { return mine[x]; })) || (id && mine.firmwareBoot === id)) return Promise.resolve();
+    if (!(mine.firmware || mine.quickboot || MASK_IDS.some(function (x) { return mine[x]; })) || (key && mine.firmwareBoot === key)) return Promise.resolve();
     // bootLock (as soon as the agent is up) and boot (after the launcher) can both arrive: one run is enough.
     if (self.fwBootBusy) return Promise.resolve();
     self.fwBootBusy = true;
@@ -760,7 +871,11 @@ Wins.prototype.bootFirmware = function (mine, id, did) {
             if (mine.firmware) did.push('firmware');
             if (mine.quickboot) did.push('quickboot');
             MASK_IDS.forEach(function (x) { if (mine[x]) did.push(x); });
-            if (id) self.save({firmwareBoot: id});
+            if (key) self.save({firmwareBoot: key});
+            // A lock turned on by an older Vetro gets the update hosts once, then never again by itself (the owner may take them out).
+            if (self.load().firmware && self.load().firmwareRev < FW_LOCK_REV) {
+                return self.firmwareDns(true).then(function () { if (self.load().firmware) self.save({firmwareRev: FW_LOCK_REV}); });
+            }
         });
     }).then(function (v) { self.fwBootBusy = false; return v; }, function (e) { self.fwBootBusy = false; throw e; });
 };
@@ -839,4 +954,5 @@ Wins.prototype.bootAmbient = function (mine, id, did) {
 
 module.exports = {Wins: Wins, stop: stop, parse: parse, IDS: IDS, MASK_WINS: MASK_WINS, MASK_IDS: MASK_IDS, TELEMETRY_MASK: TELEMETRY_MASK,
     wantedMasks: wantedMasks, hookWanted: hookWanted, maskState: maskState, fwUnmaskScript: fwUnmaskScript, FILE: FILE, AUTOUPDATE: AUTOUPDATE, FWSERVICE: FWSERVICE, FWUNITS: FWUNITS, FWMARKERS: FWMARKERS, FW_HOOK: FW_HOOK, fwHookScript: fwHookScript, MULTISCREEN_FLAG: MULTISCREEN_FLAG, AMBIENT_ID: AMBIENT_ID, TELEMETRY_HOST: TELEMETRY_HOST, TELEMETRY_UNITS: TELEMETRY_UNITS, TELEMETRY_BRAKES: TELEMETRY_BRAKES, MULTISCREEN_ID: MULTISCREEN_ID,
-    AIRPLAY_FLAGS: AIRPLAY_FLAGS, AIRPLAY_UNITS: AIRPLAY_UNITS, currentBoot: currentBoot};
+    AIRPLAY_FLAGS: AIRPLAY_FLAGS, AIRPLAY_UNITS: AIRPLAY_UNITS, currentBoot: currentBoot,
+    STANDALONE_FLAG: STANDALONE_FLAG, FW_GUARD: FW_GUARD, FW_GUARD_DIR: FW_GUARD_DIR, FW_GUARD_FILES: FW_GUARD_FILES, FW_DNS_HOSTS: FW_DNS_HOSTS, FW_LOCK_REV: FW_LOCK_REV};

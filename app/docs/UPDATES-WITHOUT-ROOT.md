@@ -17,6 +17,8 @@ Turning Auto update off leaves all four able to run. The background loop still s
 
 With root, Quick settings → General → **Essential settings** → **Block firmware and software updates** stops and masks those update services and sets Auto update off. The block lasts until the next boot, so Vetro applies it again after every restart. Turning the switch off puts everything back. The USB recovery path is left alone.
 
+Samsung's update software can also ask the TV to restart into a separate update mode, which starts before any app (Vetro included) and downloads and installs from Samsung's servers by itself. Nothing Vetro masks is in effect there, so while the switch is on Vetro does not let that request stay: it removes it when the switch is turned on, at every restart, and as soon as it is written. The switch also adds two update servers one owner reported (`otn2.samsungcloudcdn.com`, `qoe.samsungcloud.tv`) to Vetro's DNS blocking list. They are blocked only while **Enable DNS blocking** is on and Vetro is running, so add them to your router or Pi-hole as well. This has not been tried on a TV yet: a router rule is still the only hard barrier.
+
 Without root, Vetro cannot stop or mask any of these services, and the dashboard shows **Root required** instead of the switch. The only reliable block is then the network.
 
 ## Block it on the network

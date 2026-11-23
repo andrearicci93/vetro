@@ -95,7 +95,7 @@ const noWait = () => Promise.resolve();
     fs.writeFileSync(path.join(root, 'prd'), 'Build=T-TEST;\nModel=QTEST;\n');
     const hook = qw.fwHookScript().split('/usr/bin/systemctl').join(fake).split(qw.FILE).join(file).split('/opt/usr/apps/vetrotvapp').join(app)
         .split('/proc/target_version').join(path.join(root, 'tv')).split('/etc/prd_info.ini').join(path.join(root, 'prd'))
-        .split('/usr/bin/touch').join('true').split('/bin/rm').join('true');
+        .split(qw.FW_GUARD_DIR).join(root).split('/usr/bin/touch').join('true').split('/bin/rm').join('true');
     fs.writeFileSync(path.join(root, 'hook.awk'), hook);
     function boot(choices, installed) {
         try { fs.unlinkSync(log); } catch (e) { /* first */ }
@@ -113,8 +113,14 @@ const noWait = () => Promise.resolve();
     assert.ok(lines.findIndex(l => /^mask/.test(l)) < lines.findIndex(l => /^stop/.test(l)), 'masked before the stops');
     assert.ok(lines.some(l => /^stop --no-block .*wifi-presence\.service/.test(l)));
     assert.equal(fs.readFileSync(path.join(root, 'tv'), 'utf8').trim(), '__T-TEST__QTEST', 'the vendor write still happens');
+    // #308: with the lock, the standalone guard's files are written before the mask call and the guard is started after it.
+    assert.equal(fs.readFileSync(path.join(root, qw.FW_GUARD + '.path'), 'utf8'), qw.FW_GUARD_FILES.path);
+    assert.equal(fs.readFileSync(path.join(root, qw.FW_GUARD + '.service'), 'utf8'), qw.FW_GUARD_FILES.service.split('/bin/rm').join('true'));
+    assert.ok(lines.findIndex(l => /^mask --runtime/.test(l)) < lines.findIndex(l => l === 'start --no-block ' + qw.FW_GUARD + '.path'), 'guard started after the masks');
+    fs.unlinkSync(path.join(root, qw.FW_GUARD + '.path')); fs.unlinkSync(path.join(root, qw.FW_GUARD + '.service'));
     assert.deepEqual(boot({telemetryDns: true, telemetryBoot: 'x'}, true), [], 'telemetryDns alone is not telemetry');
     assert.deepEqual(boot({remotesupport: true}, false), [], 'Vetro removed: the hook does nothing');
+    assert.ok(!fs.existsSync(path.join(root, qw.FW_GUARD + '.path')), 'no guard without the lock');
     lines = boot({remotesupport: true}, true);
     assert.equal(lines.filter(l => /^mask --runtime remote-management\.service samsung-easy-support\.service remote-shop-care-hub\.service$/.test(l.split(' >')[0])).length, 1);
     fs.rmSync(root, {recursive: true, force: true});

@@ -46,7 +46,7 @@ const probeStore=require('../service/probe');
   input:()=>({...poison,enabled:true,auto:true,connected:false,savedPresent:false,sameNameCount:3,selectableCount:2,volumeKeys:true,padKey:true,problem:false,device:secret,node:'/dev/input/'+secret,failure:'native input helper did not connect',helperLog:'IOException: EVIOCGRAB /dev/input/event6 failed with errno 16\nArgumentException: '+secret+' @ x',
    recentKeys:[{code:390,key:'KEY_AUX',scan_code_hex:'0x000C00E9',decision:'native',device:secret,node:secret,tv_fullscreen_appid:secret},{code:140,key:secret,scan_code_hex:secret,decision:'blocked'},{code:28,key:'KEY_ENTER',decision:'wake'},{code:9999,key:'KEY_X'},{code:4,key:'KEY_3',scan_code_hex:'0x00070020',decision:'native'},{code:30,key:'KEY_A',decision:'native'}],volumeRoute:{route:'agent',errno:'EACCES',ageSeconds:0,path:secret}}),
   factoryTest:()=>({...poison,key:secret,present:true,value:1,type:'Int32',active:true}),
-  quickWins:()=>({wins:{firmware:{status:'on',value:0},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
+  quickWins:()=>({wins:{firmware:{status:'on',value:0,units:17,masked:17,running:0,guard:true,standalone:false,dnsBlocked:null,path:secret},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
  };
  const d=await report.collect(readers,100);
  const text=JSON.stringify(d);
@@ -67,7 +67,7 @@ const probeStore=require('../service/probe');
  assert.equal(ra.count,5);assert.equal(ra.firstConnectSeconds,65);
  assert.deepEqual(ra.last.map(a=>a.result),['sdbClosed','other','preflight-failed','ok','pending'],'root attempts: fixed codes only');
  assert(ra.last[0].agoSeconds>=119&&ra.last[0].agoSeconds<=121);
- assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:null,running:null,chosen:null},airplay:{status:null,running:null,chosen:null},keyguides:{status:null,running:null,chosen:null}});
+ assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null,units:17,masked:17,guard:true,standalone:false,dnsBlocked:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:null,running:null,chosen:null},airplay:{status:null,running:null,chosen:null},keyguides:{status:null,running:null,chosen:null}});
  assert.deepEqual(d.sections.factoryTest.data,{present:true,value:1,type:'Int32',active:true},'#135: the Aging key, read only');
  assert.equal(d.sections.probe.data.supportedKeys.keys[0],'VolumeUp');
  assert.equal(d.sections.network.data.services[0].customDnsConfigured,true);

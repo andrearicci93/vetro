@@ -41,6 +41,12 @@ var GROUPS = [
             {host: 'samsungacr.com'}, {host: 'log-config.samsungacr.com'}, {host: 'log-ingestion.samsungacr.com'},
             {host: 'acr0.samsungcloudsolution.com'}
         ]},
+    // #308: one owner blocked both and Samsung's "update available" notice stopped, nothing else broke. The update servers are
+    // named at run time, so neither is in the firmware. Block firmware and software updates adds them to the local filter by itself;
+    // on a router they also cover Samsung's standalone update, which starts before Vetro and its filter.
+    {id: 'updates', label: 'Firmware update checks · reported', evidence: 'reported',
+        note: 'Two names one owner blocked to stop Samsung’s “update available” notice; nothing else broke for them. Block firmware and software updates adds them to this filter by itself. This filter works only while Vetro runs; to cover the update mode the TV can start in before Vetro, block them on your router.',
+        hosts: [{host: 'otn2.samsungcloudcdn.com'}, {host: 'qoe.samsungcloud.tv'}]},
     {id: 'probable', label: 'Probable ACR starting point · unverified', evidence: 'unverified',
         note: 'Likely where the viewing-data service learns its servers. It is not in the firmware and nobody has confirmed it, so treat it as a guess and watch what the TV asks for.',
         hosts: [{host: 'gpm.samsungqbe.com'}]},

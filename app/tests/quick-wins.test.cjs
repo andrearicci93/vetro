@@ -26,12 +26,12 @@ function tv(start){
  const execute=async cmd=>{const sh=Buffer.from(cmd.split(' ')[1],'base64').toString();s.calls.push(sh);
   if(sh.includes('echo "AU|'))return {exit_code:0,stdout:'AU|value = '+s.autoupdate+' (Int32)\nFWS|value = '+s.fwsvc+' (Int32)\n'+
    qw.FWUNITS.map(u=>'LS|'+u+'|'+(s.fwMasked[u]?'masked':'loaded')+'|'+(s.fwMasked[u]?'inactive':s.fwActive[u]?'active':'inactive')).join('\n')+
-   '\nMS|'+(s.ms?1:0)+'\nMR|'+(s.msRun?1:0)+'\nAR|'+(s.ambRun?1:0)+'\nTB|'+(s.telBrakes||0)+'\nTR|'+s.telRun+'\nAP|'+(s.apPresent?1:0)+'\nAF|'+(s.apFlag?1:0)+'\nAS|'+(s.apSvc?'active':'inactive')+'\nAW|'+(s.apWeb?1:0)+'\nQB|'+(s.parseinfo&&s.parseinfo.includes('VETRO_UPDATE_LOCK_HOOK')?1:0)+'\n'};
+   '\nMS|'+(s.ms?1:0)+'\nMR|'+(s.msRun?1:0)+'\nAR|'+(s.ambRun?1:0)+'\nTB|'+(s.telBrakes||0)+'\nTR|'+s.telRun+'\nAP|'+(s.apPresent?1:0)+'\nAF|'+(s.apFlag?1:0)+'\nAS|'+(s.apSvc?'active':'inactive')+'\nAW|'+(s.apWeb?1:0)+'\nQB|'+(s.parseinfo&&s.parseinfo.includes('VETRO_UPDATE_LOCK_HOOK')?1:0)+'\nGD|'+(s.guard?'active':'inactive')+'\nSF|'+(s.sflag?1:0)+'\n'};
   if(sh.startsWith('vconftool get'))return {exit_code:0,stdout:'value = '+(sh.includes(qw.FWSERVICE)?s.fwsvc:s.autoupdate)+' (Int32)\n'};
   const set=/vconftool set -f -t int (\S+) (-?\d+)/.exec(sh);if(set&&/^vconftool set/.test(sh)){if(s.failSet)return {exit_code:1,stderr:'denied',stdout:''};const v=Number(set[2]);
    if(set[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=v;}else if(s.keep||v===1)s.autoupdate=v;return {exit_code:0,stdout:''};}
-  if(/^set \+e\nsystemctl mask --runtime /.test(sh)){for(const u of qw.FWUNITS){if(!s.maskFails)s.fwMasked[u]=true;s.fwActive[u]=false;}s.markers=false;s.maskRuns=(s.maskRuns||0)+1;if(!s.failSet)for(const m of sh.matchAll(/vconftool set -f -t int (\S+) (-?\d+)/g)){if(m[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=Number(m[2]);}else if(s.keep||Number(m[2])===1)s.autoupdate=Number(m[2]);}return {exit_code:0,stdout:runHook(sh)};}
-  if(/^set \+e\nsystemctl unmask/.test(sh)){s.fwMasked={};for(const u of ['swu-auto-upgrade.timer','swu-verifier-tv.service','was-background-update.path','fw-update-service.path','vdsystem-update-manager.timer','appbinary-manager.service'])s.fwActive[u]=true;s.unmaskRuns=(s.unmaskRuns||0)+1;return {exit_code:0,stdout:runHook(sh)};}
+  if(/^set \+e\n(?:echo \S+ \| base64 -d > \S+ 2>\/dev\/null\n)*systemctl mask --runtime /.test(sh)){if(!s.guardFails&&sh.includes('systemctl start --no-block '+qw.FW_GUARD+'.path'))s.guard=true;if(sh.includes('rm -f '+qw.STANDALONE_FLAG))s.sflag=false;s.guardFiles=(sh.match(/base64 -d > \S+/g)||[]).length;for(const u of qw.FWUNITS){if(!s.maskFails)s.fwMasked[u]=true;s.fwActive[u]=false;}s.markers=false;s.maskRuns=(s.maskRuns||0)+1;if(!s.failSet)for(const m of sh.matchAll(/vconftool set -f -t int (\S+) (-?\d+)/g)){if(m[1]===qw.FWSERVICE){if(s.keepSvc)s.fwsvc=Number(m[2]);}else if(s.keep||Number(m[2])===1)s.autoupdate=Number(m[2]);}return {exit_code:0,stdout:runHook(sh)};}
+  if(/^set \+e\n(?:systemctl stop vetro-update-lock-guard[^\n]*\nrm -f [^\n]*\n)?systemctl unmask/.test(sh)){if(sh.includes('systemctl stop '+qw.FW_GUARD+'.path'))s.guard=false;s.fwMasked={};for(const u of ['swu-auto-upgrade.timer','swu-verifier-tv.service','was-background-update.path','fw-update-service.path','vdsystem-update-manager.timer','appbinary-manager.service'])s.fwActive[u]=true;s.unmaskRuns=(s.unmaskRuns||0)+1;return {exit_code:0,stdout:runHook(sh)};}
   // The telemetry boot pass carries the hook install in the same command: both halves count.
   if(/^touch \/opt\/usr\/share\/systemd\/system\/canalysis-daemon/.test(sh)){s.telBrakes=3;s.telRun=s.telStays;s.telOffRuns=(s.telOffRuns||0)+1;}
   if(sh.includes('vetro-hook:')||sh.includes('sha256sum'))return {exit_code:0,stdout:runHook(sh)};
@@ -51,9 +51,9 @@ function store(){let data=null;return {readFileSync(){if(data===null)throw Error
 const noWait=()=>Promise.resolve();
 (async()=>{
  // Reading
- assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,apps:{}});
- assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,apps:{}});
- assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,apps:{}},'what cannot be read stays unknown');
+ assert.deepEqual(qw.parse('AU|value = 0 (Int32)\nMS|1\nMR|0\nAR|1\nnoise'),{autoupdate:0,fwService:null,fwUnits:{},multiscreenFlag:true,multiscreenRunning:false,ambientRunning:true,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,apps:{}});
+ assert.deepEqual(qw.parse('TB|3\nTR|2'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:3,telemetryRunning:2,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,apps:{}});
+ assert.deepEqual(qw.parse('AU|Error: no such key'),{autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null,airplayPresent:null,airplayFlag:null,airplayService:null,airplayWeb:null,quickbootHook:null,fwGuard:null,standaloneFlag:null,apps:{}},'what cannot be read stays unknown');
  let t=tv(),io=store(),w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'boot-1'});
  let st=await w.read();assert.deepEqual([st.wins.firmware.status,st.wins.multiscreen.status,st.wins.ambient.status],['off','off','off']);assert.equal(st.wins.telemetry.status,'off');
 
@@ -229,7 +229,7 @@ const noWait=()=>Promise.resolve();
  w.remember('telemetry',true);w.busy=true;w.changing='firmware';
  assert.deepEqual(await w.boot(null),['telemetry']);assert.equal(t.s.telOffRuns,2);
  // AirPlay (idea by zabique): the flag files keep the receiver down; partial while something still runs; boot stops the web app
- assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({apps:{},autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null}));
+ assert.deepEqual(qw.parse('AP|1\nAF|1\nAS|inactive\nAW|0'),Object.assign({apps:{},autoupdate:null,fwService:null,fwUnits:{},multiscreenFlag:null,multiscreenRunning:null,ambientRunning:null,telemetryBrakes:null,telemetryRunning:null},{airplayPresent:true,airplayFlag:true,airplayService:false,airplayWeb:false,quickbootHook:null,fwGuard:null,standaloneFlag:null}));
  t=tv();io=store();w=new qw.Wins(t.execute,{fs:io,sleep:noWait,bootId:()=>'ap-1',skipAmbient:true});
  assert.equal((await w.read()).wins.airplay.status,'off');
  r=await w.apply('airplay',true);assert.equal(r.status,'on');assert.equal(JSON.parse(io.data).airplay,true);
