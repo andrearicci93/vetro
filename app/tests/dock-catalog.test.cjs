@@ -82,6 +82,11 @@ const noYt = catalog.build(Object.assign({}, tt, {icons: {tt: tt.icons.tt}}), {f
 assert.equal(noYt.entries[0].killFirst, 'com.samsung.tv.cobalt-yt', 'still closes YouTube first');
 assert.equal(noYt.entries[0].icon, tt.icons.tt, 'without a YouTube icon the app keeps its own');
 assert.ok(noYt.skipped.some(x => /No YouTube icon/.test(x.reason)));
+// A customised row can add Standalone from All apps even when Samsung's row omits it.
+const absentFromSamsungRow = catalog.build(Object.assign({}, tt, {rowFrom:'csfs',order:['d/webapp@aaa']}), {fixTizenTube:true});
+const standaloneInAllApps = absentFromSamsungRow.allApps.find(x=>x.appId==='xvvl3S1TT1.TizenTubeStandalone');
+assert.equal(standaloneInAllApps.icon,tt.icons.yt,'Standalone added from All apps uses the official YouTube icon');
+assert.equal(standaloneInAllApps.appId,'xvvl3S1TT1.TizenTubeStandalone','icon correction preserves the actual player');
 
 // Samsung's YouTube: the Home row lists widget 111299001912, the wrapper app and its registry row are gone, Cobalt YouTube is installed
 const pkgs = {}; for (let i = 0; i < 25; i++) pkgs['p.' + i] = true;

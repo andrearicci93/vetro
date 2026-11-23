@@ -20,6 +20,7 @@ namespace Tuner.Tvs
         private const string ClientRoot = "/opt/usr/dotnet/Tizen.TV.Broadcast.TVService/";   // one folder per version: 1.1.12 on the Q80A
         private static readonly string[] FixedDirs =
         {
+            "/usr/apps/com.samsung.tv.gamebar/bin/",
             "/usr/apps/csapi-tv-tizenfx/shared/lib/",
             "/usr/share/dotnet.tizen/framework/",
         };
@@ -46,6 +47,8 @@ namespace Tuner.Tvs
         }
 
         private static bool _resolver;
+        private static readonly HashSet<string> Resolving = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly object ResolveGate = new object();
 
         /// <summary>Where Samsung's client was loaded from and its version (for the log: 2021, 2022 and 2024 firmware keep it in different places).</summary>
         public static volatile string LoadedFrom;
@@ -53,19 +56,31 @@ namespace Tuner.Tvs
         public static void InstallResolver()
         {
             if (_resolver) return;
+            // Enumerating a missing directory while already resolving an assembly can
+            // itself trigger assembly resolution on this firmware. Prepare paths first.
+            string[] dirs = Dirs;
             _resolver = true;
             AppDomain.CurrentDomain.AssemblyResolve += (s, e) =>
             {
-                string file = new AssemblyName(e.Name).Name + ".dll";
-                foreach (string d in Dirs)
+                string name = new AssemblyName(e.Name).Name;
+                // Framework assemblies belong to the CLR. Never recursively probe the
+                // TV's framework copies while the CLR is resolving its own dependencies.
+                if (!name.StartsWith("Tizen.", StringComparison.Ordinal)) return null;
+                lock (ResolveGate) { if (!Resolving.Add(name)) return null; }
+                try
                 {
-                    string p = d + file;
-                    if (!System.IO.File.Exists(p)) continue;
-                    Assembly a = Assembly.LoadFrom(p);
-                    if (file == "Tizen.TV.Broadcast.TVService.dll") LoadedFrom = p + " " + a.GetName().Version;
-                    return a;
+                    string file = name + ".dll";
+                    foreach (string d in dirs)
+                    {
+                        string p = d + file;
+                        if (!System.IO.File.Exists(p)) continue;
+                        Assembly a = Assembly.LoadFrom(p);
+                        if (file == "Tizen.TV.Broadcast.TVService.dll") LoadedFrom = p + " " + a.GetName().Version;
+                        return a;
+                    }
+                    return null;
                 }
-                return null;
+                finally { lock (ResolveGate) Resolving.Remove(name); }
             };
         }
 
