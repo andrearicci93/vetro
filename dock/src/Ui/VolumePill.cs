@@ -33,6 +33,7 @@ namespace Launcher.Ui
 
         private readonly VolumeEdge _edge;
         private readonly int _screenW;
+        private int _edgeOffset;
 
         public VolumePill(string assets, Action<string> log, int screenW, int screenH, VolumeEdge edge)
         {
@@ -50,6 +51,8 @@ namespace Launcher.Ui
         public void Show(int volume, bool muted)
         {
             if (!Build()) return;
+            int offset = VolumeScreenProbe.Offset;
+            if (offset != _edgeOffset) { _edgeOffset = offset; Efl.evas_object_move(_win, _p.WinX + offset, _p.WinY); }
             Update(volume, muted);
             double now = Efl.ecore_time_get();
             _until = now + HoldSeconds;
@@ -98,9 +101,11 @@ namespace Launcher.Ui
                 Efl.elm_win_layer_set(_win, WindowLayer);
                 Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
                 Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
-                // Move only the window; its contents retain their local coordinates and dimensions.
-                int edgeOffset = VolumeScreenProbe.HorizontalOffset(_edge, _screenW, _log);
-                Efl.evas_object_move(_win, _p.WinX + edgeOffset, _p.WinY);
+                // Move only the window; its contents retain their local coordinates and dimensions. The offset is read beside the loop
+                // (VolumeScreenProbe.Start) and applied in Show once known.
+                VolumeScreenProbe.Start(_edge, _screenW, _log);
+                _edgeOffset = VolumeScreenProbe.Offset;
+                Efl.evas_object_move(_win, _p.WinX + _edgeOffset, _p.WinY);
                 Efl.evas_object_resize(_win, _p.WinW, _p.WinH);
                 Efl.evas_object_pass_events_set(_win, true);
                 IntPtr evas = Efl.evas_object_evas_get(_win);
