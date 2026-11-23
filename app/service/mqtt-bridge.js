@@ -143,6 +143,11 @@ MqttBridge.prototype._discover = function () {
         var conf={name:s[2],state_topic:prefix+'/'+s[3],unique_id:client.identity+'_'+s[1],device:device,
             availability:[{topic:client.availabilityTopic},{topic:prefix+'/'+s[3]+'/availability'}],
             availability_mode:'all',payload_available:'online',payload_not_available:'offline'};
+        if(s[1]==='power'){
+            conf.device_class='enum';
+            conf.options=['On','Standby'];
+            conf.value_template='{{ value | capitalize }}';
+        }
         if(s[4])conf.unit_of_measurement=s[4];
         if(s[0]==='binary_sensor'){conf.payload_on='ON';conf.payload_off='OFF';}
         var topic='homeassistant/'+s[0]+'/'+client.identity+'/'+s[1]+'/config';

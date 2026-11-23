@@ -19,6 +19,10 @@ const store=new Store(async c=>{calls++;command=c;return {exit_code:0,stdout:'{"
  const context=vm.createContext({module:{exports:{}},require:m=>m==='fs'?{readFileSync:()=>'{"host":"broker","clientId":"test-tv"}'}:{MqttClient:Client},setInterval:()=>1,clearInterval(){},setTimeout:()=>1,clearTimeout(){}});
  vm.runInContext(fs.readFileSync(require.resolve('../service/mqtt-bridge.js'),'utf8'),context);
  const bridge=new context.module.exports.MqttBridge(()=>({error:1}));bridge.start();bridge.client.emit('connect');
+ const powerConfig=JSON.parse(sent.find(x=>x.topic.endsWith('/power/config')).payload);
+ assert.equal(powerConfig.device_class,'enum');
+ assert.deepEqual(powerConfig.options,['On','Standby']);
+ assert.equal(powerConfig.value_template,'{{ value | capitalize }}');
  const mute=JSON.parse(sent.find(x=>x.topic.endsWith('/muted/config')).payload);
  assert.equal(mute.availability_mode,'all');assert.equal(mute.payload_off,'OFF');assert.equal(mute.availability.length,2);
  sent=[];bridge.publishTvState({power:'standby'});
