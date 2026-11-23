@@ -946,11 +946,10 @@ function winNoRoot(id){
   '<ol class="fw-steps">'+FW_NO_ROOT_STEPS.map(function(t){return '<li>'+esc(t)+'</li>'}).join('')+'</ol>'+
   '<details><summary>What a firmware update can do</summary><p>Samsung is actively trying to block root with remote firmware updates: a patch can remove root and close the path Vetro uses. Turn this on as soon as root is available. The TV’s own Auto update setting does not stop the background update loop.</p></details>');
 }
-// Extra performance mode (performance-mode.js): one switch, the parts it turned on, the apps it never closes.
+// Extra performance mode (performance-mode.js): closes apps left in the background, and the apps it never closes.
 var perfData=null,perfBusy=false;
-var PERF_PARTS=[['motion','Reduce motion'],['idleHome','Close idle Samsung Home'],['telemetry','Stop viewing-data collection'],['multiscreen','Disable Multi View autostart'],['ambient','Stop Ambient']];
-function perfPartName(k){var p=PERF_PARTS.filter(function(x){return x[0]===k})[0];return p?p[1]:k}
-function loadPerf(){return api('/performance').then(function(d){if(typeof d.on!=='boolean'||!d.parts)throw Error('Extra performance mode unreadable');perfData=d;quickReadAt.perf=Date.now();}).catch(function(e){perfData={error:e.message};}).finally(function(){renderQuick();});}
+var PERF_LEGACY={motion:'Reduce motion',idleHome:'Close idle Samsung Home',telemetry:'Stop viewing-data collection',multiscreen:'Disable Multi View autostart',ambient:'Stop Ambient'};
+function loadPerf(){return api('/performance').then(function(d){if(typeof d.on!=='boolean'||!Array.isArray(d.keepOpen))throw Error('Extra performance mode unreadable');perfData=d;quickReadAt.perf=Date.now();}).catch(function(e){perfData={error:e.message};}).finally(function(){renderQuick();});}
 // The apps of the launcher's All apps page (the service reads its list), plus any already kept that the list lacks.
 function keepOpenChoices(d){
  var seen={},out=[];
@@ -960,16 +959,16 @@ function keepOpenChoices(d){
 }
 function perfItem(){
  var d=perfData,title='Extra performance mode';
- var desc='Turns on Reduce motion and Close idle Samsung Home, stops viewing-data collection, Multi View autostart and Ambient, and closes apps left in the background for 15 minutes, sooner when memory runs low. Turning it off puts back only what it changed.';
+ var desc='Closes apps left in the background for 15 minutes, sooner when memory runs low. It changes no other setting.';
  if(quickData.root===false)return quickItem('performance',title,desc,chip('Root required','partial'),'');
  if(!d)return quickItem('performance',title,desc,chip('Reading…'),'');
  if(d.error)return quickItem('performance',title,desc,chip(d.error,'partial'),'');
- var state=d.status==='on'?chip('On','on'):d.status==='partial'?chip('Partly on · '+d.changed.map(perfPartName).join(', ')+' turned off by hand','partial'):chip('Off');
+ var state=d.on?chip('On','on'):chip('Off');
  if(d.on&&d.closed)state+=chip('Closed '+d.closed+(d.closed===1?' app':' apps')+' since Vetro started');
- if(d.on&&!d.launcher)state+=chip('Reduce motion and Close idle Samsung Home apply when the launcher is on');
- var parts='<ul class="member-list">'+PERF_PARTS.map(function(p){var x=d.parts[p[0]]||{};return '<li>'+esc(p[1])+': '+(x.applied===null||x.applied===undefined?'not known':x.applied?'on':'off')+(x.owned?' · turned on by this mode':'')+'</li>'}).join('')+'</ul>';
- var detail='<details><summary>What this changes</summary><p>Each part is turned on only if it was off. Turning the mode off turns back only those, and leaves alone a part you changed by hand since.</p>'+parts+
-  '<p>Background apps are closed after '+d.idleMinutes+' minutes off screen, or the one idle longest after 2 minutes when the TV has less than '+d.lowMemoryMiB+' MiB available. A closed app starts from the beginning when you open it again, a few seconds slower.</p></details>';
+ var legacy=(d.legacy||[]).map(function(k){return PERF_LEGACY[k]||k});
+ var detail='<details><summary>What this changes</summary><p>Background apps are closed after '+d.idleMinutes+' minutes off screen, or the one idle longest after '+(d.lowIdleMinutes||2)+' minutes when the TV has less than '+d.lowMemoryMiB+' MiB available. A closed app starts from the beginning when you open it again, a few seconds slower.</p>'+
+  '<p>Reduce motion, Close idle Samsung Home and the background services keep their own switches: this mode does not touch them.</p>'+
+  (legacy.length?'<p>Turning it off also turns off '+esc(legacy.join(', '))+', which an earlier test build of this mode turned on, unless you changed them since.</p>':'')+'</details>';
  var apps=keepOpenChoices(d);
  var keep='<details><summary>Apps never closed ('+d.keepOpen.length+' chosen)</summary><p>Never closed in any case: the app on screen, apps that report playing sound, Vetro, the TV’s own apps and Samsung Home (it has its own switch). Tick the others to keep open.</p>'+
   (apps.length?'<div class="perf-keep">'+apps.map(function(a){return '<label><input type="checkbox" data-perf-keep="'+esc(a.appId)+'"'+(d.keepOpen.indexOf(a.appId)>=0?' checked':'')+(perfBusy?' disabled':'')+'> '+esc(a.name)+'</label>'}).join('')+'</div>':'<p class="section-note">The list comes from the launcher’s All apps page: it appears once the launcher has been on.</p>')+'</details>';

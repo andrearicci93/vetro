@@ -1,17 +1,17 @@
 'use strict';
-// Extra performance mode (Quick settings, Experimental). One switch that:
-//   - turns on Reduce motion (launcher, Task manager, Volume bar, osd 123 and tuner) and Close idle Samsung Home;
-//   - turns on three wins that take nothing away (their own copy says so): Stop viewing-data collection, Disable Multi View
-//     autostart, Stop Ambient (Ambient still opens by hand);
-//   - closes apps left in the background: after IDLE_MS without being on screen, and the longest-idle one at once (after
-//     LOW_IDLE_MS) when the TV's available memory falls under LOW_MEMORY_KIB. Never the app on screen, an app playing sound,
-//     Vetro, the TV's own apps, Samsung Home (Close idle Samsung Home has its own rule) or an app the owner keeps open.
-// Turning it off puts back only what it turned on, and only what is still as it left it (the ledger in FILE). Measured on a
-// Q80A (2026-11-22, one run each): Netflix ~100 MiB and NOW ~95 MiB in background; Samsung's own memory killer already closes
-// background apps under pressure, so the cleanup frees memory earlier (less swap), at the cost of a cold start on reopening.
+// Extra performance mode (Quick settings, Experimental). One job: close apps left in the background, after IDLE_MS without being
+// on screen, and the longest-idle one at once (after LOW_IDLE_MS) when the TV's available memory falls under LOW_MEMORY_KIB.
+// Never the app on screen, an app playing sound, Vetro, the TV's own apps, Samsung Home (Close idle Samsung Home has its own
+// rule) or an app the owner keeps open. It turns on or changes no other setting: Reduce motion, Close idle Samsung Home and the
+// background-service wins keep their own switches. Measured on a Q80A (2026-11-22, one run each): Netflix ~100 MiB and NOW ~95 MiB
+// in background; Samsung's own memory killer already closes background apps under pressure, so the cleanup frees memory earlier
+// (less swap), at the cost of a cold start on reopening.
 // The app selection follows #281's Free up RAM by swiezaczek: UI apps only, oom_score_adj >= 300, and in the cpu background cgroup
 // where resourced uses it (#281's S90C). A 2021 Q80A has that group but leaves it empty (Netflix in background sat in the root
 // group): there resourced's oom_score_adj alone tells them apart, 600 in background and 200 on screen (2026-11-22).
+// Test builds of 0.7.1 (abb451e) also turned on Reduce motion, Close idle Samsung Home and three wins, and kept in FILE what they
+// turned on ("owned"). That ledger is read as legacy: the next Off puts back what it lists, if still as it was left, and drops it;
+// Restore the TV drops it too. Nothing writes it any more.
 var fs = require('fs');
 
 var FILE = '/opt/usr/home/owner/share/vetro-performance.json';
@@ -126,18 +126,25 @@ PerformanceMode.prototype.loadUiApps = function () {
     }, function () { return self.uiApps; });
 };
 
+// The saved state: on, the keep-open list, and the legacy ledger of the 0.7.1 test builds (what they turned on, see the top).
 PerformanceMode.prototype.load = function () {
-    try {
-        var o = JSON.parse(this.fs.readFileSync(this.file, 'utf8'));
-        return {on: o.on === true, owned: {motion: !!(o.owned && o.owned.motion), idleHome: !!(o.owned && o.owned.idleHome),
-            wins: (o.owned && Array.isArray(o.owned.wins) ? o.owned.wins : []).filter(function (id) { return WINS.indexOf(id) >= 0; })},
-            keepOpen: (Array.isArray(o.keepOpen) ? o.keepOpen : []).filter(function (id) { return APP_ID_RE.test(id); }).slice(0, 100)};
-    } catch (e) { return {on: false, owned: {motion: false, idleHome: false, wins: []}, keepOpen: []}; }
+    var o = {};
+    try { o = JSON.parse(this.fs.readFileSync(this.file, 'utf8')) || {}; } catch (e) { o = {}; }
+    var owned = o.owned || {};
+    return {on: o.on === true,
+        legacy: {motion: !!owned.motion, idleHome: !!owned.idleHome,
+            wins: (Array.isArray(owned.wins) ? owned.wins : []).filter(function (id) { return WINS.indexOf(id) >= 0; })},
+        keepOpen: (Array.isArray(o.keepOpen) ? o.keepOpen : []).filter(function (id) { return APP_ID_RE.test(id); }).slice(0, 100)};
 };
 
+function legacyNames(l) {
+    return (l.motion ? ['motion'] : []).concat(l.idleHome ? ['idleHome'] : [], l.wins);
+}
+
 PerformanceMode.prototype.save = function (state) {
-    var tmp = this.file + '.tmp';
-    this.fs.writeFileSync(tmp, JSON.stringify(state) + '\n', {mode: 0o600});
+    var tmp = this.file + '.tmp', out = {on: state.on === true, keepOpen: state.keepOpen || []};
+    if (state.legacy && legacyNames(state.legacy).length) out.owned = state.legacy;   // kept as it was until the next Off or Restore
+    this.fs.writeFileSync(tmp, JSON.stringify(out) + '\n', {mode: 0o600});
     this.fs.renameSync(tmp, this.file);
 };
 
@@ -161,27 +168,16 @@ PerformanceMode.prototype.dockState = function () {
     try { return this.dock ? this.dock.readState() : null; } catch (e) { return null; }
 };
 
-// What each part reads now: applied (true/false/null unknown) and whether the mode turned it on.
+// The state: on or off, the keep-open list and its choices, what was closed, and what the next Off still puts back for a test build.
 PerformanceMode.prototype.read = function () {
-    var self = this, st = this.load(), d = this.dockState();
-    var winsRead = this.wins ? this.wins.read().then(function (w) { return w.wins; }, function () { return null; }) : Promise.resolve(null);
-    return winsRead.then(function (w) {
-        var parts = {
-            motion: {applied: d ? d.noMotion === true : null, owned: st.owned.motion},
-            idleHome: {applied: d ? d.closeIdleHome !== false : null, owned: st.owned.idleHome}
-        };
-        WINS.forEach(function (id) {
-            var s = w && w[id] ? w[id].status : null;
-            parts[id] = {applied: s === 'on' || s === 'partial' ? true : s === 'off' ? false : null, owned: st.owned.wins.indexOf(id) >= 0};
-        });
-        // Partly on: a part the mode turned on was turned off by hand since.
-        var changed = Object.keys(parts).filter(function (k) { return parts[k].owned && parts[k].applied === false; });
-        return {on: st.on, status: !st.on ? 'off' : changed.length ? 'partial' : 'on', changed: changed, parts: parts,
-            keepOpen: st.keepOpen, choices: self.choices(), closed: self.closedCount, recent: self.recent.slice(), busy: self.busy,
-            launcher: !!(d && d.enabled), idleMinutes: IDLE_MS / 60000, lowMemoryMiB: LOW_MEMORY_KIB / 1024};
-    });
+    var st = this.load();
+    return Promise.resolve({on: st.on, status: st.on ? 'on' : 'off', keepOpen: st.keepOpen, choices: this.choices(), closed: this.closedCount,
+        recent: this.recent.slice(), busy: this.busy, legacy: legacyNames(st.legacy), idleMinutes: IDLE_MS / 60000,
+        lowIdleMinutes: LOW_IDLE_MS / 60000, lowMemoryMiB: LOW_MEMORY_KIB / 1024});
 };
 
+// On starts the background cleanup and changes nothing else. Off stops it; on a TV that ran a 0.7.1 test build it also puts back
+// what that build's ledger says it turned on, each part only if it is still as the build left it, and then drops the ledger.
 PerformanceMode.prototype.apply = function (on) {
     var self = this;
     if (typeof on !== 'boolean') return Promise.reject(Error('Invalid state'));
@@ -190,36 +186,19 @@ PerformanceMode.prototype.apply = function (on) {
     var st = this.load(), errors = [];
     function step(promise, what) { return promise.then(null, function (e) { errors.push(what + ': ' + (e && e.message || e)); }); }
     var task;
-    if (on) {
+    if (on) task = Promise.resolve().then(function () { st.on = true; self.lastFront = {}; });
+    else {
+        var l = st.legacy;
         task = Promise.resolve().then(function () {
             var d = self.dockState();
-            if (d && d.noMotion !== true && self.dock) return step(self.dock.setNoMotion(true).then(function () { st.owned.motion = true; }), 'Reduce motion');
+            if (l.motion && d && d.noMotion === true && self.dock) return step(self.dock.setNoMotion(false), 'Reduce motion');
         }).then(function () {
             var d = self.dockState();
-            if (d && d.closeIdleHome === false && self.dock) return step(self.dock.setCloseIdleHome(true).then(function () { st.owned.idleHome = true; }), 'Close idle Samsung Home');
+            if (l.idleHome && d && d.closeIdleHome !== false && self.dock) return step(self.dock.setCloseIdleHome(false), 'Close idle Samsung Home');
         }).then(function () {
-            if (!self.wins) return;
+            if (!self.wins || !l.wins.length) return;
             return self.wins.read().then(function (w) {
-                return WINS.reduce(function (p, id) {
-                    return p.then(function () {
-                        var s = w.wins[id] && w.wins[id].status;
-                        if (s !== 'off') return;   // already on, partly on, or unreadable (no root): not the mode's to change
-                        return step(self.wins.apply(id, true).then(function () { if (st.owned.wins.indexOf(id) < 0) st.owned.wins.push(id); }), id);
-                    });
-                }, Promise.resolve());
-            }, function (e) { errors.push('wins: ' + e.message); });
-        }).then(function () { st.on = true; self.lastFront = {}; });
-    } else {
-        task = Promise.resolve().then(function () {
-            var d = self.dockState();
-            if (st.owned.motion && d && d.noMotion === true && self.dock) return step(self.dock.setNoMotion(false), 'Reduce motion');
-        }).then(function () {
-            var d = self.dockState();
-            if (st.owned.idleHome && d && d.closeIdleHome !== false && self.dock) return step(self.dock.setCloseIdleHome(false), 'Close idle Samsung Home');
-        }).then(function () {
-            if (!self.wins || !st.owned.wins.length) return;
-            return self.wins.read().then(function (w) {
-                return st.owned.wins.reduce(function (p, id) {
+                return l.wins.reduce(function (p, id) {
                     return p.then(function () {
                         var s = w.wins[id] && w.wins[id].status;
                         if (s !== 'on' && s !== 'partial') return;   // turned off by hand since: left as it is
@@ -227,7 +206,7 @@ PerformanceMode.prototype.apply = function (on) {
                     });
                 }, Promise.resolve());
             }, function (e) { errors.push('wins: ' + e.message); });
-        }).then(function () { st.on = false; st.owned = {motion: false, idleHome: false, wins: []}; });
+        }).then(function () { st.on = false; st.legacy = {motion: false, idleHome: false, wins: []}; });
     }
     return task.then(function () {
         self.save(st);
@@ -245,10 +224,9 @@ PerformanceMode.prototype.setKeepOpen = function (ids) {
     return this.read();
 };
 
-// Restore the TV: everything it turns back already covers what the mode changed; only the ledger goes.
+// Restore the TV: the mode goes off, and a test build's ledger goes (Restore turns those settings back with everything else).
 PerformanceMode.prototype.forget = function () {
-    var st = this.load();
-    this.save({on: false, owned: {motion: false, idleHome: false, wins: []}, keepOpen: st.keepOpen});
+    this.save({on: false, keepOpen: this.load().keepOpen});
 };
 
 // Every TICK_MS while the mode is on: note the app on screen, close what has been idle too long.

@@ -87,7 +87,8 @@ var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 var factoryApps = require('./factory-apps.js');
 var factoryTest = new factoryApps.FactoryTest(agentExecute);
 var wins = new (require('./quick-wins.js').Wins)(agentExecute, {dns: dnsFilter});
-// Extra performance mode (Quick settings, Experimental): its ledger, and the background app cleanup every minute while it is on.
+// Extra performance mode (Quick settings, Experimental): the background app cleanup every minute while it is on (dock and wins only
+// for the ledger a 0.7.1 test build left, which its next Off puts back).
 var perfModule = require('./performance-mode.js');
 var perfMode = new perfModule.PerformanceMode(agentExecute, {dock: dock, wins: wins, log: function (s) { console.log('VETRO ' + s); }});
 // Remote key guides: the capsule with a picture of the remote ("Press Volume: Mute", the play/pause wheel) that Samsung's

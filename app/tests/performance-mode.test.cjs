@@ -1,6 +1,7 @@
 'use strict';
-// Extra performance mode: the ledger (only what it turned on goes back), the parts it reads, and the background app cleanup on the
-// read a Q80A printed (2026-11-22: YouTube on screen, Netflix paused behind it), with sound and kept-open apps left alone.
+// Extra performance mode: on and off change no other setting (a 0.7.1 test build's ledger is put back once, on the next Off), and
+// the background app cleanup on the read a Q80A printed (2026-11-22: YouTube on screen, Netflix paused behind it), with sound and
+// kept-open apps left alone.
 const assert = require('assert').strict;
 const pm = require('../service/performance-mode.js');
 
@@ -52,23 +53,38 @@ function fakeWins(status) {
     assert.match(cs, /app_launcher -t org\.tizen\.netflix-app[\s\S]*\[ -d \/proc\/9893 \][\s\S]*app_launcher -k org\.tizen\.netflix-app/);
     assert.match(cs, /if \[ -d \/proc\/9893 \]; then echo "LEFT\|org\.tizen\.netflix-app"; else echo "CLOSED\|org\.tizen\.netflix-app"; fi/, 'closed only when the process is gone');
 
-    // on: only what was off becomes the mode's; off: only the mode's, and only if still as it left it
-    let io = store(), dock = fakeDock({noMotion: false, closeIdleHome: true}), wins = fakeWins({telemetry: 'on'});
+    // on and off touch nothing else: not Reduce motion, not Close idle Samsung Home, not the wins
+    let io = store(), dock = fakeDock({noMotion: false, closeIdleHome: false}), wins = fakeWins({telemetry: 'on'});
     let m = new pm.PerformanceMode(async () => ({exit_code: 0, stdout: ''}), {dock, wins, fs: io});
     let r = await m.apply(true);
-    assert.equal(r.status, 'on'); assert.deepEqual(io.json.owned, {motion: true, idleHome: false, wins: ['multiscreen', 'ambient']}, 'telemetry was already on: not the mode\'s');
-    assert.deepEqual(dock.calls, ['motion true']); assert.deepEqual(wins.calls, ['multiscreen true', 'ambient true']);
-    wins.s.ambient = 'off';   // turned off by hand
-    r = await m.read(); assert.equal(r.status, 'partial'); assert.deepEqual(r.changed, ['ambient']);
-    r = await m.apply(false);
-    assert.equal(r.status, 'off'); assert.deepEqual(wins.calls.slice(2), ['multiscreen false'], 'ambient was turned off by hand: left as it is');
-    assert.equal(wins.s.telemetry, 'on', 'telemetry was the owner\'s: still on'); assert.equal(dock.s.noMotion, false); assert.equal(dock.s.closeIdleHome, true, 'idle Home was already on: still on');
-    assert.deepEqual(io.json.owned, {motion: false, idleHome: false, wins: []});
+    assert.equal(r.status, 'on'); assert.equal(r.on, true); assert.deepEqual(r.legacy, []); assert.deepEqual(r.errors, []);
+    assert.ok(!('parts' in r) && !('changed' in r), 'no parts of its own any more');
+    assert.deepEqual(io.json, {on: true, keepOpen: []}, 'no ledger written');
+    r = await m.apply(false); assert.equal(r.status, 'off');
+    assert.deepEqual(dock.calls, []); assert.deepEqual(wins.calls, []);
+    assert.deepEqual(dock.s, {enabled: true, noMotion: false, closeIdleHome: false}); assert.equal(wins.s.telemetry, 'on');
 
-    // a win without root reads unknown: not touched
-    io = store(); dock = fakeDock({noMotion: true}); wins = {calls: [], read: () => Promise.resolve({wins: {telemetry: {status: 'unknown'}, multiscreen: {status: 'unknown'}, ambient: {status: 'unknown'}}}), apply() { this.calls.push('x'); return Promise.resolve({}); }};
+    // a TV that ran a 0.7.1 test build: its ledger is shown, kept while the mode stays on, put back once on the next Off, then gone
+    io = store({on: true, owned: {motion: true, idleHome: false, wins: ['multiscreen', 'ambient', 'bogus']}, keepOpen: ['org.keep']});
+    dock = fakeDock({noMotion: true, closeIdleHome: true}); wins = fakeWins({telemetry: 'on', multiscreen: 'on', ambient: 'off'});
     m = new pm.PerformanceMode(async () => ({exit_code: 0, stdout: ''}), {dock, wins, fs: io});
-    await m.apply(true); assert.deepEqual(wins.calls, []); assert.deepEqual(io.json.owned, {motion: false, idleHome: false, wins: []});
+    r = await m.read(); assert.equal(r.status, 'on'); assert.deepEqual(r.legacy, ['motion', 'multiscreen', 'ambient'], 'an unknown id is dropped');
+    r = await m.setKeepOpen(['org.keep', 'org.other']); assert.deepEqual(io.json.owned, {motion: true, idleHome: false, wins: ['multiscreen', 'ambient']}, 'kept until Off');
+    r = await m.apply(true); assert.deepEqual(dock.calls, []); assert.deepEqual(wins.calls, [], 'on again: nothing put back, nothing turned on');
+    r = await m.apply(false);
+    assert.equal(r.status, 'off'); assert.deepEqual(r.legacy, []);
+    assert.deepEqual(dock.calls, ['motion false'], 'Reduce motion, turned on by the test build, goes back off');
+    assert.deepEqual(wins.calls, ['multiscreen false'], 'ambient was turned off by hand since: left as it is; telemetry was never the build\'s');
+    assert.equal(dock.s.closeIdleHome, true); assert.equal(wins.s.telemetry, 'on');
+    assert.deepEqual(io.json, {on: false, keepOpen: ['org.keep', 'org.other']}, 'ledger dropped, keep-open list kept');
+    await m.apply(true); await m.apply(false);
+    assert.deepEqual(dock.calls, ['motion false']); assert.deepEqual(wins.calls, ['multiscreen false'], 'a second Off puts back nothing');
+
+    // a legacy win without root reads unknown: not touched
+    io = store({on: true, owned: {motion: false, idleHome: false, wins: ['telemetry']}});
+    wins = {calls: [], read: () => Promise.resolve({wins: {telemetry: {status: 'unknown'}}}), apply() { this.calls.push('x'); return Promise.resolve({}); }};
+    m = new pm.PerformanceMode(async () => ({exit_code: 0, stdout: ''}), {dock: fakeDock(), wins, fs: io});
+    await m.apply(false); assert.deepEqual(wins.calls, []); assert.equal(io.json.owned, undefined);
 
     // the choices: the launcher's All apps list without inputs, keys, the TV's own apps and Vetro
     const tsv = '# header\napple-tv\tApple TV\tcom.samsung.tv.aria-video\t\nlivetv\tLive TV\tsource:0\t\nnetflix\tNetflix\torg.tizen.netflix-app\t\n' +
@@ -79,13 +95,15 @@ function fakeWins(status) {
     assert.deepEqual(new pm.PerformanceMode(null, {dock: fakeDock(), fs: fsx}).choices(), [], 'no list: no choices');
 
     // keep-open list and Restore's forget
-    r = await m.setKeepOpen(['rJeHak5zRg.Spotify', 'rJeHak5zRg.Spotify']); assert.deepEqual(r.keepOpen, ['rJeHak5zRg.Spotify']);
     await assert.rejects(m.setKeepOpen(['bad id']), /Invalid app list/);
-    m.forget(); assert.equal(io.json.on, false); assert.deepEqual(io.json.keepOpen, ['rJeHak5zRg.Spotify'], 'Restore keeps the owner\'s list');
+    io = store({on: true, owned: {motion: true, idleHome: true, wins: ['ambient']}, keepOpen: []});
+    m = new pm.PerformanceMode(async () => ({exit_code: 0, stdout: ''}), {dock: fakeDock(), fs: io});
+    r = await m.setKeepOpen(['rJeHak5zRg.Spotify', 'rJeHak5zRg.Spotify']); assert.deepEqual(r.keepOpen, ['rJeHak5zRg.Spotify']);
+    m.forget(); assert.deepEqual(io.json, {on: false, keepOpen: ['rJeHak5zRg.Spotify']}, 'Restore: off, a test build\'s ledger gone, the owner\'s list kept');
 
     // the cleanup over time: first tick notes the apps, 15 minutes later Netflix and Apple TV go; off: nothing runs
     let clock = 0; const sent = [];
-    io = store({on: true, owned: {motion: false, idleHome: false, wins: []}, keepOpen: []});
+    io = store({on: true, keepOpen: []});
     m = new pm.PerformanceMode(async cmd => {
         const sh = Buffer.from(cmd.split(' ')[1], 'base64').toString(); sent.push(sh);
         if (sh.includes('echo "FG|')) return {exit_code: 0, stdout: TV_READ};
@@ -101,6 +119,6 @@ function fakeWins(status) {
     io = store({on: false}); const before = sent.length;
     m = new pm.PerformanceMode(async () => { throw Error('must not run'); }, {fs: io});
     assert.deepEqual(await m.tick(), []); assert.equal(sent.length, before);
-    console.log('PASS performance mode: ledger on/off (only its own changes, not what was changed by hand), unknown wins untouched, keep-open list, ' +
-        'Restore forget, background cleanup on a Q80A read (screen, TV apps, sound, kept-open, adj, low memory)');
+    console.log('PASS performance mode: on/off change no other setting, a 0.7.1 test build\'s ledger put back once on Off (not what was changed by hand), ' +
+        'unknown wins untouched, keep-open list, Restore forget, background cleanup on a Q80A read (screen, TV apps, sound, kept-open, adj, low memory)');
 })().catch(e => { console.error(e); process.exit(1); });

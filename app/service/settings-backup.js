@@ -135,8 +135,8 @@ function plan(want, cur) {
         if (steps.length + blocked.length + skipped.length === before) same_.push(name);
     }
 
-    // Performance mode off goes first: turning it off undoes the parts it turned on itself (Reduce motion, telemetry ...),
-    // which would otherwise undo the same choices loaded from the file just before.
+    // Performance mode off goes first: on a TV that ran a 0.7.1 test build, turning it off also puts back what that build turned
+    // on (Reduce motion, telemetry ...), which would otherwise undo the same choices loaded from the file just before.
     var perfOff = !!(w.performance && c.performance && w.performance.on === false && c.performance.on === true);
     if (perfOff) step('performance', LABELS.performance + ' off', '/performance', {on: false}, false);
     // Shards next: the launcher's Control center cards can name a Shard only while it runs.
@@ -208,7 +208,7 @@ function plan(want, cur) {
         }
     });
     section('keepRemoved', function (f, now) { if (f.enabled !== now.enabled) step('keepRemoved', LABELS.keepRemoved + (f.enabled ? ' on' : ' off'), '/keep-removed', {action: f.enabled ? 'enable' : 'disable'}, true); });
-    // Last: switching Performance mode on turns on parts of the sections above and records only what it turned on itself.
+    // Last: the keep-open list, then the mode on (it changes no other section; on needs root, as it closes apps).
     section('performance', function (f, now) {
         var keep = Array.isArray(f.keepOpen) ? f.keepOpen : null;
         if (keep && !same(keep, now.keepOpen)) step('performance', 'Apps Extra performance mode keeps open', '/performance', {keepOpen: keep}, false);
