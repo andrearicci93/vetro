@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Launcher.Core
 {
-    internal enum Command { Show, Hide, Toggle, VolUp, VolDown, VolMute, Pad, Rescan, Reload }
+    internal enum Command { Show, Hide, Toggle, VolUp, VolDown, VolMute, Pad, Rescan, Reload, ReloadDoubleHome }
 
     /// <summary>
     /// Newline-delimited command stream read from the control FIFO ("show", "hide", "toggle", and the volume keys
@@ -51,6 +51,7 @@ namespace Launcher.Core
                 case "pad": into.Add(Command.Pad); break;
                 case "rescan": into.Add(Command.Rescan); break;
                 case "reload": into.Add(Command.Reload); break;
+                case "reload-double-home": into.Add(Command.ReloadDoubleHome); break;
             }
         }
     }

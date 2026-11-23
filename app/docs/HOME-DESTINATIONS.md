@@ -13,3 +13,11 @@ Vetro’s overlay uses the launcher's native Home-key claim. The claim is attemp
 Home is reserved for this shared assignment. New enabled physical shortcuts for code 63 are refused; previously saved Home rules remain visible but inactive and can be retained when other shortcuts are edited. The remote bridge forwards physical Home to the native launcher instead of running a second Home shortcut. Volume, Mute, the number pad, other shortcuts, and listening keep their own input handling.
 
 Home sent by name through Vetro uses the running launcher's control pipe while its claim is active; otherwise it follows the system key path. Support for other HDMI-CEC and network remotes depends on the events the TV delivers.
+
+## Double press
+
+With **Toggle Vetro overlay** selected, enable **Double press Home** in Launcher to open the Home shortcut or a separately selected app. The first press immediately shows or hides the overlay. A second press within 350 ms opens the selected destination after the overlay closes.
+
+Double press requires two physical presses, with a release between them, from the same input device. Holding Home, duplicate events, and window echoes do not count as a second press. Other keys, input-device reconnection, or a settings change reset an unfinished pair. Home commands sent by name remain single-press actions.
+
+Changes apply to the running launcher without restarting it. Saving waits for acknowledgement before storing the setting; a failed save attempts to restore the previous runtime setting and reports any recovery failure. When the overlay is off, settings are saved for its next start. Double press does not change Custom launcher mode or the shared Home destination.

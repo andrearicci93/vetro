@@ -123,11 +123,17 @@ namespace Launcher
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
         // The id is checked as plain id characters (Catalog.ValidAppId) because it goes on a command line.
-        private static AppEntry _homeLaunch;
+        private static AppEntry _homeLaunch, _doubleHome;
+        private static bool _doubleHomeShortcut;
+        private static string _doubleHomeSettingsPath;
+        private static readonly HomeGesture DoubleHome = new HomeGesture();
+        private static readonly List<InputKeyEvent> InputEvents = new List<InputKeyEvent>();
+        private static readonly Action<InputKeyEvent> CollectInputEvent = InputEvents.Add;
 
         private static readonly NavigationInput Navigation = new NavigationInput();
         private static double _lastRawHome = -100;
         private static AppEntry _pendingLaunch;
+        private static bool _pendingDoubleHome;
         private static bool _learn;
         private static double _lastHome = -100;
         // One entry per watched evdev node, in the order they were opened: ecore hands the index back to OnInput.
@@ -407,6 +413,7 @@ namespace Launcher
                 if (!reuse) index = _inputFds.Count;
                 IntPtr handler = Efl.ecore_main_fd_handler_add(fd, Efl.EcoreFdRead, InputCb, (IntPtr)index, IntPtr.Zero, IntPtr.Zero);
                 if (handler == IntPtr.Zero) { Libc.close(fd); Log("input: cannot watch " + node); continue; }
+                ResetDoubleHome();
                 if (reuse) { _inputFds[index] = fd; _inputReaders[index] = new EvdevReader(); _inputPaths[index] = node; _inputHandlers[index] = handler; }
                 else { _inputFds.Add(fd); _inputReaders.Add(new EvdevReader()); _inputPaths.Add(node); _inputHandlers.Add(handler); }
                 added++;
@@ -446,6 +453,7 @@ namespace Launcher
         /// <summary>A node that was unplugged (the remote went to sleep) stops being watched; it is opened again when it returns.</summary>
         private static void DropNode(int index)
         {
+            ResetDoubleHome();
             if (_inputFds[index] < 0) return;
             Log("input: lost " + _inputPaths[index]);
             ScanGate.Force();   // the next look reads the list: the node may come back without the directory changing
@@ -570,7 +578,7 @@ namespace Launcher
         private static void ShowDock()
         {
             if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
-            _pendingLaunch = null;
+            _pendingLaunch = null; _pendingDoubleHome = false;
             // A key chosen just before the dock closed must not be sent into the dock that opens again.
             CancelPendingKey();
             if (_tasksOn)
@@ -670,7 +678,9 @@ namespace Launcher
             Controller appsCtl = _appsCtl, inputsCtl = _inputsCtl, allCtl = _allCtl, ctlBefore = _ctl;
             DockLayout appsLayout = _appsLayout, inputsLayout = _inputsLayout, allLayout = _allLayout;
             bool editableBefore = _sourcesEditable;
+            ResetDoubleHome();
             _apps = apps; _inputs = inputs; _allApps = all;
+            if (_doubleHomeShortcut) _doubleHome = DoubleHomeSettings.Resolve("shortcut", null, _apps);
             PageLayouts();
             // The window keeps its size: an unchanged list is laid out exactly as before (as in RebuildPages), so its page is kept. An
             // installed app usually changes All apps alone, and making the apps row and Sources again prepared every icon of them for nothing.
@@ -735,7 +745,7 @@ namespace Launcher
         {
             if (_moveIndex >= 0) FinishMove(true);   // leaving while a tile is being moved keeps where it is now
             CancelRowOk();
-            _pendingLaunch = null;
+            _pendingLaunch = null; _pendingDoubleHome = false;
             CancelIdle();
             StopClock();
             if (_tasksOn)
@@ -952,6 +962,7 @@ namespace Launcher
                     {
                         double now = Efl.ecore_time_get();
                         if (now - _lastRawHome < HomeEchoSeconds) break;   // the evas copy of a press the input reader already handled
+                        ResetDoubleHome();
                         _lastHome = now;
                         HideDock();
                         ArmGuard();
@@ -1016,7 +1027,7 @@ namespace Launcher
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             Log("tasks: open " + app.AppId);
             HideDock();
-            _pendingLaunch = e;
+            _pendingLaunch = e; _pendingDoubleHome = false;
         }
 
         private static void CloseTaskApp(RunningApp app)
@@ -1506,7 +1517,7 @@ namespace Launcher
                         LeaveTasks(false);   // the next Home opens on the apps row, in the dock's own window size
                         more = false;
                         AppEntry chosen = _pendingLaunch;
-                        _pendingLaunch = null;
+                        _pendingLaunch = null; _pendingDoubleHome = false;
                         if (chosen != null) Launch(chosen);
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
@@ -1527,7 +1538,7 @@ namespace Launcher
                     MarkDock(false);
                     // The fade has already rendered on earlier frames; a slow platform launch cannot freeze it.
                     AppEntry pending = _pendingLaunch;
-                    _pendingLaunch = null;
+                    _pendingLaunch = null; _pendingDoubleHome = false;
                     if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
                     if (_hideFor123) _hideFor123 = false;
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId, pending != null && pending.SourceType == 0);
@@ -1677,6 +1688,7 @@ namespace Launcher
 
         private static void HandleKey(string key)
         {
+            if (key != "XF86Home") ResetDoubleHome();
             try
             {
                 if (_tasksOn)
@@ -1720,6 +1732,7 @@ namespace Launcher
                         {
                             double now = Efl.ecore_time_get();
                             if (now - _lastRawHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastRawHome) * 1000).ToString("0") + " ms after the press"); break; }
+                            ResetDoubleHome();
                             _lastHome = now;
                             HideDock();
                             // Home reached the dock through evas and not through evdev: the evdev path, which arms the guard,
@@ -2093,6 +2106,7 @@ namespace Launcher
                     if (n <= 0) break;
                     foreach (Command c in Commands.Feed(ReadBuf, (int)n))
                     {
+                        ResetDoubleHome();
                         Log("command " + c);
                         switch (c)
                         {
@@ -2104,12 +2118,50 @@ namespace Launcher
                             case Command.Pad: TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
                             case Command.Reload: ReloadLists(); break;
+                            case Command.ReloadDoubleHome: ReloadDoubleHome(); break;
                         }
                     }
                 }
             }
             catch (Exception ex) { Log("fifo: " + ex); }
             return 1;
+        }
+
+        private static void ResetDoubleHome()
+        {
+            DoubleHome.Reset();
+            if (_pendingDoubleHome) { _pendingLaunch = null; _pendingDoubleHome = false; }
+        }
+
+        private static void SetDoubleHomeTarget(AppEntry target)
+        {
+            ResetDoubleHome();
+            _doubleHome = target;
+            _doubleHomeShortcut = target != null && target.Slug != "doublehome";
+        }
+
+        private static void ReloadDoubleHome()
+        {
+            if (_homeLaunch != null) return;
+            DoubleHomeSettings.ApplyFile(_doubleHomeSettingsPath, Libc.getpid(), _apps, SetDoubleHomeTarget, path => {
+                if (Libc.chmod(path, 384u) != 0) throw new IOException("Cannot publish double-press acknowledgement");
+            });
+            Log("double Home setting applied");
+        }
+
+        // Only the raw reader can complete a pair. Window echoes and named FIFO
+        // toggles keep the existing claim routing and never count as a second tap.
+        private static void RawHomeEvent(int node, InputKeyEvent ev)
+        {
+            if (_doubleHome == null || _homeLaunch != null) { if (ev.Value == 1) RawHome(); return; }
+            HomeGestureAction gesture = DoubleHome.Feed(node, ev.Value, ev.Time);
+            if (gesture == HomeGestureAction.Press) { RawHome(); return; }
+            if (gesture != HomeGestureAction.Double) return;
+            _lastRawHome = _lastHome = Efl.ecore_time_get();
+            _rawHomeSeen = true;
+            ClosePad(); CancelGuard(); HideDock();
+            if (!_dockMapped) Launch(_doubleHome);
+            else { _pendingLaunch = _doubleHome; _pendingDoubleHome = true; }
         }
 
         private static byte OnInput(IntPtr data, IntPtr handler)
@@ -2123,12 +2175,16 @@ namespace Launcher
                     long n = (long)Libc.read(_inputFds[index], InputBuf, (UIntPtr)InputBuf.Length);
                     if (n < 0 && Marshal.GetLastWin32Error() != EAgain) { DropNode(index); break; }
                     if (n <= 0) break;
-                    InputPresses.Clear();
-                    InputReleases.Clear();
-                    _inputReaders[index].Feed(InputBuf, (int)n, InputPresses, InputReleases);
-                    for (int k = 0; k < InputPresses.Count; k++)
+                    InputEvents.Clear();
+                    _inputReaders[index].FeedEvents(InputBuf, (int)n, CollectInputEvent);
+                    for (int k = 0; k < InputEvents.Count; k++)
                     {
-                        int code = InputPresses[k];
+                        InputKeyEvent ev = InputEvents[k];
+                        int code = ev.Code;
+                        if (code == _homeCode) { RawHomeEvent(index, ev); continue; }
+                        if (ev.Value == 0) { if (code == RawOkCode) { TaskOkUp(); RowOkUp(); } continue; }
+                        ResetDoubleHome();
+                        if (ev.Value != 1) continue;
                         if (_learn) Log("key code " + code);
                         if (code != _homeCode)
                         {
@@ -2146,10 +2202,7 @@ namespace Launcher
                             NavFromInput(code);
                             continue;
                         }
-                        RawHome();
                     }
-                    // The kernel always reports the release: it ends a held OK even when the window's key up is late.
-                    for (int k = 0; k < InputReleases.Count; k++) if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
                 }
             }
             catch (Exception ex) { Log("input: " + ex); }
@@ -2180,6 +2233,7 @@ namespace Launcher
             double now = Efl.ecore_time_get();
             // The echo of a press the reader answered, or the same press the window's evas already answered.
             if (now - _lastRawHome < HomeEchoSeconds || now - _lastHome < HomeDebounceSeconds) return;
+            ResetDoubleHome();
             Log("home: claimed press from the window");
             HomePress(false);
         }
@@ -2359,6 +2413,7 @@ namespace Launcher
         /// <summary>OK on an entry: open a page, switch input, or launch; everything but a page closes the dock.</summary>
         private static void Activate(AppEntry e)
         {
+            ResetDoubleHome();
             if (e.Panel != null)
             {
                 if (e.Panel == "inputs") OpenInputs(); else if (e.Panel == "allapps") OpenAllApps(); else Log("unknown panel " + e.Panel);
@@ -2366,7 +2421,7 @@ namespace Launcher
             }
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId) || HomeGuard.ShouldCancel(_guardApps, e.FallbackAppId)) CancelGuard();
             HideDock();
-            _pendingLaunch = e;
+            _pendingLaunch = e; _pendingDoubleHome = false;
         }
 
         private const string SourceIconDir = "/usr/apps/com.samsung.tv.theme-resource/shared/res/org.tizen.menu/Settings_Popup/device_icon/";
@@ -2553,6 +2608,8 @@ namespace Launcher
 
         private static int Main(string[] args)
         {
+            if (Flag(args, "--apply-double-home"))
+                return DoubleHomeClient.Run(Arg(args, "--apply-double-home"), Arg(args, "--dir"), Arg(args, "--double-home-settings"));
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();
@@ -2651,6 +2708,12 @@ namespace Launcher
                     _homeLaunch = HomeLaunch.Parse(homeLaunch);
                     Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
+                if (_homeLaunch == null)
+                {
+                    string target = Arg(args, "--double-home-app");
+                    SetDoubleHomeTarget(DoubleHomeSettings.Resolve(Catalog.ValidAppId(target) ? "app" : Flag(args, "--double-home-shortcut") ? "shortcut" : "off", target, _apps));
+                }
+                _doubleHomeSettingsPath = Arg(args, "--double-home-settings");
                 _claimHome = Flag(args, "--claim-home") && _homeLaunch == null;
                 Libc.unlink(_claimPath);   // one left by a launcher that was killed
                 // The remote is opened now, before the pages and the warm-up: a Home pressed meanwhile waits in the node's buffer and is answered
