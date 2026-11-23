@@ -249,3 +249,8 @@ console.log('PASS dock catalog skips registry rows whose package is gone');
     assert.ok(named.entries.every(e => e.slug !== 'tvstore') && named.allApps.every(e => e.slug !== 'tvstore'), 'the pill\'s slug is reserved');
 }
 console.log('PASS dock catalog: TV-Store takes the store pill when installed, unless Samsung\'s store is chosen');
+// A custom tile uses Samsung Home as the fallback on every firmware.
+{
+ const built = catalog.build(catalog.parse('H|com.samsung.tv.coba.newhome'), {homeShortcut:{appId:'GlassHome1.Home',label:'Glass'}});
+ assert.match(catalog.tsv(built), /customhome\tGlass\tsys:GlassHome1.Home\tcom.samsung.tv.csfs/);
+}

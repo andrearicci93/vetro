@@ -68,6 +68,12 @@ var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port:
     home: {
         restore: function () { return applySamsungHome(false); }
     },
+    shortcutCheck: function (appId, fresh) {
+        return inventory(!!fresh).then(function (d) {
+            if (d.registryError) throw new Error('App registry unavailable');
+            return {ok: d.apps.some(function (a) { return a.appId === appId && a.show && a.disabled === false && !a.launchRisk && !/^vetrotvapp(\.|$)/.test(a.appId); })};
+        });
+    },
     // At the moment of choosing (fresh) the whole registry is read, as for the dashboard's list. The lookup about once a minute
     // after that uses the app list in memory when it is recent, and otherwise reads that app's row alone (AppRegistry.one).
     appCheck: function (appId, fresh) {
@@ -966,13 +972,19 @@ function handleSettings(req, res) {
 
 function handleRemap(req, res) {
     // reserved: the keys Vetro UI holds (volume bar, number pad). Computed, never stored with the rules, and they come first.
-    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token, reserved: vetroUi.reservedKeys(dock.readState()),
+    if (req.method === 'GET') return serveJson(res, { rules: remapStore.rules, paired: !!remapStore.token, homeOwner: 'launcher', homeRuleInactive: remapStore.rules.some(function(r){return r.enabled&&r.trigger.type==='physical'&&r.trigger.value==='63';}), reserved: vetroUi.reservedKeys(dock.readState()),
         interception: {auto: !!(remapStore.input && remapStore.input.auto && remapStore.input.enabled), problem: vetroUiInputProblem},
         // Whether Vetro TV Tuner is on: a shortcut on one of its keys takes that key away from it (the page warns).
         tuner: {enabled: (function () { try { return tuner.readState().enabled === true; } catch (e) { return false; } })()} });
     readJsonBody(req, res, function (parsed) {
         var rules;
-        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf); }
+        try { rules = remap.checkLaunchable(remap.validateRules(parsed.rules), packageOf);
+            if (rules.some(function (r) {
+                return r.enabled && r.trigger.type === 'physical' && r.trigger.value === '63' && !remapStore.rules.some(function (old) {
+                    return old.id === r.id && old.enabled && old.trigger.type === 'physical' && old.trigger.value === '63';
+                });
+            })) throw Error('Configure the Home key with Home destination in Launcher or Remapper');
+        }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
         stopInput('rules'); inputPaused=false; inputFaultUntil=0; inputRetryReset();
         remapStore.rules = rules;
@@ -1032,7 +1044,7 @@ var physical=new PhysicalInput(agentExecute,function(event){
         volumeRepeat.event(event);
         return;
     }
-    if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
+    if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked'||event.code===63)return;
     var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
@@ -1068,7 +1080,7 @@ function saveInputPreference(preference){
     var previous=remapStore.input;remapStore.input=preference;
     if(!saveRemap()){remapStore.input=previous;throw new Error('Remote setting could not be saved to disk');}
 }
-function inputTokens(){return volumeKeys.withTokens(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical';}).map(function(r){return r.trigger.value;}),keyFlags());}
+function inputTokens(){return volumeKeys.withTokens(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='physical'&&r.trigger.value!=='63';}).map(function(r){return r.trigger.value;}),keyFlags());}
 var vetroUi=require('./vetro-ui.js'),vetroUiInputProblem=null;
 // Vetro UI's keys need the remote interception. It is switched on here only when one of its parts is switched on (or the launcher
 // that draws them comes on), never by the 5 s restore loop: a user who turns the interception off keeps it off. The remote is
@@ -1079,7 +1091,7 @@ function vetroUiInput(){
     var flags=keyFlags(),wants=flags.volume||flags.pad,pref=remapStore.input||{};
     if(!wants){
         vetroUiInputProblem=null;
-        var own=remapStore.rules.some(function(r){return r.enabled&&r.trigger.type==='physical';});
+        var own=remapStore.rules.some(function(r){return r.enabled&&r.trigger.type==='physical'&&r.trigger.value!=='63';});
         if(pref.enabled&&pref.auto&&!own){try{saveInputPreference({enabled:false});}catch(e){}stopInput('auto-off');}
         return Promise.resolve(false);
     }

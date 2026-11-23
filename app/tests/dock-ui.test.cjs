@@ -5,6 +5,7 @@ const nodes = {};
 const el = id => nodes[id] || (nodes[id] = {id, value: '', hidden: true, textContent: '', innerHTML: '', disabled: false, focus() {}});
 const calls = [];
 let tvApps = [];
+let wrongHomeReply = false;
 let dock = {installed: true, enabled: false, running: false, busy: false, error: null, apps: null, log: '', fixTizenTube: false,
     entries: [{slug: 'netflix', label: 'Netflix', appId: 'org.tizen.netflix-app', system: false}, {slug: 'tizentube', label: 'TizenTube', appId: 'xvvl3S1TT1.TizenTubeStandalone', system: false}, {slug: 'settings', label: 'Settings', appId: 'com.samsung.tv.csfs', system: true}]};
 const sandbox = {document: {getElementById: el, querySelectorAll: () => [], querySelector: () => null, addEventListener() {}}, console, setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
@@ -14,6 +15,9 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         let data = {};
         if (url === '/dock' && !body) data = dock;
         else if (url === '/dock') {
+            if(body.action === 'homeAssignment') dock=Object.assign({},dock,{enabled:body.mode==='vetro',customApp:body.mode==='custom'?body.appId:null,mode:body.mode==='samsung'?'off':body.mode});
+            if(body.action === 'doubleHome') dock=Object.assign({},dock,{doubleHome:body.value});
+            if(body.action === 'homeShortcut') dock=Object.assign({},dock,{homeShortcut:wrongHomeReply?null:body.appId?{appId:body.appId,label:body.label}:null});
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
             if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
@@ -222,5 +226,41 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).slice(sent).map(c => c.body), [{action: 'disable'}, {action: 'enableCustom', appId: 'org.example.launcher'}]);
     assert.equal(sandbox.dockData.mode, 'custom');
     sandbox.inventory = [];
+    await sandbox.setDock('homeAssignment','Save Home destination',{mode:'custom',appId:'GlassHome1.Home'});
+    assert.equal(sandbox.dockData.customApp,'GlassHome1.Home');
+    assert.equal(sandbox.homeAssignmentDraft,null);
+    assert.match(el('remapHomeDestination').innerHTML,/Home destination/);
+    await sandbox.setDock('homeAssignment','Save Home destination',{mode:'samsung'});
+    assert.equal(sandbox.dockData.customApp,null);
+    assert.equal(sandbox.dockData.enabled,false);
+    sandbox.homeReserved=true;
+    sandbox.rules=[{id:'home',enabled:true,trigger:{type:'physical',value:'63'},actions:[{type:'launch',appId:'GlassHome1.Home'}]}];
+    sandbox.showRules();
+    assert.match(el('rules').innerHTML,/inactive: use Home destination/,'legacy Home shortcuts are explicitly inactive');
+    sandbox.inventory=[{appId:'GlassHome1.Home',name:'Glass Home',show:true,disabled:false}];
+    el('dockHomeApp').value='GlassHome1.Home';el('dockHomeLabel').value='Glass';
+    sandbox.rememberDockHome();await sandbox.loadDock();
+    assert.equal(sandbox.dockHomeDraft.label,'Glass','refresh preserves draft');
+    await sandbox.setDock('homeShortcut','Save Home shortcut',{appId:'GlassHome1.Home',label:'Glass'});
+    assert.equal(sandbox.dockHomeDraft,null,'matching save clears draft');
+    assert.equal(sandbox.dockData.homeShortcut.label,'Glass');
+    wrongHomeReply=true;
+    await sandbox.setDock('homeShortcut','Save Home shortcut',{appId:'GlassHome1.Home',label:'Other'});
+    assert.equal(sandbox.dockHomeDraft.label,'Other','unconfirmed save retains draft');
+    assert.match(sandbox.dockHomeError,/different Home shortcut/);
+    wrongHomeReply=false;
+    await sandbox.setDock('homeShortcut','Restore Samsung Home',{appId:null,label:null});
+    assert.equal(sandbox.dockData.homeShortcut,null);
+    assert.equal(sandbox.dockHomeDraft,null);
+
+    const doubleHome={enabled:true,mode:'app',appId:'GlassHome1.Home'};
+    sandbox.doubleHomeDraft=doubleHome;
+    await sandbox.loadDock();assert.equal(sandbox.doubleHomeDraft.appId,'GlassHome1.Home');
+    await sandbox.setDock('doubleHome','Save double-press action',{value:doubleHome});
+    assert.equal(sandbox.doubleHomeDraft,null);assert.equal(sandbox.dockData.doubleHome.appId,'GlassHome1.Home');
+    assert.match(el('dockBody').innerHTML,/Choose a different app/);
+    await sandbox.setDock('doubleHome','Save double-press action',{value:{enabled:true,mode:'shortcut',appId:null}});
+    assert.equal(sandbox.dockData.doubleHome.mode,'shortcut');
+
     console.log('PASS launcher UI: confirmation before turning on, direct turn off, state, app list, errors');
 })().catch(e => { console.error(e); process.exitCode = 1; });

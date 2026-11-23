@@ -3,12 +3,14 @@ using System.Collections.Generic;
 
 namespace Launcher.Core
 {
+    internal struct InputKeyEvent { public int Code, Value; public double Time; }
+
     /// <summary>
     /// Decodes Linux <c>struct input_event</c> records read from /dev/input/eventN and reports
     /// key presses. The record is a timeval (two longs), then type (u16), code (u16) and value
     /// (s32): 16 bytes on the 32-bit ARM TV, 24 on a 64-bit desktop. A read may end in the
     /// middle of a record, so leftovers are kept for the next call. Presses (value 1), and releases
-    /// (value 0) when the caller asks for them; auto-repeat (value 2) is ignored.
+    /// (value 0) when the caller asks for them. FeedEvents includes repeats (value 2) and timestamps.
     /// </summary>
     internal sealed class EvdevReader
     {
@@ -41,6 +43,17 @@ namespace Launcher.Core
         /// <summary>Also appends the releases, in order, to <paramref name="releases"/> (null: not wanted).</summary>
         public void Feed(byte[] data, int count, List<int> presses, List<int> releases)
         {
+            FeedCore(data, count, presses, releases, null);
+        }
+
+        /// <summary>All key transitions in kernel order, with their event times.</summary>
+        public void FeedEvents(byte[] data, int count, Action<InputKeyEvent> receive)
+        {
+            FeedCore(data, count, null, null, receive);
+        }
+
+        private void FeedCore(byte[] data, int count, List<int> presses, List<int> releases, Action<InputKeyEvent> receive)
+        {
             int i = 0;
             while (i < count)
             {
@@ -52,16 +65,24 @@ namespace Launcher.Core
                 i += take;
                 if (_carried < _record) break;
                 _carried = 0;
-                Decode(_carry, presses, releases);
+                Decode(_carry, presses, releases, receive);
             }
         }
 
-        private void Decode(byte[] rec, List<int> into, List<int> releases)
+        private void Decode(byte[] rec, List<int> into, List<int> releases, Action<InputKeyEvent> receive)
         {
             int type = rec[_typeOffset] | (rec[_typeOffset + 1] << 8);
             int code = rec[_typeOffset + 2] | (rec[_typeOffset + 3] << 8);
             int value = rec[_typeOffset + 4] | (rec[_typeOffset + 5] << 8) | (rec[_typeOffset + 6] << 16) | (rec[_typeOffset + 7] << 24);
             if (type != EvKey) return;
+            if (receive != null)
+            {
+                long seconds = _record == 16 ? BitConverter.ToInt32(rec, 0) : BitConverter.ToInt64(rec, 0);
+                long micros = _record == 16 ? BitConverter.ToInt32(rec, 4) : BitConverter.ToInt64(rec, 8);
+                double time = seconds >= 0 && micros >= 0 && micros < 1000000 ? seconds + micros / 1000000.0 : 0;
+                receive(new InputKeyEvent { Code = code, Value = value, Time = time });
+                return;
+            }
             if (value == 1) into.Add(code);
             else if (value == 0 && releases != null) releases.Add(code);
         }
