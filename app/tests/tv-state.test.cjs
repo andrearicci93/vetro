@@ -1,9 +1,12 @@
 'use strict';
 const assert=require('assert').strict,fs=require('fs'),vm=require('vm'),EventEmitter=require('events');
 const {Store,decode}=require('../service/tv-state.js');
-assert.deepEqual(decode('{"volume":7,"muted":true,"sourceType":0}'),{volume:7,muted:true,source:'TV',sourceType:0});
+assert.deepEqual(decode('{"volume":7,"muted":true,"sourceType":0}'),{power:null,volume:7,muted:true,source:'TV',sourceType:0});
 assert.equal(decode('{"volume":0,"muted":false,"sourceType":13}').source,'HDMI1');
-assert.deepEqual(decode('{"volume":101,"muted":1,"sourceType":99}'),{volume:null,muted:null,source:null,sourceType:99});
+assert.deepEqual(decode('{"volume":101,"muted":1,"sourceType":99}'),{power:null,volume:null,muted:null,source:null,sourceType:99});
+for (const [power,screen,expected] of [[0,1,'on'],[2,0,'standby'],[1,0,null],[2,1,null]]) {
+ assert.equal(decode(JSON.stringify({nativePowerState:power,nativeScreenState:screen})).power,expected);
+}
 assert.throws(()=>decode('native error'));
 let calls=0,command;
 const store=new Store(async c=>{calls++;command=c;return {exit_code:0,stdout:'{"volume":0,"muted":false,"sourceType":0}'};});
@@ -18,7 +21,10 @@ const store=new Store(async c=>{calls++;command=c;return {exit_code:0,stdout:'{"
  const bridge=new context.module.exports.MqttBridge(()=>({error:1}));bridge.start();bridge.client.emit('connect');
  const mute=JSON.parse(sent.find(x=>x.topic.endsWith('/muted/config')).payload);
  assert.equal(mute.availability_mode,'all');assert.equal(mute.payload_off,'OFF');assert.equal(mute.availability.length,2);
+ sent=[];bridge.publishTvState({power:'standby'});
+ assert(sent.some(x=>x.topic.endsWith('/power')&&x.payload==='standby'&&x.retain));
  sent=[];bridge.publishTvState(a);
+ assert(sent.some(x=>x.topic.endsWith('/power/availability')&&x.payload==='offline'));
  assert(sent.some(x=>x.topic.endsWith('/volume')&&x.payload==='0'&&x.retain));
  assert(sent.some(x=>x.topic.endsWith('/muted')&&x.payload==='OFF'));
  assert(sent.some(x=>x.topic.endsWith('/source')&&x.payload==='TV'));

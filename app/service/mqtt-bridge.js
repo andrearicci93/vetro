@@ -137,6 +137,7 @@ MqttBridge.prototype._discover = function () {
 
     // Each native state has its own availability, in addition to the service LWT.
     [['sensor','volume','Volume','volume','%'],
+     ['sensor','power','Power state','power',null],
      ['binary_sensor','muted','Muted','muted',null],
      ['sensor','source','Source','source',null]].forEach(function(s){
         var conf={name:s[2],state_topic:prefix+'/'+s[3],unique_id:client.identity+'_'+s[1],device:device,
@@ -157,6 +158,7 @@ MqttBridge.prototype.publishTvState = function(d) {
     d=d||{};
     var prefix=(this.config.topicPrefix||'vetro')+'/'+this.identity;
     var values={volume:Number.isInteger(d.volume)&&d.volume>=0&&d.volume<=100?d.volume:null,
+        power:d.power==='on'||d.power==='standby'?d.power:null,
         muted:typeof d.muted==='boolean'?(d.muted?'ON':'OFF'):null,
         source:typeof d.source==='string'&&TV_SOURCE_RE.test(d.source)?d.source:null};
     var self=this;
