@@ -251,6 +251,12 @@ function build(parsed, options) {
         while (slugs[slug] || RESERVED_SLUGS.indexOf(slug) >= 0 || (!input && inputSlugs[slug])) slug = base.slice(0, 36) + '-' + n++;
         slugs[slug] = true;
         var made = {slug: slug, label: label, appId: appId, icon: icon || null, killFirst: null, key: key || (appId ? 'app:' + appId : null)};
+        // All apps and a customised row also pass here; they used to bypass
+        // the Samsung-row-only TizenTube correction below.
+        if (options.fixTizenTube && TIZENTUBE.test(appId || '')) {
+            made.killFirst = COBALT_YOUTUBE;
+            made.icon = youtubeIcon(parsed) || made.icon;
+        }
         if (appId && parsed.hbbtvLinks && parsed.hbbtvLinks[appId]) made.hbbtvLink = parsed.hbbtvLinks[appId];
         return made;
     }
