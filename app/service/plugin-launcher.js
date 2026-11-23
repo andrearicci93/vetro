@@ -92,6 +92,7 @@ function definition(dock, options) {
                 if (p.action === 'homeAssignment') return dock.setHomeAssignment({mode: p.mode, appId: p.appId});
                 if (p.action === 'enable') return dock.enable();
                 if (p.action === 'disable') return dock.disable();
+                if (p.action === 'homeShortcut') return dock.setHomeShortcut(p.appId === null ? null : {appId: p.appId, label: p.label});
                 if (p.action === 'refresh') return rebuild();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
