@@ -68,6 +68,12 @@ var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port:
     home: {
         restore: function () { return applySamsungHome(false); }
     },
+    shortcutCheck: function (appId, fresh) {
+        return inventory(!!fresh).then(function (d) {
+            if (d.registryError) throw new Error('App registry unavailable');
+            return {ok: d.apps.some(function (a) { return a.appId === appId && a.show && a.disabled === false && !a.launchRisk && !/^vetrotvapp(\.|$)/.test(a.appId); })};
+        });
+    },
     // At the moment of choosing (fresh) the whole registry is read, as for the dashboard's list. The lookup about once a minute
     // after that uses the app list in memory when it is recent, and otherwise reads that app's row alone (AppRegistry.one).
     appCheck: function (appId, fresh) {

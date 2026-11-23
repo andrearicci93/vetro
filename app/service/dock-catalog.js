@@ -71,6 +71,17 @@ var MIN_PACKAGES = 20;         // fewer package rows than this means the read fa
 var MAX_ENTRIES = 40;          // the dock refuses more
 var APP_ID = /^[A-Za-z0-9_.-]{1,120}$/;
 var ICON_FILE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
+var HOME_APP = 'com.samsung.tv.csfs';
+var HOME_LABEL_MAX = 12;
+function homeShortcut(value) {
+    if (value == null) return null;
+    if (!value || typeof value.appId !== 'string' || !APP_ID.test(value.appId) || typeof value.label !== 'string') throw Error('Choose an installed app and a button label');
+    var label = value.label.trim();
+    if (!label || label.length > HOME_LABEL_MAX || /[\u0000-\u001f\u007f]/.test(label)) throw Error('Button label must contain 1–12 characters');
+    if (value.appId === HOME_APP) return null;
+    return {appId: value.appId, label: label};
+}
+
 var VIEWER = 'org.tizen.tv-viewer';
 // Fix TizenTube: TizenTube is a sideloaded app that stands in for YouTube. Samsung's own YouTube
 // (a Cobalt process) has to be closed before TizenTube starts, and the tile borrows the icon
@@ -109,7 +120,7 @@ var SAMSUNG_STORE_ROW = 'store\tApp store\tsys:com.samsung.tv.store';
 var TV_STORE = 'A2STVStore.Store';
 var TV_STORE_ROW = 'tvstore\tTV-Store\tsys:' + TV_STORE + '\tcom.samsung.tv.store';
 var APP_STORES = ['tvstore', 'samsung'];
-var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'store', 'tvstore'];
+var RESERVED_SLUGS = ['source', 'settings', 'allapps', 'samsunghome', 'customhome', 'store', 'tvstore'];
 // A row key: what the user's own order and hidden list refer to (app:<id>, live:<TVPLUS|RF>, source:<type>).
 var ROW_KEY = /^(?:app:[A-Za-z0-9_.-]{1,120}|live:[A-Z]{1,12}|source:\d{1,5})$/;
 var VETRO_APP = /^vetrotvapp(\.|$)/;
@@ -368,7 +379,7 @@ function build(parsed, options) {
     // Only a package list that came back whole says TV-Store is there; without it the pill stays Samsung's store.
     var tvStore = !!(parsed.installed && parsed.installed[TV_STORE]) && !offApps[TV_STORE];
     return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null,
-        tvStoreInstalled: tvStore, appStore: tvStore && options.appStore !== 'samsung' ? 'tvstore' : 'samsung'};
+        homeShortcut: homeShortcut(options.homeShortcut), tvStoreInstalled: tvStore, appStore: tvStore && options.appStore !== 'samsung' ? 'tvstore' : 'samsung'};
 }
 
 // Seventh column: "shard" when a plugin has taken the tile over. An older dock ignores the column and starts the app itself.
@@ -393,6 +404,7 @@ function tsv(built) {
         // The CoBA home launcher first, Samsung's older home app as the fallback the dock already knows.
         return built.homeApp ? row.replace('sys:com.samsung.tv.csfs', 'sys:' + built.homeApp + '\tcom.samsung.tv.csfs') : row;
     });
+    if (built.homeShortcut) system[1] = ['customhome', built.homeShortcut.label, 'sys:' + built.homeShortcut.appId, HOME_APP].join('\t');
     return lines.concat(system).join('\n') + '\n';
 }
 
@@ -439,5 +451,5 @@ function load(execute, options) {
     });
 }
 
-module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {homeShortcut: homeShortcut, HOME_LABEL_MAX: HOME_LABEL_MAX, hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
 
