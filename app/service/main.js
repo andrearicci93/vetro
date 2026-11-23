@@ -410,6 +410,7 @@ function downloadDiagnostics(res, withComponents) {
                     volumeRoute: volumeRoute ? {route: volumeRoute.route, errno: volumeRoute.errno, ageSeconds: Math.round((Date.now() - volumeRoute.at) / 1000)} : null};
             });
         }),
+        performance: function () { return perfMode.read(); },
         quickWins: later(function () { return wins.read().then(function (d) { return keyGuides.read().then(function (k) { d.wins.keyguides = k; return d; }, function () { return d; }); }); }),
         // What differs between firmware generations and the open questions of the 0.6.9 previews, read as root in one go: one line per item,
         // "name|value", every value cut down to a number, a yes/no or a fixed word by the report (diagnostic-report.js FIRMWARE). No paths, names

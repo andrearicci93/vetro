@@ -206,6 +206,11 @@ var projectors = {
     firmware:firmwareSection,
     // The update lock also says how much of it holds: unit counts, its standalone guard, whether Samsung's standalone update request is
     // there (it should never be while the lock is on) and whether the update hosts are blocked. Numbers and yes/no only.
+    // Extra performance mode (performance-mode.js): on or off and how much it did since the service started, as counts only (no app
+    // ids): the apps kept open, the apps it closed, and whether a 0.7.1 test build's list of parts to put back is still there.
+    performance:function(d){function count(v,max){return Number.isInteger(v)&&v>=0?Math.min(v,max):null;}
+        return {on:boolean(d.on),keepOpen:Array.isArray(d.keepOpen)?Math.min(d.keepOpen.length,999):null,closed:count(d.closed,99999),
+            legacyParts:Array.isArray(d.legacy)?Math.min(d.legacy.length,9):null,idleMinutes:count(d.idleMinutes,999)};},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient','telemetry','airplay','keyguides'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});
         var f=w.firmware||{};function count(v){return Number.isInteger(v)&&v>=0&&v<=99?v:null;}
         Object.assign(out.firmware,{units:count(f.units),masked:count(f.masked)},flags(f,['guard','standalone','dnsBlocked']));return out;},
