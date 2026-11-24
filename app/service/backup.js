@@ -87,7 +87,7 @@ Backup.prototype.restore = function (scope, name) {
         'tar --exclude="*/cache" --exclude="*/tmp" --exclude="*.log" -czf ' + quote(rollback) +
         ' -C ' + quote(APP_ROOT) + ' ' + quote(id) + '; ' +
         'tar -xzf ' + quote(archive) + ' -C ' + quote(APP_ROOT) + ' --overwrite; ' +
-        'chown -R 5001:5001 ' + quote(target) + '; printf "%s\\n" ' + quote(rollback);
+        'chown -R 5001:100 ' + quote(target) + '; printf "%s\\n" ' + quote(rollback);
     return shell(self.execute, cmd).then(function () {
         return {ok: true, scope: scope, appId: id, rollback: path.basename(rollback)};
     });
