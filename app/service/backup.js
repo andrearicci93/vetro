@@ -82,8 +82,8 @@ Backup.prototype.restore = function (scope, name) {
     var rollback = ROOT + '/rollback-' + Date.now() + '-' + id + '.tar.gz';
     var target = APP_ROOT + '/' + id;
     var cmd = 'set -e; test -f ' + quote(archive) + '; test -d ' + quote(target) + '; ' +
-        'tar -tzf ' + quote(archive) + ' | awk -v p=' + quote(id + '/') +
-        ' "$$0 !~ /^\\// && index($$0,p)==1 {ok=1} END {exit !ok}"; ' +
+        'tar -tzf ' + quote(archive) + ' | awk -v p=' + quote(id + '/') + ' ' +
+        quote('$0 !~ /^\\// && index($0,p)==1 {ok=1} END {exit !ok}') + '; ' +
         'tar --exclude="*/cache" --exclude="*/tmp" --exclude="*.log" -czf ' + quote(rollback) +
         ' -C ' + quote(APP_ROOT) + ' ' + quote(id) + '; ' +
         'tar -xzf ' + quote(archive) + ' -C ' + quote(APP_ROOT) + ' --overwrite; ' +
