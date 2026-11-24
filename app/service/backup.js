@@ -34,8 +34,8 @@ function idFor(value) {
     return id;
 }
 
-function shell(execute, command) {
-    return execute(command, 30000).then(function (r) {
+function shell(execute, command, timeout) {
+    return execute(command, timeout || 30000).then(function (r) {
         if (!r || r.exit_code || r.timed_out) throw Error((r && (r.stderr || r.stdout)) || 'Backup command failed');
         return r;
     });
@@ -71,7 +71,7 @@ Backup.prototype.create = function (scope) {
         ' -C ' + quote(APP_ROOT) + ' ' + quote(all ? '.' : id) + '; ' +
         'sha256sum ' + quote(archive) + ' >> ' + quote(manifest) + '; ' +
         'printf "%s\\n" ' + quote(archive);
-    return shell(self.execute, cmd).then(function () {
+    return shell(self.execute, cmd, all ? 120000 : 30000).then(function () {
         return {ok: true, scope: scope, appId: id, name: path.basename(archive), path: archive};
     });
 };
@@ -93,7 +93,7 @@ Backup.prototype.restore = function (scope, name) {
         ' -C ' + quote(APP_ROOT) + ' ' + quote(all ? '.' : id) + '; ' +
         'tar -xzf ' + quote(archive) + ' -C ' + quote(APP_ROOT) + ' --overwrite; ' +
         'chown -R 5001:100 ' + quote(target) + '; printf "%s\\n" ' + quote(rollback);
-    return shell(self.execute, cmd).then(function () {
+    return shell(self.execute, cmd, all ? 120000 : 30000).then(function () {
         return {ok: true, scope: scope, appId: id, rollback: path.basename(rollback)};
     });
 };
