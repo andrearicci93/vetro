@@ -62,6 +62,12 @@ namespace Launcher.Core
         /// </summary>
         public readonly string HbbtvLink;
 
+        /// <summary>
+        /// Samsung's physical-input icon (tenth column), passed to tv-viewer when selecting a source. This is separate
+        /// from <see cref="IconPath"/>: disabling Samsung artwork on the dock must not change input switching.
+        /// </summary>
+        public readonly string SourceIcon;
+
         public AppEntry(string slug, string label, string appId, string fallbackAppId)
             : this(slug, label, appId, fallbackAppId, null) { }
 
@@ -86,10 +92,10 @@ namespace Launcher.Core
         public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard, string rowKey)
             : this(slug, label, appId, fallbackAppId, key, sourceType, panel, systemApp, iconPath, killFirst, viaShard, rowKey, null) { }
 
-        public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard, string rowKey, string hbbtvLink)
+        public AppEntry(string slug, string label, string appId, string fallbackAppId, string key, int sourceType, string panel, bool systemApp, string iconPath, string killFirst, bool viaShard, string rowKey, string hbbtvLink, string sourceIcon = null)
         {
             Slug = slug; Label = label; AppId = appId; FallbackAppId = fallbackAppId; Key = key;
-            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard; RowKey = rowKey; HbbtvLink = hbbtvLink;
+            SourceType = sourceType; Panel = panel; SystemApp = systemApp; IconPath = iconPath; KillFirst = killFirst; ViaShard = viaShard; RowKey = rowKey; HbbtvLink = hbbtvLink; SourceIcon = sourceIcon;
         }
     }
 
@@ -148,6 +154,22 @@ namespace Launcher.Core
             }
             foreach (string root in IconRoots) if (s.StartsWith(root, StringComparison.Ordinal)) return true;
             return false;
+        }
+
+        /// <summary>A physical source icon from Samsung's installed package resources. SVG is valid for tv-viewer even
+        /// though the dock's own artwork renderer accepts PNG only.</summary>
+        public static bool ValidSourceIconPath(string s)
+        {
+            if (s == null || s.Length == 0 || s.Length > 240) return false;
+            if (!(s.EndsWith(".png", StringComparison.Ordinal) || s.EndsWith(".svg", StringComparison.Ordinal))) return false;
+            if (!(s.StartsWith("/usr/apps/", StringComparison.Ordinal) || s.StartsWith("/opt/usr/apps/", StringComparison.Ordinal))) return false;
+            if (s.Contains("..") || s.Contains("//")) return false;
+            foreach (char c in s)
+            {
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '/';
+                if (!ok) return false;
+            }
+            return true;
         }
         private static bool IsAppId(string s) { return Chars(s, 120, true, true); }
 
@@ -231,6 +253,7 @@ namespace Launcher.Core
                 string via = f.Length > 6 ? f[6].Trim() : "";     // "shard", or blank; anything else is a later version's word and is ignored
                 string rowKey = f.Length > 7 ? f[7].Trim() : "";  // the row key; a bad one only means this tile cannot be edited
                 string hbbtvLink = f.Length > 8 ? f[8].Trim() : ""; // #200: the HbbTV link of an app that is only a doorway (SVT Play)
+                string sourceIcon = f.Length > 9 ? f[9].Trim() : ""; // Samsung's source icon, independent of dock artwork
                 string key = null, panel = null;
                 int sourceType = -1;
                 bool special = false, systemApp = false;
@@ -268,11 +291,12 @@ namespace Launcher.Core
                 if (icon.Length > 0 && !ValidIconPath(icon)) { problems.Add("line " + (n + 1) + ": bad icon path"); continue; }
                 if (killFirst.Length > 0 && !IsAppId(killFirst)) { problems.Add("line " + (n + 1) + ": bad kill-first app id"); continue; }
                 if (hbbtvLink.Length > 0 && (special || systemApp || !ValidHbbtvLink(hbbtvLink))) { problems.Add("line " + (n + 1) + ": bad HbbTV link"); continue; }
+                if (sourceIcon.Length > 0 && (sourceType < 0 || !ValidSourceIconPath(sourceIcon))) { problems.Add("line " + (n + 1) + ": bad source icon path"); continue; }
                 if (!seen.Add(slug)) { problems.Add("line " + (n + 1) + ": duplicate slug " + slug); continue; }
                 if (entries.Count >= MaxEntries) { problems.Add("line " + (n + 1) + ": more than " + MaxEntries + " entries, ignored"); continue; }
                 bool viaShard = via == "shard" && !special && !systemApp && appId.Length > 0;   // a plain app tile only
                 entries.Add(new AppEntry(slug, label, appId.Length > 0 ? appId : null, fallback.Length > 0 ? fallback : null, key, sourceType, panel, systemApp, icon.Length > 0 ? icon : null, killFirst.Length > 0 ? killFirst : null, viaShard,
-                    ValidRowKey(rowKey) ? rowKey : null, hbbtvLink.Length > 0 ? hbbtvLink : null));
+                    ValidRowKey(rowKey) ? rowKey : null, hbbtvLink.Length > 0 ? hbbtvLink : null, sourceIcon.Length > 0 ? sourceIcon : null));
             }
             return new CatalogResult(entries.ToArray(), problems.ToArray());
         }

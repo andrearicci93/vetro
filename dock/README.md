@@ -16,10 +16,17 @@ from the TV at start-up (then the user's own order: hold OK on a tile to move it
 outline pills, All apps and Samsung Home. All apps lists every app, with Settings and the store at its end (TV-Store when Vetro finds it installed, Samsung's App store otherwise).
 The fifo's `reload` reads the three lists again and makes the pages again when they changed (`ListWatch`): the launcher asks Vetro for
 it when the package database is newer than its All apps list, i.e. after an app was installed or removed.
-Up opens Sources (TV, HDMI 1-4, and DisplayPort on the Samsung monitors that have one). On All apps and on Sources, holding OK adds the entry to the end of the row or takes it
+Up opens Sources. A complete HDMI + DisplayPort + USB-C inventory uses the G8's three-port layout. Other devices retain TV and HDMI 1-4, plus DisplayPort when present as before. On All apps and on Sources, holding OK adds the entry to the end of the row or takes it
 out (`RowEdit.Toggle`, sent to Vetro with `RowEdit.Command`), and a tick marks what the row holds; a short OK opens it or
 switches to the input when the key comes up. A Sources list without row keys (written by an older Vetro) keeps OK on the
 press, has no hold and shows "Back" only.
+
+For the G8 layout, input remaps use the same native app-control request as the launcher.
+The service invokes the packaged DLL with `--switch-source TYPE LABEL ICON`; this mode validates its arguments,
+sends one request and exits before the instance lock, window setup or launcher state is touched. It works while
+the launcher is off. The service discovers the input and an existing firmware icon first, then reads the selected
+source back before reporting success. The icon used for switching is independent of optional Samsung tile artwork.
+Other devices retain the original TV/HDMI remap keys and native icon fallback; see [input compatibility](../app/docs/INPUTS.md).
 
 ## Control center and Task manager
 

@@ -19,6 +19,6 @@ assert.strictEqual(control.nativeKey('KEY_HDMI5'), null);
 const page = require('../service/dashboard.js');
 const html = typeof page === 'function' ? page() : (page.html || page.dashboardHtml || page.render)();
 const list = /<select id="mqttKey">(.*?)<\/select>/.exec(html)[1].match(/KEY_[A-Z0-9]+/g);
-['KEY_TV', 'KEY_HDMI1', 'KEY_HDMI2', 'KEY_HDMI3', 'KEY_HDMI4'].forEach(k => assert.ok(list.indexOf(k) >= 0, k + ' is offered in the rule editor'));
+['KEY_TV', 'KEY_HDMI1', 'KEY_HDMI2', 'KEY_HDMI3', 'KEY_HDMI4'].forEach(k => assert.ok(list.includes(k), k + ' remains the upstream default before monitor discovery'));
 list.forEach(k => assert.ok(control.nativeKey(k), k + ' is a key the service can send'));
-console.log('PASS hdmi keys: aliases, injection command, remap rule, offered in the editor');
+console.log('PASS legacy HDMI keys: aliases and saved rules remain valid; the editor reads inputs from the display');

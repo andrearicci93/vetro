@@ -6,7 +6,7 @@ var QUOTE_RE = /'/g;
 function decode(text) {
     var d = JSON.parse(String(text).trim());
     var type = Number.isInteger(d.sourceType) ? d.sourceType : null;
-    var source = type === 0 ? 'TV' : type >= 13 && type <= 16 ? 'HDMI' + (type - 12) : null;
+    var source = type === 0 ? 'TV' : type >= 13 && type <= 16 ? 'HDMI' + (type - 12) : type === 33 ? 'DisplayPort' : type === 41 ? 'USB-C' : null;
     return {volume: Number.isInteger(d.volume) && d.volume >= 0 && d.volume <= 100 ? d.volume : null,
         muted: typeof d.muted === 'boolean' ? d.muted : null, source: source, sourceType: type};
 }

@@ -1,5 +1,6 @@
 'use strict';
 // Regular expressions compiled once at module load, not on every call.
+var inputSources = require('./input-sources.js');
 var HEX_RE = /^(?:[a-fA-F0-9]{2})*$/;
 var CR_END_RE = /\r$/;
 var SOURCE_ID_RE = /^[sd]\/[A-Za-z0-9_.]+@\S+$/;
@@ -126,7 +127,7 @@ function script() {
         'echo "F|$F"',
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
         'for B in ' + [ORDER_DIR, ORDER_DIR_NEW_HOME].join(' ') + '; do',
-        '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; break; fi; done',
+        '  if [ -f "$B/.sourceCache" ]; then printf "S|"; base64 "$B/.sourceCache" | tr -d "\\n"; printf "\\n"; fi; done',
         // app_featured last: 1 downloaded, 2 Samsung's partners; what Samsung's own Apps screen lists, so All apps lists them too.
         // The column is only confirmed on the Q80A (Tizen 6.0): where it is missing sqlite refuses the whole query, so the
         // 0.5.0 query runs instead (five fields, featured unknown: All apps then lists every registry app, the row is the same).
@@ -167,7 +168,7 @@ function parse(text) {
                 if (SOURCE_ID_RE.test(entry)) out.order.push(entry);
             } else if (f[0] === 'S' && f.length === 2) {
                 var sources = JSON.parse(Buffer.from(f[1], 'base64').toString('utf8'));
-                if (sources && typeof sources === 'object' && !Array.isArray(sources)) out.sources = sources;
+                if (sources && typeof sources === 'object' && !Array.isArray(sources)) out.sources = inputSources.mergeCaches([out.sources, sources]);
             } else if (f[0] === 'R' && (f.length === 5 || f.length === 6)) {
                 out.registry[unhex(f[1])] = {title: unhex(f[2]), appId: unhex(f[3]), hidden: f[4] === '1', featured: f.length === 6 ? +f[5] || 0 : null};
             } else if (f[0] === 'I' && f.length === 3) {
@@ -198,34 +199,15 @@ function cleanLabel(text, fallback) {
     return s || fallback;
 }
 
-// Inputs beyond TV and HDMI 1-4 that only some devices have, listed only when the device's own source list (.sourceCache) holds them:
-// DisplayPort on Samsung's monitors (Odyssey G6, Smart Monitor M8: key "DISPLAYPORT", SourceType 33, #215). A TV never lists it.
-var EXTRA_SOURCES = [{type: 33, slug: 'in-dp', base: 'DisplayPort'}];
-// Samsung's entry for an input. The key is the source's name ("HDMI2"), and on the newer Home it gains the activity index of the
-// device found on it ("HDMI2/0", CoBA's GenerateSourceID): the exact name first, then any entry of that source type.
-function sourceMeta(sources, type, key) {
-    sources = sources || {};
-    if (sources[key] && typeof sources[key] === 'object') return sources[key];
-    var keys = Object.keys(sources).filter(function (k) { return sources[k] && typeof sources[k] === 'object' && sources[k].SourceType === type; });
-    return keys.length ? sources[keys[0]] : null;
-}
-
-// Sources retain their physical port identity and Samsung-provided names.
+// Physical inputs share their identity with dashboard selection and remapping.
+// On a monitor the cache, rather than a four-HDMI TV template, decides which
+// ports exist. The native switch icon is independent of optional tile artwork.
 function sourceEntries(parsed, options) {
-    var types = [0, 13, 14, 15, 16].concat(EXTRA_SOURCES.filter(function (x) { return sourceMeta(parsed.sources, x.type, '') !== null; }).map(function (x) { return x.type; }));
-    return types.map(function (type) {
-        var extra = EXTRA_SOURCES.filter(function (x) { return x.type === type; })[0];
-        var key = type === 0 ? 'TV' : extra ? '' : 'HDMI' + (type - 12), base = type === 0 ? 'TV' : extra ? extra.base : 'HDMI ' + (type - 12);
-        var meta = sourceMeta(parsed.sources, type, key) || {};
-        var name = cleanLabel(meta.EditName || meta.DetectedName, base);
-        var useImages = options && options.useSourceImages === true && type >= 13;
-        var samsung = useImages ? [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(iconOk)[0] || null : null;
-        // The row key (source:<type>, TV is source:0) lets the launcher add the input to the user's row from the Sources page (hold OK).
-        var entry = {slug: type === 0 ? 'in-tv' : extra ? extra.slug : 'in-hdmi' + (type - 12), label: name,
-            appId: 'source:' + type, icon: samsung, killFirst: null, key: 'source:' + type};
-        // The Sources page always keeps TV, HDMI1, HDMI2, HDMI3, HDMI4 order and port labels, then DisplayPort where there is one.
-        entry.inputLabel = type === 0 || name === base ? base : cleanLabel(base + ' - ' + name, base);
-        return entry;
+    return inputSources.normalize(parsed.sources).map(function (source) {
+        var useImages = options && options.useSourceImages === true && source.sourceType >= 13;
+        var icon = useImages && iconOk(source.displayIcon) ? source.displayIcon : null;
+        return {slug: source.slug, label: source.name, inputLabel: source.inputLabel,
+            appId: source.rowKey, icon: icon, sourceIcon: source.sourceIcon, sourceIcons: source.sourceIcons, killFirst: null, key: source.rowKey};
     });
 }
 
@@ -271,8 +253,11 @@ function build(parsed, options) {
             if (!/^HDMI[1-4]$/.test(ident)) { skipped.push({item: item, reason: 'Unknown HDMI source'}); return; }
             if (seenPorts[ident]) return;
             seenPorts[ident] = true;
-            var source = inputs[+ident.slice(4)];
+            var source = inputs.filter(function (input) { return input.appId === 'source:' + (12 + +ident.slice(4)); })[0];
+            if (!source) { skipped.push({item: item, reason: 'Input is not present on this device'}); return; }
             var tile = add(source.slug, source.label, source.appId, source.icon, 'source:' + source.appId.slice(7));
+            tile.sourceIcon = source.sourceIcon;
+            tile.sourceIcons = source.sourceIcons;
             if (source.altIcon) tile.altIcon = source.altIcon;
             return;
         }
@@ -336,6 +321,8 @@ function build(parsed, options) {
     inputs.forEach(function (source) {
         if (pool[source.key]) return;
         var e = make(source.slug, source.label, source.appId, source.icon, source.key);
+        e.sourceIcon = source.sourceIcon;
+        e.sourceIcons = source.sourceIcons;
         pool[source.key] = e; sourceTiles.push(e);
     });
     // The user's own row (Vetro's dock state, never Samsung's .appLayerCache): their order first, then whatever Samsung's row
@@ -374,7 +361,8 @@ function build(parsed, options) {
 // Seventh column: "shard" when a plugin has taken the tile over. An older dock ignores the column and starts the app itself.
 // Eighth: the row key the dock sends back when the user moves, removes or adds a tile (an older dock ignores it).
 // Ninth: the app's HbbTV link (#200), which the dock sends to the HbbTV app instead of starting the widget (an older dock ignores it).
-function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : '', e.key && ROW_KEY.test(e.key) ? e.key : '', e.hbbtvLink && hbbtvLink.validLink(e.hbbtvLink) ? e.hbbtvLink : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
+// Tenth: the input's native launch icon, independent of the tile's optional artwork.
+function entryLine(e, label) { return [e.slug, label || e.label, e.appId, '', e.icon || '', e.killFirst || '', e.viaShard ? 'shard' : '', e.key && ROW_KEY.test(e.key) ? e.key : '', e.hbbtvLink && hbbtvLink.validLink(e.hbbtvLink) ? e.hbbtvLink : '', inputSources.sourceIconOk(e.sourceIcon) ? e.sourceIcon : ''].join('\t').replace(TRAILING_TABS_RE, ''); }
 function allAppsTsv(built) {
     return ['# Every app the launcher\'s All apps page lists, by name; written by Vetro, rebuilt with the app list']
         .concat((built.allApps || []).map(function (e) { return entryLine(e); }))
@@ -402,11 +390,11 @@ function existing(execute, built) {
     var paths = [];
     var all = built.entries.concat(built.inputs || []);
     (built.allApps || []).forEach(function (e) { if (all.indexOf(e) < 0) all.push(e); });
-    all.forEach(function (e) { [e.icon, e.altIcon].forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
+    all.forEach(function (e) { [e.icon, e.altIcon, e.sourceIcon].concat(e.sourceIcons || []).forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
     if (!paths.length) return Promise.resolve(built);
     var script = 'for p in ' + paths.map(function (p) { return "'" + p + "'"; }).join(' ') + '; do [ -f "$p" ] && echo "OK|$p"; done; true';
     return execute(wrap(script), 10000).then(function (r) {
-        if (r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; }); return built; }
+        if (r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; delete e.sourceIcons; }); return built; }
         var ok = {};
         String(r.stdout || '').split('\n').forEach(function (l) { if (l.indexOf('OK|') === 0) ok[l.slice(3).trim()] = true; });
         all.forEach(function (e) {
@@ -414,10 +402,12 @@ function existing(execute, built) {
                 if (!(e.icon && ok[e.icon]) && ok[e.altIcon]) e.icon = e.altIcon;
                 delete e.altIcon;
             }
+            if (e.sourceIcons) { e.sourceIcon = e.sourceIcons.filter(function (icon) { return ok[icon]; })[0] || null; delete e.sourceIcons; }
+            else if (e.sourceIcon && !ok[e.sourceIcon]) e.sourceIcon = null;
             if (e.icon && !ok[e.icon]) { built.skipped.push({item: e.slug, reason: 'Icon file missing; a generic icon is used'}); e.icon = null; }
         });
         return built;
-    }, function () { all.forEach(function (e) { delete e.altIcon; }); return built; });
+    }, function () { all.forEach(function (e) { delete e.altIcon; delete e.sourceIcons; }); return built; });
 }
 
 // Reads the TV and returns {tsv, count, skipped}. Throws when the Home row cannot be read at all,

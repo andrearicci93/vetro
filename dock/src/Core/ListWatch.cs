@@ -46,7 +46,7 @@ namespace Launcher.Core
         {
             return x.Slug == y.Slug && x.Label == y.Label && x.AppId == y.AppId && x.FallbackAppId == y.FallbackAppId && x.Key == y.Key
                 && x.SourceType == y.SourceType && x.Panel == y.Panel && x.SystemApp == y.SystemApp && x.IconPath == y.IconPath
-                && x.KillFirst == y.KillFirst && x.ViaShard == y.ViaShard && x.RowKey == y.RowKey;
+                && x.KillFirst == y.KillFirst && x.ViaShard == y.ViaShard && x.RowKey == y.RowKey && x.SourceIcon == y.SourceIcon;
         }
     }
 }

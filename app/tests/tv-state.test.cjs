@@ -3,6 +3,8 @@ const assert=require('assert').strict,fs=require('fs'),vm=require('vm'),EventEmi
 const {Store,decode}=require('../service/tv-state.js');
 assert.deepEqual(decode('{"volume":7,"muted":true,"sourceType":0}'),{volume:7,muted:true,source:'TV',sourceType:0});
 assert.equal(decode('{"volume":0,"muted":false,"sourceType":13}').source,'HDMI1');
+assert.equal(decode('{"volume":0,"muted":false,"sourceType":33}').source,'DisplayPort');
+assert.equal(decode('{"volume":0,"muted":false,"sourceType":41}').source,'USB-C');
 assert.deepEqual(decode('{"volume":101,"muted":1,"sourceType":99}'),{volume:null,muted:null,source:null,sourceType:99});
 assert.throws(()=>decode('native error'));
 let calls=0,command;
