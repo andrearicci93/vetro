@@ -15,6 +15,7 @@ var debloat = require('./debloat.js');
 var control = require('./control.js');
 var packageInfo = require('./package-info.js');
 var platform = require('./platform.js');
+var Backup = require('./backup.js').Backup;
 var buildInfo = require('./build-info.js');
 var apps = require('./apps.js');
 var probe = require('./probe.js');
@@ -136,6 +137,7 @@ if (!buildInfo.port) {
     catch (e) { /* no config.xml beside the service (a local run): the default port */ }
 }
 var PORT = Number(process.env.VETRO_PORT) || buildInfo.port || 8099;
+var backups = new Backup({execute: agentExecute});
 // Tasks that wait for the root agent after a boot (DNS filter, quick wins, keep-removed check, Vetro's own startup flags) try every
 // 5 s for this many rounds. The agent can take minutes to come up; the DNS filter used to give up after one (12 rounds).
 var BOOT_RETRIES = 60;
@@ -558,6 +560,38 @@ function handleExec(req, res) {
         }).catch(function (e) {
             serveJson(res, { ok: false, error: String(e.message || e) }, 503);
         });
+    });
+}
+
+function handleBackup(req, res) {
+    if (req.method === 'GET') return backups.catalog().then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok:false, error:e.message}, 503); });
+    if (req.method !== 'POST') return serveJson(res, {error:'Use GET or POST'}, 405);
+    readBody(req, function (body, err) {
+        if (err) return serveJson(res, {ok:false, error:err.message}, err.statusCode || 400);
+        var p;
+        try { p = JSON.parse(body || '{}'); } catch (e) { return serveJson(res, {ok:false, error:'Invalid JSON'}, 400); }
+        var task;
+        try {
+            if (p.action === 'create') task = backups.create(p.scope);
+            else if (p.action === 'restore') task = backups.restore(p.scope, p.name);
+            else return serveJson(res, {ok:false, error:'action must be create or restore'}, 400);
+        } catch (e) { return serveJson(res, {ok:false, error:e.message}, 400); }
+        task.then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok:false, error:e.message}, 409); });
+    });
+}
+
+function handleBackupDownload(req, res) {
+    if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download a backup'}, 405);
+    var m = /[?&]name=([^&]+)/.exec(req.url || '');
+    var name;
+    try { name = m ? decodeURIComponent(m[1]) : ''; } catch (e) { return serveJson(res, {error:'Invalid backup name'}, 400); }
+    var file;
+    try { file = backups.resolve(name); } catch (e) { return serveJson(res, {error:e.message}, 400); }
+    fs.stat(file, function (err, stat) {
+        if (err || !stat.isFile()) return serveJson(res, {error:'Backup not found'}, 404);
+        res.writeHead(200, {'content-type':'application/gzip', 'content-length':stat.size,
+            'content-disposition':'attachment; filename="'+name+'"', 'cache-control':'no-store'});
+        fs.createReadStream(file).on('error', function () { if (!res.headersSent) serveJson(res, {error:'Backup read failed'}, 500); else res.destroy(); }).pipe(res);
     });
 }
 
@@ -1204,6 +1238,7 @@ var server = http.createServer(function (req, res) {
         if (req.method !== 'GET') return serveJson(res, {error:'Use GET to download diagnostics'}, 405);
         return downloadDiagnostics(res, COMPONENTS_QUERY_RE.test(req.url || ''));
     }
+    if (url === '/backup/download') return handleBackupDownload(req, res);
     // Packaged widget documents use an opaque (null) origin, or on some runtimes a non-web scheme. Allow
     // only its probe/status exchange, including the JSON POST preflight. The sign-in gate already decided
     // who may get here.
@@ -1217,6 +1252,7 @@ var server = http.createServer(function (req, res) {
         }
     }
     if (req.method === 'POST') {
+        if (url === '/backup') return handleBackup(req, res);
         if (url === '/input') return handleInput(req,res);
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
@@ -1249,6 +1285,7 @@ var server = http.createServer(function (req, res) {
         if (url === '/remap/run') return handleRemapRun(req, res);
         return serveJson(res, { error: 'POST not supported here' }, 405);
     }
+    if (url === '/backup') return handleBackup(req, res);
     if (url === '/dns') return dnsFilter.status().then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/dock/icon') return plugins.dispatch('launcher', req, res, 'icon', serveJson);
     if (url === '/dock') return plugins.dispatch('launcher', req, res, 'status', serveJson);
