@@ -1,17 +1,18 @@
 'use strict';
 const assert = require('assert').strict;
 const path = require('path');
+const EventEmitter = require('events');
 const spawnSync = require('child_process').spawnSync;
 const loadService = require('./service-harness.cjs');
 const remap = require('../service/remap.js');
 
-// Keep the real selector, dispatcher and physical-event callback.
+// Keep the real selector, dispatcher, physical-event callback and HTTP route.
 // Only the TV execution boundary is substituted: it inspects actual shell argv
 // and changes readback only for the packaged one-shot app-control command.
 const icon = '/usr/apps/com.samsung.tv.theme-resource/shared/res/VD_ICONS/i_icon_device_m_pc.svg';
 const cache = {HDMI1:{SourceType:13,IconPath:icon},DISPLAYPORT:{SourceType:33,IconPath:icon},USB_C:{SourceType:41,IconPath:icon}};
 const encoded = Buffer.from(JSON.stringify(cache)).toString('base64');
-const {context} = loadService(path.resolve(__dirname, '..'), {listen:false,setInterval:()=>1});
+const {context, router} = loadService(path.resolve(__dirname, '..'), {listen:false,setInterval:()=>1});
 let current = 33, refuse = false;
 const requests = [];
 const readback = () => '[memory] memory/system/source_type = Int32: ' + current + '\n';
@@ -33,13 +34,24 @@ context.agentExecute = async (command, _timeout, guard) => {
     if (!refuse) current = Number(args[2]);
     return {exit_code:refuse?1:0,stdout:''};
 };
+function post(body) {
+    return new Promise((resolve,reject) => {
+        const req = new EventEmitter();
+        Object.assign(req,{method:'POST',url:'/inputs',headers:{host:'127.0.0.1:8099'},socket:{remoteAddress:'127.0.0.1'},resume(){}});
+        const res = {headersSent:false,statusCode:200,setHeader(){},writeHead(code){this.statusCode=code;this.headersSent=true;},
+            end(text){try{resolve({code:this.statusCode,body:JSON.parse(text)});}catch(e){reject(e);}}};
+        router(req,res);
+        process.nextTick(()=>{req.emit('data',Buffer.from(JSON.stringify(body)));req.emit('end');});
+    });
+}
 async function press(code) {
     context.physical.onEvent({code,action:'down',decision:'blocked'});
     await context.actionQueue;
 }
 (async()=>{
-    await context.runActions([{type:'key',key:'KEY_INPUT_41'}]);
-    assert.equal(current,41);
+    const selected = await post({sourceType:41});
+    assert.equal(selected.code,200);
+    assert.equal(selected.body.currentSourceType,41);
     assert.deepEqual(requests[0],['41','USB-C',icon]);
 
     context.remapStore.rules = remap.validateRules([
@@ -54,12 +66,13 @@ async function press(code) {
     assert.deepEqual(requests.map(r=>r[0]),['41','33','13']);
 
     refuse = true;
-    await assert.rejects(context.runActions([{type:'key',key:'KEY_INPUT_41'}]), /selection failed/);
+    const failed = await post({sourceType:41});
+    assert.equal(failed.code,503,'a native rejection is an HTTP failure');
+    assert.match(failed.body.error,/selection failed/);
     assert.equal(current,13,'failed selection does not invent a selected source');
     await press(226);
     assert.match(context.inputError,/selection failed/,'the physical pipeline records the failure instead of reporting success');
     refuse = false;
-    await context.runActions([{type:'key',key:'KEY_INPUT_41'}]);
-    assert.equal(current,41,'a failed physical action releases the shared selection lock');
-    console.log('PASS input dispatch: physical shortcuts use the packaged native helper, shell argv and verified readback');
+    assert.equal((await post({sourceType:41})).code,200,'a failed physical action releases the shared selection lock');
+    console.log('PASS input dispatch: dashboard route and physical shortcuts use the packaged native helper, shell argv and verified readback');
 })().catch(e=>{console.error(e);process.exitCode=1});

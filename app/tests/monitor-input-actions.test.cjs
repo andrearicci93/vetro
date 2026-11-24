@@ -23,22 +23,29 @@ context.agentExecute = async (command, _timeout, guard) => {
     if (guard && !guard()) throw Error('Input action cancelled');
     commands.push(command); return {exit_code:0, stdout:''};
 };
-function request() {
+function request(method, body) {
     return new Promise((resolve, reject) => {
         const req = new EventEmitter();
-        Object.assign(req, {method:'GET', url:'/inputs', headers:{host:'127.0.0.1:8099'}, socket:{remoteAddress:'127.0.0.1'}, resume(){}});
+        Object.assign(req, {method, url:'/inputs', headers:{host:'127.0.0.1:8099'}, socket:{remoteAddress:'127.0.0.1'}, resume(){}});
         const res = {headersSent:false, statusCode:200, setHeader(){}, writeHead(code){this.statusCode=code;this.headersSent=true;},
             end(text){try { resolve({code:this.statusCode, body:JSON.parse(text)}); } catch(e) { reject(e); }}};
         router(req, res);
+        if (body !== undefined) process.nextTick(() => { req.emit('data', Buffer.from(JSON.stringify(body))); req.emit('end'); });
     });
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 (async () => {
-    const read = await request();
+    const read = await request('GET');
     assert.equal(read.code, 200);
     assert.deepEqual(read.body.items.map(x => x.label), ['HDMI','DisplayPort','USB-C']);
     assert.deepEqual(selections, [], 'reading choices never changes the input');
-    await assert.rejects(context.selectInput('41'), error => error.statusCode === 400);
+    for (const method of ['PUT', 'DELETE', 'PATCH']) {
+        const unsupported = await request(method, {sourceType:41});
+        assert.equal(unsupported.code, 405, method + ' cannot select an input');
+        assert.deepEqual(selections, [], 'unsupported HTTP methods never reach the selector');
+    }
+    const invalid = await request('POST', {sourceType:'41'});
+    assert.equal(invalid.code, 400);
     assert.deepEqual(selections, [], 'unvalidated values never reach the selector');
 
     await context.runActions([{type:'key',key:'KEY_INPUT_41'}]);
@@ -63,22 +70,24 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
     context.state.settings=oldSettings;
     inputs.read = originalRead;
     inventory.monitor = true;
-    await request();
+    await request('GET');
     inputs.read = async () => { throw Error('Inventory unavailable'); };
     await assert.rejects(context.runActions([{type:'key',key:'KEY_HDMI1'}]), /Inventory unavailable/, 'a known monitor does not fall back to unverified TV keys');
     inputs.read = originalRead;
 
     let release;
     selectImpl = () => new Promise(resolve => { release = resolve; });
-    const first = context.runActions([{type:'key',key:'KEY_INPUT_13'}]);
+    const first = request('POST', {sourceType:13});
     await tick();
-    await assert.rejects(context.runActions([{type:'key',key:'KEY_INPUT_41'}]), error => error.statusCode === 409,
-        'whole source changes cannot interleave');
+    const concurrent = await request('POST', {sourceType:41});
+    assert.equal(concurrent.code, 409, 'whole source changes cannot interleave');
     release({ok:true, sourceType:13, currentSourceType:13});
-    await first;
+    assert.equal((await first).code, 200);
     selectImpl = async () => { throw Error('Selected input was not confirmed'); };
-    await assert.rejects(context.runActions([{type:'key',key:'KEY_INPUT_41'}]), /not confirmed/);
+    const failed = await request('POST', {sourceType:41});
+    assert.equal(failed.code, 503);
+    assert.match(failed.body.error, /not confirmed/);
     selectImpl = async (_execute, type) => ({ok:true, sourceType:type, currentSourceType:type});
-    await context.runActions([{type:'key',key:'KEY_INPUT_41'}]);
-    console.log('PASS monitor input actions: inventory, real ports, USB-C and legacy dispatch, cancellation, validation, concurrency and failed verification');
+    assert.equal((await request('POST', {sourceType:41})).code, 200, 'failure releases the selection lock');
+    console.log('PASS monitor input routes: real ports, USB-C and legacy dispatch, cancellation, validation, concurrency and failed verification');
 })().catch(error => { console.error(error); process.exitCode=1; });

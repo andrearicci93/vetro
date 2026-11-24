@@ -21,7 +21,7 @@ out (`RowEdit.Toggle`, sent to Vetro with `RowEdit.Command`), and a tick marks w
 switches to the input when the key comes up. A Sources list without row keys (written by an older Vetro) keeps OK on the
 press, has no hold and shows "Back" only.
 
-For the G8 layout, input remaps use the same native app-control request as the launcher.
+For the G8 layout, the dashboard's input buttons and input remaps use the same native app-control request as the launcher.
 The service invokes the packaged DLL with `--switch-source TYPE LABEL ICON`; this mode validates its arguments,
 sends one request and exits before the instance lock, window setup or launcher state is touched. It works while
 the launcher is off. The service discovers the input and an existing firmware icon first, then reads the selected

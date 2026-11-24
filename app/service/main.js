@@ -617,7 +617,14 @@ function selectInput(sourceType, dispatchGuard) {
     }).finally(function () { inputSwitchBusy = false; });
 }
 function handleInputs(req, res) {
-    return readInputs().then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, 503); });
+    if (req.method === 'GET') return readInputs().then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, 503); });
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'GET, POST');
+        return serveJson(res, {ok: false, error: 'Use GET or POST for inputs'}, 405);
+    }
+    readJsonBody(req, res, function (p) {
+        selectInput(p.sourceType).then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, e.statusCode || 503); });
+    });
 }
 
 // --- MQTT configuration ----------------------------------------------------
@@ -1265,6 +1272,7 @@ var server = http.createServer(function (req, res) {
         }
     }
     if (req.method === 'POST') {
+        if (url === '/inputs') return handleInputs(req, res);
         if (url === '/input') return handleInput(req,res);
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
