@@ -5,6 +5,9 @@ tests. The application package in `../app` can be built independently and contai
 none of this implementation.
 
 - `service/`: adapter, transport, authenticated root-agent protocol and staging.
+- `TIZEN10-ROOT.md`: the Tizen 10 `vddebugmenu` backend — how the backend and the payload are chosen from the OS
+  version, the bootstrap sequence, failure codes and the boundaries. Read it before changing anything in `service/`
+  that touches the root path.
 - `payload/`: active runtime components used by the integration builder.
 - `tools/samsung-tv-root-master/`: only the C# payload sources Vetro builds from (`payloads/common`) and the upstream Unlicense, trimmed from [chris-ritsen/samsung-tv-root](https://github.com/chris-ritsen/samsung-tv-root).
 - `tests/`: isolated lifecycle, authentication, injection validation and detached-launch tests.

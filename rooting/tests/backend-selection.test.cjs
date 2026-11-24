@@ -13,4 +13,12 @@ const release = 'Tizen10/TV 10.0.0 (arm)\nVERSION = 10.0.0\nCODENAME = TTEN\nBUI
 assert.equal(platform.parseReleasePlatformVersion(release), '10.0.0');
 assert.equal(platform.backendForPlatformVersion(platform.parseReleasePlatformVersion(release)), 'vddebugmenu');
 assert.equal(platform.parseReleasePlatformVersion('Tizen 9.0\nVERSION = 9.0.0\n'), '9.0.0');
-console.log('PASS backend selection: Tizen 10 vddebugmenu, older versions legacy');
+assert.equal(platform.payloadRuntimeForPlatform('10.0.0'), '6.0');
+assert.equal(platform.payloadRuntimeForPlatform('10'), '6.0');
+assert.equal(platform.payloadRuntimeForPlatform('9.0'), '6.0');
+assert.equal(platform.payloadRuntimeForPlatform('6.5'), '3.1');
+assert.equal(platform.payloadRuntimeForPlatform('5.5'), '3.1');
+assert.equal(platform.payloadRuntimeForPlatform(''), null);
+assert.equal(platform.payloadRuntimeForPlatform('Tizen10/TV'), null);
+
+console.log('PASS backend selection: Tizen 10 vddebugmenu, older versions legacy, payload net6 from Tizen 9');

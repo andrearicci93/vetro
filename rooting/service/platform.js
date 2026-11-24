@@ -44,6 +44,17 @@ function backendForPlatformVersion(value) {
     return null;
 }
 
+// The runtime bundle the agent is built for, chosen by the OS generation and
+// never by model/year: Tizen 9 and 10 ship a .NET 6+ runtime (Tizen 10 only
+// 8.0.11), so the net6 payload with rollForward=Major covers both; Tizen 6-8
+// keep the netcoreapp3.1 payload. null means "unknown": the archive backend
+// asks the preflight instead, the vddebugmenu backend falls back to net6.
+function payloadRuntimeForPlatform(value) {
+    var major = platformMajor(value);
+    if (major === null) return null;
+    return major >= 9 ? '6.0' : '3.1';
+}
+
 function storedPlatformVersion() {
     try {
         var report = JSON.parse(fs.readFileSync(PROBE_FILE, 'utf8'));
@@ -525,8 +536,13 @@ function startAgent() {
                 // firmware. Prepare the agent locally and let the trusted
                 // host bridge submit the vddebugmenu bootstrap.
                 try {
-                    bootstrapStep('preparation', 'started', 'runtime=6.0 stage=' + STAGE + '/' + pkg);
-                    prepare(port, '6.0');
+                    // Payload by OS generation: net6 for the 9/10 families (the only
+                    // runtime on Tizen 10 is 8.0.11, reached with rollForward=Major).
+                    // Unknown platform keeps net6 here because this backend only
+                    // runs on Tizen 10.
+                    var vdRuntime = payloadRuntimeForPlatform(state.rootBackendDetection.platformVersion) || '6.0';
+                    bootstrapStep('preparation', 'started', 'runtime=' + vdRuntime + ' backend=vddebugmenu stage=' + STAGE + '/' + pkg);
+                    prepare(port, vdRuntime);
                     bootstrapStep('preparation', 'ok', JSON.stringify({runtime: state.preparedRuntime, staging: state.staging, files: ['SamsungTvRootAgent.dll', 'SamsungTvRootAgent.runtimeconfig.json', 'public.pem', 'passwd']}));
                     prepareHostBootstrap(port);
                     bootstrapStep('host-bootstrap', 'ready', 'launcher=/tmp/vetro/l.sh token=staging/root-agent.token symlink=' + VDDEBUG_SHORT_LINK);
@@ -547,11 +563,11 @@ function startAgent() {
     });
 }
 
-function setRootBackend(backend) {
+function setRootBackend(backend, platformVersion) {
     if (backend !== 'vddebugmenu' && backend !== 'sdb-archive') return false;
     if (ROOT_BACKEND === backend) return false;
     ROOT_BACKEND = backend;
-    state.rootBackendDetection = {backend: backend, source: 'widget-platform-capability', platformVersion: null};
+    state.rootBackendDetection = {backend: backend, source: 'widget-platform-capability', platformVersion: platformVersion || null};
     if (state.running) {
         stop();
         startAgent();
@@ -563,7 +579,7 @@ function setRootBackend(backend) {
 
 function setRootBackendFromPlatformVersion(value) {
     var backend = backendForPlatformVersion(value);
-    return backend ? setRootBackend(backend) : false;
+    return backend ? setRootBackend(backend, value) : false;
 }
 
 function scheduleRelaunch() {
@@ -789,5 +805,5 @@ function setApplicationsEnabled(appIds, enabled) {
 module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute, onAgent: onAgent, retryNow: retryNow,
     sdbAccess: sdbAccess, setSdbAccess: setSdbAccess, install: install, setApplicationsEnabled: setApplicationsEnabled,
     setRootBackend: setRootBackend, setRootBackendFromPlatformVersion: setRootBackendFromPlatformVersion,
-    backendForPlatformVersion: backendForPlatformVersion, parseReleasePlatformVersion: parseReleasePlatformVersion,
-    releasePlatformVersion: releasePlatformVersion};
+    backendForPlatformVersion: backendForPlatformVersion, payloadRuntimeForPlatform: payloadRuntimeForPlatform,
+    parseReleasePlatformVersion: parseReleasePlatformVersion, releasePlatformVersion: releasePlatformVersion};
