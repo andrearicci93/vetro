@@ -24,7 +24,9 @@ Application scopes use a fixed allowlist for known apps and accept a validated p
 - 143 Vetro test suites passed on the Raspberry Pi.
 - A signed 0.7.2 WGT was installed on a Samsung QE65S85FAEXXN running Tizen 10 / T-PTMFDEUC-2103.1.
 - A real APL-TV archive was created from the TV and downloaded through the web endpoint.
+- A complete application archive was created and downloaded; it was about 104 MB.
 - A real restore was performed against the separate `APLTVTst01` clone; the original `APLTVMedia` remained separate and both data roots were verified as `5001:100`.
+- A complete application restore was performed from that archive; it created a rollback archive and Vetro/root remained available afterwards.
 - The TV root agent remained connected with `uid=0` after installation and restore.
 
 Backups can contain personal settings and application data. Do not publish them or include signing certificates in a source repository.
