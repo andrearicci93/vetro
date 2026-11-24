@@ -24,6 +24,16 @@ Promise.resolve()
         assert.equal(result.appId, 'APLTVMedia');
         assert.ok(calls[1].indexOf('tar -tzf') >= 0);
         assert.ok(calls[1].indexOf('rollback-') >= 0);
-        console.log('PASS backup: allowlist, archive exclusions, traversal guard, rollback restore');
+        return b.create('all-apps');
+    })
+    .then(result => {
+        assert.equal(result.scope, 'all-apps');
+        assert.ok(calls[2].indexOf(" -C '/opt/usr/home/owner/apps_rw' '.'") >= 0);
+        return b.restore('all-apps', '123-all-apps.tar.gz');
+    })
+    .then(result => {
+        assert.equal(result.scope, 'all-apps');
+        assert.ok(calls[3].indexOf('index($0,"../")') >= 0);
+        console.log('PASS backup: per-app, complete archive, exclusions, traversal guard, rollback restore');
     })
     .catch(error => { console.error(error.stack); process.exit(1); });

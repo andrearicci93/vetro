@@ -58,15 +58,17 @@ Backup.prototype.catalog = function () {
 
 Backup.prototype.create = function (scope) {
     var self = this;
-    var id = scope === 'vetro' ? VETRO_ID : idFor(scope);
-    var stamp = Date.now() + '-' + id;
+    var all = scope === 'all-apps';
+    var id = all ? null : (scope === 'vetro' ? VETRO_ID : idFor(scope));
+    var label = all ? 'all-apps' : id;
+    var stamp = Date.now() + '-' + label;
     var archive = ROOT + '/' + stamp + '.tar.gz';
     var manifest = ROOT + '/' + stamp + '.manifest';
     var cmd = 'set -e; mkdir -p ' + quote(ROOT) + '; ' +
-        'test -d ' + quote(APP_ROOT + '/' + id) + '; ' +
-        'printf "app=%s\\ncreated=%s\\n" ' + quote(id) + ' ' + quote(String(Date.now())) + ' > ' + quote(manifest) + '; ' +
+        (all ? '' : 'test -d ' + quote(APP_ROOT + '/' + id) + '; ') +
+        'printf "scope=%s\\ncreated=%s\\n" ' + quote(all ? 'all-apps' : id) + ' ' + quote(String(Date.now())) + ' > ' + quote(manifest) + '; ' +
         'tar --exclude="*/cache" --exclude="*/tmp" --exclude="*.log" -czf ' + quote(archive) +
-        ' -C ' + quote(APP_ROOT) + ' ' + quote(id) + '; ' +
+        ' -C ' + quote(APP_ROOT) + ' ' + quote(all ? '.' : id) + '; ' +
         'sha256sum ' + quote(archive) + ' >> ' + quote(manifest) + '; ' +
         'printf "%s\\n" ' + quote(archive);
     return shell(self.execute, cmd).then(function () {
@@ -76,16 +78,19 @@ Backup.prototype.create = function (scope) {
 
 Backup.prototype.restore = function (scope, name) {
     var self = this;
-    var id = scope === 'vetro' ? VETRO_ID : idFor(scope);
+    var all = scope === 'all-apps';
+    var id = all ? null : (scope === 'vetro' ? VETRO_ID : idFor(scope));
     if (!safeName(name) || name.indexOf('.tar.gz') !== name.length - 7) return Promise.reject(Error('Invalid backup name'));
     var archive = ROOT + '/' + name;
-    var rollback = ROOT + '/rollback-' + Date.now() + '-' + id + '.tar.gz';
-    var target = APP_ROOT + '/' + id;
+    var label = all ? 'all-apps' : id;
+    var rollback = ROOT + '/rollback-' + Date.now() + '-' + label + '.tar.gz';
+    var target = all ? APP_ROOT : APP_ROOT + '/' + id;
+    var memberCheck = all ? quote('index($0,"/") != 1 && index($0,"../") != 1 && $0 != ".." {ok=1} END {exit !ok}') :
+        quote('index($0,"/") != 1 && index($0,p)==1 {ok=1} END {exit !ok}');
     var cmd = 'set -e; test -f ' + quote(archive) + '; test -d ' + quote(target) + '; ' +
-        'tar -tzf ' + quote(archive) + ' | awk -v p=' + quote(id + '/') + ' ' +
-        quote('index($0,"/") != 1 && index($0,p)==1 {ok=1} END {exit !ok}') + '; ' +
+        'tar -tzf ' + quote(archive) + ' | awk ' + (all ? '' : '-v p=' + quote(id + '/') + ' ') + memberCheck + '; ' +
         'tar --exclude="*/cache" --exclude="*/tmp" --exclude="*.log" -czf ' + quote(rollback) +
-        ' -C ' + quote(APP_ROOT) + ' ' + quote(id) + '; ' +
+        ' -C ' + quote(APP_ROOT) + ' ' + quote(all ? '.' : id) + '; ' +
         'tar -xzf ' + quote(archive) + ' -C ' + quote(APP_ROOT) + ' --overwrite; ' +
         'chown -R 5001:100 ' + quote(target) + '; printf "%s\\n" ' + quote(rollback);
     return shell(self.execute, cmd).then(function () {

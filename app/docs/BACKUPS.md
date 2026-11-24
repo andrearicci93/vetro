@@ -9,8 +9,11 @@ Open the Vetro dashboard, choose **Backups**, then choose Vetro or APL-TV. The b
 ## API
 
 - `GET /backup` lists backup files stored under `/home/owner/share/vetro-backups`.
-- `POST /backup` with `{"action":"create","scope":"vetro"}` creates a Vetro archive.
+- `POST /backup` with `{"action":"create","scope":"vetro"}` creates a Vetro-only archive.
+- `POST /backup` with `{"action":"create","scope":"all-apps"}` creates one complete archive of application data.
 - `POST /backup` with `{"action":"create","scope":"apltv"}` creates an APL-TV archive.
+- `POST /backup` with `{"action":"restore","scope":"vetro","name":"...tar.gz"}` restores Vetro only.
+- `POST /backup` with `{"action":"restore","scope":"all-apps","name":"...tar.gz"}` restores all application data.
 - `POST /backup` with `{"action":"restore","scope":"apltv","name":"...tar.gz"}` restores one application and returns the rollback filename.
 - `GET /backup/download?name=...tar.gz` downloads one archive.
 
