@@ -10,6 +10,7 @@ var tarGz = require('./tar.js').tarGz;
 var RootAgentServer = require('./root-agent.js').RootAgentServer;
 var TunnelServer = require('./sdb-tunnel.js').TunnelServer;
 var retryPolicy = require('./retry-policy.js');
+var vddebugmenu = require('./vddebugmenu.js');
 var SDB_TUNNEL_PORT = 26201;
 var SDB_TUNNEL_PORT_ERROR = null;
 (function () {
@@ -28,18 +29,89 @@ var tunnelServer = null;
 var SDB_ACCESS_FILE = '/opt/usr/home/owner/share/vetro-sdb-access.json';
 var debloatCommands = require('./debloat-commands.js');
 var STAGE = '/home/owner/share/tmp/sdk_tools';
+var VDDEBUG_AGENT_PORT = 26202;
+var PROBE_FILE = '/opt/usr/home/owner/share/vetro-probe.json';
+
+function platformMajor(value) {
+    var match = String(value || '').match(/^(\d{1,2})(?:\.\d+){0,2}$/);
+    return match ? Number(match[1]) : null;
+}
+
+function backendForPlatformVersion(value) {
+    var major = platformMajor(value);
+    if (major === 10) return 'vddebugmenu';
+    if (major !== null) return 'sdb-archive';
+    return null;
+}
+
+function storedPlatformVersion() {
+    try {
+        var report = JSON.parse(fs.readFileSync(PROBE_FILE, 'utf8'));
+        return report && report.settings && report.settings.platformVersion || null;
+    } catch (e) { return null; }
+}
+
+function parseReleasePlatformVersion(release) {
+    // Tizen TV 10 writes `Tizen10/TV ...` and `VERSION = 10.0.0`.
+    var version = String(release || '').match(/(?:^|\n)VERSION\s*=\s*([0-9]+(?:\.[0-9]+){0,2})/m);
+    if (version) return version[1];
+    var name = String(release || '').match(/(?:^|\n)Tizen\s*([0-9]+(?:\.[0-9]+){0,2})/m);
+    return name ? name[1] : null;
+}
+
+function releasePlatformVersion() {
+    try { return parseReleasePlatformVersion(fs.readFileSync('/etc/tizen-release', 'utf8')); }
+    catch (e) { return null; }
+}
+
+function detectRootBackend() {
+    if (process.env.VETRO_ROOT_BACKEND === 'vddebugmenu') {
+        return {backend: 'vddebugmenu', source: 'environment', platformVersion: null};
+    }
+    if (process.env.VETRO_ROOT_BACKEND === 'sdb-archive') {
+        return {backend: 'sdb-archive', source: 'environment', platformVersion: null};
+    }
+    var version = storedPlatformVersion();
+    var backend = backendForPlatformVersion(version);
+    if (backend) return {backend: backend, source: 'stored-probe', platformVersion: version};
+    version = releasePlatformVersion();
+    backend = backendForPlatformVersion(version);
+    if (backend) return {backend: backend, source: 'tizen-release', platformVersion: version};
+    return {backend: 'sdb-archive', source: 'legacy-default', platformVersion: null};
+}
+
+var BACKEND_DETECTION = detectRootBackend();
+var ROOT_BACKEND = BACKEND_DETECTION.backend;
 
 var state = {
     when: new Date().toISOString(),
     self: selfIdentity(),
     attempts: [],
+    bootstrapLog: [],
+    bootstrap: { step: 'stopped', status: 'idle', detail: null },
+    rootBackendDetection: BACKEND_DETECTION,
     prepared: false,
     running: false,
     unsupported: false,
-    rooting: { backend: 'sdb-archive', phase: 'stopped', failure: null },
+    rooting: { backend: ROOT_BACKEND, phase: 'stopped', failure: null },
     sdbTunnel: { listening: false },
     agent: { connected: false }
 };
+
+function bootstrapLog(event, detail) {
+    var item = { t: Date.now(), event: event };
+    if (detail !== undefined) item.detail = String(detail).slice(0, 1200);
+    state.bootstrapLog.push(item);
+    if (state.bootstrapLog.length > 80) state.bootstrapLog.shift();
+    // No persist() here: the fast wake-retry window logs every attempt in
+    // memory, but only the first failure of a kind may reach the flash log.
+}
+
+function bootstrapStep(step, status, detail) {
+    state.bootstrap = { step: step, status: status, detail: detail === undefined ? null : String(detail).slice(0, 1600), at: Date.now() };
+    bootstrapLog('step-' + step, status + (detail === undefined ? '' : ': ' + detail));
+    persist();
+}
 
 function selfIdentity() {
     var status = '';
@@ -75,6 +147,26 @@ function ensureDir(p) {
         }
     });
     return p;
+}
+
+// The host bootstrap sends only a short command:
+//   cat /tmp/vetro/l.sh|sh
+// l.sh lives in the staging directory behind the short /tmp/vetro symlink and
+// carries the full dotnet line. Feeding sh through stdin avoids the UEP
+// file-open check that refuses unsigned script files.
+var VDDEBUG_SHORT_LINK = '/tmp/vetro';
+function prepareHostBootstrap(agentPort) {
+    var agentDir = STAGE + '/' + pkg;
+    fs.writeFileSync(agentDir + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
+    var agentLaunch = '#!/bin/sh\n' +
+        '/usr/bin/dotnet ' + agentDir + '/SamsungTvRootAgent.dll ' +
+        '127.0.0.1 ' + agentPort + ' ' +
+        agentDir + '/root-agent.token ' + agentDir +
+        ' </dev/null >/dev/null 2>&1 &\n' +
+        'sleep 3\n';
+    fs.writeFileSync(agentDir + '/l.sh', agentLaunch, { mode: 493 /* 0o755 */ });
+    try { fs.unlinkSync(VDDEBUG_SHORT_LINK); } catch (e) { /* absent is fine */ }
+    fs.symlinkSync(agentDir, VDDEBUG_SHORT_LINK);
 }
 
 // Start the agent with detached standard streams so the archive launcher
@@ -277,12 +369,20 @@ function transportCode(error) {
 // that connection and multiplexes every client, so Vetro must go through it too
 // instead of opening a competing direct connection to 26101.
 function sdbTarget() {
+    // In vddebugmenu autonomous mode the service must dial the TV's own SDB
+    // daemon directly. The Vetro LAN tunnel is for external clients and
+    // points at 26201; using it here causes a local sdbClosed before the
+    // handshake. Legacy archive mode keeps the shared tunnel behaviour.
+    if (ROOT_BACKEND === 'vddebugmenu') {
+        return { host: '127.0.0.1', port: 26101, timeout: 8000 };
+    }
     var tunnel = state.sdbTunnel;
     if (tunnel && tunnel.listening && tunnel.port) {
         return { host: '127.0.0.1', port: tunnel.port, timeout: 8000 };
     }
     return { host: '127.0.0.1', port: 26101, timeout: 8000 };
 }
+
 
 function readSdbPreference() {
     try {
@@ -358,8 +458,11 @@ function startAgent() {
     // Regenerate launch.sh for the current listener port on each lifecycle.
     state.prepared = false;
     state.unsupported = false;
-    state.rooting = { backend: 'sdb-archive', phase: 'preparing', failure: null };
+    state.rooting = { backend: ROOT_BACKEND, phase: 'preparing', failure: null };
+    bootstrapLog('service-start', 'backend=' + ROOT_BACKEND + ' agentPort=' + VDDEBUG_AGENT_PORT);
+    bootstrapStep('service', 'started', 'pid=' + process.pid + ' node=' + process.version);
     agentServer = new RootAgentServer({
+        port: ROOT_BACKEND === 'vddebugmenu' ? VDDEBUG_AGENT_PORT : 0,
         secret: secret,
         onConnect: function (conn) {
             if (!state.running) { conn._socket.destroy(); return; }
@@ -374,6 +477,8 @@ function startAgent() {
             else if (!timing.firstConnect && startHr) timing.firstConnect = {ms: hrMs(startHr), stages: stages};
             loss = null; lossHr = null; lastFailure = null; attemptTimes = null;
             rootPhase('connected');
+            bootstrapLog('agent-connected', 'uid=' + conn.identity.uid + ' gid=' + conn.identity.gid + ' smack=' + conn.identity.smack);
+            bootstrapStep('agent-authentication', 'ok', 'pid=' + conn.identity.pid + ' uid=' + conn.identity.uid + ' gid=' + conn.identity.gid + ' cap_eff=' + conn.identity.cap_eff + ' smack=' + conn.identity.smack);
             state.rooting.failure = null;
             state.agent = {
                 connected: true,
@@ -414,10 +519,51 @@ function startAgent() {
             if (!state.running) return;
             if (!startHr) startHr = process.hrtime();
             state.agentPort = port;
+            bootstrapStep('agent-listener', 'listening', '127.0.0.1:' + port);
+            if (ROOT_BACKEND === 'vddebugmenu') {
+                // The TV cannot reach its own network SDB endpoint on this
+                // firmware. Prepare the agent locally and let the trusted
+                // host bridge submit the vddebugmenu bootstrap.
+                try {
+                    bootstrapStep('preparation', 'started', 'runtime=6.0 stage=' + STAGE + '/' + pkg);
+                    prepare(port, '6.0');
+                    bootstrapStep('preparation', 'ok', JSON.stringify({runtime: state.preparedRuntime, staging: state.staging, files: ['SamsungTvRootAgent.dll', 'SamsungTvRootAgent.runtimeconfig.json', 'public.pem', 'passwd']}));
+                    prepareHostBootstrap(port);
+                    bootstrapStep('host-bootstrap', 'ready', 'launcher=/tmp/vetro/l.sh token=staging/root-agent.token symlink=' + VDDEBUG_SHORT_LINK);
+                    bootstrapStep('local-sdb', 'starting', 'attempting TV-local SDB at 127.0.0.1:26101');
+                    rootPhase('sdb-handshake');
+                    relaunch();
+                } catch (e) {
+                    state.prepareError = String(e.message || e);
+                    bootstrapStep('preparation', 'failed', state.prepareError);
+                    rootFailure('preparation', e.code || 'prepare-failed');
+                    rootPhase('unsupported');
+                }
+                return;
+            }
             if (typeof crypto.generateKeyPairSync !== 'function') prepareForRuntime(port);
             relaunch();
         });
     });
+}
+
+function setRootBackend(backend) {
+    if (backend !== 'vddebugmenu' && backend !== 'sdb-archive') return false;
+    if (ROOT_BACKEND === backend) return false;
+    ROOT_BACKEND = backend;
+    state.rootBackendDetection = {backend: backend, source: 'widget-platform-capability', platformVersion: null};
+    if (state.running) {
+        stop();
+        startAgent();
+    } else {
+        state.rooting.backend = backend;
+    }
+    return true;
+}
+
+function setRootBackendFromPlatformVersion(value) {
+    var backend = backendForPlatformVersion(value);
+    return backend ? setRootBackend(backend) : false;
 }
 
 function scheduleRelaunch() {
@@ -442,6 +588,7 @@ function relaunch() {
 
     var stage = 'sdb-handshake';
     rootPhase('sdb-handshake');
+    bootstrapLog('sdb-handshake-start', JSON.stringify(sdbTarget()));
     state.preflight = null;
     var entry = { t: Date.now(), phase: 'launch' };
     pushAttempt(entry);
@@ -451,19 +598,31 @@ function relaunch() {
     function lap(name) { times.ms[name] = hrMs(times.hr); times.hr = process.hrtime(); }
     Promise.resolve().then(function () {
         if (!state.running || gen !== launchGen || agentConnected) return;
-        return sdb.connect(sdbTarget());
+        var target = sdbTarget();
+        return sdb.connect(Object.assign({}, target, {log: function (event, detail) {
+            bootstrapLog('sdb-' + event, detail);
+        }}));
     }).then(function (client) {
         if (!state.running || gen !== launchGen || agentConnected) { if (client) sdb.close(client); return; }
         launchClient = client;
         entry.connect = 'ok';
+        bootstrapLog('sdb-handshake-ok');
         lap('handshakeMs');
         stage = 'preflight';
         rootPhase('preflight');
+        if (ROOT_BACKEND === 'vddebugmenu') {
+            // The TV-local SDB handshake already succeeded. The historical
+            // appinstall preflight is itself rejected on this Tizen 10 path,
+            // so do not gate vddebugmenu on an archive injection probe.
+            bootstrapStep('preflight', 'bypassed', 'local SDB handshake ok; using the vddebugmenu backend');
+            return { runtime: '6.0', source: 'verified-vddebugmenu-local-sdb', skipped: true };
+        }
         return checkTarget({run: createPreflightRunner(client, buildInjection)});
     }).then(function (assessment) {
         if (!state.running || gen !== launchGen || agentConnected) return;
         lap('preflightMs');
         state.preflight = assessment;
+        bootstrapLog('preflight', JSON.stringify(assessment));
         stage = 'preparation';
         rootPhase('preparing');
         if (!state.prepared || state.preparedRuntime !== assessment.runtime) {
@@ -476,6 +635,7 @@ function relaunch() {
         }
         delete state.prepareError;
         lap('prepareMs');
+        bootstrapLog('agent-prepared', state.staging && state.staging.dir);
         try {
             fs.writeFileSync(STAGE + '/' + pkg + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
         } catch (e) {
@@ -491,21 +651,39 @@ function relaunch() {
                 return;
             }
             launchClient = client;
-            var launchCmd = '/usr/bin/dotnet ' + STAGE + '/' + pkg + '/SamsungTvArchiveRoot.dll ' + pkg;
+            // Archive backend only: the vddebugmenu backend never dials SDB
+            // (relaunch returns early); its bootstrap is submitted by the host.
+            var launchCmd = ROOT_BACKEND === 'vddebugmenu'
+                // Keep the menu command short and detach the pipe. Without
+                // this, the shell running l.sh can keep the vddebugmenu
+                // transaction open and the TV never emits END/DONE.
+                ? 'cat /tmp/vetro/l.sh|/bin/sh'
+                : '/usr/bin/dotnet ' + STAGE + '/' + pkg + '/SamsungTvArchiveRoot.dll ' + pkg;
             var injection = buildInjection(launchCmd);
             entry.connect = 'ok';
             rootPhase('launch-command');
+            bootstrapLog('launch-dispatch', launchCmd);
             // The launch script returns independently of the agent lifetime.
             // Release this connection on agent connect as an additional safeguard.
             Promise.resolve().then(function () {
                 if (!state.running || gen !== launchGen || agentConnected) return;
+                if (ROOT_BACKEND === 'vddebugmenu') {
+                    // The one-shot sequence matches the published reproducer.
+                    var vdProfile = 'generic';
+                    bootstrapStep('vddebugmenu', 'dispatching', 'profile=' + vdProfile + ' submitted over local SDB');
+                    return vddebugmenu.run(client, launchCmd, { timeout: 60000, profile: vdProfile, log: function (event, detail) {
+                        bootstrapLog('vddebug-' + event, detail);
+                    }});
+                }
                 return sdb.exec(client, 'shell:0 appinstall tpk ' + injection, { timeout: 60000 });
             }).then(function (out) {
                 entry.output = out;
+                bootstrapLog(ROOT_BACKEND === 'vddebugmenu' ? 'vddebugmenu-return' : 'archive-return', out);
                 if (gen === launchGen) { lap('dispatchMs'); times.dispatchHr = times.hr; }
                 if (state.running && gen === launchGen && !agentConnected) rootPhase('agent-callback');
             }).catch(function (e) {
                 entry.err = String(e.message || e);
+                bootstrapLog('launch-error', entry.err);
                 if (state.running && gen === launchGen && !agentConnected) {
                     rootFailure('launch-command', transportCode(e));
                     rootPhase('agent-callback');
@@ -609,4 +787,7 @@ function setApplicationsEnabled(appIds, enabled) {
     } catch (error) { return Promise.reject(error); }
 }
 module.exports = {start: startAgent, stop: stop, status: status, execute: agentExecute, onAgent: onAgent, retryNow: retryNow,
-    sdbAccess: sdbAccess, setSdbAccess: setSdbAccess, install: install, setApplicationsEnabled: setApplicationsEnabled};
+    sdbAccess: sdbAccess, setSdbAccess: setSdbAccess, install: install, setApplicationsEnabled: setApplicationsEnabled,
+    setRootBackend: setRootBackend, setRootBackendFromPlatformVersion: setRootBackendFromPlatformVersion,
+    backendForPlatformVersion: backendForPlatformVersion, parseReleasePlatformVersion: parseReleasePlatformVersion,
+    releasePlatformVersion: releasePlatformVersion};

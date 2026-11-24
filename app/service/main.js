@@ -702,6 +702,9 @@ function handleProbe(req, res) {
     readJsonBody(req, res, function (parsed) {
         try { state = probe.carry(state, probe.sanitize(parsed)); }
         catch (e) { return serveJson(res, { error: String(e.message || e) }, 400); }
+        if (state.settings && platform.setRootBackendFromPlatformVersion) {
+            platform.setRootBackendFromPlatformVersion(state.settings.platformVersion);
+        }
         invalidateInventory();
         serveJson(res, { ok: true, persisted: probe.save(state) });
     }, probe.MAX_JSON);
