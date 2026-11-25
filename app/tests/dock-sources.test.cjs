@@ -34,11 +34,11 @@ assert.ok(enabled.inputs.every(e => e.icon === null), 'sources use packaged gene
     };
     const parsed = catalog.parse(['F|csfs', 'O|s/livetv@RF', 'S|' + Buffer.from(JSON.stringify(monitor)).toString('base64')].join('\n'));
     const inputs = catalog.sourceEntries(parsed, {});
-    assert.deepEqual(inputs.map(e => e.appId), ['source:0', 'source:13', 'source:14', 'source:15', 'source:16', 'source:33'], 'DisplayPort after HDMI 4, DLNA left out');
+    assert.deepEqual(inputs.map(e => e.appId), ['source:0', 'source:13', 'source:14', 'source:15', 'source:16', 'source:33'], 'a different monitor retains the upstream TV/HDMI list and discovered DisplayPort');
     assert.equal(inputs[2].inputLabel, 'HDMI 2 - Console', 'the name of "HDMI2/0" reaches HDMI 2');
     const dp = inputs[5];
     assert.deepEqual([dp.slug, dp.label, dp.inputLabel, dp.key], ['in-dp', 'PC', 'DisplayPort - PC', 'source:33']);
-    assert.equal(catalog.sourceEntries(parsed, {useSourceImages: true})[5].icon, null, 'an SVG picture is not used: the launcher draws its own DP icon');
+    assert.equal(catalog.sourceEntries(parsed, {useSourceImages: true})[5].icon, null, 'an SVG picture is not used as tile artwork: the launcher draws its own DP icon');
     const tv = catalog.parse(['F|csfs', 'S|' + Buffer.from(JSON.stringify({TV: {SourceType: 0}, HDMI1: {SourceType: 13, EditName: 'Box'}})).toString('base64')].join('\n'));
     assert.deepEqual(catalog.sourceEntries(tv, {}).map(e => e.appId), ['source:0', 'source:13', 'source:14', 'source:15', 'source:16'], 'a TV without DisplayPort: no DisplayPort');
     assert.equal(catalog.sourceEntries(tv, {})[1].inputLabel, 'HDMI 1 - Box', 'the plain "HDMI1" key still names HDMI 1');

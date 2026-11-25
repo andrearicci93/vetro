@@ -2473,35 +2473,30 @@ namespace Launcher
             _pendingLaunch = e;
         }
 
-        private const string SourceIconDir = "/usr/apps/com.samsung.tv.theme-resource/shared/res/org.tizen.menu/Settings_Popup/device_icon/";
-
         /// <summary>
         /// Switches input the way Samsung's own Source tile does (CompSource, SourceChangeViaTVViewer):
         /// a launch request to tv-viewer carrying the input number. tv-viewer refuses a missing icon,
         /// so the firmware's own device icon is passed along.
         /// </summary>
+        private sealed class SourceControl : ISourceControl
+        {
+            public int Create(out IntPtr handle) { return Efl.app_control_create(out handle); }
+            public int SetAppId(IntPtr handle, string appId) { return Efl.app_control_set_app_id(handle, appId); }
+            public int AddData(IntPtr handle, string key, string value) { return Efl.app_control_add_extra_data(handle, key, value); }
+            public int Send(IntPtr handle) { return Efl.app_control_send_launch_request(handle, IntPtr.Zero, IntPtr.Zero); }
+            public void Destroy(IntPtr handle) { Efl.app_control_destroy(handle); }
+        }
+
         private static void SwitchSource(AppEntry e)
         {
-            IntPtr ac = IntPtr.Zero;
             try
             {
-                if (Efl.app_control_create(out ac) != 0) { Log("source: app_control_create failed"); return; }
-                string n = e.SourceType.ToString();
-                // 33 is a monitor's DisplayPort (#215); the firmware's theme has a DisplayPort device icon (r_icon_device_s_dpport, seen in the Q80A image).
-                string icon = SourceIconDir + (e.SourceType >= 13 && e.SourceType <= 16 ? "r_icon_device_s_hdmi" + (e.SourceType - 12)
-                    : e.SourceType == 33 ? "r_icon_device_s_dpport" : "r_icon_device_s_tv") + ".png";
-                Efl.app_control_set_app_id(ac, "org.tizen.tv-viewer");
-                Efl.app_control_add_extra_data(ac, "change_source", n);
-                Efl.app_control_add_extra_data(ac, "sourceType", n);
-                Efl.app_control_add_extra_data(ac, "sourceName", e.Label);
-                Efl.app_control_add_extra_data(ac, "sourceIcon", icon);
-                Efl.app_control_add_extra_data(ac, "mbrIndex", "-2");   // SourceMbrActivityIndex.Invalid: no external-device profile
-                Efl.app_control_add_extra_data(ac, "__K_EX_LAUNCH_REQUESTOR", "user");
-                int rc = Efl.app_control_send_launch_request(ac, IntPtr.Zero, IntPtr.Zero);
-                Log("source " + e.Label + " (" + n + ") rc=" + rc);
+                string icon = Launcher.Core.SourceSwitch.ResolveIcon(e, File.Exists);
+                if (icon == null) { Log("source " + e.Label + " (" + e.SourceType + "): no existing Samsung source icon; request not sent"); return; }
+                int rc = Launcher.Core.SourceSwitch.Send(e.SourceType, e.Label, icon, File.Exists, new SourceControl());
+                Log("source " + e.Label + " (" + e.SourceType + ") rc=" + rc);
             }
             catch (Exception ex) { Log("source error: " + ex.Message); }
-            finally { if (ac != IntPtr.Zero) Efl.app_control_destroy(ac); }
         }
 
         private const string KeyTool = "/usr/bin/input_keyevent ";
@@ -2657,6 +2652,11 @@ namespace Launcher
 
         private static int Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--switch-source")
+            {
+                try { return Launcher.Core.SourceSwitch.RunCommand(args, File.Exists, new SourceControl(), Console.Out); }
+                catch (Exception ex) { Console.Error.WriteLine("Source switch failed: " + ex.Message); return 1; }
+            }
             if (Flag(args, "--get-home")) return GetHome();
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();

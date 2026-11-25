@@ -5,6 +5,7 @@ const {Store,decode,decodeVconf,decodeChannel,READ}=require('../service/tv-state
 assert.deepEqual(decode('{"volume":7,"muted":true,"sourceType":0}'),{volume:7,muted:true,source:'TV',sourceType:0});
 assert.equal(decode('{"volume":0,"muted":false,"sourceType":13}').source,'HDMI1');
 assert.equal(decode('{"volume":0,"muted":false,"sourceType":33}').source,'DisplayPort','DisplayPort on Samsung monitors (#215)');
+assert.equal(decode('{"volume":0,"muted":false,"sourceType":41}').source,'USB-C','USB-C on the Odyssey OLED G8 (#314)');
 assert.deepEqual(decode('{"volume":101,"muted":1,"sourceType":99}'),{volume:null,muted:null,source:null,sourceType:99});
 assert.throws(()=>decode('native error'));
 // buxton2ctl's lines, as the Q80A printed them on 2026-11-21

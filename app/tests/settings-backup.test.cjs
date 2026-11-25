@@ -26,6 +26,11 @@ assert.equal(file.sections.mqtt.hadPassword, true, 'only whether a password has 
 assert.deepEqual(file.sections.launcher.cards, ['tasks', 'shard:clock']); assert.equal(file.sections.launcher.mode, 'vetro');
 assert.deepEqual(file.sections.essentials, {wins: {firmware: true, quickboot: false, multiscreen: false, ambient: true, telemetry: false, airplay: false, remotesupport: false, delivery: false, wifipresence: false}, keyGuides: true, hbbtvOff: true});
 assert.deepEqual(file.sections.shards.list.map(p => p.id), ['clock'], 'bundled Shards are part of Vetro, not of the file');
+// A shortcut for an input of the Odyssey OLED G8 (#314) is an ordinary Remapper rule: it is saved, read again, and the service accepts it.
+const g8Rule = {id: 'physical_615', enabled: true, trigger: {type: 'physical', value: '615'}, actions: [{type: 'key', key: 'KEY_INPUT_41'}]};
+const g8File = b.parse(JSON.stringify(b.build(Object.assign({}, src, {rules: [g8Rule]}))));
+assert.deepEqual(g8File.sections.remapper.rules, [g8Rule]);
+assert.deepEqual(require('../service/remap.js').validateRules(g8File.sections.remapper.rules)[0].actions, g8Rule.actions);
 const noRoot = b.build(Object.assign({}, src, {root: false, quickOff: undefined, dns: undefined}));
 assert.deepEqual(noRoot.notRead, {quickSettings: 'needs-root', dns: 'needs-root'});
 

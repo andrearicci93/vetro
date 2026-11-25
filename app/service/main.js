@@ -13,6 +13,7 @@ var PluginHost = require('./plugin-host.js').PluginHost;
 var Updater = require('./updater.js').Updater;
 var debloat = require('./debloat.js');
 var control = require('./control.js');
+var inputSources = require('./input-sources.js');
 var packageInfo = require('./package-info.js');
 var platform = require('./platform.js');
 var buildInfo = require('./build-info.js');
@@ -41,6 +42,8 @@ var REFRESH_QUERY_RE = /(?:\?|&)refresh=1(?:&|$)/;
 var APP_ID_QUERY_RE = /[?&]appId=([^&#]*)/;
 var PLUS_RE = /\+/g;
 var APP_ID_120_RE = /^[A-Za-z0-9_.-]{1,120}$/;
+var INPUT_ACTION_RE = /^KEY_INPUT_(\d{1,5})$/;
+var LEGACY_INPUT_ACTION_RE = /^(?:KEY_TV|KEY_HDMI[1-4]|KEY_DISPLAYPORT)$/;
 var WHITESPACE_CHAR_RE = /\s/g;
 var FORMAT_QUERY_RE = /(?:^|&)format=(hosts|domains)(?:&|$)/;
 var KEY_CAPABILITY_RE = /[1-9a-f]/i;
@@ -638,6 +641,37 @@ function handleControl(req, res) {
     });
 }
 
+// Source choices come from the display's own inventory. A native launch request is
+// not success until the selected source is read back; serialize whole selections
+// so another shortcut cannot interleave its write with that verification.
+var inputSwitchBusy = false;
+var lastInputMonitor = null;
+function readInputs(execute) {
+    return inputSources.read(execute || agentExecute).then(function (d) {
+        if (d.available === false && lastInputMonitor === true) throw new Error('Samsung input inventory is unavailable');
+        if (d.available !== false) lastInputMonitor = d.monitor === true;
+        return d;
+    });
+}
+function selectInput(sourceType, dispatchGuard) {
+    if (!Number.isInteger(sourceType) || sourceType < 0 || sourceType > 65535) return Promise.reject(Object.assign(new Error('Invalid input'), {statusCode: 400}));
+    if (inputSwitchBusy) return Promise.reject(Object.assign(new Error('An input change is already in progress'), {statusCode: 409}));
+    inputSwitchBusy = true;
+    return Promise.resolve().then(function () {
+        return inputSources.select(function (command, timeout) { return agentExecute(command, timeout, dispatchGuard); }, sourceType, {monitor:lastInputMonitor});
+    }).finally(function () { inputSwitchBusy = false; });
+}
+function handleInputs(req, res) {
+    if (req.method === 'GET') return readInputs().then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, 503); });
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'GET, POST');
+        return serveJson(res, {ok: false, error: 'Use GET or POST for inputs'}, 405);
+    }
+    readJsonBody(req, res, function (p) {
+        selectInput(p.sourceType).then(function (d) { serveJson(res, d); }, function (e) { serveJson(res, {ok: false, error: e.message}, e.statusCode || 503); });
+    });
+}
+
 // --- MQTT configuration ----------------------------------------------------
 // POST /mqtt {"host": "...", "port": 1883, ...} validates and stores the
 // bridge config in the owner's persistent storage; the bridge picks it up
@@ -1036,6 +1070,32 @@ function handleRemap(req, res) {
 
 // Package ID of an installed app from the last registry read, if there is one (rules only carry the app ID).
 function packageOf(appId){var row=registryCache&&registryCache.apps.find(function(r){return r.appId===appId;});return row?row.packageId:null;}
+function sendNativeKey(key, dispatchGuard) {
+    var native = control.nativeKey(key), command = native && keyRouting.keyCommand(native, control.injectCommand(native));
+    if (!command) return Promise.reject(new Error('unsupported native key: ' + key));
+    return agentExecute(command, 10000, dispatchGuard).then(function (r) { if (r.exit_code || r.timed_out) throw new Error(r.stderr || 'native action failed'); });
+}
+function sendShortcutKey(key, dispatchGuard) {
+    var sourceAction = INPUT_ACTION_RE.exec(key);
+    if (sourceAction) return selectInput(+sourceAction[1], dispatchGuard);
+    if (!LEGACY_INPUT_ACTION_RE.test(key)) return sendNativeKey(key, dispatchGuard);
+    // A TV that is known not to be a monitor sends the key at once: no cache read in front of a key press.
+    if (lastInputMonitor === false) return sendNativeKey(key, dispatchGuard);
+    // Keep existing TV shortcuts, but do not send TV-only HDMI key codes to a
+    // monitor. Its source cache is the authority for the physical port.
+    return readInputs(function (command, timeout) { return agentExecute(command, timeout, dispatchGuard); }).then(function (d) {
+        if (!d.monitor) return sendNativeKey(key, dispatchGuard);
+        var port = key === 'KEY_TV' || key === 'KEY_DISPLAYPORT' ? null : +key.slice(8);
+        var item = d.items.filter(function (x) { return key === 'KEY_TV' ? x.family === 'tv' : key === 'KEY_DISPLAYPORT' ? x.family === 'displayport' : x.family === 'hdmi' && x.port === port; })[0];
+        if (!item) throw new Error('That input is not available on this display');
+        return selectInput(item.sourceType, dispatchGuard);
+    }, function (error) {
+        if (lastInputMonitor === true) throw error;
+        // A missing cache must not remove a TV's previously supported native
+        // shortcut. New KEY_INPUT actions always require verified discovery.
+        return sendNativeKey(key, dispatchGuard);
+    });
+}
 // direct: the Task manager's "Open app", already checked in handleLaunch. Anything else comes from a rule (remapper, MQTT, HTTP).
 function runActions(actions, direct, dispatchGuard) {
     var sent=0, skipped=[],mqttSent=0;
@@ -1049,7 +1109,7 @@ function runActions(actions, direct, dispatchGuard) {
         // #200: an app that is only an HbbTV link (SVT Play) opens the way Samsung's Home opens it; any other app by its id.
         if(a.type==='launch')command=hbbtvLink.launchCommand(a.appId);
         // A named key goes to the window with the focus; with Vetro TV Tuner on screen that is the tuner's, so its keys go to it (key-routing.js).
-        else if(a.type==='key'){var key=control.nativeKey(a.key);command=key&&keyRouting.keyCommand(key,control.injectCommand(key));if(!command)throw new Error('unsupported native key: '+a.key);}
+        else if(a.type==='key')return sendShortcutKey(a.key,dispatchGuard).then(function(){sent++;});
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});
@@ -1279,6 +1339,7 @@ var server = http.createServer(function (req, res) {
         }
     }
     if (req.method === 'POST') {
+        if (url === '/inputs') return handleInputs(req, res);
         if (url === '/input') return handleInput(req,res);
         if (url === '/apps/launch') return handleLaunch(req,res);
         if (url === '/exec') return handleExec(req, res);
@@ -1344,6 +1405,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/debloat') return handleDebloatList(req, res);
     if (url === '/mqtt') return handleMqttConfig(req, res);
     if (url === '/control') return handleControl(req, res);
+    if (url === '/inputs') return handleInputs(req, res);
     if (url === '/probe') return handleProbe(req, res);
     if (url === '/input') return handleInput(req,res);
     if (url === '/apps/icon') return handleIcon(req,res);

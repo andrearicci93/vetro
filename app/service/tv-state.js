@@ -29,7 +29,7 @@ var READ = 'B=/usr/bin/buxton2ctl; if [ -x $B ]; then ' +
 var TUNER_RE = /^TUNER\|(\d+)$/m, CHANNEL_RE = /^CHANNEL\|(\{.*\})$/m;
 
 function sourceName(type) {
-    return type === 0 ? 'TV' : type >= 13 && type <= 16 ? 'HDMI' + (type - 12) : type === 33 ? 'DisplayPort' : null;
+    return type === 0 ? 'TV' : type >= 13 && type <= 16 ? 'HDMI' + (type - 12) : type === 33 ? 'DisplayPort' : type === 41 ? 'USB-C' : null;
 }
 // TvState.dll's JSON line.
 function decode(text) {

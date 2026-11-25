@@ -38,6 +38,13 @@ function ageMinutes(receivedAt) {
     return numeric(receivedAt) === null || seconds < -60 ? null : Math.max(0, Math.round(seconds / 60));
 }
 function numeric(v) { return typeof v === 'number' && Number.isFinite(v) ? v : null; }
+// The numbers of the physical inputs the launcher lists (row keys 'source:<type>'): which of Samsung's port types this display has
+// (13-16 HDMI, 33 DisplayPort, 41 USB-C, 0 TV). 41 only appears for the Odyssey OLED G8 layout (#314). Nothing but the number is kept.
+function inputTypes(v) {
+    var out = [];
+    list(v, 16).forEach(function (e) { var m = /^source:(\d{1,5})$/.exec(String(e && e.key)); if (m && out.indexOf(+m[1]) < 0) out.push(+m[1]); });
+    return out;
+}
 function boolean(v) { return typeof v === 'boolean' ? v : null; }
 function numbers(o, keys) { var out={}; keys.forEach(function(k){out[k]=numeric((o||{})[k]);});return out; }
 // Which Home stores the TV has (see dock-catalog.js), yes/no only: the row's source on Tizen 10 was not known from the first exports.
@@ -186,7 +193,7 @@ var projectors = {
     hbbtv:function(d){return Object.assign({value:numeric(d.value)},flags(d,['off','canRestore']));},
     // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out; `events` is the
     // last lines of its log about Vol, Mute, 123, their windows and the Audio card, in the fixed shapes of DOCK_EVENT_RES.
-    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,
+    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,inputTypes:inputTypes(d.inputs),monitorInputLayout:Array.isArray(d.inputs)?inputTypes(d.inputs).indexOf(41)>=0:null,
         appCount:numeric((d.apps||{}).count),rowFrom:choice((d.apps||{}).rowFrom,['csfs','media']),homeStores:homeStores((d.apps||{}).homeStores),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
