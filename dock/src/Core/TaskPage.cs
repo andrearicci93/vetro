@@ -39,7 +39,7 @@ namespace Launcher.Core
         public readonly int BottomBand;
         /// <summary>This card's width and its left edge in the window.</summary>
         public readonly int PanelW, PanelX;
-        /// <summary>The card is narrow (two or three cards): the Task manager drops its CPU column.</summary>
+        /// <summary>The card is narrow (two or three cards): the Task manager packs its CPU and memory columns closer and the names get less room.</summary>
         public bool Narrow { get { return PanelW < WideW; } }
         /// <summary>At least this many rows of room (0: as many as the card's own list needs). The host sets it so cards side by side are as tall as each other.</summary>
         public int ShowRows;
@@ -153,9 +153,11 @@ namespace Launcher.Core
         public int IconX { get { return PanelX + PadX + 10; } }
         public int NameX { get { return IconX + IconSize + 22; } }
         public int MemRight { get { return PanelX + PanelW - PadX - 10; } }   // the same inset as IconX on the left: the focus capsule holds its content evenly
-        public int CpuRight { get { return MemRight - 150; } }
-        /// <summary>Where a row's name must end: before the CPU column, or before the memory figure on a narrow card that has no CPU column.</summary>
-        public int NameRight { get { return Narrow ? MemRight - 130 : CpuRight - 120; } }
+        /// <summary>The CPU column's right edge. Every card has the column (an app that eats the processor must show whatever other cards are open);
+        /// a narrow card packs it closer to the memory figure (up to "1234 MB") than the wide one does.</summary>
+        public int CpuRight { get { return MemRight - (Narrow ? 115 : 150); } }
+        /// <summary>Where a row's name must end: before the CPU column (up to "800%"). A narrow card leaves the name about 190 px.</summary>
+        public int NameRight { get { return CpuRight - (Narrow ? 75 : 120); } }
         public int ContentLeft { get { return PanelX + PadX + 10; } }
         public int ContentRight { get { return MemRight; } }
         public int FooterTop(int count, int slide) { return ListTop(count, slide) + Rows(count) * RowH + 14; }

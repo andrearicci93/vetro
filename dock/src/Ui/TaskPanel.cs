@@ -8,8 +8,8 @@ using Launcher.Native;
 namespace Launcher.Ui
 {
     /// <summary>
-    /// The Task manager card of the Control center: one row per running app (its icon, name, CPU and memory; a narrow card, beside other
-    /// cards, drops the CPU column), the free memory in the header. One set of objects per running app, made when it appears and deleted
+    /// The Task manager card of the Control center: one row per running app (its icon, name, CPU and memory, also on a narrow card beside other
+    /// cards), the free memory in the header. One set of objects per running app, made when it appears and deleted
     /// when it is gone. The panel, header, hint and capsule are <see cref="CardChrome"/>'s.
     /// </summary>
     internal sealed class TaskPanel : CardChrome
@@ -178,7 +178,6 @@ namespace Launcher.Ui
             int a = ApplyChrome(c, n, focused, out retint);
             if (retint) foreach (Row r in _rows) r.Alpha = -1;
             float pos = c.SelPos, scroll = c.Scroll;
-            bool narrow = _layout.Narrow;
             // The row the capsule is over gets the slate ink. Taken from where the capsule is, not from where it is going:
             // switching at once would leave dark text on the dark sheet while the capsule is still on its way.
             int sel = (int)Math.Round(pos);
@@ -223,7 +222,6 @@ namespace Launcher.Ui
                         TintText(r.Mem, ra);
                         TintText(r.Cpu, ra * 7 / 10);
                     }
-                    if (narrow) Tint(r.Cpu, 0);   // a narrow card has no CPU column
                 }
             }
         }

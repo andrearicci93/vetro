@@ -1887,6 +1887,10 @@ namespace Launcher.Tests
                     var cards = new TaskLayout[n];
                     for (int i = 0; i < n; i++) cards[i] = new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, n, i);
                     T.True(cards[0].Narrow && cards[0].PanelW == TaskLayout.NarrowW, n + " cards are narrow");
+                    // #283: the CPU column stays on a narrow card: the name ends before it, it ends before the memory figure, and the name keeps room
+                    T.True(cards[0].CpuRight < cards[0].MemRight - 90 && cards[0].NameRight < cards[0].CpuRight - 60, n + " cards keep the CPU column between the name and the memory");
+                    T.True(cards[0].NameRight - cards[0].NameX >= 170, n + " cards leave the name at least 170 px");
+                    T.True(cards[0].NameRight - cards[0].NameX < one.NameRight - one.NameX, n + " cards: the wide card's names have more room");
                     T.Eq(cards[0].WinW, cards[n - 1].WinW, "one window for all of them, n=" + n);
                     int left = cards[0].WinX + cards[0].PanelX, right = cards[n - 1].WinX + cards[n - 1].PanelX + cards[n - 1].PanelW;
                     T.True(Math.Abs(left + right - 1920) <= 1, "the row of cards is centred on the screen, n=" + n);
@@ -1898,7 +1902,7 @@ namespace Launcher.Tests
                     cards[0].ShowRows = 5; cards[1].ShowRows = 5;
                     T.Eq(cards[0].Panel(1, 0).H, cards[1].Panel(5, 0).H, "evened out: a short list is as tall as the longest beside it, n=" + n);
                     T.Eq(cards[0].Rows(9), TaskLayout.MaxRows, "never more than the most rows, n=" + n);
-                    T.True(cards[0].NameRight > cards[0].NameX + 200 && cards[0].NameRight < cards[0].MemRight - 100, "a narrow row has room for the name before the memory figure, n=" + n);
+                    T.True(cards[0].NameRight > cards[0].NameX + 180 && cards[0].NameRight < cards[0].MemRight - 100, "a narrow row has room for the name before the CPU and memory figures, n=" + n);
                 }
                 var three = new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, 5, 9);
                 T.Eq(three.PanelX, new TaskLayout(1920, 1080, apps.WinW, DockLayout.HintH, 3, 2).PanelX, "more than three cards or an index past the end are clamped");
