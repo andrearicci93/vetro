@@ -19,7 +19,8 @@ var buildInfo = require('./build-info.js');
 var apps = require('./apps.js');
 var probe = require('./probe.js');
 var remap = require('./remap.js');
-var hbbtvLink = require('./dock-catalog.js').hbbtvLink;
+var dockCatalog = require('./dock-catalog.js');
+var hbbtvLink = dockCatalog.hbbtvLink;
 var settings = require('./settings.js');
 var TVSettings = require('./tv-settings.js').Store;
 var AppRegistry = require('./app-registry.js');
@@ -366,9 +367,14 @@ function downloadDiagnostics(res, withComponents) {
         // keyLog: the launcher's log lines about the keys it is handed (Vol, Mute, 123), their windows and the Audio card; the report keeps fixed shapes only.
         launcher: later(function () { return dock.status().then(function (d) {
             // openLog: the launcher's last openings with their timings (Home, the Control center, All apps...), "perf open ..." lines.
-            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|outputs: Use(Tv|External) |fifo: |screen: |home: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24; echo ---; grep -E \'^[0-9:.]+ perf open \' ' + dockModule.LOG_FILE + ' | tail -n 12').toString('base64') + ' | base64 -d | sh', 5000)
+            return agentExecute('echo ' + Buffer.from("grep -E '^[0-9:.]+ (command |volume|unmute key|pad|outputs: speaker selection|outputs: Use(Tv|External) |fifo: |screen: |home: |launch com.samsung.tv.csfs |launch [^ ]+ via HbbTV|launch via HbbTV)' " + dockModule.LOG_FILE + ' | tail -n 24; echo ---; grep -E \'^[0-9:.]+ perf open \' ' + dockModule.LOG_FILE + ' | tail -n 12; echo ---\n' + dockCatalog.homeStoresScript()).toString('base64') + ' | base64 -d | sh', 5000)
                 .then(function (r) { return r && r.stdout || ''; }, function () { return ''; })
-                .then(function (out) { var parts = diagnosticParts(out); return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: parts[0] || '', openLog: parts[1] || ''}); }); }); }),
+                .then(function (out) {
+                    var parts = diagnosticParts(out);
+                    // The Home stores are asked whether or not the launcher is on (a launcher that is off has loaded no catalog): where Samsung
+                    // Home's row could come from, not what the dock used.
+                    var stores = dockCatalog.parse(parts[2] || '').homeStores;
+                    return Object.assign({}, d, {error: null, hasError: !!d.error, keyLog: parts[0] || '', openLog: parts[1] || '', apps: Object.assign({}, d.apps, {rowFrom: dockCatalog.rowFromStores(stores), homeStores: stores})}); }); }); }),
         // tunerLog: the tuner's start and its talk with Samsung's TV client (EFL start, which client was loaded, the first reads, a stall, an
         // exception, its window), then its last show / hide / takeover lines; the report keeps fixed shapes only and cuts the channel name
         // off the first read. tunerThreads: each thread of the running tuner as name|state|kernel wait (and the kernel stack's function

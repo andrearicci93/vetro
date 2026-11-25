@@ -207,6 +207,28 @@ assert.equal(catalog.parse('H|bad;command').homeApp, null);
 }
 // The script reports which Home the row came from.
 assert.match(catalog.script(), /echo "F\|\$F"/);
+// Tizen 10: the row lives in mainhub's database, which Vetro does not read. The script only reports which Home stores exist (yes/no), the row
+// is the registry's list, and a line that is not five 0/1 flags is ignored.
+{
+    assert.match(catalog.script(), /echo "H\|/);
+    const t10 = catalog.parse(['F|none', 'H|1|0|1|1|1', 'R|' + hex('bbb') + '|' + hex('Browser') + '|' + hex('org.tizen.browser') + '|0'].join('\n'));
+    assert.equal(t10.rowFrom, null);
+    assert.deepEqual(t10.homeStores, {csfsCache: true, mediaCache: false, mainhub: true, mainhubCache: true, mainhubDb: true});
+    assert.deepEqual(catalog.build(t10, {}).entries.map(e => e.appId), ['org.tizen.browser'], 'a migrated cache in the mainhub folder is not used as the row');
+    assert.equal(catalog.parse('H|1|0|1').homeStores, null);
+    assert.equal(catalog.parse('H|1|0|1|1|yes').homeStores, null);
+    assert.equal(catalog.parse('').homeStores, null);
+    // The diagnostic report asks the same probe on its own, after two other parts split by "---" lines, launcher on or off; the row's source follows
+    // the order the catalog read uses (csfs, then media, otherwise none).
+    const cp = require('child_process'), parts = require('../service/diagnostic-report.js').parts;
+    const out = cp.execFileSync('/bin/sh', ['-c', "echo log; echo ---; echo perf; echo ---\n" + catalog.homeStoresScript()]).toString();
+    const stores = catalog.parse(parts(out)[2]).homeStores;
+    assert.deepEqual(stores, {csfsCache: false, mediaCache: false, mainhub: false, mainhubCache: false, mainhubDb: false}, 'TV paths: none of them exist on this machine');
+    assert.equal(catalog.rowFromStores(stores), null);
+    assert.equal(catalog.rowFromStores({csfsCache: true, mediaCache: true}), 'csfs');
+    assert.equal(catalog.rowFromStores({csfsCache: false, mediaCache: true}), 'media');
+    assert.equal(catalog.rowFromStores(null), null);
+}
 console.log('dock-catalog 2022 Home: ok');
 
 // An app removed with pkgcmd leaves its row in Samsung's web app registry and its entry in the Home row. The package

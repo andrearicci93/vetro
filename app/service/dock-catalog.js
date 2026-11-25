@@ -66,6 +66,10 @@ var ORDER_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.csfs/data';
 // Media hub writes the same file name, but with the "recent" strip only (a few inputs and apps). The registry
 // then completes the list, so the dock still shows every visible app (PR #43 by arnaudaprahamian).
 var ORDER_DIR_NEW_HOME = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.media/data';
+// Tizen 10 moved the Home row into a database kept by com.samsung.tv.home.mainhub (shared/trusted/sqlite.db), and only migrates the old
+// .appLayerCache files into its data dir. Vetro does not read that database and does not trust a migrated copy: on a TV with no usable cache the row is
+// the registry's list (rowFrom null). What is read here only says which of these stores exist, as yes/no, for the diagnostic report.
+var MAINHUB_DIR = '/opt/usr/home/owner/apps_rw/com.samsung.tv.home.mainhub';
 var ICON_ROOT = '/opt/share/webappservice/apps_icon/all/';
 var MIN_PACKAGES = 20;         // fewer package rows than this means the read failed, not that the TV has no apps
 var MAX_ENTRIES = 40;          // the dock refuses more
@@ -121,6 +125,19 @@ var VETRO_APP = /^vetrotvapp(\.|$)/;
 // is a package of Home components whose app has no entry point (2022 firmware, 2025 update): it started and died, nothing showed
 // (#170, #175, #210). The launcher sends csfs the bundle of Samsung's own Home key where the firmware wants it (SystemLaunch.cs).
 
+// The yes/no probe for the Home stores, as two shell lines (a function and its H| line). Used by the catalog read and by the diagnostic
+// report, which asks it whether or not the launcher is on, so a Tizen 10 report always says where the row could come from.
+function homeStoresScript() {
+    return [
+        // H| says which Home stores exist, 0 or 1 each: a cache file in csfs/data, in home.media/data, the Tizen 10 mainhub's data folder,
+        // a cache copied into it, and its database. Nothing is read from them; it only goes to the diagnostic report.
+        'h() { if [ "$1" = d ]; then [ -d "$2" ] && echo 1 || echo 0; else [ -s "$2/.appLayerCache.1" ] || [ -s "$2/.appLayerCache.2" ] && echo 1 || echo 0; fi; }',
+        'echo "H|$(h c ' + ORDER_DIR + ')|$(h c ' + ORDER_DIR_NEW_HOME + ')|$(h d ' + MAINHUB_DIR + ')|$(h c ' + MAINHUB_DIR + '/data)|$([ -s ' + MAINHUB_DIR + '/shared/trusted/sqlite.db ] && echo 1 || echo 0)"'
+    ].join('\n');
+}
+// The row's source the way script() picks it, from the stores: csfs first, then the 2022 Home's media folder, otherwise none (null).
+function rowFromStores(stores) { return stores && stores.csfsCache ? 'csfs' : stores && stores.mediaCache ? 'media' : null; }
+
 function script() {
     var sizes = '224x224 304x304 152x152 104x104 icon';
     return [
@@ -128,6 +145,7 @@ function script() {
         'B=' + ORDER_DIR + '; M=' + ORDER_DIR_NEW_HOME + '; F=none',
         'if [ -s "$B/.appLayerCache.1" ] || [ -s "$B/.appLayerCache.2" ]; then F=csfs; elif [ -s "$M/.appLayerCache.1" ] || [ -s "$M/.appLayerCache.2" ]; then B=$M; F=media; fi',
         'echo "F|$F"',
+        homeStoresScript(),
         '{ cat "$B/.appLayerCache.1" 2>/dev/null || cat "$B/.appLayerCache.2" 2>/dev/null; } | sed "s/^/O|/"',
         // Both Homes may keep a source list: on newer firmware the one in csfs/data can be an old copy without the names the user gave
         // the inputs (#297), so each is sent with its modification time and the newer one wins, key by key.
@@ -161,7 +179,7 @@ function unhex(v) {
 // Splits the script's output into what each source said. Lines that do not parse are skipped:
 // one odd registry row must not leave the TV without a dock.
 function parse(text) {
-    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}, disabled: {}, installedCount: 0, hbbtvLinks: {}, sources: {}, homeApp: null, rowFrom: null};
+    var out = {order: [], registry: {}, icons: {}, packageIcons: {}, installed: {}, disabled: {}, installedCount: 0, hbbtvLinks: {}, sources: {}, homeApp: null, rowFrom: null, homeStores: null};
     var sourceFiles = [];
     String(text || '').split('\n').forEach(function (line) {
         line = line.replace(CR_END_RE, '');
@@ -169,6 +187,10 @@ function parse(text) {
         try {
             if (f[0] === 'F' && f.length === 2) {
                 if (f[1] === 'csfs' || f[1] === 'media') out.rowFrom = f[1];
+            } else if (f[0] === 'H' && f.length === 6) {
+                if (f.slice(1).every(function (v) { return v === '0' || v === '1'; })) {
+                    out.homeStores = {csfsCache: f[1] === '1', mediaCache: f[2] === '1', mainhub: f[3] === '1', mainhubCache: f[4] === '1', mainhubDb: f[5] === '1'};
+                }
             } else if (f[0] === 'O') {
                 var entry = f.slice(1).join('|').trim();
                 if (SOURCE_ID_RE.test(entry)) out.order.push(entry);
@@ -468,5 +490,5 @@ function load(execute, options) {
     });
 }
 
-module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, homeStoresScript: homeStoresScript, rowFromStores: rowFromStores, slugify: slugify, cleanLabel: cleanLabel};
 

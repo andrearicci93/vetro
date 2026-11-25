@@ -40,6 +40,8 @@ function ageMinutes(receivedAt) {
 function numeric(v) { return typeof v === 'number' && Number.isFinite(v) ? v : null; }
 function boolean(v) { return typeof v === 'boolean' ? v : null; }
 function numbers(o, keys) { var out={}; keys.forEach(function(k){out[k]=numeric((o||{})[k]);});return out; }
+// Which Home stores the TV has (see dock-catalog.js), yes/no only: the row's source on Tizen 10 was not known from the first exports.
+function homeStores(o) { return o && typeof o === 'object' ? flags(o, ['csfsCache', 'mediaCache', 'mainhub', 'mainhubCache', 'mainhubDb']) : null; }
 function flags(o, keys) { var out={}; keys.forEach(function(k){out[k]=boolean((o||{})[k]);});return out; }
 function hash(v) { return typeof v === 'string' && HASH_RE.test(v) ? v : null; }
 // Samsung's own description of a component: plain words only; anything that looks like an address, URL or path is refused.
@@ -185,7 +187,7 @@ var projectors = {
     // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out; `events` is the
     // last lines of its log about Vol, Mute, 123, their windows and the Audio card, in the fixed shapes of DOCK_EVENT_RES.
     launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,
-        appCount:numeric((d.apps||{}).count),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
+        appCount:numeric((d.apps||{}).count),rowFrom:choice((d.apps||{}).rowFrom,['csfs','media']),homeStores:homeStores((d.apps||{}).homeStores),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),

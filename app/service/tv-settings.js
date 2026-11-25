@@ -94,6 +94,10 @@ function networkDecode(output){
  var defaults=routes(sections.ROUTES),defaults6=routes(sections.ROUTES6),active=services.find(function(x){return defaults.some(function(r){return r.interface===x.interface})})||services.find(function(x){return x.state==='online'||x.state==='ready'})||null;
  return {source:'ConnMan + kernel interfaces and routes',services:services,interfaces:interfaces,active:active,defaultRoutes:defaults,defaultRoutes6:defaults6,configurationError:serviceError,writable:false,writeReason:'Network writes and connection recovery have not been tested'};
 }
-Store.prototype.readNetwork=function(){if(this.networkPending)return this.networkPending;var self=this;this.networkPending=this.execute('busctl --system --json=short call net.connman / net.connman.Manager GetServices; echo __LINKS__; ip -o link; echo __ADDR__; ip -o addr; echo __ROUTES__; ip route; echo __ROUTES6__; ip -6 route',10000).then(function(r){return networkDecode(check(r));}).finally(function(){self.networkPending=null;});return this.networkPending;};
+// Tizen 10 gave exit 127 here on every board seen (Q70F, U8000F, 2026-11-24): the last command, `ip`, was not found, most likely because the agent's PATH
+// has no sbin folders there (the firmware's getcap is in /usr/sbin too). The folders are added after the existing PATH, so no TV changes which `ip` it runs, and the
+// command ends with `true` so a part that is missing leaves its section empty (networkDecode copes) instead of failing the whole read.
+var NETWORK_COMMAND='PATH="$PATH:/usr/sbin:/sbin:/usr/bin:/bin"; busctl --system --json=short call net.connman / net.connman.Manager GetServices; echo __LINKS__; ip -o link; echo __ADDR__; ip -o addr; echo __ROUTES__; ip route; echo __ROUTES6__; ip -6 route; true';
+Store.prototype.readNetwork=function(){if(this.networkPending)return this.networkPending;var self=this;this.networkPending=this.execute(NETWORK_COMMAND,10000).then(function(r){return networkDecode(check(r));}).finally(function(){self.networkPending=null;});return this.networkPending;};
 
 module.exports={Store:Store,ITEMS:ITEMS,decode:decode,parseIntrospect:parseIntrospect,parseIntrospectXml:parseIntrospectXml,networkDecode:networkDecode};
