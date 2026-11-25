@@ -299,6 +299,7 @@ var agentServer = null;
 var agentConnected = false;
 var launchClient = null;   // temporary SDB connection during launch
 var launching = false;
+var backendFallback = false;   // the archive preflight failed once: the vddebugmenu fallback has been tried
 var relaunchTimer = null;
 var launchGen = 0;        // invalidates stale retry timers
 var launchFailures = 0;   // consecutive failed launches since the agent last connected: drives the retry delay
@@ -463,9 +464,10 @@ function startTunnel(cb) {
     });
 }
 
-function startAgent() {
+function startAgent(resetFallback) {
     if (state.running) return;
     state.running = true;
+    if (resetFallback !== false) backendFallback = false;
     // Regenerate launch.sh for the current listener port on each lifecycle.
     state.prepared = false;
     state.unsupported = false;
@@ -563,14 +565,14 @@ function startAgent() {
     });
 }
 
-function setRootBackend(backend, platformVersion) {
+function setRootBackend(backend, platformVersion, source) {
     if (backend !== 'vddebugmenu' && backend !== 'sdb-archive') return false;
     if (ROOT_BACKEND === backend) return false;
     ROOT_BACKEND = backend;
-    state.rootBackendDetection = {backend: backend, source: 'widget-platform-capability', platformVersion: platformVersion || null};
+    state.rootBackendDetection = {backend: backend, source: source || 'widget-platform-capability', platformVersion: platformVersion || null};
     if (state.running) {
         stop();
-        startAgent();
+        startAgent(false);
     } else {
         state.rooting.backend = backend;
     }
@@ -579,6 +581,9 @@ function setRootBackend(backend, platformVersion) {
 
 function setRootBackendFromPlatformVersion(value) {
     var backend = backendForPlatformVersion(value);
+    // A fallback to vddebugmenu already happened on this TV; a late probe must
+    // not move it back to the archive path that just failed.
+    if (backend && backendFallback && backend === 'sdb-archive') return false;
     return backend ? setRootBackend(backend, value) : false;
 }
 
@@ -631,7 +636,7 @@ function relaunch() {
             // appinstall preflight is itself rejected on this Tizen 10 path,
             // so do not gate vddebugmenu on an archive injection probe.
             bootstrapStep('preflight', 'bypassed', 'local SDB handshake ok; using the vddebugmenu backend');
-            return { runtime: '6.0', source: 'verified-vddebugmenu-local-sdb', skipped: true };
+            return { runtime: state.preparedRuntime || '6.0', source: 'verified-vddebugmenu-local-sdb', skipped: true };
         }
         return checkTarget({run: createPreflightRunner(client, buildInjection)});
     }).then(function (assessment) {
@@ -729,6 +734,18 @@ function relaunch() {
             entry.err = String(e.message || e);
             var code = stage === 'sdb-handshake' ? transportCode(e) : e.code || 'preflight-failed';
             rootFailure(stage, code);
+            // The 1722 backport closes the package-name injection the archive preflight needs.
+            // The vddebugmenu route uses a different SDB path; try it once on Tizen 6-9.
+            if (stage === 'preflight' && code === 'preflight-failed' && !backendFallback && ROOT_BACKEND === 'sdb-archive') {
+                var platform = state.rootBackendDetection.platformVersion || storedPlatformVersion() || releasePlatformVersion();
+                var major = platformMajor(platform);
+                if (major !== null && major >= 6 && major <= 9) {
+                    backendFallback = true;
+                    bootstrapStep('preflight', 'fallback', 'archive preflight failed; trying vddebugmenu on Tizen ' + platform);
+                    setRootBackend('vddebugmenu', platform, 'archive-fallback');
+                    return;
+                }
+            }
             // Inside the fast window (see FAST_RETRY_MS) a refused handshake is not counted, and the same failure again is not logged again.
             var failure = stage + ':' + code, repeat = fastRetry() && failure === lastFailure;
             lastFailure = failure;

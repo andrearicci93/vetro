@@ -20,7 +20,8 @@ function load(overrides) {
         writeFileSync: function (p, d) { files[p] = String(d); },
         appendFileSync: function (p, d) { files[p] = (files[p] || '') + String(d); },
         statSync: function (p) { if (files[p] == null) throw new Error('ENOENT'); return {size: Buffer.byteLength(files[p])}; },
-        mkdirSync: function () {}, readdirSync: function () { return []; }, existsSync: function () { return false; }
+        mkdirSync: function () {}, readdirSync: function () { return []; }, existsSync: function () { return false; },
+        unlinkSync: function () {}, symlinkSync: function () {}
     };
     let opts = null;
     const dependencies = Object.assign({
@@ -301,4 +302,24 @@ function settle() { return new Promise(r => setImmediate(r)); }
         u.provider.stop();
         console.log('PASS the SDB tunnel tries its port again while an older Vetro still holds it');
     }
+    // --- the 1722 archive preflight failure falls back to vddebugmenu once --------------------------------
+    {
+        const t = load({
+            './root-preflight.js': {checkTarget: () => { const e = new Error('preflight capture failed'); e.code = 'preflight-failed'; return Promise.reject(e); }},
+            './sdb.js': {connect: () => Promise.resolve({}), close: () => {}, exec: () => Promise.resolve('')},
+            './vddebugmenu.js': {run: () => new Promise(() => {})}
+        });
+        t.context.state.rootBackendDetection = {backend: 'sdb-archive', source: 'stored-probe', platformVersion: '6.5'};
+        t.provider.start();
+        await settle(); await settle();
+        const status = t.provider.status();
+        assert.equal(status.rooting.backend, 'vddebugmenu', 'the archive preflight failure switches to the vddebugmenu backend');
+        assert.equal(status.rootBackendDetection.source, 'archive-fallback', 'the switch is recorded as the fallback');
+        assert.equal(status.rootBackendDetection.platformVersion, '6.5');
+        assert.equal(t.context.state.preparedRuntime, '3.1', 'the 6.5 agent is the netcoreapp3.1 payload, not net6');
+        assert(status.bootstrapLog.some(x => x.event === 'step-preflight' && /fallback/.test(x.detail)), 'the fallback is in the bootstrap log');
+        t.provider.stop();
+        console.log('PASS the 1722 archive preflight failure falls back to vddebugmenu once with the 3.1 payload');
+    }
+
 })().catch(e => { console.error(e); process.exit(1); });
