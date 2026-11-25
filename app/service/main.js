@@ -416,6 +416,8 @@ function downloadDiagnostics(res, withComponents) {
                     savedPresent: named ? named.some(function (d) { return d.selectable; }) : null, sameNameCount: named ? named.length : null,
                     selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, remoconSubtype: subtype.trim(), remoconNode: remoconNode.trim(), loop: loop, history: history,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; }),
+                    screenOffRules: remapStore.rules.filter(function (r) { return r.enabled && r.actions.some(function (a) { return a.type === 'screenoff'; }); }).length,
+                    screenOff: screenOffRun ? {result: screenOffRun.result, ageSeconds: Math.round((Date.now() - screenOffRun.at) / 1000)} : null,
                     volumeRoute: volumeRoute ? {route: volumeRoute.route, errno: volumeRoute.errno, ageSeconds: Math.round((Date.now() - volumeRoute.at) / 1000)} : null};
             });
         }),
@@ -1096,6 +1098,15 @@ function sendShortcutKey(key, dispatchGuard) {
         return sendNativeKey(key, dispatchGuard);
     });
 }
+// The Remapper's "Turn off screen" (control.js SCREEN_OFF_COMMAND). screenOffRun (diagnostics): how the last one ended (ok, refused, failed) and
+// when. The key that wakes the screen again never reaches a rule: the input helper drops it (decision wake) and the rules run on held keys only.
+var screenOffRun=null;
+function turnScreenOff(dispatchGuard){
+    return agentExecute(control.SCREEN_OFF_COMMAND,5000,dispatchGuard).then(function(r){
+        var ok=!!r&&!r.exit_code&&!r.timed_out&&String(r.stdout||'').trim()==='i 0';
+        screenOffRun={result:ok?'ok':'refused',at:Date.now()};return ok;
+    },function(e){screenOffRun={result:'failed',at:Date.now()};throw e;});
+}
 // direct: the Task manager's "Open app", already checked in handleLaunch. Anything else comes from a rule (remapper, MQTT, HTTP).
 function runActions(actions, direct, dispatchGuard) {
     var sent=0, skipped=[],mqttSent=0;
@@ -1110,6 +1121,8 @@ function runActions(actions, direct, dispatchGuard) {
         if(a.type==='launch')command=hbbtvLink.launchCommand(a.appId);
         // A named key goes to the window with the focus; with Vetro TV Tuner on screen that is the tuner's, so its keys go to it (key-routing.js).
         else if(a.type==='key')return sendShortcutKey(a.key,dispatchGuard).then(function(){sent++;});
+        // Picture Off. A TV that refuses it is not an input fault (that would hand the remote back to Samsung for a minute): skipped, and the diagnostics say so.
+        else if(a.type==='screenoff')return turnScreenOff(dispatchGuard).then(function(ok){if(ok)sent++;else skipped.push('screenoff:refused');});
         else {skipped.push(a.type);return;}
         return agentExecute(command,10000,dispatchGuard).then(function(r){if(r.exit_code||r.timed_out)throw new Error(r.stderr||'native action failed');sent++;});
     });},Promise.resolve()).then(function(){return {ok:true,sent:sent,skipped:skipped,transport:mqttSent?(mqttSent===sent?'mqtt':'mixed'):'native'};});

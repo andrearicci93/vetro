@@ -31,6 +31,11 @@ const g8Rule = {id: 'physical_615', enabled: true, trigger: {type: 'physical', v
 const g8File = b.parse(JSON.stringify(b.build(Object.assign({}, src, {rules: [g8Rule]}))));
 assert.deepEqual(g8File.sections.remapper.rules, [g8Rule]);
 assert.deepEqual(require('../service/remap.js').validateRules(g8File.sections.remapper.rules)[0].actions, g8Rule.actions);
+// A "Turn off screen" shortcut is saved and read back like any other rule, and the service accepts it.
+const offRule = {id: 'physical_116', enabled: true, trigger: {type: 'physical', value: '116'}, actions: [{type: 'screenoff'}]};
+const offFile = b.parse(JSON.stringify(b.build(Object.assign({}, src, {rules: [offRule]}))));
+assert.deepEqual(offFile.sections.remapper.rules, [offRule]);
+assert.deepEqual(require('../service/remap.js').validateRules(offFile.sections.remapper.rules)[0].actions, [{type: 'screenoff'}]);
 const noRoot = b.build(Object.assign({}, src, {root: false, quickOff: undefined, dns: undefined}));
 assert.deepEqual(noRoot.notRead, {quickSettings: 'needs-root', dns: 'needs-root'});
 

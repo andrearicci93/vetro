@@ -37,6 +37,8 @@ function validateAction(a) {
         if (typeof a.appId !== 'string' || !APP_RE.test(a.appId)) throw new Error('invalid appId');
         return {type: 'launch', appId: a.appId};
     }
+    // Picture Off: the screen goes dark, the sound stays. No arguments; the command is fixed (control.js SCREEN_OFF_COMMAND).
+    if (a.type === 'screenoff') return {type: 'screenoff'};
     if (a.type === 'mqtt') {
         if (typeof a.topic !== 'string' || !TOPIC_RE.test(a.topic)) throw new Error('invalid topic');
         var payload = a.payload == null ? '' : String(a.payload);

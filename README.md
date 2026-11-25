@@ -92,7 +92,7 @@ Disabling a component keeps it installed and can be reversed; stopping ends the 
 
 ## Remapper
 
-Do what you want with the remote. Press a button, then choose what it does: open an app, or press another key (an HDMI input, the TV input, Play/Pause, Home, Back, the arrows or the volume keys). Shortcuts survive restarts, and the Home Assistant page can also turn a key press into an MQTT message.
+Do what you want with the remote. Press a button, then choose what it does: open an app, press another key (an HDMI input, the TV input, Play/Pause, Home, Back, the arrows or the volume keys), or turn the screen off while the sound plays on (press any key but Volume and Power to bring it back). Shortcuts survive restarts, and the Home Assistant page can also turn a key press into an MQTT message.
 
 The Odyssey OLED G8 and monitors with the same HDMI + DisplayPort + USB-C configuration offer those three input choices. Other devices keep Vetro's default input options. The **Settings and controls → Network and inputs → Inputs** tab detects the same layout. [Input compatibility and validation](app/docs/INPUTS.md).
 

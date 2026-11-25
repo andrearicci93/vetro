@@ -45,6 +45,10 @@ function injectCommand(key) {
     return '/usr/bin/input_keyevent ' + key;
 }
 
+// The Remapper's "Turn off screen": Samsung's Picture Off, a deviced display state (lcdoff); the sound plays on. The same line the launcher's
+// Audio card runs (dock Program.cs). Fixed text, never built from a rule; it never says standby or suspend. deviced answers "i 0" when it took it.
+var SCREEN_OFF_COMMAND = 'busctl --timeout=3 call org.tizen.system.deviced /Org/Tizen/System/DeviceD/Display org.tizen.system.deviced.display ChangeState s lcdoff';
+
 var LAN_KEYS = {KEY_POWER:'XF86PowerOff',KEY_DISPLAYPORT:DISPLAYPORT,KEY_TV:'XF86DiscretSourceTV',KEY_HDMI1:'XF86DiscretHDMI1',KEY_HDMI2:'XF86DiscretHDMI2',KEY_HDMI3:'XF86DiscretHDMI3',KEY_HDMI4:'XF86DiscretHDMI4',KEY_HOME:'XF86Home',KEY_RETURN:'XF86Back',KEY_EXIT:'XF86Exit',KEY_UP:'Up',KEY_DOWN:'Down',KEY_LEFT:'Left',KEY_RIGHT:'Right',KEY_ENTER:'Return',KEY_VOLUP:'XF86AudioRaiseVolume',KEY_VOLUMEUP:'XF86AudioRaiseVolume',KEY_VOLDOWN:'XF86AudioLowerVolume',KEY_VOLUMEDOWN:'XF86AudioLowerVolume',KEY_MUTE:'XF86AudioMute',KEY_PLAY:'XF86AudioPlay',KEY_PAUSE:'XF86AudioPause',KEY_STOP:'XF86AudioStop',KEY_PLAYPAUSE:'XF86PlayBack',KEY_REWIND:'XF86AudioRewind',KEY_FF:'XF86AudioForward'};
 function nativeKey(key) {return KEY_SET[key] ? key : LAN_KEYS[key] || null;}
-module.exports = { nativeKey:nativeKey, KEYS: KEYS, injectCommand: injectCommand };
+module.exports = { nativeKey:nativeKey, KEYS: KEYS, injectCommand: injectCommand, SCREEN_OFF_COMMAND: SCREEN_OFF_COMMAND };

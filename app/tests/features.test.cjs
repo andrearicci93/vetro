@@ -26,6 +26,11 @@ const rules = remap.validateRules([{id: 'r1', trigger: {type: 'http', value: 'ci
   actions: [{type: 'key', key: 'KEY_HOME'}, {type: 'launch', appId: 'org.tizen.x'}]}]);
 assert.equal(remap.resolve(rules, 'http', 'cinema').length, 2);
 assert.equal(remap.resolve(rules, 'http', 'other').length, 0);
+// The Remapper's "Turn off screen": an action with no arguments, whatever else is sent along is dropped.
+const off = remap.validateRules([{id: 'physical_116', trigger: {type: 'physical', value: '116'}, actions: [{type: 'screenoff', command: 'rm -rf /', state: 'standby'}]}]);
+assert.deepEqual(off[0].actions, [{type: 'screenoff'}]);
+assert.deepEqual(remap.resolve(off, 'physical', '116'), [{type: 'screenoff'}]);
+assert.ok(require('../service/control.js').SCREEN_OFF_COMMAND.endsWith('ChangeState s lcdoff'), 'the fixed Picture Off line, not standby');
 for (const bad of [[{id: 'x', trigger: {type: 'http', value: 'a'}, actions: [{type: 'key', key: 'home; rm'}]}],
   [{id: 'x', trigger: {type: 'bogus', value: 'a'}, actions: [{type: 'key', key: 'KEY_UP'}]}],
   [{id: 'x', trigger: {type: 'key', value: 'a'}, actions: []}], 'nope'])

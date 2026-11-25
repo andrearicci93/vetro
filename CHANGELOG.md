@@ -16,6 +16,11 @@
 - **Switch input from the TV manager.** Settings and controls → Sources now has one button per input, with the current one marked and a Refresh button, on TVs and monitors alike (`GET`/`POST /inputs`). A Remapper shortcut for a monitor's input is saved as `KEY_INPUT_<type>` and is part of the Settings file like any other shortcut.
 - **The diagnostic report lists the input types** the launcher offers (`launcher.inputTypes`) and whether it uses the monitor layout (`launcher.monitorInputLayout`).
 
+### Remapper
+
+- **Turn off screen** (asked on Discord). A new action next to Open app and Send key: one remote button switches the picture off while the music plays on (Samsung's Picture Off, the same one as the last row of the Audio output card). The key that turns it off also turns it back on, as does any key except Volume and Power; that key does nothing else. It works while the remote interception is on and the remote is held by Vetro, and it can be set from Home Assistant and HTTP rules too. A TV that refuses it does not pause the interception. Not tried on a TV yet.
+- **Settings file and diagnostics.** The rule is saved in the Settings file with the other Remapper rules (an older Vetro refuses the file's Remapper part, the rest loads). The report's `input` section counts the enabled Turn off screen rules (`screenOffRules`) and says how the last one ended (`screenOff`: ok, refused or failed, and how many seconds ago).
+
 ### Task manager
 
 - **The CPU column stays when more cards are open** ([#283](https://github.com/andrearicci93/vetro/issues/283), asked by antonio1475). A narrow Task manager card, beside the Audio output or Timer card, used to drop it; it now keeps CPU and memory and gives the app name about 190 px instead of 250.

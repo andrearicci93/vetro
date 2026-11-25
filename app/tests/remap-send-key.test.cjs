@@ -51,6 +51,16 @@ const tick = () => new Promise(r => setImmediate(r));
     assert.deepEqual(remap.resolve(remap.validateRules(saved), 'physical', '615'), [{type: 'key', key: 'KEY_INPUT_41'}], 'the service accepts it as it is');
     sandbox.showRules();
     assert.match(el('rules').innerHTML, /Key <code>615<\/code> → USB-C input/, 'the list names the selected input');
+    // "Turn off screen" needs no target: the note replaces both lists, and the saved rule is a bare screenoff action.
+    el('ruleAction').value = 'screenoff'; el('ruleAction').onchange.call(el('ruleAction'));
+    assert.equal(el('targetKeyField').hidden, true); assert.equal(el('targetAppField').hidden, true); assert.equal(el('screenOffNote').hidden, false);
+    el('inputCode').value = '116'; el('targetKey').value = ''; el('targetApp').value = '';
+    await el('saveRule').onclick.call(el('saveRule'));
+    for (let i = 0; i < 4; i++) await tick();
+    assert.deepEqual(saved.find(r => r.id === 'physical_116'), {id: 'physical_116', enabled: true, trigger: {type: 'physical', value: '116'}, actions: [{type: 'screenoff'}]});
+    assert.deepEqual(remap.resolve(remap.validateRules(saved), 'physical', '116'), [{type: 'screenoff'}], 'the service accepts it as it is');
+    sandbox.showRules();
+    assert.match(el('rules').innerHTML, /Key <code>116<\/code> → Turn off screen/, 'the list names it');
     el('ruleAction').value = 'launch'; el('ruleAction').onchange.call(el('ruleAction'));
     assert.equal(el('targetAppField').hidden, false, 'Open app brings the app list back');
     console.log('PASS remapper send key: offered keys are sendable, the rule carries a key action, the list names it');

@@ -270,6 +270,9 @@ var projectors = {
                 held:e.decision==='blocked',woke:e.decision==='wake'};}),
             // volumeRoute: which way the last held Vol / 123 key went: the launcher's FIFO opened by the service (dock), written by the root
             // agent after the service was refused (agent), or given back to Samsung (native); errno: the service's own open, as a code.
+            // screenOffRules: how many enabled Remapper rules turn the screen off; screenOff: how the last one ended and how long ago.
+            screenOffRules:Number.isInteger(d.screenOffRules)&&d.screenOffRules>=0?Math.min(d.screenOffRules,50):null,
+            screenOff:d.screenOff&&typeof d.screenOff==='object'?{result:choice(d.screenOff.result,['ok','refused','failed']),ageSeconds:Number.isInteger(d.screenOff.ageSeconds)&&d.screenOff.ageSeconds>=0?Math.min(d.screenOff.ageSeconds,9999999):null}:null,
             volumeRoute:d.volumeRoute&&typeof d.volumeRoute==='object'?{route:choice(d.volumeRoute.route,['dock','agent','native']),
                 errno:/^E[A-Z0-9]{1,15}$/.test(d.volumeRoute.errno)?d.volumeRoute.errno:null,ageSeconds:Number.isInteger(d.volumeRoute.ageSeconds)&&d.volumeRoute.ageSeconds>=0?Math.min(d.volumeRoute.ageSeconds,9999999):null}:null});}
 };
