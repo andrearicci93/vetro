@@ -47,6 +47,14 @@ function inputTypes(v) {
 }
 function boolean(v) { return typeof v === 'boolean' ? v : null; }
 function numbers(o, keys) { var out={}; keys.forEach(function(k){out[k]=numeric((o||{})[k]);});return out; }
+// Whole days since Samsung's update stack last searched (quick-wins.js gives the date as YYYY-MM-DD, the TV's clock), never the date
+// itself. Null when unknown, in the future (a clock reset) or implausibly old.
+function searchDays(date, now) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof date === 'string' ? date : '');
+    if (!m) return null;
+    var days = Math.floor(((now === undefined ? Date.now() : now) - Date.UTC(+m[1], +m[2] - 1, +m[3])) / 86400000);
+    return days >= 0 && days <= 9999 ? days : null;
+}
 // Which Home stores the TV has (see dock-catalog.js), yes/no only: the row's source on Tizen 10 was not known from the first exports.
 function homeStores(o) { return o && typeof o === 'object' ? flags(o, ['csfsCache', 'mediaCache', 'mainhub', 'mainhubCache', 'mainhubDb']) : null; }
 function flags(o, keys) { var out={}; keys.forEach(function(k){out[k]=boolean((o||{})[k]);});return out; }
@@ -214,7 +222,8 @@ var projectors = {
     // saver, the remote key guides, the .NET runtime, which of Samsung's apps exist, how many input helpers run). See firmwareSection().
     firmware:firmwareSection,
     // The update lock also says how much of it holds: unit counts, its standalone guard, whether Samsung's standalone update request is
-    // there (it should never be while the lock is on) and whether the update hosts are blocked. Numbers and yes/no only.
+    // there (it should never be while the lock is on), whether the update hosts are blocked and how many days ago Samsung last searched for
+    // an update (searchDays; a TV whose lock holds should keep counting up). Numbers and yes/no only.
     // Extra performance mode (performance-mode.js): on or off and how much it did since the service started, as counts only (no app
     // ids): the apps kept open, the apps it closed, and whether a 0.7.1 test build's list of parts to put back is still there.
     performance:function(d){function count(v,max){return Number.isInteger(v)&&v>=0?Math.min(v,max):null;}
@@ -222,7 +231,7 @@ var projectors = {
             legacyParts:Array.isArray(d.legacy)?Math.min(d.legacy.length,9):null,idleMinutes:count(d.idleMinutes,999)};},
     quickWins:function(d){var w=d.wins||{},out={};['firmware','multiscreen','ambient','telemetry','airplay','keyguides'].forEach(function(k){out[k]=Object.assign({status:['on','off','partial','unknown'].indexOf((w[k]||{}).status)>=0?w[k].status:null},flags(w[k],['running','chosen']));});
         var f=w.firmware||{};function count(v){return Number.isInteger(v)&&v>=0&&v<=99?v:null;}
-        Object.assign(out.firmware,{units:count(f.units),masked:count(f.masked)},flags(f,['guard','standalone','standaloneOtn','dnsBlocked']));return out;},
+        Object.assign(out.firmware,{units:count(f.units),masked:count(f.masked),searchDays:searchDays(f.lastSearch)},flags(f,['guard','standalone','standaloneOtn','dnsBlocked']));return out;},
     probe:function(d){var out={source:'widget-probe',probeAgeMinutes:ageMinutes(d.receivedAt)};['tizenObject','webapisObject','supportedKeys','apps','packages','productinfo','systeminfoBattery','remoteApi8001','serviceReach'].forEach(function(k){var p=(d.probe||{})[k];out[k]={available:p?boolean(p.ok):null};if(p&&k==='supportedKeys')out[k].keys=list(p.value,256).map(token).filter(Boolean);if(p&&(k==='tizenObject'||k==='webapisObject'))out[k].present=boolean(p.value);});out.screen=screenProgress(d);return out;},
     // Only when the user asks for it (see component-facts.js): manifest facts for the components the catalog does not know.
     components:function(d){return {requested:true,complete:boolean(d.complete),packageCount:numeric(d.packageCount),totalUnknown:numeric(d.totalUnknown),truncated:boolean(d.truncated),
@@ -296,4 +305,4 @@ function twoSamples(snapshot, gapMs, totalMs) {
 // pattern that also ate the line break let two empty parts in a row run together, and every later part moved up one (the helper's
 // remocon lines came back as null when its log held nothing else, 2026-11-21).
 function parts(text){var out=[''];String(text||'').split('\n').forEach(function(l){if(l==='---')out.push('');else out[out.length-1]+=(out[out.length-1]?'\n':'')+l;});return out.map(function(p){return p.replace(/\n+$/,'');});}
-module.exports={collect:collect,projectors:projectors,twoSamples:twoSamples,parts:parts};
+module.exports={collect:collect,projectors:projectors,twoSamples:twoSamples,parts:parts,searchDays:searchDays};

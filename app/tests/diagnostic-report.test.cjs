@@ -47,7 +47,7 @@ const probeStore=require('../service/probe');
    recentKeys:[{code:390,key:'KEY_AUX',scan_code_hex:'0x000C00E9',decision:'native',device:secret,node:secret,tv_fullscreen_appid:secret},{code:140,key:secret,scan_code_hex:secret,decision:'blocked'},{code:28,key:'KEY_ENTER',decision:'wake'},{code:9999,key:'KEY_X'},{code:4,key:'KEY_3',scan_code_hex:'0x00070020',decision:'native'},{code:30,key:'KEY_A',decision:'native'}],volumeRoute:{route:'agent',errno:'EACCES',ageSeconds:0,path:secret}}),
   factoryTest:()=>({...poison,key:secret,present:true,value:1,type:'Int32',active:true}),
   performance:()=>({on:true,status:'on',keepOpen:['com.keep.one','com.keep.two'],closed:3,recent:[{id:'com.closed.privateapp',at:1}],legacy:['Reduce motion'],idleMinutes:15,choices:[{id:'com.keep.one',label:'Private label'}]}),
-  quickWins:()=>({wins:{firmware:{status:'on',value:0,units:17,masked:17,running:0,guard:true,standalone:false,standaloneOtn:false,dnsBlocked:null,path:secret},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
+  quickWins:()=>({wins:{firmware:{status:'on',value:0,units:17,masked:17,running:0,guard:true,standalone:false,standaloneOtn:false,dnsBlocked:null,lastSearch:'not a date',path:secret},multiscreen:{status:'off',running:true},ambient:{status:'partial',running:true,chosen:true,extra:secret}}})
  };
  const d=await report.collect(readers,100);
  const text=JSON.stringify(d);
@@ -77,7 +77,7 @@ const probeStore=require('../service/probe');
  assert(ra.last[0].agoSeconds>=119&&ra.last[0].agoSeconds<=121);
  assert.deepEqual(d.sections.performance.data,{on:true,keepOpen:2,closed:3,legacyParts:1,idleMinutes:15},'Extra performance mode: counts only');
  assert.ok(!JSON.stringify(d.sections.performance).includes('com.') && !JSON.stringify(d.sections.performance).includes('Private label'),'no app ids or labels');
- assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null,units:17,masked:17,guard:true,standalone:false,standaloneOtn:false,dnsBlocked:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:null,running:null,chosen:null},airplay:{status:null,running:null,chosen:null},keyguides:{status:null,running:null,chosen:null}});
+ assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null,units:17,masked:17,searchDays:null,guard:true,standalone:false,standaloneOtn:false,dnsBlocked:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:null,running:null,chosen:null},airplay:{status:null,running:null,chosen:null},keyguides:{status:null,running:null,chosen:null}});
  assert.deepEqual(d.sections.factoryTest.data,{present:true,value:1,type:'Int32',active:true},'#135: the Aging key, read only');
  assert.equal(d.sections.probe.data.supportedKeys.keys[0],'VolumeUp');
  assert.equal(d.sections.network.data.services[0].customDnsConfigured,true);
@@ -113,4 +113,12 @@ const probeStore=require('../service/probe');
     const lines = (tuner.events || []).map(e => e.line);
     assert.ok(lines.includes('live: the TV is on 4965 (TV Plus)') && lines.includes('input: source type -1 -> 0 (TV)'), 'live and source lines kept');
     assert.ok(!lines.some(l => l.indexOf("'") >= 0), 'a line with a quote is dropped');
+    // Days since Samsung's last update search: a number from a YYYY-MM-DD date, never the date; nothing for a bad or future date.
+    const now = Date.UTC(2026, 10, 24, 12);
+    assert.equal(report.searchDays('2026-08-28', now), 88);
+    assert.equal(report.searchDays('2026-11-24', now), 0);
+    assert.equal(report.searchDays('2026-11-25', now), null, 'a date in the future (clock reset) is not counted');
+    assert.equal(report.searchDays('20260828T094119', now), null);
+    assert.equal(report.searchDays(null, now), null);
+    assert.equal(report.projectors.quickWins({wins: {firmware: {status: 'on', lastSearch: '2000-01-01'}}}).firmware.searchDays >= 9000, true);
 }

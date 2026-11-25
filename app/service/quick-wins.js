@@ -124,6 +124,10 @@ var FW_STANDALONE_OTN = 'db/menu/support/softwareupdate/enable_standaloneOTN';
 var FWMARKERS = ['/tmp/fw_update_ready', '/tmp/.fw_download_ready', '/run/user/5001/.swu-auto-upgrade-launch'];
 // Samsung's standalone update request (see the header). Absent in a normal boot: init.wrapper would have started the update instead.
 var STANDALONE_FLAG = '/mnt/systemrw/org.tizen.tv.swu/data/tv/STANDALONE';
+// When Samsung's update stack last looked for an update (YYYYMMDDTHHMMSS, the TV's clock), in the same folder. Read only, for the
+// diagnostics: a TV whose lock is on should not search again, so the days since that search tell whether the lock holds.
+var LAST_SEARCH = '/mnt/systemrw/org.tizen.tv.swu/data/tv/LastSearchingDate';
+var LAST_SEARCH_RE = /^(\d{4})(\d{2})(\d{2})T\d{6}/;
 // The runtime guard: a path unit that starts a oneshot removing the request as soon as it is written. In /run/systemd/system like the
 // masks, so it is gone after a restart and put back by the hook and the boot pass. DefaultDependencies=no: the update stack restarts
 // the TV right after the write, and the guard must not be one of the units the shutdown stops first.
@@ -273,13 +277,14 @@ var READ = [
     '[ -f ' + FW_HOOK + ' ] && grep -q ' + FW_HOOK_MARK + ' ' + FW_HOOK + ' 2>/dev/null && echo "QB|1" || echo "QB|0"',
     'echo "GD|$(systemctl is-active ' + FW_GUARD + '.path 2>/dev/null)"',
     '[ -e ' + STANDALONE_FLAG + ' ] && echo "SF|1" || echo "SF|0"',
+    'echo "SD|$(head -c 32 ' + LAST_SEARCH + ' 2>/dev/null)"',
     'true'
 ].join('\n');
 
 // Everything the wins depend on, from one read-only call. A line that is missing stays null.
 function parse(text) {
     var out = {autoupdate: null, fwService: null, fwUnits: {}, multiscreenFlag: null, multiscreenRunning: null, ambientRunning: null, telemetryBrakes: null, telemetryRunning: null,
-        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, fwGuard: null, standaloneFlag: null, standaloneOtn: null, apps: {}};
+        airplayPresent: null, airplayFlag: null, airplayService: null, airplayWeb: null, quickbootHook: null, fwGuard: null, standaloneFlag: null, standaloneOtn: null, lastSearch: null, apps: {}};
     String(text || '').split('\n').forEach(function (line) {
         var f = line.replace(CR_END_RE, '').split('|');
         if (f[0] === 'AU') { var m = VCONF_INT32_RE.exec(f.slice(1).join('|')); if (m) out.autoupdate = Number(m[1]); }
@@ -298,6 +303,7 @@ function parse(text) {
         else if (f[0] === 'QB') out.quickbootHook = f[1] === '1';
         else if (f[0] === 'GD') out.fwGuard = (f[1] || '').trim() === 'active';
         else if (f[0] === 'SF') out.standaloneFlag = f[1] === '1';
+        else if (f[0] === 'SD') { var d = LAST_SEARCH_RE.exec((f[1] || '').trim()); if (d) out.lastSearch = d[1] + '-' + d[2] + '-' + d[3]; }
         else if (f[0] === 'DA' && APP_ID_RE.test(f[1] || '')) out.apps[f[1]] = (f[2] || '').trim() === 'true';
     });
     return out;
@@ -454,7 +460,7 @@ function fwState(s, keep) {
     return {status: s.autoupdate === null ? 'unknown' : on ? 'on' : off ? 'off' : 'partial',
         value: s.autoupdate, masked: masked, units: known, running: running,
         guard: typeof s.fwGuard === 'boolean' ? s.fwGuard : null, standalone: typeof s.standaloneFlag === 'boolean' ? s.standaloneFlag : null,
-        standaloneOtn: typeof s.standaloneOtn === 'boolean' ? s.standaloneOtn : null};
+        standaloneOtn: typeof s.standaloneOtn === 'boolean' ? s.standaloneOtn : null, lastSearch: s.lastSearch || null};
 }
 // Turns Samsung's standalone OTN switch off where it is on (a TV without the key is left alone). Persistent, so also in the boot pass.
 var FW_STANDALONE_OTN_OFF = 'vconftool get ' + FW_STANDALONE_OTN + ' 2>/dev/null | grep -q "value = True" && vconftool set -f -t bool ' + FW_STANDALONE_OTN + ' 0 >/dev/null 2>&1\n';
