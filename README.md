@@ -243,6 +243,9 @@ Thanks to the people who contributed code and documentation to Vetro (including 
 - [skjnldsv](https://github.com/skjnldsv): measured that The Frame 2025 (Tizen 9) blocks loopback for apps and proposed reaching the service through the TV's own address ([#122](https://github.com/andrearicci93/vetro/issues/122), [#123](https://github.com/andrearicci93/vetro/pull/123)); adapted for the sign-in. Not tried on a TV yet.
 - [Merennor](https://github.com/Merennor): Node 4.4 compatibility for the integration adapter and unsupported-root fallback on Tizen 4 ([#75](https://github.com/andrearicci93/vetro/pull/75)).
 
+- [MaomaoADHD](https://github.com/MaomaoADHD): the Tizen 10 root backend through Samsung's `vddebugmenu`, validated on a QE65S85F (Tizen 10, 2103.1) ([#309](https://github.com/andrearicci93/vetro/pull/309)), and the request for a file with your Vetro settings ([#307](https://github.com/andrearicci93/vetro/issues/307)).
+- [paradox12357](https://github.com/paradox12357): the inputs of the Samsung Odyssey OLED G8 (HDMI, DisplayPort, USB-C) in the launcher, the Remapper and Home Assistant, and input switching in the TV manager, tested on the monitor ([#314](https://github.com/andrearicci93/vetro/pull/314), [#316](https://github.com/andrearicci93/vetro/issues/316)).
+
 - [tomcraft](https://github.com/tomcraft): direct TV-tuner key, and the remote found again after a restart ([#31](https://github.com/andrearicci93/vetro/pull/31), [#32](https://github.com/andrearicci93/vetro/pull/32)).
 - [SalustLab](https://github.com/SalustLab): the service on Node 4.4, app-only ([#33](https://github.com/andrearicci93/vetro/pull/33)).
 - [domenix](https://github.com/domenix): start at boot when the installer ignores the package flags, S90C compatibility details, app IDs for repeated names ([#27](https://github.com/andrearicci93/vetro/pull/27), [#29](https://github.com/andrearicci93/vetro/pull/29), [#52](https://github.com/andrearicci93/vetro/pull/52)).
