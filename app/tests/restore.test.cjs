@@ -128,6 +128,7 @@ function tv(start) {
   const erased = await r.eraseData();
   assert.equal(erased.ok, true); assert.equal(t.s.erased, 1); assert.equal(t.s.authRemoved, 0);
   erased.finish(); assert.equal(t.s.authRemoved, 1);
+  assert.ok(/tvlauncher\.homeclaim/.test(ERASE_SCRIPT) && /tvlauncher\.guard/.test(ERASE_SCRIPT), 'the launcher\'s Home markers go too (PR #287)');
   assert.ok(/vetro-auth\.json/.test(ERASE_SCRIPT) && /! -name 'vetro-auth.json'/.test(ERASE_SCRIPT), 'the session file is spared by the script');
 
   // A failing step is reported and the rest still runs; erasing then stays blocked

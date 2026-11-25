@@ -204,6 +204,40 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(target.status().canRollBack, true, 'and so has the version it made way for');
     await f.u.rollback();
 
+    // PR #264 (reviewed on 0.7.1). A backup record whose version is not a plain x.y.z is refused: its `from` goes into a root shell line.
+    {
+        f = fixture('0.4.1');
+        fs.mkdirSync(path.join(f.work, 'backup', 'service'), { recursive: true });
+        fs.writeFileSync(path.join(f.work, 'backup', 'service', 'a.js'), 'old a');
+        const mark = path.join(f.root, 'PWNED');
+        fs.writeFileSync(path.join(f.work, 'backup.json'), JSON.stringify({ from: "0.4.0'; touch " + mark + "; echo '", to: '0.4.1', files: ['service/a.js'], added: [] }));
+        assert.equal(f.u.status().canRollBack, false, 'a backup with a quote in its version is not offered');
+        await assert.rejects(f.u.rollback());
+        assert.ok(!fs.existsSync(mark), 'and nothing of it ran');
+    }
+    // Go back while the update still waits for its confirmation: the watchdog of that update stays quiet (no second restore, no
+    // second restart), because Go back leaves ok-<version> behind.
+    {
+        f = fixture('0.4.0');
+        await f.u.apply(next);
+        await wait(300);
+        await f.u.rollback();
+        await wait(3200);
+        const total = fs.readFileSync(path.join(f.root, 'restarts'), 'utf8').split('\n').filter(Boolean).length;
+        assert.equal(total, 2, 'one restart for the update, one for Go back, none from the watchdog');
+        assert.ok(!fs.existsSync(path.join(f.work, 'rolled-back')), 'and did not write its own rolled-back marker');
+        assert.equal(f.read('service/a.js'), 'old a');
+    }
+    // The old code still runs after the restart (#296): its confirm() removes pending.json, and the watchdog must still put the files back.
+    {
+        f = fixture('0.4.0');
+        await f.u.apply(next);
+        const oldCode = new Updater({ publicKey: publicPem, installDir: f.install, workDir: f.work, buildInfo: { version: '0.4.0', shell: 1 }, execute: () => Promise.reject(new Error('unused')) });
+        oldCode.confirm();
+        await wait(3200);
+        assert.equal(f.read('service/a.js'), 'old a', 'the watchdog still puts the files back when the old code answers');
+    }
+
     // identical files: nothing to do, nothing run
     f = fixture('0.4.0');
     const same = await f.u.apply(bundle('0.4.1', { 'service/a.js': 'old a' }));

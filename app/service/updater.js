@@ -172,9 +172,10 @@ Updater.prototype.status = function () {
 // (the update folder outlives an install), putting them back would lay an older version's files over the new package and
 // delete files it needs, with no watchdog behind it. So a backup counts only while this version is one of its two ends.
 Updater.prototype._backupFits = function (meta) {
-    if (!meta) return false;
+    if (!meta || typeof meta.from !== 'string' || typeof meta.to !== 'string') return false;
+    if (!VERSION.test(meta.from) || !VERSION.test(meta.to)) return false;
     var v = this.buildInfo.version;
-    return !v || typeof meta.from !== 'string' || typeof meta.to !== 'string' || meta.from === v || meta.to === v;
+    return !v || meta.from === v || meta.to === v;
 };
 
 // What a bundle would change here, without applying it.
@@ -355,6 +356,9 @@ Updater.prototype._restoreLines = function (existing, added) {
 Updater.prototype._rollbackScript = function (meta) {
     var lines = ['set -e', 'I=' + sq(this.installDir), 'W=' + sq(this.workDir), 'B="$W/backup"', 'rm -f "$W"/ok-* "$W/pending.json"']
         .concat(this._restoreLines(meta.files, meta.added));
+    // Written once the files are back: a watchdog of this update that is still waiting stops instead of restoring and restarting
+    // a second time. A Go back that stopped half way leaves it armed, so it still tries once more.
+    lines.push('echo back > "$W/ok-' + meta.to + '"');
     // The launcher's and tuner's stop lines must not end Go back: under `set -e` one failed step (systemctl reset-failed on their
     // transient unit, which is gone once stopped, exits 1) left the files put back but no result written and no restart (seen on a
     // Q80A, 2026-11-22). In an `||` list `set -e` does not apply, so the stop is best effort, as in the watchdog.

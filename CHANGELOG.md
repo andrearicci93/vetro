@@ -77,6 +77,8 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 ### Live TV
 
 - **The tuner starts on a UE55AU7105 (2021, Tizen 6.0)**, where it stopped with a stack overflow before reading the channels ([#306](https://github.com/andrearicci93/vetro/pull/306) by [adri0894-web](https://github.com/adri0894-web)). Samsung's TV client is also looked for in Game Bar's folder, after the firmware's own folders.
+- **The tuner reads its remote more safely** ([#268](https://github.com/andrearicci93/vetro/pull/268) by [swiezaczek](https://github.com/swiezaczek)): a half-read key record is carried to the next read, a remote that disconnects (end of the node's stream) is dropped, the held-key repeat stops when the Dock or a launcher window takes the keys, when the Channel list or EPG closes, or when the tuner is not on screen, and a signal arriving in the middle of a read no longer loses it.
+- **The osd 123 sends its digits to Samsung's app until the tuner has a Channel list** ([#286](https://github.com/andrearicci93/vetro/pull/286) by [swiezaczek](https://github.com/swiezaczek)): with no list, a `tune N` did nothing. The tuner also asks for the list again as soon as the TV goes back to its own tuner, not after the back-off.
 
 ### Updates
 
@@ -88,6 +90,8 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 - **An update can replace every file of Vetro at once.** The update script lists the files once and loops over them, about 150 bytes per file instead of about 1 KB, so from 0.7.1 on a whole package fits. Go back and the watchdog keep the same files on the TV, and Go back from 0.7.1 also undoes the update that 0.7.0 applied. Tried with bash and dash against a test folder; not yet on a TV.
 - **Go back works after an update of the launcher or the tuner.** In 0.7.0 it put the previous files back and then stopped with an error before restarting Vetro: the launcher and tuner run as temporary system units, and the step that clears a stopped unit's failure state fails once such a unit is gone. Go back now carries on whatever that step says (found on a Q80A while testing 0.7.1).
 - **The .NET 6 root helpers are in updates again** (`payload/net6`, #226). They have not changed since 0.5.0, so a TV on 0.7.0 already has the same files and nothing is copied.
+- **Go back no longer races the watchdog of the update, and a damaged backup record is refused** ([#264](https://github.com/andrearicci93/vetro/pull/264) by [swiezaczek](https://github.com/swiezaczek)): a Go back pressed while the update waited for its confirmation put the files back twice and restarted Vetro three times; it now leaves a mark the watchdog sees. A backup record whose versions are not plain numbers (the version goes into a line the root agent runs) is not offered and not used.
+- **Erase all data also removes the launcher's Home markers** ([#287](https://github.com/andrearicci93/vetro/pull/287) by [swiezaczek](https://github.com/swiezaczek)).
 
 ### Shards
 

@@ -71,6 +71,19 @@ internal static partial class Tests
         Check(pr2.Count == 1 && rp2.Count == 2 && rl.Count == 1 && rl[0] == 108, "releases are reported to a caller that asks for them");
         var hold2 = new EvdevReader(16);
         Check(hold2.Feed(bytes.ToArray(), bytes.Count).Count == 1, "without asking for repeats only the press is reported");
+        // PR #268: empty input is safe and leaves no half record behind; several records and a split one in one read all come out in order
+        var edge = new EvdevReader(16);
+        var ep = new List<int>(); var er = new List<int>(); var el = new List<int>();
+        edge.Feed(null, 0, ep, er, el); edge.Feed(bytes.ToArray(), 0, ep, er, el);
+        Check(ep.Count == 0 && er.Count == 0 && el.Count == 0, "evdev: a null or empty read gives nothing");
+        edge.Feed(press, 16, ep, er, el);
+        Check(ep.Count == 1 && ep[0] == 88, "evdev: and the reader still decodes the next record");
+        var mixed = new List<byte>(); mixed.AddRange(Rec(1, 10, 1)); mixed.AddRange(Rec(1, 11, 1)); mixed.AddRange(Rec(1, 12, 1));
+        byte[] mix = mixed.ToArray();
+        var cutter = new EvdevReader(16);
+        var c1 = cutter.Feed(mix, 16 + 5);                       // one whole record and 5 bytes of the second
+        var c2 = cutter.Feed(Tail(mix, 21), mix.Length - 21);
+        Check(c1.Count == 1 && c1[0] == 10 && c2.Count == 2 && c2[0] == 11 && c2[1] == 12, "evdev: whole records plus the start of the next one in one read, the rest in the following one");
 
         // number pad
         var n = new NumberEntry();
