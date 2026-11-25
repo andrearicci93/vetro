@@ -102,8 +102,9 @@ node app/tests/run.cjs        # 149 suites
 - What still needs a TV: a real `uid 0` on a firmware you are about to support, the timing (3 s / 21 s on two
   retail boards) and that the menu ids/password are unchanged (94/7/1, `20089999`). The static source for those
   is the PTMH 01204 dump; the wiki holds the full trace.
-- Field evidence: three Tizen 10 sets reached `uid 0` with this backend (Q70F `25_RSL_QTV_T10`,
-  U8000F `25_KSUE_UB_T10`, and the PR reports on `T-PTMFDEUC-2103.1`).
+- Field evidence: four Tizen 10 sets reached `uid 0` with this backend (Q70F `25_RSL_QTV_T10`,
+  U8000F `25_KSUE_UB_T10`, QN900F `25_OSCP_8K_T10` — the model code the released archive path failed on, with
+  retries `sdbClosed`, `sdbClosed`, `ok` and Vetro's launcher off — and the PR reports on `T-PTMFDEUC-2103.1`).
 
 ## 5. Boundaries
 
