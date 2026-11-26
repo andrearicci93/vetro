@@ -9,7 +9,7 @@ namespace Launcher.Core
     /// </summary>
     internal static class IconPrep
     {
-        public const int MaxSide = DockLayout.FocusIcon;
+        public static readonly int MaxSide = DockLayout.FocusIcon;
         public const int MinSide = 32;
 
         /// <summary>Below this share of opaque pixels an icon is a loose logo, not a filled tile.</summary>
@@ -33,13 +33,14 @@ namespace Launcher.Core
 
         /// <summary>The square the finished icon will have for a w x h source.</summary>
         /// <param name="maxSide">The largest side worth keeping: a list that draws its icons small asks for less (less to compute, less memory).</param>
-        public static int SideFor(int w, int h, int maxSide = MaxSide)
+        public static int SideFor(int w, int h, int maxSide = 0)
         {
+            if (maxSide <= 0) maxSide = MaxSide;
             return Math.Max(MinSide, Math.Min(maxSide, Math.Max(w, h)));
         }
 
         /// <summary>Returns the finished icon: <see cref="SideFor"/> x <see cref="SideFor"/> pixels.</summary>
-        public static uint[] Prepare(uint[] src, int w, int h, int maxSide = MaxSide)
+        public static uint[] Prepare(uint[] src, int w, int h, int maxSide = 0)
         {
             if (w <= 0 || h <= 0 || src == null || (long)src.Length < (long)w * h) throw new ArgumentException("bad icon size");
             // Big pictures (some apps ship a full-screen banner as their icon) are first brought down by whole halvings.

@@ -14,7 +14,7 @@ var WIN_IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', '
 // Launcher switches, in the order they are applied (before the launcher itself is switched on, which then starts with them).
 var DOCK_SWITCHES = ['fixTizenTube', 'closeIdleHome', 'volumePill', 'numberPad', 'noMotion', 'showHomeSources', 'useSourceImages'];
 var DOCK_ROOT = {showHomeSources: true, useSourceImages: true};     // these read the TV's sources even with the launcher off
-var EDGES = ['left', 'right', 'top', 'bottom', 'hidden'], STORES = ['tvstore', 'samsung'];
+var SCALES = [100, 115, 130, 150], EDGES = ['left', 'right', 'top', 'bottom', 'hidden'], STORES = ['tvstore', 'samsung'];
 var ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/, CARD_RE = /^(?:tasks|audio|picture|sleep|shard:[A-Za-z0-9._-]{1,64})$/;
 var SECTIONS = ['launcher', 'tuner', 'remapper', 'essentials', 'performance', 'keepRemoved', 'quickSettings', 'dns', 'mqtt', 'shards'];
 var LABELS = {launcher: 'Launcher', tuner: 'Vetro TV Tuner', remapper: 'Remapper', essentials: 'Essential settings', performance: 'Extra performance mode',
@@ -45,7 +45,7 @@ function build(src) {
     if (d) s.launcher = {mode: d.customApp ? 'custom' : d.enabled ? 'vetro' : 'off', customApp: d.customApp || null,
         fixTizenTube: bool(d.fixTizenTube), closeIdleHome: d.closeIdleHome !== false, volumePill: bool(d.volumePill), numberPad: bool(d.numberPad),
         noMotion: bool(d.noMotion), showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages),
-        volumeEdge: EDGES.indexOf(d.volumeEdge) >= 0 ? d.volumeEdge : 'left', appStore: d.appStore === 'samsung' ? 'samsung' : 'tvstore',
+        volumeEdge: EDGES.indexOf(d.volumeEdge) >= 0 ? d.volumeEdge : 'left', dockScale: SCALES.indexOf(d.dockScale) >= 0 ? d.dockScale : 100, appStore: d.appStore === 'samsung' ? 'samsung' : 'tvstore',
         cards: ids(d.cards, CARD_RE, 3)};
     else notRead.launcher = 'unreadable';
     if (src.tuner) s.tuner = {enabled: bool(src.tuner.enabled)}; else notRead.tuner = 'unreadable';
@@ -93,7 +93,7 @@ function parse(file) {
     take('launcher', function (v) {
         return obj(v) && ['vetro', 'custom', 'off'].indexOf(v.mode) >= 0 && (v.mode !== 'custom' || (typeof v.customApp === 'string' && ID_RE.test(v.customApp))) &&
             DOCK_SWITCHES.every(function (k) { return v[k] === undefined || isBool(v[k]); }) &&
-            (v.volumeEdge === undefined || EDGES.indexOf(v.volumeEdge) >= 0) && (v.appStore === undefined || STORES.indexOf(v.appStore) >= 0) &&
+            (v.volumeEdge === undefined || EDGES.indexOf(v.volumeEdge) >= 0) && (v.dockScale === undefined || SCALES.indexOf(v.dockScale) >= 0) && (v.appStore === undefined || STORES.indexOf(v.appStore) >= 0) &&
             (v.cards === undefined || (Array.isArray(v.cards) && v.cards.length <= 3 && v.cards.every(function (c) { return typeof c === 'string' && CARD_RE.test(c); })));
     });
     take('tuner', function (v) { return obj(v) && isBool(v.enabled); });
@@ -163,6 +163,7 @@ function plan(want, cur) {
             step('launcher', DOCK_LABELS[k] + (f[k] ? ' on' : ' off'), '/dock', {action: k, on: f[k]}, DOCK_ROOT[k] || (running && k === 'noMotion'));
         });
         if (f.volumeEdge && f.volumeEdge !== now.volumeEdge) step('launcher', 'Volume bar position: ' + f.volumeEdge, '/dock', {action: 'volumeEdge', edge: f.volumeEdge}, running);
+        if (f.dockScale && f.dockScale !== now.dockScale) step('launcher', 'Bar size: ' + f.dockScale + '%', '/dock', {action: 'dockScale', scale: f.dockScale}, running);
         if (f.appStore && f.appStore !== now.appStore) step('launcher', 'Store in All apps: ' + (f.appStore === 'samsung' ? 'Samsung' : 'TV-Store'), '/dock', {action: 'appStore', store: f.appStore}, false);
         if (f.cards && !same(f.cards, now.cards)) {
             var missing = f.cards.filter(function (k) { var id = k.indexOf('shard:') === 0 ? k.slice(6) : null; return id && !((cur.shards || {})[id] && (cur.shards[id].enabled || (w.shards && w.shards.list.some(function (p) { return p.id === id && p.enabled === true; })))); });

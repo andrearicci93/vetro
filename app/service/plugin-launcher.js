@@ -100,6 +100,7 @@ function definition(dock, options) {
                 if (p.action === 'closeIdleHome') return dock.setCloseIdleHome(p.on);
                 if (p.action === 'volumePill') return dock.setVolumePill(p.on);
                 if (p.action === 'volumeEdge') return dock.setVolumeEdge(p.edge);
+                if (p.action === 'dockScale') return dock.setDockScale(p.scale);
                 if (p.action === 'numberPad') return dock.setNumberPad(p.on);
                 if (p.action === 'cards') return dock.setCards(p.cards);
                 if (p.action === 'resetRow') return dock.resetRow();

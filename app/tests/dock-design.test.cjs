@@ -11,7 +11,7 @@ const chosen = JSON.parse(fs.readFileSync(path.join(root, 'designer', 'chosen.js
 const K = {};
 ['Layout.cs', 'Design.cs'].forEach(f => {
     const src = fs.readFileSync(path.join(root, 'src', 'Core', f), 'utf8');
-    const re = /public (?:const|static readonly) (?:int|float|double|bool|string) (\w+)\s*=\s*(0x[0-9A-Fa-f]+|-?[0-9.]+|true|false|"[^"]*")f?\s*;/g;
+    const re = /public (?:const|static readonly) (?:int|float|double|bool|string) (\w+)\s*=\s*(?:DockScale\.Px\()?(0x[0-9A-Fa-f]+|-?[0-9.]+|true|false|"[^"]*")f?\)?\s*;/g;   // DockScale.Px(n): n is the 100% design
     let m;
     while ((m = re.exec(src))) {
         const v = m[2];
