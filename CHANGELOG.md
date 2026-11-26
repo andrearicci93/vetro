@@ -18,7 +18,7 @@
 
 ### Remapper
 
-- **Turn off screen** (asked on Discord). A new action next to Open app and Send key: one remote button switches the picture off while the music plays on (Samsung's Picture Off, the same one as the last row of the Audio output card). The key that turns it off also turns it back on, as does any key except Volume and Power; that key does nothing else. It works while the remote interception is on and the remote is held by Vetro, and it can be set from Home Assistant and HTTP rules too. A TV that refuses it does not pause the interception. Not tried on a TV yet.
+- **Turn off screen** (asked on Discord). A new action next to Open app and Send key: one remote button switches the picture off while the music plays on (Samsung's Picture Off, the same one as the last row of the Audio output card). The key that turns it off also turns it back on, as does any key except Volume and Power; that key does nothing else. It works while the remote interception is on and the remote is held by Vetro, and it can be set from Home Assistant and HTTP rules too. A TV that refuses it does not pause the interception. Tried on a Q80A: the TV's power state goes to Picture Off within 0.3 s and the same key (or any other key) wakes it; the panel itself was not watched.
 - **Settings file and diagnostics.** The rule is saved in the Settings file with the other Remapper rules (an older Vetro refuses the file's Remapper part, the rest loads). The report's `input` section counts the enabled Turn off screen rules (`screenOffRules`) and says how the last one ended (`screenOff`: ok, refused or failed, and how many seconds ago).
 
 ### Task manager
