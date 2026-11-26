@@ -5,12 +5,12 @@
 ### Home Assistant (MQTT)
 
 - **A Power state sensor.** Home Assistant shows On while the TV's picture is on and Standby when it is off (Picture Off, or the TV's own standby), as an On / Standby choice you can use in automations ([#304](https://github.com/andrearicci93/vetro/pull/304) by [bmfurtado](https://github.com/bmfurtado)). It is read with the same short command as the volume and the input (one more setting, no program started), and it is unavailable on a TV where that setting cannot be read. Tried only in unit tests so far; the Q80A reads 1 with the picture on and 3 with Picture Off.
+- **Change channel from Home Assistant, a script or a voice assistant.** Vetro listens on `<prefix>/<identity>/channel/set`: send a channel number (`31`, or `{"channel": 31}`) and the TV goes there. With Vetro's tuner running and Samsung's live TV on screen it tunes at once; otherwise Vetro sends the digits as the remote would and Samsung's own TV app does the rest. Home Assistant gets a **Tune channel** number box by itself. Only digits 1 to 9999 are accepted, retained messages are ignored, and it shares the 500 ms limit of the MQTT rules. It does not turn the TV on. See `app/docs/mqtt/README.md` for the Alexa setup.
 
 ## 0.7.1 — 2026-11-26
 
 ### Home Assistant (MQTT)
 
-- **Change channel from Home Assistant, a script or a voice assistant.** Vetro listens on `<prefix>/<identity>/channel/set`: send a channel number (`31`, or `{"channel": 31}`) and the TV goes there. With Vetro's tuner running and Samsung's live TV on screen it tunes at once; otherwise Vetro sends the digits as the remote would and Samsung's own TV app does the rest. Home Assistant gets a **Tune channel** number box by itself. Only digits 1 to 9999 are accepted, retained messages are ignored, and it shares the 500 ms limit of the MQTT rules. It does not turn the TV on. See `app/docs/mqtt/README.md` for the Alexa setup.
 - **A Channel sensor.** While Vetro's tuner runs and the input is TV, Home Assistant gets the channel on screen as `21 Rai 4`, with the number, the name and whether it is a Samsung TV Plus channel as attributes. It changes with every zap and is unavailable on other inputs or with the tuner off.
 - **No more program started every 10 seconds.** Volume, mute and input were read by starting a small .NET program at each read, which costs memory and processor time on 2 GB TVs. Vetro now reads the TV's own settings for them in one short command (about 34 ms on a Q80A); the program is only the fallback for a TV where those settings cannot be read.
 - **Mute follows the remote's Mute key.** It was read from the audio library, which keeps saying "not muted" when the TV is muted with its own key; it now comes from the TV's own mute setting as well.
