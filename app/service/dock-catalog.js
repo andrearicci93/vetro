@@ -403,7 +403,7 @@ function build(parsed, options) {
     var allApps = poolList.slice().sort(function (a, b) { return a.label.localeCompare(b.label); }).slice(0, MAX_ENTRIES - 2);
     // Only a package list that came back whole says TV-Store is there; without it the pill stays Samsung's store.
     var tvStore = !!(parsed.installed && parsed.installed[TV_STORE]) && !offApps[TV_STORE];
-    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, connectedSourcesOnly: options.connectedSourcesOnly === true, skipped: skipped, homeApp: parsed.homeApp || null,
+    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, connectedSourcesOnly: options.connectedSourcesOnly === true, hideTvSource: options.hideTvSource === true, skipped: skipped, homeApp: parsed.homeApp || null,
         tvStoreInstalled: tvStore, appStore: tvStore && options.appStore !== 'samsung' ? 'tvstore' : 'samsung'};
 }
 
@@ -418,7 +418,11 @@ function allAppsTsv(built) {
         .concat([SETTINGS_ROW, built.appStore === 'tvstore' ? TV_STORE_ROW : SAMSUNG_STORE_ROW]).join('\n') + '\n';
 }
 function inputsTsv(built) {
-    return ['# Sources in physical port order'].concat((built.inputs || []).filter(function (e) { return !built.connectedSourcesOnly || e.present !== false; }).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
+    var shown = (built.inputs || []).filter(function (e) { return !built.connectedSourcesOnly || e.present !== false; });
+    // Without TV the list may be empty, and the dock answers an empty list with its built-in one (every port): TV then stays.
+    var noTv = shown.filter(function (e) { return e.key !== 'source:0'; });
+    if (built.hideTvSource && noTv.length) shown = noTv;
+    return ['# Sources in physical port order'].concat(shown.map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
 }
 
 function tsv(built) {
