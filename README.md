@@ -5,7 +5,7 @@
 <p align="center"><strong>Launcher. Debloater. Remapper.<br>The all-in-one TV manager for Samsung Tizen.</strong></p>
 <p align="center">Manage your Samsung TV from a browser, and give it a launcher, a Control center and a live TV screen of its own.</p>
 <p align="center">
-  <a href="#whats-new-in-070">What's new</a> ·
+  <a href="#whats-new-in-071">What's new</a> ·
   <a href="#vetro-ui-preview">Vetro UI</a> ·
   <a href="#debloater">Debloater</a> ·
   <a href="#remapper">Remapper</a> ·
@@ -14,15 +14,25 @@
   <a href="https://discord.gg/Pe9BmthUar">Discord</a>
 </p>
 
-Vetro runs on your Samsung TV and gives you a dashboard, open from any computer or phone on your network. Replace Samsung's Home with a fast launcher, switch off what tracks you and wastes memory, and make the remote do what you want. It needs root access on the TV. Root is reported working on **Tizen 6 to 9** TVs (2021–2025), and the result depends on the model and its firmware. Older TVs get the dashboard and diagnostics only, and so does Tizen 10 for now, because its firmware blocks the way Vetro gets root. See [Compatibility](#compatibility).
+Vetro runs on your Samsung TV and gives you a dashboard, open from any computer or phone on your network. Root access enables the launcher, privacy switches and remapper. It has been reported working on selected TVs running **Tizen 6 through 10**, depending on the model and firmware. The dashboard, app list and diagnostics can work without root on supported models. See [Compatibility](#compatibility).
 
 > [!IMPORTANT]
-> **Install Vetro while your TV can still be rooted.** Samsung is pushing firmware updates that close the way Vetro gets root. One forced update already removed root from a 2022 TV, and that cannot be undone ([#223](https://github.com/andrearicci93/vetro/issues/223)). Vetro 0.7.0 adds **Block firmware and software updates** (Quick settings → General → Essential settings). It stops Samsung's update services (firmware, apps and packages, system parts), not only the Auto update setting in Samsung's menu, and applies the block again after every restart. USB recovery still works. It can help you keep root; it cannot promise it, and it cannot undo an update that has already arrived. The switch needs root, so it only works once Vetro runs with root. It is off by default; while it is on, Samsung's automatic updates do not install. Tried on a Q80A only. Without root, the network is what protects the TV: [blocking updates without root](app/docs/UPDATES-WITHOUT-ROOT.md).
+> **A Samsung firmware update can remove root access.** Vetro's **Block firmware and software updates** switch (Quick settings → General → Essential settings) requires root, is off by default and reapplies the block after a restart. Vetro 0.7.1 extends the block to Samsung's separate update mode. The original block was tested on a Q80A. An update reached a QE65S85F with blocking enabled before the 0.7.1 changes, which still need testing on a TV. [Update report](https://github.com/andrearicci93/vetro/issues/308) · [0.7.1 changes](CHANGELOG.md#update-lock) · [Blocking updates without root](app/docs/UPDATES-WITHOUT-ROOT.md)
 
 <p align="center">
   <img src="app/docs/images/launcher-0.7.jpg" alt="The Vetro launcher on the TV: a row of app tiles, All apps and Samsung Home buttons, Source above and Control center below" width="1000">
   <br><em>The Vetro launcher, rendered from its own code in Vetro's preview.</em>
 </p>
+
+## What's new in 0.7.1
+
+- **Tizen 10 root support.** Root access was reported on four model and firmware combinations with test builds. See [Compatibility](#compatibility).
+- **Save and load settings.** Keep a file with your Vetro settings before a reinstall or move them to another TV.
+- **Turn off the screen from the remote.** Assign Picture Off to a button in the Remapper and keep listening with the picture off.
+- **Samsung Odyssey OLED G8 inputs.** HDMI, DisplayPort and USB-C are available in the launcher, Remapper and Home Assistant on monitors with that input layout.
+- **Home Assistant channel sensor.** See the current channel while watching TV through Vetro's tuner.
+
+See the full [0.7.1 changelog](CHANGELOG.md#071--2026-11-26).
 
 ## What's new in 0.7.0
 
@@ -30,7 +40,6 @@ Vetro runs on your Samsung TV and gives you a dashboard, open from any computer 
 - **Block firmware and software updates** now covers Samsung's update services, not only the Auto update setting. On firmware with the AT-HUB boot step (Tizen 6, 6.5 and 9 have it), the block is applied at power-on, before the update services start. Tried on a Q80A only.
 - **More to switch off.** Apps you don't use (Netflix, Prime Video, Disney+, Spotify and more), Samsung TV Plus, Vision AI, and a new **Uninstall** tab.
 - **The Remapper can send a key**: an HDMI input, Play/Pause, Home, the arrows or the volume keys.
-- **Vetro 0.5.0 updates itself to 0.7.0** from the dashboard, with no reinstall.
 - Many fixes from your reports, and from the code reviews and pull requests of the community.
 
 Everything is in the [changelog](CHANGELOG.md).
@@ -106,12 +115,12 @@ The Odyssey OLED G8 and monitors with the same HDMI + DisplayPort + USB-C config
 - **Settings and controls:** change supported picture and advanced settings, check the value the TV saved, restore saved values and send remote keys to the TV.
 - **MQTT and Home Assistant:** the TV's sensors and controls in Home Assistant, and actions triggered by MQTT topics. [Setup guide](app/docs/mqtt/README.md).
 - **Resource monitor:** CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes.
-- **Updates:** Vetro updates itself from the dashboard (Quick settings → General → Software update), launcher included, with no computer and no reinstall. From 0.7.0 the **Update Vetro** tile on the TV can do it too (it needs root, and it is not yet tried on a TV: if it fails, use the dashboard). Updates are signed, and the previous version comes back if the new one does not start. [How it works](app/docs/UPDATING.md).
+- **Updates.** From Vetro 0.7.0 onward, the dashboard can install signed updates without a reinstall while root is connected. If the new version fails to start, the updater restores the previous version. The **Update Vetro** tile on the TV offers the same update and still needs testing on a TV. [How it works](app/docs/UPDATING.md)
 - **Diagnostics:** a redacted report to share in an issue. [Report format](app/docs/DIAGNOSTIC-EXPORT.md).
 
 ## Install
 
-Vetro needs root on the TV. There are three ways to install it:
+Vetro needs root for the launcher, privacy switches and remapper. You can install it in three ways.
 
 - **1. Apps2Samsung (the fastest).** Vetro is in the catalog of [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung), the one-click installer for Samsung TVs by [PatrickSt1991](https://github.com/PatrickSt1991). It handles the certificate, the signing and the install for you. Thanks, Patrick!
 - **2. With a coding agent.** Let an AI coding agent with a terminal (for example Codex or Gemini CLI) follow the guide for you. Not Claude: its cybersecurity safeguards stop it on the root steps.
@@ -119,7 +128,7 @@ Vetro needs root on the TV. There are three ways to install it:
 
 Whichever way you choose, finish with the same two steps: **open Vetro once** on the TV, then set **Host PC IP** to `127.0.0.1` in Developer Mode and restart the TV. Then open the dashboard from a phone or computer on the same network, at the address the Vetro app shows on the TV (port 8099 by default). [Full guide for all three ways →](app/docs/INSTALLATION.md)
 
-**Already on Vetro 0.5.0?** Open the dashboard, go to *Quick settings → General → Software update*, press **Check for update**, then **Update**. Your settings stay. If the new version does not start, Vetro goes back to 0.5.0 by itself. There is no package to download from GitHub: new installs go through Apps2Samsung or the guide.
+**Already on Vetro 0.7.0?** With root connected, open *Quick settings → General → Software update*, press **Check for update**, then **Update**. Your settings stay. If you are on **0.5.0 or earlier**, install the current version with Apps2Samsung or follow the installation guide. [Supported update paths](app/docs/UPDATING.md#which-versions-can-update)
 
 The root comes from [Chris Ritsen's Samsung TV root research](https://github.com/chris-ritsen/samsung-tv-root) and works through TV-local SDB, so no computer needs to stay connected. Startup time varies by TV; wait for the status shown in the Vetro app. This is experimental software: privileged changes can disrupt TV features, so read what a switch does before turning it on.
 
@@ -137,22 +146,22 @@ For Vetro UI, say which part (launcher, Control center, Live TV, volume bar, num
 
 ## Compatibility
 
-Vetro is developed on a **Samsung Q80A**; everything else below comes from community reports. Find your Tizen version under **Settings › Support › About this TV**. The model year only gives a hint, and a firmware update can change the result.
+Vetro is developed on a **Samsung Q80A**. The table also draws on community reports and diagnostics. Find your model and firmware under **Settings › Support › About this TV**. Check the exact firmware because two TVs from the same year can run different Tizen versions.
 
-**Tizen 10 has no root yet.** A firmware update that moves a TV to Tizen 10 removes root: the launcher, privacy switches and remapper stop working ([#181](https://github.com/andrearicci93/vetro/issues/181)). Newer firmware for older TVs can close the root route too: a 2022 TV lost root with a forced update to 1722.0 ([#223](https://github.com/andrearicci93/vetro/issues/223)). The note at the top of this page says how to protect root.
+**Tizen 10 root support starts in Vetro 0.7.1.** The four positive reports below came from test builds on firmware variants ending in **2103.1**. They confirm that root connected on those sets. Feature coverage varies by model, and field reports for the final 0.7.1 build are still pending. [Tizen 10 validation summary](CHANGELOG.md#tizen-10)
+
+**2022 TVs on firmware 1722.0 or 1722.1.** Owners reported losing root or being unable to connect on these versions. Vetro 0.7.1 can attempt recovery, which still needs confirmation on the affected TVs. [Firmware reports](https://github.com/andrearicci93/vetro/issues/223) · [1722.1 report](https://github.com/andrearicci93/vetro/issues/319)
 
 | Tizen (typical year) | Dashboard, app list, diagnostics | Root features (launcher, privacy switches, remapper) | Reports |
 | --- | --- | --- | --- |
-| **10** (2026; some 2025 TVs after an update) | Reported working | **Not available yet:** the firmware blocks the method Vetro uses to get root ([#91](https://github.com/andrearicci93/vetro/issues/91), [#140](https://github.com/andrearicci93/vetro/issues/140), [#177](https://github.com/andrearicci93/vetro/issues/177), [#178](https://github.com/andrearicci93/vetro/issues/178)); a QN80F lost root when a firmware update moved it to Tizen 10 ([#181](https://github.com/andrearicci93/vetro/issues/181)). Vetro will support it as soon as a root method for Tizen 10 exists | M70H, M73H, U8000H, QN80F |
-| **9** (2024–2025) | Reported working | Reported working on some TVs; some TVs block apps from reaching the service on the TV itself ([#122](https://github.com/andrearicci93/vetro/issues/122), fallback in 0.5.0 not yet tried), and root problems are reported on others ([#99](https://github.com/andrearicci93/vetro/issues/99)) | S90D, S90F, Q7F, GU75CU7179, DUE77, DU6900, DU7700, CU8070 |
-| **7 and 8** (2023–2024) | Reported working | Reported working | S90C, S95C, Q65D, QN90D |
-| **6.5** (2022) | Reported working | Reported working (the launcher needs Vetro 0.3.1 or newer) | Q60B, Q67B, QN85B, QN90B, S95B, BU8002, The Frame |
+| **10** (2025–2026) | Reported working on some models | Root connected in test builds on the QE65S85F, Q70F, U8000F and QN900F on 2103.1. See the model reports for earlier failures. | QE65S85F, Q70F, U8000F, QN900F, M70H, M73H, U8000H, QN80F |
+| **9** (2024–2025 and some older TVs after updates) | Reported working | Reported working on some TVs. Some TVs have service connection or root issues ([#122](https://github.com/andrearicci93/vetro/issues/122), [#99](https://github.com/andrearicci93/vetro/issues/99)). | S90C, S90D, S90F, S95F, Q7F, GU75CU7179, DUE77, DU6900, DU7700, CU8070 |
+| **7 and 8** (2023–2024) | Reported working | Reported working | S90C, S95C, Q65D, QN90D, DU7000, DU7179 |
+| **6.5** (2022) | Reported working | Reported working on 1720.7. Root failures were reported on 1722.0 and 1722.1. | Q60B, Q67B, QN85B, QN90B, S95B, BU8002, BU8075, The Frame, Odyssey OLED G8 |
 | **6** (2021) | Reported working | Reported working; one TV needs the Host PC IP step to be confirmed ([#134](https://github.com/andrearicci93/vetro/issues/134)) | Q80A, Q70A, Q60A, QN85A, QN95A, AU7000, AU7170, AU7172 |
 | **5.5** (2020) | Reported working | Not available | TU7090, T4300 |
 | **5.0** (2019) | Not with the stock package | One Q80R works with a personal port ([#35](https://github.com/andrearicci93/vetro/issues/35)) | Q80R |
 | **4** (2018) | Reported working | Not available | NU7090 |
-
-Not tried with Vetro: the QN90F, where the upstream root route has been demonstrated, and any other Tizen TV. There is no confirmed range outside what is listed.
 
 <details>
 <summary>Reports by model</summary>
@@ -171,20 +180,33 @@ Not tried with Vetro: the QN90F, where the upstream root route has been demonstr
 | UE65BU8002KXXH (2022) · [#22](https://github.com/andrearicci93/vetro/issues/22) | T-KSU2EBDEUC-1720.7 | Reported working; the Launcher needed the 0.3.1 fix for the Home cache folder |
 | QE75QN85BATXXU (2022) · [#25](https://github.com/andrearicci93/vetro/issues/25) | 1720.7 | Core functions reported working; the Launcher failed before 0.3.1 (Home cache folder) |
 | QN90B QE55QN90BATXXH (2022, Tizen 6.5) · [#158](https://github.com/andrearicci93/vetro/issues/158) | T-PTMDEUC-1720.7 | Reported working with Vetro 0.5.0 (Apps2Samsung): root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting; the physical Home key opens a custom launcher. Another cold boot not tested |
+| BU8075 UE43BU8075U (2022, Tizen 6.5) · [#223](https://github.com/andrearicci93/vetro/issues/223) | T-KSU2EBDEUC-1722.0 | Root was lost after the firmware update from 1720.7 |
+| QN90B (2022, Tizen 6.5) · [#223](https://github.com/andrearicci93/vetro/issues/223#issuecomment-7097349522) | 1722.1 | Root unavailable in the report |
+| Q60B QN75Q60BDFXZA (2022, Tizen 6.5) · [#319](https://github.com/andrearicci93/vetro/issues/319) | 1722.1 | Root unavailable with Vetro 0.7.0 |
+| Odyssey OLED G8 LS34BG850SNXZA (Tizen 6.5) · [#316](https://github.com/andrearicci93/vetro/issues/316) | T-PTMLWWC-1720.7 | Root, launcher and remote interception verified on a test build for the input fix |
 | QN55S95B QN55S95BAFXZA (2022) · [#14](https://github.com/andrearicci93/vetro/issues/14) | T-PTMAKUC-1720.7 | Reported working |
 | Q65S95C (2023) · [#13](https://github.com/andrearicci93/vetro/issues/13) | T-PTMCDEUC-0090-2220.4 | Reported working |
 | GU75CU7179 (2023, Tizen 9.0) · [#17](https://github.com/andrearicci93/vetro/issues/17) | Tizen 9.0 (23_KSUE_UB_T09) | Reported working, installed with Apps2Samsung |
 | QN55Q65D QN55Q65DAGXZS (2024) · [#10](https://github.com/andrearicci93/vetro/issues/10) | T-NKLDUABC-0090-2123.9 | Reported working, installed with Apps2Samsung |
 | Q60D (2024) · Reddit | Not reported | Reported working in a Reddit comment; no model code, firmware, Tizen or Vetro version given |
 | S90C TQ65S90CATXXC (2023, Tizen 7.0) · [#16](https://github.com/andrearicci93/vetro/issues/16) | T-PTMCDEUC-2000.2 | Reported working |
+| S90C QN65S90CAFXZA (2023, Tizen 9) · [#317](https://github.com/andrearicci93/vetro/issues/317) | T-PTMCAKUC-0090-2220.4 | Service and root verified with Vetro 0.7.0 |
 | S90D QA65S90DAULXL (2024, Tizen 9) · [#36](https://github.com/andrearicci93/vetro/issues/36) | T-PTMDUABC-0090-2130.0 | Reported working, with the root agent back after a full restart (the owner's account) |
 | UA55DUE77AKLXL (Crystal UHD DUE77, 2024, Tizen 9) · [#180](https://github.com/andrearicci93/vetro/issues/180) | T-KSU2EDUABC-0090-2130.0 | Reported working with Vetro 0.3.5: root agent with UID 0 after a full restart without opening Vetro; the bundled dock opens from the physical Home key |
 | UE43CU8070UXXN (2023, Tizen 9.0) · [#183](https://github.com/andrearicci93/vetro/issues/183) | 2220 | Reported working with Vetro 0.5.0 (Apps2Samsung): root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting; the physical Home key opens a custom launcher, with Samsung Home kept |
 | QN90D QN55QN90DAFXZA (2024, Tizen 8) · [#185](https://github.com/andrearicci93/vetro/issues/185) | T-PTMDAKUC-1310.1 | Reported working with Vetro 0.3.5 (Apps2Samsung): root agent, the launcher with the Home row, HDMI inputs and app launches |
 | UN65DU6900FXZA (Crystal UHD DU6900, 2024, Tizen 9) · [#68](https://github.com/andrearicci93/vetro/issues/68) | T-KSU2EDAKUC-0090-2130.0 | Reported working with Vetro 0.3.5: root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting; custom launcher running |
 | UA85DU7700WXXY (Crystal UHD DU7700, 2024, Tizen 9) · [#72](https://github.com/andrearicci93/vetro/issues/72) | T-KSU2EDUABC-0090-2130.0 | Reported working with Vetro 0.3.5 (Apps2Samsung, installed under a new package ID): root and Debloater |
+| DU7000 / DU7179 (Tizen 8) · [#313](https://github.com/andrearicci93/vetro/issues/313) | T-KSU2EDDEUC-1400.0 | Reported working with Vetro 0.7.0 |
 | S90F (2025, Tizen 9) · [#85](https://github.com/andrearicci93/vetro/issues/85) | T-RSMFAKUC-0090-1301.0 | Reported working with Vetro 0.3.5 on port 9000 (another YouTube app uses 8099) |
+| S95F QN65S95FAFXZA (2025, Tizen 9) · [#284](https://github.com/andrearicci93/vetro/issues/284) | T-RSMFAKUC-0090-1301.0 | Root reported working across restarts with Vetro 0.7.0 |
 | Q7F QN43Q7FAAFXZA (2025) · [#203](https://github.com/andrearicci93/vetro/issues/203) | Not reported | Reported working; no firmware or Vetro version given |
+| S85F QE65S85FAEXXH (2025, Tizen 10) | T-PTMFDEUC-0100-2103.1 | Root connected in the contributor's test build. An earlier report records root loss after a Samsung firmware update ([#308](https://github.com/andrearicci93/vetro/issues/308)) |
+| Q70F (2025, Tizen 10) | T-RSLFDEUC-0100-2103.1 | Root connected in a test build |
+| U8000F (2025, Tizen 10) | T-KSU2EFAKUC-0100-2103.1 | Root connected in a test build |
+| QN900F QA65QN900FWXXY (2025, Tizen 10) | T-OSCPFUABC-0100-2103.1 | Root connected after retries in a test build. The launcher was off during the test. Earlier builds failed on this model ([#193](https://github.com/andrearicci93/vetro/issues/193), [#194](https://github.com/andrearicci93/vetro/issues/194)) |
+| QN80F (2025, Tizen 10) · [#181](https://github.com/andrearicci93/vetro/issues/181) | 2103.1 | Root stopped connecting with Vetro 0.5.0 after a firmware update. Root is still unconfirmed on this model with 0.7.1 |
+| M70H, M73H, U8000H (2026, Tizen 10) | Varies by model | Earlier builds had service or dashboard reports and root failures. Root remains unconfirmed on these models with 0.7.1 ([#91](https://github.com/andrearicci93/vetro/issues/91), [#140](https://github.com/andrearicci93/vetro/issues/140), [#177](https://github.com/andrearicci93/vetro/issues/177), [#178](https://github.com/andrearicci93/vetro/issues/178)) |
 | LS03B QN75LS03BAFXZA (The Frame, 2022) · [#39](https://github.com/andrearicci93/vetro/issues/39) | T-PTMAKUC-1720.7 | Reported working, the service started by itself after a cold boot; the Launcher was not tried |
 | Smart Monitor M8 LS32BM801UNXGO · [#15](https://github.com/andrearicci93/vetro/issues/15) | T-PTMWWC-1720.7 | Installed, service and root agent running; what works not reported yet |
 | Q80R QN65Q80RAFXZA (2019, Tizen 5.0) · [#35](https://github.com/andrearicci93/vetro/issues/35) | T-MSMAKUC-1500.5 | Works with **local changes**, not with the stock package: a personal port with its own launcher host, app registry paths and Node.js 16.20.2, not reviewed or merged |
