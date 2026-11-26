@@ -94,7 +94,7 @@ function parseCheck(out, re) {
     return {running: !!pid, pid: pid ? +pid[1] : null, other: other ? +other[1] : null, cheap: true};
 }
 
-var SOURCE_OPTION_KEYS = ['showHomeSources', 'useSourceImages'];
+var SOURCE_OPTION_KEYS = ['showHomeSources', 'useSourceImages', 'connectedSourcesOnly'];
 function legacySourceUsage(file, images) {
     try {
         if (fs.statSync(file).size > 65536) return false;
@@ -246,10 +246,12 @@ Dock.prototype.readState = function () {
             lastCards: s && Array.isArray(s.lastCards) ? cleanCards(s.lastCards) : [],
             showHomeSources: s && typeof s.showHomeSources === 'boolean' ? s.showHomeSources : this.legacy('home'),
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
+            // Sources lists only the inputs with something plugged in (off: TV and HDMI 1-4 always, as before).
+            connectedSourcesOnly: s && s.connectedSourcesOnly === true,
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
     } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
-        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
+        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), connectedSourcesOnly: false, appStore: 'tvstore'}; }
 };
 
 // Source-option migration must never overwrite an unreadable or malformed existing state.
@@ -442,7 +444,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, connectedSourcesOnly: state.connectedSourcesOnly, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -556,7 +558,7 @@ Dock.prototype.writeCatalog = function () {
 // What every read of the Home data is built with, from the saved state: one place, so no caller forgets a setting (a row saved from the
 // launcher that left the store choice out would put TV-Store back on a TV where the user chose Samsung's store).
 Dock.prototype.catalogOptions = function (state, row) {
-    return {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages,
+    return {fixTizenTube: state.fixTizenTube, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, connectedSourcesOnly: state.connectedSourcesOnly,
         intercepted: this.shards ? this.shards.intercepted() : {}, row: row === undefined ? state.row : row, appStore: state.appStore};
 };
 // Writes the three lists the launcher reads. Returns true when one of them is not what was there before.

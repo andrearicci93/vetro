@@ -12,8 +12,8 @@
 var FORMAT = 'vetro-settings', SCHEMA = 1, MAX_BYTES = 256 * 1024;
 var WIN_IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', 'airplay', 'remotesupport', 'delivery', 'wifipresence'];
 // Launcher switches, in the order they are applied (before the launcher itself is switched on, which then starts with them).
-var DOCK_SWITCHES = ['fixTizenTube', 'closeIdleHome', 'volumePill', 'numberPad', 'noMotion', 'showHomeSources', 'useSourceImages'];
-var DOCK_ROOT = {showHomeSources: true, useSourceImages: true};     // these read the TV's sources even with the launcher off
+var DOCK_SWITCHES = ['fixTizenTube', 'closeIdleHome', 'volumePill', 'numberPad', 'noMotion', 'showHomeSources', 'useSourceImages', 'connectedSourcesOnly'];
+var DOCK_ROOT = {showHomeSources: true, useSourceImages: true, connectedSourcesOnly: true};     // these read the TV's sources even with the launcher off
 var EDGES = ['left', 'right', 'top', 'bottom', 'hidden'], STORES = ['tvstore', 'samsung'];
 var ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/, CARD_RE = /^(?:tasks|audio|picture|sleep|shard:[A-Za-z0-9._-]{1,64})$/;
 var SECTIONS = ['launcher', 'tuner', 'remapper', 'essentials', 'performance', 'keepRemoved', 'quickSettings', 'dns', 'mqtt', 'shards'];
@@ -23,7 +23,7 @@ var WIN_LABELS = {firmware: 'Block firmware and software updates', quickboot: 'Q
     telemetry: 'Stop viewing-data collection', airplay: 'Disable AirPlay', remotesupport: 'Disable Samsung remote support', delivery: 'Disable background app delivery',
     wifipresence: 'Disable Wi-Fi presence'};
 var DOCK_LABELS = {fixTizenTube: 'Fix TizenTube', closeIdleHome: 'Close idle Samsung Home', volumePill: 'Volume bar', numberPad: 'Number pad',
-    noMotion: 'Reduce motion', showHomeSources: 'HDMI sources on Home', useSourceImages: 'HDMI source images'};
+    noMotion: 'Reduce motion', showHomeSources: 'HDMI sources on Home', useSourceImages: 'HDMI source images', connectedSourcesOnly: 'Connected sources only'};
 var MQTT_FIELDS = ['enabled', 'host', 'port', 'tls', 'ca', 'username', 'topicPrefix', 'deviceName'];
 // Groups loading never switches off: Samsung Home has its own warning (the TV may not start without it).
 var QUICK_NEVER = ['samsung-home'];
@@ -44,7 +44,7 @@ function build(src) {
     var d = src.dock;
     if (d) s.launcher = {mode: d.customApp ? 'custom' : d.enabled ? 'vetro' : 'off', customApp: d.customApp || null,
         fixTizenTube: bool(d.fixTizenTube), closeIdleHome: d.closeIdleHome !== false, volumePill: bool(d.volumePill), numberPad: bool(d.numberPad),
-        noMotion: bool(d.noMotion), showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages),
+        noMotion: bool(d.noMotion), showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages), connectedSourcesOnly: bool(d.connectedSourcesOnly),
         volumeEdge: EDGES.indexOf(d.volumeEdge) >= 0 ? d.volumeEdge : 'left', appStore: d.appStore === 'samsung' ? 'samsung' : 'tvstore',
         cards: ids(d.cards, CARD_RE, 3)};
     else notRead.launcher = 'unreadable';

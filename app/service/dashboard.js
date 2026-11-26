@@ -1617,6 +1617,7 @@ function renderDock(){
  }
  var sourceOptions=sourceOption('showHomeSources','HDMI sources on Home','Copies the HDMI tiles and their positions from Samsung Home.');
  sourceOptions+=sourceOption('useSourceImages','HDMI source images','Uses Samsung’s images for HDMI tiles on the Dock and Sources.');
+ sourceOptions+=sourceOption('connectedSourcesOnly','Connected sources only','Sources lists TV and only the HDMI ports with a device plugged in.');
  var idleHomeOn=d.closeIdleHome!==false;
  var idleHome='<div class="quick-item" data-quick-item="close-idle-home"><div><h3>Close idle Samsung Home</h3><p>While Vetro’s launcher is on, Samsung Home and its background parts are closed 25 s after the TV wakes from standby, or after 10 minutes unused. Samsung Home opens again when you choose it, a little slower the first time.</p><div class="quick-state">'+(idleHomeOn?chip('On','on'):chip('Off'))+(d.enabled?'':chip('Applies when the launcher is on'))+(d.idleHomeClears?chip('Closed '+d.idleHomeClears+(d.idleHomeClears===1?' time':' times')+' since Vetro started'):'')+'</div></div>'+switchMarkup('data-dock-idle-home',idleHomeOn,dockBusy||!d.installed,'Close idle Samsung Home')+'</div>';
  var look='<h2 class="section-title" id="dockLookTitle">${sectionIcon('home')}Customization</h2>'+row+store+sourceOptions+still+idleHome+fix;
@@ -2042,7 +2043,7 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.dockStore!=null)return setDock('appStore',x.checked?'Use TV-Store in All apps':'Use Samsung’s store in All apps',{store:x.checked?'tvstore':'samsung'});
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
  if(x.dataset.dockIdleHome!=null)return setDock('closeIdleHome',x.checked?'Turn on Close idle Samsung Home':'Turn off Close idle Samsung Home',{on:!!x.checked});
- if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+(x.dataset.dockSourceOption==='showHomeSources'?'HDMI sources on Home':'HDMI source images'),{on:!!x.checked});
+ if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+({showHomeSources:'HDMI sources on Home',useSourceImages:'HDMI source images',connectedSourcesOnly:'Connected sources only'}[x.dataset.dockSourceOption]),{on:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
  return setDock('disable','Turn off the launcher');
