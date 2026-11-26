@@ -33,5 +33,6 @@ namespace Tuner.Native
         [DllImport(C, SetLastError = true)] public static extern int unlink(string path);
         [DllImport(C)] public static extern uint getuid();
         [DllImport(C)] public static extern int getpid();
+        [DllImport(C)] public static extern void free(IntPtr ptr);
     }
 }

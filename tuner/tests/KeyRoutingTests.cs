@@ -153,5 +153,85 @@ internal static partial class Tests
         for (int i = 0; i < Takeover.OtherLimit - 1; i++) o2.Poll(3, true, true, FrontApp.Kind.Other);
         Check(o2.Poll(2, true, true, FrontApp.Kind.Own) == Takeover.Step.None && o2.Poll(3, true, true, FrontApp.Kind.Other) == Takeover.Step.None,
             "other: the keys came back in between: the count starts again");
+
+        // ---- Screensaver hold & !Ready() gate ----
+        Check(Takeover.IsScreensaverApp("com.samsung.tv.spotlight-ss")
+            && Takeover.IsScreensaverApp("com.samsung.tv.glscreensaver-launcher")
+            && Takeover.IsScreensaverApp("org.tizen.rscm-screensaver")
+            && Takeover.IsScreensaverApp("org.tizen.screen-saver")
+            && Takeover.IsScreensaverApp("Default_Screensaver")
+            && Takeover.IsScreensaverApp("DefaultScreensaver")
+            && Takeover.IsScreensaverApp("/opt/usr/apps/com.samsung.tv.spotlight-ss/bin/spotlight-ss.dll"), "screensaver: matches Tizen 4-9 screensaver ids and paths");
+        Check(!Takeover.IsScreensaverApp("org.tizen.tv-viewer")
+            && !Takeover.IsScreensaverApp("com.samsung.tv.cobalt-yt")
+            && !Takeover.IsScreensaverApp("")
+            && !Takeover.IsScreensaverApp(null), "screensaver: rejects non-screensaver apps and empty/null");
+        Check(Takeover.ReadBoolOrInt((out int b) => { b = 1; return true; }, (out int i) => { i = 0; return true; }), "screensaver: bool vconf true wins");
+        Check(Takeover.ReadBoolOrInt((out int b) => { b = 0; return false; }, (out int i) => { i = 1; return true; }), "screensaver: falls back to int vconf");
+        Check(!Takeover.ReadBoolOrInt((out int b) => { b = 0; return true; }, (out int i) => { i = 1; return true; }), "screensaver: bool vconf false stops without int fallback");
+        Check(!Takeover.CanShow(false, false) && !Takeover.CanShow(true, true) && Takeover.CanShow(false, true), "ready: CanShow gates on !launcherOpen && ready");
+
+        // Post-screensaver source_type == -1 preservation on antenna Live TV (S90C Tizen 9 spotlight-ss)
+        bool postSs = false;
+        postSs = Takeover.UpdatePostScreensaverTv(postSs, true, true, true, -1, false, 3, FrontApp.Kind.Other);
+        Check(postSs && Takeover.EffectiveTvInput(-1, false, postSs), "screensaver: spotlight-ss over active Live TV arms postScreensaverTv across source=-1");
+        for (int i = 0; i < 6; i++)
+        {
+            postSs = Takeover.UpdatePostScreensaverTv(postSs, false, true, true, -1, false, 2, FrontApp.Kind.Own);
+            Check(postSs && Takeover.EffectiveTvInput(-1, false, postSs), "screensaver: post-exit source=-1 on Live TV stays EffectiveTvInput across AwayLimit+ polls");
+        }
+        postSs = Takeover.UpdatePostScreensaverTv(postSs, false, true, true, 0, false, 2, FrontApp.Kind.Own);
+        Check(!postSs && Takeover.EffectiveTvInput(0, false, postSs), "screensaver: real source=0 clears postScreensaverTv cleanly");
+
+        // Exiting screensaver into Netflix (FrontApp.Other or status=4) clears postScreensaverTv immediately
+        bool postToApp = Takeover.UpdatePostScreensaverTv(false, true, true, true, -1, false, 3, FrontApp.Kind.Other);
+        postToApp = Takeover.UpdatePostScreensaverTv(postToApp, false, true, false, -1, false, 3, FrontApp.Kind.Other);
+        Check(!postToApp && !Takeover.EffectiveTvInput(-1, false, postToApp), "screensaver: exiting into FrontApp.Other clears postScreensaverTv immediately");
+
+        // Entering screensaver from Samsung TV Plus (source=-1, tunerActive=false, tvUpMarked=false) or HDMI (source=13) NEVER arms postScreensaverTv
+        bool fromTvPlus = Takeover.UpdatePostScreensaverTv(false, true, false, false, -1, false, 2, FrontApp.Kind.Other);
+        Check(!fromTvPlus && !Takeover.EffectiveTvInput(-1, false, fromTvPlus), "screensaver: TV Plus before spotlight-ss never arms postScreensaverTv");
+        bool fromHdmi = Takeover.UpdatePostScreensaverTv(false, true, false, false, 13, false, 2, FrontApp.Kind.Tv);
+        Check(!fromHdmi && !Takeover.EffectiveTvInput(13, false, fromHdmi), "screensaver: HDMI never arms postScreensaverTv");
+
+        // Default_Screensaver leaves frontApp on Tv while screensaver_on_off is True: must NEVER Reclaim (elm_win_raise kills screensaver!)
+        var ssDef = new Takeover();
+        ssDef.Poll(2, true, true, FrontApp.Kind.Own);
+        bool defActed = false;
+        for (int i = 0; i < 20; i++) defActed |= ssDef.Poll(2, true, true, FrontApp.Kind.Tv, true) != Takeover.Step.None;
+        Check(!defActed, "screensaver: Default_Screensaver with front=Tv never triggers Reclaim");
+
+        // spotlight-ss flips source_type to -1 (tvInput=false) and takes focus as FrontApp.Kind.Other for minutes:
+        // must NEVER Hide/Deactivate during screensaver, and seamlessly keeps takeover state on return to live TV!
+        var ssSpot = new Takeover();
+        ssSpot.Poll(2, true, true, FrontApp.Kind.Own);
+        bool spotActed = false;
+        for (int i = 0; i < 24; i++) spotActed |= ssSpot.Poll(3, true, false, FrontApp.Kind.Other, true) != Takeover.Step.None;
+        Check(!spotActed, "screensaver: spotlight-ss (tvInput=false, front=Other) never triggers Hide across 24 polls");
+        // 1-poll transition gap as spotlight-ss exits (source_type still -1 for one poll) stays shown, then live TV reclaims focus
+        Check(ssSpot.Poll(3, true, false, FrontApp.Kind.Tv, false) == Takeover.Step.None, "screensaver: 1-poll exit transition gap keeps tuner shown");
+        Check(ssSpot.Poll(2, true, true, FrontApp.Kind.Tv, false) == Takeover.Step.None
+            && ssSpot.Poll(2, true, true, FrontApp.Kind.Tv, false) == Takeover.Step.Reclaim,
+            "screensaver: once back on live TV after screensaver exit, tuner reclaims focus cleanly");
+
+        // If screensaver exits into another app (e.g. Netflix launched), preserved _seenUp still hides tuner after AwayLimit polls
+        var ssToApp = new Takeover();
+        ssToApp.Poll(2, true, true, FrontApp.Kind.Own);
+        for (int i = 0; i < 10; i++) ssToApp.Poll(4, true, false, FrontApp.Kind.Other, true);
+        Check(ssToApp.Poll(4, true, false, FrontApp.Kind.Other, false) == Takeover.Step.None
+            && ssToApp.Poll(4, true, false, FrontApp.Kind.Other, false) == Takeover.Step.Hide,
+            "screensaver: exiting screensaver into Netflix hides the tuner after AwayLimit polls");
+
+        // Hidden tuner never shows over active screensaver, and dismissed hold is preserved across screensaver
+        var ssHidden = new Takeover();
+        Check(ssHidden.Poll(2, false, true, FrontApp.Kind.Tv, true) == Takeover.Step.None, "screensaver: hidden tuner never shows over active screensaver");
+        Check(ssHidden.Poll(2, false, true, FrontApp.Kind.Tv, false) == Takeover.Step.Show, "screensaver: shows once screensaver ends on live TV");
+        var ssHeld = new Takeover();
+        ssHeld.Poll(2, true, true, FrontApp.Kind.Own); ssHeld.Dismissed();
+        for (int i = 0; i < 10; i++) ssHeld.Poll(3, false, false, FrontApp.Kind.Other, true);
+        Check(ssHeld.Held && !ssHeld.KeyWake(2, true, FrontApp.Kind.Tv, true), "screensaver: dismissed hold preserved and KeyWake ignored during screensaver");
+        Check(!ssHeld.Resume(2, false, FrontApp.Kind.Tv, true) && ssHeld.Held, "screensaver: Resume on non-TV input during screensaver keeps hold");
+        Check(!ssHeld.Resume(2, true, FrontApp.Kind.Tv, true) && !ssHeld.Held, "screensaver: Resume during screensaver lifts hold without raising over screensaver");
+        Check(ssHeld.Poll(2, false, true, FrontApp.Kind.Tv, false) == Takeover.Step.Show, "screensaver: after Resume during screensaver, tuner shows once screensaver ends");
     }
 }
