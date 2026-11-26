@@ -167,7 +167,7 @@ var ROOT_CODES=['platformUnsupported','prepare-failed','token-write-failed','pre
     'sdbRefused','sdbTimeout','sdbReset','sdbAuthRequired','sdbError','sdbClosed','sdbStreamFailed','sdbStreamError','error'];
 function rooting(d) {
     var r=d.rooting||{}, f=r.failure||{};
-    return {backend:choice(r.backend,['sdb-archive']),
+    return {backend:choice(r.backend,['sdb-archive','vddebugmenu']),
         phase:choice(r.phase,['stopped','unsupported','preparing','preflight','sdb-handshake','launch-command','agent-callback','connected','retrying']),
         failure:r.failure?{
             stage:choice(f.stage,['preparation','preflight','sdb-handshake','launch-command','agent-callback','agent-connection']),
