@@ -24,8 +24,12 @@ namespace Launcher.Core
     /// <summary>What pkginfo says about an app (the fields the task manager needs).</summary>
     internal sealed class AppInfo
     {
-        public string Component, Label, Icon, Package;
+        public string Component, Label, Icon, Package, Exec;
         public bool NoDisplay;
+        public bool TaskManage = true;
+        public bool OnBoot;
+        public bool AutoRestart;
+        public bool NoAutoRaise;
     }
 
     /// <summary>One line of /proc/[pid]/stat, cut down to what the tree sums need.</summary>
@@ -51,7 +55,8 @@ namespace Launcher.Core
         {
             "org.tizen.tv-viewer", "org.tizen.menu", "org.tizen.function-osd", "com.samsung.tv.sboard-app",
             "org.tizen.welcome-mode", "org.tizen.hbbtv", "org.tizen.ScreenMirroring-app-tv", "com.samsung.hitcomp",
-            "org.tizen.volume", "org.tizen.volume-app", "org.tizen.screen-saver", "com.samsung.tv.notification",
+            "org.tizen.volume", "org.tizen.volume-app", "org.tizen.screen-saver", "org.tizen.rscm-screensaver",
+            "com.samsung.tv.spotlight-ss", "com.samsung.tv.glscreensaver-launcher", "com.samsung.tv.notification",
             "com.samsung.tv.coba.adagent", "org.tizen.ambientapp", "com.samsung.tv.quicklaunch",
         };
 
@@ -121,6 +126,11 @@ namespace Launcher.Core
             return wasClosing && oldPid == newPid && now - closingAt < limit;
         }
 
+        private static bool ParseBool(string val)
+        {
+            return val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>Parses `pkginfo --app ID` ("Key: value" lines). Null when it holds no component.</summary>
         public static AppInfo ParseAppInfo(string text)
         {
@@ -137,19 +147,43 @@ namespace Launcher.Core
                     case "Label": info.Label = val; break;
                     case "Icon": info.Icon = val; break;
                     case "Package": info.Package = val; break;
-                    case "Nodisplay": info.NoDisplay = val == "1"; break;
+                    case "Exec": info.Exec = val; break;
+                    case "Nodisplay": info.NoDisplay = ParseBool(val); break;
+                    case "Taskmanage": info.TaskManage = val != "0" && !val.Equals("false", StringComparison.OrdinalIgnoreCase); break;
+                    case "Onboot": info.OnBoot = ParseBool(val); break;
+                    case "Autorestart": info.AutoRestart = ParseBool(val); break;
                 }
             }
             return info.Component == null ? null : info;
         }
 
+        /// <summary>Apps explicitly surfaced by the task manager (e.g. Samsung Home, Store, YouTube) regardless of firmware flags.</summary>
+        public static bool IsKeepVisible(string appId)
+        {
+            return appId != null && FriendlyNames.ContainsKey(appId);
+        }
+
         /// <summary>A visible UI app that is not part of the TV itself (and not Vetro, which runs the dock).</summary>
         public static bool IsUserApp(string appId, AppInfo info)
+        {
+            return IsUserApp(appId, info, false);
+        }
+
+        /// <summary>
+        /// A visible UI app that is not part of the TV itself, Vetro, or a background firmware helper
+        /// (detected via Tizen manifest/metadata signals when not in the user's launcher catalog).
+        /// </summary>
+        public static bool IsUserApp(string appId, AppInfo info, bool inCatalog)
         {
             if (info == null || appId == null) return false;
             if (info.Component != "uiapp" || info.NoDisplay) return false;
             if (Protected.Contains(appId) || Background.Contains(appId)) return false;
             if (appId.StartsWith("vetrotvapp", StringComparison.Ordinal)) return false;
+            if (!inCatalog && !IsKeepVisible(appId))
+            {
+                if (!info.TaskManage || info.NoAutoRaise || info.OnBoot || info.AutoRestart) return false;
+                if (!string.IsNullOrEmpty(info.Exec) && info.Exec.StartsWith("/usr/bin/", StringComparison.Ordinal)) return false;
+            }
             return true;
         }
 
@@ -273,6 +307,133 @@ namespace Launcher.Core
         {
             if (pct < 0) return "–";
             return pct < 10 ? pct.ToString("0.0", CultureInfo.InvariantCulture) + "%" : Math.Round(pct).ToString(CultureInfo.InvariantCulture) + "%";
+        }
+    }
+
+    /// <summary>
+    /// Tracks user-initiated app closes across snapshots to detect firmware helpers that cannot be closed
+    /// (survive past the close timeout or auto-respawn with a new PID) on any TV model or firmware version.
+    /// </summary>
+    internal sealed class TaskCloseTracker
+    {
+        public const double RespawnWindowSeconds = 10.0;
+        public const int MaxLearned = 64;
+
+        private sealed class PendingClose
+        {
+            public int Pid;
+            public long AtTicks;
+            public bool SawGone;
+        }
+
+        private readonly Dictionary<string, PendingClose> _pending = new Dictionary<string, PendingClose>(StringComparer.Ordinal);
+        private readonly HashSet<string> _learned = new HashSet<string>(StringComparer.Ordinal);
+        private readonly List<string> _learnedOrder = new List<string>();
+        private readonly long _closeTimeoutTicks, _respawnTicks;
+
+        public TaskCloseTracker(long ticksPerSecond)
+        {
+            _closeTimeoutTicks = (long)(Tasks.ClosingTimeoutSeconds * ticksPerSecond);
+            _respawnTicks = (long)(RespawnWindowSeconds * ticksPerSecond);
+        }
+
+        public int LearnedCount { get { return _learnedOrder.Count; } }
+
+        public void RecordClose(string appId, int pid, long nowTicks)
+        {
+            if (Catalog.ValidAppId(appId) && pid > 0)
+                _pending[appId] = new PendingClose { Pid = pid, AtTicks = nowTicks };
+        }
+
+        public void CancelClose(string appId)
+        {
+            if (appId != null) _pending.Remove(appId);
+        }
+
+        public bool IsLearned(string appId)
+        {
+            return appId != null && _learned.Contains(appId);
+        }
+
+        private bool AddLearned(string appId)
+        {
+            if (!Catalog.ValidAppId(appId) || !_learned.Add(appId)) return false;
+            if (_learnedOrder.Count >= MaxLearned)
+            {
+                _learned.Remove(_learnedOrder[0]);
+                _learnedOrder.RemoveAt(0);
+            }
+            _learnedOrder.Add(appId);
+            return true;
+        }
+
+        public void LoadLearned(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            foreach (string raw in text.Replace("\r", "").Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line[0] == '#') continue;
+                AddLearned(line);
+            }
+        }
+
+        public string FormatLearned()
+        {
+            return _learnedOrder.Count == 0 ? "" : string.Join("\n", _learnedOrder) + "\n";
+        }
+
+        public List<KeyValuePair<string, string>> Observe(List<KeyValuePair<string, int>> running, long nowTicks, Func<string, bool> keepVisible)
+        {
+            var newlyLearned = new List<KeyValuePair<string, string>>();
+            if (_pending.Count == 0) return newlyLearned;
+
+            var live = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (running != null)
+            {
+                foreach (var r in running)
+                    if (r.Key != null && !live.ContainsKey(r.Key)) live[r.Key] = r.Value;
+            }
+
+            var keys = new List<string>(_pending.Keys);
+            foreach (string appId in keys)
+            {
+                PendingClose p = _pending[appId];
+                long elapsed = nowTicks - p.AtTicks;
+                if (elapsed < 0)
+                {
+                    _pending.Remove(appId);
+                    continue;
+                }
+                int curPid;
+                if (live.TryGetValue(appId, out curPid))
+                {
+                    if (curPid != p.Pid)
+                    {
+                        _pending.Remove(appId);
+                        if (elapsed <= _respawnTicks && (keepVisible == null || !keepVisible(appId)))
+                        {
+                            if (AddLearned(appId))
+                                newlyLearned.Add(new KeyValuePair<string, string>(appId, "respawned pid " + p.Pid + "->" + curPid));
+                        }
+                    }
+                    else if (elapsed >= _closeTimeoutTicks)
+                    {
+                        _pending.Remove(appId);
+                        if (keepVisible == null || !keepVisible(appId))
+                        {
+                            if (AddLearned(appId))
+                                newlyLearned.Add(new KeyValuePair<string, string>(appId, "survived close pid " + p.Pid));
+                        }
+                    }
+                }
+                else
+                {
+                    p.SawGone = true;
+                    if (elapsed >= _respawnTicks) _pending.Remove(appId);
+                }
+            }
+            return newlyLearned;
         }
     }
 }
