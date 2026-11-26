@@ -768,10 +768,14 @@ var REMAP_PATH = '/opt/usr/home/owner/share/vetro-remap.json';
 var remapStore = (function () {
     try { return JSON.parse(fs.readFileSync(REMAP_PATH, 'utf8')); } catch (e) { return {}; }
 })();
-try { remapStore.rules = remap.validateRules(remapStore.rules || []); }
-catch (e) { remapStore.rules = []; }
+// Rules with a condition are kept under their own key on disk (remap.js toDisk): a Vetro from before the condition must not see them.
+remapStore.rules = remap.fromDisk(remapStore); delete remapStore.guarded;
 function saveRemap() {
-    try { atomicFile.write(fs, REMAP_PATH, JSON.stringify(remapStore)); return true; } catch (e) { return false; }
+    try {
+        var split = remap.toDisk(remapStore.rules), out = Object.assign({}, remapStore, {rules: split.rules});
+        if (split.guarded.length) out.guarded = split.guarded;
+        atomicFile.write(fs, REMAP_PATH, JSON.stringify(out)); return true;
+    } catch (e) { return false; }
 }
 
 function handleProbe(req, res) {

@@ -115,6 +115,22 @@ function resolve(rules, type, value, payload) {
     return out;
 }
 
+// On disk the rules with a condition live under their own key ("guarded"), next to "rules". A Vetro from before the condition
+// validates "rules" all or nothing, and one entry it does not know would make it drop every shortcut, and the next save would erase them.
+// Kept apart, it loads the plain rules, never sees the guarded ones, saves the whole file back with the key it does not know, and the
+// conditioned rules are still there when this version comes back. In memory and in the API all of them stay in one list.
+function toDisk(rules) {
+    return {rules: rules.filter(function (r) { return !guardOf(r); }), guarded: rules.filter(function (r) { return !!guardOf(r); })};
+}
+// What the file holds, as one valid list. A bad "guarded" part loses only the conditioned rules, never the plain ones.
+function fromDisk(store) {
+    var plain = [], guarded = [];
+    try { plain = validateRules((store && store.rules) || []); } catch (e) { return []; }
+    try { guarded = validateRules(((store && store.guarded) || []).filter(function (r) { return !plain.some(function (p) { return r && p.id === r.id; }); })); } catch (e) { guarded = []; }
+    var all = plain.concat(guarded.filter(function (r) { return !!guardOf(r); }));
+    return all.length > MAX_RULES ? plain : all;
+}
+
 // New rules only: rules saved by an older version still load (validateRules), and runActions skips the action.
 function checkLaunchable(rules, packageOf) {
     (rules || []).forEach(function (r) { (r.actions || []).forEach(function (a) {
@@ -125,5 +141,5 @@ function checkLaunchable(rules, packageOf) {
     }); });
     return rules;
 }
-module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, matches: matches, guardOf: guardOf, actionsOf: actionsOf, launchable: launchable,
+module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, matches: matches, toDisk: toDisk, fromDisk: fromDisk, guardOf: guardOf, actionsOf: actionsOf, launchable: launchable,
     checkLaunchable: checkLaunchable, ruleRisk: ruleRisk, NOT_LAUNCHABLE_PREFIX: NOT_LAUNCHABLE_PREFIX};

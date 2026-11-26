@@ -28,6 +28,19 @@ assert.deepEqual(remap.actionsOf(rules[0]), [{type: 'screenoff'}]);
 assert.deepEqual(remap.resolve(rules, 'http', 'go'), [{type: 'key', key: 'KEY_MUTE'}], 'resolve never hands out a conditioned rule unguarded');
 assert.equal(remap.matches(rules, 'http', 'go').length, 2);
 
+// --- on disk: conditioned rules stay out of "rules", so a Vetro from before the condition keeps the plain ones (all or nothing validation) ---
+const OLD_ACTIONS = ['key', 'launch', 'screenoff', 'mqtt'];   // what 0.7.1's validateAction knows
+const split = remap.toDisk(rules);
+assert.equal(split.rules.length, 1); assert.equal(split.guarded.length, 1);
+assert.ok(split.rules.every(r => r.actions.every(a => OLD_ACTIONS.includes(a.type))), 'nothing in "rules" an older Vetro would refuse');
+assert.deepEqual(remap.fromDisk({rules: split.rules, guarded: split.guarded, input: {auto: true}}).map(r => r.id).sort(), ['a', 'p'], 'read back together');
+assert.deepEqual(remap.fromDisk({rules: split.rules}), split.rules, 'a file from before the condition');
+assert.deepEqual(remap.fromDisk({}), []);
+assert.deepEqual(remap.fromDisk({rules: split.rules, guarded: [{id: 'z', trigger: {type: 'http', value: 'x'}, actions: [{type: 'when', screen: 'maybe'}]}]}), split.rules, 'a damaged guarded part loses only the conditioned rules');
+assert.deepEqual(remap.fromDisk({rules: [{id: 'bad'}], guarded: split.guarded}), [], 'damaged plain rules: same as before (empty)');
+// a rule that came back through a rollback and an upgrade (the old version saved the file again with the key it did not know) is not doubled
+assert.deepEqual(remap.fromDisk({rules: split.rules.concat(split.guarded), guarded: split.guarded}).map(r => r.id).sort(), ['a', 'p']);
+
 // --- the power state ---
 assert.match(tvState.POWER_READ, /buxton2ctl get memory memory\/pm\/state/);
 assert.doesNotMatch(tvState.POWER_READ, /dotnet/);
