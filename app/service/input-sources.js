@@ -123,7 +123,7 @@ function normalize(caches) {
         delete found[41];
         [0, 13, 14, 15, 16].forEach(function (n) {
             var key = n === 0 ? 'TV' : 'HDMI' + (n - 12);
-            if (!found[n]) found[n] = {sourceType: n, family: n === 0 ? 'tv' : 'hdmi', port: n === 0 ? null : n - 12, meta: sources[key] || {}};
+            if (!found[n]) found[n] = {sourceType: n, family: n === 0 ? 'tv' : 'hdmi', port: n === 0 ? null : n - 12, meta: sources[key] || {}, filler: true};
         });
     }
     var rows = Object.keys(found).map(function (n) { return found[n]; }).sort(function (a, b) { return a.sourceType - b.sourceType; });
@@ -143,7 +143,9 @@ function normalize(caches) {
             connected: typeof meta.ConnectionState === 'boolean' ? meta.ConnectionState : null,
             key: monitor ? 'KEY_INPUT_' + row.sourceType : row.family === 'tv' ? 'KEY_TV' : row.family === 'hdmi' ? 'KEY_HDMI' + row.port : row.family === 'displayport' ? 'KEY_DISPLAYPORT' : null,
             slug: row.family === 'hdmi' ? 'in-hdmi' + row.port : row.family === 'displayport' ? 'in-dp' : 'in-' + row.family,
-            rowKey: 'source:' + row.sourceType};
+            rowKey: 'source:' + row.sourceType,
+            // False for a port Samsung's caches do not list (added above so the layout keeps TV and HDMI 1-4) or one it reports unplugged.
+            present: row.family === 'tv' || (!row.filler && meta.ConnectionState !== false)};
     });
 }
 function readCurrentCommand() {

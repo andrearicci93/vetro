@@ -246,7 +246,7 @@ function sourceEntries(parsed, options) {
         var useImages = options && options.useSourceImages === true && source.sourceType >= 13;
         var icon = useImages && sourceIconOk(source.displayIcon) ? source.displayIcon : null;
         return {slug: source.slug, label: source.name, inputLabel: source.inputLabel,
-            appId: source.rowKey, icon: icon, sourceIcon: source.sourceIcon, sourceIcons: source.sourceIcons, killFirst: null, key: source.rowKey};
+            appId: source.rowKey, icon: icon, sourceIcon: source.sourceIcon, sourceIcons: source.sourceIcons, killFirst: null, key: source.rowKey, present: source.present};
     });
 }
 
@@ -403,7 +403,7 @@ function build(parsed, options) {
     var allApps = poolList.slice().sort(function (a, b) { return a.label.localeCompare(b.label); }).slice(0, MAX_ENTRIES - 2);
     // Only a package list that came back whole says TV-Store is there; without it the pill stays Samsung's store.
     var tvStore = !!(parsed.installed && parsed.installed[TV_STORE]) && !offApps[TV_STORE];
-    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, skipped: skipped, homeApp: parsed.homeApp || null,
+    return {entries: entries, allApps: allApps, samsungKeys: samsungKeys, inputs: inputs, connectedSourcesOnly: options.connectedSourcesOnly === true, skipped: skipped, homeApp: parsed.homeApp || null,
         tvStoreInstalled: tvStore, appStore: tvStore && options.appStore !== 'samsung' ? 'tvstore' : 'samsung'};
 }
 
@@ -418,7 +418,7 @@ function allAppsTsv(built) {
         .concat([SETTINGS_ROW, built.appStore === 'tvstore' ? TV_STORE_ROW : SAMSUNG_STORE_ROW]).join('\n') + '\n';
 }
 function inputsTsv(built) {
-    return ['# Sources in physical port order'].concat((built.inputs || []).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
+    return ['# Sources in physical port order'].concat((built.inputs || []).filter(function (e) { return !built.connectedSourcesOnly || e.present !== false; }).map(function (e) { return entryLine(e, e.inputLabel); })).join('\n') + '\n';
 }
 
 function tsv(built) {
