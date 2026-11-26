@@ -3,7 +3,7 @@
 // Node 12's limit, chunked bodies, the /tv rewrite end to end, and hostile or broken peers. The process must survive all of it:
 // the plugin runs inside Vetro, and one uncaught exception there would take Vetro down.
 const assert = require('assert').strict;
-const fs = require('fs'), os = require('os'), path = require('path'), net = require('net'), tls = require('tls'), cp = require('child_process');
+const fs = require('fs'), os = require('os'), path = require('path'), net = require('net'), tls = require('tls'), cp = require('child_process'), zlib = require('zlib');
 process.on('uncaughtException', e => { console.error('UNCAUGHT', e); process.exit(2); });
 process.on('unhandledRejection', e => { console.error('UNHANDLED', e); process.exit(2); });
 
@@ -26,7 +26,7 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
 (async () => {
   // The fake YouTube. What it answers is chosen by the request path.
   const HTML = '<html><head><meta http-equiv="Content-Security-Policy" content="default-src none"></head><body>TV</body></html>';
-  let seen = [], floodSent = 0, upOpen = 0;
+  let seen = [], floodSent = 0, upOpen = 0, flakyCalls = 0, flakyPostCalls = 0;
   const upstream = tls.createServer(leaf, sock => {
     sock.on('error', () => {});
     upOpen++; sock.on('close', () => { upOpen--; });
@@ -37,9 +37,22 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
       const head = buf.slice(0, i), first = head.split('\r\n')[0], p = first.split(' ')[1];
       seen.push(head);
       const big = 'x-big: ' + 'a'.repeat(20000) + '\r\n';          // 20 KB header: over Node 12's 8 KB limit
-      if (p.indexOf('/tv') === 0) {
+      if (p === '/tv?gzip=1') {
+        const gz = zlib.gzipSync(Buffer.from(HTML, 'utf8'));
+        sock.write('HTTP/1.1 200 OK\r\ncontent-type: Text/HTML; charset=utf-8\r\ncontent-encoding: gzip\r\netag: "gz1"\r\ncontent-length: ' + gz.length + '\r\n\r\n');
+        sock.end(gz);
+      } else if (p === '/tv?cut=1') {
+        sock.write('HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: 500\r\n\r\n<html><body>partial');
+        setTimeout(() => sock.destroy(), 30);
+      } else if (p === '/flaky-get') {
+        if (++flakyCalls === 1) { sock.destroy(); return; }
+        sock.end('HTTP/1.1 200 OK\r\ncontent-length: 9\r\n\r\nrecovered');
+      } else if (p === '/flaky-post') {
+        ++flakyPostCalls;
+        sock.destroy();
+      } else if (p.indexOf('/tv') === 0) {
         const half = Math.floor(HTML.length / 2);
-        sock.end('HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-security-policy: default-src none\r\nalt-svc: h3=":443"\r\ntransfer-encoding: chunked\r\nset-cookie: a=1\r\nset-cookie: b=2\r\n' + big + '\r\n' +
+        sock.end('HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-security-policy: default-src none\r\nalt-svc: h3=":443"\r\netag: "tv1"\r\ntransfer-encoding: chunked\r\nset-cookie: a=1\r\nset-cookie: b=2\r\n' + big + '\r\n' +
           half.toString(16) + '\r\n' + HTML.slice(0, half) + '\r\n' + (HTML.length - half).toString(16) + '\r\n' + HTML.slice(half) + '\r\n0\r\n\r\n');
       } else if (p === '/plain') {
         sock.end('HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\ncontent-length: 5\r\n' + big + '\r\nhello');
@@ -74,7 +87,10 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
   const realConnect = tls.connect;
   tls.connect = function (o) { return realConnect.call(tls, { host: '127.0.0.1', port: upPort, servername: o.servername, ca: CA }); };
   const realNet = net.connect;                         // a plain tunnel to "www.youtube.com" must not leave this machine
-  net.connect = function (p, h) { return h === 'www.youtube.com' ? realNet.call(net, upPort, '127.0.0.1') : realNet.apply(net, arguments); };
+  net.connect = function (p, h) {
+    const host = (typeof p === 'object' && p) ? p.host : h;
+    return host === 'www.youtube.com' ? realNet.call(net, upPort, '127.0.0.1') : realNet.apply(net, arguments);
+  };
   const appTls = o => realConnect.call(tls, o);       // the test acting as the YouTube app keeps the real one
 
   // --- the client alone
@@ -88,6 +104,24 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
   await assert.rejects(get('/garbage'), /not an HTTP response|closed before/);
   await assert.rejects(get('/hang', { timeout: 300 }), /timeout/);
   await assert.rejects(get('/cut'), /cut short/, 'a chunked body that stops early is an error, not a quiet end');
+  // verify broken() does NOT also fire 'end' after emitting 'error'
+  {
+    let endFired = false, errFired = false;
+    await new Promise(resolve => client.request({ host: 'www.youtube.com', method: 'GET', path: '/cut', headers: { host: 'www.youtube.com' }, timeout: 1500 }, null, (e, rr) => {
+      assert.equal(e, null);
+      rr.body.on('error', () => { errFired = true; setTimeout(resolve, 40); });
+      rr.body.on('end', () => { endFired = true; });
+      rr.body.resume();
+    }));
+    assert.equal(errFired, true);
+    assert.equal(endFired, false, 'broken stream must not emit end after error');
+  }
+  // transient early close retries once for GET, never for POST
+  r = await get('/flaky-get');
+  assert.equal(r.body, 'recovered', 'GET retries once on transient early close');
+  assert.equal(flakyCalls, 2);
+  await assert.rejects(get('/flaky-post', { method: 'POST' }), /closed before/);
+  assert.equal(flakyPostCalls, 1, 'POST is never retried');
   await assert.rejects(get('/short'), /cut short/, 'a body shorter than its content-length is an error');
   r = await get('/continue');
   assert.equal(r.status, 200); assert.equal(r.body, 'ok', '100 Continue and 103 Early Hints are skipped, the real answer is returned');
@@ -120,7 +154,8 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
   const port = await free(), logs = [];
   let script = { body: Buffer.from('/*script*/'), version: '7' };
   let pages = 0;
-  const proxy = proxyLib.createProxy({ host: '127.0.0.1', port, log: m => logs.push(m), leaf: () => leaf, script: () => script, onPage: () => { pages++; }, maxConnections: 60 });
+  let leafNow = leaf;
+  const proxy = proxyLib.createProxy({ host: '127.0.0.1', port, log: m => logs.push(m), leaf: () => leafNow, script: () => script, onPage: () => { pages++; }, maxConnections: 60 });
   await new Promise((res, rej) => proxy.listen(e => e ? rej(e) : res()));
   const open = target => new Promise((resolve, reject) => { const s = net.connect(port, '127.0.0.1', () => s.write('CONNECT ' + target + ' HTTP/1.1\r\nHost: ' + target + '\r\n\r\n')); s.once('data', d => resolve({ s, head: d.toString() })); s.on('close', () => resolve({ s, head: '' })); s.on('error', reject); });
   const viaProxy = async (rawRequest) => {
@@ -130,18 +165,75 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
     t.write(rawRequest);
     return await new Promise(res => { let b = Buffer.alloc(0); t.on('data', d => { b = Buffer.concat([b, d]); }); t.on('close', () => res(b.toString())); t.on('end', () => res(b.toString())); setTimeout(() => res(b.toString()), 4000); });
   };
-  let out = await viaProxy('GET /tv?launch=menu HTTP/1.1\r\nHost: www.youtube.com\r\nAccept-Encoding: gzip\r\nConnection: close\r\n\r\n');
+  let out = await viaProxy('GET /tv?launch=menu HTTP/1.1\r\nHost: www.youtube.com\r\nAccept-Encoding: gzip\r\nIf-None-Match: "old"\r\nIf-Modified-Since: Wed, 21 Oct 2015 07:28:00 GMT\r\nRange: bytes=0-50\r\nConnection: close\r\n\r\n');
   assert.match(out, /^HTTP\/1\.1 200 OK/);
   assert.ok(out.includes('<script src="/vetro-youtube/userscript.js?v=7"></script></body>'), 'the script tag is in the page');
   assert.ok(!out.includes('content="default-src none"'), 'the page\'s own CSP meta is gone');
   assert.ok(out.toLowerCase().includes('content-security-policy: ' + inject.CSP.toLowerCase()), 'our CSP is the only one');
   assert.ok(!out.toLowerCase().includes('alt-svc'), 'no QUIC hint reaches the app');
+  assert.ok(!/\betag:/i.test(out), 'etag is stripped from rewritten /tv');
+  assert.match(out, /cache-control: no-store, no-cache, must-revalidate/i, 'rewritten /tv forces no-store');
   assert.ok(/set-cookie: a=1/i.test(out) && /set-cookie: b=2/i.test(out), 'cookies pass through');
   assert.equal(pages, 1);
   assert.match(seen[seen.length - 1], /accept-encoding: identity/i, 'the /tv page is asked for uncompressed so it can be edited');
+  assert.doesNotMatch(seen[seen.length - 1], /if-none-match|if-modified-since|range:/i, 'conditional/range headers are stripped on /tv');
+  // gzip-compressed /tv with mixed-case Content-Type is decompressed and rewritten cleanly
+  out = await viaProxy('GET /tv?gzip=1 HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n');
+  assert.match(out, /^HTTP\/1\.1 200 OK/);
+  assert.ok(out.includes('<script src="/vetro-youtube/userscript.js?v=7"></script></body>'), 'gzip /tv is decompressed before rewriting');
+  assert.ok(!/content-encoding:/i.test(out), 'content-encoding is removed after decompressing');
+  assert.equal(pages, 2);
+  // truncated /tv returns 502 without double-write or incrementing pages
+  out = await viaProxy('GET /tv?cut=1 HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n');
+  assert.match(out, /^HTTP\/1\.1 502/);
+  assert.equal(pages, 2, 'truncated /tv is not counted as rewritten');
+  // resilient TLS loading: bad key/cert pair mid-rotation falls back to last-good TLS server
+  leafNow = { key: Buffer.from('not-a-valid-key'), cert: 'not-a-valid-cert' };
+  out = await viaProxy('GET /plain HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n');
+  assert.match(out, /^HTTP\/1\.1 200 OK/, 'falls back to last-good TLS server on bad cert rotation');
+  leafNow = leaf;
+  // pipelined TLS ClientHello right after CONNECT still gets MITM'd
+  {
+    const got = await new Promise((resolve, reject) => {
+      let headBuf = Buffer.alloc(0), upgraded = false;
+      const s2 = net.connect(port, '127.0.0.1');
+      const chunks = [];
+      const pipeSock = new (require('stream').Duplex)({
+        read() {},
+        write(chunk, enc, cb) {
+          if (!upgraded) {
+            upgraded = true;
+            s2.write(Buffer.concat([Buffer.from('CONNECT www.youtube.com:443 HTTP/1.1\r\nHost: www.youtube.com:443\r\n\r\n'), chunk]));
+          } else {
+            s2.write(chunk);
+          }
+          cb();
+        }
+      });
+      const t2 = appTls({ servername: 'www.youtube.com', ca: CA, socket: pipeSock });
+      s2.on('data', d => {
+        if (headBuf !== null) {
+          headBuf = Buffer.concat([headBuf, d]);
+          const idx = headBuf.indexOf('\r\n\r\n');
+          if (idx < 0) return;
+          const tail = headBuf.slice(idx + 4);
+          headBuf = null;
+          if (tail.length) pipeSock.push(tail);
+          return;
+        }
+        pipeSock.push(d);
+      });
+      t2.on('secureConnect', () => { t2.write('GET /vetro-youtube/userscript.js?v=7 HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n'); });
+      t2.on('data', d => chunks.push(d));
+      t2.on('end', () => { s2.destroy(); resolve(Buffer.concat(chunks).toString()); });
+      t2.on('error', e => { s2.destroy(); reject(e); });
+      setTimeout(() => { s2.destroy(); resolve(Buffer.concat(chunks).toString()); }, 3000);
+    });
+    assert.match(got, /^HTTP\/1\.1 200 OK[\s\S]*\/\*script\*\//, 'pipelined CONNECT + ClientHello still MITMs');
+  }
   out = await viaProxy('GET /plain HTTP/1.1\r\nHost: www.youtube.com\r\nAccept-Encoding: gzip\r\nConnection: close\r\n\r\n');
   assert.match(out, /^HTTP\/1\.1 200 OK/); assert.ok(out.endsWith('hello')); assert.match(seen[seen.length - 1], /accept-encoding: gzip/i, 'everything else is passed as the app asked');
-  assert.equal(pages, 1, 'only /tv is rewritten');
+  assert.equal(pages, 2, 'only /tv is rewritten');
   out = await viaProxy('POST /echo HTTP/1.1\r\nHost: www.youtube.com\r\nContent-Length: 4\r\nConnection: close\r\n\r\nabcd');
   assert.match(out, /^HTTP\/1\.1 200/);
   out = await viaProxy('GET /garbage HTTP/1.1\r\nHost: www.youtube.com\r\nConnection: close\r\n\r\n');
@@ -169,11 +261,21 @@ const leaf = { key: fs.readFileSync(path.join(tmp, 'leaf.key')), cert: fs.readFi
   // a request line the HTTP parser refuses, and a Host that is not YouTube
   { const out2 = await viaProxy('NOT HTTP\r\n\r\n'); assert.ok(typeof out2 === 'string'); }
   assert.match(await viaProxy('GET /tv HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n'), /^HTTP\/1\.1 421/);
-  // a tunnel to a host that does not exist: the client's connection is closed, nothing throws
-  { const c = await open('nonexistent.invalid:443').catch(() => null); assert.equal(c && c.head, '', 'no answer, the connection is closed'); }
+  // a tunnel to a host that does not exist: returns proper HTTP 502 (never silent drop) so Chromium doesn't blacklist the proxy
+  { const c = await open('nonexistent.invalid:443').catch(() => null); assert.match(c && c.head || '', /^HTTP\/1\.1 502/, 'failed CONNECT replies 502 instead of dropping'); if (c && c.s) c.s.destroy(); }
+  // invalid bracketed IPv6 literal returns 400
+  { const c = await open('[::::]:443').catch(() => null); assert.match(c && c.head || '', /^HTTP\/1\.1 400/, 'invalid IPv6 literal returns 400'); if (c && c.s) c.s.destroy(); }
   await sleep(300);
 
-  // --- connection cap
+  // --- connection cap & single counting of live tunnels
+  {
+    const baseLive = proxy.stats().live;
+    const one = await open('127.0.0.1:' + upPort);
+    assert.match(one.head, /^HTTP\/1\.1 200/);
+    assert.equal(proxy.stats().live, baseLive + 1, 'tunnel counts as 1 live connection, not 2');
+    one.s.destroy();
+    await sleep(100);
+  }
   const socks = [];
   for (let i = 0; i < 100; i++) { const s = net.connect(port, '127.0.0.1'); s.on('error', () => {}); socks.push(s); }
   await sleep(600);

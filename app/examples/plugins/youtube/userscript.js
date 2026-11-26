@@ -20,7 +20,7 @@ var MAX_BYTES = 3 * 1024 * 1024;
 function sha256(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
 
 function UserScript(dir) {
-    var file = path.join(dir, 'userscript-' + VERSION + '.js'), cached = null;
+    var file = path.join(dir, 'userscript-' + VERSION + '.js'), cached = null, waiters = null;
 
     // The verified bytes, or null. Checked again on every read from disk.
     this.load = function () {
@@ -36,16 +36,27 @@ function UserScript(dir) {
     this.ensure = function (cb) {
         var have = this.load();
         if (have) return cb(null, have);
+        if (waiters) { waiters.push(cb); return; }
+        waiters = [cb];
+        function done(err, val) {
+            var list = waiters || [];
+            waiters = null;
+            list.forEach(function (fn) { fn(err, val); });
+        }
         client.fetchBuffer(HOST, URL_PATH, MAX_BYTES, function (err, buf, status) {
-            if (err) return cb(err);
-            if (status !== 200) return cb(new Error('The script download answered HTTP ' + status));
-            if (sha256(buf) !== SHA256) return cb(new Error('The downloaded script does not match the expected SHA-256: not used'));
+            if (err) return done(err);
+            if (status !== 200) return done(new Error('The script download answered HTTP ' + status));
+            if (sha256(buf) !== SHA256) return done(new Error('The downloaded script does not match the expected SHA-256: not used'));
+            var tmp = file + '.' + process.pid + '.' + Date.now() + '.tmp';
             try {
-                fs.writeFileSync(file + '.tmp', buf, { mode: 420 });
-                fs.renameSync(file + '.tmp', file);
-            } catch (e) { return cb(new Error('Could not save the script: ' + e.message)); }
+                fs.writeFileSync(tmp, buf, { mode: 420 });
+                fs.renameSync(tmp, file);
+            } catch (e) {
+                try { fs.unlinkSync(tmp); } catch (ignored) { /* best effort */ }
+                return done(new Error('Could not save the script: ' + e.message));
+            }
             cached = { body: buf, version: VERSION };
-            cb(null, cached);
+            done(null, cached);
         });
     };
     this.forget = function () { cached = null; };

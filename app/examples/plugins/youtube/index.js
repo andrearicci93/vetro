@@ -38,28 +38,32 @@ var PAGE = '<!doctype html><meta charset="utf-8"><meta name="color-scheme" conte
     'function $(i){return document.getElementById(i)}' +
     'function say(t,bad){var m=$("msg");m.textContent=t;m.className=bad?"err":""}' +
     'function post(p,b){return fetch(p,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(b||{})}).then(function(r){return r.json()})}' +
-    'var busy=false;' +
+    'var busy=false,pollBusy=false,pollSeq=0,cleanArmed=false,cleanReset=0;' +
+    'function resetClean(){cleanArmed=false;clearTimeout(cleanReset);$("clean").textContent="Remove certificate and files";}' +
     'function show(d){$("s_setup").textContent=d.setup==="ready"?"ready":d.setup==="working"?"setting up…":d.setup==="nocobalt"?"Samsung YouTube not found":d.setup==="error"?"error: "+d.error:"not made yet";' +
     '$("s_script").textContent=d.script==="ready"?"TizenTube "+d.scriptVersion:d.script==="error"?"error: "+d.scriptError:"not downloaded yet";' +
     '$("s_proxy").textContent=d.proxy==="up"?"listening on "+d.proxyAddress:d.proxyError?"error: "+d.proxyError:"stopped";' +
     '$("s_pages").textContent=d.pages?d.pages+(d.lastPage?" (last "+d.lastPage+")":""):"none yet";' +
     'if(!busy){$("tile").checked=!!d.tileOn}' +
     '$("tilenote").textContent=d.tileState==="on"?"On.":d.tileState==="waiting"?"Waiting: "+d.tileNote:d.tileState==="unsupported"||d.tileState==="error"?d.tileNote:""}' +
-    'function poll(){fetch("status").then(function(r){return r.json()}).then(show).catch(function(){})}' +
-    '$("open").onclick=function(){say("Preparing and starting… the first time takes up to a minute.");post("open").then(function(d){say(d.ok?(d.warning||"YouTube is starting on the TV."):d.error,!d.ok||!!d.warning);poll()})};' +
-    '$("close").onclick=function(){post("close").then(function(){say("YouTube closed.");poll()})};' +
-    '$("tile").onchange=function(){busy=true;var on=$("tile").checked;say(on?"Preparing…":"Switching off…");post("tile",{on:on}).then(function(d){busy=false;say(d.ok?"":d.error,!d.ok);poll()},function(){busy=false})};' +
-    '$("clean").onclick=function(){if(!confirm("Remove the certificate, the downloaded script and the copy of YouTube’s files?"))return;post("cleanup").then(function(d){say(d.ok?"Removed.":d.error,!d.ok);poll()})};' +
-    'poll();setInterval(poll,3000);' +
+    'function poll(force){if(pollBusy&&!force)return;pollBusy=true;var seq=++pollSeq;fetch("status").then(function(r){return r.json()}).then(function(d){if(seq===pollSeq){pollBusy=false;show(d)}},function(){if(seq===pollSeq)pollBusy=false})}' +
+    'function fail(e){say(e&&e.message||"Request failed",true)}' +
+    '$("open").onclick=function(){say("Preparing and starting… the first time takes up to a minute.");post("open").then(function(d){say(d.ok?(d.warning||"YouTube is starting on the TV."):d.error,!d.ok||!!d.warning);poll(true)}).catch(fail)};' +
+    '$("close").onclick=function(){post("close").then(function(d){say(d&&d.ok===false?(d.error||"Failed to close."):"YouTube closed.",d&&d.ok===false);poll(true)}).catch(fail)};' +
+    '$("tile").onchange=function(){busy=true;var on=$("tile").checked;say(on?"Preparing…":"Switching off…");post("tile",{on:on}).then(function(d){busy=false;say(d.ok?"":d.error,!d.ok);poll(true)},function(e){busy=false;fail(e)})};' +
+    '$("clean").onclick=function(){if(!cleanArmed){cleanArmed=true;$("clean").textContent="Click again to remove files";clearTimeout(cleanReset);cleanReset=setTimeout(resetClean,5000);return;}resetClean();post("cleanup").then(function(d){say(d.ok?"Removed.":d.error,!d.ok);poll(true)}).catch(fail)};' +
+    'document.addEventListener("visibilitychange",function(){if(!document.hidden)poll(true)});' +
+    'poll();setInterval(function(){if(!document.hidden)poll()},3000);' +
     '</script></body>';
 
 module.exports = function (ctx) {
     var cfg = ctx.config.get();
     var PORT = typeof cfg.port === 'number' && cfg.port % 1 === 0 && cfg.port >= 1024 && cfg.port < 65536 ? cfg.port : DEFAULT_PORT;
     var script = new scriptLib.UserScript(setup.CACHE);
-    var logLines = [], preparing = null, alive = false, timer = null;
+    var logLines = [], preparing = null, settingUp = null, alive = false, timer = null;
     var tileOn = cfg.tile === true;
     var lastSetup = 0, nextScriptTry = 0;
+    var leafCache = null, leafStamp = null;
     var st = { setup: 'idle', error: null, script: 'idle', scriptError: null, proxyError: null, pages: 0, lastPage: null, tileState: 'off', tileNote: '' };
 
     function log(m) { logLines.push(new Date().toISOString().slice(11, 19) + ' ' + m); if (logLines.length > 150) logLines.shift(); }
@@ -73,11 +77,25 @@ module.exports = function (ctx) {
     }
 
     function readLeaf() {
+        var keyFile = path.join(setup.DIR, 'leaf.key');
+        var crtFile = path.join(setup.DIR, 'leaf.crt');
+        var caFile = path.join(setup.DIR, 'ca.crt');
         try {
-            var key = fs.readFileSync(path.join(setup.DIR, 'leaf.key'));
-            var cert = fs.readFileSync(path.join(setup.DIR, 'leaf.crt'), 'utf8') + fs.readFileSync(path.join(setup.DIR, 'ca.crt'), 'utf8');
-            return { key: key, cert: cert };
-        } catch (e) { return null; }
+            var ks = fs.statSync(keyFile), cs = fs.statSync(crtFile), as = fs.statSync(caFile);
+            var stamp = ks.mtime.getTime() + ':' + ks.size + '|' + cs.mtime.getTime() + ':' + cs.size + '|' + as.mtime.getTime() + ':' + as.size;
+            if (leafCache && leafStamp === stamp) return leafCache;
+            var key = fs.readFileSync(keyFile);
+            var cert = fs.readFileSync(crtFile, 'utf8') + fs.readFileSync(caFile, 'utf8');
+            leafCache = { key: key, cert: cert };
+            leafStamp = stamp;
+            return leafCache;
+        } catch (e) {
+            if (preparing && leafCache) return leafCache;
+            if (settingUp && leafCache) return leafCache;
+            leafCache = null;
+            leafStamp = null;
+            return null;
+        }
     }
     function contentThere() { try { return fs.statSync(path.join(setup.CONTENT, 'ssl', 'certs')).isDirectory(); } catch (e) { return false; } }
 
@@ -98,13 +116,20 @@ module.exports = function (ctx) {
     }
 
     function runSetup() {
+        if (settingUp) return settingUp;
         st.setup = 'working'; st.error = null;
-        return exec(setup.setupScript(), 90000).then(function (r) {
+        settingUp = exec(setup.setupScript(), 90000).then(function (r) {
+            settingUp = null;
             var out = String((r && r.stdout) || '');
             if (/^nocobalt$/m.test(out)) { st.setup = 'nocobalt'; throw new Error('Samsung’s YouTube app was not found on this TV'); }
             if (!/^ready$/m.test(out)) { st.setup = 'error'; st.error = String((r && r.stderr) || out || 'setup failed').slice(0, 200); throw new Error(st.error); }
             st.setup = 'ready'; lastSetup = Date.now();
-        }, function (e) { if (st.setup === 'working') { st.setup = 'error'; st.error = e.message; } throw e; });
+        }, function (e) {
+            settingUp = null;
+            if (st.setup === 'working') { st.setup = 'error'; st.error = e.message; }
+            throw e;
+        });
+        return settingUp;
     }
 
     function runScript() {
@@ -145,7 +170,20 @@ module.exports = function (ctx) {
 
     // Makes the row match what is wanted: patched when tile is on and everything is up, original otherwise. Idempotent.
     // The decision is taken when the job runs, not when it is asked for; calls made while one is waiting share it.
-    var waiting = null, restoreTries = 0, retryTimer = null;
+    var waiting = null, restoreTries = 0, retryTimer = null, applyTries = 0, retrySoonTimer = null;
+    function scheduleSoon() {
+        if (!alive || !tileOn || retrySoonTimer || applyTries >= 20) return;
+        applyTries++;
+        retrySoonTimer = setTimeout(function () {
+            retrySoonTimer = null;
+            if (!alive || !tileOn) return;
+            var chain = !(readLeaf() && script.load() && contentThere())
+                ? prepare().catch(function (e) { log('retry: ' + e.message); scheduleSoon(); })
+                : (!proxy.listening() ? listen().catch(function (e) { log('proxy: ' + e.message); }) : Promise.resolve());
+            chain.then(function () { return reconcile(); }).catch(function (e) { log('retry: ' + e.message); });
+        }, 3000);
+        if (retrySoonTimer && retrySoonTimer.unref) retrySoonTimer.unref();
+    }
     function reconcile() {
         if (waiting) return waiting;
         waiting = serial(function () {
@@ -158,20 +196,20 @@ module.exports = function (ctx) {
                     if (state === 'error' || state === 'raced' || state === 'patched' || state === 'stuck') {
                         log('row restore: ' + state);
                         // The flags are still there. Try again soon, a few times; the direct:// fallback keeps YouTube opening meanwhile.
-                        if (restoreTries++ < 5 && !retryTimer) {
-                            retryTimer = setTimeout(function () { retryTimer = null; reconcile(); }, 5000);
+                        if (alive && restoreTries++ < 5 && !retryTimer) {
+                            retryTimer = setTimeout(function () { retryTimer = null; if (alive) reconcile(); }, 5000);
                             if (retryTimer.unref) retryTimer.unref();
                         }
                     } else restoreTries = 0;
                     return state;
                 }
                 restoreTries = 0;
-                if (state === 'patched') { if (st.tileState !== 'on') log('Samsung’s YouTube button now opens the patched app'); st.tileState = 'on'; st.tileNote = ''; }
-                else if (state === 'absent') { st.tileState = 'unsupported'; st.tileNote = 'This TV has no entry for Samsung’s YouTube app that can be changed.'; }
-                else if (state === 'foreign') { st.tileState = 'unsupported'; st.tileNote = 'Samsung’s YouTube settings are not in the expected form: left as they are.'; }
-                else { st.tileState = 'error'; st.tileNote = 'The TV’s app list could not be updated (' + state + '); trying again.'; log('row: ' + state); }
+                if (state === 'patched') { applyTries = 0; if (st.tileState !== 'on') log('Samsung’s YouTube button now opens the patched app'); st.tileState = 'on'; st.tileNote = ''; }
+                else if (state === 'absent') { applyTries = 0; st.tileState = 'unsupported'; st.tileNote = 'This TV has no entry for Samsung’s YouTube app that can be changed.'; }
+                else if (state === 'foreign') { applyTries = 0; st.tileState = 'unsupported'; st.tileNote = 'Samsung’s YouTube settings are not in the expected form: left as they are.'; }
+                else { st.tileState = 'error'; st.tileNote = 'The TV’s app list could not be updated (' + state + '); trying again.'; log('row: ' + state); scheduleSoon(); }
                 return state;
-            }, function (e) { st.tileState = 'error'; st.tileNote = 'Could not reach the TV’s app list: ' + e.message; log('row: ' + e.message); return 'error'; });
+            }, function (e) { st.tileState = 'error'; st.tileNote = 'Could not reach the TV’s app list: ' + e.message; log('row: ' + e.message); if (!why) scheduleSoon(); return 'error'; });
         });
         return waiting;
     }
@@ -179,11 +217,12 @@ module.exports = function (ctx) {
     // Once a minute while the button is on: keeps the proxy up, renews what expires, retries a failed download, and puts the row
     // right again if Samsung rewrote it (an app update does).
     function tick() {
-        if (!alive || !tileOn) return;
+        if (!alive || !tileOn || preparing || settingUp) return;
+        applyTries = 0;
         var chain = Promise.resolve();
-        if (Date.now() - lastSetup > SETUP_EVERY_MS && !preparing) chain = chain.then(function () { return runSetup().catch(function (e) { log('setup: ' + e.message); }); });
+        if (Date.now() - lastSetup > SETUP_EVERY_MS) chain = chain.then(function () { return runSetup().catch(function (e) { log('setup: ' + e.message); }); });
         if (!script.load() && Date.now() > nextScriptTry && contentThere()) chain = chain.then(function () { return runScript().catch(noop); });
-        chain.then(function () { if (!proxy.listening() && readLeaf() && script.load()) return listen().catch(function (e) { log('proxy: ' + e.message); }); })
+        chain.then(function () { if (!proxy.listening() && readLeaf() && script.load() && contentThere()) return listen().catch(function (e) { log('proxy: ' + e.message); }); })
             .then(function () { return reconcile(); }).catch(function (e) { log('tick: ' + e.message); });
     }
 
@@ -205,25 +244,32 @@ module.exports = function (ctx) {
     }
 
     return {
-        // Starts the proxy when a certificate and script from an earlier run are there (a YouTube that was left open keeps
-        // working after Vetro restarts), and brings the row in line: patched when the button is on, original otherwise.
+        // Starts the proxy only when certificate, script AND content folder from an earlier run are all present (preventing
+        // MITM-before-content TLS errors), and brings the row in line: patched when the button is on, original otherwise.
         // A first run does nothing until the page asks.
         start: function () {
             alive = true;
+            restoreTries = 0;
+            applyTries = 0;
+            if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+            if (retrySoonTimer) { clearTimeout(retrySoonTimer); retrySoonTimer = null; }
             if (timer) clearInterval(timer);
             timer = setInterval(function () { try { tick(); } catch (e) { log('tick: ' + e.message); } }, TICK_MS);
             if (timer.unref) timer.unref();
-            var ready = readLeaf() && script.load() ? listen().catch(function (e) { log('start: ' + e.message); }) : Promise.resolve();
-            ready.then(function () { return tileOn && !(readLeaf() && script.load() && contentThere()) ? prepare().catch(function (e) { log('start: ' + e.message); }) : null; })
-                .then(function () { return reconcile(); }).catch(function (e) { log('start: ' + e.message); });
+            var allReady = !!(readLeaf() && script.load() && contentThere());
+            var ready = allReady ? listen().catch(function (e) { log('start: ' + e.message); }) : Promise.resolve();
+            ready.then(function () {
+                return tileOn && !allReady ? prepare().catch(function (e) { log('start: ' + e.message); scheduleSoon(); }) : null;
+            }).then(function () { return reconcile(); }).catch(function (e) { log('start: ' + e.message); });
         },
-        // Puts the row back first: with the plugin off nothing is there to answer the proxy. A YouTube that is open keeps running
-        // (its proxy list falls back to a direct connection), so nothing is closed here.
+        // Stops accepting new proxy traffic right away (YouTube falls back to direct://) and puts the tile row back.
         stop: function () {
             alive = false;
             if (timer) { clearInterval(timer); timer = null; }
-            // The proxy stays up until the row is back (a YouTube started in between still finds it), then stops listening.
-            // Resolves when that is done, so the fallback timer never outlives the stop.
+            if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+            if (retrySoonTimer) { clearTimeout(retrySoonTimer); retrySoonTimer = null; }
+            proxy.close();
+            // Resolves once the row is restored or timeout elapses, so a fallback timer never outlives stop().
             return new Promise(function (resolve) {
                 var done = false, late = null;
                 var shut = function () {
@@ -239,6 +285,15 @@ module.exports = function (ctx) {
             });
         },
         status: function () { return { running: alive, proxy: proxy.listening(), setup: st.setup, script: script.load() ? scriptLib.VERSION : null, tile: st.tileState }; },
+        onAgent: function (connected) {
+            if (!connected || !alive || !tileOn) return;
+            applyTries = 0;
+            if (retrySoonTimer) { clearTimeout(retrySoonTimer); retrySoonTimer = null; }
+            var chain = !(readLeaf() && script.load() && contentThere())
+                ? prepare().catch(function (e) { log('agent: ' + e.message); scheduleSoon(); })
+                : (!proxy.listening() ? listen().catch(function (e) { log('proxy: ' + e.message); }) : Promise.resolve());
+            chain.then(function () { return reconcile(); }).catch(function (e) { log('agent: ' + e.message); });
+        },
 
         route: function (req, res, sub) {
             if (sub === 'ui' && req.method === 'GET') {
@@ -251,7 +306,7 @@ module.exports = function (ctx) {
             if (req.method !== 'POST') return false;
             if (sub === 'open') {
                 var warning = null;
-                prepare().then(function (r) { warning = r.warning; return ctx.execute(setup.launchScript(PROXY_HOST, PORT), 25000); }).then(function (r) {
+                prepare().then(function (r) { warning = r.warning; return exec(setup.launchScript(PROXY_HOST, PORT), 25000); }).then(function (r) {
                     var out = String((r && r.stdout) || '');
                     if (!/successfully launched/.test(out)) throw new Error('YouTube did not start: ' + out.replace(/\s+/g, ' ').slice(0, 120));
                     log('YouTube started');
@@ -280,7 +335,7 @@ module.exports = function (ctx) {
                 serial(function () {
                     return tile.restore(exec).then(function (state) {
                         if (state !== 'original' && state !== 'absent' && state !== 'foreign') throw new Error('Samsung’s YouTube button could not be put back (' + state + '): nothing was removed');
-                        proxy.close(true); script.forget();
+                        proxy.close(true); script.forget(); leafCache = null; leafStamp = null;
                         return ctx.execute(setup.cleanupScript(), 30000);
                     });
                 }).then(function () { st.setup = 'idle'; st.script = 'idle'; st.tileState = 'off'; st.tileNote = ''; lastSetup = 0; json(res, 200, { ok: true }); },

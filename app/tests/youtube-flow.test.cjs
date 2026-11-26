@@ -14,17 +14,18 @@ const WRAPPER = '9Ur5IzDKqV.TizenYouTube', KEY = null;
 const REST = ORIGINAL.replace('--base_url=https://www.youtube.com/tv ', '');
 const BODY = 'console.log("userscript")';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function until(fn, ms, what) { const t = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t > ms) throw new Error('timed out: ' + what); await sleep(50); } }
+async function until(fn, ms, what) { const budget = process.platform === 'win32' ? Math.max(ms * 3, 25000) : ms; const t = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t > budget) throw new Error('timed out: ' + what); await sleep(50); } }
 function freePort() { return new Promise(r => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); }); }
 
 async function stage(opts) {
   opts = opts || {};
+  const posix = s => s.split(path.sep).join('/');
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-yt-flow-')));
-  const D = path.join(root, 'vy'), C = path.join(root, 'vyt'), db = path.join(root, 'pkg.db'), cobalt = path.join(root, 'cobalt'), plug = path.join(root, 'plugin'), bin = path.join(root, 'bin');
+  const D = posix(path.join(root, 'vy')), C = posix(path.join(root, 'vyt')), db = posix(path.join(root, 'pkg.db')), cobalt = posix(path.join(root, 'cobalt')), plug = path.join(root, 'plugin'), bin = path.join(root, 'bin');
   fs.mkdirSync(path.join(cobalt, 'content', 'ssl', 'certs'), { recursive: true }); fs.mkdirSync(path.join(cobalt, 'lib'), { recursive: true });
   fs.writeFileSync(path.join(cobalt, 'content', 'ssl', 'certs', 'aaaa.0'), 'x'); fs.writeFileSync(path.join(cobalt, 'lib', 'libcobalt.so'), 'x');
   fs.mkdirSync(plug); fs.mkdirSync(bin);
-  for (const n of ['chown', 'app_launcher']) { fs.writeFileSync(path.join(bin, n), n === 'chown' ? '#!/bin/sh\nexit 0\n' : '#!/bin/sh\necho "$@" >> ' + path.join(root, 'launches') + '\necho "... successfully launched pid = 1"\n'); fs.chmodSync(path.join(bin, n), 0o755); }
+  for (const n of ['chown', 'app_launcher']) { fs.writeFileSync(path.join(bin, n), n === 'chown' ? '#!/bin/sh\nexit 0\n' : '#!/bin/sh\necho "$@" >> ' + posix(path.join(root, 'launches')) + '\necho "... successfully launched pid = 1"\n'); fs.chmodSync(path.join(bin, n), 0o755); }
   const port = await freePort();
   const esc = s => s.replace(/\//g, '\\/');
   for (const f of fs.readdirSync(SRC).filter(f => f.endsWith('.js'))) {
@@ -49,7 +50,7 @@ async function stage(opts) {
     execute(cmd) {
       if (gate.ms) gate.started++;
       return new Promise((resolve) => setTimeout(resolve, gate.ms)).then(() => new Promise((resolve) => {
-        cp.execFile('sh', ['-c', cmd], { env: Object.assign({}, process.env, { PATH: bin + ':' + process.env.PATH }), maxBuffer: 8 << 20 }, (err, stdout, stderr) => resolve({ exit_code: err ? err.code || 1 : 0, stdout, stderr }));
+        cp.execFile('sh', ['-c', cmd], { env: Object.assign({}, process.env, { PATH: bin + path.delimiter + process.env.PATH }), maxBuffer: 8 << 20 }, (err, stdout, stderr) => resolve({ exit_code: err ? err.code || 1 : 0, stdout, stderr }));
       }));
     }
   };
@@ -120,7 +121,7 @@ async function stage(opts) {
     client.fetchBuffer = (h, p, m, cb) => cb(new Error('offline'));
     s.plugin.start();
     await until(async () => (await s.status()).setup === 'ready', 8000, 'setup done');
-    await sleep(600);
+    await until(async () => { const cur = await s.status(); return cur.proxy === 'up' && cur.tileState === 'waiting' && /script/.test(cur.tileNote); }, 4000, 'waiting on script');
     assert.equal(s.row(), ORIGINAL, 'never patched without the script');
     let st = await s.status();
     assert.equal(st.tileState, 'waiting'); assert.match(st.tileNote, /script/);
@@ -233,16 +234,74 @@ async function stage(opts) {
     s.seedScript(); s.plugin.start();
     await s.call('tile', 'POST', { on: true });
     const setupLib = require(path.join(s.root, 'plugin', 'setup.js'));
-    const env = Object.assign({}, process.env, { PATH: path.join(s.root, 'bin') + ':' + process.env.PATH });
+    const env = Object.assign({}, process.env, { PATH: path.join(s.root, 'bin') + path.delimiter + process.env.PATH });
     const caBefore = fs.readFileSync(path.join(s.D, 'ca.key'), 'utf8');
-    fs.unlinkSync(path.join(s.D, 'leaf.key')); fs.symlinkSync(path.join(s.D, 'ca.key'), path.join(s.D, 'leaf.key'));
-    fs.unlinkSync(path.join(s.D, 'content.stamp')); fs.symlinkSync('/nonexistent-target', path.join(s.D, 'content.stamp'));
-    const r = cp.spawnSync('sh', ['-c', setupLib.setupScript()], { env, encoding: 'utf8' });
-    assert.match(r.stdout, /^ready$/m, r.stderr);
-    assert.equal(fs.lstatSync(path.join(s.D, 'leaf.key')).isSymbolicLink(), false, 'leaf.key is a real file again');
-    assert.equal(fs.lstatSync(path.join(s.D, 'content.stamp')).isSymbolicLink(), false);
-    assert.equal(fs.readFileSync(path.join(s.D, 'ca.key'), 'utf8').includes('PRIVATE KEY'), true);
-    assert.ok(fs.statSync(path.join(s.D, 'cache')).isDirectory(), 'the script cache folder exists');
+    let canSymlink = true;
+    try {
+      fs.unlinkSync(path.join(s.D, 'leaf.key')); fs.symlinkSync(path.join(s.D, 'ca.key'), path.join(s.D, 'leaf.key'));
+      fs.unlinkSync(path.join(s.D, 'content.stamp')); fs.symlinkSync('/nonexistent-target', path.join(s.D, 'content.stamp'));
+    } catch (e) {
+      if (process.platform === 'win32' && e && e.code === 'EPERM') canSymlink = false;
+      else throw e;
+    }
+    if (canSymlink) {
+      const r = cp.spawnSync('sh', ['-c', setupLib.setupScript()], { env, encoding: 'utf8' });
+      assert.match(r.stdout, /^ready$/m, r.stderr);
+      assert.equal(fs.lstatSync(path.join(s.D, 'leaf.key')).isSymbolicLink(), false, 'leaf.key is a real file again');
+      assert.equal(fs.lstatSync(path.join(s.D, 'content.stamp')).isSymbolicLink(), false);
+      assert.equal(fs.readFileSync(path.join(s.D, 'ca.key'), 'utf8').includes('PRIVATE KEY'), true);
+      assert.ok(fs.statSync(path.join(s.D, 'cache')).isDirectory(), 'the script cache folder exists');
+    }
+    s.plugin.stop();
+  }
+  // K. Proxy does not start MITM-ing before content folder ($C) exists, and stop() closes proxy synchronously.
+  {
+    const s = await stage({ config: { tile: false } });
+    s.seedScript();
+    s.plugin.start();
+    await s.call('tile', 'POST', { on: true });
+    assert.equal((await s.status()).proxy, 'up');
+    await s.call('tile', 'POST', { on: false });
+    await s.plugin.stop();
+    // Now delete $C while leaving certs & script intact, and restart plugin with tile off
+    fs.rmSync(s.C, { recursive: true, force: true });
+    s.plugin.start();
+    await sleep(150);
+    assert.equal((await s.status()).proxy, 'down', 'proxy stays down when content folder is missing');
+    await s.plugin.stop();
+  }
+  // L. Transient root-agent disconnect on start recovers via fast retry (scheduleSoon) and onAgent(true).
+  {
+    const s = await stage({ config: { tile: true } });
+    s.seedScript();
+    const realExec = s.ctx.execute;
+    let failCount = 0;
+    s.ctx.execute = function (cmd, ms) {
+      if (++failCount <= 2) return Promise.reject(new Error('no root agent connected'));
+      return realExec.call(s.ctx, cmd, ms);
+    };
+    s.plugin.start();
+    await until(() => s.patched(), 15000, 'row patched after transient no-root-agent via fast retry');
+    assert.ok(failCount >= 3);
+    s.plugin.stop();
+    assert.equal((await s.status()).proxy, 'down', 'stop() closes proxy synchronously');
+  }
+  // M. onAgent(true) triggers immediate recovery after root-agent reconnect.
+  {
+    const s = await stage({ config: { tile: true } });
+    s.seedScript();
+    const realExec = s.ctx.execute;
+    let agentUp = false;
+    s.ctx.execute = function (cmd, ms) {
+      if (!agentUp) return Promise.reject(new Error('no root agent connected'));
+      return realExec.call(s.ctx, cmd, ms);
+    };
+    s.plugin.start();
+    await sleep(200);
+    assert.equal(s.patched(), false);
+    agentUp = true;
+    s.plugin.onAgent(true);
+    await until(() => s.patched(), 15000, 'row patched immediately on onAgent(true)');
     s.plugin.stop();
   }
   console.log('youtube flow: ok');
