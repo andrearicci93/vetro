@@ -2020,7 +2020,15 @@ namespace Launcher
             switch (card.Kind)
             {
                 case CardKind.Picture:
-                    return new ChoiceSource("picture mode", () => PictureModes.Build(Shell.Read(PictureModes.GetCommand()), Shell.Read(PictureModes.CheckCommand())), PictureModes.SetCommand, Log);
+                    return new ChoiceSource("picture mode", () =>
+                    {
+                        string raw = Shell.Read(PictureModes.GetAndCheckGroupCommand());
+                        int split = raw.IndexOf("__GROUP__", StringComparison.Ordinal);
+                        string get = split >= 0 ? raw.Substring(0, split) : raw;
+                        string groupRaw = split >= 0 ? raw.Substring(split + 9) : "";
+                        string checks = PictureModes.ParseGroupReply(groupRaw) ?? Shell.Read(PictureModes.CheckCommand());
+                        return PictureModes.Build(get, checks);
+                    }, PictureModes.SetCommand, Log);
                 case CardKind.Sleep:
                     return new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);
                 case CardKind.Shard:
