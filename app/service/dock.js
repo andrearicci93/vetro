@@ -17,6 +17,7 @@
 // finishing its boot (verified 2026-11-06). The two modes exclude each other; `customApp` in the state is the
 // switch for the second one, `enabled` stays the switch of the first.
 
+var crypto = require('crypto');
 var fs = require('fs');
 var os = require('os');
 var path = require('path');
@@ -148,6 +149,10 @@ function Dock(options) {
     this.lastError = null;
     this.lastCatalog = null;
     this.refreshPending = false;
+    this.refreshing = false;
+    this.refreshRetries = 0;
+    this.refreshRetryTimer = null;
+    this.refreshRetryMs = options.refreshRetryMs || 5000;
     this.shards = null;            // the plugin host, once setShards() has been called
     this.shardTimer = null;
     this.lastShardLaunch = null;
@@ -234,6 +239,7 @@ Dock.prototype.readState = function () {
             customHomeDisabled: s && s.customHomeDisabled === true,
             build: s && typeof s.build === 'string' ? s.build : null,
             buildPid: s && typeof s.buildPid === 'number' ? s.buildPid : null,
+            dllStamp: s && typeof s.dllStamp === 'string' ? s.dllStamp : null,
             // The --cards the running launcher was started with (null: started by a Vetro that did not note it).
             shownCards: s && typeof s.shownCards === 'string' ? s.shownCards.slice(0, 400) : null,
             // The cards the Control center had when it was last on: switching it off and on again (the TV screen's Vetro UI tile) brings them back.
@@ -612,28 +618,57 @@ Dock.prototype.launch = function (quick) {
     });
 };
 
-// The build that started the launcher, and the process it started. The pid matters after "go back, then update again to
-// the same version": the state still names this build, but the process running is the one the older Vetro started.
-Dock.prototype.rememberBuild = function (p) {
-    var state = this.readState(), pid = p && typeof p.pid === 'number' ? p.pid : null;
-    if (state.build !== this.build || state.buildPid !== pid) this.patchState({build: this.build, buildPid: pid});
+Dock.prototype.dllStamp = function () {
+    try { return crypto.createHash('sha1').update(fs.readFileSync(path.join(this.dir, DLL))).digest('hex').slice(0, 12); }
+    catch (e) { return null; }
 };
-// True when the launcher that runs was not started by this build: another build is named in the state, or this build is
-// but for another process. Never true for a launcher this run of the service started.
+// The build that started the launcher, the DLL binary stamp, and the process it started. The pid matters after "go back, then
+// update again to the same version"; the DLL stamp catches .wgt reinstalls where the version string stays the same (e.g. 0.7.1).
+Dock.prototype.rememberBuild = function (p) {
+    var state = this.readState(), pid = p && typeof p.pid === 'number' ? p.pid : null, stamp = this.dllStamp();
+    if (state.build !== this.build || state.buildPid !== pid || state.dllStamp !== stamp) {
+        this.patchState({build: this.build, buildPid: pid, dllStamp: stamp});
+    }
+};
+// True when the launcher that runs was not started by this build or this DLL binary, or this build is named for another process.
+// Never true for a launcher this run of the service started.
 Dock.prototype.otherBuild = function (state, p) {
     if (!this.build || this.startedHere) return false;
-    return state.build !== this.build || (!!state.buildPid && !!p && typeof p.pid === 'number' && state.buildPid !== p.pid);
+    var stamp = this.dllStamp();
+    return state.build !== this.build
+        || (!!stamp && state.dllStamp !== stamp)
+        || (!!state.buildPid && !!p && typeof p.pid === 'number' && state.buildPid !== p.pid);
 };
 
 // The saved list is rebuilt once the TV has settled: in the first minutes Samsung's Home may still
 // be rewriting its own row, and a half-written read must not replace the good list.
+var REFRESH_MAX_RETRIES = 5;
 Dock.prototype.refreshCatalogLater = function () {
-    if (!this.refreshPending || this.uptime() < BOOT_WINDOW_S) return;
+    if (!this.refreshPending || this.refreshing || this.refreshRetryTimer || this.uptime() < BOOT_WINDOW_S) return;
     this.refreshPending = false;
+    this.refreshing = true;
     var self = this;
     // The running launcher is told too: these lists may also hold an app installed meanwhile, and once they are written the launcher's
     // own check (its lists newer than the package database) would not ask for them any more.
-    this.writeCatalog().then(function () { return self.tellReload(); }).catch(function () {});
+    this.writeCatalog().then(function () {
+        self.refreshRetries = 0;
+        return self.tellReload();
+    }).then(function () {
+        self.refreshing = false;
+    }, function () {
+        self.refreshing = false;
+        if (++self.refreshRetries <= REFRESH_MAX_RETRIES) {
+            self.refreshPending = true;
+            var delay = Math.min(60000, self.refreshRetryMs * self.refreshRetries);
+            if (!self.refreshRetryTimer) {
+                self.refreshRetryTimer = setTimeout(function () {
+                    self.refreshRetryTimer = null;
+                    if (!self.busy && self.refreshPending) self.refreshCatalogLater();
+                }, delay);
+                if (self.refreshRetryTimer.unref) self.refreshRetryTimer.unref();
+            }
+        }
+    });
 };
 
 // Plugins that claim an app's tile (manifest "intercepts"). `host` is the plugin host: intercepted() says which apps are claimed,
@@ -646,40 +681,42 @@ Dock.prototype.setShards = function (host) {
     host.onInterceptChange(function () {
         var state = self.readState();
         if (!state.enabled || state.customApp) return;
-        if (self.busy || self.uptime() < BOOT_WINDOW_S) { self.refreshPending = true; return; }
+        if (self.busy || self.uptime() < BOOT_WINDOW_S) { self.refreshPending = true; self.refreshRetries = 0; return; }
         if (self.shardTimer) clearTimeout(self.shardTimer);
         self.shardTimer = setTimeout(function () {
             self.shardTimer = null;
-            if (self.busy) { self.refreshPending = true; return; }
+            if (self.busy) { self.refreshPending = true; self.refreshRetries = 0; return; }
             // Plugins start with the service, so this runs at every service start: when the row already shows what
             // the plugins claim, there is nothing to rebuild and the launcher must not be restarted for it.
             if (self.claimsShown() && self.cardsShown()) return;
             // A rebuild that fails here (the root agent not connected yet, right after a service restart) is tried again
             // by the supervision once the launcher is seen running; it is not an error to show on the Launcher page.
-            self.refresh().catch(function () { self.refreshPending = true; self.lastError = null; });
+            self.refresh().catch(function () { self.refreshPending = true; self.refreshRetries = 0; self.lastError = null; });
         }, 1500);
         if (self.shardTimer.unref) self.shardTimer.unref();
     });
 };
 
-// True when the saved row marks as taken exactly the apps that running plugins claim now.
+// True when the saved row (and All apps list when present) marks as taken exactly the apps that running plugins claim now.
 Dock.prototype.claimsShown = function () {
     var claimed;
     try { claimed = this.shards.intercepted() || {}; } catch (e) { return false; }
     var entries = this.entries();
     if (!entries.length) return false;
-    for (var i = 0; i < entries.length; i++) {
-        var e = entries[i];
+    var all = entries.concat(this.allAppEntries());
+    for (var i = 0; i < all.length; i++) {
+        var e = all[i];
         if (e.system || e.panel || e.source !== null) continue;
-        if (e.shard !== Object.prototype.hasOwnProperty.call(claimed, e.appId)) return false;
+        if (e.shard !== !!catalog.shardTargetAppId(claimed, e.appId)) return false;
     }
     return true;
 };
 
-// The tile of this slug when a plugin has taken it over, else null.
+// The tile of this slug when a plugin has taken it over (on the main row or All apps), else null.
 Dock.prototype.shardEntry = function (slug) {
     if (!SLUG_RE.test(String(slug))) return null;
-    var found = this.entries().filter(function (e) { return e.slug === slug && e.shard && APP_ID_RE.test(e.appId); })[0];
+    var all = this.entries().concat(this.allAppEntries());
+    var found = all.filter(function (e) { return e.slug === slug && e.shard && APP_ID_RE.test(e.appId); })[0];
     return found || null;
 };
 
@@ -688,8 +725,12 @@ Dock.prototype.shardEntry = function (slug) {
 Dock.prototype.openEntry = function (slug) {
     var self = this, entry = this.shardEntry(slug);
     if (!entry) return Promise.resolve({ok: false, via: null, reason: 'No such tile'});
+    var targetId = entry.appId;
+    if (this.shards && typeof this.shards.intercepted === 'function') {
+        try { targetId = catalog.shardTargetAppId(this.shards.intercepted() || {}, entry.appId) || entry.appId; } catch (e) { /* keep entry.appId */ }
+    }
     var asked;
-    try { asked = this.shards ? Promise.resolve(this.shards.launch(entry.appId)) : Promise.resolve({handled: false, reason: 'Plugins are not available'}); }
+    try { asked = this.shards ? Promise.resolve(this.shards.launch(targetId)) : Promise.resolve({handled: false, reason: 'Plugins are not available'}); }
     catch (e) { asked = Promise.reject(e); }
     // A host that fails is the same as a plugin that cannot: the app still has to start.
     return asked.then(null, function (e) { return {handled: false, reason: String(e && e.message || e)}; }).then(function (r) {
@@ -923,6 +964,9 @@ function parseTsv(text) {
 }
 Dock.prototype.entries = function () {
     try { return parseTsv(fs.readFileSync(this.appsFile, 'utf8')); } catch (e) { return []; }
+};
+Dock.prototype.allAppEntries = function () {
+    try { return parseTsv(fs.readFileSync(this.allAppsFile, 'utf8')); } catch (e) { return []; }
 };
 Dock.prototype.inputListPath = function () {
     return fs.existsSync(this.inputsFile) ? this.inputsFile : path.join(this.dir, 'res', 'inputs.tsv');
@@ -1353,6 +1397,7 @@ Dock.prototype.showAtPowerOn = function (state) {
     if (this.powerOnShown || !state || state.customApp || state.enabled !== true || this.serviceStart >= BOOT_WINDOW_S || this.uptime() > POWER_ON_WINDOW_S) return Promise.resolve();
     this.powerOnShown = true;
     var line = '[ -e /usr/bin/get_root_app ] || exit 0; ' +
+        'case "$(vconftool get memory/window_system/screensaver_on_off 2>/dev/null)" in *"value = True"*|*"value = TRUE"*|*"value = 1 "*) exit 0;; esac; ' +
         'case "$(vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)" in *"value = org.tizen.tv-viewer ("*) ;; *) exit 0;; esac; ' +
         'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && [ -d /proc/$p ] && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo show >&3 ) && echo shown; fi; true';
     var self = this;

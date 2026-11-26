@@ -293,3 +293,26 @@ console.log('PASS dock catalog skips registry rows whose package is gone');
     assert.ok(named.entries.every(e => e.slug !== 'tvstore') && named.allApps.every(e => e.slug !== 'tvstore'), 'the pill\'s slug is reserved');
 }
 console.log('PASS dock catalog: TV-Store takes the store pill when installed, unless Samsung\'s store is chosen');
+
+// YouTube wrapper <-> Cobalt alias (shardTargetAppId): Samsung's Home row and webappservice.db list 9Ur5IzDKqV.TizenYouTube
+// on TVs where the wrapper package is installed (#207), while the YouTube Shard claims com.samsung.tv.cobalt-yt.
+{
+    assert.equal(catalog.WRAPPER_YOUTUBE, '9Ur5IzDKqV.TizenYouTube');
+    assert.equal(catalog.COBALT_YOUTUBE, 'com.samsung.tv.cobalt-yt');
+    const cobaltClaim = {[catalog.COBALT_YOUTUBE]: {plugin: 'youtube', label: 'YouTube'}};
+    const wrapperClaim = {[catalog.WRAPPER_YOUTUBE]: {plugin: 'youtube', label: 'YouTube'}};
+    assert.equal(catalog.shardTargetAppId(cobaltClaim, catalog.COBALT_YOUTUBE), catalog.COBALT_YOUTUBE);
+    assert.equal(catalog.shardTargetAppId(cobaltClaim, catalog.WRAPPER_YOUTUBE), catalog.COBALT_YOUTUBE, 'wrapper resolves to Cobalt claim');
+    assert.equal(catalog.shardTargetAppId(wrapperClaim, catalog.COBALT_YOUTUBE), catalog.WRAPPER_YOUTUBE, 'Cobalt resolves to wrapper claim');
+    assert.equal(catalog.shardTargetAppId(cobaltClaim, 'org.tizen.netflix-app'), null);
+    assert.equal(catalog.shardTargetAppId(cobaltClaim, 'constructor'), null, 'prototype keys never match');
+    assert.equal(catalog.shardTargetAppId(null, catalog.COBALT_YOUTUBE), null);
+    const ytRow = catalog.build(catalog.parse([
+        'F|csfs', 'O|d/webapp@111299001912',
+        'R|' + hex('111299001912') + '|' + hex('YouTube') + '|' + hex(catalog.WRAPPER_YOUTUBE) + '|0|2'
+    ].join('\n')), {intercepted: cobaltClaim});
+    assert.equal(ytRow.entries[0].appId, catalog.WRAPPER_YOUTUBE);
+    assert.equal(ytRow.entries[0].viaShard, true, 'Home-row wrapper tile gets viaShard');
+    assert.equal(ytRow.allApps[0].viaShard, true, 'All-apps wrapper tile gets viaShard');
+}
+console.log('PASS dock catalog: YouTube wrapper and Cobalt app share Shard claims');

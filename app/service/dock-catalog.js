@@ -82,10 +82,19 @@ var VIEWER = 'org.tizen.tv-viewer';
 // Samsung's registry holds for YouTube.
 var TIZENTUBE = /TizenTube/i;
 var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
+var WRAPPER_YOUTUBE = '9Ur5IzDKqV.TizenYouTube';
 // Samsung's own YouTube row (widget 111299001912, wrapper app 9Ur5IzDKqV.TizenYouTube). The wrapper and its registry
 // row can be gone from the TV while the Home row still lists it; the real YouTube is then only the Cobalt app,
 // which starts under its own id.
 var OFFICIAL_YOUTUBE_ROW = '111299001912';
+// Resolves a claimed intercept appId for a tile or action appId, treating Samsung's YouTube wrapper and Cobalt app as aliases.
+function shardTargetAppId(claimed, appId) {
+    if (!claimed || typeof claimed !== 'object' || typeof appId !== 'string') return null;
+    if (Object.prototype.hasOwnProperty.call(claimed, appId)) return appId;
+    if (appId === WRAPPER_YOUTUBE && Object.prototype.hasOwnProperty.call(claimed, COBALT_YOUTUBE)) return COBALT_YOUTUBE;
+    if (appId === COBALT_YOUTUBE && Object.prototype.hasOwnProperty.call(claimed, WRAPPER_YOUTUBE)) return WRAPPER_YOUTUBE;
+    return null;
+}
 // The dock repeats this check, but the file is written here, so refuse a bad path here as well.
 function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0; }
 // An input's picture: Samsung keeps the pictures of the devices it recognises (consoles, boxes) in canalysis' folder, on 6.0, 6.5 and
@@ -389,7 +398,7 @@ function build(parsed, options) {
     // starting it itself. Only the flag goes into the list, never anything the plugin wrote. The viewer is Live TV, not an app.
     var claimed = options.intercepted || {};
     poolList.forEach(function (e) {
-        if (e.appId !== VIEWER && Object.prototype.hasOwnProperty.call(claimed, e.appId)) e.viaShard = true;
+        if (e.appId !== VIEWER && shardTargetAppId(claimed, e.appId)) e.viaShard = true;
     });
     var allApps = poolList.slice().sort(function (a, b) { return a.label.localeCompare(b.label); }).slice(0, MAX_ENTRIES - 2);
     // Only a package list that came back whole says TV-Store is there; without it the pill stays Samsung's store.
@@ -469,5 +478,5 @@ function load(execute, options) {
     });
 }
 
-module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, load: load, parse: parse, build: build, tsv: tsv, script: script, homeStoresScript: homeStoresScript, rowFromStores: rowFromStores, slugify: slugify, cleanLabel: cleanLabel};
+module.exports = {hbbtvLink: hbbtvLink, ROW_KEY: ROW_KEY, TV_STORE: TV_STORE, APP_STORES: APP_STORES, allAppsTsv: allAppsTsv, sourceEntries: sourceEntries, inputsTsv: inputsTsv, iconPathOk: iconOk, COBALT_YOUTUBE: COBALT_YOUTUBE, WRAPPER_YOUTUBE: WRAPPER_YOUTUBE, shardTargetAppId: shardTargetAppId, load: load, parse: parse, build: build, tsv: tsv, script: script, homeStoresScript: homeStoresScript, rowFromStores: rowFromStores, slugify: slugify, cleanLabel: cleanLabel};
 
