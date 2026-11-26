@@ -8,6 +8,8 @@
 // - memory/org.tizen.tv-viewer/mute_status: the mute of the TV's own key. The audio API's mute stays false when the TV is
 //   muted that way (dock/src/Native/Sound.cs); tv-viewer (6.0) and volume-app (6.5, 9) keep it here;
 // - file/private/sound/volume/MasterMuteOn: the audio library's own mute, for a mute set through the API.
+// A fifth read gives the power state: memory/pm/state is deviced's own state (1 picture on, 2 dimmed, 3 picture off: the
+// Q80A read 1 and 3 around Picture Off, 2026-11-19), the same key the input helper reads. Home Assistant gets On or Standby.
 // Fallback, when none of those can be read (no buxton2ctl): native/TvState.dll, a dotnet process each time (about 120 ms on
 // the Q80A, more on 2 GB TVs).
 // The same command reads the channel on screen from Vetro's tuner, while it runs: the tuner rewrites a small JSON file next
@@ -19,11 +21,12 @@ var QUOTE_RE = /'/g;
 var LINE_RE = /^\[(?:memory|system)\] (\S+) = (Int32|Boolean): (\S+)\s*$/;
 var INT_RE = /^-?\d+$/;
 var KEYS = {source: 'memory/system/source_type', mute: 'memory/org.tizen.tv-viewer/mute_status',
-    volume: 'file/private/sound/volume/Master', apiMute: 'file/private/sound/volume/MasterMuteOn'};
+    volume: 'file/private/sound/volume/Master', apiMute: 'file/private/sound/volume/MasterMuteOn', power: 'memory/pm/state'};
 var TUNER_PID = '/home/owner/vetro-tuner.pid', TUNER_CHANNEL = '/home/owner/vetro-tuner-channel.json';
 var READ = 'B=/usr/bin/buxton2ctl; if [ -x $B ]; then ' +
     '$B get memory ' + KEYS.source + ' 2>/dev/null; $B get memory ' + KEYS.mute + ' 2>/dev/null; ' +
-    '$B get system ' + KEYS.volume + ' 2>/dev/null; $B get system ' + KEYS.apiMute + ' 2>/dev/null; fi; ' +
+    '$B get system ' + KEYS.volume + ' 2>/dev/null; $B get system ' + KEYS.apiMute + ' 2>/dev/null; ' +
+    '$B get memory ' + KEYS.power + ' 2>/dev/null; fi; ' +
     'P=$(cat ' + TUNER_PID + ' 2>/dev/null); case "$P" in ""|*[!0-9]*) ;; *) if [ -d /proc/$P ]; then echo "TUNER|$P"; ' +
     'echo "CHANNEL|$(head -c 1024 ' + TUNER_CHANNEL + ' 2>/dev/null | tr -d "\\n")"; fi ;; esac; true';
 var TUNER_RE = /^TUNER\|(\d+)$/m, CHANNEL_RE = /^CHANNEL\|(\{.*\})$/m;
@@ -52,6 +55,14 @@ function decodeVconf(text) {
     var muted = mute === true || apiMute === true ? true : mute === false || apiMute === false ? false : null;
     if (type === null && volume === null && muted === null) return null;
     return {volume: volume, muted: muted, source: sourceName(type), sourceType: type};
+}
+
+// deviced's power state (memory/pm/state): 1 normal and 2 dimmed = on, 3 screen off, 4 standby and 5 sleep = standby. Null when
+// it could not be read or holds anything else, so Home Assistant shows the entity as unavailable instead of guessing.
+function decodePower(text) {
+    var m = /^\[memory\] memory\/pm\/state = Int32: (-?\d+)\s*$/m.exec(String(text || ''));
+    var v = m ? +m[1] : null;
+    return v === 1 || v === 2 ? 'on' : v === 3 || v === 4 || v === 5 ? 'standby' : null;
 }
 
 // The tuner's channel, from the TUNER|<pid> and CHANNEL|<json> lines: null unless the file is that running tuner's.
@@ -83,9 +94,10 @@ Store.prototype.read = function () {
         var channel = decodeChannel(r.stdout), d = decodeVconf(r.stdout);
         return (d ? Promise.resolve(d) : viaDll()).then(function (s) {
             s.channel = s.source === 'TV' ? channel : null;
+            s.power = decodePower(r.stdout);
             return s;
         });
     }).finally(function () { self.pending = null; });
     return this.pending;
 };
-module.exports = {Store: Store, decode: decode, decodeVconf: decodeVconf, decodeChannel: decodeChannel, sourceName: sourceName, KEYS: KEYS, READ: READ};
+module.exports = {Store: Store, decode: decode, decodeVconf: decodeVconf, decodeChannel: decodeChannel, decodePower: decodePower, sourceName: sourceName, KEYS: KEYS, READ: READ};

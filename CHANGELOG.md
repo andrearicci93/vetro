@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2 — unreleased
+
+### Home Assistant (MQTT)
+
+- **A Power state sensor.** Home Assistant shows On while the TV's picture is on and Standby when it is off (Picture Off, or the TV's own standby), as an On / Standby choice you can use in automations ([#304](https://github.com/andrearicci93/vetro/pull/304) by [bmfurtado](https://github.com/bmfurtado)). It is read with the same short command as the volume and the input (one more setting, no program started), and it is unavailable on a TV where that setting cannot be read. Tried only in unit tests so far; the Q80A reads 1 with the picture on and 3 with Picture Off.
+
 ## 0.7.1 — 2026-11-26
 
 ### Home Assistant (MQTT)

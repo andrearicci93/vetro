@@ -40,11 +40,12 @@ Every 10 seconds, Vetro publishes available metrics. Home Assistant discovery re
 
 ### TV states for automations
 
-On the tested Q80A, audio/source reads run in the background without opening Vetro. Every 10 seconds Vetro reads four of the TV's own settings (input, master volume, the mute of the TV's key and the audio mute) with one short command, about 34 ms on the Q80A; no .NET program is started for it. Only a TV where those settings cannot be read falls back to the small native helper (`native/TvState.dll`), a .NET program started at each read.
+On the tested Q80A, audio/source reads run in the background without opening Vetro. Every 10 seconds Vetro reads five of the TV's own settings (input, master volume, the mute of the TV's key, the audio mute and the power state) with one short command, about 34 ms on the Q80A; no .NET program is started for it. Only a TV where those settings cannot be read falls back to the small native helper (`native/TvState.dll`), a .NET program started at each read.
 
 | Entity | State topic suffix | Values |
 | --- | --- | --- |
 | Volume sensor | `volume` | Integer 0–100, TV volume scale |
+| Power state sensor | `power` | `on` while the picture is on, `standby` when it is off (Picture Off or the TV's own standby); Home Assistant shows On / Standby |
 | Muted binary sensor | `muted` | `ON` / `OFF` |
 | Source sensor | `source` | `TV`, `HDMI1`–`HDMI4`, `DisplayPort` (Samsung monitors) when recognized |
 | Channel sensor | `channel` | `<number> <name>`, e.g. `21 Rai 4`; attributes in `channel-attrs`: `number`, `name`, `tv_plus` |
@@ -52,7 +53,7 @@ On the tested Q80A, audio/source reads run in the background without opening Vet
 
 The complete topic is `<prefix>/<identity>/<suffix>`. Volume, mute and source states are retained and refreshed every 10 seconds; the channel is retained and published when it changes. Each has an additional `<suffix>/availability` topic; Home Assistant requires both that topic and service availability to be online. Failed reads clear the retained state and mark that entity unavailable instead of keeping a stale value. These are state entities, not controls. Existing explicit MQTT remapper rules provide actions such as launching an app or sending a supported native remote key.
 
-The channel comes from Vetro's own tuner (Vetro UI → Live TV): while it runs and the input is `TV`, it writes the channel on screen at every change, and Vetro publishes it. With the tuner off, or on another input, the Channel sensor is unavailable. Samsung TV Plus channels count as channels (`tv_plus` true) when the tuner shows them. Service availability does not establish whether the screen is on.
+The channel comes from Vetro's own tuner (Vetro UI → Live TV): while it runs and the input is `TV`, it writes the channel on screen at every change, and Vetro publishes it. With the tuner off, or on another input, the Channel sensor is unavailable. Samsung TV Plus channels count as channels (`tv_plus` true) when the tuner shows them. Service availability does not establish whether the screen is on: the Power state sensor does (it is unavailable on a TV where the power state cannot be read, and on the .NET fallback).
 
 The fallback helper's source is `native/TvState.cs`; the packaged DLL targets the TV's .NET Core 3.1 runtime. To rebuild it with an existing SDK and reference assemblies, run `python3 scripts/build-tv-state.py --dotnet /absolute/path/to/dotnet --references /absolute/path/to/netcoreapp3.1/references`. No SDK download or installation is performed by this script.
 

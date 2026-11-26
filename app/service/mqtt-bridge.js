@@ -137,12 +137,15 @@ MqttBridge.prototype._discover = function () {
 
     // Each native state has its own availability, in addition to the service LWT.
     [['sensor','volume','Volume','volume','%'],
+     ['sensor','power','Power state','power',null],
      ['binary_sensor','muted','Muted','muted',null],
      ['sensor','source','Source','source',null]].forEach(function(s){
         var conf={name:s[2],state_topic:prefix+'/'+s[3],unique_id:client.identity+'_'+s[1],device:device,
             availability:[{topic:client.availabilityTopic},{topic:prefix+'/'+s[3]+'/availability'}],
             availability_mode:'all',payload_available:'online',payload_not_available:'offline'};
         if(s[4])conf.unit_of_measurement=s[4];
+        // On while the picture is on, Standby when it is off (Picture Off or the TV's own standby); the state topic carries on/standby.
+        if(s[1]==='power'){conf.device_class='enum';conf.options=['On','Standby'];conf.value_template='{{ value | capitalize }}';}
         if(s[0]==='binary_sensor'){conf.payload_on='ON';conf.payload_off='OFF';}
         var topic='homeassistant/'+s[0]+'/'+client.identity+'/'+s[1]+'/config';
         client.publish(prefix+'/'+s[3]+'/availability','offline',{retain:true});
@@ -164,6 +167,7 @@ MqttBridge.prototype.publishTvState = function(d) {
     d=d||{};
     var prefix=(this.config.topicPrefix||'vetro')+'/'+this.identity;
     var values={volume:Number.isInteger(d.volume)&&d.volume>=0&&d.volume<=100?d.volume:null,
+        power:d.power==='on'||d.power==='standby'?d.power:null,
         muted:typeof d.muted==='boolean'?(d.muted?'ON':'OFF'):null,
         source:typeof d.source==='string'&&TV_SOURCE_RE.test(d.source)?d.source:null};
     var self=this;
