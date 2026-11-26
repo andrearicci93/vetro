@@ -76,7 +76,26 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     assert.equal(log[before], 'refresh'); assert.equal(r.body.cleaned, undefined, 'the rebuild goes on when the sweep fails');
     delete dock.execute;
 
+    // open: 503 when root agent is disconnected so the launcher falls back instead of a silent dead tile; 202 when connected
+    const opened = [];
+    dock.shardEntry = slug => slug === 'youtube' ? { slug: 'youtube', appId: 'com.samsung.tv.cobalt-yt', shard: true } : null;
+    dock.openEntry = slug => { opened.push(slug); return Promise.resolve({ ok: true, via: 'youtube' }); };
+    connected = false;
+    const openDown = res();
+    host.dispatch('launcher', { method: 'POST', url: '/plugins/launcher/api/open?slug=youtube', headers: {} }, openDown, 'open', json);
+    await nextTick(5);
+    assert.equal(openDown.code, 503, 'open refuses with 503 while root agent is disconnected');
+    assert.deepEqual(opened, [], 'open does not dispatch when agent is down');
+    connected = true;
+    const openUp = res();
+    host.dispatch('launcher', { method: 'POST', url: '/plugins/launcher/api/open?slug=youtube', headers: {} }, openUp, 'open', json);
+    await nextTick(5);
+    assert.equal(openUp.code, 202, 'open answers 202 when root agent is connected');
+    assert.deepEqual(opened, ['youtube']);
+
     // supervision: at once when the agent connects, then on the fifth tick
+    connected = false;
+    await nextTick(30);
     log.length = 0;
     connected = true;
     await nextTick(30);

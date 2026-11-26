@@ -143,9 +143,15 @@ function definition(dock, options) {
                     }
                     // The launcher asks for this when a plugin has taken a tile over (a seventh column "shard" in its list). Answers at once
                     // and starts the app afterwards: a plugin may need a minute to get ready, and the launcher must not wait or start it too.
+                    // When the root agent is disconnected (boot, standby wake, channel drop), refuse with 503 so the launcher immediately
+                    // falls back to app_launcher -s instead of leaving a dead tile behind a 202.
                     if (sub === 'open' && req.method === 'POST') {
                         var slug = slugOf(req.url);
                         if (!dock.shardEntry(slug)) { vetro.json(res, { ok: false, error: 'No plugin tile with that name' }, 404); return true; }
+                        if (typeof vetro.agentConnected === 'function' && !vetro.agentConnected()) {
+                            vetro.json(res, { ok: false, error: 'Root agent is not connected' }, 503);
+                            return true;
+                        }
                         vetro.json(res, { ok: true }, 202);
                         dock.openEntry(slug).catch(function () { /* openEntry never rejects; belt and braces */ });
                         return true;
