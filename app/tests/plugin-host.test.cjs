@@ -240,6 +240,77 @@ h3.start();
     assert.equal(hr.status('flaky').state, 'failed');
     hr.stop();
 
+    // async stop() serialization: quick disable->enable waits for the previous stop() promise before creating/starting the new instance
+    {
+        let releaseStop = null, starts = 0, stops = 0;
+        const asyncDef = def('async-stop', {
+            defaultEnabled: true,
+            create() {
+                return {
+                    start() { starts++; },
+                    stop() { stops++; return new Promise(r => { releaseStop = r; }); }
+                };
+            }
+        });
+        const ha = new PluginHost({ dir: tmp(), external: false, stableMs: 10 }).register(asyncDef);
+        ha.start();
+        assert.equal(starts, 1);
+        ha.setEnabled('async-stop', false);
+        assert.equal(stops, 1);
+        assert.equal(ha.status('async-stop').state, 'stopped');
+        ha.setEnabled('async-stop', true);
+        assert.equal(starts, 1, 'new start waits while previous async stop() is still settling');
+        assert.equal(ha.status('async-stop').state, 'starting');
+        assert.throws(() => ha.remove('async-stop'), /Switch the plugin off/);
+        assert.throws(() => ha.install(JSON.stringify({
+            format: 'vetro-plugin', version: 1,
+            manifest: { id: 'async-stop', name: 'Async', version: '1.0.1', apiVersion: 1 },
+            files: { 'index.js': 'module.exports = function () { return {}; };' }
+        })), /Switch the plugin off/);
+        releaseStop();
+        await new Promise(r => setImmediate(r));
+        await new Promise(r => setImmediate(r));
+        assert.equal(starts, 2, 'new instance starts once previous stop() resolves');
+        assert.equal(ha.status('async-stop').state, 'running');
+        // disabling again while queued in starting cancels the pending start
+        ha.setEnabled('async-stop', false);
+        ha.setEnabled('async-stop', true);
+        assert.equal(ha.status('async-stop').state, 'starting');
+        ha.setEnabled('async-stop', false);
+        releaseStop();
+        await new Promise(r => setImmediate(r));
+        await new Promise(r => setImmediate(r));
+        assert.equal(starts, 2, 'cancelled queued start never runs after stop resolves');
+        assert.equal(ha.status('async-stop').state, 'stopped');
+        // host.stop() returns a promise that waits for in-flight async stop()
+        ha.setEnabled('async-stop', true);
+        assert.equal(starts, 3);
+        let stopResolved = false;
+        const stopP = ha.stop();
+        assert.ok(stopP && typeof stopP.then === 'function', 'host.stop() returns a promise when a plugin has async stop()');
+        stopP.then(() => { stopResolved = true; });
+        await new Promise(r => setImmediate(r));
+        assert.equal(stopResolved, false);
+        releaseStop();
+        await stopP;
+        assert.equal(stopResolved, true);
+    }
+
+    // notifyAgent(up) notifies running plugins that define onAgent and ignores others safely
+    {
+        const seen = [];
+        const hn = new PluginHost({ dir: tmp(), external: false, stableMs: 10 })
+            .register(def('aware', { create() { return { onAgent(up) { seen.push(up); } }; } }))
+            .register(def('throws-agent', { create() { return { onAgent() { throw new Error('agent hook err'); } }; } }))
+            .register(def('plain', { create() { return {}; } }));
+        hn.start();
+        hn.notifyAgent(true);
+        hn.notifyAgent(false);
+        assert.deepEqual(seen, [true, false]);
+        assert.equal(hn.status('throws-agent').state, 'running', 'one agent hook error does not crash host');
+        hn.stop();
+    }
+
     // wrong field types are refused, not crashed on later
     assert.throws(() => new PluginHost({ dir: tmp() }).register({ id: 'typed', apiVersion: 1, permissions: {}, create: () => ({}) }), /permissions/);
     console.log('plugin-host: ok');

@@ -36,6 +36,9 @@ var CARD_ROWS_MAX = 7, CARD_ROW_ID_RE = /^[A-Za-z0-9_.-]{1,40}$/, CARD_LABEL_MAX
 var CARD_READ_MS = 3000, CARD_ACTION_MS = 10000;
 var TEXT_CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 var LAUNCH_MS = 120000;
+var COBALT_YOUTUBE = 'com.samsung.tv.cobalt-yt';
+var WRAPPER_YOUTUBE = '9Ur5IzDKqV.TizenYouTube';
+function canonicalAppId(appId) { return appId === WRAPPER_YOUTUBE ? COBALT_YOUTUBE : appId; }
 var SAFE_AFTER = 2;
 var RESERVED = ['install', 'resume', 'developer'];
 var SESSION_MS = 8 * 3600000, SESSION_MAX = 20;
@@ -148,6 +151,8 @@ function PluginHost(opts) {
     this.order = [];
     this.listeners = [];                       // see onInterceptChange
     this.cardJobs = Object.create(null);       // plugin id -> reads and actions of its Control center card that are under way
+    this.launching = Object.create(null);      // canonical appId -> in-flight launch Promise
+    this.stopping = Object.create(null);       // plugin id -> in-flight async stop Promise
     this.safeMode = false;
     this.started = false;
     this.stableTimer = null;
@@ -244,7 +249,7 @@ PluginHost.prototype.install = function (raw, expectedSha256, signature) {
     var names = checkBundle(b), m = b.manifest, id = m.id;
     var existing = this.entries[id];
     if (existing && existing.def.bundled) throw new Error(id + ' is part of Vetro and cannot be replaced by a bundle');
-    if (existing && existing.instance) throw new Error('Switch the plugin off before updating it');
+    if (existing && (existing.instance || existing.state === 'starting')) throw new Error('Switch the plugin off before updating it');
     var trust = this._trustFor(id, m.version, sha, signature);
 
     var staging = path.join(this.dir, '.install-' + id), target = path.join(this.dir, id);
@@ -333,7 +338,7 @@ PluginHost.prototype.remove = function (id) {
     var entry = this.entries[id];
     if (!entry) throw new Error('Unknown plugin');
     if (entry.def.bundled) throw new Error(id + ' is part of Vetro and cannot be removed');
-    if (entry.instance) throw new Error('Switch the plugin off before removing it');
+    if (entry.instance || entry.state === 'starting') throw new Error('Switch the plugin off before removing it');
     var prefixes = pathsOf(path.join(this.dir, id));   // before the folder is gone, so its real path is still known
     rmrf(path.join(this.dir, id));
     forgetModules(prefixes);
@@ -441,11 +446,26 @@ PluginHost.prototype._sessionOk = function (id, token) {
 };
 
 PluginHost.prototype._halt = function (entry) {
-    delete this.sessions[entry.def.id];
+    var id = entry.def.id;
+    entry.startSeq = (entry.startSeq || 0) + 1;
+    delete this.sessions[id];
     var inst = entry.instance;
     entry.instance = null;
-    try { if (inst && inst.stop) inst.stop(); } catch (e) { /* already failing */ }
+    var stopped = null;
+    try { if (inst && inst.stop) stopped = inst.stop(); } catch (e) { /* already failing */ }
     if (inst) this._interceptsChanged(entry);
+    if (stopped && typeof stopped.then === 'function') {
+        var host = this;
+        var p = Promise.resolve(stopped).then(function () {}, function () {});
+        var prev = this.stopping[id];
+        var chained = prev ? prev.then(function () { return p; }) : p;
+        var tracked = chained.then(function () {
+            if (host.stopping[id] === tracked) delete host.stopping[id];
+        });
+        this.stopping[id] = tracked;
+        return tracked;
+    }
+    return this.stopping[id] || null;
 };
 
 // An exception that nothing caught: a timer or socket callback of a plugin runs outside every guard above, and an
@@ -469,7 +489,7 @@ PluginHost.prototype.handleCrash = function (error) {
     return false;
 };
 
-PluginHost.prototype._startEntry = function (entry) {
+PluginHost.prototype._startEntryNow = function (entry) {
     if (entry.instance) return;
     try {
         entry.instance = entry.def.create(this._context(entry));
@@ -486,18 +506,48 @@ PluginHost.prototype._startEntry = function (entry) {
     }
 };
 
+PluginHost.prototype._startEntry = function (entry) {
+    if (entry.instance) return;
+    var id = entry.def.id;
+    var pendingStop = this.stopping[id];
+    if (pendingStop) {
+        var host = this;
+        var seq = (entry.startSeq || 0) + 1;
+        entry.startSeq = seq;
+        entry.state = 'starting';
+        pendingStop.then(function () {
+            if (host.entries[id] !== entry || entry.startSeq !== seq || entry.instance) return;
+            if (host.safeMode && !entry.def.bundled) { entry.state = 'suspended'; return; }
+            host._startEntryNow(entry);
+        });
+        return;
+    }
+    this._startEntryNow(entry);
+};
+
+// Notifies running plugins that export onAgent(connected) when the root agent connects or disconnects.
+PluginHost.prototype.notifyAgent = function (up) {
+    for (var i = 0; i < this.order.length; i++) {
+        var entry = this.entries[this.order[i]];
+        if (!entry || !entry.instance || entry.state !== 'running') continue;
+        if (typeof entry.instance.onAgent === 'function') {
+            this._guard(entry, function () { return entry.instance.onAgent(!!up); }, true);
+        }
+    }
+};
+
 // --- plugins that take over a launcher tile (manifest "intercepts") -------------------------------------------------------
 // A plugin claims an app by listing it in its manifest and exporting launch(appId) (a Promise). The claim only counts while the
 // plugin is running, so switching it off gives the tile back. Two running plugins on one app: neither wins, the tile launches
 // the app as before and both plugins' entries say so.
 
 PluginHost.prototype._claimants = function (appId) {
-    var ids = [];
+    var ids = [], target = canonicalAppId(appId);
     for (var i = 0; i < this.order.length; i++) {
         var entry = this.entries[this.order[i]];
         if (!entry || !entry.instance || entry.state !== 'running') continue;
         var list = entry.def.intercepts || [];
-        for (var j = 0; j < list.length; j++) if (list[j].appId === appId) { ids.push(entry.def.id); break; }
+        for (var j = 0; j < list.length; j++) if (canonicalAppId(list[j].appId) === target) { ids.push(entry.def.id); break; }
     }
     return ids;
 };
@@ -526,23 +576,31 @@ PluginHost.prototype.intercepted = function () {
 
 // Starts the app through the plugin that claims it. Always resolves: {handled: true, plugin} when the plugin started it, else
 // {handled: false, reason} and the caller starts the app itself (a failing or slow plugin must not leave a dead tile).
+// Concurrent launches for the same canonical app id share one in-flight call so double presses cannot race two launches.
 PluginHost.prototype.launch = function (appId) {
     var host = this, ids = this._claimants(appId);
     if (ids.length !== 1) return Promise.resolve({ handled: false, reason: ids.length ? 'Several plugins claim ' + appId : 'No plugin claims ' + appId });
     var entry = this.entries[ids[0]];
     if (typeof entry.instance.launch !== 'function') return Promise.resolve({ handled: false, reason: ids[0] + ' has no launch()' });
-    return new Promise(function (resolve) {
+    var key = canonicalAppId(appId), claimedId = appId;
+    var list = entry.def.intercepts || [];
+    for (var j = 0; j < list.length; j++) if (canonicalAppId(list[j].appId) === key) { claimedId = list[j].appId; break; }
+    if (this.launching[key]) return this.launching[key];
+    var settled = false, job;
+    job = new Promise(function (resolve) {
         var done = false, timer = null;
         function finish(result) {
             if (done) return;
             done = true;
+            settled = true;
             if (timer) clearTimeout(timer);
+            if (host.launching[key] === job) delete host.launching[key];
             resolve(result);
         }
         timer = setTimeout(function () { finish({ handled: false, reason: ids[0] + ' did not answer in time' }); }, host.launchMs || LAUNCH_MS);
         if (timer.unref) timer.unref();
         var out;
-        try { out = entry.instance.launch(appId); }
+        try { out = entry.instance.launch(claimedId); }
         catch (e) { entry.lastError = String(e && e.message || e); finish({ handled: false, reason: entry.lastError }); return; }
         Promise.resolve(out).then(function (r) {
             finish(r === false ? { handled: false, reason: ids[0] + ' declined' } : { handled: true, plugin: ids[0] });
@@ -551,6 +609,8 @@ PluginHost.prototype.launch = function (appId) {
             finish({ handled: false, reason: entry.lastError });
         });
     });
+    if (!settled) this.launching[key] = job;
+    return job;
 };
 
 // --- plugins that add a card to the Control center (manifest "controlCenter") ----------------------------------------------------
@@ -739,13 +799,16 @@ PluginHost.prototype.markStable = function () {
 
 PluginHost.prototype.stop = function () {
     if (this.stableTimer) clearTimeout(this.stableTimer);
+    var pending = [];
     for (var i = 0; i < this.order.length; i++) {
         var entry = this.entries[this.order[i]];
-        this._halt(entry);
-        if (entry.state === 'running') entry.state = 'stopped';
+        var p = this._halt(entry);
+        if (p && typeof p.then === 'function') pending.push(p);
+        if (entry.state === 'running' || entry.state === 'starting') entry.state = 'stopped';
     }
     this.markStable();
     this.started = false;
+    return pending.length ? Promise.all(pending) : null;
 };
 
 PluginHost.prototype.setEnabled = function (id, on) {

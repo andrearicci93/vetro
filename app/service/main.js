@@ -5,8 +5,14 @@
 require('./compat.js').install();
 var fs = require('fs');
 var http = require('http');
+var net = require('net');
 var os = require('os');
 var path = require('path');
+// Node 18.18+ on Tizen 9 defaults dns lookup to verbatim (AAAA first) with autoSelectFamily off:
+// enabling RFC 8305 Happy Eyeballs prevents 20-30 s stalls on IPv4-only TVs for Vetro and every in-process Shard.
+if (typeof net.setDefaultAutoSelectFamily === 'function') {
+    try { net.setDefaultAutoSelectFamily(true); } catch (e) { /* keep runtime default */ }
+}
 var atomicFile = require('./atomic-file.js');
 var MqttBridge = require('./mqtt-bridge.js').MqttBridge;
 var PluginHost = require('./plugin-host.js').PluginHost;
@@ -444,7 +450,7 @@ function downloadDiagnostics(res, withComponents) {
                 'mbrActivity|$(vconftool get db/mbr-daemon/mbr-activity 2>/dev/null | head -c 24000 | base64 | tr -d "\\n")',
                 'displayState|' + v('memory/pm/state'),
                 'autoProtection|' + v('db/menu/system/auto_protection_time'), 'screensaverOn|' + v('memory/window_system/screensaver_on_off'),
-                'screensaverRunning|$(pgrep -f glscreensaver >/dev/null 2>&1 && echo 1 || echo 0)',
+                'screensaverRunning|$(pgrep -f \'[g]lscreensaver|[s]potlight-ss|[r]scm-screensaver\' >/dev/null 2>&1 && echo 1 || echo 0)',
                 'guideVolume|' + v('memory/volume-app/key_guide_status'), 'guideViewer|' + v('memory/tv-viewer/key_guide_status'),
                 'guideViewerDb|' + v('db/tv-viewer/key_guide_status'), 'settingsMenuGuide|' + v('db/menu/settings_menu_guide'), 'oobStatus|' + v('db/btapp/oob_status'),
                 'netcoreapp|$(readlink /usr/share/dotnet.tizen/netcoreapp 2>/dev/null)', 'inputKeyevent|' + has('/usr/bin/input_keyevent'),
@@ -1107,6 +1113,12 @@ function turnScreenOff(dispatchGuard){
         screenOffRun={result:ok?'ok':'refused',at:Date.now()};return ok;
     },function(e){screenOffRun={result:'failed',at:Date.now()};throw e;});
 }
+function shardLaunchTarget(claimed, appId) {
+    if (!claimed || typeof claimed !== 'object' || typeof appId !== 'string') return null;
+    if (Object.prototype.hasOwnProperty.call(claimed, appId)) return appId;
+    return (appId === '9Ur5IzDKqV.TizenYouTube' && Object.prototype.hasOwnProperty.call(claimed, 'com.samsung.tv.cobalt-yt')) ? 'com.samsung.tv.cobalt-yt'
+        : (appId === 'com.samsung.tv.cobalt-yt' && Object.prototype.hasOwnProperty.call(claimed, '9Ur5IzDKqV.TizenYouTube')) ? '9Ur5IzDKqV.TizenYouTube' : null;
+}
 // direct: the Task manager's "Open app", already checked in handleLaunch. Anything else comes from a rule (remapper, MQTT, HTTP).
 function runActions(actions, direct, dispatchGuard) {
     var sent=0, skipped=[],mqttSent=0;
@@ -1118,7 +1130,21 @@ function runActions(actions, direct, dispatchGuard) {
         // #135: a rule saved before this check still loads, but never opens a factory, hotel or shop app.
         if(a.type==='launch'&&!direct&&remap.ruleRisk(a.appId,packageOf)){skipped.push('launch:factory-app');return;}
         // #200: an app that is only an HbbTV link (SVT Play) opens the way Samsung's Home opens it; any other app by its id.
-        if(a.type==='launch')command=hbbtvLink.launchCommand(a.appId);
+        if(a.type==='launch'){
+            var claimed=plugins&&typeof plugins.intercepted==='function'?plugins.intercepted():{};
+            var targetId=shardLaunchTarget(claimed,a.appId);
+            if(targetId&&typeof plugins.launch==='function'){
+                return Promise.resolve().then(function(){return plugins.launch(targetId);}).then(null,function(){return {handled:false};}).then(function(r){
+                    if(dispatchGuard&&!dispatchGuard())throw new Error('Input action cancelled');
+                    if(r&&r.handled){sent++;return;}
+                    return agentExecute(hbbtvLink.launchCommand(a.appId),10000,dispatchGuard).then(function(res){
+                        if(res.exit_code||res.timed_out)throw new Error(res.stderr||'native action failed');
+                        sent++;
+                    });
+                });
+            }
+            command=hbbtvLink.launchCommand(a.appId);
+        }
         // A named key goes to the window with the focus; with Vetro TV Tuner on screen that is the tuner's, so its keys go to it (key-routing.js).
         else if(a.type==='key')return sendShortcutKey(a.key,dispatchGuard).then(function(){sent++;});
         // Picture Off. A TV that refuses it is not an input fault (that would hand the remote back to Samsung for a minute): skipped, and the diagnostics say so.
@@ -1499,6 +1525,7 @@ startListening();
 // its next 5 s round. The app-only adapter has no onAgent.
 if(typeof platform.onAgent==='function')platform.onAgent(function(up){
     inputNote('agent',up?'up':'down');
+    try{if(plugins&&typeof plugins.notifyAgent==='function')plugins.notifyAgent(!!up);}catch(e){/* plugin hook never blocks bridge restore */}
     if(!up){bridgeWait=null;return;}
     bridgeWait={agentAt:Date.now(),bridgeMs:null};
     inputRetryReset();
@@ -1580,7 +1607,23 @@ process.on('uncaughtException', function (e) {
     process.exit(1);
 });
 // A deliberate stop is not a crash: close the boot marker so the next start is not put in safe mode.
-['SIGTERM', 'SIGINT'].forEach(function (sig) { process.on(sig, function () { stopInputLifecycle(); try { plugins.stop(); } catch (e) { /* exiting anyway */ } process.exit(0); }); });
+// Plugins with an async stop() (e.g. restoring YouTube's DB row) get a short bounded grace window before exit.
+var shuttingDown = false;
+['SIGTERM', 'SIGINT'].forEach(function (sig) {
+    process.on(sig, function () {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        stopInputLifecycle();
+        var done = false;
+        function leave() { if (!done) { done = true; process.exit(0); } }
+        var grace = setTimeout(leave, 4000);
+        if (grace.unref) grace.unref();
+        var pending;
+        try { pending = plugins.stop(); } catch (e) { leave(); return; }
+        if (pending && typeof pending.then === 'function') pending.then(leave, leave);
+        else leave();
+    });
+});
 
 // Foreground app for MQTT: read-only, one small status query every 5 seconds,
 // only while a broker connection is up. Names come from the stored probe.

@@ -117,5 +117,42 @@ const keepAlive = setInterval(() => {}, 1000);   // the launch timeout is unref'
         assert.deepEqual(JSON.parse(fs.readFileSync(index, 'utf8')).plugins[0].intercepts, [YT], 'the list entry says what the Shard intercepts');
     }
 
+    // concurrent launch() calls for the same canonical app id (including 9Ur5IzDKqV.TizenYouTube <-> com.samsung.tv.cobalt-yt) share one in-flight promise; sync throw does not stick
+    {
+        let calls2 = 0, release = null;
+        const launchedIds = [];
+        const slow = def('youtube', { intercepts: [YT] }, {
+            launch(id) { calls2++; launchedIds.push(id); return new Promise(r => { release = r; }); }
+        });
+        const hd = new PluginHost({ dir: tmp(), external: false }).register(slow);
+        hd.start();
+        const p1 = hd.launch(YT.appId);
+        const p2 = hd.launch('9Ur5IzDKqV.TizenYouTube');
+        assert.equal(calls2, 1, 'concurrent cobalt-yt and wrapper launch calls invoke plugin.launch once');
+        assert.equal(p1, p2, 'concurrent launch calls share the canonical in-flight promise');
+        release();
+        const [r1, r2] = await Promise.all([p1, p2]);
+        assert.deepEqual(r1, { handled: true, plugin: 'youtube' });
+        assert.deepEqual(r2, { handled: true, plugin: 'youtube' });
+        const p3 = hd.launch('9Ur5IzDKqV.TizenYouTube');
+        assert.equal(calls2, 2, 'after settling, a wrapper launch resolves to the YouTube claimant');
+        assert.deepEqual(launchedIds, [YT.appId, YT.appId]);
+        release();
+        await p3;
+        hd.stop();
+
+        let throwsOnce = true;
+        const flaky = def('youtube', { intercepts: [YT] }, {
+            launch() { if (throwsOnce) { throwsOnce = false; throw new Error('sync fail'); } return Promise.resolve(); }
+        });
+        const hf = new PluginHost({ dir: tmp(), external: false }).register(flaky);
+        hf.start();
+        const rf1 = await hf.launch(YT.appId);
+        assert.equal(rf1.handled, false);
+        const rf2 = await hf.launch(YT.appId);
+        assert.equal(rf2.handled, true, 'synchronous throw does not leave a stuck in-flight launch entry');
+        hf.stop();
+    }
+
     console.log('PASS plugin intercepts: manifest rules, claims, launch fallbacks and conflicts');
 })().catch(e => { console.log('FAIL ' + (e.stack || e)); process.exitCode = 1; }).then(() => clearInterval(keepAlive));
