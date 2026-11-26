@@ -41,11 +41,24 @@ function post(url,body){return new Promise(resolve=>{const req=new EventEmitter(
  pluginHandled=false;
  const rFallback=await post('/remap/run',{type:'physical',value:'627'});
  assert.equal(rFallback.data.sent,1);
+ await new Promise(r=>setTimeout(r,50));
  assert.equal(commands.length,1);
  assert.equal(commands[0],launchCommand('9Ur5IzDKqV.TizenYouTube'),'falls back to hbbtvLink.launchCommand when plugin declines');
 
+ // A plugin that takes a minute to get ready must not hold the action queue: the answer comes at once and the app is not started twice.
+ let release;pluginHandled=true;
+ loaded.context.plugins.launch=appId=>new Promise(res=>{release=()=>res({handled:true,plugin:'youtube'});});
+ commands.length=0;
+ const slowRule={id:'slow',trigger:{type:'physical',value:'628'},actions:[{type:'launch',appId:'com.samsung.tv.cobalt-yt'},{type:'key',key:'KEY_ENTER'}]};
+ assert.equal((await post('/remap',{rules:[slowRule]})).status,200);
+ const slow=await Promise.race([post('/remap/run',{type:'physical',value:'628'}),new Promise(r=>setTimeout(()=>r('held'),1500))]);
+ assert.notEqual(slow,'held','a slow Shard launch does not hold the rule actions');
+ assert.equal(slow.data.sent,2);
+ release();await new Promise(r=>setTimeout(r,50));
+ assert.equal(commands.filter(c=>c.indexOf('app_launcher')>=0).length,0,'a handled launch is not started again');
+
  const mainSrc=require('fs').readFileSync(path.resolve(__dirname,'..','service','main.js'),'utf8');
- assert.ok(mainSrc.includes("pgrep -f \\'[g]lscreensaver|[s]potlight-ss|[r]scm-screensaver\\'"),'diagnostics screensaverRunning avoids pgrep self-match and checks Tizen 9 screensavers');
+ assert.ok(mainSrc.includes("pgrep -f \\'[g]lscreensaver|[s]potlight-ss|[s]cm-screensaver\\'"),'diagnostics screensaverRunning avoids pgrep self-match and checks Tizen 9 screensavers');
 
  console.log('PASS native remap: canonical physical codes, selected app, whitelisted native key, and plugin YouTube routing');
 })().catch(e=>{console.error(e);process.exitCode=1});

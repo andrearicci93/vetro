@@ -5,14 +5,8 @@
 require('./compat.js').install();
 var fs = require('fs');
 var http = require('http');
-var net = require('net');
 var os = require('os');
 var path = require('path');
-// Node 18.18+ on Tizen 9 defaults dns lookup to verbatim (AAAA first) with autoSelectFamily off:
-// enabling RFC 8305 Happy Eyeballs prevents 20-30 s stalls on IPv4-only TVs for Vetro and every in-process Shard.
-if (typeof net.setDefaultAutoSelectFamily === 'function') {
-    try { net.setDefaultAutoSelectFamily(true); } catch (e) { /* keep runtime default */ }
-}
 var atomicFile = require('./atomic-file.js');
 var MqttBridge = require('./mqtt-bridge.js').MqttBridge;
 var PluginHost = require('./plugin-host.js').PluginHost;
@@ -450,7 +444,7 @@ function downloadDiagnostics(res, withComponents) {
                 'mbrActivity|$(vconftool get db/mbr-daemon/mbr-activity 2>/dev/null | head -c 24000 | base64 | tr -d "\\n")',
                 'displayState|' + v('memory/pm/state'),
                 'autoProtection|' + v('db/menu/system/auto_protection_time'), 'screensaverOn|' + v('memory/window_system/screensaver_on_off'),
-                'screensaverRunning|$(pgrep -f \'[g]lscreensaver|[s]potlight-ss|[r]scm-screensaver\' >/dev/null 2>&1 && echo 1 || echo 0)',
+                'screensaverRunning|$(pgrep -f \'[g]lscreensaver|[s]potlight-ss|[s]cm-screensaver\' >/dev/null 2>&1 && echo 1 || echo 0)',
                 'guideVolume|' + v('memory/volume-app/key_guide_status'), 'guideViewer|' + v('memory/tv-viewer/key_guide_status'),
                 'guideViewerDb|' + v('db/tv-viewer/key_guide_status'), 'settingsMenuGuide|' + v('db/menu/settings_menu_guide'), 'oobStatus|' + v('db/btapp/oob_status'),
                 'netcoreapp|$(readlink /usr/share/dotnet.tizen/netcoreapp 2>/dev/null)', 'inputKeyevent|' + has('/usr/bin/input_keyevent'),
@@ -1134,14 +1128,16 @@ function runActions(actions, direct, dispatchGuard) {
             var claimed=plugins&&typeof plugins.intercepted==='function'?plugins.intercepted():{};
             var targetId=shardLaunchTarget(claimed,a.appId);
             if(targetId&&typeof plugins.launch==='function'){
-                return Promise.resolve().then(function(){return plugins.launch(targetId);}).then(null,function(){return {handled:false};}).then(function(r){
-                    if(dispatchGuard&&!dispatchGuard())throw new Error('Input action cancelled');
-                    if(r&&r.handled){sent++;return;}
-                    return agentExecute(hbbtvLink.launchCommand(a.appId),10000,dispatchGuard).then(function(res){
-                        if(res.exit_code||res.timed_out)throw new Error(res.stderr||'native action failed');
-                        sent++;
-                    });
-                });
+                // A Shard may need up to a minute to get ready, and the rule actions run one after another: waiting here would hold every
+                // other key and rule behind it (the dock answers at once and starts afterwards for the same reason). The app still starts
+                // by itself when the plugin cannot.
+                Promise.resolve().then(function(){return plugins.launch(targetId);}).then(null,function(){return {handled:false};}).then(function(r){
+                    if(r&&r.handled)return;
+                    if(dispatchGuard&&!dispatchGuard())return;
+                    return agentExecute(hbbtvLink.launchCommand(a.appId),10000,dispatchGuard);
+                }).catch(function(){});
+                sent++;
+                return;
             }
             command=hbbtvLink.launchCommand(a.appId);
         }

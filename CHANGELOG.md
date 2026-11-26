@@ -101,6 +101,10 @@ Ideas from [samshush](https://github.com/elithrar/samshush), checked on a Q80A a
 ### Shards
 
 - **A Shard file can be chosen on an iPhone or iPad.** Safari greyed out `.vplugin` files in the file picker, because the page asked for that extension and iOS knows no file type for it. The picker now shows every file and Vetro checks the name after the choice.
+- **YouTube opens through its Shard from every door** ([#323](https://github.com/andrearicci93/vetro/pull/323) and [#324](https://github.com/andrearicci93/vetro/pull/324) by [swiezaczek](https://github.com/swiezaczek), tested on a QE65S90C, Tizen 9, fixes [#207](https://github.com/andrearicci93/vetro/issues/207)). On TVs that also have Samsung's YouTube wrapper (`9Ur5IzDKqV.TizenYouTube`), the launcher's row, All apps and a Remapper, MQTT or HTTP rule now start the Shard instead of the unpatched app; a Shard that cannot start it leaves the app starting by itself. A Remapper rule does not wait for a slow Shard (the other actions are not held up). When the root agent is not connected, a Shard tile starts the app at once instead of doing nothing.
+- **Plugin switch off and on, then SIGTERM.** A plugin whose `stop()` is asynchronous is waited for before it is started again (and before the service exits, up to 4 seconds), two quick launches of one app start it once, and a plugin that exports `onAgent(connected)` hears when the root agent comes and goes.
+- **The launcher restarts after a same-version reinstall.** The launcher DLL is now remembered by a short hash, so a `.wgt` reinstalled with the same version number no longer leaves the old DLL running. A refresh of the launcher lists that fails is tried again (5 times at most), and the launcher is not raised over an active screensaver at power-on.
+- **Diagnostics: the screensaver check** no longer matches its own shell, and also knows the Tizen 9 screensaver processes (`spotlight-ss`, `scm-screensaver`).
 
 ## 0.7.0 — 2026-11-21
 
