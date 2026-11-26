@@ -32,6 +32,14 @@ namespace Launcher.Core
 
         public static readonly PadCell[] Digits = BuildDigits();
         public static readonly PadCell[] Colors = BuildColors();
+        /// <summary>Core navigation keys that must grab cleanly for focus-skip mode; if any fails, the pad falls back to window activation.</summary>
+        public static readonly string[] CoreGrabKeys = new[] { "Left", "Right", "Up", "Down", "Return", "XF86Back" };
+        /// <summary>Every key handled by <see cref="Key"/> while the pad is open (ungrabbed before synthetic keys are sent).</summary>
+        public static readonly string[] GrabKeys = new[]
+        {
+            "Left", "Right", "Up", "Down", "Return", "KP_Enter", "Select", "BackSpace", "XF86Back", "Escape", "XF86Exit",
+            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
+        };
         /// <summary>A key name that may go on a command line: letters, digits and "_" only. A loop, not a Regex: the first 123 press would pay for loading and building one.</summary>
         private static bool IsKeyName(string k)
         {

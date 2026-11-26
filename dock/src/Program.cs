@@ -1697,6 +1697,7 @@ namespace Launcher
         {
             try
             {
+                if (_pad != null && _pad.IsOnScreen) return;
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
                 if (key == "XF86Home" && _homeClaimed && !DockActive) { WindowHome(); return; }
@@ -1710,6 +1711,7 @@ namespace Launcher
         {
             try
             {
+                if (_pad != null && _pad.IsOnScreen) return;
                 // Evas_Event_Key_Up starts with `const char *keyname` too.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
                 if (IsOkKey(key)) { TaskOkUp(); RowOkUp(); }
@@ -2234,6 +2236,11 @@ namespace Launcher
                     // The kernel always reports the release: it ends a held OK even when the window's key up is late.
                     for (int k = 0; k < InputReleases.Count; k++)
                     {
+                        if (_pad != null && _pad.IsOnScreen)
+                        {
+                            if (InputReleases[k] == RawBackCode) _pad.KernelBackRelease();
+                            continue;
+                        }
                         if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
                         else if (InputReleases[k] == RawBackCode) BackUp.KernelRelease(Efl.ecore_time_get());
                     }

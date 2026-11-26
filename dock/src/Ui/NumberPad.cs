@@ -10,9 +10,10 @@ namespace Launcher.Ui
     /// The 123 pad, after Samsung's two pages but as one slim glass capsule at the foot of the screen: the digits page
     /// (1-9, 0, dash, backspace, a way to the colour page, a "Done" chip above and the typed number in a chip at the other end) and the colour page
     /// (back, A B C D, teletext, timer, info, with the name of the focused key above it).
-    /// It takes the keyboard focus while it is open (Left/Right/Up/Down/OK/Back), so the app underneath does not see
-    /// those keys; "Done" or a function key closes it, gives the focus back and then sends the keys to that app. They are sent once the
-    /// window is really gone (end of the fade), never while it still has the focus: a key injected into the pad itself would be lost.
+    /// It skips window focus (`focus_skip = true`) and grabs its navigation keys at top position while open
+    /// (falling back to window activation only if the keygrab is refused), so modal dialogs underneath (such as Developer Mode or IME)
+    /// never lose focus or dismiss. "Done" or a function key closes it, ungrabs its keys once gone and then sends the keys to that app.
+    /// They are sent once the window is really gone (end of the fade), never while it still holds the grab or focus: a key injected into the pad itself would be lost.
     /// Same material as the dock and the volume pill (Fumé): dark smoked body, thin light edge, an ice-white focus capsule that slides.
     /// </summary>
     internal sealed class NumberPad
@@ -41,7 +42,7 @@ namespace Launcher.Ui
         // Back and Exit close the pad when the key comes up (BackRelease, #284): the app under it must not get the rest of the key.
         private readonly BackRelease _backUp = new BackRelease();
         private IntPtr _backTimer;
-        private bool _built, _failed, _shown, _closing;
+        private bool _built, _failed, _shown, _closing, _grabbed, _grabFallback;
         // The fade and the capsule's slide. At rest (open, opaque, capsule on its cell) the animator stops; a key starts it again, and its
         // first tick advances by one frame interval of the earlier run (FrameStep), so the next movement starts exactly as it did before.
         private readonly PadMotion _motion = new PadMotion();
@@ -70,6 +71,8 @@ namespace Launcher.Ui
         /// <summary>The window is mapped (open, or fading out): it has the keyboard focus, so the remote's keys are its own.</summary>
         public bool IsOnScreen { get { return _shown; } }
 
+        public void KernelBackRelease() { _backUp.KernelRelease(Efl.ecore_time_get()); }
+
         public void Toggle() { if (IsShown) Close(); else Open(); }
 
         // What Done or a function key asked to send: sent when the fade has ended and the window is hidden (see the class summary).
@@ -88,7 +91,21 @@ namespace Launcher.Ui
             Refresh();
             bool fresh = !_shown;
             if (!_shown) { _shown = true; _motion.Fade = 0; _step.Begin(Efl.ecore_time_get()); _tinted = false; _focusDrawnX = int.MinValue; Apply(); Efl.evas_object_show(_win); }
-            Efl.elm_win_activate(_win);
+            Efl.elm_win_raise(_win);
+            if (!_grabFallback)
+            {
+                if (!GrabKeys())
+                {
+                    _grabFallback = true;
+                    _log("pad: keygrab failed, falling back to focus activation");
+                    Efl.elm_win_prop_focus_skip_set(_win, false);
+                    Efl.elm_win_activate(_win);
+                }
+            }
+            else
+            {
+                Efl.elm_win_activate(_win);
+            }
             ArmIdle();
             if (_animator == IntPtr.Zero) { if (!fresh) _step.Resume(); _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero); }
         }
@@ -110,7 +127,37 @@ namespace Launcher.Ui
             _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero);
         }
 
-        // ------------------------------------------------------------------ build
+        // ------------------------------------------------------------------ keygrab & build
+
+        private bool GrabKeys()
+        {
+            if (_grabbed) return true;
+            bool coreOk = true;
+            string[] keys = NumberPadModel.GrabKeys;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                string k = keys[i];
+                Efl.evas_object_key_grab(_win, k, 0, 0, true);
+                bool ok = Efl.elm_win_keygrab_set(_win, k, 0, 0, 0, Efl.ElmWinKeygrabTopmost);
+                if (!ok && Array.IndexOf(NumberPadModel.CoreGrabKeys, k) >= 0) coreOk = false;
+            }
+            _grabbed = true;
+            if (!coreOk) { UngrabKeys(); return false; }
+            return true;
+        }
+
+        private void UngrabKeys()
+        {
+            if (!_grabbed) return;
+            _grabbed = false;
+            string[] keys = NumberPadModel.GrabKeys;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                string k = keys[i];
+                Efl.elm_win_keygrab_unset(_win, k, 0, 0);
+                Efl.evas_object_key_ungrab(_win, k, 0, 0);
+            }
+        }
 
         private bool Build()
         {
@@ -123,7 +170,7 @@ namespace Launcher.Ui
                 Efl.elm_win_title_set(_win, "vetro-numpad");
                 Efl.elm_win_alpha_set(_win, true);
                 Efl.elm_win_borderless_set(_win, true);
-                Efl.elm_win_prop_focus_skip_set(_win, false);
+                Efl.elm_win_prop_focus_skip_set(_win, true);
                 Efl.efl_util_set_notification_window_level(_win, NotificationLevelTop);
                 Efl.elm_win_layer_set(_win, WindowLayer);
                 Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
@@ -334,6 +381,7 @@ namespace Launcher.Ui
                 bool moving = _motion.Step(dt, _closing, _model.OnDone, _slots[_model.Page][_model.Focus].X, out gone);
                 if (gone)
                 {
+                    UngrabKeys();
                     Efl.evas_object_hide(_win);
                     _shown = false; _closing = false; _animator = IntPtr.Zero;
                     if (Probe != null) Probe.Cancel();
@@ -348,7 +396,7 @@ namespace Launcher.Ui
                 _animator = IntPtr.Zero;
                 return 0;
             }
-            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; Efl.evas_object_hide(_win); MarkOpen(false); SendPending(); return 0; }
+            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; UngrabKeys(); Efl.evas_object_hide(_win); MarkOpen(false); SendPending(); return 0; }
         }
 
         /// <summary>The window is gone: what Done or a function key asked for goes out now (the shell still waits a moment for the focus to move).</summary>

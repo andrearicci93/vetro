@@ -303,6 +303,19 @@ namespace Launcher.Tests
                 T.True(!Tasks.IsUserApp("com.samsung.tv.quicklaunch", ui), "quicklaunch protected");
                 T.True(Tasks.IsUserApp("com.samsung.tv.store", ui), "normal uiapp remains visible");
             });
+
+            T.Run("NumberPadModel grab key tables", () =>
+            {
+                var seen = new HashSet<string>();
+                foreach (string k in NumberPadModel.GrabKeys) T.True(seen.Add(k), "unique grab key: " + k);
+                foreach (string k in new[] { "Left", "Right", "Up", "Down", "Return", "XF86Back" })
+                {
+                    T.True(Array.IndexOf(NumberPadModel.CoreGrabKeys, k) >= 0, "CoreGrabKeys includes " + k);
+                    T.True(seen.Contains(k), "GrabKeys includes core key " + k);
+                }
+                foreach (string k in new[] { "KP_Enter", "Select", "BackSpace", "Escape", "XF86Exit", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" })
+                    T.True(seen.Contains(k), "GrabKeys includes " + k);
+            });
         }
     }
 }
