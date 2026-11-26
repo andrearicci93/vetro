@@ -39,6 +39,12 @@ function validateAction(a) {
     }
     // Picture Off: the screen goes dark, the sound stays. No arguments; the command is fixed (control.js SCREEN_OFF_COMMAND).
     if (a.type === 'screenoff') return {type: 'screenoff'};
+    // A condition, kept in the action list on purpose: an older Vetro does not know this type and refuses the rule set (a Settings
+    // file, a saved rules file) instead of running the rule without its condition. Not an action: runActions never sees it.
+    if (a.type === 'when') {
+        if (a.screen !== 'on' && a.screen !== 'off') throw new Error('invalid condition: the screen is on or off');
+        return {type: 'when', screen: a.screen};
+    }
     if (a.type === 'mqtt') {
         if (typeof a.topic !== 'string' || !TOPIC_RE.test(a.topic)) throw new Error('invalid topic');
         var payload = a.payload == null ? '' : String(a.payload);
@@ -66,11 +72,16 @@ function validateRules(rules) {
         if (!Array.isArray(r.actions) || !r.actions.length || r.actions.length > MAX_ACTIONS) {
             throw new Error('rule ' + r.id + ' needs 1..' + MAX_ACTIONS + ' actions');
         }
+        var checked = r.actions.map(validateAction);
+        var guards = checked.filter(function (a) { return a.type === 'when'; });
+        if (guards.length > 1) throw new Error('rule ' + r.id + ' has more than one condition');
+        if (guards.length && checked.length === 1) throw new Error('rule ' + r.id + ' has a condition but no action');
+        // The condition always comes last, so the first action is what the rule does.
         return {
             id: r.id,
             enabled: r.enabled !== false,
             trigger: Object.assign({type:t.type,value:t.type==='physical'?String(+t.value):t.value},t.payload==null?{}:{payload:t.payload}),
-            actions: r.actions.map(validateAction)
+            actions: checked.filter(function (a) { return a.type !== 'when'; }).concat(guards)
         };
     });
     var inputs=result.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value});
@@ -78,13 +89,28 @@ function validateRules(rules) {
     return result;
 }
 
-// Actions of every enabled rule matching the trigger, in rule order.
+// The enabled rules matching the trigger, in rule order.
+function matches(rules, type, value, payload) {
+    return rules.filter(function (r) {
+        return r.enabled && r.trigger.type === type && r.trigger.value === value && (r.trigger.payload==null||r.trigger.payload===payload);
+    });
+}
+// The rule's condition ('on' or 'off': what the screen must be), or null.
+function guardOf(rule) {
+    var g = (rule.actions || []).filter(function (a) { return a.type === 'when'; })[0];
+    return g ? g.screen : null;
+}
+// What a rule does: its actions without the condition.
+function actionsOf(rule) {
+    return rule.actions.filter(function (a) { return a.type !== 'when'; });
+}
+// Actions of every enabled rule matching the trigger, in rule order. A rule with a condition is left out: its condition needs the
+// TV's state, which the caller reads (main.js guardedActions); a caller that cannot read it never runs it unguarded.
 function resolve(rules, type, value, payload) {
     var out = [];
-    rules.forEach(function (r) {
-        if (r.enabled && r.trigger.type === type && r.trigger.value === value && (r.trigger.payload==null||r.trigger.payload===payload)) {
-            r.actions.forEach(function (a) { out.push(a); });
-        }
+    matches(rules, type, value, payload).forEach(function (r) {
+        if (guardOf(r)) return;
+        actionsOf(r).forEach(function (a) { out.push(a); });
     });
     return out;
 }
@@ -99,5 +125,5 @@ function checkLaunchable(rules, packageOf) {
     }); });
     return rules;
 }
-module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, launchable: launchable,
+module.exports = {validateRules: validateRules, validateAction: validateAction, resolve: resolve, matches: matches, guardOf: guardOf, actionsOf: actionsOf, launchable: launchable,
     checkLaunchable: checkLaunchable, ruleRisk: ruleRisk, NOT_LAUNCHABLE_PREFIX: NOT_LAUNCHABLE_PREFIX};

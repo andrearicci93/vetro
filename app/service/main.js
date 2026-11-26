@@ -128,7 +128,8 @@ var keyGuides=(function(){
 // Apps removed through Vetro stay removed (keep-removed.js; idea and mechanism by zabique, github.com/zabique/vetro).
 var keepRemoved = new (require('./keep-removed.js').KeepRemoved)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
-var tvState = new (require('./tv-state.js').Store)(agentExecute);
+var tvStateModule = require('./tv-state.js');
+var tvState = new tvStateModule.Store(agentExecute);
 var privacy = new (require('./privacy.js').Privacy)(agentExecute);
 var menuSettings = new (require('./menu-settings.js').Catalog)(agentExecute);
 var quickSettings = require('./quick-settings.js');
@@ -417,6 +418,8 @@ function downloadDiagnostics(res, withComponents) {
                     selectableCount: all.filter(function (d) { return d.selectable; }).length, volumeKeys: keys.volume, padKey: keys.pad, problem: !!vetroUiInputProblem, failure: inputError || (snap.error || null), helperLog: helperLog, prevHelperLog: prevHelperLog, remoconSubtype: subtype.trim(), remoconNode: remoconNode.trim(), loop: loop, history: history,
                     recentKeys: (snap.events || []).filter(function (e) { return e && e.action === 'down'; }),
                     screenOffRules: remapStore.rules.filter(function (r) { return r.enabled && r.actions.some(function (a) { return a.type === 'screenoff'; }); }).length,
+                    screenGuardRules: remapStore.rules.filter(function (r) { return r.enabled && remap.guardOf(r); }).length,
+                    screenGuard: screenGuardRun ? {result: screenGuardRun.result, ageSeconds: Math.round((Date.now() - screenGuardRun.at) / 1000)} : null,
                     screenOff: screenOffRun ? {result: screenOffRun.result, ageSeconds: Math.round((Date.now() - screenOffRun.at) / 1000)} : null,
                     volumeRoute: volumeRoute ? {route: volumeRoute.route, errno: volumeRoute.errno, ageSeconds: Math.round((Date.now() - volumeRoute.at) / 1000)} : null};
             });
@@ -1107,6 +1110,30 @@ function turnScreenOff(dispatchGuard){
         screenOffRun={result:ok?'ok':'refused',at:Date.now()};return ok;
     },function(e){screenOffRun={result:'failed',at:Date.now()};throw e;});
 }
+// A rule's condition ("only when the screen is on / off", remap.js): the rules that have none run as before, with no extra work. When a
+// matched rule has one, the TV's power state is read once, now (memory/pm/state through the root agent, one short command), and the rule
+// runs only when it matches. Picture Off reads as off; a TV that cannot be read (no buxton2ctl, no root agent) runs no conditioned rule.
+// screenGuardRun (diagnostics): how the last conditioned rule was decided (met, notMet, unreadable) and when. In memory only.
+var screenGuardRun=null;
+function guardedActions(rules){
+    var plain=[],need=false;
+    rules.forEach(function(r){if(remap.guardOf(r))need=true;});
+    if(!need){rules.forEach(function(r){remap.actionsOf(r).forEach(function(a){plain.push(a);});});return Promise.resolve(plain);}
+    return agentExecute(tvStateModule.POWER_READ,3000).then(function(r){return r&&!r.timed_out&&!r.exit_code?tvStateModule.decodePower(r.stdout):null;},function(){return null;}).then(function(power){
+        var out=[],result=null;
+        rules.forEach(function(r){
+            var g=remap.guardOf(r),use=!g;
+            if(g){
+                if(power===null)result=result||'unreadable';
+                else if((g==='off')===(power==='standby')){use=true;result=result==='unreadable'?result:'met';}
+                else result=result||'notMet';
+            }
+            if(use)remap.actionsOf(r).forEach(function(a){out.push(a);});
+        });
+        if(result)screenGuardRun={result:result,at:Date.now()};
+        return out;
+    });
+}
 function shardLaunchTarget(claimed, appId) {
     if (!claimed || typeof claimed !== 'object' || typeof appId !== 'string') return null;
     if (Object.prototype.hasOwnProperty.call(claimed, appId)) return appId;
@@ -1181,12 +1208,12 @@ var physical=new PhysicalInput(agentExecute,function(event){
         return;
     }
     if(!inputLifecycleActive||event.action!=='down'||event.decision!=='blocked')return;
-    var actions=remap.resolve(remapStore.rules,'physical',String(event.code));
+    var matched=remap.matches(remapStore.rules,'physical',String(event.code));
     if(pendingActions>=8){pauseInputFault('input action queue exceeded');return;}
     pendingActions++;
     var generation=inputGeneration;
     function current(){return inputLifecycleActive&&generation===inputGeneration;}
-    actionQueue=actionQueue.then(function(){return current()?runActions(actions,false,current):null;}).catch(function(e){if(current())pauseInputFault(e.message);}).finally(function(){pendingActions--;});
+    actionQueue=actionQueue.then(function(){return current()?guardedActions(matched).then(function(actions){return current()?runActions(actions,false,current):null;}):null;}).catch(function(e){if(current())pauseInputFault(e.message);}).finally(function(){pendingActions--;});
 },physicalHooks);
 var inputObservers=[], inputPaused=false, inputRestoring=false;
 // inputPaused is the user's own pause (listening mode) and lasts until they act. A fault is different: a rule's action failed
@@ -1314,7 +1341,7 @@ function handleInput(req,res){
 }
 function handleRemapRun(req,res){readJsonBody(req,res,function(p){
     if(typeof p.type!=='string'||typeof p.value!=='string')return serveJson(res,{error:'type and value required'},400);
-    runActions(remap.resolve(remapStore.rules,p.type,p.value,p.payload)).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
+    guardedActions(remap.matches(remapStore.rules,p.type,p.value,p.payload)).then(function(a){return runActions(a);}).then(function(r){serveJson(res,r);}).catch(function(e){serveJson(res,{ok:false,error:e.message},503);});
 });}
 
 // POST /screen/control: one tile of the TV screen. The sign-in gate has already decided who may get here (the TV app itself,
@@ -1545,10 +1572,10 @@ function runChannelCommand(m){
 }
 var bridge = new MqttBridge(readTelemetry,function(m){
  if(m.topic===bridge.channelCommandTopic()){runChannelCommand(m);return;}
- var actions=remap.resolve(remapStore.rules,'mqtt',m.topic,m.payload.toString('utf8'));if(!actions.length)return;
+ var matched=remap.matches(remapStore.rules,'mqtt',m.topic,m.payload.toString('utf8'));if(!matched.length)return;
  var now=Date.now();if(pendingActions>=8||now-(mqttLastTrigger[m.topic]||0)<500){bridge.event('throttled','Trigger rate limited: '+m.topic);return;}
  mqttLastTrigger[m.topic]=now;pendingActions++;
- actionQueue=actionQueue.then(function(){return runActions(actions);}).then(function(r){bridge.event('trigger','Rule executed: '+m.topic+' · '+r.sent+' action(s)');}).catch(function(e){bridge.event('error','MQTT rule: '+e.message);}).finally(function(){pendingActions--;});
+ actionQueue=actionQueue.then(function(){return guardedActions(matched).then(function(actions){return runActions(actions);});}).then(function(r){bridge.event('trigger','Rule executed: '+m.topic+' · '+r.sent+' action(s)');}).catch(function(e){bridge.event('error','MQTT rule: '+e.message);}).finally(function(){pendingActions--;});
 });
 bridge.setTopics(remapStore.rules.filter(function(r){return r.enabled&&r.trigger.type==='mqtt'}).map(function(r){return r.trigger.value}));
 // bridge.start() is called by startBridge(), once this copy of the service is the one that answers (see the listen handler).

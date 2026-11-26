@@ -29,6 +29,8 @@ var READ = 'B=/usr/bin/buxton2ctl; if [ -x $B ]; then ' +
     '$B get memory ' + KEYS.power + ' 2>/dev/null; fi; ' +
     'P=$(cat ' + TUNER_PID + ' 2>/dev/null); case "$P" in ""|*[!0-9]*) ;; *) if [ -d /proc/$P ]; then echo "TUNER|$P"; ' +
     'echo "CHANNEL|$(head -c 1024 ' + TUNER_CHANNEL + ' 2>/dev/null | tr -d "\\n")"; fi ;; esac; true';
+// One read, for a rule's condition (the Remapper's "only when the screen is on / off"): asked when the rule fires, not polled.
+var POWER_READ = '[ -x /usr/bin/buxton2ctl ] && /usr/bin/buxton2ctl get memory ' + KEYS.power + ' 2>/dev/null; true';
 var TUNER_RE = /^TUNER\|(\d+)$/m, CHANNEL_RE = /^CHANNEL\|(\{.*\})$/m;
 
 function sourceName(type) {
@@ -100,4 +102,4 @@ Store.prototype.read = function () {
     }).finally(function () { self.pending = null; });
     return this.pending;
 };
-module.exports = {Store: Store, decode: decode, decodeVconf: decodeVconf, decodeChannel: decodeChannel, decodePower: decodePower, sourceName: sourceName, KEYS: KEYS, READ: READ};
+module.exports = {Store: Store, decode: decode, decodeVconf: decodeVconf, decodeChannel: decodeChannel, decodePower: decodePower, POWER_READ: POWER_READ, sourceName: sourceName, KEYS: KEYS, READ: READ};

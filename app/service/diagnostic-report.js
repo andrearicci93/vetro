@@ -272,6 +272,9 @@ var projectors = {
             // agent after the service was refused (agent), or given back to Samsung (native); errno: the service's own open, as a code.
             // screenOffRules: how many enabled Remapper rules turn the screen off; screenOff: how the last one ended and how long ago.
             screenOffRules:Number.isInteger(d.screenOffRules)&&d.screenOffRules>=0?Math.min(d.screenOffRules,50):null,
+            // screenGuardRules: enabled rules with an "only when the screen is on / off" condition; screenGuard: how the last one was decided.
+            screenGuardRules:Number.isInteger(d.screenGuardRules)&&d.screenGuardRules>=0?Math.min(d.screenGuardRules,50):null,
+            screenGuard:d.screenGuard&&typeof d.screenGuard==='object'?{result:choice(d.screenGuard.result,['met','notMet','unreadable']),ageSeconds:Number.isInteger(d.screenGuard.ageSeconds)&&d.screenGuard.ageSeconds>=0?Math.min(d.screenGuard.ageSeconds,9999999):null}:null,
             screenOff:d.screenOff&&typeof d.screenOff==='object'?{result:choice(d.screenOff.result,['ok','refused','failed']),ageSeconds:Number.isInteger(d.screenOff.ageSeconds)&&d.screenOff.ageSeconds>=0?Math.min(d.screenOff.ageSeconds,9999999):null}:null,
             volumeRoute:d.volumeRoute&&typeof d.volumeRoute==='object'?{route:choice(d.volumeRoute.route,['dock','agent','native']),
                 errno:/^E[A-Z0-9]{1,15}$/.test(d.volumeRoute.errno)?d.volumeRoute.errno:null,ageSeconds:Number.isInteger(d.volumeRoute.ageSeconds)&&d.volumeRoute.ageSeconds>=0?Math.min(d.volumeRoute.ageSeconds,9999999):null}:null});}
