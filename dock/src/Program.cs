@@ -2301,6 +2301,7 @@ namespace Launcher
                 // The Home app is started without Samsung's loader (#334); the guard below still keeps Samsung's own Home away.
                 try { Log("home-launch " + _homeLaunch.AppId + " rc=" + Libc.system(HomeLaunch.Command(_homeLaunch.AppId))); }
                 catch (Exception ex) { Log("home-launch failed: " + ex.Message); LaunchApp(_homeLaunch); }
+                ClaimHome();
                 ArmGuard();
                 return;
             }
@@ -2335,17 +2336,29 @@ namespace Launcher
             RawHome();
         }
 
-        /// <summary>Claims XF86Home once (--claim-home, never in custom launcher mode), after the input reader has heard a real press, and says how it went in the log.</summary>
+        private static readonly Efl.TaskCb ClaimHideCb = OnClaimHide;
+        private static byte OnClaimHide(IntPtr data)
+        {
+            try { if (_homeLaunch != null && _win != IntPtr.Zero) Efl.evas_object_hide(_win); }
+            catch (Exception ex) { Log("home claim hide: " + ex.Message); }
+            return 0;
+        }
+
+        /// <summary>Claims XF86Home once (--claim-home), after the input reader has heard a real press, and says how it went in the log.
+        /// In custom launcher mode (_homeLaunch != null), the transparent focus-skipping window is briefly mapped for the grab and hidden again.</summary>
         private static void ClaimHome()
         {
-            if (!_claimHome || _claimTried || !_rawHomeSeen || _homeLaunch != null) return;
+            if (!_claimHome || _claimTried || !_rawHomeSeen) return;
             _claimTried = true;
+            bool transient = _homeLaunch != null;
+            if (transient) Efl.evas_object_show(_win);
             try
             {
                 _homeClaimed = Efl.elm_win_keygrab_set(_win, "XF86Home", 0, 0, 0, KeygrabExclusive);
                 Log("home: claim " + (_homeClaimed ? "granted" : "refused"));
             }
             catch (Exception ex) { Log("home: claim unavailable"); Log("home claim: " + ex.GetType().Name + " " + ex.Message); }
+            if (transient) Efl.ecore_timer_add(0.15, ClaimHideCb, IntPtr.Zero);
             if (_homeClaimed) WatchEcoreKeys();
             try
             {
@@ -2786,9 +2799,10 @@ namespace Launcher
                 if (homeLaunch != null)
                 {
                     _homeLaunch = HomeLaunch.Parse(homeLaunch);
+                    if (_homeLaunch != null) Efl.elm_win_prop_focus_skip_set(_win, true);
                     Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
                 }
-                _claimHome = Flag(args, "--claim-home") && _homeLaunch == null;
+                _claimHome = Flag(args, "--claim-home");
                 Libc.unlink(_claimPath);   // one left by a launcher that was killed
                 // The remote is opened now, before the pages and the warm-up: a Home pressed meanwhile waits in the node's buffer and is answered
                 // when the loop starts (DrainStartupInput). The fifo is still made after the warm-up: until it has a reader the service sends the
