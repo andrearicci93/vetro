@@ -306,6 +306,27 @@ namespace Launcher.Tests
                 T.True(!Tasks.IsUserApp("com.samsung.tv.quicklaunch", ui), "quicklaunch protected");
                 T.True(Tasks.IsUserApp("com.samsung.tv.store", ui), "normal uiapp remains visible");
             });
+
+            T.Run("picture modes: CheckPictureModeByGroup dbus-send format and truncation fallback", () =>
+            {
+                string groupCmd = PictureModes.CheckGroupCommand();
+                T.True(groupCmd.Contains("dbus-send --system") && groupCmd.Contains("CheckPictureModeByGroup") && groupCmd.Contains("array:int32:65536,") && groupCmd.Contains(" int32:22"), "builds dbus-send CheckPictureModeByGroup command");
+                string combined = PictureModes.GetAndCheckGroupCommand();
+                T.True(combined.Contains("GetPictureMode i 1") && combined.Contains("__GROUP__") && combined.Contains("CheckPictureModeByGroup"), "combines mode read and group check");
+
+                var sb = new System.Text.StringBuilder("   array [\n");
+                for (int i = 0; i < PictureModes.Candidates.Length; i++) sb.Append("      int32 ").Append(PictureModes.Candidates[i] == 65536 || PictureModes.Candidates[i] == 65538 ? 1 : 0).Append('\n');
+                sb.Append("   ]\n   int32 0\n");
+                string parsed = PictureModes.ParseGroupReply(sb.ToString());
+                T.True(parsed != null, "accepts 22-element reply ending in int32 0");
+                ChoiceState st = PictureModes.Build("ii 65538 0", parsed);
+                T.Eq(st.Rows.Count, 2, "builds offered rows from group reply");
+                T.True(st.Rows[1].Value == 65538 && st.Rows[1].Active, "marks active mode");
+
+                T.Eq(PictureModes.ParseGroupReply("   array [\n      int32 1\n   ]\n   int32 -1\n"), null, "rejects truncated -1 reply for busctl fallback");
+                T.Eq(PictureModes.ParseGroupReply("   array [\n      int32 1\n   ]\n   int32 0\n"), null, "rejects partial array count");
+                T.Eq(PictureModes.ParseGroupReply("\nx\n"), null, "a TV without the method (the 2021 Q80A answers UnknownMethod, so the command prints x) falls back to the per-mode checks");
+            });
         }
     }
 }

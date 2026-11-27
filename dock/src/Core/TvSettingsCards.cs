@@ -74,6 +74,65 @@ namespace Launcher.Core
 
         public static string GetCommand() { return AvocRead + "GetPictureMode i 1"; }
 
+        /// <summary>One dbus-send call checking all 22 candidates in ~35 ms (busctl fails on Tizen 9 aii serialization).</summary>
+        public static string CheckGroupCommand()
+        {
+            var ids = new string[Candidates.Length];
+            for (int i = 0; i < Candidates.Length; i++) ids[i] = Candidates[i].ToString(CultureInfo.InvariantCulture);
+            return "dbus-send --system --reply-timeout=3000 --print-reply=literal --dest=org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl.CheckPictureModeByGroup array:int32:" +
+                string.Join(",", ids) + " int32:" + Candidates.Length.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>Combines GetPictureMode with CheckPictureModeByGroup into one shell round-trip.</summary>
+        public static string GetAndCheckGroupCommand()
+        {
+            return "{ " + GetCommand() + " || echo x; echo __GROUP__; " + CheckGroupCommand() + " || echo x; }";
+        }
+
+        /// <summary>
+        /// Parses <c>dbus-send --print-reply=literal</c> output from <c>CheckPictureModeByGroup</c> into busctl-style
+        /// <c>"i &lt;n&gt;\n"</c> lines. Returns <c>null</c> unless the reply ends with <c>int32 0</c> and contains all
+        /// <see cref="Candidates"/> values (avocd truncates and returns -1 if any ID fails its boundary check on older TVs).
+        /// </summary>
+        public static string ParseGroupReply(string output)
+        {
+            if (string.IsNullOrEmpty(output)) return null;
+            string[] lines = output.Replace("\r", "").Split('\n');
+            bool inArray = false, arrayDone = false, seenEndRc = false;
+            var values = new List<int>(Candidates.Length);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string t = lines[i].Trim();
+                if (t.Length == 0) continue;
+                if (!inArray && !arrayDone)
+                {
+                    if (t == "array [" || t.StartsWith("array [", StringComparison.Ordinal)) inArray = true;
+                    continue;
+                }
+                if (inArray)
+                {
+                    if (t == "]" || t.StartsWith("]", StringComparison.Ordinal)) { inArray = false; arrayDone = true; continue; }
+                    if (t.StartsWith("int32 ", StringComparison.Ordinal))
+                    {
+                        int v;
+                        if (!int.TryParse(t.Substring(6).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out v)) return null;
+                        values.Add(v);
+                    }
+                    continue;
+                }
+                if (t.StartsWith("int32 ", StringComparison.Ordinal))
+                {
+                    int rc;
+                    if (!int.TryParse(t.Substring(6).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out rc) || rc != 0) return null;
+                    seenEndRc = true;
+                }
+            }
+            if (!seenEndRc || values.Count != Candidates.Length) return null;
+            var sb = new System.Text.StringBuilder(values.Count * 6);
+            for (int i = 0; i < values.Count; i++) sb.Append("i ").Append(values[i].ToString(CultureInfo.InvariantCulture)).Append('\n');
+            return sb.ToString();
+        }
+
         /// <summary>One call for every candidate: each answer on its own line, in the candidates' order.</summary>
         public static string CheckCommand()
         {
