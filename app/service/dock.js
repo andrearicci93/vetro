@@ -502,7 +502,9 @@ Dock.prototype.cardsShown = function () {
 // root agent: the agent lives in sdbd's cgroup, and the TV stops sdbd whenever it goes to standby, which
 // kills everything in that cgroup (measured: the dock died at every standby and came back only after the
 // agent had been relaunched at wake). In its own unit it survives standby. KillSignal is SIGKILL because the
-// dock does not leave on SIGTERM. If systemd-run is missing or refuses, the old detached start is used.
+// dock does not leave on SIGTERM. Restart=on-failure (#335) starts it again after 200 ms when it dies on a signal or exits non-zero, where the
+// 60 s supervisor would take up to a minute; a stop from Vetro (systemctl stop) is not a failure, so it stays down, and systemd's own limit
+// (5 starts in 10 s) ends a crash loop, which the supervisor then clears with reset-failed. If systemd-run is missing or refuses, the old detached start is used.
 Dock.prototype.startScript = function () {
     // DOTNET_EnableDiagnostics=0 (#278): no diagnostics IPC socket and thread in the launcher; nothing attaches a debugger on a TV.
     var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 TVLAUNCHER_ENGINE=egl TVLAUNCHER_DIR=' + RUN_DIR + ' DOTNET_EnableDiagnostics=0';
@@ -522,7 +524,7 @@ Dock.prototype.startScript = function () {
         this.stopLines(),
         'rm -f ' + FIFO,
         'cd ' + q(this.dir),
-        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p Nice=-10 -p StandardOutput=null -p StandardError=null ' +
+        'systemd-run --unit=' + UNIT + ' --collect -p WorkingDirectory=' + q(this.dir) + ' -p KillSignal=SIGKILL -p Nice=-10 -p StandardOutput=null -p StandardError=null -p Restart=on-failure -p RestartSec=200ms ' +
             '/usr/bin/env ' + env + ' /usr/bin/dotnet ' + args + ' >/dev/null 2>&1 || ' +
         '{ ' + env + ' nice -n -10 setsid nohup /usr/bin/dotnet ' + args + ' </dev/null >/dev/null 2>&1 & }',
         PREVIEW_OFF,

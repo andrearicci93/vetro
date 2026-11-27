@@ -2666,6 +2666,9 @@ namespace Launcher
                 catch (Exception ex) { Console.Error.WriteLine("Source switch failed: " + ex.Message); return 1; }
             }
             if (Flag(args, "--get-home")) return GetHome();
+            // Not dumpable (#335): on an unexpected signal Samsung's coredump handler froze every thread of this process for ~20 s while its
+            // Wayland windows and the Home key grab stayed held, locking the remote. Children started later are dumpable again (execve).
+            try { Libc.prctl(Libc.PR_SET_DUMPABLE, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero); } catch (Exception) { }
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));

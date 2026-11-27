@@ -17,7 +17,9 @@ namespace Launcher.Native
         // inotify (Linux, the same values on ARM and x86): IN_NONBLOCK is O_NONBLOCK; a node created, renamed in or given new permissions.
         public const int IN_NONBLOCK = 0x800;
         public const uint IN_ATTRIB = 0x4, IN_MOVED_TO = 0x80, IN_CREATE = 0x100;
+        public const int PR_SET_DUMPABLE = 4;
 
+        [DllImport(C, SetLastError = true)] public static extern int prctl(int option, IntPtr arg2, IntPtr arg3, IntPtr arg4, IntPtr arg5);
         [DllImport(C, SetLastError = true)] public static extern int setenv(string name, string value, int overwrite);
         [DllImport(C, SetLastError = true)] public static extern int mkfifo(string path, uint mode);
         [DllImport(C, SetLastError = true)] public static extern int open(string path, int flags);
