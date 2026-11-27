@@ -322,4 +322,39 @@ function settle() { return new Promise(r => setImmediate(r)); }
         console.log('PASS the 1722 archive preflight failure falls back to vddebugmenu once with the 3.1 payload');
     }
 
+    // --- execute clamps timeout >= 100 ms, stop() clears callbackTimer/agentPort, and install rejects .. without .finally ---
+    {
+        const recorded = [];
+        let agentOpts = null, sdbClosed = 0;
+        const t = load({
+            './sdb.js': {
+                connect: () => Promise.resolve({}),
+                exec: () => Promise.resolve('installed'),
+                close: () => { sdbClosed++; }
+            },
+            './root-agent.js': { RootAgentServer: function (o) {
+                agentOpts = o;
+                this.start = function (cb) { cb(4321); };
+                this.close = function () {};
+                this.log = [];
+                this.execute = function (cmd, ms) { recorded.push({cmd, ms}); return Promise.resolve({exit_code: 0, stdout: 'ok'}); };
+            }}
+        });
+        t.provider.start();
+        await settle(); await settle();
+        assert.ok(t.context.callbackTimer && !t.context.callbackTimer.cleared, 'callbackTimer tracked while awaiting agent callback');
+        agentOpts.onConnect({identity: {pid: 1, uid: 0, gid: 0, cap_eff: '0', smack: ''}, _socket: {destroy() {}}});
+        assert.equal(t.context.callbackTimer, null, 'onConnect clears callbackTimer');
+        await t.provider.execute('id', 25);
+        await t.provider.execute('id', 999999);
+        assert.deepEqual(recorded.map(x => x.ms), [100, 120000]);
+        await assert.rejects(t.provider.install('vetrotvapp', '/tmp/../etc/evil.wgt'), /invalid package ID or WGT path/);
+        assert.equal(await t.provider.install('vetrotvapp', '/tmp/Vetro.wgt'), 'installed');
+        assert.ok(sdbClosed >= 1, 'install closes SDB client');
+        t.provider.stop();
+        assert.equal(t.context.state.agentPort, null);
+        assert.equal(t.context.callbackTimer, null);
+        console.log('PASS execute clamps timeouts to [100, 120000] ms, stop()/onConnect() clear callbackTimer & agentPort, and install guards traversal');
+    }
+
 })().catch(e => { console.error(e); process.exit(1); });
