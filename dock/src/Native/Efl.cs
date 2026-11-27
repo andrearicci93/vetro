@@ -15,6 +15,7 @@ namespace Launcher.Native
         private const string Evas = "libevas.so.1";
         private const string Ecore = "libecore.so.1";
         private const string EcoreEvas = "libecore_evas.so.1";
+        private const string EcoreWl2 = "libecore_wl2.so.1";
         private const string EflUtil = "libcapi-ui-efl-util.so.0";
         private const string AppControl = "libcapi-appfw-app-control.so.0";
 
@@ -25,12 +26,17 @@ namespace Launcher.Native
         public const int EcoreFdRead = 1;
         public const int EvasLoadErrorNone = 0;
         public const int EvasImageScaleHintDynamic = 1;
+        public const int EvasImageScaleHintStatic = 2;
+        public const int EvasBorderFillNone = 0;
+        public const int EvasBorderFillDefault = 1;
 
         // --- delegates (kept alive by their owners; the GC must not collect a callback in use) ---
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte TaskCb(IntPtr data);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte FdCb(IntPtr data, IntPtr handler);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void EvasCb(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate byte EventCb(IntPtr data, int type, IntPtr ev);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void VconfCb(IntPtr keynode, IntPtr userData);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void MainLoopCb(IntPtr data);
 
         // --- elementary ---
         [DllImport(Elm)] public static extern int elm_init(int argc, IntPtr argv);
@@ -73,6 +79,7 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_image_file_set(IntPtr img, string file, string key);
         [DllImport(Evas)] public static extern int evas_object_image_load_error_get(IntPtr img);
         [DllImport(Evas)] public static extern void evas_object_image_filled_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool filled);
+        [DllImport(Evas)] public static extern void evas_object_image_fill_set(IntPtr img, int x, int y, int w, int h);
         [DllImport(Evas)] public static extern void evas_object_image_border_set(IntPtr img, int l, int r, int t, int b);
         [DllImport(Evas)] public static extern void evas_object_image_border_center_fill_set(IntPtr img, int mode);
         /// <summary>Draws the nine-slice borders at this scale, so a corner made for a large tile fits a short row.</summary>
@@ -88,6 +95,18 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_image_data_update_add(IntPtr img, int x, int y, int w, int h);
         [DllImport(Evas)] public static extern void evas_object_image_alpha_set(IntPtr img, [MarshalAs(UnmanagedType.U1)] bool alpha);
         [DllImport(Evas)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool evas_object_image_save(IntPtr img, string file, string key, string flags);
+
+        // --- evas: sub-pixel texture mapping (EFL 1.25 libevas.so.1) ---
+        [DllImport(Evas)] public static extern IntPtr evas_map_new(int count);
+        [DllImport(Evas)] public static extern void evas_map_free(IntPtr map);
+        [DllImport(Evas)] public static extern void evas_map_smooth_set(IntPtr map, [MarshalAs(UnmanagedType.U1)] bool enabled);
+        [DllImport(Evas)] public static extern void evas_map_alpha_set(IntPtr map, [MarshalAs(UnmanagedType.U1)] bool enabled);
+        [DllImport(Evas)] public static extern void evas_map_point_coord_set(IntPtr map, int idx, int x, int y, int z);
+        [DllImport(Evas)] public static extern void evas_map_point_image_uv_set(IntPtr map, int idx, double u, double v);
+        [DllImport(Evas)] public static extern void evas_map_point_color_set(IntPtr map, int idx, int r, int g, int b, int a);
+        [DllImport(Evas)] public static extern void evas_map_util_zoom(IntPtr map, double zoomx, double zoomy, int cx, int cy);
+        [DllImport(Evas)] public static extern void evas_object_map_set(IntPtr obj, IntPtr map);
+        [DllImport(Evas)] public static extern void evas_object_map_enable_set(IntPtr obj, [MarshalAs(UnmanagedType.U1)] bool enabled);
 
         // --- evas: text ---
         [DllImport(Evas)] public static extern IntPtr evas_object_text_add(IntPtr evas);
@@ -106,6 +125,7 @@ namespace Launcher.Native
         // --- ecore ---
         [DllImport(Ecore)] public static extern double ecore_time_get();
         [DllImport(Ecore)] public static extern IntPtr ecore_animator_add(TaskCb func, IntPtr data);
+        [DllImport(Ecore)] public static extern IntPtr ecore_animator_del(IntPtr animator);
         [DllImport(Ecore)] public static extern double ecore_animator_frametime_get();
         [DllImport(Ecore)] public static extern IntPtr ecore_timer_add(double inSeconds, TaskCb func, IntPtr data);
         [DllImport(Ecore)] public static extern void ecore_timer_reset(IntPtr timer);
@@ -115,10 +135,43 @@ namespace Launcher.Native
         // A key as ecore_input hands it out (type ECORE_EVENT_KEY_DOWN, read from libecore_input), before evas: the claimed Home reaches
         // the process here even when the window is not shown, if the compositor sends it at all.
         [DllImport(Ecore)] public static extern IntPtr ecore_event_handler_add(int type, EventCb func, IntPtr data);
+        [DllImport(Ecore)] public static extern void ecore_main_loop_thread_safe_call_async(MainLoopCb callback, IntPtr data);
 
-        // --- diagnostics ---
+        // --- diagnostics & cursor ---
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_ecore_evas_get(IntPtr evas);
         [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_engine_name_get(IntPtr ee);
+        [DllImport(EcoreEvas)] public static extern void ecore_evas_ignore_events_set(IntPtr ee, [MarshalAs(UnmanagedType.U1)] bool ignore);
+        [DllImport(EcoreEvas)] public static extern void ecore_evas_default_cursor_hide(IntPtr ee);
+        [DllImport(EcoreEvas)] public static extern IntPtr ecore_evas_wayland2_window_get(IntPtr ee);
+        [DllImport(EcoreWl2)] public static extern void ecore_wl2_window_cursor_visible_set(IntPtr win, [MarshalAs(UnmanagedType.U1)] bool visible);
+
+        /// <summary>
+        /// Prevents Enlightenment/Wayland from attaching a persistent default pointer cursor surface to this window
+        /// after an app that enables pointer mode (such as Samsung Internet Browser) exits.
+        /// </summary>
+        public static void HideCursor(IntPtr win, bool ignoreEvents)
+        {
+            if (win == IntPtr.Zero) return;
+            try
+            {
+                IntPtr evas = evas_object_evas_get(win);
+                if (evas == IntPtr.Zero) return;
+                IntPtr ee = ecore_evas_ecore_evas_get(evas);
+                if (ee == IntPtr.Zero) return;
+                if (ignoreEvents)
+                {
+                    try { ecore_evas_ignore_events_set(ee, true); } catch (Exception) { }
+                }
+                try { ecore_evas_default_cursor_hide(ee); } catch (Exception) { }
+                try
+                {
+                    IntPtr wlWin = ecore_evas_wayland2_window_get(ee);
+                    if (wlWin != IntPtr.Zero) ecore_wl2_window_cursor_visible_set(wlWin, false);
+                }
+                catch (Exception) { }
+            }
+            catch (Exception) { }
+        }
 
         // --- platform ---
         [DllImport(EflUtil)] public static extern int efl_util_set_notification_window_level(IntPtr win, int level);
@@ -130,8 +183,25 @@ namespace Launcher.Native
         [DllImport(AppControl)] public static extern int app_control_add_extra_data(IntPtr ac, string key, string value);
         [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
         [DllImport("libvconf.so.0")] public static extern int vconf_get_bool(string key, out int value);
+        [DllImport("libvconf.so.0")] public static extern IntPtr vconf_get_str(string key);
+        [DllImport("libvconf.so.0")] public static extern int vconf_notify_key_changed(string key, VconfCb cb, IntPtr userData);
+        [DllImport("libvconf.so.0")] public static extern int vconf_ignore_key_changed(string key, VconfCb cb);
         /// <summary>Read-only: the app the TV treats as Home for the "main" operation (what the Home key launches).</summary>
         [DllImport("libcapi-appfw-app-operation-tv.so.0")] public static extern int app_operation_get_current_app(string operation, out IntPtr appId);
+
+        /// <summary>Reads a string vconf key and frees the native buffer, returning empty string when unset or unavailable.</summary>
+        public static string VconfGetString(string key)
+        {
+            IntPtr ptr = IntPtr.Zero;
+            try
+            {
+                ptr = vconf_get_str(key);
+                if (ptr == IntPtr.Zero) return "";
+                return Marshal.PtrToStringUTF8(ptr) ?? "";
+            }
+            catch (Exception) { return ""; }
+            finally { if (ptr != IntPtr.Zero) Libc.free(ptr); }
+        }
 
         /// <summary>Name of the evas engine in use, or null when it cannot be read.</summary>
         public static string EngineName(IntPtr evas)

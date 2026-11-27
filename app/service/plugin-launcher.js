@@ -22,7 +22,7 @@
 // ?slug=... read straight from the query string: the one parameter does not need a URL parser.
 var homeCleanup = require('./home-cleanup.js');
 
-var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/;
+var SLUG_QUERY_RE = /[?&]slug=([^&#]*)/, FROM_QUERY_RE = /[?&]from=([^&#]*)/;
 var PLUGIN_QUERY_RE = /[?&]plugin=([^&#]*)/, ROW_QUERY_RE = /[?&]row=([^&#]*)/;
 function queryOf(re, rawUrl) {
     var m = re.exec(rawUrl || '');
@@ -105,6 +105,7 @@ function definition(dock, options) {
                 if (p.action === 'resetRow') return dock.resetRow();
                 if (p.action === 'appStore') return dock.setAppStore(p.store);
                 if (p.action === 'showHomeSources' || p.action === 'useSourceImages' || p.action === 'connectedSourcesOnly' || p.action === 'hideTvSource') return dock.setSourceOption(p.action, p.on);
+                if (p.action === 'idleScreen') return dock.setIdleScreen(p);
                 if (p.action === 'enableCustom') return dock.enableCustom(p.appId);
                 if (p.action === 'disableCustom') return dock.disableCustom();
                 return Promise.reject(new Error('Invalid dock action'));
@@ -152,8 +153,9 @@ function definition(dock, options) {
                             vetro.json(res, { ok: false, error: 'Root agent is not connected' }, 503);
                             return true;
                         }
+                        var fromDock = queryOf(FROM_QUERY_RE, req.url) === 'dock';
                         vetro.json(res, { ok: true }, 202);
-                        dock.openEntry(slug).catch(function () { /* openEntry never rejects; belt and braces */ });
+                        dock.openEntry(slug, { fromDock: fromDock }).catch(function () { /* openEntry never rejects; belt and braces */ });
                         return true;
                     }
                     // A Shard's Control center card. Always 200 with text, even when the Shard is off or fails ("status unavailable"): the launcher

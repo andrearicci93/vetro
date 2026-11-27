@@ -30,7 +30,7 @@ namespace Launcher
         private static readonly Efl.FdCb FifoCb = OnFifo;
         private static readonly Efl.FdCb InputCb = OnInput;
 
-        private static string _dir, _logPath, _pidPath, _fifoPath;
+        private static string _dir, _logPath, _pidPath, _fifoPath, _longpressPath;
         private static IntPtr _win, _anim, _idle, _fifoHandler;
         private static int _fifoFd = -1;
         private static double _lastFrame;
@@ -40,7 +40,7 @@ namespace Launcher
         private static string _appsPath, _inputsPath, _allAppsPath, _allAppsWatch;
         private static bool _reloadPending;
         private static DateTime _listsAskedFor = DateTime.MinValue;
-        private static double _listsAskedAt;
+        private static double _listsAskedAt, _listsCheckedAt = -100;
         // Three pages share one window: the apps row, the inputs panel (Up) and All apps (its pill). _ctl / _dock always
         // point at the page on screen, so everything below works on "the dock" as before.
         private static Controller _ctl, _appsCtl, _inputsCtl, _allCtl;
@@ -51,8 +51,15 @@ namespace Launcher
         private static readonly Efl.TaskCb ClockCb = OnClock;
 
         // The Control center (Down from the apps row): up to three cards side by side (the Task manager, the Audio output), its own page,
-        // drawn in a taller window while it is open. _tasksOn: the Control center is the page on screen. Every card has its own controller
-        // (selection, scroll); they open, fade and close together. _cardFocus is the card Left and Right have moved to.
+        // drawn in its own window while it is open so the Dock window is never resized while mapped. _tasksOn: the Control center is the page
+        // on screen. Every card has its own controller (selection, scroll); they open, fade and close together. _cardFocus is the card Left
+        // and Right have moved to.
+        private static IntPtr _taskWin, _taskRecycleTimer;
+        private static readonly Efl.TaskCb TaskRecycleCb = OnTaskWindowRecycle;
+        private static long _lastAvailableKb = -1;
+        private static List<OutputEntry> _lastAudioEntries;
+        private static string _lastAudioNote = "";
+        private static ChoiceState[] _lastChoiceStates = new ChoiceState[0];
         private static DockLayout _appsLayout;
         private static TaskLayout _taskLayout;
         private static CardSpec[] _cards = new CardSpec[0];
@@ -105,7 +112,11 @@ namespace Launcher
         // app on purpose (the Samsung Home pill) retires it. Without that, Samsung Home started 1-2 s after a Home press
         // was closed again by the kills still pending, and the pill seemed to do nothing.
         private static int _guardGen;
+        private static int _dismissRestoreGen;
         private static string _guardFile;
+        private static string _dismissRestoreFile;
+        private static readonly GuardedHomeCloseTracker _closeTracker = new GuardedHomeCloseTracker();
+        private const double AppHomeProtectSeconds = 2.5;
         private static int _homeCode = -1;
         // --claim-home (#184; idea and first version by chemicalsno, tried on a QN90D): the window claims XF86Home at the compositor
         // (Tizen keyrouter, exclusive grab), so the key no longer reaches Samsung's Home (csfs registers it in its manifest), which came
@@ -119,7 +130,7 @@ namespace Launcher
         // holds this process's pid and the service sends its own Home down the FIFO (key-routing.js). A Home that reaches the hidden
         // window (WindowHome) is the echo of the press the reader answered, or a press of its own.
         private static bool _claimHome, _claimTried, _homeClaimed, _rawHomeSeen;
-        private static string _claimPath;
+        private static string _claimPath, _claimVerifiedPath;
         private const int KeygrabExclusive = 1 << 10;   // ELM_WIN_KEYGRAB_EXCLUSIVE
         // --home-launch APPID: the custom launcher mode. The Home key opens that app instead of the dock, and the dock
         // itself is never shown. Samsung's Home is NOT disabled in this mode (the TV's boot waits for it): the guard below is what keeps it away.
@@ -142,6 +153,1848 @@ namespace Launcher
         private const int EAgain = 11;
         private static readonly byte[] InputBuf = new byte[16 * 32];
         private static readonly List<int> InputPresses = new List<int>();
+
+        private static IdleConfig _idleConfig;
+        private static IdleBackdropModel _idleModel;
+        private static IdleBackdropWindow _idleWin;
+        private static WmStackController _wmStack;
+        private static readonly ScreensaverPulseFilter _screensaverFilter = new ScreensaverPulseFilter();
+        private static bool _samsungHomeRequested, _samsungHomeObserved, _tvPlusActive, _lastRawScreensaver;
+        private static double _samsungHomeRequestedUntil, _pendingTvSourceUntil, _fastIdleWatchUntil, _backHoldFastUntil, _nextSteadyStackCheckAt;
+        private const double SteadyStackCheckSeconds = 15.0;
+        private static string _lastPartialApp = "", _lastFullApp = "";
+        private static string _lastPausedAppId = "";
+        private static string _lastForceClosedAppId = "";
+        private static bool _lastTunerActive;
+        private static double _lastTunerCheckMono = -100.0;
+        private static string _fifoReadyPath;
+        private static IntPtr _idleWatchTimer, _idleLcdVerifyTimer, _screensaverKeepaliveTimer, _screensaverWakeReleaseTimer, _syncBackTimer, _elmRunStartTimer, _backPrewarmTimer, _backHoldTimer, _backForceCloseTimer, _deferredForceCloseTimer;
+        private static bool _wasScreensaverTakeoverActive, _screensaverWakePendingRelease;
+        private static string _deferredForceCloseApp = "";
+        private static int _deferredForceCloseGen;
+        private static bool _deferredForceCloseWasLaunching;
+        private static int _deferredForceCloseLaunchEpoch;
+        private static int _launchEpoch;
+        private static string _lastLaunchTargetApp = "";
+        private static int _backHoldCode;
+        private static bool _vconfFullscreenSubscribed;
+        private static bool _vconfScreensaverSubscribed;
+        private static int _vconfWakePending;
+        private static int _dismissHomeInFlight;
+        private static double _idleWatchInterval;
+        private static double _lastPollMono = -1;
+        private static DateTime _lastPollUtc = DateTime.MinValue;
+        private static bool _backClaimed, _exitClaimed, _longpressClaimed, _backClaimUnavailable, _ecoreKeysWatched;
+        private static bool _wasDisplayOff, _inElmRun, _pendingArrivalDock;
+        private static double _backReleaseUntil, _exitReleaseUntil, _launchBackClaimSuppressUntil, _arrivalBackShieldUntil;
+        private static double _lastAppHomePress = -100, _lastExitForceCloseMono = -100;
+        private static readonly object LongpressGate = new object();
+        private static bool _longpressBusy, _longpressDesired, _longpressApplied;
+        private static readonly Efl.TaskCb IdleWatchCb = OnIdleWatch;
+        private static readonly Efl.TaskCb ScreensaverKeepaliveCb = OnScreensaverKeepalive;
+        private static readonly Efl.TaskCb SyncBackCb = OnSyncBackTimer;
+        private static readonly Efl.TaskCb ElmRunStartCb = OnElmRunStarted;
+        private static readonly Efl.TaskCb BackPrewarmCb = OnBackPrewarm;
+        private static readonly Efl.TaskCb BackHoldCb = OnBackHold;
+        private static readonly Efl.TaskCb BackForceCloseCb = OnBackForceClose;
+        private static readonly Efl.TaskCb DeferredForceCloseCb = OnDeferredForceClose;
+        private static readonly Efl.VconfCb VconfFullscreenCb = OnVconfFullscreenChanged;
+        private static readonly Efl.VconfCb VconfScreensaverCb = OnVconfScreensaverChanged;
+        private static readonly Efl.MainLoopCb VconfMainLoopCb = OnVconfFullscreenMain;
+
+        private const int EChild = 10;
+        [DllImport("libc.so.6", EntryPoint = "system", SetLastError = true)]
+        private static extern int SystemWithErrno(string command);
+
+        private static bool SystemSucceeded(int rc, out int errno)
+        {
+            errno = rc == -1 ? Marshal.GetLastWin32Error() : 0;
+            return rc == 0 || (rc == -1 && errno == EChild);
+        }
+
+        private static readonly Efl.TaskCb IdleLcdVerifyCb = OnIdleLcdVerify;
+        private static readonly Func<string, bool> FileExistsFn = File.Exists;
+        private static readonly Func<string, string> ReadTextFn = path => { try { return File.ReadAllText(path); } catch (Exception) { return ""; } };
+        private static readonly Func<int, bool> PidAliveFn = pid => Directory.Exists("/proc/" + pid);
+
+        private static bool IsDisplayOff()
+        {
+            int state;
+            try { return Efl.vconf_get_int("memory/pm/state", out state) == 0 && state >= IdleBackdropModel.DisplayStateOff; }
+            catch (Exception) { return false; }
+        }
+
+        private const string ScreensaverKey = "memory/window_system/screensaver_on_off";
+        private static int _screensaverOverlayPid;
+        private static int _screensaverScanInFlight;
+        private static readonly byte[] ScreensaverCommBuf = new byte[32];
+        private static bool _lastRealScreensaverActive;
+        private static bool _lastColdBootSilentHome;
+        private static readonly object ScreensaverActivityGate = new object();
+        private static bool _screensaverActivityBusy;
+        private static bool _screensaverActivityPending;
+        private static bool _screensaverActivityDismiss;
+        private static double _lastScreensaverActivityAt = -100.0;
+
+        private static bool IsCachedScreensaverOverlayPidAlive(int pid)
+        {
+            if (pid <= 0) return false;
+            try
+            {
+                if (Libc.kill(pid, 0) != 0) return false;
+                string commPath = "/proc/" + pid.ToString(System.Globalization.CultureInfo.InvariantCulture) + "/comm";
+                int fd = Libc.open(commPath, Libc.O_RDONLY);
+                if (fd < 0) return false;
+                try
+                {
+                    int n = (int)Libc.read(fd, ScreensaverCommBuf, (UIntPtr)ScreensaverCommBuf.Length);
+                    if (n <= 0) return false;
+                    string comm = System.Text.Encoding.ASCII.GetString(ScreensaverCommBuf, 0, n);
+                    return IdleBackdropModel.IsScreensaverOverlayComm(comm);
+                }
+                finally
+                {
+                    Libc.close(fd);
+                }
+            }
+            catch (Exception) { return false; }
+        }
+
+        private static bool HasScreensaverOverlayProcess()
+        {
+            int pid = System.Threading.Volatile.Read(ref _screensaverOverlayPid);
+            if (pid <= 0) return false;
+            if (IsCachedScreensaverOverlayPidAlive(pid)) return true;
+            System.Threading.Interlocked.CompareExchange(ref _screensaverOverlayPid, 0, pid);
+            return false;
+        }
+
+        private static int FindScreensaverOverlayPidBackground()
+        {
+            try
+            {
+                byte[] buf = new byte[32];
+                foreach (string dir in Directory.EnumerateDirectories("/proc"))
+                {
+                    string name = Path.GetFileName(dir);
+                    int pid;
+                    if (!int.TryParse(name, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out pid) || pid <= 0)
+                        continue;
+                    int fd = Libc.open(dir + "/comm", Libc.O_RDONLY);
+                    if (fd < 0) continue;
+                    try
+                    {
+                        int n = (int)Libc.read(fd, buf, (UIntPtr)buf.Length);
+                        if (n > 0 && IdleBackdropModel.IsScreensaverOverlayComm(System.Text.Encoding.ASCII.GetString(buf, 0, n)))
+                            return pid;
+                    }
+                    finally { Libc.close(fd); }
+                }
+            }
+            catch (Exception) { }
+            return 0;
+        }
+
+        private static void StartBackgroundScreensaverProcScan()
+        {
+            if (System.Threading.Interlocked.CompareExchange(ref _screensaverScanInFlight, 1, 0) != 0) return;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    int foundPid = FindScreensaverOverlayPidBackground();
+                    int[] delays = new[] { 150, 250, 400 };
+                    for (int i = 0; i < delays.Length && foundPid <= 0; i++)
+                    {
+                        if (!ReadScreensaverVconfFlag()) break;
+                        System.Threading.Thread.Sleep(delays[i]);
+                        if (ReadScreensaverVconfFlag()) foundPid = FindScreensaverOverlayPidBackground();
+                    }
+                    if (foundPid > 0)
+                    {
+                        System.Threading.Volatile.Write(ref _screensaverOverlayPid, foundPid);
+                        ScheduleAsyncIdlePoll();
+                    }
+                }
+                catch (Exception) { }
+                finally
+                {
+                    System.Threading.Volatile.Write(ref _screensaverScanInFlight, 0);
+                }
+            });
+        }
+
+        private static bool ReadScreensaverVconfFlag()
+        {
+            try
+            {
+                return IdleBackdropModel.ReadBoolOrInt(
+                    (out int b) => Efl.vconf_get_bool(ScreensaverKey, out b) == 0,
+                    (out int i) => Efl.vconf_get_int(ScreensaverKey, out i) == 0);
+            }
+            catch (Exception) { return false; }
+        }
+
+        private static bool IsScreensaverActive()
+        {
+            try
+            {
+                if (!ReadScreensaverVconfFlag())
+                {
+                    System.Threading.Volatile.Write(ref _screensaverOverlayPid, 0);
+                    return false;
+                }
+                return HasScreensaverOverlayProcess();
+            }
+            catch (Exception) { return false; }
+        }
+
+        private static bool IsAnyRealScreensaverActive()
+        {
+            if (IsDisplayOff()) return false;
+            if (_lastRealScreensaverActive
+                || (_idleModel != null && _idleModel.HoldOcclusionForScreensaver)
+                || (_wmStack != null && _wmStack.ScreensaverWinPresent))
+            {
+                return true;
+            }
+            string full = Efl.VconfGetString(FullscreenAppIdKey);
+            if (IdleBackdropModel.IsScreensaverApp(full)) return true;
+            return IsScreensaverActive();
+        }
+
+        private static void TriggerScreensaverActivityReset(double now, double minIntervalSeconds, bool dismissActive = false)
+        {
+            lock (ScreensaverActivityGate)
+            {
+                if (!dismissActive && minIntervalSeconds > 0.0 && (now - _lastScreensaverActivityAt) < minIntervalSeconds) return;
+                _lastScreensaverActivityAt = now;
+                if (dismissActive) _screensaverActivityDismiss = true;
+                if (_screensaverActivityBusy)
+                {
+                    _screensaverActivityPending = true;
+                    return;
+                }
+                _screensaverActivityBusy = true;
+                _screensaverActivityPending = false;
+            }
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        bool dismiss;
+                        lock (ScreensaverActivityGate)
+                        {
+                            dismiss = _screensaverActivityDismiss;
+                            _screensaverActivityDismiss = false;
+                        }
+                        try
+                        {
+                            if (!DbusBus.TryResetScreensaverActivity(dismiss))
+                                Libc.system(IdleBackdropModel.BuildScreensaverActivityCommand());
+                        }
+                        catch (Exception) { }
+                        lock (ScreensaverActivityGate)
+                        {
+                            if (!_screensaverActivityPending && !_screensaverActivityDismiss)
+                            {
+                                _screensaverActivityBusy = false;
+                                return;
+                            }
+                            _screensaverActivityPending = false;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    lock (ScreensaverActivityGate) { _screensaverActivityBusy = false; _screensaverActivityPending = false; _screensaverActivityDismiss = false; }
+                }
+            });
+        }
+
+        private static void WakeOrResetScreensaverForUserAction(bool openingOverlay)
+        {
+            if (IsDisplayOff()) return;
+            double now = Efl.ecore_time_get();
+            if (IsAnyRealScreensaverActive())
+            {
+                _lastRealScreensaverActive = false;
+                SyncBackClaim();
+                _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
+                UpdateIdleWatchTimer(0.10);
+                Log("idle: waking active screensaver for overlay");
+                TriggerScreensaverActivityReset(now, 0.0, dismissActive: true);
+                return;
+            }
+            TriggerScreensaverActivityReset(now, openingOverlay ? 0.25 : 1.5);
+        }
+
+        private static double ReadSystemUptimeSeconds()
+        {
+            try
+            {
+                string raw = ReadTextFn("/proc/uptime");
+                if (string.IsNullOrEmpty(raw)) return 999999.0;
+                int sp = raw.IndexOf(' ');
+                string token = (sp > 0 ? raw.Substring(0, sp) : raw).Trim();
+                double sec;
+                return double.TryParse(token, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out sec) ? sec : 999999.0;
+            }
+            catch (Exception) { return 999999.0; }
+        }
+
+        private static bool ReadColdBootSilentHome(string fullApp, string partialApp)
+        {
+            if (!IdleBackdropModel.IsGuardedSamsungHome(fullApp) || !string.IsNullOrEmpty(partialApp)) return false;
+            bool hasRootApp = File.Exists("/usr/bin/get_root_app");
+            if (!hasRootApp || File.Exists("/tmp/firstscreen_done")) return false;
+            double uptime = ReadSystemUptimeSeconds();
+            if (uptime >= 60.0) return false;
+            string showStatus = Efl.VconfGetString("memory/eden/show_status");
+            int homeShown = 0;
+            try { if (Efl.vconf_get_int("memory/avoc/home_shown", out homeShown) != 0) homeShown = 0; } catch (Exception) { homeShown = 0; }
+            return IdleBackdropModel.IsColdBootSilentHome(fullApp, partialApp, hasRootApp, false, uptime, showStatus, homeShown);
+        }
+
+        private static string LongpressCommand(bool enable, int pid)
+        {
+            string method = enable ? "set_longpress_key_info" : "unset_longpress_key_info";
+            return "dbus-send --system --reply-timeout=1500 --print-reply=literal --dest=keyrouter.dbus.server /com/burtonini/dbus/ping "
+                + "wm.keyroutertv.longpress.info." + method + " string:\"XF86Back\" double:1.0 int32:"
+                + pid.ToString(System.Globalization.CultureInfo.InvariantCulture) + " 2>/dev/null";
+        }
+
+        private static void WriteLongpressFile(int pid)
+        {
+            if (string.IsNullOrEmpty(_longpressPath)) return;
+            try { File.WriteAllText(_longpressPath, pid.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+            catch (Exception) { }
+        }
+
+        private static void RemoveLongpressFile()
+        {
+            if (string.IsNullOrEmpty(_longpressPath)) return;
+            try { Libc.unlink(_longpressPath); }
+            catch (Exception) { }
+        }
+
+        private static void ClearStaleLongpressClaims(string priorLongpress, string priorPid)
+        {
+            int[] stale = IdleBackdropModel.CollectStaleLongpressPids(Libc.getpid(), priorLongpress, priorPid);
+            foreach (int oldPid in stale)
+            {
+                try
+                {
+                    if (!DbusBus.TrySetLongpressKeyInfo(false, "XF86Back", 1.0, oldPid))
+                        Shell.Read(LongpressCommand(false, oldPid));
+                    Log("idle: cleared stale longpress pid=" + oldPid);
+                }
+                catch (Exception) { }
+            }
+            RemoveLongpressFile();
+        }
+
+        private static void SyncLongpressClaim(bool want)
+        {
+            lock (LongpressGate)
+            {
+                _longpressDesired = want;
+                if (_longpressBusy) return;
+                _longpressBusy = true;
+            }
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                int pid = Libc.getpid();
+                try
+                {
+                    while (true)
+                    {
+                        bool desired;
+                        lock (LongpressGate)
+                        {
+                            if (_longpressApplied == _longpressDesired) { _longpressBusy = false; return; }
+                            desired = _longpressDesired;
+                        }
+                        if (desired) WriteLongpressFile(pid);
+                        try
+                        {
+                            if (!DbusBus.TrySetLongpressKeyInfo(desired, "XF86Back", 1.0, pid))
+                                Shell.Read(LongpressCommand(desired, pid));
+                        }
+                        catch (Exception) { }
+                        lock (LongpressGate)
+                        {
+                            _longpressApplied = desired;
+                            if (!desired && !_longpressDesired) RemoveLongpressFile();
+                            if (_longpressApplied == _longpressDesired) { _longpressBusy = false; return; }
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    lock (LongpressGate) { _longpressBusy = false; }
+                }
+            });
+        }
+
+        private static void SyncBackClaim()
+        {
+            if (_backClaimUnavailable) return;
+            double claimNow = Efl.ecore_time_get();
+            bool idleEnabled = _win != IntPtr.Zero
+                && _ctl != null
+                && _idleModel != null
+                && _idleWin != null
+                && _idleConfig != null
+                && _idleConfig.Mode != IdleMode.Off
+                && _homeLaunch == null;
+            bool wantBack = idleEnabled
+                && claimNow >= _backReleaseUntil
+                && claimNow >= _launchBackClaimSuppressUntil
+                && !_idleModel.IsLaunchSuppressed(claimNow)
+                && _idleModel.CanClaimBackKey(_idleWin.IsShown, DockActive, _lastPartialApp, _pad != null && _pad.IsOnScreen, false, _lastRealScreensaverActive, _lastColdBootSilentHome);
+            bool wantExit = idleEnabled
+                && claimNow >= _exitReleaseUntil
+                && IdleBackdropModel.CanClaimExitKey(true, _samsungHomeRequested, _idleModel.LastKnownSource, _lastTunerActive, _idleModel.HoldOcclusionForScreensaver, _lastRealScreensaverActive, _lastColdBootSilentHome, _idleModel.ScreensaverTakeoverActive);
+            if ((wantBack == _backClaimed) && (wantBack == _longpressClaimed) && (wantExit == _exitClaimed)) return;
+            try
+            {
+                bool changed = false;
+                if (wantBack)
+                {
+                    if (!_backClaimed)
+                    {
+                        bool ok = Efl.elm_win_keygrab_set(_win, "XF86Back", 0, 0, 0, KeygrabExclusive);
+                        if (ok) { _backClaimed = true; changed = true; WatchEcoreKeys(); }
+                        else Log("idle: back claim refused (XF86Back)");
+                    }
+                    if (!_longpressClaimed)
+                    {
+                        _longpressClaimed = true;
+                        SyncLongpressClaim(true);
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    if (_backClaimed)
+                    {
+                        Efl.elm_win_keygrab_unset(_win, "XF86Back", 0, 0);
+                        _backClaimed = false;
+                        changed = true;
+                    }
+                    if (_longpressClaimed)
+                    {
+                        _longpressClaimed = false;
+                        SyncLongpressClaim(false);
+                        changed = true;
+                    }
+                }
+                if (wantExit)
+                {
+                    if (!_exitClaimed)
+                    {
+                        bool ok = Efl.elm_win_keygrab_set(_win, "XF86Exit", 0, 0, 0, KeygrabExclusive);
+                        if (ok) { _exitClaimed = true; changed = true; WatchEcoreKeys(); }
+                        else Log("idle: back claim refused (XF86Exit)");
+                    }
+                }
+                else
+                {
+                    if (_exitClaimed)
+                    {
+                        Efl.elm_win_keygrab_unset(_win, "XF86Exit", 0, 0);
+                        _exitClaimed = false;
+                        changed = true;
+                    }
+                }
+                if (changed) Log("idle: back claim sync (back=" + _backClaimed + " exit=" + _exitClaimed + ")");
+            }
+            catch (EntryPointNotFoundException ex) { _backClaimUnavailable = true; _backClaimed = false; _exitClaimed = false; if (_longpressClaimed) { _longpressClaimed = false; SyncLongpressClaim(false); } Log("idle: back claim unavailable: " + ex.Message); }
+            catch (DllNotFoundException ex) { _backClaimUnavailable = true; _backClaimed = false; _exitClaimed = false; if (_longpressClaimed) { _longpressClaimed = false; SyncLongpressClaim(false); } Log("idle: back claim unavailable: " + ex.Message); }
+            catch (Exception ex) { _backClaimed = false; _exitClaimed = false; if (_longpressClaimed) { _longpressClaimed = false; SyncLongpressClaim(false); } Log("idle: back claim error: " + ex.Message); }
+        }
+
+        private static void ScheduleSyncBackClaim(double delay = 0.02)
+        {
+            if (_backClaimUnavailable) return;
+            if (_syncBackTimer != IntPtr.Zero) return;
+            _syncBackTimer = Efl.ecore_timer_add(delay, SyncBackCb, IntPtr.Zero);
+        }
+
+        private static byte OnSyncBackTimer(IntPtr data)
+        {
+            _syncBackTimer = IntPtr.Zero;
+            try
+            {
+                if (_anim != IntPtr.Zero || (_padProbe != null && _padProbe.Active))
+                {
+                    _syncBackTimer = Efl.ecore_timer_add(0.05, SyncBackCb, IntPtr.Zero);
+                    return 0;
+                }
+                SyncBackClaim();
+            }
+            catch (Exception ex) { Log("idle: sync back timer: " + ex.Message); }
+            return 0;
+        }
+
+        private static void OpenArrivalDock()
+        {
+            if (_homeLaunch != null) return;
+            _perfWhy = "idle-arrival";
+            bool wasActive = DockActive;
+            if (!wasActive) ProbeBegin("idle-arrival");
+            ShowDock(false);
+            if (!wasActive) ProbeHandlerDone();
+        }
+
+        private static byte OnElmRunStarted(IntPtr data)
+        {
+            _elmRunStartTimer = IntPtr.Zero;
+            _inElmRun = true;
+            try
+            {
+                if (_pendingArrivalDock)
+                {
+                    _pendingArrivalDock = false;
+                    if (_idleModel != null && _idleModel.Visible && _idleWin != null)
+                    {
+                        _idleWin.Show(_idleModel.Dimmed, true, false);
+                        OpenArrivalDock();
+                    }
+                }
+            }
+            catch (Exception ex) { Log("elm_run start: " + ex.Message); }
+            return 0;
+        }
+
+        private static void CancelDeferredForceClose()
+        {
+            if (_deferredForceCloseTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_deferredForceCloseTimer);
+                _deferredForceCloseTimer = IntPtr.Zero;
+            }
+            _deferredForceCloseApp = "";
+        }
+
+        private static void ReleaseBackClaimOnExit()
+        {
+            if (_screensaverKeepaliveTimer != IntPtr.Zero) { Efl.ecore_timer_del(_screensaverKeepaliveTimer); _screensaverKeepaliveTimer = IntPtr.Zero; }
+            CancelScreensaverWakeReleaseTimer();
+            if (_syncBackTimer != IntPtr.Zero) { Efl.ecore_timer_del(_syncBackTimer); _syncBackTimer = IntPtr.Zero; }
+            if (_elmRunStartTimer != IntPtr.Zero) { Efl.ecore_timer_del(_elmRunStartTimer); _elmRunStartTimer = IntPtr.Zero; }
+            if (_taskRecycleTimer != IntPtr.Zero) { Efl.ecore_timer_del(_taskRecycleTimer); _taskRecycleTimer = IntPtr.Zero; }
+            CancelDeferredForceClose();
+            if (_win != IntPtr.Zero)
+            {
+                if (_backClaimed) { try { Efl.elm_win_keygrab_unset(_win, "XF86Back", 0, 0); } catch (Exception) { } _backClaimed = false; }
+                if (_exitClaimed) { try { Efl.elm_win_keygrab_unset(_win, "XF86Exit", 0, 0); } catch (Exception) { } _exitClaimed = false; }
+            }
+            bool hadLongpressFile = !string.IsNullOrEmpty(_longpressPath) && File.Exists(_longpressPath);
+            if (_longpressClaimed || _longpressApplied || hadLongpressFile)
+            {
+                _longpressClaimed = false;
+                lock (LongpressGate) { _longpressDesired = false; _longpressApplied = false; }
+                try
+                {
+                    if (!DbusBus.TrySetLongpressKeyInfo(false, "XF86Back", 1.0, Libc.getpid()))
+                        Shell.Read(LongpressCommand(false, Libc.getpid()));
+                }
+                catch (Exception) { }
+            }
+            RemoveLongpressFile();
+        }
+
+        private static void UpdateIdleWatchTimer(double interval)
+        {
+            if (_idleWatchTimer != IntPtr.Zero && Math.Abs(_idleWatchInterval - interval) < 0.01) return;
+            if (_idleWatchTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleWatchTimer); _idleWatchTimer = IntPtr.Zero; }
+            _idleWatchInterval = interval;
+            _idleWatchTimer = Efl.ecore_timer_add(interval, IdleWatchCb, IntPtr.Zero);
+        }
+
+        private const string FullscreenAppIdKey = "memory/appfw/current_fullscreen_appid";
+
+        private static void SubscribeFullscreenNotify()
+        {
+            if (!_vconfFullscreenSubscribed)
+            {
+                try
+                {
+                    int rc = Efl.vconf_notify_key_changed(FullscreenAppIdKey, VconfFullscreenCb, IntPtr.Zero);
+                    if (rc == 0)
+                    {
+                        _vconfFullscreenSubscribed = true;
+                        Log("idle: vconf notify ok");
+                    }
+                    else Log("idle: vconf notify rc=" + rc);
+                }
+                catch (Exception ex) { Log("idle: vconf notify unavailable: " + ex.Message); }
+            }
+            if (!_vconfScreensaverSubscribed)
+            {
+                try
+                {
+                    int rc = Efl.vconf_notify_key_changed(ScreensaverKey, VconfScreensaverCb, IntPtr.Zero);
+                    if (rc == 0) _vconfScreensaverSubscribed = true;
+                }
+                catch (Exception) { }
+            }
+        }
+
+        private static void UnsubscribeFullscreenNotify()
+        {
+            if (_vconfFullscreenSubscribed)
+            {
+                _vconfFullscreenSubscribed = false;
+                try { Efl.vconf_ignore_key_changed(FullscreenAppIdKey, VconfFullscreenCb); }
+                catch (Exception) { }
+            }
+            if (_vconfScreensaverSubscribed)
+            {
+                _vconfScreensaverSubscribed = false;
+                try { Efl.vconf_ignore_key_changed(ScreensaverKey, VconfScreensaverCb); }
+                catch (Exception) { }
+            }
+        }
+
+        private static void ScheduleAsyncIdlePoll()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _vconfWakePending, 1) != 0) return;
+            try { Efl.ecore_main_loop_thread_safe_call_async(VconfMainLoopCb, IntPtr.Zero); }
+            catch (Exception) { System.Threading.Volatile.Write(ref _vconfWakePending, 0); }
+        }
+
+        private static void OnVconfFullscreenChanged(IntPtr keynode, IntPtr userData)
+        {
+            if (!_vconfFullscreenSubscribed) return;
+            ScheduleAsyncIdlePoll();
+        }
+
+        private static void OnVconfScreensaverChanged(IntPtr keynode, IntPtr userData)
+        {
+            if (!_vconfScreensaverSubscribed) return;
+            ScheduleAsyncIdlePoll();
+        }
+
+        private static void OnVconfFullscreenMain(IntPtr data)
+        {
+            System.Threading.Volatile.Write(ref _vconfWakePending, 0);
+            if (_idleModel == null || _idleWin == null || _homeLaunch != null || (_idleConfig != null && _idleConfig.Mode == IdleMode.Off)) return;
+            try { PollIdleBackdrop(); }
+            catch (Exception ex) { Log("idle: vconf poll: " + ex.Message); }
+        }
+
+        private static void CancelBackHoldTimer()
+        {
+            if (_backPrewarmTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backPrewarmTimer); _backPrewarmTimer = IntPtr.Zero; }
+            if (_backHoldTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backHoldTimer); _backHoldTimer = IntPtr.Zero; }
+            if (_backForceCloseTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backForceCloseTimer); _backForceCloseTimer = IntPtr.Zero; }
+            _backHoldCode = 0;
+        }
+
+        private static byte OnBackPrewarm(IntPtr data)
+        {
+            _backPrewarmTimer = IntPtr.Zero;
+            try
+            {
+                if (_idleModel != null && !_idleModel.Visible && !_idleModel.HoldOcclusionForScreensaver && !DockActive && _idleWin != null && (_idleConfig == null || _idleConfig.Mode != IdleMode.Off))
+                {
+                    _idleWin.PrewarmAssets();
+                }
+            }
+            catch (Exception) { }
+            return 0;
+        }
+
+        private static byte OnBackHold(IntPtr data)
+        {
+            int code = _backHoldCode;
+            _backHoldTimer = IntPtr.Zero;
+            try
+            {
+                if (_idleModel != null && !_idleModel.Visible && !_idleModel.HoldOcclusionForScreensaver && !DockActive && _idleWin != null && (_idleConfig == null || _idleConfig.Mode != IdleMode.Off))
+                {
+                    _idleWin.PrewarmAssets();
+                    double now = Efl.ecore_time_get();
+                    _backHoldFastUntil = Math.Max(_backHoldFastUntil, now + 2.0);
+                    _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
+                    UpdateIdleWatchTimer(0.02);
+                    Log("idle: back hold 0.45s code=" + code + " prewarmed");
+                }
+            }
+            catch (Exception ex) { Log("idle: back hold: " + ex.Message); }
+            return 0;
+        }
+
+        private static bool TriggerProactiveForceClose(double now, string rawFullApp, string triggerSource)
+        {
+            if (_idleModel == null || DockActive || _idleWin == null || (_idleConfig != null && _idleConfig.Mode == IdleMode.Off) || _homeLaunch != null)
+                return false;
+            bool launching = _idleModel.IsLaunchSuppressed(now);
+            if ((_idleModel.Visible || _idleModel.HoldOcclusionForScreensaver || IsAnyRealScreensaverActive()) && !launching)
+                return false;
+
+            string appToClose = rawFullApp ?? "";
+            if (IdleBackdropModel.IsScreensaverApp(appToClose))
+                return false;
+            if (string.IsNullOrEmpty(appToClose)
+                || appToClose == IdleBackdropModel.TvViewerAppId
+                || IdleBackdropModel.IsGuardedSamsungHome(appToClose))
+            {
+                appToClose = launching ? (_idleModel.LaunchTargetAppId ?? "") : "";
+            }
+            if (appToClose == IdleBackdropModel.WrapperYouTubeAppId)
+                appToClose = IdleBackdropModel.CobaltYouTubeAppId;
+
+            if (!string.IsNullOrEmpty(appToClose)
+                && (appToClose == IdleBackdropModel.TvViewerAppId
+                    || IdleBackdropModel.IsGuardedSamsungHome(appToClose)
+                    || IdleBackdropModel.IsScreensaverApp(appToClose)
+                    || appToClose.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase)
+                    || !Catalog.ValidAppId(appToClose)))
+            {
+                return false;
+            }
+            if (string.IsNullOrEmpty(appToClose) && !launching)
+                return false;
+
+            CancelBackHoldTimer();
+            CancelDeferredForceClose();
+            _lastExitForceCloseMono = now;
+
+            // Step A (T = 0 ms, synchronous on EFL main thread): paint opaque Layer-250 vetro-idle + Arrival Dock
+            // OVER the still-open app on the very next Wayland VSync (~16 ms) before requesting app termination.
+            IdleAction action = _idleModel.OnProactiveForceClose(now, appToClose);
+            if (action == IdleAction.None) return false;
+            _launchBackClaimSuppressUntil = 0;
+            _lastPausedAppId = "";
+            if (!string.IsNullOrEmpty(appToClose)) _lastForceClosedAppId = appToClose;
+            bool openDock = action == IdleAction.ShowWithDock;
+            bool padOpen = _pad != null && _pad.IsOnScreen;
+            bool pillOpen = _pill != null && _pill.IsOnScreen;
+            if (openDock) _arrivalBackShieldUntil = now + 0.90;
+            if (_wmStack != null) _wmStack.LaunchingApp = false;
+            _idleWin.Show(false, openDock, IdleBackdropModel.ShouldRaiseIdleWindow(openDock || DockActive, padOpen, pillOpen));
+            if (_wmStack != null)
+            {
+                _wmStack.IdleShown = _idleWin.IsShown;
+                if (!_samsungHomeRequested)
+                {
+                    _wmStack.ActivateShield(4500);
+                    _wmStack.EnsureStack(true);
+                }
+            }
+            if (openDock && !DockActive)
+            {
+                if (_inElmRun) OpenArrivalDock();
+                else _pendingArrivalDock = true;
+            }
+            ArmGuard();
+            BumpDismissRestoreGen();
+            int restoreGen = System.Threading.Volatile.Read(ref _dismissRestoreGen);
+            if (!string.IsNullOrEmpty(appToClose))
+            {
+                _deferredForceCloseApp = appToClose;
+                _deferredForceCloseGen = restoreGen;
+                _deferredForceCloseWasLaunching = launching;
+                _deferredForceCloseLaunchEpoch = System.Threading.Volatile.Read(ref _launchEpoch);
+                _deferredForceCloseTimer = Efl.ecore_timer_add(0.035, DeferredForceCloseCb, IntPtr.Zero);
+            }
+            Log("idle: proactive " + triggerSource + " close app=" + (string.IsNullOrEmpty(appToClose) ? "(launching)" : appToClose));
+            SyncBackClaim();
+            _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
+            UpdateIdleWatchTimer(0.10);
+            return true;
+        }
+
+        private static void NoteLaunchEpoch(string rawAppId)
+        {
+            string canonical = rawAppId ?? "";
+            if (canonical == IdleBackdropModel.WrapperYouTubeAppId)
+                canonical = IdleBackdropModel.CobaltYouTubeAppId;
+            _lastLaunchTargetApp = canonical;
+            System.Threading.Interlocked.Increment(ref _launchEpoch);
+        }
+
+        private static bool SleepUnlessLaunchChanged(int totalMs, int launchEpoch, int restoreGen)
+        {
+            int elapsed = 0;
+            while (elapsed < totalMs)
+            {
+                if (_samsungHomeRequested
+                    || System.Threading.Volatile.Read(ref _launchEpoch) != launchEpoch
+                    || System.Threading.Volatile.Read(ref _dismissRestoreGen) != restoreGen)
+                {
+                    return false;
+                }
+                int slice = Math.Min(200, totalMs - elapsed);
+                System.Threading.Thread.Sleep(slice);
+                elapsed += slice;
+            }
+            return !_samsungHomeRequested
+                && System.Threading.Volatile.Read(ref _launchEpoch) == launchEpoch
+                && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen;
+        }
+
+        private static byte OnDeferredForceClose(IntPtr data)
+        {
+            _deferredForceCloseTimer = IntPtr.Zero;
+            string app = _deferredForceCloseApp;
+            _deferredForceCloseApp = "";
+            int restoreGen = _deferredForceCloseGen;
+            bool wasLaunching = _deferredForceCloseWasLaunching;
+            int launchEpoch = _deferredForceCloseLaunchEpoch;
+            _deferredForceCloseWasLaunching = false;
+            if (string.IsNullOrEmpty(app) || !Catalog.ValidAppId(app)) return 0;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    string settleCmd = "case \"$(/usr/bin/vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)\" in "
+                        + "*com.samsung.tv.csfs*|*com.samsung.tv.home.*|*com.samsung.tv.coba.*|*" + app + "*) "
+                        + "/usr/bin/app_launcher -s " + IdleBackdropModel.TvViewerAppId + " -u 5001 >/dev/null 2>&1; "
+                        + "/usr/bin/vconftool set -f -t string memory/appfw/current_fullscreen_appid " + IdleBackdropModel.TvViewerAppId + " >/dev/null 2>&1 ;; esac";
+
+                    if (System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                    {
+                        Libc.system("/usr/bin/app_launcher -t " + app + " -u 5001 >/dev/null 2>&1");
+                        if (!_samsungHomeRequested && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            Libc.system(settleCmd);
+                        }
+                    }
+
+                    System.Threading.Thread.Sleep(220);
+                    int curEpoch = System.Threading.Volatile.Read(ref _launchEpoch);
+                    bool sameAppRelaunched = curEpoch != launchEpoch
+                        && IdleBackdropModel.SameLaunchAppOrYouTubeAlias(_lastLaunchTargetApp, app);
+                    if (!_samsungHomeRequested && !sameAppRelaunched)
+                    {
+                        Libc.system("/usr/bin/app_launcher -k " + app + " >/dev/null 2>&1");
+                        if (System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            Libc.system(settleCmd);
+                        }
+                    }
+
+                    if (!wasLaunching)
+                    {
+                        System.Threading.Thread.Sleep(220);
+                        if (!_samsungHomeRequested && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            Libc.system(settleCmd);
+                        }
+                        return;
+                    }
+
+                    // Mid-launch XF86Exit abort: catch late-spawning apps at +1.0s and +2.3s, cancelling within <=200 ms on any new launch.
+                    int[] abortFollowUpsMs = { 780, 1300 };
+                    for (int i = 0; i < abortFollowUpsMs.Length; i++)
+                    {
+                        if (!SleepUnlessLaunchChanged(abortFollowUpsMs[i], launchEpoch, restoreGen))
+                            return;
+                        Libc.system("/usr/bin/app_launcher -t " + app + " -u 5001 >/dev/null 2>&1; /usr/bin/app_launcher -k " + app + " >/dev/null 2>&1");
+                        if (!_samsungHomeRequested
+                            && System.Threading.Volatile.Read(ref _launchEpoch) == launchEpoch
+                            && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            Libc.system(settleCmd);
+                        }
+                    }
+                }
+                catch (Exception) { }
+            });
+            return 0;
+        }
+
+        private static void HandleExitKey(double now)
+        {
+            if (now - _lastExitForceCloseMono < 0.75) return;
+            if (_pad != null && _pad.IsOnScreen)
+            {
+                _lastExitForceCloseMono = now;
+                ClosePad();
+                return;
+            }
+            if (DockActive)
+            {
+                if (now < _arrivalBackShieldUntil) return;
+                _lastExitForceCloseMono = now;
+                HideDock();
+                return;
+            }
+            if ((_idleModel != null && _idleModel.ScreensaverTakeoverActive) || _screensaverWakePendingRelease)
+            {
+                _lastExitForceCloseMono = now;
+                ArmScreensaverTakeoverWakeRelease(now);
+                return;
+            }
+            if (_idleModel == null || _idleWin == null || _homeLaunch != null || (_idleConfig != null && _idleConfig.Mode == IdleMode.Off))
+                return;
+
+            string partial = IdleBackdropModel.NormalizePartialAppId(Efl.VconfGetString("memory/appfw/current_partial_appid"));
+            string full = Efl.VconfGetString(FullscreenAppIdKey);
+            if ((!_idleModel.IsLaunchSuppressed(now) && (_idleModel.HoldOcclusionForScreensaver || IdleBackdropModel.IsScreensaverApp(full) || IsAnyRealScreensaverActive())))
+            {
+                _lastExitForceCloseMono = now;
+                WakeOrResetScreensaverForUserAction(false);
+                return;
+            }
+            if (!string.IsNullOrEmpty(partial) && !IdleBackdropModel.IsGuardedSamsungHome(partial) && !IdleBackdropModel.IsScreensaverApp(partial))
+            {
+                _lastExitForceCloseMono = now;
+                _exitReleaseUntil = now + 1.0;
+                _backReleaseUntil = now + 1.0;
+                SyncBackClaim();
+                PollIdleBackdrop();
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { Libc.system("/usr/bin/input_keyevent XF86Back >/dev/null 2>&1"); } catch (Exception) { }
+                });
+                return;
+            }
+
+            if (!_idleModel.Visible || _idleModel.IsLaunchSuppressed(now))
+            {
+                TriggerProactiveForceClose(now, full, "exit");
+                return;
+            }
+            _lastExitForceCloseMono = now;
+        }
+
+        private static byte OnBackForceClose(IntPtr data)
+        {
+            _backForceCloseTimer = IntPtr.Zero;
+            try
+            {
+                TriggerProactiveForceClose(Efl.ecore_time_get(), Efl.VconfGetString(FullscreenAppIdKey), "back-hold");
+            }
+            catch (Exception ex) { Log("idle: proactive back-hold close: " + ex.Message); }
+            return 0;
+        }
+
+        private static void CancelIdleTimers()
+        {
+            _idleWatchInterval = 0;
+            if (_idleWatchTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleWatchTimer); _idleWatchTimer = IntPtr.Zero; }
+            if (_idleLcdVerifyTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleLcdVerifyTimer); _idleLcdVerifyTimer = IntPtr.Zero; }
+            if (_screensaverKeepaliveTimer != IntPtr.Zero) { Efl.ecore_timer_del(_screensaverKeepaliveTimer); _screensaverKeepaliveTimer = IntPtr.Zero; }
+            CancelScreensaverWakeReleaseTimer();
+            CancelBackHoldTimer();
+            CancelDeferredForceClose();
+        }
+
+        private static bool IsScreensaverSuppressionKeepaliveWanted()
+        {
+            return _idleConfig != null
+                && _idleModel != null
+                && _idleWin != null
+                && IdleBackdropModel.ShouldKeepScreensaverSuppressed(
+                    _idleConfig,
+                    _idleModel.Visible && _idleWin.IsShown,
+                    _idleModel.HoldOcclusionForScreensaver,
+                    IsDisplayOff(),
+                    _lastRealScreensaverActive);
+        }
+
+        private static void SyncScreensaverSuppressionKeepalive(double now, bool forceImmediate = false)
+        {
+            if (!IsScreensaverSuppressionKeepaliveWanted())
+            {
+                if (_screensaverKeepaliveTimer != IntPtr.Zero)
+                {
+                    Efl.ecore_timer_del(_screensaverKeepaliveTimer);
+                    _screensaverKeepaliveTimer = IntPtr.Zero;
+                }
+                return;
+            }
+            if (_screensaverKeepaliveTimer == IntPtr.Zero)
+            {
+                _screensaverKeepaliveTimer = Efl.ecore_timer_add(
+                    IdleBackdropModel.SuppressScreensaverKeepaliveSeconds,
+                    ScreensaverKeepaliveCb,
+                    IntPtr.Zero);
+                TriggerScreensaverActivityReset(now, forceImmediate ? 0.0 : 25.0);
+            }
+            else if (forceImmediate)
+            {
+                TriggerScreensaverActivityReset(now, 0.0);
+            }
+        }
+
+        private static byte OnScreensaverKeepalive(IntPtr data)
+        {
+            if (!IsScreensaverSuppressionKeepaliveWanted())
+            {
+                _screensaverKeepaliveTimer = IntPtr.Zero;
+                return 0;
+            }
+            TriggerScreensaverActivityReset(Efl.ecore_time_get(), 25.0);
+            return 1;
+        }
+
+        private static void InitIdleBackdrop()
+        {
+            if (_idleModel != null && _idleWin != null) return;
+            _idleModel = new IdleBackdropModel(_idleConfig);
+            _idleWin = new IdleBackdropWindow(_idleConfig, Log, _screenW, _screenH, _perf);
+            if (_wmStack == null) _wmStack = new WmStackController(Log, ScheduleAsyncIdlePoll);
+            _wmStack.AllowSamsungHome = _samsungHomeRequested;
+            _idleWin.OnShown = () => _wmStack.EnsureStack(1500);
+            _idleWin.OnAnimatorStarted = () => System.Threading.Tasks.Task.Run((Action)PromoteRenderThreads);
+            _idleWin.OnKeyDown = () =>
+            {
+                if (_idleModel != null && (_idleModel.ScreensaverTakeoverActive || _screensaverWakePendingRelease))
+                    ArmScreensaverTakeoverWakeRelease(Efl.ecore_time_get());
+            };
+            _idleWin.OnKeyUp = () =>
+            {
+                if (_screensaverWakePendingRelease || (_idleModel != null && _idleModel.ScreensaverTakeoverActive))
+                    CompleteScreensaverTakeoverWake(true);
+            };
+            _idleWin.Prewarm();
+            _wmStack.EnsureStack(1500);
+            SubscribeFullscreenNotify();
+        }
+
+        private static void ApplyLiveIdleConfig(string argsLine)
+        {
+            if (_homeLaunch != null || string.IsNullOrEmpty(argsLine)) return;
+            int fallbackLvl = _idleConfig != null ? _idleConfig.NotificationLevel : 10;
+            bool fallbackSuppress = _idleConfig != null && _idleConfig.SuppressScreensaver;
+            IdleConfig next = IdleConfig.ParseLiveArgs(argsLine, fallbackLvl, fallbackSuppress);
+            if (next == null) return;
+            _idleConfig = next;
+            if (next.Mode == IdleMode.Off)
+            {
+                CancelIdleTimers();
+                UnsubscribeFullscreenNotify();
+                _lastRealScreensaverActive = false;
+                _lastColdBootSilentHome = false;
+                _wasScreensaverTakeoverActive = false;
+                _screensaverWakePendingRelease = false;
+                if (_idleModel != null) _idleModel.Reconfigure(next, Efl.ecore_time_get());
+                if (_idleWin != null)
+                {
+                    _idleWin.SetScreensaverOverlay(false);
+                    _idleWin.SetInteractiveFocus(false);
+                    _idleWin.Hide(true);
+                }
+                if (_wmStack != null) { _wmStack.ScreensaverActive = false; _wmStack.ScreensaverTakeover = false; _wmStack.IdleShown = false; }
+                SyncBackClaim();
+                Log("idle: live off");
+                return;
+            }
+            if (_idleModel == null || _idleWin == null)
+            {
+                InitIdleBackdrop();
+            }
+            else
+            {
+                _idleModel.Reconfigure(_idleConfig, Efl.ecore_time_get());
+                if (!next.SuppressScreensaver)
+                {
+                    CancelScreensaverWakeReleaseTimer();
+                    _wasScreensaverTakeoverActive = false;
+                    _screensaverWakePendingRelease = false;
+                    _idleWin.SetScreensaverOverlay(false);
+                    _idleWin.SetInteractiveFocus(false);
+                    if (_wmStack != null) _wmStack.ScreensaverTakeover = false;
+                }
+                _idleWin.Reconfigure(_idleConfig);
+                SubscribeFullscreenNotify();
+            }
+            if (next.SuppressScreensaver && next.Mode != IdleMode.Off && IsAnyRealScreensaverActive())
+                WakeOrResetScreensaverForUserAction(false);
+            PollIdleBackdrop();
+            SyncScreensaverSuppressionKeepalive(Efl.ecore_time_get(), forceImmediate: next.SuppressScreensaver);
+        }
+
+        private static void HandleExternalLaunch(string argsLine)
+        {
+            string extAppId, extLabel;
+            double suppressSec = CommandBuffer.ParseLaunchArgs(argsLine, IdleBackdropModel.LaunchSuppressSeconds, out extAppId, out extLabel);
+            if (!string.IsNullOrEmpty(extAppId) && string.IsNullOrEmpty(extLabel))
+            {
+                AppEntry known = FindCatalogEntry(extAppId);
+                if (known != null && !string.IsNullOrEmpty(known.Label)) extLabel = known.Label;
+            }
+            double now = Efl.ecore_time_get();
+            NoteLaunchEpoch(extAppId);
+            CancelDeferredForceClose();
+            BumpDismissRestoreGen();
+            if (_guardApps != null)
+            {
+                try { NewGuardGeneration(); } catch (Exception) { }
+            }
+            _lastAppHomePress = -100;
+            CancelPendingScreenOff();
+            ClosePad();
+            if (_idleModel != null)
+            {
+                _idleModel.OnLaunchApp(now, suppressSec, extAppId);
+                _launchBackClaimSuppressUntil = now + 1.5;
+                if (_idleWin != null
+                    && !_idleWin.IsShown
+                    && _idleConfig != null
+                    && _idleConfig.Mode != IdleMode.Off
+                    && _homeLaunch == null
+                    && !_samsungHomeRequested
+                    && _idleModel.LastKnownSource <= 0
+                    && !_lastTunerActive
+                    && (WmStackLogic.IsYoutubeTargetApp(extAppId)
+                        || suppressSec >= IdleBackdropModel.ShardLaunchDwellThresholdSeconds
+                        || _lastFullApp == IdleBackdropModel.TvViewerAppId
+                        || IdleBackdropModel.IsGuardedSamsungHome(_lastFullApp)
+                        || (_wmStack != null && _wmStack.GuardedHomeWinPresent && !_wmStack.ActiveAppWinPresent)))
+                {
+                    _idleModel.SetVisibleForLaunchCurtain(now);
+                    _idleWin.Show(false, false);
+                }
+            }
+            _pendingArrivalDock = false;
+            if (_wmStack != null)
+            {
+                _wmStack.InvalidateObservation();
+                bool shownNow = _idleWin != null && _idleWin.IsShown;
+                _wmStack.IdleShown = shownNow;
+                _wmStack.BeginAppLaunch(
+                    extAppId,
+                    extLabel,
+                    _lastPausedAppId,
+                    suppressSec >= IdleBackdropModel.ShardLaunchDwellThresholdSeconds || WmStackLogic.IsYoutubeTargetApp(extAppId),
+                    (int)Math.Round((suppressSec + 0.5) * 1000.0),
+                    shownNow,
+                    100,
+                    _lastForceClosedAppId);
+            }
+            if (DockActive) HideDock();
+            SyncBackClaim();
+            if (_idleWin != null) UpdateIdleWatchTimer(0.25);
+            Log("idle: external launch suppress=" + suppressSec.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "s" + (string.IsNullOrEmpty(extAppId) ? "" : " app=" + extAppId));
+        }
+
+        private static void PollIdleBackdrop()
+        {
+            if (_idleModel == null || _idleWin == null || _homeLaunch != null) return;
+            double now = Efl.ecore_time_get();
+            DateTime utcNow = DateTime.UtcNow;
+            bool strResumed = false;
+            if (_lastPollMono >= 0 && _lastPollUtc != DateTime.MinValue)
+            {
+                double wallDelta = (utcNow - _lastPollUtc).TotalSeconds;
+                double monoDelta = now - _lastPollMono;
+                if (wallDelta - monoDelta > 2.0) strResumed = true;
+            }
+            _lastPollMono = now;
+            _lastPollUtc = utcNow;
+
+            bool padOpen = _pad != null && _pad.IsOnScreen;
+            bool pillOpen = _pill != null && _pill.IsOnScreen;
+            int pm = 1;
+            try { if (Efl.vconf_get_int("memory/pm/state", out pm) != 0) pm = 1; } catch (Exception) { pm = 1; }
+            bool displayOff = pm >= IdleBackdropModel.DisplayStateOff;
+            if (displayOff && !_wasDisplayOff)
+            {
+                _wasDisplayOff = true;
+                _lastRealScreensaverActive = false;
+                _lastColdBootSilentHome = false;
+                _screensaverFilter.Reset();
+                _idleWin.SetDisplayOff(true);
+                _lastPartialApp = "";
+                if (_wmStack != null)
+                {
+                    _wmStack.ScreensaverActive = false;
+                    _wmStack.PartialActive = false;
+                    if ((_idleModel.Visible || _idleModel.HoldOcclusionForScreensaver) && !_samsungHomeRequested) _wmStack.ActivateShield(5000);
+                }
+                if (_idleModel.Visible)
+                {
+                    bool allowRaise = IdleBackdropModel.ShouldRaiseBackdrop(DockActive, padOpen, pillOpen, _lastPartialApp, _samsungHomeRequested);
+                    if (!_idleWin.IsShown) _idleWin.Show(false, DockActive, allowRaise);
+                    else _idleWin.SetDimmed(false);
+                    if (allowRaise) _idleWin.Raise();
+                }
+            }
+            else if (!displayOff && _wasDisplayOff)
+            {
+                _wasDisplayOff = false;
+                _idleWin.SetDisplayOff(false);
+            }
+            else
+            {
+                _idleWin.SetDisplayOff(displayOff);
+            }
+            if (!displayOff && _idleLcdVerifyTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_idleLcdVerifyTimer);
+                _idleLcdVerifyTimer = IntPtr.Zero;
+            }
+            if (displayOff && _idleModel.Visible && !_idleModel.HoldOcclusionForScreensaver && _idleWin.IsShown)
+            {
+                _screensaverFilter.Reset();
+                IdleAction offAct = _idleModel.Evaluate(new TvSnapshot { DisplayState = pm }, now, DockActive, false, false);
+                if (offAct == IdleAction.Hide || (!_idleModel.ScreensaverTakeoverActive && _wasScreensaverTakeoverActive))
+                {
+                    CancelScreensaverWakeReleaseTimer();
+                    _wasScreensaverTakeoverActive = false;
+                    _screensaverWakePendingRelease = false;
+                    _idleWin.SetScreensaverOverlay(false);
+                    _idleWin.SetInteractiveFocus(false);
+                    if (_wmStack != null) _wmStack.ScreensaverTakeover = false;
+                    SyncBackClaim();
+                }
+                if (offAct == IdleAction.Hide)
+                {
+                    _idleWin.Hide();
+                    if (_wmStack != null) _wmStack.IdleShown = false;
+                }
+                SyncScreensaverSuppressionKeepalive(now);
+                UpdateIdleWatchTimer(0.15);
+                return;
+            }
+
+            int src = -1, srcRc = -1;
+            try { srcRc = Efl.vconf_get_int("memory/system/source_type", out src); if (srcRc != 0) src = -1; } catch (Exception) { src = -1; }
+            if (src == 0) _tvPlusActive = false;
+
+            string fullApp = (!displayOff || !_idleModel.Visible) ? Efl.VconfGetString("memory/appfw/current_fullscreen_appid") : null;
+            if (_samsungHomeRequested && !displayOff)
+            {
+                if (IdleBackdropModel.IsGuardedSamsungHome(fullApp)) _samsungHomeObserved = true;
+                if (src > 0
+                    || (_samsungHomeObserved && fullApp == IdleBackdropModel.TvViewerAppId)
+                    || (!_samsungHomeObserved && now >= _samsungHomeRequestedUntil))
+                {
+                    _samsungHomeRequested = false;
+                    _samsungHomeObserved = false;
+                }
+            }
+
+            bool fullChanged = fullApp != null && fullApp != _lastFullApp;
+            if (fullApp != null)
+            {
+                _lastFullApp = fullApp;
+                if (_wmStack != null) _wmStack.CachedFullscreenAppId = fullApp;
+            }
+            if (fullChanged && _wmStack != null)
+            {
+                if (_idleModel.IsLaunchSuppressed(now)) _wmStack.EnsureStack(true);
+                else _wmStack.InvalidateObservation();
+            }
+
+            bool wmObserved = _wmStack != null && _wmStack.HasObservedWindows;
+            bool wmGuardedHome = wmObserved && _wmStack.GuardedHomeWinPresent;
+            bool wmActiveApp = wmObserved && _wmStack.ActiveAppWinPresent;
+            bool wmLaunchscreen = wmObserved && _wmStack.LaunchscreenWinPresent;
+            bool wmScreensaver = wmObserved && _wmStack.ScreensaverWinPresent;
+            bool wmLaunchTargetReady = wmObserved && _wmStack.LaunchTargetReady;
+            var snap = new TvSnapshot
+            {
+                SourceType = src,
+                DisplayState = pm,
+                FullscreenAppId = fullApp,
+                SamsungHomeRequested = _samsungHomeRequested,
+                WmStackActive = _wmStack != null && _wmStack.IsActive,
+                WmStateObserved = wmObserved,
+                WmGuardedHomePresent = wmGuardedHome,
+                WmActiveAppPresent = wmActiveApp,
+                WmLaunchscreenPresent = wmLaunchscreen,
+                WmScreensaverWinPresent = wmScreensaver,
+                WmLaunchTargetReady = wmLaunchTargetReady,
+                PendingTvSource = now < _pendingTvSourceUntil,
+                TvPlusActive = _tvPlusActive
+            };
+            if ((!displayOff || !_idleModel.Visible) && src <= 0)
+            {
+                if (fullApp == IdleBackdropModel.TvViewerAppId
+                    || IdleBackdropModel.IsGuardedSamsungHome(fullApp)
+                    || IdleBackdropModel.IsScreensaverApp(fullApp)
+                    || string.IsNullOrEmpty(fullApp)
+                    || wmGuardedHome
+                    || wmScreensaver)
+                {
+                    if (!displayOff) snap.PartialAppId = IdleBackdropModel.NormalizePartialAppId(Efl.VconfGetString("memory/appfw/current_partial_appid"));
+                    bool steadyIdleVisible = _idleModel.Visible && _idleWin.IsShown && !displayOff;
+                    if (steadyIdleVisible && (now - _lastTunerCheckMono) >= 0.0 && (now - _lastTunerCheckMono) < 2.5)
+                    {
+                        snap.TunerActive = _lastTunerActive;
+                    }
+                    else
+                    {
+                        snap.TunerActive = IdleBackdropModel.IsTunerReady(FileExistsFn, ReadTextFn, PidAliveFn);
+                        _lastTunerCheckMono = now;
+                    }
+                }
+            }
+            _lastTunerActive = snap.TunerActive;
+            bool rawScreensaverFlag = !displayOff && ReadScreensaverVconfFlag();
+            bool rawScreensaverRose = rawScreensaverFlag && !_lastRawScreensaver;
+            if (rawScreensaverRose)
+            {
+                if (_wmStack != null) _wmStack.EnsureStack(2500);
+                _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 3.5);
+            }
+            _lastRawScreensaver = rawScreensaverFlag;
+            if (!displayOff && rawScreensaverFlag && snap.PartialAppId == null)
+            {
+                snap.PartialAppId = IdleBackdropModel.NormalizePartialAppId(Efl.VconfGetString("memory/appfw/current_partial_appid"));
+            }
+            if (!rawScreensaverFlag && !wmScreensaver) System.Threading.Volatile.Write(ref _screensaverOverlayPid, 0);
+            bool screensaverProc = !displayOff && (rawScreensaverFlag || wmScreensaver) && HasScreensaverOverlayProcess();
+            if (!displayOff && rawScreensaverRose && !wmScreensaver && !screensaverProc)
+                StartBackgroundScreensaverProcScan();
+            snap.ScreensaverProcessActive = screensaverProc;
+            snap.ScreensaverActive = !displayOff
+                && (rawScreensaverFlag
+                    || wmScreensaver
+                    || IdleBackdropModel.IsScreensaverApp(fullApp)
+                    || IdleBackdropModel.IsScreensaverApp(snap.PartialAppId));
+            bool realScreensaver = IdleBackdropModel.IsRealScreensaverActive(snap);
+            if (!displayOff && !realScreensaver && ReadColdBootSilentHome(fullApp, snap.PartialAppId))
+            {
+                snap.ColdBootSilentHome = true;
+            }
+            _lastRealScreensaverActive = realScreensaver;
+            _lastColdBootSilentHome = snap.ColdBootSilentHome;
+
+            string partialNow = snap.PartialAppId ?? "";
+            if (partialNow != _lastPartialApp)
+            {
+                _lastPartialApp = partialNow;
+                if (_wmStack != null) _wmStack.EnsureStack(1500);
+            }
+
+            bool guardedHomeActive = !realScreensaver
+                && !snap.ColdBootSilentHome
+                && IdleBackdropModel.ComputeGuardedHomeActive(_samsungHomeRequested, fullApp, snap.PartialAppId, wmObserved, wmGuardedHome);
+            bool partialActive = (!string.IsNullOrEmpty(_lastPartialApp) && !guardedHomeActive) || now < _backReleaseUntil || padOpen;
+            if (_wmStack != null)
+            {
+                _wmStack.AllowSamsungHome = _samsungHomeRequested;
+                _wmStack.GuardedHomeActive = guardedHomeActive;
+                _wmStack.PartialActive = partialActive;
+                _wmStack.ScreensaverActive = realScreensaver;
+                _wmStack.ScreensaverTakeover = _idleModel.ScreensaverTakeoverActive || (_idleConfig.SuppressScreensaver && realScreensaver && _idleModel.Visible);
+                _wmStack.LaunchingApp = _idleModel.IsLaunchSuppressed(now);
+            }
+
+            bool dockWasActive = DockActive;
+            bool strWake = !displayOff && strResumed && _idleModel.OnWake(now, true);
+            IdleAction action = _idleModel.Evaluate(snap, now, dockWasActive, padOpen, pillOpen);
+            bool takeoverNow = _idleModel.ScreensaverTakeoverActive;
+            bool enteredTakeover = takeoverNow && !_wasScreensaverTakeoverActive;
+            bool leftTakeover = !takeoverNow && _wasScreensaverTakeoverActive;
+            _wasScreensaverTakeoverActive = takeoverNow;
+            if (_wmStack != null)
+                _wmStack.ScreensaverTakeover = takeoverNow || (_idleConfig.SuppressScreensaver && realScreensaver && _idleModel.Visible);
+            if (leftTakeover)
+            {
+                CancelScreensaverWakeReleaseTimer();
+                _screensaverWakePendingRelease = false;
+                _idleWin.SetScreensaverOverlay(false);
+                _idleWin.SetInteractiveFocus(false);
+            }
+            bool launchSuppressed = _idleModel.IsLaunchSuppressed(now);
+            if (_wmStack != null) _wmStack.LaunchingApp = launchSuppressed;
+            bool woke = !displayOff && (_idleModel.ConsumeWakeRestack() || strWake);
+            _idleWin.SetDimmed(_idleModel.Dimmed);
+            if (action == IdleAction.Hide
+                && !realScreensaver
+                && !_idleModel.HoldOcclusionForScreensaver
+                && !string.IsNullOrEmpty(fullApp)
+                && fullApp != IdleBackdropModel.TvViewerAppId
+                && !IdleBackdropModel.IsGuardedSamsungHome(fullApp)
+                && !IdleBackdropModel.IsScreensaverApp(fullApp))
+            {
+                _lastAppHomePress = -100;
+                _lastPausedAppId = "";
+                _lastForceClosedAppId = "";
+                BumpDismissRestoreGen();
+            }
+            if (action == IdleAction.Show || action == IdleAction.ShowWithDock)
+            {
+                if (!launchSuppressed)
+                {
+                    _launchBackClaimSuppressUntil = 0;
+                    if (fullApp == IdleBackdropModel.TvViewerAppId && src <= 0) _lastPausedAppId = "";
+                }
+                CancelBackHoldTimer();
+            }
+
+            if (action != IdleAction.None)
+            {
+                string fullLog = (action == IdleAction.Hide && snap.FullscreenAppId == null) ? Efl.VconfGetString("memory/appfw/current_fullscreen_appid") : (snap.FullscreenAppId ?? "");
+                string partialLog = (action == IdleAction.Hide && snap.PartialAppId == null) ? Efl.VconfGetString("memory/appfw/current_partial_appid") : (snap.PartialAppId ?? "");
+                string actLabel = (action == IdleAction.Hide && _idleModel.HoldOcclusionForScreensaver) ? "ParkForScreensaver" : action.ToString();
+                string wmLog = wmObserved ? (" wmObs=True wmHome=" + wmGuardedHome + " wmApp=" + wmActiveApp + (wmLaunchscreen ? " wmLs=True" : "") + (wmScreensaver ? " wmSs=True" : "")) : "";
+                Log("idle: " + actLabel + " src=" + snap.SourceType + " srcRc=" + srcRc + " full=" + fullLog + " partial=" + partialLog + " pm=" + snap.DisplayState + " ss=" + realScreensaver + " tuner=" + snap.TunerActive + " dock=" + DockActive + " pad=" + padOpen + " pill=" + pillOpen + " wm=" + snap.WmStackActive + (takeoverNow ? " takeover=True" : "") + wmLog);
+            }
+            bool canRaise = IdleBackdropModel.ShouldRaiseBackdrop(DockActive, padOpen, pillOpen, _lastPartialApp, _samsungHomeRequested, now < _backReleaseUntil);
+            // Show vetro-idle on the EFL thread WITHOUT synchronous dbus-send/system() blocks so Wayland Frame 1 commits immediately (<16 ms).
+            switch (action)
+            {
+                case IdleAction.Show:
+                    if (launchSuppressed)
+                    {
+                        if (_wmStack != null) _wmStack.LaunchingApp = true;
+                        _idleWin.Show(false, false, canRaise);
+                        if (_wmStack != null)
+                        {
+                            _wmStack.IdleShown = _idleWin.IsShown;
+                            _wmStack.DropForLaunchSync(100);
+                        }
+                    }
+                    else
+                    {
+                        if (_wmStack != null) _wmStack.LaunchingApp = false;
+                        if (takeoverNow) _idleWin.SetScreensaverOverlay(true);
+                        bool showDockOverlay = DockActive && !takeoverNow;
+                        _idleWin.Show(_idleModel.Dimmed, showDockOverlay, canRaise || takeoverNow);
+                        if (showDockOverlay) RaiseActiveDockWin();
+                        if (_wmStack != null)
+                        {
+                            _wmStack.IdleShown = _idleWin.IsShown;
+                            if ((!_samsungHomeRequested && !realScreensaver) || takeoverNow) _wmStack.ActivateShield(displayOff ? 5000 : 4500);
+                            _wmStack.EnsureStack(true);
+                        }
+                    }
+                    break;
+                case IdleAction.ShowWithDock:
+                    if (_wmStack != null) _wmStack.LaunchingApp = false;
+                    _idleWin.Show(_idleModel.Dimmed, true, false);
+                    if (_wmStack != null) _wmStack.IdleShown = _idleWin.IsShown;
+                    if (!DockActive)
+                    {
+                        if (_inElmRun) OpenArrivalDock();
+                        else _pendingArrivalDock = true;
+                    }
+                    if (_wmStack != null)
+                    {
+                        if (!_samsungHomeRequested && !realScreensaver) _wmStack.ActivateShield(4500);
+                        _wmStack.EnsureStack(true);
+                    }
+                    break;
+                case IdleAction.Hide:
+                    _pendingArrivalDock = false;
+                    if (_idleModel.HoldOcclusionForScreensaver)
+                    {
+                        _idleWin.ParkForScreensaver();
+                        if (_wmStack != null)
+                        {
+                            _wmStack.IdleShown = _idleWin.IsParkedForScreensaver;
+                            _wmStack.LaunchingApp = false;
+                            _wmStack.EnsureStack(true);
+                        }
+                    }
+                    else
+                    {
+                        _idleWin.SetScreensaverOverlay(false);
+                        _idleWin.SetInteractiveFocus(false);
+                        _idleWin.Hide();
+                        // Restore steady-state Layer 200 in the background after hiding.
+                        if (_wmStack != null)
+                        {
+                            _wmStack.IdleShown = false;
+                            _wmStack.LaunchingApp = launchSuppressed;
+                            if (!_samsungHomeRequested) _wmStack.EnsureStack(false);
+                        }
+                    }
+                    break;
+                case IdleAction.Dim:
+                    _idleWin.SetDimmed(true);
+                    break;
+                case IdleAction.TriggerLcdOff:
+                    _idleWin.SetDimmed(true);
+                    TurnScreenOff();
+                    if (_idleLcdVerifyTimer != IntPtr.Zero) Efl.ecore_timer_del(_idleLcdVerifyTimer);
+                    _idleLcdVerifyTimer = Efl.ecore_timer_add(1.5, IdleLcdVerifyCb, IntPtr.Zero);
+                    break;
+            }
+
+            if (enteredTakeover)
+            {
+                Log("idle: entering global screensaver takeover (src=" + src + " full=" + (fullApp ?? "") + ")");
+                _idleWin.SetScreensaverOverlay(true);
+                _idleWin.SetInteractiveFocus(true);
+                HideTunerForScreensaverTakeover();
+                TriggerScreensaverActivityReset(now, 0.0, dismissActive: true);
+                if (_wmStack != null) _wmStack.EnsureStack(2500);
+                _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 3.5);
+            }
+            else if (realScreensaver && _idleConfig.SuppressScreensaver && !takeoverNow && _idleModel.Visible)
+            {
+                TriggerScreensaverActivityReset(now, 0.5, dismissActive: true);
+            }
+
+            if (_guardApps != null && _idleModel.ShouldDismissGuardedHome(snap, now))
+            {
+                _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
+                string dyingApp = "";
+                if (!launchSuppressed)
+                {
+                    dyingApp = _idleModel.GuardedHomeDyingAppId;
+                    if (string.IsNullOrEmpty(dyingApp)) dyingApp = _idleModel.TeardownHoldAppId;
+                    if (string.IsNullOrEmpty(dyingApp) && IdleBackdropModel.IsGuardedSamsungHome(fullApp))
+                    {
+                        string prevApp = Efl.VconfGetString("memory/appfw/previous_fullscreen_appid");
+                        if (!string.IsNullOrEmpty(prevApp)
+                            && prevApp != IdleBackdropModel.TvViewerAppId
+                            && !IdleBackdropModel.IsGuardedSamsungHome(prevApp)
+                            && !IdleBackdropModel.IsScreensaverApp(prevApp))
+                            dyingApp = prevApp;
+                    }
+                }
+                bool allowCloseDying = !launchSuppressed && !_samsungHomeRequested && (now - _lastAppHomePress) > AppHomeProtectSeconds;
+                DismissUnrequestedHome(fullApp, snap.PartialAppId, dyingApp, allowCloseDying, launchSuppressed);
+            }
+
+            // Defensive invariant: keep _idleWin synchronized with _idleModel (Visible vs HoldOcclusionForScreensaver vs Hidden).
+            if (_idleModel.HoldOcclusionForScreensaver)
+            {
+                if (!_idleWin.IsParkedForScreensaver) _idleWin.ParkForScreensaver();
+            }
+            else if (!_idleModel.Visible && (_idleWin.IsShown || _idleWin.IsParkedForScreensaver))
+            {
+                _idleWin.SetScreensaverOverlay(false);
+                _idleWin.SetInteractiveFocus(false);
+                _idleWin.Hide();
+            }
+            else if (_idleModel.Visible && !_idleWin.IsShown)
+            {
+                _idleWin.SetScreensaverOverlay(takeoverNow);
+                _idleWin.Show(launchSuppressed ? false : _idleModel.Dimmed, (launchSuppressed || takeoverNow) ? false : DockActive, canRaise || takeoverNow);
+                if (takeoverNow) _idleWin.SetInteractiveFocus(true);
+            }
+            if (_wmStack != null) _wmStack.IdleShown = _idleWin.IsShown || _idleWin.IsParkedForScreensaver;
+
+            if (_idleWin.IsShown && !displayOff) _idleWin.SyncClock();
+
+            if (woke)
+            {
+                Log("idle: wake restack visible=" + _idleModel.Visible + " str=" + strResumed + " pm=" + pm);
+                _idleWin.SetDimmed(false);
+                if (_idleModel.Visible && !realScreensaver)
+                {
+                    if (_wmStack != null && !_samsungHomeRequested) _wmStack.ActivateShield(3000);
+                    if (IdleBackdropModel.ShouldRaiseBackdrop(DockActive, padOpen, pillOpen, _lastPartialApp, _samsungHomeRequested, now < _backReleaseUntil)) _idleWin.Raise();
+                    else if (DockActive) RaiseActiveDockWin();
+                    if (_wmStack != null) _wmStack.EnsureStack(2500);
+                    _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
+                }
+            }
+
+            bool activeGuardedDismiss = guardedHomeActive && (action != IdleAction.None || now < _fastIdleWatchUntil);
+            if (activeGuardedDismiss && _idleModel.Visible && !launchSuppressed && !realScreensaver)
+            {
+                if (_wmStack != null) _wmStack.ActivateShield(3000);
+                if (IdleBackdropModel.ShouldRaiseBackdrop(DockActive, padOpen, pillOpen, _lastPartialApp, _samsungHomeRequested, now < _backReleaseUntil)) _idleWin.Raise();
+                else if (DockActive) RaiseActiveDockWin();
+            }
+
+            if (_wmStack != null
+                && (_idleModel.Visible || _idleModel.HoldOcclusionForScreensaver)
+                && (_idleWin.IsShown || _idleWin.IsParkedForScreensaver)
+                && !displayOff
+                && !launchSuppressed)
+            {
+                if (woke || activeGuardedDismiss || takeoverNow || action != IdleAction.None || !_wmStack.IsActive || now >= _nextSteadyStackCheckAt)
+                {
+                    _nextSteadyStackCheckAt = now + SteadyStackCheckSeconds;
+                    _wmStack.EnsureStack(0);
+                }
+            }
+            if (realScreensaver || _idleModel.HoldOcclusionForScreensaver || takeoverNow) SyncBackClaim();
+            else if (_anim != IntPtr.Zero || action != IdleAction.None) ScheduleSyncBackClaim(0.02);
+            else SyncBackClaim();
+
+            double postNow = Efl.ecore_time_get();
+            SyncScreensaverSuppressionKeepalive(postNow);
+            if (displayOff) UpdateIdleWatchTimer(0.15);
+            else if (postNow < _backHoldFastUntil && !_idleModel.Visible && !_idleModel.HoldOcclusionForScreensaver) UpdateIdleWatchTimer(0.02);
+            else if (IdleBackdropModel.ShouldPollFastIdle(postNow, _fastIdleWatchUntil, src, fullApp, _idleModel.Visible, _idleModel.HoldOcclusionForScreensaver, realScreensaver, guardedHomeActive)) UpdateIdleWatchTimer(0.10);
+            else if (_idleModel.IsLaunchSuppressed(postNow)) UpdateIdleWatchTimer(0.25);
+            else if (_idleModel.Visible && _idleWin.IsShown && !displayOff && _vconfFullscreenSubscribed && !guardedHomeActive && !_idleModel.IsLaunchSuppressed(postNow) && postNow >= _fastIdleWatchUntil) UpdateIdleWatchTimer(3.0);
+            else if (src <= 0 || _idleModel.Visible || _idleModel.HoldOcclusionForScreensaver) UpdateIdleWatchTimer(1.5);
+            else UpdateIdleWatchTimer(5.0);
+        }
+
+        private static readonly Efl.TaskCb ScreensaverWakeReleaseCb = OnScreensaverWakeRelease;
+
+        private static void CancelScreensaverWakeReleaseTimer()
+        {
+            if (_screensaverWakeReleaseTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_screensaverWakeReleaseTimer);
+                _screensaverWakeReleaseTimer = IntPtr.Zero;
+            }
+        }
+
+        private static void HideTunerForScreensaverTakeover()
+        {
+            int fd = Libc.open(TunerPipe, Libc.O_WRONLY | Libc.O_NONBLOCK);
+            if (fd < 0) return;
+            try
+            {
+                byte[] b = System.Text.Encoding.ASCII.GetBytes("hide\n");
+                Libc.write(fd, b, (UIntPtr)b.Length);
+                Log("tuner: hide (screensaver takeover)");
+            }
+            catch (Exception) { }
+            finally { Libc.close(fd); }
+        }
+
+        private static void ArmScreensaverTakeoverWakeRelease(double now)
+        {
+            if (_screensaverWakePendingRelease) return;
+            _screensaverWakePendingRelease = true;
+            _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 1.5);
+            CancelScreensaverWakeReleaseTimer();
+            _screensaverWakeReleaseTimer = Efl.ecore_timer_add(0.35, ScreensaverWakeReleaseCb, IntPtr.Zero);
+        }
+
+        private static byte OnScreensaverWakeRelease(IntPtr data)
+        {
+            _screensaverWakeReleaseTimer = IntPtr.Zero;
+            CompleteScreensaverTakeoverWake(true);
+            return 0;
+        }
+
+        private static void CompleteScreensaverTakeoverWake(bool resumeTuner)
+        {
+            CancelScreensaverWakeReleaseTimer();
+            _screensaverWakePendingRelease = false;
+            bool wasTakeover = (_idleModel != null && _idleModel.ScreensaverTakeoverActive) || _wasScreensaverTakeoverActive;
+            _wasScreensaverTakeoverActive = false;
+            if (_idleModel == null) return;
+            double now = Efl.ecore_time_get();
+            IdleAction act = _idleModel.DismissScreensaverTakeover(now);
+            if (!wasTakeover && act == IdleAction.None) return;
+            Log("idle: screensaver takeover dismissed (resumeTuner=" + resumeTuner + ")");
+            CancelIdleTimers();
+            CancelPendingScreenOff();
+            if (_idleWin != null)
+            {
+                _idleWin.SetScreensaverOverlay(false);
+                _idleWin.SetInteractiveFocus(false);
+                _idleWin.Hide();
+            }
+            if (_wmStack != null)
+            {
+                _wmStack.ScreensaverTakeover = false;
+                _wmStack.IdleShown = false;
+                _wmStack.EnsureStack(false);
+            }
+            TriggerScreensaverActivityReset(now, 0.0, dismissActive: true);
+            SyncBackClaim();
+            _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
+            UpdateIdleWatchTimer(0.10);
+            if (resumeTuner) ResumeTuner("screensaver takeover dismissed");
+        }
+
+        private static bool PreserveWarmCsfs()
+        {
+            return _idleWin != null
+                && _idleConfig != null
+                && _idleConfig.Mode != IdleMode.Off
+                && _wmStack != null
+                && _wmStack.IsActive
+                && _homeLaunch == null;
+        }
+
+        private static void DismissUnrequestedHome(string fullApp, string partialApp, string dyingApp = "", bool allowCloseDying = false, bool launchSuppressed = false)
+        {
+            if (_guardApps == null || _guardApps.Length == 0) return;
+            if (_wmStack != null && !launchSuppressed && !_wmStack.LaunchingApp) _wmStack.ActivateShield(3000);
+            if (System.Threading.Interlocked.CompareExchange(ref _dismissHomeInFlight, 1, 0) != 0) return;
+
+            if (launchSuppressed)
+            {
+                dyingApp = "";
+                allowCloseDying = false;
+            }
+            if (allowCloseDying && !string.IsNullOrEmpty(dyingApp) && Catalog.ValidAppId(dyingApp))
+            {
+                _lastForceClosedAppId = dyingApp;
+            }
+            bool preserveCsfs = PreserveWarmCsfs();
+            List<string> targets = IdleBackdropModel.FilterDismissHomeTargets(_guardApps, fullApp, preserveCsfs, Catalog.ValidAppId);
+            bool needRestore = !_samsungHomeRequested && IdleBackdropModel.IsGuardedSamsungHome(fullApp);
+            if (targets.Count == 0 && !needRestore)
+            {
+                System.Threading.Volatile.Write(ref _dismissHomeInFlight, 0);
+                return;
+            }
+
+            int gen = _guardGen;
+            int restoreGen = System.Threading.Volatile.Read(ref _dismissRestoreGen);
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                bool closeTracked = false;
+                string closeDyingApp = "";
+                long startedAt = Stopwatch.GetTimestamp();
+                try
+                {
+                    string genCheck = "";
+                    if (!string.IsNullOrEmpty(_guardFile))
+                    {
+                        try
+                        {
+                            EnsureGuardFile();
+                            genCheck = "[ \"$(cat '" + _guardFile.Replace("'", "'\\''") + "' 2>/dev/null)\" = "
+                                + gen.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ] || exit 0; ";
+                        }
+                        catch (Exception ex) { Log("idle: guard gen: " + ex.Message); }
+                    }
+
+                    string restoreGenCheck = "";
+                    if (!string.IsNullOrEmpty(_dismissRestoreFile))
+                    {
+                        try
+                        {
+                            EnsureDismissRestoreFile(restoreGen);
+                            restoreGenCheck = "[ \"$(cat '" + _dismissRestoreFile.Replace("'", "'\\''") + "' 2>/dev/null)\" = "
+                                + restoreGen.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ] || exit 0; ";
+                        }
+                        catch (Exception ex) { Log("idle: restore gen: " + ex.Message); }
+                    }
+
+                    var comms = new List<string>(3);
+                    if (targets.Contains("com.samsung.tv.home.sidebar")) comms.Add("DN_home.sidebar");
+                    if (targets.Contains("com.samsung.tv.csfs")) comms.Add("DN_sung.tv.csfs");
+                    if (targets.Contains("com.samsung.tv.home.media")) comms.Add("DN_v.home.media");
+                    string fastKill = comms.Count > 0
+                        ? "for p in /proc/[0-9]*; do read -r c < \"$p/comm\" 2>/dev/null || continue; case \"$c\" in "
+                            + string.Join("|", comms.ToArray()) + ") kill -9 \"${p#/proc/}\" 2>/dev/null ;; esac; done"
+                        : "";
+
+                    var killSb = new System.Text.StringBuilder();
+                    for (int i = 0; i < targets.Count; i++)
+                    {
+                        if (i > 0) killSb.Append("; ");
+                        killSb.Append("/usr/bin/app_launcher -k ").Append(targets[i]);
+                    }
+                    string singleKill = killSb.ToString();
+                    string killBody = (fastKill.Length > 0 ? fastKill + (singleKill.Length > 0 ? "; " : "") : "") + singleKill;
+                    string stepCmd = killBody.Length > 0 ? (genCheck + killBody) : "";
+                    string restoreFirst = (!_samsungHomeRequested && !launchSuppressed)
+                        ? IdleBackdropModel.BuildGuardedHomeRestoreCommand(fullApp, dyingApp, Catalog.ValidAppId, restoreGenCheck, allowCloseDying)
+                        : "";
+                    string restoreTail = (!_samsungHomeRequested && !launchSuppressed)
+                        ? IdleBackdropModel.BuildGuardedHomeRestoreCommand(fullApp, dyingApp, Catalog.ValidAppId, restoreGenCheck, false)
+                        : "";
+                    string initialKillCmd = stepCmd.Length > 0 ? "(" + stepCmd + ") >/dev/null 2>&1" : "";
+                    string waveFollowCmd = stepCmd.Length > 0 ? "(for d in 0.15 0.35 0.55; do sleep $d; " + stepCmd + "; done) >/dev/null 2>&1" : "";
+                    closeTracked = !_samsungHomeRequested && _closeTracker.TryBegin(restoreGen, dyingApp, allowCloseDying, fullApp);
+                    closeDyingApp = closeTracked ? dyingApp : "";
+                    string readDyingPidCmd = !string.IsNullOrEmpty(closeDyingApp)
+                        ? IdleBackdropModel.BuildReadAppPidCommand(closeDyingApp, Catalog.ValidAppId)
+                        : "";
+                    Log("idle: dismiss guarded home full=" + (fullApp ?? "") + " partial=" + (partialApp ?? "") + " warmCsfs=" + preserveCsfs + (launchSuppressed ? " launch=True" : "") + (string.IsNullOrEmpty(dyingApp) ? "" : " dying=" + dyingApp));
+
+                    string dyingPid = "";
+                    if (!string.IsNullOrEmpty(readDyingPidCmd)
+                        && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                    {
+                        dyingPid = (Shell.Read(readDyingPidCmd) ?? "").Trim();
+                    }
+                    if (closeTracked) _closeTracker.MarkPidCaptured(restoreGen, closeDyingApp, dyingPid);
+                    if (initialKillCmd.Length > 0) Libc.system(initialKillCmd);
+                    if (!string.IsNullOrEmpty(restoreFirst)
+                        && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                    {
+                        Libc.system(restoreFirst);
+                        if (_wmStack != null) _wmStack.EnsureStack(false);
+                    }
+                    System.Threading.Tasks.Task waveTask = waveFollowCmd.Length > 0
+                        ? System.Threading.Tasks.Task.Run(() => { try { Libc.system(waveFollowCmd); } catch (Exception) { } })
+                        : null;
+                    if (!string.IsNullOrEmpty(dyingPid)
+                        && !string.IsNullOrEmpty(closeDyingApp))
+                    {
+                        while (System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            double elapsedMs = (Stopwatch.GetTimestamp() - startedAt) * 1000.0 / Stopwatch.Frequency;
+                            if (elapsedMs >= 1400.0) break;
+                            int sliceMs = Math.Min(200, Math.Max(20, (int)Math.Ceiling(1400.0 - elapsedMs)));
+                            System.Threading.Thread.Sleep(sliceMs);
+                        }
+                        if (System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            string closeDyingCmd = IdleBackdropModel.BuildCloseStuckAppCommand(closeDyingApp, dyingPid, Catalog.ValidAppId, restoreGenCheck);
+                            if (!string.IsNullOrEmpty(closeDyingCmd))
+                            {
+                                string killed = (Shell.Read(closeDyingCmd) ?? "").Trim();
+                                if (killed == "KILLED") Log("idle: closed stuck dying app " + closeDyingApp + " pid=" + dyingPid);
+                            }
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(restoreTail))
+                    {
+                        // Ensure ~0.45 s tail settle check when csfs was warm or no dying PID remained so late csfs foreground flips to tv-viewer.
+                        while (System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            double elapsedMs = (Stopwatch.GetTimestamp() - startedAt) * 1000.0 / Stopwatch.Frequency;
+                            if (elapsedMs >= 450.0) break;
+                            int sliceMs = Math.Min(150, Math.Max(20, (int)Math.Ceiling(450.0 - elapsedMs)));
+                            System.Threading.Thread.Sleep(sliceMs);
+                        }
+                    }
+                    if (waveTask != null)
+                    {
+                        try { waveTask.Wait(); } catch (Exception) { }
+                    }
+                    if (!string.IsNullOrEmpty(restoreTail)
+                        && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                    {
+                        Libc.system(restoreTail);
+                    }
+                }
+                catch (Exception ex) { Log("idle: dismiss home: " + ex.Message); }
+                finally
+                {
+                    if (closeTracked) _closeTracker.MarkCompleted(restoreGen, closeDyingApp);
+                    System.Threading.Volatile.Write(ref _dismissHomeInFlight, 0);
+                }
+                if (System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen && (gen == 0 || _guardGen == gen)) HomePictureOff();
+                if (_wmStack != null) _wmStack.EnsureStack(true);
+            });
+        }
+
+        private static void RaiseActiveDockWin()
+        {
+            IntPtr activeWin = (_tasksOn && _taskWin != IntPtr.Zero) ? _taskWin : _win;
+            if (activeWin != IntPtr.Zero)
+            {
+                Efl.elm_win_raise(activeWin);
+                if (DockActive) Efl.elm_win_activate(activeWin);
+            }
+        }
+
+        private static byte OnIdleWatch(IntPtr data)
+        {
+            if (_anim != IntPtr.Zero && !_wasDisplayOff) return 1;
+            try { PollIdleBackdrop(); } catch (Exception ex) { Log("idle watch: " + ex.Message); }
+            return 1;
+        }
+
+        private static byte OnIdleLcdVerify(IntPtr data)
+        {
+            _idleLcdVerifyTimer = IntPtr.Zero;
+            try
+            {
+                if (_idleModel == null || _idleWin == null) return 0;
+                int pm = 1;
+                try { if (Efl.vconf_get_int("memory/pm/state", out pm) != 0) pm = 1; } catch (Exception) { pm = 1; }
+                if (_idleModel.OnLcdOffVerify(pm) == IdleAction.FallbackDim) _idleWin.SetDimmed(true);
+            }
+            catch (Exception ex) { Log("idle lcd verify: " + ex.Message); }
+            return 0;
+        }
 
         // ------------------------------------------------------------------ logging
 
@@ -230,12 +2083,47 @@ namespace Launcher
             {
                 Libc.setenv("ELM_ACCEL", "gl", 0);
                 Libc.setenv("EVAS_GL_NO_BLACKLIST", "1", 0);
-                Libc.setenv("ECORE_EVAS_COMP_NOSYNC", "1", 0);
-                Libc.setenv("ECORE_VSYNC_DRM_ALL", "1", 0);
-                Libc.setenv("ECORE_EVAS_GL_SYNC_DRAW_DONE", "1", 0);
-                Libc.setenv("EVAS_GL_PARTIAL_DISABLE", "1", 0);
+                Libc.setenv("ECORE_EVAS_COMP_NOSYNC", "0", 0);
+                Libc.setenv("ECORE_VSYNC_DRM_ALL", "0", 0);
+                Libc.setenv("ECORE_EVAS_GL_SYNC_DRAW_DONE", "0", 0);
+                Libc.setenv("EVAS_GL_PARTIAL_DISABLE", "0", 0);
             }
             return egl ? "wayland_egl" : "wayland_shm";
+        }
+
+        private static string PromoteRealtimeScheduler()
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Unix) return "skip";
+            try
+            {
+                var p = new Libc.SchedParam { sched_priority = 8 };
+                int rc = Libc.sched_setscheduler(0, Libc.SCHED_RR | Libc.SCHED_RESET_ON_FORK, ref p);
+                return rc == 0 ? "rr=8" : "errno=" + Marshal.GetLastWin32Error();
+            }
+            catch (Exception ex) { return "err=" + ex.Message; }
+        }
+
+        internal static void PromoteRenderThreads()
+        {
+            if (Environment.OSVersion.Platform != PlatformID.Unix) return;
+            try
+            {
+                int selfPid = Libc.getpid();
+                var p = new Libc.SchedParam { sched_priority = 8 };
+                foreach (string dir in Directory.GetDirectories("/proc/self/task"))
+                {
+                    int tid;
+                    if (!int.TryParse(Path.GetFileName(dir), out tid) || tid <= 0) continue;
+                    bool want = tid == selfPid;
+                    if (!want)
+                    {
+                        string comm = ReadTextFn(Path.Combine(dir, "comm")).Trim();
+                        want = comm == "Eanimator-vsync" || comm == "wl_egl_thread" || comm == "mali-cmar-backe";
+                    }
+                    if (want) Libc.sched_setscheduler(tid, Libc.SCHED_RR | Libc.SCHED_RESET_ON_FORK, ref p);
+                }
+            }
+            catch (Exception) { }
         }
 
         private static bool ProcessLooksLikeUs(int pid)
@@ -279,13 +2167,16 @@ namespace Launcher
         {
             try
             {
+                ReleaseBackClaimOnExit();
                 int pid;
                 if (File.Exists(_pidPath) && int.TryParse(File.ReadAllText(_pidPath).Trim(), out pid)
                     && pid == Libc.getpid())
                 {
                     File.Delete(_pidPath);
                     Libc.unlink(_fifoPath);
+                    if (_fifoReadyPath != null) Libc.unlink(_fifoReadyPath);
                     if (_claimPath != null) Libc.unlink(_claimPath);
+                    if (_longpressPath != null) Libc.unlink(_longpressPath);
                 }
                 if (_dockMapped) OverlayFlag.Mark(OverlayFlag.DockPath, false, null);
                 if (_pad != null && _pad.IsOnScreen) OverlayFlag.Mark(OverlayFlag.PadPath, false, null);
@@ -308,6 +2199,16 @@ namespace Launcher
             _fifoFd = Libc.open(_fifoPath, Libc.O_RDWR | Libc.O_NONBLOCK);
             if (_fifoFd < 0) { Log("open fifo failed: " + Marshal.GetLastWin32Error()); return; }
             _fifoHandler = Efl.ecore_main_fd_handler_add(_fifoFd, Efl.EcoreFdRead, FifoCb, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            if (_fifoReadyPath != null)
+            {
+                try
+                {
+                    File.WriteAllText(_fifoReadyPath, Libc.getpid().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    Libc.chmod(_fifoReadyPath, 420u);   // 0644
+                    Libc.setxattr(_fifoReadyPath, "security.SMACK64", SmackStar, (UIntPtr)SmackStar.Length, 0);
+                }
+                catch (Exception ex) { Log("fifo ready: " + ex.Message); }
+            }
         }
 
         /// <summary>
@@ -378,7 +2279,12 @@ namespace Launcher
         private static byte OnInotifyLook(IntPtr data)
         {
             _inotifyTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
-            try { if (WatchNewNodes() > 0) Log("input: new node seen through inotify"); }
+            try
+            {
+                int added = WatchNewNodes();
+                if (added > 0) Log("input: new node seen through inotify");
+                if ((added > 0 || _wasDisplayOff) && _idleWin != null) PollIdleBackdrop();
+            }
             catch (Exception ex) { Log("input: inotify look: " + ex.Message); }
             return 0;
         }
@@ -479,18 +2385,18 @@ namespace Launcher
         // ------------------------------------------------------------------ show / hide
 
         /// <summary>Whichever page is on screen is showing (or coming in).</summary>
-        private static bool DockActive { get { return _tasksOn ? CardsActive : _ctl.IsActive; } }
+        private static bool DockActive { get { return _tasksOn ? CardsActive : (_ctl != null && _ctl.IsActive); } }
 
         // ------------------------------------------------------------------ Control center cards
 
         /// <summary>The position of the first card of kind <paramref name="k"/>, -1 without one.</summary>
-        private static int CardAt(CardKind k) { return Array.FindIndex(_cards, c => c.Kind == k); }
+        private static int CardAt(CardKind k) { return _cards == null ? -1 : Array.FindIndex(_cards, c => c.Kind == k); }
         private static bool HasCard(CardKind k) { return CardAt(k) >= 0; }
-        private static CardKind FocusedCard { get { return _cards.Length == 0 ? CardKind.Tasks : _cards[_cardFocus].Kind; } }
-        private static TaskController FocusedCtl { get { return _cards.Length == 0 ? _tasksCtl : _cardCtl[_cardFocus]; } }
+        private static CardKind FocusedCard { get { return _cards == null || _cards.Length == 0 ? CardKind.Tasks : _cards[_cardFocus].Kind; } }
+        private static TaskController FocusedCtl { get { return _cardCtl == null || _cardCtl.Length == 0 ? _tasksCtl : _cardCtl[_cardFocus]; } }
         /// <summary>The cards open, fade and close together: the first one stands for all of them.</summary>
-        private static TaskController LeadCtl { get { return _cards.Length == 0 ? _tasksCtl : _cardCtl[0]; } }
-        private static bool CardsActive { get { return LeadCtl.IsActive; } }
+        private static TaskController LeadCtl { get { return _cardCtl == null || _cardCtl.Length == 0 ? _tasksCtl : _cardCtl[0]; } }
+        private static bool CardsActive { get { TaskController lead = LeadCtl; return lead != null && lead.IsActive; } }
 
         private static void OpenCards(float pop) { foreach (TaskController c in _cardCtl) c.Open(pop); }
         private static bool HideCards() { bool any = false; foreach (TaskController c in _cardCtl) any |= c.Hide(); return any; }
@@ -567,18 +2473,46 @@ namespace Launcher
             finally { Libc.close(fd); }
         }
 
-        /// <summary>A launch that leaves the viewer on live TV: the TV input, or Samsung's live TV app itself.</summary>
-        private static bool StaysOnLiveTv(AppEntry e) { return e == null || e.SourceType == 0 || e.AppId == "org.tizen.tv-viewer"; }
+        /// <summary>A launch that leaves the viewer on live TV: the TV input, or Samsung's live TV app itself (excluding TV Plus).</summary>
+        private static bool StaysOnLiveTv(AppEntry e) { return e == null || e.SourceType == 0 || (e.AppId == "org.tizen.tv-viewer" && e.Slug != "tvplus" && e.RowKey != "live:TVPLUS"); }
 
-        private static void ShowDock()
+        /// <summary>True when launching <paramref name="e"/> opens a real fullscreen app rather than Live TV or a key/system overlay (e.g. Settings).</summary>
+        private static bool UsesIdleLaunchCurtain(AppEntry e)
+        {
+            return e != null
+                && !StaysOnLiveTv(e)
+                && string.IsNullOrEmpty(e.Key)
+                && !WmStackLogic.IsSystemOverlayAppId(e.AppId);
+        }
+
+        private static void ShowDock(bool userInitiated = true)
         {
             if (_homeLaunch != null) return;   // custom launcher mode: nothing of ours is ever drawn
+            if (userInitiated && !DockActive) WakeOrResetScreensaverForUserAction(true);
+            if (_idleModel != null && !_idleModel.Visible && !_idleModel.HoldOcclusionForScreensaver)
+            {
+                string fg = Efl.VconfGetString(FullscreenAppIdKey);
+                if (!string.IsNullOrEmpty(fg)
+                    && fg != IdleBackdropModel.TvViewerAppId
+                    && !IdleBackdropModel.IsGuardedSamsungHome(fg)
+                    && !IdleBackdropModel.IsScreensaverApp(fg)
+                    && Catalog.ValidAppId(fg))
+                {
+                    _lastPausedAppId = fg;
+                }
+            }
             _pendingLaunch = null;
+            _pendingArrivalDock = false;
+            if (_premapTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_premapTimer);
+                _premapTimer = IntPtr.Zero;
+            }
             // A key chosen just before the dock closed must not be sent into the dock that opens again.
             CancelPendingKey();
             if (_tasksOn)
             {
-                if (CardsActive) { ResetIdle(); return; }
+                if (CardsActive) { ResetIdle(userInitiated); return; }
                 LeaveTasks(false);   // it was fading out: the dock comes back on the apps row
             }
             // Lists Vetro wrote while a tile was being moved or the Control center was open are read once the dock has gone
@@ -586,19 +2520,23 @@ namespace Launcher
             if (_reloadPending && !_ctl.IsActive) ReloadLists();
             // A dock that was closed from the inputs panel opens on the apps again.
             if (_ctl != _appsCtl && !_ctl.IsActive) ActivatePage(_appsCtl, _appsDock);
-            if (!_ctl.Show()) { ResetIdle(); return; }
+            if (_ctl.Phase == Phase.Hidden) _ctl.Reset();
+            if (!_ctl.Show()) { ResetIdle(userInitiated); return; }
             // The page may have been put away while its objects were still opaque (a swap to the inputs panel): draw its
             // state for presence 0 before the window is mapped, or one frame can show it whole before the entrance starts.
             _dock.Apply(_ctl);
             _hideFor123 = false;
             MarkDock(true);
+            ScheduleSyncBackClaim(0.02);
+            if (_idleWin != null) _idleWin.SetDockOverlay(true);
             Efl.evas_object_show(_win);
+            Efl.HideCursor(_win, false);
             Efl.elm_win_raise(_win);
             Efl.elm_win_activate(_win);
             ClaimHome();   // once, on the window a real Home press brings up (the claim needs a mapped window)
             StartClock();
             StartAnimator();
-            ResetIdle();
+            ResetIdle(userInitiated);
             AskForLists();   // after the dock is on its way in: an app installed since the lists were written
         }
 
@@ -621,16 +2559,19 @@ namespace Launcher
         private static void AskForLists()
         {
             if (_allAppsWatch == null || _homeLaunch != null || _listsAskTimer != IntPtr.Zero) return;
+            if (Efl.ecore_time_get() - _listsCheckedAt < 10.0) return;
             _listsAskTimer = Efl.ecore_timer_add(0.8, ListsAskCb, IntPtr.Zero);
         }
 
         private static byte OnListsAsk(IntPtr data)
         {
+            if (_anim != IntPtr.Zero) return 1;
             _listsAskTimer = IntPtr.Zero;
             try
             {
                 if (_allAppsWatch == null || _homeLaunch != null) return 0;
                 double now = Efl.ecore_time_get();
+                _listsCheckedAt = now;
                 string allAppsWatch = _allAppsWatch;
                 int port = ShardLaunch.ServicePort;
                 DateTime askedFor = _listsAskedFor;
@@ -669,7 +2610,7 @@ namespace Launcher
         private static byte OnReloadAfterHide(IntPtr data)
         {
             _reloadTimer = IntPtr.Zero;
-            try { if (_reloadPending && !_dockMapped && !DockActive) ReloadLists(); }
+            try { if (_reloadPending && !_dockMapped && !DockActive && _anim == IntPtr.Zero) ReloadLists(); }
             catch (Exception ex) { Log("lists after hide: " + ex); }
             return 0;
         }
@@ -685,7 +2626,7 @@ namespace Launcher
         private static void ReloadLists()
         {
             if (_homeLaunch != null || _appsDock == null) return;
-            if (_moveIndex >= 0 || _rowOkTimer != IntPtr.Zero || _tasksOn) { _reloadPending = true; Log("lists: reload waits until the dock is free"); return; }
+            if (_moveIndex >= 0 || _rowOkTimer != IntPtr.Zero || _tasksOn || _anim != IntPtr.Zero) { _reloadPending = true; Log("lists: reload waits until the dock is free"); return; }
             _reloadPending = false;
             AppEntry[] apps = LoadApps(_appsPath), inputs = LoadList(_inputsPath, Catalog.BuiltInInputs), all = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
             bool sameApps = ListWatch.Same(apps, _apps), sameInputs = ListWatch.Same(inputs, _inputs), sameAll = ListWatch.Same(all, _allApps);
@@ -749,7 +2690,7 @@ namespace Launcher
                     _ctl.Rise(1f);
                     StartClock();
                     StartAnimator();
-                    ResetIdle();
+                    ResetIdle(false);
                 }
             }
             KeepIconsInUse();
@@ -764,6 +2705,17 @@ namespace Launcher
 
         private static void HideDock()
         {
+            if (_premapTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_premapTimer);
+                _premapTimer = IntPtr.Zero;
+                if (_dock != null && _ctl != null && _ctl.Phase == Phase.Hidden && !_tasksOn)
+                {
+                    _ctl.Reset();
+                    _dock.Apply(_ctl);
+                    Efl.evas_object_hide(_win);
+                }
+            }
             if (_moveIndex >= 0) FinishMove(true);   // leaving while a tile is being moved keeps where it is now
             StopBackWait();
             CancelRowOk();
@@ -788,14 +2740,178 @@ namespace Launcher
             Efl.evas_object_resize(_win, w, h);
         }
 
-        /// <summary>Down on the apps row: the Control center's cards rise where the bar was, in a window grown upwards for them.</summary>
+        private static void BuildTaskWindow()
+        {
+            if (_homeLaunch != null || _cards.Length == 0 || _taskWin != IntPtr.Zero) return;
+            int band = DockLayout.HintH;
+            int cardsN = Math.Max(1, _cards.Length);
+            _taskLayout = new TaskLayout(_screenW, _screenH, 0, band, cardsN, 0);
+            _taskWin = Efl.elm_win_add(IntPtr.Zero, "tvlauncher", Efl.ElmWinNotification);
+            if (_taskWin == IntPtr.Zero) { Log("task elm_win_add failed"); return; }
+            Efl.elm_win_title_set(_taskWin, "tvlauncher");
+            Efl.elm_win_alpha_set(_taskWin, true);
+            Efl.elm_win_borderless_set(_taskWin, true);
+            Efl.elm_win_prop_focus_skip_set(_taskWin, false);
+            Efl.efl_util_set_notification_window_level(_taskWin, NotificationLevelTop);
+            Efl.elm_win_layer_set(_taskWin, WindowLayer);
+            Efl.elm_win_aux_hint_add(_taskWin, "wm.policy.win.user.geometry", "1");
+            Efl.elm_win_aux_hint_add(_taskWin, "wm.comp.win.effect.enable", "0");
+            Efl.evas_object_move(_taskWin, _taskLayout.WinX, _taskLayout.WinY);
+            Efl.evas_object_resize(_taskWin, _taskLayout.WinW, _taskLayout.WinH);
+            Efl.HideCursor(_taskWin, false);
+            if (HasCard(CardKind.Tasks))
+            {
+                _taskPanel = new TaskPanel(_taskWin, new TaskLayout(_screenW, _screenH, 0, band, cardsN, CardAt(CardKind.Tasks)), _res, Log);
+                _taskPanel.Build();
+                if (_taskApps != null && _taskApps.Count > 0)
+                {
+                    _taskPanel.SetApps(_taskApps, _lastAvailableKb);
+                    _tasksCtl.SetCount(_taskApps.Count);
+                }
+            }
+            if (HasCard(CardKind.Audio))
+            {
+                _audioCard = new AudioCard(_taskWin, new TaskLayout(_screenW, _screenH, 0, band, cardsN, CardAt(CardKind.Audio)), _res, Log);
+                _audioCard.Build();
+                if (_lastAudioEntries != null)
+                {
+                    _audioCard.SetEntries(_lastAudioEntries, _lastAudioNote);
+                    _audioCtl.SetCount(_lastAudioEntries.Count);
+                }
+            }
+            _choiceCards = new ChoiceCard[_cards.Length];
+            if (_lastChoiceStates == null || _lastChoiceStates.Length != _cards.Length)
+                _lastChoiceStates = new ChoiceState[_cards.Length];
+            for (int i = 0; i < _cards.Length; i++)
+            {
+                CardSpec spec = _cards[i];
+                if (spec.Kind != CardKind.Picture && spec.Kind != CardKind.Sleep && spec.Kind != CardKind.Shard) continue;
+                string tag = spec.Kind == CardKind.Picture ? "picture" : spec.Kind == CardKind.Sleep ? "sleep" : "shard " + spec.ShardId;
+                string reading = spec.Kind == CardKind.Picture ? "Reading the picture modes…" : spec.Kind == CardKind.Sleep ? "Reading the sleep timer…" : "Reading…";
+                _choiceCards[i] = new ChoiceCard(_taskWin, new TaskLayout(_screenW, _screenH, 0, band, cardsN, i), _res, Log, tag, ControlCenter.Title(spec), reading);
+                _choiceCards[i].Build();
+                if (_lastChoiceStates[i] != null)
+                {
+                    _choiceCards[i].SetState(_lastChoiceStates[i]);
+                    _cardCtl[i].SetCount(_choiceCards[i].Count);
+                }
+            }
+            ShowCards(false);
+            Efl.evas_object_event_callback_add(_taskWin, Efl.EvasCallbackKeyDown, KeyCb, IntPtr.Zero);
+            Efl.evas_object_event_callback_add(_taskWin, Efl.EvasCallbackKeyUp, KeyUpCb, IntPtr.Zero);
+        }
+
+        private static void ScheduleTaskWindowRecycle(double delay = 0.08)
+        {
+            if (_taskRecycleTimer != IntPtr.Zero) Efl.ecore_timer_del(_taskRecycleTimer);
+            _taskRecycleTimer = Efl.ecore_timer_add(delay, TaskRecycleCb, IntPtr.Zero);
+        }
+
+        private static void ReleaseObjectImages(object obj)
+        {
+            if (obj == null) return;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+            for (Type t = obj.GetType(); t != null && t != typeof(object); t = t.BaseType)
+            {
+                foreach (var f in t.GetFields(flags))
+                {
+                    if (f.Name == "_win" || f.Name == "_evas" || f.Name == "_clip" || f.Name == "_listClip") continue;
+                    object val = null;
+                    try { val = f.GetValue(obj); } catch (Exception) { }
+                    if (val == null) continue;
+                    if (val is IntPtr)
+                    {
+                        IntPtr ptr = (IntPtr)val;
+                        if (ptr != IntPtr.Zero)
+                        {
+                            try { Efl.evas_object_hide(ptr); } catch (Exception) { }
+                            try { Efl.evas_object_image_data_set(ptr, IntPtr.Zero); } catch (Exception) { }
+                            try { Efl.evas_object_image_size_set(ptr, 0, 0); } catch (Exception) { }
+                            try { Efl.evas_object_del(ptr); } catch (Exception) { }
+                            try { f.SetValue(obj, IntPtr.Zero); } catch (Exception) { }
+                        }
+                    }
+                    else if (val is System.Collections.IEnumerable && !(val is string))
+                    {
+                        foreach (object item in (System.Collections.IEnumerable)val)
+                        {
+                            if (item == null) continue;
+                            if (item is IntPtr)
+                            {
+                                IntPtr ptr = (IntPtr)item;
+                                if (ptr != IntPtr.Zero)
+                                {
+                                    try { Efl.evas_object_hide(ptr); } catch (Exception) { }
+                                    try { Efl.evas_object_image_data_set(ptr, IntPtr.Zero); } catch (Exception) { }
+                                    try { Efl.evas_object_image_size_set(ptr, 0, 0); } catch (Exception) { }
+                                    try { Efl.evas_object_del(ptr); } catch (Exception) { }
+                                }
+                            }
+                            else if (!item.GetType().IsPrimitive && !(item is string))
+                            {
+                                ReleaseObjectImages(item);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void DestroyTaskWindow()
+        {
+            if (_taskWin == IntPtr.Zero) return;
+            try
+            {
+                ShowCards(false);
+                if (_taskPanel != null) { ReleaseObjectImages(_taskPanel); _taskPanel = null; }
+                if (_audioCard != null) { ReleaseObjectImages(_audioCard); _audioCard = null; }
+                if (_choiceCards != null)
+                {
+                    for (int i = 0; i < _choiceCards.Length; i++)
+                    {
+                        if (_choiceCards[i] != null) ReleaseObjectImages(_choiceCards[i]);
+                    }
+                }
+                _choiceCards = new ChoiceCard[_cards == null ? 0 : _cards.Length];
+                Efl.evas_object_hide(_taskWin);
+                Efl.evas_object_resize(_taskWin, 1, 1);
+                Efl.evas_object_del(_taskWin);
+            }
+            catch (Exception ex) { Log("task win destroy: " + ex.Message); }
+            _taskWin = IntPtr.Zero;
+        }
+
+        private static byte OnTaskWindowRecycle(IntPtr data)
+        {
+            _taskRecycleTimer = IntPtr.Zero;
+            try
+            {
+                if (_tasksOn || _anim != IntPtr.Zero)
+                {
+                    _taskRecycleTimer = Efl.ecore_timer_add(0.15, TaskRecycleCb, IntPtr.Zero);
+                    return 0;
+                }
+                DestroyTaskWindow();
+                KeepIconsInUse();
+            }
+            catch (Exception ex) { Log("task win recycle: " + ex.Message); }
+            return 0;
+        }
+
+        /// <summary>Down on the apps row: the Control center's cards rise where the bar was, in their own window without resizing the Dock window.</summary>
         private static void OpenTasks()
         {
             ProbeBegin("control center");
+            if (_taskRecycleTimer != IntPtr.Zero)
+            {
+                Efl.ecore_timer_del(_taskRecycleTimer);
+                _taskRecycleTimer = IntPtr.Zero;
+            }
+            if (_taskWin == IntPtr.Zero) BuildTaskWindow();
+            if (_taskWin == IntPtr.Zero) { ProbeHandlerDone(); return; }
             float pop = Math.Min(_ctl.Presence, 0.55f);
             _ctl.Vanish();
             _dock.SetVisible(false);
-            MoveWindow(_taskLayout.WinX, _taskLayout.WinY, _taskLayout.WinW, _taskLayout.WinH);
             _tasksOn = true;
             _cardFocus = 0;
             OpenCards(pop);
@@ -831,6 +2947,11 @@ namespace Launcher
             StartChoicePoll();
             ShowCards(true);
             ApplyCards();
+            Efl.evas_object_show(_taskWin);
+            Efl.HideCursor(_taskWin, false);
+            Efl.elm_win_raise(_taskWin);
+            Efl.elm_win_activate(_taskWin);
+            Efl.evas_object_hide(_win);
             StartAnimator();
             ResetIdle();
             Log("control center: " + string.Join(",", Array.ConvertAll(_cards, k => k.ToString())));
@@ -847,12 +2968,20 @@ namespace Launcher
             _tasksOn = false;
             DropCards();
             ShowCards(false);
-            MoveWindow(_appsLayout.WinX, _appsLayout.WinY, _appsLayout.WinW, _appsLayout.WinH);
+            if (_taskWin != IntPtr.Zero)
+            {
+                Efl.evas_object_hide(_taskWin);
+                ScheduleTaskWindowRecycle(rise ? 0.45 : 0.05);
+            }
             _dock.SetVisible(true);
             if (rise)
             {
                 _ctl.Rise(pop);
                 _dock.Apply(_ctl);
+                Efl.evas_object_show(_win);
+                Efl.HideCursor(_win, false);
+                Efl.elm_win_raise(_win);
+                Efl.elm_win_activate(_win);
                 StartAnimator();
                 ResetIdle();
             }
@@ -938,6 +3067,7 @@ namespace Launcher
                 foreach (RunningApp a in s.Apps) if (fresh.ContainsKey(a.AppId)) list.Add(a);
             }
             _taskApps = list;
+            _lastAvailableKb = s.AvailableKb;
             _taskPanel.SetApps(list, s.AvailableKb);
             _tasksCtl.SetCount(list.Count);
             // Until the user moves, the selection sits on the top row (the biggest app once the figures are in);
@@ -950,6 +3080,7 @@ namespace Launcher
         /// <summary>A key on the Control center: the focused card's own, except Left and Right, which move between the cards.</summary>
         private static void OnTaskKey(string key)
         {
+            if ((key == "XF86Back" || key == "XF86Exit" || key == "Escape") && Efl.ecore_time_get() < _arrivalBackShieldUntil) return;
             CardKind card = FocusedCard;
             TaskController ctl = FocusedCtl;
             switch (ctl.Key(key))
@@ -985,6 +3116,7 @@ namespace Launcher
                         double now = Efl.ecore_time_get();
                         if (now - _lastRawHome < HomeEchoSeconds) break;   // the evas copy of a press the input reader already handled
                         _lastHome = now;
+                        NoteAppHomePress(now);
                         HideDock();
                         ArmGuard();
                         break;
@@ -1037,15 +3169,30 @@ namespace Launcher
             if (_taskOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_taskOkTimer); _taskOkTimer = IntPtr.Zero; }
         }
 
+        private const string CobaltYouTubeAppId = "com.samsung.tv.cobalt-yt";
+        private const string WrapperYouTubeAppId = "9Ur5IzDKqV.TizenYouTube";
+
+        private static AppEntry FindCatalogEntry(string appId)
+        {
+            if (string.IsNullOrEmpty(appId)) return null;
+            if (_apps != null) foreach (AppEntry a in _apps) if (a.AppId == appId) return a;
+            if (_allApps != null) foreach (AppEntry a in _allApps) if (a.AppId == appId) return a;
+            string alias = appId == CobaltYouTubeAppId ? WrapperYouTubeAppId
+                : appId == WrapperYouTubeAppId ? CobaltYouTubeAppId : null;
+            if (alias == null) return null;
+            if (_apps != null) foreach (AppEntry a in _apps) if (a.AppId == alias) return a;
+            if (_allApps != null) foreach (AppEntry a in _allApps) if (a.AppId == alias) return a;
+            return null;
+        }
+
         /// <summary>Brings a running app to the front: the panel fades out first, then the app is launched (it resumes).</summary>
         private static void OpenTaskApp(RunningApp app)
         {
             if (app == null || app.Closing) return;
-            AppEntry e = null;
-            foreach (AppEntry a in _apps) if (a.AppId == app.AppId) { e = a; break; }
-            // An app only in All apps opens the way All apps opens it (its launch mode or data), not as a bare id.
-            if (e == null && _allApps != null) foreach (AppEntry a in _allApps) if (a.AppId == app.AppId) { e = a; break; }
+            // Match the apps row and All apps (including Cobalt/wrapper YouTube alias) so Shard tiles open through their plugin.
+            AppEntry e = FindCatalogEntry(app.AppId);
             if (e == null) e = new AppEntry(app.AppId, app.Label ?? app.AppId, app.AppId, null);
+            NoteLaunchEpoch(e.AppId);
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             Log("tasks: open " + app.AppId);
             HideDock();
@@ -1062,6 +3209,7 @@ namespace Launcher
                 // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
                 Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
                 Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
+                if (_idleWin != null) UpdateIdleWatchTimer(0.10);
             }
             ResetIdle();
         }
@@ -1487,7 +3635,7 @@ namespace Launcher
             _anim = Efl.ecore_animator_add(AnimCb, IntPtr.Zero);
         }
 
-        private static void ResetIdle()
+        private static void ResetIdle(bool userInitiated = true)
         {
             if (_idle == IntPtr.Zero) _idle = Efl.ecore_timer_add(Controller.IdleHideSeconds, IdleCb, IntPtr.Zero);
             else Efl.ecore_timer_reset(_idle);
@@ -1499,6 +3647,7 @@ namespace Launcher
                     _lastDockFlagMark = now;
                     OverlayFlag.Mark(OverlayFlag.DockPath, true, Log);   // throttled touch so rapid nav avoids filesystem overhead
                 }
+                if (userInitiated && !IsDisplayOff()) TriggerScreensaverActivityReset(now, 10.0);
             }
         }
 
@@ -1527,8 +3676,9 @@ namespace Launcher
             {
                 try
                 {
-                    int rc = Libc.system(cmd);
-                    if (rc != 0) Log("home: picture check not started rc=" + rc);
+                    int rc = SystemWithErrno(cmd);
+                    int err;
+                    if (!SystemSucceeded(rc, out err)) Log("home: picture check not started rc=" + rc + " errno=" + err);
                 }
                 catch (Exception ex) { Log("home: picture check: " + ex.Message); }
             });
@@ -1550,17 +3700,58 @@ namespace Launcher
                     ApplyCards();
                     if (LeadCtl.Phase == Phase.Hidden)
                     {
+                        if (_taskWin != IntPtr.Zero) Efl.evas_object_hide(_taskWin);
                         Efl.evas_object_hide(_win);
                         MarkDock(false);
                         LeaveTasks(false);   // the next Home opens on the apps row, in the dock's own window size
                         more = false;
                         AppEntry chosen = _pendingLaunch;
                         _pendingLaunch = null;
-                        if (chosen != null) Launch(chosen);
+                        if (chosen != null)
+                        {
+                            double suppressSec = chosen.ViaShard ? IdleBackdropModel.ShardLaunchSuppressSeconds : IdleBackdropModel.LaunchSuppressSeconds;
+                            bool useIdleCurtain = _idleModel != null && UsesIdleLaunchCurtain(chosen);
+                            if (useIdleCurtain)
+                            {
+                                _idleModel.OnLaunchApp(now, suppressSec, chosen.AppId ?? "");
+                                _launchBackClaimSuppressUntil = now + 1.5;
+                                if (_wmStack != null)
+                                {
+                                    _wmStack.InvalidateObservation();
+                                    bool shownNow = _idleWin != null && _idleWin.IsShown;
+                                    _wmStack.IdleShown = shownNow;
+                                    _wmStack.BeginAppLaunch(
+                                        chosen.AppId ?? "",
+                                        chosen.Label ?? "",
+                                        _lastPausedAppId,
+                                        chosen.ViaShard || WmStackLogic.IsYoutubeTargetApp(chosen.AppId ?? ""),
+                                        (int)Math.Round((suppressSec + 0.5) * 1000.0),
+                                        shownNow,
+                                        100,
+                                        _lastForceClosedAppId);
+                                }
+                            }
+                            else if (_wmStack != null && _idleModel != null && _idleModel.Visible && (!string.IsNullOrEmpty(chosen.Key) || WmStackLogic.IsSystemOverlayAppId(chosen.AppId)))
+                            {
+                                _wmStack.PartialActive = true;
+                                _wmStack.EnsureStack(false);
+                            }
+                            Launch(chosen);
+                            if (useIdleCurtain)
+                            {
+                                double afterNow = Efl.ecore_time_get();
+                                _idleModel.OnLaunchApp(afterNow, suppressSec, chosen.AppId ?? "");
+                                _launchBackClaimSuppressUntil = afterNow + 1.5;
+                            }
+                        }
                         if (_hideFor123) _hideFor123 = false;
                         else if (StaysOnLiveTv(chosen)) ResumeTuner(chosen == null ? "control center closed" : "opened " + chosen.AppId);
                         ReloadWhenHidden();
                         HomePictureOff();
+                        if (_idleWin != null) _idleWin.SetDockOverlay(false);
+                        PollIdleBackdrop();
+                        if (_wmStack != null && _idleModel != null && _idleModel.Visible && !_idleModel.IsLaunchSuppressed(Efl.ecore_time_get())) _wmStack.EnsureStack(450);
+                        if (_idleWin != null && chosen != null && !StaysOnLiveTv(chosen)) UpdateIdleWatchTimer(0.25);
                     }
                     if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
                     ProbeTick(now, !more);
@@ -1577,11 +3768,58 @@ namespace Launcher
                     // The fade has already rendered on earlier frames; a slow platform launch cannot freeze it.
                     AppEntry pending = _pendingLaunch;
                     _pendingLaunch = null;
-                    if (pending != null) { if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending); }
+                    if (pending != null)
+                    {
+                        double suppressSec = pending.ViaShard ? IdleBackdropModel.ShardLaunchSuppressSeconds : IdleBackdropModel.LaunchSuppressSeconds;
+                        bool useIdleCurtain = _idleModel != null && UsesIdleLaunchCurtain(pending);
+                        if (useIdleCurtain)
+                        {
+                            _idleModel.OnLaunchApp(now, suppressSec, pending.AppId ?? "");
+                            _launchBackClaimSuppressUntil = now + 1.5;
+                            if (_wmStack != null)
+                            {
+                                _wmStack.InvalidateObservation();
+                                bool shownNow = _idleWin != null && _idleWin.IsShown;
+                                _wmStack.IdleShown = shownNow;
+                                _wmStack.BeginAppLaunch(
+                                    pending.AppId ?? "",
+                                    pending.Label ?? "",
+                                    _lastPausedAppId,
+                                    pending.ViaShard || WmStackLogic.IsYoutubeTargetApp(pending.AppId ?? ""),
+                                    (int)Math.Round((suppressSec + 0.5) * 1000.0),
+                                    shownNow,
+                                    100,
+                                    _lastForceClosedAppId);
+                            }
+                        }
+                        else if (_wmStack != null && _idleModel != null && _idleModel.Visible && (!string.IsNullOrEmpty(pending.Key) || WmStackLogic.IsSystemOverlayAppId(pending.AppId)))
+                        {
+                            _wmStack.PartialActive = true;
+                            _wmStack.EnsureStack(false);
+                        }
+                        if (pending.SourceType == 0) { _pendingTvSourceUntil = now + 3.0; _tvPlusActive = false; }
+                        else if (pending.Slug == "tvplus" || pending.RowKey == "live:TVPLUS") { _tvPlusActive = true; _pendingTvSourceUntil = 0; }
+                        if (pending.SourceType >= 0) SwitchSource(pending); else Launch(pending);
+                        if (useIdleCurtain)
+                        {
+                            double afterNow = Efl.ecore_time_get();
+                            _idleModel.OnLaunchApp(afterNow, suppressSec, pending.AppId ?? "");
+                            _launchBackClaimSuppressUntil = afterNow + 1.5;
+                        }
+                        if (pending.SourceType == 0 && _wmStack != null) _wmStack.EnsureStack(true);
+                    }
                     if (_hideFor123) _hideFor123 = false;
                     else if (StaysOnLiveTv(pending)) ResumeTuner(pending == null ? "dock closed" : pending.SourceType == 0 ? "TV input chosen" : "opened " + pending.AppId, pending != null && pending.SourceType == 0);
                     ReloadWhenHidden();
                     HomePictureOff();
+                    if (_idleWin != null) _idleWin.SetDockOverlay(false);
+                    PollIdleBackdrop();
+                    if (_wmStack != null && _idleModel != null && _idleModel.Visible && !_idleModel.IsLaunchSuppressed(Efl.ecore_time_get())) _wmStack.EnsureStack(450);
+                    if (_idleWin != null && pending != null)
+                    {
+                        if (pending.SourceType == 0) UpdateIdleWatchTimer(0.10);
+                        else if (!StaysOnLiveTv(pending)) UpdateIdleWatchTimer(0.25);
+                    }
                 }
                 else if (_ctl.Phase == Phase.Hidden) Efl.evas_object_hide(_win);
                 if (_perf) PerfSample(dt, (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency, !more);
@@ -1590,6 +3828,7 @@ namespace Launcher
             }
             catch (Exception ex) { Log("frame: " + ex); }
             _anim = IntPtr.Zero;   // returning 0 makes ecore free the animator
+            ReloadWhenHidden();
             return 0;
         }
 
@@ -1731,6 +3970,7 @@ namespace Launcher
         {
             try
             {
+                if ((key == "XF86Back" || key == "XF86Exit" || key == "Escape") && Efl.ecore_time_get() < _arrivalBackShieldUntil) return;
                 if (_tasksOn)
                 {
                     // OK on the Task manager is a tap (open) or a hold (close): HoldKey decides on the key's release.
@@ -1773,6 +4013,7 @@ namespace Launcher
                             double now = Efl.ecore_time_get();
                             if (now - _lastRawHome < HomeEchoSeconds) { Log("home echo ignored " + ((now - _lastRawHome) * 1000).ToString("0") + " ms after the press"); break; }
                             _lastHome = now;
+                            NoteAppHomePress(now);
                             HideDock();
                             // Home reached the dock through evas and not through evdev: the evdev path, which arms the guard,
                             // will count this press as already handled (_lastHome), so it is armed here.
@@ -1836,27 +4077,64 @@ namespace Launcher
         // Mute is soft: the level goes to 0 and comes back to what it was, so Samsung's own mute banner never draws.
         // (Samsung's real mute is only used when the TV was already muted that way: a volume key first undoes it.)
         private static NumberPad _pad;
+        private static bool _padFirstOpen = true;
+
+        private static void EnsurePad()
+        {
+            if (_pad != null) return;
+            _pad = new NumberPad(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH,
+                delegate (PadResult kind, string what)
+                {
+                    string cmd = kind == PadResult.Send ? NumberPadModel.SendCommand(what, KeyTool) : NumberPadModel.SendKeyCommand(what, KeyTool);
+                    Log("pad: sending " + what + " rc=" + Libc.system(cmd));
+                },
+                delegate (bool sent)
+                {
+                    // Opened over the Dock, closed with nothing sent after the Dock had gone too: the launcher left without opening
+                    // anything, as when the Dock closes by itself. Opened over anything else (teletext, an app), the pad never brings the tuner.
+                    bool fromDock = _padFromDock;
+                    _padFromDock = false;
+                    ScheduleSyncBackClaim(0.02);
+                    if (fromDock && !sent) ResumeTuner("osd 123 closed after the dock");
+                });
+            _pad.OnActivity = () =>
+            {
+                if (!IsDisplayOff()) TriggerScreensaverActivityReset(Efl.ecore_time_get(), 10.0);
+            };
+        }
+
+        private static void PrewarmPad()
+        {
+            if (_homeLaunch != null) return;
+            try
+            {
+                EnsurePad();
+                var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                Type t = typeof(NumberPad);
+                var build = t.GetMethod("Build", flags);
+                var layoutPage = t.GetMethod("LayoutPage", flags);
+                var refresh = t.GetMethod("Refresh", flags);
+                var apply = t.GetMethod("Apply", flags);
+                if (build != null) build.Invoke(_pad, null);
+                if (layoutPage != null) layoutPage.Invoke(_pad, new object[] { true });
+                if (refresh != null) refresh.Invoke(_pad, null);
+                if (apply != null) apply.Invoke(_pad, null);
+            }
+            catch (Exception ex) { Log("pad prewarm: " + ex.Message); }
+        }
+
         private static void TogglePad()
         {
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
-            bool first = _pad == null;
-            if (_pad == null)
-                _pad = new NumberPad(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH,
-                    delegate (PadResult kind, string what)
-                    {
-                        string cmd = kind == PadResult.Send ? NumberPadModel.SendCommand(what, KeyTool) : NumberPadModel.SendKeyCommand(what, KeyTool);
-                        Log("pad: sending " + what + " rc=" + Libc.system(cmd));
-                    },
-                    delegate (bool sent)
-                    {
-                        // Opened over the Dock, closed with nothing sent after the Dock had gone too: the launcher left without opening
-                        // anything, as when the Dock closes by itself. Opened over anything else (teletext, an app), the pad never brings the tuner.
-                        bool fromDock = _padFromDock;
-                        _padFromDock = false;
-                        if (fromDock && !sent) ResumeTuner("osd 123 closed after the dock");
-                    });
+            bool first = _padFirstOpen;
+            EnsurePad();
             bool opening = !_pad.IsShown;
-            if (opening) _padFromDock = _dockMapped;
+            if (opening)
+            {
+                WakeOrResetScreensaverForUserAction(true);
+                _padFirstOpen = false;
+                _padFromDock = _dockMapped;
+            }
             if (_perf && opening)
             {
                 if (_padProbe == null) _padProbe = new OpenProbe();
@@ -1864,6 +4142,12 @@ namespace Launcher
                 _pad.Probe = _padProbe;
             }
             _pad.Toggle();
+            if (opening && _wmStack != null)
+            {
+                bool idleUp = _idleWin != null && (_idleWin.IsShown || _idleWin.IsParkedForScreensaver);
+                _wmStack.EnsureStack(idleUp ? 500 : 0);
+            }
+            ScheduleSyncBackClaim(0.02);
             if (_perf && opening) _padProbe.HandlerDone(Efl.ecore_time_get());
         }
 
@@ -1880,6 +4164,8 @@ namespace Launcher
             bool optical = Sound.HasOpticalOutput();
             List<OutputEntry> entries = OutputPickerModel.Build(paired, selection, true, LastExternal(selection), optical);
             string note = !listed ? "Bluetooth is off" : !OutputPickerModel.HasDevices(entries) ? "No paired speakers" : "";
+            _lastAudioEntries = entries;
+            _lastAudioNote = note;
             _audioCard.SetEntries(entries, note);
             _audioCtl.SetCount(entries.Count);
             if (!keepSelection) _audioCtl.Select(_audioCard.ActiveRow);
@@ -1935,8 +4221,15 @@ namespace Launcher
         private static readonly Efl.TaskCb ScreenOffCb = OnScreenOff;
         private static IntPtr _screenOffTimer;
 
+        private static void CancelPendingScreenOff()
+        {
+            if (_screenOffTimer != IntPtr.Zero) { Efl.ecore_timer_del(_screenOffTimer); _screenOffTimer = IntPtr.Zero; }
+            if (_idleLcdVerifyTimer != IntPtr.Zero) { Efl.ecore_timer_del(_idleLcdVerifyTimer); _idleLcdVerifyTimer = IntPtr.Zero; }
+        }
+
         private static void TurnScreenOff()
         {
+            if (_idleModel != null) _idleModel.OnPictureOff();
             HideDock();
             if (_screenOffTimer != IntPtr.Zero) Efl.ecore_timer_del(_screenOffTimer);
             _screenOffTimer = Efl.ecore_timer_add(0.5, ScreenOffCb, IntPtr.Zero);
@@ -1977,6 +4270,7 @@ namespace Launcher
                     ChoiceState st = src.TryTake();
                     if (st != null && _tasksOn)
                     {
+                        if (_lastChoiceStates != null && i < _lastChoiceStates.Length) _lastChoiceStates[i] = st;
                         ChoiceCard card = _choiceCards[i];
                         TaskController ctl = _cardCtl[i];
                         card.SetState(st);
@@ -2125,6 +4419,7 @@ namespace Launcher
         private static void VolumeKey(Command key)
         {
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
+            if (!IsDisplayOff()) WakeOrResetScreensaverForUserAction(false);
             // On a receiver on HDMI the level that counts is the receiver's: the key goes back to Samsung, which passes it on over HDMI-CEC
             // (the TV's own level would change and nothing would be heard). The same for an optical soundbar, which follows Samsung's universal
             // remote or Q-Symphony and not the TV's level (OutputPickerModel.VetroSetsLevel).
@@ -2165,7 +4460,8 @@ namespace Launcher
             if (_volumeEdge == VolumeEdge.Hidden) return;      // the level changes, no bar is drawn
             bool first = _pill == null;
             if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge);
-            bool probe = _perf && !_pill.IsOnScreen;
+            bool wasOnScreen = _pill.IsOnScreen;
+            bool probe = _perf && !wasOnScreen;
             if (probe)
             {
                 if (_pillProbe == null) _pillProbe = new OpenProbe();
@@ -2173,6 +4469,11 @@ namespace Launcher
                 _pill.Probe = _pillProbe;
             }
             _pill.Show(volume, volume == 0 && _levelBeforeMute > 0);
+            if (!wasOnScreen && _wmStack != null)
+            {
+                bool idleUp = _idleWin != null && (_idleWin.IsShown || _idleWin.IsParkedForScreensaver);
+                _wmStack.EnsureStack(idleUp ? 500 : 0);
+            }
             if (probe) _pillProbe.HandlerDone(Efl.ecore_time_get());
         }
 
@@ -2190,13 +4491,15 @@ namespace Launcher
                         switch (c)
                         {
                             // As with the remote's Home (RawHome): an open osd 123 closes, or it stayed drawn under the Dock until its idle time.
-                            case Command.Show: ClosePad(); _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(); ProbeHandlerDone(); break;
+                            case Command.Show: CancelPendingScreenOff(); CompleteScreensaverTakeoverWake(false); ClosePad(); _perfWhy = "fifo-show"; if (!DockActive) ProbeBegin("fifo show"); ShowDock(false); ProbeHandlerDone(); break;
                             case Command.Hide: _perfWhy = "fifo-hide"; HideDock(); break;
-                            case Command.Toggle: ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
-                            case Command.VolUp: case Command.VolDown: case Command.VolMute: VolumeKey(c); break;
-                            case Command.Pad: TogglePad(); break;
+                            case Command.Toggle: CancelPendingScreenOff(); CompleteScreensaverTakeoverWake(false); ClosePad(); _perfWhy = "fifo-toggle"; if (DockActive) HideDock(); else { ProbeBegin("fifo toggle"); ShowDock(); ProbeHandlerDone(); } break;
+                            case Command.VolUp: case Command.VolDown: case Command.VolMute: CancelPendingScreenOff(); CompleteScreensaverTakeoverWake(true); VolumeKey(c); break;
+                            case Command.Pad: CancelPendingScreenOff(); CompleteScreensaverTakeoverWake(false); TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
                             case Command.Reload: ReloadLists(); break;
+                            case Command.Idle: ApplyLiveIdleConfig(Commands.TakeIdleArgs()); break;
+                            case Command.Launch: CompleteScreensaverTakeoverWake(false); HandleExternalLaunch(Commands.TakeLaunchArgs()); break;
                         }
                     }
                 }
@@ -2219,10 +4522,115 @@ namespace Launcher
                     InputPresses.Clear();
                     InputReleases.Clear();
                     _inputReaders[index].Feed(InputBuf, (int)n, InputPresses, InputReleases);
+                    if (InputPresses.Count > 0)
+                    {
+                        if (!_rawHomeSeen) _rawHomeSeen = true;
+                        MarkClaimInputVerified();
+                        if (_claimHome && !_claimTried) ClaimHome();
+                    }
                     for (int k = 0; k < InputPresses.Count; k++)
                     {
                         int code = InputPresses[k];
                         if (_learn) Log("key code " + code);
+                        if (_idleModel != null)
+                        {
+                            CancelPendingScreenOff();
+                            bool hideBg;
+                            bool wasDimmed = _idleModel.Dimmed;
+                            bool wasTakeover = _idleModel.ScreensaverTakeoverActive || _wasScreensaverTakeoverActive;
+                            double keyNow = Efl.ecore_time_get();
+                            bool displayOff = IsDisplayOff();
+                            bool consumed = _idleModel.OnRawKey(code, _homeCode, keyNow, displayOff, DockActive, out hideBg);
+                            if (consumed && displayOff && code == _homeCode) _lastRawHome = keyNow;
+                            if (wasDimmed && !_idleModel.Dimmed && _idleWin != null) _idleWin.SetDimmed(false);
+                            if (hideBg || consumed) Log("idle: key=" + code + " hideBg=" + hideBg + " consumed=" + consumed);
+                            if (hideBg && _idleWin != null)
+                            {
+                                if (wasTakeover || _screensaverWakePendingRelease)
+                                {
+                                    CompleteScreensaverTakeoverWake(true);
+                                    continue;
+                                }
+                                _idleWin.Hide();
+                            }
+                            if (!displayOff && (_idleModel.ScreensaverTakeoverActive || _screensaverWakePendingRelease))
+                            {
+                                if (code == _homeCode)
+                                {
+                                    CompleteScreensaverTakeoverWake(false);
+                                }
+                                else if (code == 174)
+                                {
+                                    HandleExitKey(keyNow);
+                                    continue;
+                                }
+                                else
+                                {
+                                    ArmScreensaverTakeoverWakeRelease(keyNow);
+                                    continue;
+                                }
+                            }
+                            if ((code == 116 || code == 112 || code == 142) && _idleWin != null)
+                            {
+                                _idleModel.OnWake(keyNow, displayOff);
+                                if (_wmStack != null && (_idleModel.Visible || _idleModel.HoldOcclusionForScreensaver)) _wmStack.EnsureStack(2500);
+                                _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, keyNow + 2.5);
+                                PollIdleBackdrop();
+                                UpdateIdleWatchTimer(0.10);
+                            }
+                            else if (_idleWin != null && code == 174 && (_pad == null || !_pad.IsOnScreen))
+                            {
+                                HandleExitKey(keyNow);
+                                continue;
+                            }
+                            else if (_idleWin != null && (code == 1 || code == 158))
+                            {
+                                if (_idleModel.HoldOcclusionForScreensaver)
+                                {
+                                    _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, keyNow + 2.5);
+                                    PollIdleBackdrop();
+                                    UpdateIdleWatchTimer(0.10);
+                                }
+                                else if (!_idleModel.Visible && !DockActive && (_pad == null || !_pad.IsOnScreen))
+                                {
+                                    CancelBackHoldTimer();
+                                    _backHoldCode = code;
+                                    _backPrewarmTimer = Efl.ecore_timer_add(0.01, BackPrewarmCb, IntPtr.Zero);
+                                    _backHoldTimer = Efl.ecore_timer_add(0.45, BackHoldCb, IntPtr.Zero);
+                                    _backForceCloseTimer = Efl.ecore_timer_add(0.55, BackForceCloseCb, IntPtr.Zero);
+                                    _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, keyNow + 2.5);
+                                    PollIdleBackdrop();
+                                    UpdateIdleWatchTimer(0.10);
+                                }
+                            }
+                            else if (_idleWin != null && !_idleModel.Visible && (code == 28 || code == 353 || code == _homeCode))
+                            {
+                                if (_idleModel.HoldOcclusionForScreensaver || code == _homeCode)
+                                    _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, keyNow + 2.5);
+                                PollIdleBackdrop();
+                                UpdateIdleWatchTimer(0.10);
+                            }
+                            else if (_idleWin != null && (_idleModel.Visible || _idleModel.HoldOcclusionForScreensaver) && !DockActive
+                                && code != _homeCode)
+                            {
+                                if (code != 66 && code != 67 && code != 68 && IdleBackdropModel.IsOverlayLaunchKey(code))
+                                {
+                                    bool padAlreadyOpen = _pad != null && _pad.IsOnScreen;
+                                    if (!(code == Raw123Code && padAlreadyOpen))
+                                    {
+                                        _backReleaseUntil = keyNow + 1.0;
+                                        SyncBackClaim();
+                                        if (_wmStack != null) _wmStack.PartialActive = true;
+                                    }
+                                }
+                                if (_idleModel.HoldOcclusionForScreensaver || (code != 66 && code != 67 && code != 68))
+                                {
+                                    _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, keyNow + 2.0);
+                                    UpdateIdleWatchTimer(0.10);
+                                }
+                            }
+                            if (consumed) continue;
+                        }
                         if (code != _homeCode)
                         {
                             // While osd 123 is on screen, route raw evdev navigation/Back/Exit to it (matching Dock's NavFromInput)
@@ -2244,13 +4652,31 @@ namespace Launcher
                     // The kernel always reports the release: it ends a held OK even when the window's key up is late.
                     for (int k = 0; k < InputReleases.Count; k++)
                     {
+                        int rel = InputReleases[k];
                         if (_pad != null && _pad.IsOnScreen)
                         {
-                            _pad.HandleRawRelease(InputReleases[k]);
+                            _pad.HandleRawRelease(rel);
                             continue;
                         }
-                        if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
-                        else if (InputReleases[k] == RawBackCode) BackUp.KernelRelease(Efl.ecore_time_get());
+                        if (rel == RawOkCode) { TaskOkUp(); RowOkUp(); }
+                        else if (rel == RawBackCode) BackUp.KernelRelease(Efl.ecore_time_get());
+                        if (_idleWin != null && _idleModel != null && (_screensaverWakePendingRelease || _idleModel.ScreensaverTakeoverActive))
+                        {
+                            CompleteScreensaverTakeoverWake(rel != _homeCode);
+                            continue;
+                        }
+                        if (_idleWin != null && _idleModel != null && (rel == 1 || rel == 158 || rel == 174))
+                        {
+                            if (rel == 1 || rel == 158) CancelBackHoldTimer();
+                            double relNow = Efl.ecore_time_get();
+                            if (_arrivalBackShieldUntil > relNow + 0.12) _arrivalBackShieldUntil = relNow + 0.12;
+                            if (!_idleModel.Visible)
+                            {
+                                _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, relNow + 2.5);
+                                PollIdleBackdrop();
+                                UpdateIdleWatchTimer(0.05);
+                            }
+                        }
                     }
                 }
             }
@@ -2289,12 +4715,16 @@ namespace Launcher
         /// <summary>One Home press. raw: read from the input device, so the window's copy that follows is its echo.</summary>
         private static void HomePress(bool raw)
         {
+            if (_idleModel != null && (_idleModel.ScreensaverTakeoverActive || _screensaverWakePendingRelease))
+                CompleteScreensaverTakeoverWake(false);
             ClosePad();
             double now = Efl.ecore_time_get();
             // The focused dock also gets XF86Home through evas and hides itself: count it once.
             if (now - _lastHome < HomeDebounceSeconds) return;
             _lastHome = now;
-            if (raw) { _lastRawHome = now; _rawHomeSeen = true; }
+            if (raw) { _lastRawHome = now; _rawHomeSeen = true; MarkClaimInputVerified(); }
+            if (_rawHomeSeen && _claimHome && !_claimTried) ClaimHome();
+            NoteAppHomePress(now);
             _perfWhy = "home";
             if (_homeLaunch != null)
             {
@@ -2335,6 +4765,16 @@ namespace Launcher
             RawHome();
         }
 
+        private static void MarkClaimInputVerified()
+        {
+            if (string.IsNullOrEmpty(_claimVerifiedPath)) return;
+            try
+            {
+                if (!File.Exists(_claimVerifiedPath)) File.WriteAllText(_claimVerifiedPath, "1");
+            }
+            catch (Exception) { }
+        }
+
         /// <summary>Claims XF86Home once (--claim-home, never in custom launcher mode), after the input reader has heard a real press, and says how it went in the log.</summary>
         private static void ClaimHome()
         {
@@ -2372,10 +4812,12 @@ namespace Launcher
 
         private static void WatchEcoreKeys()
         {
+            if (_ecoreKeysWatched) return;
             try
             {
                 PreloadEcoreKeyEvent();
                 bool ok = _ecoreKeyDown >= 0 && Efl.ecore_event_handler_add(_ecoreKeyDown, EcoreKeyCb, IntPtr.Zero) != IntPtr.Zero;
+                if (ok) _ecoreKeysWatched = true;
                 Log("home: window keys " + (ok ? "on" : "refused"));
             }
             catch (Exception ex) { Log("home: window keys unavailable"); Log("home claim: " + ex.GetType().Name + " " + ex.Message); }
@@ -2388,6 +4830,25 @@ namespace Launcher
                 // Ecore_Event_Key starts with `const char *keyname`.
                 string key = ev == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(ev));
                 if (key == "XF86Home" && !DockActive) WindowHome();
+                else if (key == "XF86Exit" && _exitClaimed)
+                {
+                    HandleExitKey(Efl.ecore_time_get());
+                }
+                else if (key == "XF86Back" && _backClaimed && !DockActive)
+                {
+                    string partial = Efl.VconfGetString("memory/appfw/current_partial_appid");
+                    string full = Efl.VconfGetString("memory/appfw/current_fullscreen_appid");
+                    if (IdleBackdropModel.ShouldForwardGrabbedBack(partial, full, IsAnyRealScreensaverActive))
+                    {
+                        _backReleaseUntil = Efl.ecore_time_get() + 1.0;
+                        SyncBackClaim();
+                        PollIdleBackdrop();
+                        System.Threading.Tasks.Task.Run(() =>
+                        {
+                            try { Libc.system("/usr/bin/input_keyevent XF86Back >/dev/null 2>&1"); } catch (Exception) { }
+                        });
+                    }
+                }
             }
             catch (Exception ex) { Log("ecore key: " + ex.Message); }
             return 1;   // ECORE_CALLBACK_PASS_ON
@@ -2395,11 +4856,15 @@ namespace Launcher
 
         private static void ArmGuard()
         {
+            _samsungHomeRequested = false;
+            _samsungHomeObserved = false;
+            if (_wmStack != null) _wmStack.AllowSamsungHome = false;
+            if (_idleModel != null && !_idleModel.Visible && _idleWin != null) PollIdleBackdrop();
             if (_guardApps == null) return;
             try
             {
                 NewGuardGeneration();
-                GuardSpawn.Set(HomeGuard.Command(_guardApps, _guardFile, _guardGen));
+                GuardSpawn.Set(HomeGuard.Command(_guardApps, _guardFile, _guardGen, PreserveWarmCsfs()));
                 if (_anim == IntPtr.Zero) ScheduleGuard();
             }
             catch (Exception ex) { Log("guard: " + ex.Message); }
@@ -2435,6 +4900,12 @@ namespace Launcher
         /// <summary>Retires every kill that is still waiting: the guarded app was asked for on purpose.</summary>
         private static void CancelGuard()
         {
+            _samsungHomeRequested = true;
+            _samsungHomeObserved = false;
+            _samsungHomeRequestedUntil = Efl.ecore_time_get() + 5.0;
+            BumpDismissRestoreGen();
+            if (_wmStack != null) _wmStack.AllowSamsungHome = true;
+            SyncBackClaim();
             if (_guardApps == null) return;
             try { NewGuardGeneration(); Log("guard: cancelled, " + string.Join(",", _guardApps) + " was asked for"); }
             catch (Exception ex) { Log("guard cancel: " + ex.Message); }
@@ -2443,7 +4914,47 @@ namespace Launcher
         private static void NewGuardGeneration()
         {
             _guardGen++;
+            if (!string.IsNullOrEmpty(_guardFile))
+                File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        private static void EnsureGuardFile()
+        {
+            if (string.IsNullOrEmpty(_guardFile) || File.Exists(_guardFile)) return;
             File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        private static void EnsureDismissRestoreFile(int gen)
+        {
+            if (string.IsNullOrEmpty(_dismissRestoreFile) || File.Exists(_dismissRestoreFile)) return;
+            File.WriteAllText(_dismissRestoreFile, gen.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        private static void BumpDismissRestoreGen()
+        {
+            int next = System.Threading.Interlocked.Increment(ref _dismissRestoreGen);
+            _closeTracker.Reset();
+            if (string.IsNullOrEmpty(_dismissRestoreFile)) return;
+            try { File.WriteAllText(_dismissRestoreFile, next.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+            catch (Exception ex) { Log("idle: restore gen: " + ex.Message); }
+        }
+
+        private static void NoteAppHomePress(double now)
+        {
+            if (_idleModel != null && !_idleModel.Visible && !_idleModel.HoldOcclusionForScreensaver)
+            {
+                _lastAppHomePress = now;
+                string fg = Efl.VconfGetString(FullscreenAppIdKey);
+                if (!string.IsNullOrEmpty(fg)
+                    && fg != IdleBackdropModel.TvViewerAppId
+                    && !IdleBackdropModel.IsGuardedSamsungHome(fg)
+                    && !IdleBackdropModel.IsScreensaverApp(fg)
+                    && Catalog.ValidAppId(fg))
+                {
+                    _lastPausedAppId = fg;
+                }
+                BumpDismissRestoreGen();
+            }
         }
 
         // ------------------------------------------------------------------ launching
@@ -2477,6 +4988,8 @@ namespace Launcher
             try
             {
                 Efl.app_control_set_app_id(ac, appId);
+                Efl.app_control_add_extra_data(ac, "__K_SPLASH_SCREEN", "LA_UI_DEFAULT");
+                Efl.app_control_add_extra_data(ac, "__K_EX_LAUNCH_REQUESTOR", "user");
                 return Efl.app_control_send_launch_request(ac, IntPtr.Zero, IntPtr.Zero) == 0;
             }
             finally { Efl.app_control_destroy(ac); }
@@ -2550,9 +5063,11 @@ namespace Launcher
             try
             {
                 if (e == null) return 0;
-                int rc = Libc.system(KeyTool + e.Key);   // Key is letters and digits only (Catalog.IsKeyName)
-                Log("key " + e.Key + " rc=" + rc);
-                if (rc != 0 && e.AppId != null) LaunchApp(e);
+                int rc = SystemWithErrno(KeyTool + e.Key);   // Key is letters and digits only (Catalog.IsKeyName)
+                int err;
+                bool ok = SystemSucceeded(rc, out err);
+                Log("key " + e.Key + " rc=" + rc + (ok && rc != 0 ? " (reaped)" : ""));
+                if (!ok && e.AppId != null) LaunchApp(e);
             }
             catch (Exception ex) { Log("key timer: " + ex.Message); }
             return 0;
@@ -2574,9 +5089,16 @@ namespace Launcher
         {
             try
             {
+                if (_homeLaunch == null && !StaysOnLiveTv(e))
+                {
+                    NoteLaunchEpoch(e.AppId);
+                    CancelDeferredForceClose();
+                    BumpDismissRestoreGen();
+                    _lastAppHomePress = -100;
+                }
                 if (e.ViaShard)
                 {
-                    string viaService = ShardLaunch.Command(e, ShardLaunch.ServicePort);
+                    string viaService = ShardLaunch.Command(e, ShardLaunch.ServicePort, true);
                     if (viaService != null)
                     {
                         Log("launch " + e.AppId + " through its plugin rc=" + Libc.system(viaService));
@@ -2646,12 +5168,62 @@ namespace Launcher
                 WarmFrames(c, d, 14);
                 c.Reset();
             }
-            // The Control center's cards too, with empty lists (they are drawn hidden: the clippers are off).
+            // The Control center's cards too, with empty lists (they are drawn hidden: the clippers are off), then the unmapped
+            // window is released so baseline RAM/VRAM stays minimal until the user presses Down.
             if (_cards.Length > 0)
             {
-                OpenCards(0f);
-                for (int i = 0; i < 20; i++) { TickCards(1.0 / 60.0); ApplyCards(); }
-                DropCards();
+                if (_taskWin == IntPtr.Zero) BuildTaskWindow();
+                if (_taskWin != IntPtr.Zero)
+                {
+                    OpenCards(0f);
+                    for (int i = 0; i < 20; i++) { TickCards(1.0 / 60.0); ApplyCards(); }
+                    DropCards();
+                    DestroyTaskWindow();
+                }
+            }
+            // Warm up NumberPad model, motion and frame step so the first 123 open does not pay for JIT.
+            var warmPadModel = new NumberPadModel();
+            var warmPadMotion = new PadMotion();
+            var warmPadStep = new FrameStep(0.05);
+            warmPadModel.Reset();
+            warmPadModel.Key("Right");
+            warmPadModel.Key("Return");
+            warmPadModel.Key("Left");
+            warmPadModel.Key("Up");
+            warmPadModel.Key("Down");
+            warmPadModel.Key("BackSpace");
+            warmPadModel.Key("XF86Back");
+            NumberPadModel.BodyWidth(NumberPadModel.Digits);
+            NumberPadModel.BodyWidth(NumberPadModel.Colors);
+            warmPadMotion.Fade = 0;
+            warmPadMotion.FocusX = 64;
+            warmPadStep.Begin(0.0);
+            bool padGone;
+            for (int i = 0; i < 20; i++)
+            {
+                warmPadMotion.Step(warmPadStep.Next((i + 1) * (1.0 / 60.0)), false, false, 136, out padGone);
+            }
+            warmPadStep.Resume();
+            for (int i = 0; i < 12; i++)
+            {
+                warmPadMotion.Step(1.0 / 60.0, true, false, 136, out padGone);
+            }
+            // Warm up ambient idle backdrop math/UV paths so TieredCompilation promotes them before elm_run.
+            var warmClock = new AnimClock(1.0 / 60.0, 0.05);
+            for (int i = 0; i < 80; i++)
+            {
+                double dt, rawDt;
+                bool hasRealDt;
+                warmClock.TryStep(i * (1.0 / 60.0), out dt, out rawDt, out hasRealDt);
+                double tMs = 9000.0 + i * 16.67;
+                AmbientLakeEngine.LakeRenderFrame lf;
+                AmbientLakeEngine.ComputeFrame(tMs, _screenW, _screenH, false, out lf);
+                IdleBackdropModel.AuroraRibbonMotion rm;
+                AmbientLakeEngine.ComputeAuroraRibbonMotion(i % AmbientLakeEngine.AuroraRibbonCount, tMs, _screenW, _screenH, false, out rm);
+                IdleBackdropModel.MoteMotion mm;
+                AmbientLakeEngine.ComputeAuroraMoteMotion(i % AmbientLakeEngine.AuroraActiveMoteCount, tMs, _screenW, _screenH, false, out mm);
+                IdleBackdropModel.SubpixelQuad q;
+                IdleBackdropModel.ComputeSpriteSubpixelQuad(mm.X, mm.Y, mm.Size, mm.Size, 24, 24, 3, 30, 30, out q);
             }
             Log("warm-up " + ((Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency).ToString("0") + " ms");
         }
@@ -2694,6 +5266,7 @@ namespace Launcher
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
+            _idleConfig = IdleConfig.Parse(Arg(args, "--idle-mode"), Flag(args, "--idle-autodock"), Arg(args, "--idle-potoff"), Arg(args, "--idle-level"), Flag(args, "--idle-no-screensaver"));
             ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; PadMotion.Instant = true; VolumeFade.Instant = true; }
@@ -2701,16 +5274,25 @@ namespace Launcher
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
             _fifoPath = Path.Combine(_dir, "tvlauncher.fifo");
+            _fifoReadyPath = _fifoPath + ".ready";
             _claimPath = Path.Combine(_dir, "tvlauncher.homeclaim");
+            _claimVerifiedPath = _claimPath + ".verified";
+            _longpressPath = Path.Combine(_dir, "tvlauncher.longpress");
             TrimLog();
 
+            string priorLongpress = ReadTextFn(_longpressPath);
+            string priorPid = ReadTextFn(_pidPath);
             if (!AcquireInstance()) return 0;
+            ClearStaleLongpressClaims(priorLongpress, priorPid);
+            Libc.unlink(_fifoPath);
+            Libc.unlink(_fifoReadyPath);
             AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupFiles();
 
             try
             {
                 string engine = SetupEnvironment();
-                Log("start pid=" + Libc.getpid() + " uid=" + Libc.getuid() + " engine=" + engine);
+                string sched = PromoteRealtimeScheduler();
+                Log("start pid=" + Libc.getpid() + " uid=" + Libc.getuid() + " engine=" + engine + " sched=" + sched);
 
                 Efl.elm_init(0, IntPtr.Zero);
                 _win = Efl.elm_win_add(IntPtr.Zero, "tvlauncher", Efl.ElmWinNotification);
@@ -2730,6 +5312,51 @@ namespace Launcher
                 // size it reports is logged so a different model can be spotted and overridden.
                 Log("screen reported " + sw + "x" + sh + ", layout " + screenW + "x" + screenH);
                 _pillScreenW = screenW; _pillScreenH = screenH;
+                _screenW = screenW; _screenH = screenH;
+                _res = Path.Combine(AppContext.BaseDirectory, "res");
+
+                Efl.elm_win_title_set(_win, "tvlauncher");
+                Efl.elm_win_alpha_set(_win, true);
+                Efl.elm_win_borderless_set(_win, true);
+                Efl.elm_win_prop_focus_skip_set(_win, false);
+                int level = Efl.efl_util_set_notification_window_level(_win, NotificationLevelTop);
+                Efl.elm_win_layer_set(_win, WindowLayer);
+                // Without this hint the compositor may ignore our geometry for a notification window.
+                Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
+                Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
+                Efl.HideCursor(_win, false);
+
+                _dismissRestoreFile = Path.Combine(_dir, "tvlauncher.restore");
+                try { File.WriteAllText(_dismissRestoreFile, _dismissRestoreGen.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+                catch (Exception ex) { Log("restore gen init: " + ex.Message); }
+                string guard = Arg(args, "--kill-on-home");
+                if (guard != null)
+                {
+                    _guardApps = HomeGuard.Parse(guard);
+                    if (_guardApps != null)
+                    {
+                        _guardFile = Path.Combine(_dir, "tvlauncher.guard");
+                        try { File.WriteAllText(_guardFile, _guardGen.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+                        catch (Exception ex) { Log("guard init: " + ex.Message); }
+                        Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0));
+                    }
+                    else Log("guard: bad app id ignored");
+                }
+                string homeLaunch = Arg(args, "--home-launch");
+                if (homeLaunch != null)
+                {
+                    _homeLaunch = HomeLaunch.Parse(homeLaunch);
+                    Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
+                }
+                _claimHome = Flag(args, "--claim-home") && _homeLaunch == null;
+                Libc.unlink(_claimPath);   // one left by a launcher that was killed
+                // Show the Empty TV backdrop at the earliest possible point during process startup, before catalog parsing,
+                // icon decoding, page construction and JIT warm-up, so org.tizen.tv-viewer is covered as soon as EFL starts.
+                if (_homeLaunch == null && _idleConfig.Mode != IdleMode.Off)
+                {
+                    InitIdleBackdrop();
+                    PollIdleBackdrop();
+                }
 
                 _appsPath = Arg(args, "--apps") ?? Path.Combine(AppContext.BaseDirectory, "res", "apps.tsv");
                 _inputsPath = Arg(args, "--inputs") ?? Path.Combine(AppContext.BaseDirectory, "res", "inputs.tsv");
@@ -2745,15 +5372,14 @@ namespace Launcher
                 _cards = ControlCenter.Parse(Arg(args, "--cards"), Flag(args, "--no-tasks"));
                 bool tasks = _cards.Length > 0;
                 _allApps = LoadList(_allAppsPath, Catalog.BuiltInAllApps);
-                _screenW = screenW; _screenH = screenH;
-                _res = Path.Combine(AppContext.BaseDirectory, "res");
                 DockLayout layout = PageLayouts();
                 int band = tasks ? DockLayout.HintH : 0;
-                _taskLayout = new TaskLayout(screenW, screenH, layout.WinW, band, Math.Max(1, _cards.Length), 0);
+                _taskLayout = new TaskLayout(screenW, screenH, 0, band, Math.Max(1, _cards.Length), 0);
                 _tasksCtl = new TaskController();
                 _audioCtl = new TaskController();
                 _cardCtl = new TaskController[_cards.Length];
                 _choiceSrcs = new ChoiceSource[_cards.Length];
+                _lastChoiceStates = new ChoiceState[_cards.Length];
                 for (int i = 0; i < _cards.Length; i++)
                 {
                     CardKind kind = _cards[i].Kind;
@@ -2762,65 +5388,22 @@ namespace Launcher
                 }
                 _taskSource = new TaskSource(_apps, Log);
 
-                Efl.elm_win_title_set(_win, "tvlauncher");
-                Efl.elm_win_alpha_set(_win, true);
-                Efl.elm_win_borderless_set(_win, true);
-                Efl.elm_win_prop_focus_skip_set(_win, false);
-                int level = Efl.efl_util_set_notification_window_level(_win, NotificationLevelTop);
-                Efl.elm_win_layer_set(_win, WindowLayer);
-                // Without this hint the compositor may ignore our geometry for a notification window.
-                Efl.elm_win_aux_hint_add(_win, "wm.policy.win.user.geometry", "1");
-                Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
                 Efl.evas_object_move(_win, layout.WinX, layout.WinY);
                 Efl.evas_object_resize(_win, layout.WinW, layout.WinH);
                 Log("window " + layout.WinW + "x" + layout.WinH + " at " + layout.WinX + "," + layout.WinY + " notification-level=" + level);
 
-                string guard = Arg(args, "--kill-on-home");
-                if (guard != null)
-                {
-                    _guardApps = HomeGuard.Parse(guard);
-                    if (_guardApps != null) { _guardFile = Path.Combine(_dir, "tvlauncher.guard"); Log("guard: " + guard + " is closed after each Home press (until it is asked for): " + HomeGuard.Command(_guardApps, _guardFile, 0)); }
-                    else Log("guard: bad app id ignored");
-                }
-                string homeLaunch = Arg(args, "--home-launch");
-                if (homeLaunch != null)
-                {
-                    _homeLaunch = HomeLaunch.Parse(homeLaunch);
-                    Log(_homeLaunch != null ? "home key launches " + homeLaunch + "; the dock is not shown" : "home-launch: bad app id ignored");
-                }
-                _claimHome = Flag(args, "--claim-home") && _homeLaunch == null;
-                Libc.unlink(_claimPath);   // one left by a launcher that was killed
                 // The remote is opened now, before the pages and the warm-up: a Home pressed meanwhile waits in the node's buffer and is answered
                 // when the loop starts (DrainStartupInput). The fifo is still made after the warm-up: until it has a reader the service sends the
                 // volume and 123 keys to the TV itself, and they must not wait for the start-up instead.
                 SetupInput(args);
 
-                string res = Path.Combine(AppContext.BaseDirectory, "res");
                 string dumpIcons = Arg(args, "--dump-icons");
                 if (dumpIcons != null && Directory.Exists(dumpIcons)) Dock.DumpIconsTo = dumpIcons;
                 // Only what this run can show is built: in custom launcher mode the dock is never drawn (no pages, no cards), and of the
                 // Control center only the cards --cards names. Every use of a card is behind HasCard or the list of cards.
-                if (_homeLaunch == null) BuildPages();
-                int cardsN = Math.Max(1, _cards.Length);
-                if (HasCard(CardKind.Tasks))
+                if (_homeLaunch == null)
                 {
-                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Tasks)), res, Log);
-                    _taskPanel.Build();
-                }
-                if (HasCard(CardKind.Audio))
-                {
-                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Audio)), res, Log);
-                    _audioCard.Build();
-                }
-                _choiceCards = new ChoiceCard[_cards.Length];
-                for (int i = 0; i < _cards.Length; i++)
-                {
-                    CardSpec spec = _cards[i];
-                    if (spec.Kind != CardKind.Picture && spec.Kind != CardKind.Sleep && spec.Kind != CardKind.Shard) continue;
-                    string tag = spec.Kind == CardKind.Picture ? "picture" : spec.Kind == CardKind.Sleep ? "sleep" : "shard " + spec.ShardId;
-                    string reading = spec.Kind == CardKind.Picture ? "Reading the picture modes…" : spec.Kind == CardKind.Sleep ? "Reading the sleep timer…" : "Reading…";
-                    _choiceCards[i] = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, i), res, Log, tag, ControlCenter.Title(spec), reading);
-                    _choiceCards[i].Build();
+                    BuildPages();
                 }
                 _dock = _appsDock;
                 // The flags the tuner reads are cleared now (one left by a launcher that was killed), which also runs their first
@@ -2830,7 +5413,11 @@ namespace Launcher
                 OverlayFlag.Mark(OverlayFlag.PadPath, false, Log);
                 if (_appsDock != null)
                 {
-                    if (!Flag(args, "--no-warmup")) WarmUp();
+                    if (!Flag(args, "--no-warmup"))
+                    {
+                        WarmUp();
+                        PrewarmPad();
+                    }
                     _appsDock.Apply(_appsCtl);
                     _inputsDock.Apply(_inputsCtl);
                     _allDock.Apply(_allCtl);
@@ -2848,12 +5435,13 @@ namespace Launcher
                 if (fpsArg != null && int.TryParse(fpsArg, out fps) && (fps == 0 || (fps >= 30 && fps <= 120))) _vblankFps = fps;
                 if (_vblankFps > 0 && File.Exists("/usr/bin/tdm-monitor")) Efl.ecore_animator_add(FpsCb, IntPtr.Zero);
                 Log("animator frame time " + (Efl.ecore_animator_frametime_get() * 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
-                if (!Flag(args, "--hidden")) ShowDock();
-                else if (!Flag(args, "--no-premap") && _appsDock != null)
+                if (!Flag(args, "--hidden")) ShowDock(false);
+                else if (!Flag(args, "--no-premap") && _appsDock != null && !_pendingArrivalDock)
                 {
                     _appsCtl.HoldFaint(0.012f);   // about 1% opacity: invisible, but drawn, so the shaders get compiled now
                     _appsDock.Apply(_appsCtl);
                     Efl.evas_object_show(_win);
+                    Efl.HideCursor(_win, false);
                     if (Flag(args, "--premap-activate")) Efl.elm_win_activate(_win);
                     _premapTimer = Efl.ecore_timer_add(0.5, PremapCb, IntPtr.Zero);
                 }
@@ -2861,11 +5449,29 @@ namespace Launcher
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
-                if (_claimHome) PreloadEcoreKeyEvent();
+                if (_claimHome)
+                {
+                    PreloadEcoreKeyEvent();
+                    if (_homeLaunch == null && _inputFds.Count > 0 && !string.IsNullOrEmpty(_claimVerifiedPath) && File.Exists(_claimVerifiedPath))
+                    {
+                        _rawHomeSeen = true;
+                        ClaimHome();
+                    }
+                }
                 DrainStartupInput();   // after the collection: a Home answered here goes straight to its first frame
+                if (_idleWin != null) PollIdleBackdrop();
+                _elmRunStartTimer = Efl.ecore_timer_add(0.0, ElmRunStartCb, IntPtr.Zero);
+                PromoteRenderThreads();
                 Log("elm_run");
                 Efl.elm_run();
+                _inElmRun = false;
                 Log("elm_run returned");
+                CancelIdleTimers();
+                UnsubscribeFullscreenNotify();
+                ReleaseBackClaimOnExit();
+                DbusBus.Close();
+                if (_taskWin != IntPtr.Zero) { Efl.evas_object_del(_taskWin); _taskWin = IntPtr.Zero; }
+                if (_idleWin != null) _idleWin.Hide(true);
                 Efl.elm_shutdown();
             }
             catch (Exception ex)

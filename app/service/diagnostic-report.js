@@ -121,7 +121,7 @@ var TUNER_EVENT_RES=[/^start pid=\d{1,7}(?: [a-z]{1,12})?$/,/^elm_init (?:start|
     // Its window and whether it shows: the engine, a failed window or pipe, then the last show / hide / takeover lines (Samsung's app ids
     // and states, no paths: a line with a '/' or a quote is dropped).
     /^window up engine=[a-z_]{1,24}$/,/^(?:elm_win_add failed|pipe failed|shown|hidden)$/,/^not shown: no channel list yet, Samsung's live TV keeps the screen$/,
-    /^(?:takeover|resume|live): [A-Za-z0-9 .,()>_=-]{1,160}$/,
+    /^(?:takeover|resume|live|screensaver): [A-Za-z0-9 .,()>_=-]{1,160}$/,
     // The TV's input as the tuner reads it (Samsung's source type: 0 the tuner, -1 an app or Samsung TV Plus, 13-16 HDMI).
     /^input: source type (?:first|-?\d{1,3}) -> -?\d{1,3} \((?:TV|not the TV tuner)\)$/];
 function tunerEvents(text){return String(text||'').split('\n').map(function(l){
@@ -136,8 +136,9 @@ function tunerThreads(text){return String(text||'').split('\n').map(function(l){
         return {name:name,state:state,wait:/^[A-Za-z_][A-Za-z0-9_.]{0,63}$/.test(wait)?wait:null,stack:stack.length?stack:null};}).filter(Boolean).slice(0,64);}
 // The firmware section: each item as the TV said it, cut down to what it may be. Numbers in a range, yes/no, or a word from a fixed list.
 function intIn(v,min,max){var n=/^-?\d{1,9}$/.test(String(v||''))?+v:NaN;return Number.isFinite(n)&&n>=min&&n<=max?n:null;}
-function bit(v){return v==='1'||v==='true'||v==='True'?true:v==='0'||v==='false'||v==='False'?false:null;}
+function bit(v){return v==='1'||v==='true'||v==='True'||v==='TRUE'?true:v==='0'||v==='false'||v==='False'||v==='FALSE'?false:null;}
 function frontKind(v){if(typeof v!=='string'||!v)return null;if(/^com\.samsung\.tv\.(?:csfs|home\.media|home\.sidebar|coba\.)/.test(v))return 'samsung-home';
+    if(/^com\.samsung\.tv\.(?:spotlight-ss|glscreensaver[A-Za-z0-9_.-]*|screen-saver)$|^org\.tizen\.(?:rscm-screensaver|screen-saver)$|^Default_?Screensaver$/.test(v))return 'screensaver';
     if(v==='org.tizen.tv-viewer')return 'tv-viewer';if(/^vetrotvapp(?:\.|$)/.test(v))return 'vetro';return 'other';}
 // Samsung's universal remote: whether it runs, its current activity, the SPDIF status that stops it taking Vol (2), and its activity list cut
 // down to numbers: how many activities, and the values of the fields that say how each one is driven (no names, brands or code sets).
@@ -149,12 +150,12 @@ function mbrSection(d){
             audioSources:mbrNumbers(raw,'AudioSource'),deviceTypes:mbrNumbers(raw,'DeviceType'),activityModes:mbrNumbers(raw,'ActivityMode')}:null};
 }
 function firmwareSection(d){
-    var pm=/^ii (\d{1,7}) (-?\d{1,4})$/.exec(String(d.pictureMode||'')),nc=/(\d{1,2}\.\d{1,2}\.\d{1,3})\/?$/.exec(String(d.netcoreapp||''));
+    var pm=/^ii (\d{1,7}) (-?\d{1,4})$/.exec(String(d.pictureMode||'')),nc=/(\d{1,2}\.\d{1,2}\.\d{1,3})\/?$/.exec(String(d.netcoreapp||'')),ss=intIn(d.screensaverOn,-9,9),ssb=bit(d.screensaverOn);
     return {rootApp:bit(d.rootApp),rootColdBoot:intIn(d.rootColdBoot,0,9),homeApp:d.homeApp?(['com.samsung.tv.csfs','org.tizen.tv-viewer'].indexOf(d.homeApp)>=0?d.homeApp:'other'):null,
         autoStart:intIn(d.autoStart,0,9),appBooting:intIn(d.appBooting,0,9),firstscreenState:intIn(d.firstscreenState,-9,99),
         showStatus:d.showStatus?choice(d.showStatus,['full','partial','none'])||'other':null,front:frontKind(d.front),homeShown:intIn(d.homeShown,-9,9),
         pictureMode:pm?+pm[1]:null,pictureModeResult:pm?+pm[2]:null,speakerSelection:intIn(d.speakerSelection,-1,99),extVolume:intIn(d.extVolume,-99999,99999)!==null?intIn(d.extVolume,-99999,99999):bit(d.extVolume),mbr:mbrSection(d),displayState:intIn(d.displayState,0,9),
-        autoProtection:intIn(d.autoProtection,-1,999),screensaverOn:intIn(d.screensaverOn,-9,9),screensaverRunning:bit(d.screensaverRunning),
+        autoProtection:intIn(d.autoProtection,-1,999),screensaverOn:ss!==null?ss:ssb===true?1:ssb===false?0:null,screensaverRunning:bit(d.screensaverRunning),
         keyGuides:{volume:bit(d.guideVolume),viewer:bit(d.guideViewer),viewerDb:intIn(d.guideViewerDb,0,9)!==null?intIn(d.guideViewerDb,0,9)>0:bit(d.guideViewerDb),
             settingsMenuGuide:bit(d.settingsMenuGuide),oobStatus:intIn(d.oobStatus,-9,99)},
         dotnetRuntime:nc?nc[1]:null,inputKeyevent:bit(d.inputKeyevent),volumeApp:bit(d.volumeApp),functionOsd:bit(d.functionOsd),quicklaunch:bit(d.quicklaunch),
@@ -207,6 +208,7 @@ var projectors = {
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
+         idleMode:['off','clock','wallpaper','clean','aurora','aurora-clean'].indexOf(d.idleMode)>=0?d.idleMode:null,idleAutoDock:boolean(d.idleAutoDock),idlePictureOffMin:numeric(d.idlePictureOffMin),idleSuppressScreensaver:boolean(d.idleSuppressScreensaver),
          cardCount:Array.isArray(d.cards)?d.cards.length:null,homePictureClears:numeric(d.homePictureClears),homePictureAgoSeconds:numeric(d.homePictureAgoSeconds),appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog),
          bootTimeline:d.bootTimeline&&typeof d.bootTimeline==='object'?numbers(d.bootTimeline,['serviceStart','agentSeen','shownAtPowerOn']):null,
          openings:dockOpenings(d.openLog)});},
