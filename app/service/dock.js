@@ -1280,8 +1280,17 @@ Dock.prototype.setKeys = function (on) {
     return Promise.resolve(follow).catch(function () {}).then(function () { return self.status(); });
 };
 
+// The kind of picture a preview icon is, from its first bytes: a PNG, or a WebP (Samsung's own pictures for HDMI inputs on 2025 TVs, Tizen 9
+// and 10, are WebP and a browser draws them; #297). Anything else is not served.
+function imageType(data) {
+    if (data.length >= 8 && data.slice(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+    if (data.length >= 12 && data.toString('latin1', 0, 4) === 'RIFF' && data.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+    return null;
+}
+Dock.imageType = imageType;
+
 // The file behind one tile of the preview: the app's own icon when the list names one that is a
-// safe path, else the dock's packaged icon. Returns a Buffer or null.
+// safe path, else the dock's packaged icon. Returns a Buffer (PNG or WebP) or null.
 Dock.prototype.iconFile = function (slug) {
     if (!SLUG_RE.test(String(slug))) return null;
     var all = this.entries().concat(this.inputEntries()), entry = all.filter(function (e) { return e.slug === slug; })[0];
@@ -1295,7 +1304,7 @@ Dock.prototype.iconFile = function (slug) {
     for (var i = 0; i < files.length; i++) {
         try {
             var data = fs.readFileSync(files[i]);
-            if (data.length <= 1048576 && data.slice(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return data;
+            if (data.length <= 1048576 && imageType(data)) return data;
         } catch (e) { /* next */ }
     }
     return null;

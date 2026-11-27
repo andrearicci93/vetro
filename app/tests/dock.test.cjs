@@ -286,6 +286,14 @@ function fixture(options) {
     assert.equal(f.dock.iconFile('evil'), null, 'a path outside the icon places is never read');
     assert.equal(f.dock.iconFile('net'), null, 'nor one with parent directories');
 
+    // A WebP (Samsung's HDMI pictures on 2025 TVs) is served too, and named as such; anything else is not.
+    const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.from([4, 0, 0, 0]), Buffer.from('WEBPVP8 ')]);
+    assert.equal(require('../service/dock.js').Dock.imageType(webp), 'image/webp');
+    assert.equal(require('../service/dock.js').Dock.imageType(png), 'image/png');
+    assert.equal(require('../service/dock.js').Dock.imageType(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')), null, 'an SVG is never served as a picture');
+    fs.writeFileSync(path.join(f.tmp, 'dock', 'res', 'icons', 'settings.png'), webp);
+    assert.ok(f.dock.iconFile('settings').equals(webp), 'a WebP icon is served');
+
     // Source switches persist like other launcher options and revert failed changes.
     f = fixture();
     assert.equal(f.dock.readState().showHomeSources,false);

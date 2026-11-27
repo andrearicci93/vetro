@@ -187,7 +187,7 @@ function definition(dock, options) {
                         // A tile's picture can change when the list is rebuilt, so it stays a minute in the browser; after that the
                         // browser asks again with the ETag and an unchanged picture is a 304 without the image.
                         var etag = '"' + require('crypto').createHash('sha1').update(png).digest('hex').slice(0, 20) + '"';
-                        var headers = { 'content-type': 'image/png', 'cache-control': 'private, max-age=60', 'etag': etag, 'X-Content-Type-Options': 'nosniff' };
+                        var headers = { 'content-type': (dock.constructor && dock.constructor.imageType && dock.constructor.imageType(png)) || 'image/png', 'cache-control': 'private, max-age=60', 'etag': etag, 'X-Content-Type-Options': 'nosniff' };
                         if (req.headers && req.headers['if-none-match'] === etag) { res.writeHead(304, headers); res.end(); return true; }
                         headers['content-length'] = png.length;
                         res.writeHead(200, headers);
