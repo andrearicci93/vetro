@@ -78,7 +78,7 @@ const probeStore=require('../service/probe');
  assert(ra.last[0].agoSeconds>=119&&ra.last[0].agoSeconds<=121);
  assert.deepEqual(d.sections.performance.data,{on:true,keepOpen:2,closed:3,legacyParts:1,idleMinutes:15},'Extra performance mode: counts only');
  assert.ok(!JSON.stringify(d.sections.performance).includes('com.') && !JSON.stringify(d.sections.performance).includes('Private label'),'no app ids or labels');
- assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null,units:17,masked:17,searchDays:null,guard:true,standalone:false,standaloneOtn:false,dnsBlocked:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:null,running:null,chosen:null},airplay:{status:null,running:null,chosen:null},keyguides:{status:null,running:null,chosen:null}});
+ assert.deepEqual(d.sections.quickWins.data,{firmware:{status:'on',running:null,chosen:null,units:17,masked:17,searchDays:null,guard:true,standalone:false,standaloneOtn:false,dnsBlocked:null},multiscreen:{status:'off',running:true,chosen:null},ambient:{status:'partial',running:true,chosen:true},telemetry:{status:null,running:null,chosen:null},airplay:{status:null,running:null,chosen:null},keyguides:{status:null,running:null,chosen:null},tvstoreboot:{status:null,running:null,chosen:null}});
  assert.deepEqual(d.sections.factoryTest.data,{present:true,value:1,type:'Int32',active:true},'#135: the Aging key, read only');
  assert.equal(d.sections.probe.data.supportedKeys.keys[0],'VolumeUp');
  assert.equal(d.sections.network.data.services[0].customDnsConfigured,true);

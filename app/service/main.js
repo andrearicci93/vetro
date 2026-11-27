@@ -125,6 +125,15 @@ var keyGuides=(function(){
         chosen:chosen
     };
 })();
+// Keep TV-Store's service starting with the TV (Quick settings, Experimental; tvstore-onboot.js): puts the start-at-boot flag of
+// A2STVStore.sdbservice back where the firmware dropped it, at every start of Vetro and every half hour while it is on.
+var tvStoreBoot = new (require('./tvstore-onboot.js').TvStoreOnboot)({execute: agentExecute});
+// The two switches kept outside quick-wins.js, added to what /wins and the report give out (each one is 'unknown' when it cannot be read).
+function withExtraWins(d) {
+    return keyGuides.read().then(function (k) { d.wins.keyguides = k; }, function () { d.wins.keyguides = {status: 'unknown'}; }).then(function () {
+        return tvStoreBoot.read().then(function (t) { d.wins.tvstoreboot = t; }, function () { d.wins.tvstoreboot = {status: 'unknown'}; });
+    }).then(function () { return d; });
+}
 // Apps removed through Vetro stay removed (keep-removed.js; idea and mechanism by zabique, github.com/zabique/vetro).
 var keepRemoved = new (require('./keep-removed.js').KeepRemoved)(agentExecute);
 var presence = new (require('./presence.js').Presence)(agentExecute);
@@ -425,7 +434,7 @@ function downloadDiagnostics(res, withComponents) {
             });
         }),
         performance: function () { return perfMode.read(); },
-        quickWins: later(function () { return wins.read().then(function (d) { return keyGuides.read().then(function (k) { d.wins.keyguides = k; return d; }, function () { return d; }); }); }),
+        quickWins: later(function () { return wins.read().then(withExtraWins); }),
         // What differs between firmware generations and the open questions of the 0.6.9 previews, read as root in one go: one line per item,
         // "name|value", every value cut down to a number, a yes/no or a fixed word by the report (diagnostic-report.js FIRMWARE). No paths, names
         // or text of the user's: the app in front is reported as a kind (Samsung's Home, live TV, Vetro, another app).
@@ -938,7 +947,7 @@ function handleSdbAccess(req,res) {
 }
 function handleWins(req,res) {readJsonBody(req,res,function(p){
     if(debloatBusy)return serveJson(res,{ok:false,error:'App change already in progress'},409);debloatBusy=true;
-    Promise.resolve().then(function(){if(p.id==='keyguides'){if(typeof p.on!=='boolean')throw Error('Invalid state');return keyGuides.apply(p.on);}return wins.apply(p.id,p.on);}).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
+    Promise.resolve().then(function(){if(p.id==='keyguides'||p.id==='tvstoreboot'){if(typeof p.on!=='boolean')throw Error('Invalid state');return (p.id==='keyguides'?keyGuides:tvStoreBoot).apply(p.on);}return wins.apply(p.id,p.on);}).then(function(d){debloatBusy=false;serveJson(res,d);}).catch(function(e){debloatBusy=false;serveJson(res,{ok:false,error:e.message},409);});
 });}
 // Keep removed apps removed: {action:'enable'|'disable'} is the global switch, {action:'allow', packages:[...]} takes apps off the
 // list. Each answer says whether Samsung's list was brought in line; the switch is saved either way.
@@ -1453,7 +1462,7 @@ var server = http.createServer(function (req, res) {
     if (url === '/keep-removed') return serveJson(res, keepRemoved.summary());
     // The Disable tab's groups also need Samsung's own "do not start" files of their background services (quick-settings.js MARKERS).
     if (url === '/performance') return perfMode.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
-    if (url === '/wins') return wins.read().then(function(d){return keyGuides.read().then(function(k){d.wins.keyguides=k;return d;},function(){d.wins.keyguides={status:'unknown'};return d;});}).then(function(d){return quickSettings.readMarkers(agentExecute).then(function(m){d.markers=m;return d;},function(){d.markers=null;return d;});}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
+    if (url === '/wins') return wins.read().then(withExtraWins).then(function(d){return quickSettings.readMarkers(agentExecute).then(function(m){d.markers=m;return d;},function(){d.markers=null;return d;});}).then(function(d){serveJson(res,d)}).catch(function(e){serveJson(res,{error:e.message},503)});
     if (url === '/icon.png') return serveIcon(res);
     if (url === '/factory-test') return handleFactoryTest(req,res);
     if (url === '/hbbtv') return hbbtv.read().then(function(d){serveJson(res,d);}).catch(function(e){serveJson(res,{error:e.message},503);});
@@ -1689,7 +1698,9 @@ var dnsRestoreAttempts=0;var dnsRestoreTimer=setInterval(function(){if(++dnsRest
 var lockBootAttempts=0;var lockBootTimer=setInterval(function(){if(++lockBootAttempts>BOOT_RETRIES){clearInterval(lockBootTimer);return}if(platform.status().agent.connected){clearInterval(lockBootTimer);wins.bootLock().catch(function(){})}},5000);if(lockBootTimer.unref)lockBootTimer.unref();
 // Quick wins that need a task after every boot (HbbTV's flag lives in /tmp, AmbientApp is started by the firmware
 // 15 s after boot). Runs once the adapter is connected; the choice was saved by Vetro when the win was switched on.
-var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){});keyGuides.boot().catch(function(){})}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+var winsBootAttempts=0;var winsBootTimer=setInterval(function(){if(++winsBootAttempts>BOOT_RETRIES){clearInterval(winsBootTimer);return}if(platform.status().agent.connected&&dock.bootSettled()){clearInterval(winsBootTimer);wins.boot(hbbtv).catch(function(){});keyGuides.boot().catch(function(){});tvStoreBoot.tick()}},5000);if(winsBootTimer.unref)winsBootTimer.unref();
+// TV-Store's start-at-boot flag is dropped again at every install of TV-Store: looked at again while the switch is on (a read when it is off costs nothing: no TV call).
+var tvStoreBootTimer=setInterval(function(){if(platform.status().agent.connected&&dock.bootSettled())tvStoreBoot.tick();},require('./tvstore-onboot.js').CHECK_MS);if(tvStoreBootTimer.unref)tvStoreBootTimer.unref();
 
 // Keep removed apps removed: the source fix is written on every change; this is only the safety net, slow, and only
 // while the switch is on. It also runs once when the adapter is up, and once more to take Vetro's ids out if the
