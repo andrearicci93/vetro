@@ -26,6 +26,7 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
                 remap = Object.assign({}, remap, {reserved: (dock.volumePill ? [{code: '68', label: 'Vol +', owner: 'volume', name: 'Volume bar', live: true}] : []), interception: {auto: on, problem: null}});
             }
             if (body.action === 'volumeEdge') dock = Object.assign({}, dock, {volumeEdge: body.edge});
+            if (body.action === 'cards') dock = Object.assign({}, dock, {cards: body.cards});
             data = dock;
         } else if (url === '/tuner') data = tuner;
         else if (url === '/input') data = input;
@@ -151,8 +152,15 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.match(launcher, /class="lp lp-tasks"/); assert.match(launcher, /Task manager ˅/, 'one card: its own name under the bar');
     sandbox.dockData = Object.assign({}, sandbox.dockData, {cards: ['tasks', 'audio']}); sandbox.renderDock();
     assert.match(el('dockBody').innerHTML, /Control center ˅/, 'two cards: Control center under the bar');
-    assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['audio'], cardChoices: ['tasks', 'audio']}, 'tasks', true)), ['tasks', 'audio'], 'a card turned on takes its place in the list');
+    assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['audio'], cardChoices: ['tasks', 'audio']}, 'tasks', true)), ['audio', 'tasks'], 'a card turned on joins on the right, keeping existing order');
     assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['tasks', 'audio'], cardChoices: ['tasks', 'audio']}, 'tasks', false)), ['audio'], 'and off leaves the others');
+    assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['picture', 'sleep', 'tasks'], cardChoices: ['tasks', 'audio', 'picture', 'sleep']}, 'sleep', false)), ['picture', 'tasks'], 'toggling off preserves custom order');
+    assert.deepEqual(Array.from(sandbox.cardsWith({cards: ['picture', 'sleep'], cardChoices: ['tasks', 'audio', 'picture', 'sleep']}, 'tasks', true)), ['picture', 'sleep', 'tasks'], 'toggling on preserves custom order');
+    assert.deepEqual(Array.from(sandbox.cardsReorder(['tasks', 'picture', 'sleep'], 'tasks', 'sleep')), ['picture', 'sleep', 'tasks'], 'dragging tasks to sleep moves it to the end in one step');
+    assert.deepEqual(Array.from(sandbox.cardsReorder(['tasks', 'picture', 'sleep'], 'picture', 'tasks')), ['picture', 'tasks', 'sleep'], 'dragging picture to tasks moves it to the front');
+    assert.deepEqual(Array.from(sandbox.cardsReorder(['tasks', 'picture', 'sleep'], 'picture', 'picture')), ['tasks', 'picture', 'sleep'], 'same-card drop is a no-op');
+    assert.deepEqual(Array.from(sandbox.cardsReorder(['tasks', 'picture', 'sleep'], 'audio', 'sleep')), ['tasks', 'picture', 'sleep'], 'missing card is a no-op');
+    assert.deepEqual(Array.from(sandbox.cardsReorder(['picture', 'shard:home-assistant'], 'shard:home-assistant', 'picture')), ['shard:home-assistant', 'picture'], 'Shard cards reorder cleanly');
     assert.deepEqual(Array.from(sandbox.dockCards({taskManager: true})), ['tasks'], 'an older service: the Task manager switch is that card');
     // A Shard's card: a switch of its own, named by the Shard, off until chosen; a saved one whose Shard is off is shown as paused (and keeps the choice).
     const ha = {cardShards: {'shard:home-assistant': 'Home Assistant'}, cardChoices: ['tasks', 'audio', 'picture', 'sleep', 'shard:home-assistant']};
@@ -181,6 +189,90 @@ const tick = async (n) => { for (let i = 0; i < (n || 4); i++) await new Promise
     assert.deepEqual(Array.from(sandbox.rememberedCards()), ['audio', 'tasks'], 'the last choice is remembered, in its order');
     sandbox.dockCards({cards: []});
     assert.deepEqual(Array.from(sandbox.rememberedCards()), ['audio', 'tasks'], 'switching the Control center off does not forget it');
+    // Horizontal drag-and-drop, mobile long-press touch drag, tap/keyboard fallback, and explicit Apply/Cancel confirmation.
+    dock = sandbox.dockData = Object.assign({}, dock, {enabled: true, mode: 'vetro', cards: ['tasks'], cardChoices: ['tasks', 'audio', 'picture', 'sleep'], maxCards: 3, cardsPaused: []});
+    sandbox.renderDock();
+    assert.doesNotMatch(el('dockCards').innerHTML, /data-dock-slot|data-dock-cards-apply|cardOrderLabel/, 'one active card shows no order strip, hint, or Apply button');
+    dock = sandbox.dockData = Object.assign({}, dock, {cards: ['tasks', 'picture', 'sleep']});
+    sandbox.renderDock();
+    cards = el('dockCards').innerHTML;
+    assert.match(cards, /id="cardOrderLabel">Card order — drag to reorder, or hold and drag on touch\.<\/p>/, 'short muted hint sits above the order strip');
+    assert.ok(cards.indexOf('data-dock-slot="tasks"') < cards.indexOf('data-dock-slot="picture"')
+        && cards.indexOf('data-dock-slot="picture"') < cards.indexOf('data-dock-slot="sleep"'), 'slots appear in left-to-right screen order');
+    assert.doesNotMatch(cards, /data-dock-cards-apply|data-dock-cards-cancel|Order changed/, 'no Apply/Cancel or pending chip until order changes');
+
+    // Desktop drag-and-drop: local draft only, zero requests until Apply order is clicked.
+    const sentBeforeDrag = calls.length;
+    el('dock').ondragstart({target: {closest: () => ({dataset: {dockSlot: 'tasks'}, classList: {add() {}, remove() {}}})}, dataTransfer: {setData() {}}});
+    el('dock').ondragover({target: {closest: () => ({dataset: {dockSlot: 'sleep'}, classList: {add() {}, remove() {}}})}, dataTransfer: {}, preventDefault() {}});
+    el('dock').ondrop({target: {closest: () => ({dataset: {dockSlot: 'sleep'}, classList: {add() {}, remove() {}}})}, preventDefault() {}});
+    el('dock').ondragend({});
+    assert.equal(calls.length, sentBeforeDrag, 'drag-and-drop does not send a request before confirmation');
+    cards = el('dockCards').innerHTML;
+    assert.ok(cards.indexOf('data-dock-slot="picture"') < cards.indexOf('data-dock-slot="sleep"')
+        && cards.indexOf('data-dock-slot="sleep"') < cards.indexOf('data-dock-slot="tasks"'), 'preview strip shows picture, sleep, tasks immediately');
+    assert.match(cards, /Order changed/);
+    assert.match(cards, /data-dock-cards-apply/);
+    assert.match(cards, /data-dock-cards-cancel/);
+
+    // Cancel reverts draft cleanly with zero requests.
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockCardsCancel: ''}})}});
+    assert.equal(calls.length, sentBeforeDrag, 'Cancel sends nothing');
+    cards = el('dockCards').innerHTML;
+    assert.ok(cards.indexOf('data-dock-slot="tasks"') < cards.indexOf('data-dock-slot="picture"')
+        && cards.indexOf('data-dock-slot="picture"') < cards.indexOf('data-dock-slot="sleep"'));
+    assert.doesNotMatch(cards, /data-dock-cards-apply|Order changed/);
+
+    // Tap/click two cards to reorder locally, and cancel selection with Escape.
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockSlot: 'tasks'}})}});
+    assert.match(el('dockCards').innerHTML, /data-dock-slot="tasks" aria-pressed="true"/);
+    el('dock').onkeydown({target: {closest: () => ({dataset: {dockSlot: 'tasks'}})}, key: 'ArrowRight', preventDefault() {}});
+    cards = el('dockCards').innerHTML;
+    assert.ok(cards.indexOf('data-dock-slot="picture"') < cards.indexOf('data-dock-slot="tasks"'), 'ArrowRight shifts picked card right in draft');
+    el('dock').onkeydown({target: {closest: () => ({dataset: {dockSlot: 'tasks'}})}, key: 'Escape'});
+    assert.doesNotMatch(el('dockCards').innerHTML, /aria-pressed="true"/, 'Escape clears active pick');
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockCardsCancel: ''}})}});
+
+    // Mobile long-press-to-grab + drag: hold timer arms drag, then dragging over target slot updates draft on touchend; moving >10px before hold cancels.
+    let scheduledTimer = null;
+    const origSetTimeout = sandbox.setTimeout;
+    sandbox.setTimeout = (fn) => { scheduledTimer = fn; return 42; };
+    const mkSlot = (name) => ({dataset: {dockSlot: name}, disabled: false, style: {transform: ''}, classList: {add() {}, remove() {}}});
+    const touchTasks = mkSlot('tasks'), touchSleep = mkSlot('sleep');
+    sandbox.document.elementFromPoint = () => ({closest: s => s === '[data-dock-slot]' ? touchSleep : null});
+    el('dock').ontouchstart({touches: [{clientX: 10, clientY: 10}], target: {closest: () => touchTasks}});
+    assert.equal(typeof scheduledTimer, 'function', 'hold timer armed on touchstart');
+    scheduledTimer();
+    let touchPrevented = false;
+    el('dock').ontouchmove({touches: [{clientX: 120, clientY: 12}], preventDefault() { touchPrevented = true; }});
+    assert.equal(touchPrevented, true, 'touchmove prevents page scroll while dragging grabbed card');
+    el('dock').ontouchend({});
+    assert.equal(calls.length, sentBeforeDrag, 'touch drag stages draft without immediate request');
+    cards = el('dockCards').innerHTML;
+    assert.ok(cards.indexOf('data-dock-slot="picture"') < cards.indexOf('data-dock-slot="sleep"')
+        && cards.indexOf('data-dock-slot="sleep"') < cards.indexOf('data-dock-slot="tasks"'));
+    // Moving >10 px before hold timer fires treats gesture as normal scroll (cancels grab).
+    scheduledTimer = null;
+    el('dock').ontouchstart({touches: [{clientX: 10, clientY: 10}], target: {closest: () => mkSlot('picture')}});
+    el('dock').ontouchmove({touches: [{clientX: 10, clientY: 40}], preventDefault() {}});
+    el('dock').ontouchend({});
+    sandbox.setTimeout = origSetTimeout;
+    delete sandbox.document.elementFromPoint;
+
+    // Apply sends ONE /dock cards call, hides Apply/Cancel, and updates rememberedCards & Session history.
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockCardsApply: ''}})}}); await tick(8);
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'cards', cards: ['picture', 'sleep', 'tasks']});
+    assert.deepEqual(Array.from(sandbox.rememberedCards()), ['picture', 'sleep', 'tasks']);
+    assert.doesNotMatch(el('dockCards').innerHTML, /data-dock-cards-apply|Order changed/);
+    assert.match(sandbox.operationEntries[0].message, /Control center: Picture mode, Sleep timer, Task manager/);
+
+    // Shard card drag-and-drop + Apply works cleanly too.
+    dock = sandbox.dockData = Object.assign({}, dock, ha, {cards: ['picture', 'shard:home-assistant']});
+    sandbox.renderDock();
+    el('dock').ondragstart({target: {closest: () => ({dataset: {dockSlot: 'shard:home-assistant'}, classList: {add() {}, remove() {}}})}, dataTransfer: {setData() {}}});
+    el('dock').ondrop({target: {closest: () => ({dataset: {dockSlot: 'picture'}, classList: {add() {}, remove() {}}})}, preventDefault() {}});
+    await el('dock').onclick({target: {closest: () => ({dataset: {dockCardsApply: ''}})}}); await tick(8);
+    assert.deepEqual(calls.filter(c => c.url === '/dock' && c.body).pop().body, {action: 'cards', cards: ['shard:home-assistant', 'picture']});
     // A part switched off in Vetro Shards says so.
     sandbox.dockData = null; sandbox.dockError = 'Vetro Launcher is not running'; sandbox.renderUi();
     assert.match(el('uiOverview').innerHTML, /Vetro Launcher is switched off in Vetro Shards\. Turn it on there to use this part\./);

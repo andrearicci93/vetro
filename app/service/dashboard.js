@@ -430,6 +430,17 @@ button:active:not(:disabled){transform:translateY(1px)}
 .quick-group>.section-title+.section-note,.quick-group>h2+.section-note{margin-top:var(--s1)}
 #dockBody .dock-layout>.quick-group{align-content:start}
 #dockCards>*+*{margin-top:var(--s4)}
+.card-order{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr));gap:var(--s2);margin-top:var(--s2)}
+.card-slot{display:flex;align-items:center;gap:var(--s2);justify-content:flex-start;min-width:0;padding:var(--s2) var(--s3);text-align:left;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;transition:border-color var(--vetro-duration-fast),background var(--vetro-duration-fast)}
+.card-slot:active:not(:disabled){cursor:grabbing}
+.card-slot b{flex:none;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.card-slot span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-slot svg{width:16px;height:16px;flex:none;color:var(--muted)}
+.card-slot[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
+.card-slot[aria-pressed=true] b,.card-slot[aria-pressed=true] svg{color:var(--accent)}
+.card-slot.is-dragging{opacity:.45}
+.card-slot.is-grabbed{position:relative;z-index:2;pointer-events:none;border-color:var(--accent);background:var(--accent-soft);box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.card-slot.is-over{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .ui-side{align-content:start}
 .ui-parts{display:grid;gap:var(--s4);align-content:start}.ui-parts>.quick-group{margin:0}
 .ui-side>.quick-group{margin:0}
@@ -1510,7 +1521,37 @@ function dockCards(d){var c=d&&Array.isArray(d.cards)?d.cards:(d&&d.taskManager?
 var lastCards=null;
 function keepCards(c){var t=c.join(',');if(lastCards===t)return;lastCards=t;try{localStorage.setItem('vetro.cards',t)}catch(e){}}
 function rememberedCards(){var t=lastCards;if(t===null){try{t=localStorage.getItem('vetro.cards')}catch(e){}}var ch=dockData&&dockData.cardChoices||[],c=String(t||'').split(',').filter(function(x){return CARD_INFO[x]||ch.indexOf(x)>=0});return c.length?c:['tasks']}
-function cardsWith(d,card,on){var now=dockCards(d);return (d.cardChoices||['tasks','audio','picture','sleep']).filter(function(c){return c===card?on:now.indexOf(c)>=0})}
+var cardsDraft=null,cardsPick=null,cardsDrag=null,cardsTouch=null,cardsTouchSkipClick=0;
+function cardsWith(d,card,on){
+ var choices=d.cardChoices||['tasks','audio','picture','sleep'];
+ var now=dockCards(d).filter(function(c){return choices.indexOf(c)>=0});
+ if(!on)return now.filter(function(c){return c!==card});
+ if(now.indexOf(card)>=0||choices.indexOf(card)<0)return now;
+ return now.concat([card]);
+}
+function cardsReorder(list,from,to){
+ var out=list.slice(),i=out.indexOf(from),j=out.indexOf(to);
+ if(i<0||j<0||i===j)return out;
+ out.splice(j,0,out.splice(i,1)[0]);
+ return out;
+}
+function activeCardOrder(d){
+ var saved=dockCards(d);
+ if(!cardsDraft||saved.length<2)return saved;
+ var kept=cardsDraft.filter(function(c){return saved.indexOf(c)>=0});
+ saved.forEach(function(c){if(kept.indexOf(c)<0)kept.push(c)});
+ return kept.length===saved.length?kept:saved;
+}
+function cardsDirty(d){
+ var saved=dockCards(d),cur=activeCardOrder(d);
+ return cur.length>1&&cur.join(',')!==saved.join(',');
+}
+function setCardDraft(next){
+ var saved=dockCards(dockData||{});
+ cardsDraft=next.join(',')===saved.join(',')?null:next;
+ cardsPick=null;
+ renderDock();
+}
 function lpMarkup(d,extra,id){
  var real=(d.entries||[]).length>0,all=real?d.entries:sampleRow,apps=all.filter(function(e){return !e.system}),sys=all.filter(function(e){return e.system});
  var row=apps.map(function(e,i){return previewTile(e,i===0&&!d.noMotion?112:92,false,i===0,d.useSourceImages)}).join('')+(sys.length?'<i class="lp-divider"></i>'+'<div class="lp-stack">'+sys.map(function(e){return previewTile(e,92,true,false,d.useSourceImages)}).join('')+'</div>':'');
@@ -1588,16 +1629,17 @@ function renderDock(){
   if(group&&sec){group.vetroHtml=main;group.vetroFirst=group.firstChild;sec.vetroHtml=look;sec.vetroFirst=sec.firstChild}
   setTimeout(fitPreview,0);
  }
- paint(cbox,cardsMarkup(d));
+ if(cbox)replaceControls(cbox,cardsMarkup(d),['data-dock-slot','data-dock-cards-apply','data-dock-cards-cancel','data-dock-card']);
  renderCustom();
 }
 // The Launcher tab's Control center: its picture beside one switch per card.
 function cardsMarkup(d){
  var navUsed=uiRules?uiConflicts(uiRules,UI_TASK_KEYS):[];
- var cards=dockCards(d),maxCards=d.maxCards||3;
- var taskState=(cards.length?chip(cards.length===1?'1 card':cards.length+' cards','on'):chip('Off'))+(cards.length&&d.mode==='custom'?chip('Only in the Vetro launcher','partial'):cards.length&&d.mode==='off'?chip('Needs the Vetro launcher','partial'):'');
+ var cards=dockCards(d),maxCards=d.maxCards||3,order=activeCardOrder(d),dirty=cardsDirty(d);
+ var taskState=(cards.length?chip(cards.length===1?'1 card':cards.length+' cards','on'):chip('Off'))+(dirty?chip('Order changed'):'')+(cards.length&&d.mode==='custom'?chip('Only in the Vetro launcher','partial'):cards.length&&d.mode==='off'?chip('Needs the Vetro launcher','partial'):'');
  var taskNote=navUsed.length?'<p class="quick-callout">'+(navUsed.length===1?'A shortcut of yours uses ':'Shortcuts of yours use ')+navUsed.map(function(x){return 'Key '+esc(x.label)+' ('+esc(x.code)+') opens '+esc(ruleName(x.rule))}).join('; ')+'. While the remote interception is on, the launcher never gets that key, so the Control center cannot use it.</p>':'';
- var head='<div class="quick-item" data-quick-item="control-center"><div><h3>Control center</h3><p>Down on the apps row opens up to '+maxCards+' cards. Left and Right move, Up or Back returns.</p><div class="quick-state">'+taskState+'</div>'+taskNote+'</div></div>';
+ var orderBar=order.length>1?'<p class="notice" id="cardOrderLabel">Card order — drag to reorder, or hold and drag on touch.</p><div class="card-order" role="group" aria-labelledby="cardOrderLabel">'+order.map(function(c,i){var info=cardInfo(c,d);return '<button type="button" class="card-slot" draggable="true" data-dock-slot="'+esc(c)+'" aria-pressed="'+(cardsPick===c?'true':'false')+'" aria-label="'+esc(info.name)+', position '+(i+1)+' of '+order.length+'" title="Drag to reorder, or hold and drag on touch"'+(dockBusy||!d.installed?' disabled':'')+'><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="6" cy="8" r="1.1" fill="currentColor"/><circle cx="10" cy="8" r="1.1" fill="currentColor"/><circle cx="6" cy="12" r="1.1" fill="currentColor"/><circle cx="10" cy="12" r="1.1" fill="currentColor"/></svg><b>'+(i+1)+'</b><span>'+esc(info.name)+'</span></button>'}).join('')+'</div>'+(dirty?'<div class="quick-actions"><button type="button" class="primary" data-dock-cards-apply'+(dockBusy||!d.installed?' disabled':'')+'>Apply order</button><button type="button" data-dock-cards-cancel'+(dockBusy?' disabled':'')+'>Cancel</button></div>':''):'';
+ var head='<div class="quick-item" data-quick-item="control-center"><div><h3>Control center</h3><p>Down on the apps row opens up to '+maxCards+' cards. Left and Right move, Up or Back returns.</p><div class="quick-state">'+taskState+'</div>'+taskNote+orderBar+'</div></div>';
  var list=(d.cardChoices||['tasks','audio','picture','sleep']).map(function(c){var info=cardInfo(c,d),on=cards.indexOf(c)>=0;
   return '<div class="quick-item" data-quick-item="card-'+esc(c)+'"><div><h3>'+esc(info.name)+'</h3><p>'+info.text+'</p><div class="quick-state">'+(on?chip('On','on'):chip('Off'))+'</div></div>'+switchMarkup('data-dock-card="'+esc(c)+'"',on,dockBusy||!d.installed||(!on&&cards.length>=maxCards),info.name)+'</div>'}).join('');
  list+=(Array.isArray(d.cardsPaused)?d.cardsPaused:[]).map(function(x){return '<div class="quick-item" data-quick-item="card-paused-'+esc(x.card)+'"><div><h3>'+esc(x.label)+'</h3><p>'+esc(x.why)+'. Your choice is kept: the card comes back with the Shard.</p><div class="quick-state">'+chip('Paused','partial')+'</div></div></div>'}).join('');
@@ -1632,7 +1674,7 @@ function renderCustom(){
 function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;customConfirm=false;renderDock();renderUi();   // the Overview's and the displays' switches lock too
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
-  dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;
+  dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;if(action==='cards'){cardsDraft=null;cardsPick=null}
   var message=action==='appStore'?'All apps now opens '+(d.appStore==='samsung'?'Samsung’s store':'TV-Store')+(d.enabled?'; the launcher was restarted.':'.'):action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Home opens Samsung Home.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Home opens Samsung Home.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='closeIdleHome'?'Close idle Samsung Home '+(d.closeIdleHome!==false?'on':'off')+(d.enabled?'.':'; it applies when the launcher is on.'):action==='resetRow'?'Samsung’s row is back'+(d.enabled?'; the launcher was restarted.':'.'):action==='cards'?'Control center: '+(dockCards(d).length?dockCards(d).map(function(c){return cardInfo(c,d).name}).join(', '):'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?(d.volumeEdge==='hidden'?'The volume bar is hidden: Vol changes the level without a bar':'The volume bar moves to the '+(d.volumeEdge||'left')+' edge')+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();renderUi();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
@@ -2017,8 +2059,128 @@ $('dock').onclick=function(e){var b=e.target.closest?e.target.closest('button'):
  if(ds.dockConfirm!=null)return setDock('enable','Turn on the launcher');
  if(ds.dockRebuild!=null)return setDock('refresh','Rebuild the launcher app list');
  if(ds.dockResetRow!=null)return setDock('resetRow','Put Samsung’s Home row back in the launcher');
+ if(ds.dockSlot!=null){
+  var slot=ds.dockSlot;if(dockBusy||Date.now()<cardsTouchSkipClick)return;
+  if(!cardsPick){cardsPick=slot;renderDock();return}
+  if(cardsPick===slot){cardsPick=null;renderDock();return}
+  return setCardDraft(cardsReorder(activeCardOrder(dockData||{}),cardsPick,slot));
+ }
+ if(ds.dockCardsCancel!=null){cardsDraft=null;cardsPick=null;renderDock();return}
+ if(ds.dockCardsApply!=null){
+  var next=activeCardOrder(dockData||{});
+  if(!cardsDirty(dockData||{}))return;
+  return setDock('cards','Apply Control center card order',{cards:next});
+ }
  if(ds.dockReload!=null)return loadDock();
 };
+(function(dockEl){
+ if(!dockEl)return;
+ function clearSlotMarks(){
+  if(!dockEl.querySelectorAll)return;
+  [].slice.call(dockEl.querySelectorAll('[data-dock-slot]')).forEach(function(n){if(n.classList){n.classList.remove('is-over');n.classList.remove('is-dragging');n.classList.remove('is-grabbed')}});
+ }
+ dockEl.ondragstart=function(e){
+  var b=e.target&&e.target.closest?e.target.closest('[data-dock-slot]'):null;
+  if(!b||dockBusy){if(e.preventDefault)e.preventDefault();return}
+  cardsDrag=b.dataset.dockSlot;cardsPick=null;
+  if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',cardsDrag)}catch(err){}}
+  if(b.classList)b.classList.add('is-dragging');
+ };
+ dockEl.ondragover=function(e){
+  if(!cardsDrag)return;
+  var b=e.target&&e.target.closest?e.target.closest('[data-dock-slot]'):null;
+  if(!b)return;
+  if(e.preventDefault)e.preventDefault();
+  if(e.dataTransfer)e.dataTransfer.dropEffect='move';
+  if(dockEl.querySelectorAll)[].slice.call(dockEl.querySelectorAll('[data-dock-slot].is-over')).forEach(function(n){if(n!==b&&n.classList)n.classList.remove('is-over')});
+  if(b.dataset.dockSlot!==cardsDrag&&b.classList)b.classList.add('is-over');
+ };
+ dockEl.ondragleave=function(e){
+  var b=e.target&&e.target.closest?e.target.closest('[data-dock-slot]'):null;
+  if(b&&b.classList)b.classList.remove('is-over');
+ };
+ dockEl.ondrop=function(e){
+  if(!cardsDrag)return;
+  var b=e.target&&e.target.closest?e.target.closest('[data-dock-slot]'):null;
+  var from=cardsDrag;cardsDrag=null;clearSlotMarks();
+  if(!b)return;
+  if(e.preventDefault)e.preventDefault();
+  var to=b.dataset.dockSlot;
+  if(to&&to!==from)setCardDraft(cardsReorder(activeCardOrder(dockData||{}),from,to));
+ };
+ dockEl.ondragend=function(){cardsDrag=null;clearSlotMarks()};
+ dockEl.oncontextmenu=function(e){if(e.target&&e.target.closest&&e.target.closest('[data-dock-slot]')&&e.preventDefault)e.preventDefault()};
+ function dockTouchClear(){
+  if(!cardsTouch)return null;
+  var st=cardsTouch;cardsTouch=null;clearTimeout(st.timer);
+  if(st.el){if(st.el.classList)st.el.classList.remove('is-grabbed');if(st.el.style)st.el.style.transform=''}
+  clearSlotMarks();
+  return st;
+ }
+ function dockTouchStart(e){
+  if(dockBusy||!e||!e.touches||e.touches.length!==1)return;
+  var b=e.target&&e.target.closest?e.target.closest('[data-dock-slot]'):null;
+  if(!b||b.disabled)return;
+  dockTouchClear();
+  var t=e.touches[0],from=b.dataset.dockSlot;
+  var st={from:from,el:b,x:t.clientX,y:t.clientY,armed:false,over:null,timer:0};
+  st.timer=setTimeout(function(){
+   if(cardsTouch!==st)return;
+   st.armed=true;cardsPick=null;
+   if(b.classList)b.classList.add('is-grabbed');
+   try{if(typeof navigator!=='undefined'&&navigator.vibrate)navigator.vibrate(15)}catch(err){}
+  },260);
+  cardsTouch=st;
+ }
+ function dockTouchMove(e){
+  var st=cardsTouch;
+  if(!st||!e||!e.touches||!e.touches.length)return;
+  var t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y;
+  if(!st.armed){
+   if(Math.abs(dx)>10||Math.abs(dy)>10)dockTouchClear();
+   return;
+  }
+  if(e.preventDefault)e.preventDefault();
+  if(st.el&&st.el.style)st.el.style.transform='translate('+Math.round(dx)+'px,'+Math.round(dy)+'px)';
+  var hit=document.elementFromPoint?document.elementFromPoint(t.clientX,t.clientY):null;
+  var b=hit&&hit.closest?hit.closest('[data-dock-slot]'):null;
+  if(dockEl.querySelectorAll)[].slice.call(dockEl.querySelectorAll('[data-dock-slot].is-over')).forEach(function(n){if(n!==b&&n.classList)n.classList.remove('is-over')});
+  if(b&&b.dataset.dockSlot!==st.from&&b.classList)b.classList.add('is-over');
+  st.over=b&&b.dataset?b.dataset.dockSlot:null;
+ }
+ function dockTouchEnd(){
+  var st=dockTouchClear();
+  if(!st||!st.armed)return;
+  cardsTouchSkipClick=Date.now()+400;
+  if(st.over&&st.over!==st.from)setCardDraft(cardsReorder(activeCardOrder(dockData||{}),st.from,st.over));
+  else renderDock();
+ }
+ function dockTouchCancel(){dockTouchClear()}
+ if(dockEl.addEventListener){
+  try{dockEl.addEventListener('touchstart',dockTouchStart,{passive:true});dockEl.addEventListener('touchmove',dockTouchMove,{passive:false})}
+  catch(err){dockEl.addEventListener('touchstart',dockTouchStart,false);dockEl.addEventListener('touchmove',dockTouchMove,false)}
+  dockEl.addEventListener('touchend',dockTouchEnd,false);dockEl.addEventListener('touchcancel',dockTouchCancel,false);
+ }else{
+  dockEl.ontouchstart=dockTouchStart;dockEl.ontouchmove=dockTouchMove;dockEl.ontouchend=dockTouchEnd;dockEl.ontouchcancel=dockTouchCancel;
+ }
+ dockEl.onkeydown=function(e){
+  var b=e.target&&e.target.closest?e.target.closest('[data-dock-slot]'):null;
+  if(!b)return;
+  var slot=b.dataset.dockSlot;
+  if(e.key==='Escape'&&cardsPick){cardsPick=null;renderDock();return}
+  if(cardsPick===slot&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){
+   if(e.preventDefault)e.preventDefault();
+   var cur=activeCardOrder(dockData||{}),idx=cur.indexOf(slot),step=e.key==='ArrowLeft'?-1:1;
+   if(idx>=0&&idx+step>=0&&idx+step<cur.length){
+    var next=cardsReorder(cur,slot,cur[idx+step]);
+    var saved=dockCards(dockData||{});
+    cardsDraft=next.join(',')===saved.join(',')?null:next;
+    cardsPick=slot;
+    renderDock();
+   }
+  }
+ };
+})($('dock'));
 $('tuner').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.tunerSwitch==null)return;
  if(x.checked){x.checked=false;tunerConfirm=true;renderTuner();var c=document.querySelector('[data-tuner-confirm]');if(c)c.focus();return}
