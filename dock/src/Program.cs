@@ -1697,6 +1697,7 @@ namespace Launcher
         {
             try
             {
+                if (_pad != null && _pad.IsOnScreen) return;
                 // Evas_Event_Key_Down starts with `const char *keyname`.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
                 if (key == "XF86Home" && _homeClaimed && !DockActive) { WindowHome(); return; }
@@ -1710,6 +1711,7 @@ namespace Launcher
         {
             try
             {
+                if (_pad != null && _pad.IsOnScreen) return;
                 // Evas_Event_Key_Up starts with `const char *keyname` too.
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
                 if (IsOkKey(key)) { TaskOkUp(); RowOkUp(); }
@@ -2223,9 +2225,9 @@ namespace Launcher
                         if (_learn) Log("key code " + code);
                         if (code != _homeCode)
                         {
-                            // The osd 123 has the keyboard focus and answers through its own window: the Dock or the Task manager under it
-                            // must not answer the same press (Right moved both, OK on Done also opened the focused tile).
-                            if (_pad != null && _pad.IsOnScreen) continue;
+                            // While osd 123 is on screen, route raw evdev navigation/Back/Exit to it (matching Dock's NavFromInput)
+                            // and skip Dock/Task manager navigation underneath.
+                            if (_pad != null && _pad.IsOnScreen) { _pad.HandleRawInput(code); continue; }
                             if (code == Raw123Code && DockActive)
                             {
                                 // Samsung's own 123 pad opens and takes the keys: two panels answering the arrows is worse than one.
@@ -2242,6 +2244,11 @@ namespace Launcher
                     // The kernel always reports the release: it ends a held OK even when the window's key up is late.
                     for (int k = 0; k < InputReleases.Count; k++)
                     {
+                        if (_pad != null && _pad.IsOnScreen)
+                        {
+                            _pad.HandleRawRelease(InputReleases[k]);
+                            continue;
+                        }
                         if (InputReleases[k] == RawOkCode) { TaskOkUp(); RowOkUp(); }
                         else if (InputReleases[k] == RawBackCode) BackUp.KernelRelease(Efl.ecore_time_get());
                     }

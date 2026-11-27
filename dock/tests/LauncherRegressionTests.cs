@@ -327,6 +327,19 @@ namespace Launcher.Tests
                 T.Eq(PictureModes.ParseGroupReply("   array [\n      int32 1\n   ]\n   int32 0\n"), null, "rejects partial array count");
                 T.Eq(PictureModes.ParseGroupReply("\nx\n"), null, "a TV without the method (the 2021 Q80A answers UnknownMethod, so the command prints x) falls back to the per-mode checks");
             });
+
+            T.Run("NumberPadModel grab key tables", () =>
+            {
+                var seen = new HashSet<string>();
+                foreach (string k in NumberPadModel.GrabKeys) T.True(seen.Add(k), "unique grab key: " + k);
+                foreach (string k in new[] { "Left", "Right", "Up", "Down", "Return", "XF86Back" })
+                {
+                    T.True(Array.IndexOf(NumberPadModel.CoreGrabKeys, k) >= 0, "CoreGrabKeys includes " + k);
+                    T.True(seen.Contains(k), "GrabKeys includes core key " + k);
+                }
+                foreach (string k in new[] { "KP_Enter", "Select", "BackSpace", "Escape", "XF86Exit", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" })
+                    T.True(seen.Contains(k), "GrabKeys includes " + k);
+            });
         }
     }
 }
