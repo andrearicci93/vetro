@@ -15,6 +15,19 @@ var MAX_ITEMS = 16;
 var ICON_ROOT = '/usr/apps/com.samsung.tv.theme-resource/shared/res/org.tizen.menu/Settings_Popup/device_icon/';
 var SOURCE_ICON_RE = /^\/(?:usr\/apps|opt\/usr\/apps)\/[A-Za-z0-9_.\/-]+\.(?:png|svg|webp)$/;
 var ARTWORK_RE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps|\/usr\/share\/canalysis\/Icon)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
+// Samsung's cache points a device-type input (a PC, a Blu-ray player...) at an SVG, which the launcher cannot draw (Evas has no SVG loader on
+// any firmware). The same picture exists as a PNG (Tizen 6.0 and 6.5) or a WebP (Tizen 9 and 10) with the same name in another folder (#297).
+var DEVICE_SVG_RE = /^\/usr\/apps\/com\.samsung\.tv\.theme-resource\/shared\/res\/(?:PRINCIPLE\/FLUX|VD_ICONS)\/i_icon_device_m_([A-Za-z0-9_-]{1,40})\.svg$/;
+var DEVICE_RASTER_DIR = '/usr/apps/com.samsung.tv.theme-resource/shared/res/PRINCIPLE/NONFLUX/icon/r_icon_device_m/';
+function deviceTwins(paths) {
+    var out = [];
+    (paths || []).forEach(function (p) {
+        var m = typeof p === 'string' && p.indexOf('..') < 0 ? DEVICE_SVG_RE.exec(p) : null;
+        if (!m) return;
+        ['.png', '.webp'].forEach(function (ext) { var t = DEVICE_RASTER_DIR + 'r_icon_device_m_' + m[1] + ext; if (out.indexOf(t) < 0) out.push(t); });
+    });
+    return out;
+}
 var HDMI_RE = /^HDMI([1-4])(?:\/\d+)?$/i;
 var DP_RE = /^(?:DISPLAYPORT|DP)(?:\/\d+)?$/i;
 var USB_C_RE = /^(?:USB_C|USB-C|USBC|TYPE_C)(?:\/\d+)?$/i;
@@ -139,7 +152,8 @@ function normalize(caches) {
         var displayIcon = [meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath].filter(function (p) {
             return typeof p === 'string' && ARTWORK_RE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0;
         })[0] || null;
-        return {sourceType: row.sourceType, family: row.family, port: row.port, label: base, name: name,
+        var displayTwins = displayIcon ? [] : deviceTwins([meta.LauncherUnfocusedIconPath, meta.IconPath, meta.OrgIconPath]);
+        return {sourceType: row.sourceType, family: row.family, port: row.port, label: base, name: name, displayTwins: displayTwins,
             inputLabel: row.family === 'tv' || name === base ? base : clean(base + ' - ' + name, base), sourceIcon: icon, sourceIcons: candidates, displayIcon: displayIcon,
             connected: typeof meta.ConnectionState === 'boolean' ? meta.ConnectionState : null,
             key: monitor ? 'KEY_INPUT_' + row.sourceType : row.family === 'tv' ? 'KEY_TV' : row.family === 'hdmi' ? 'KEY_HDMI' + row.port : row.family === 'displayport' ? 'KEY_DISPLAYPORT' : null,
@@ -245,6 +259,6 @@ function select(execute, type, options) {
     });
 }
 function typeForKey(key) { var m = INPUT_KEY_RE.exec(String(key || '')); return m ? +m[1] : null; }
-module.exports = {normalize: normalize, mergeCaches: mergeCaches, newestWins: newestWins, isMonitor: isMonitor, sourceIconOk: sourceIconOk,
+module.exports = {deviceTwins: deviceTwins, normalize: normalize, mergeCaches: mergeCaches, newestWins: newestWins, isMonitor: isMonitor, sourceIconOk: sourceIconOk,
     read: read, select: select, readCurrent: readCurrent, parseCurrent: parseCurrent, readCommand: readCommand, parseRead: parseRead,
     command: command, typeForKey: typeForKey};

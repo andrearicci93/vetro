@@ -1002,6 +1002,12 @@ namespace Launcher.Tests
                 T.True(!Catalog.ValidIconPath("/opt/usr/apps/../../etc/x.png"), "no parent directories");
                 T.True(!Catalog.ValidIconPath("/opt/usr/apps/a b.png"), "no spaces");
                 T.True(!Catalog.ValidIconPath("/opt/usr/apps/a.jpg"), "png only");
+                string deviceDir = "/usr/apps/com.samsung.tv.theme-resource/shared/res/PRINCIPLE/NONFLUX/icon/r_icon_device_m/";
+                T.True(Catalog.ValidIconPath(deviceDir + "r_icon_device_m_pc.png"), "the generic device picture (Tizen 6.0 / 6.5, PNG) is accepted");
+                T.True(Catalog.ValidIconPath(deviceDir + "r_icon_device_m_pc.webp"), "and its WebP form from Tizen 9");
+                T.True(!Catalog.ValidIconPath("/usr/apps/com.samsung.tv.theme-resource/shared/res/other/a.webp"), "WebP only for the device pictures folder");
+                T.True(!Catalog.ValidIconPath("/opt/usr/apps/pkg/a.webp"), "an app icon is still PNG only");
+                T.True(!Catalog.ValidIconPath(deviceDir + "../x.webp"), "no parent directories in a WebP path");
                 T.True(!Catalog.ValidIconPath("/opt/usr/apps//a.png"), "no empty path part");
                 var bad = Catalog.Parse("a\tA\tx.a\t\t/etc/shadow.png\n");
                 T.Eq(bad.Entries.Length, 0, "a bad icon path drops the line");

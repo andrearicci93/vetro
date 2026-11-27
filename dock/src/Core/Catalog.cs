@@ -134,6 +134,8 @@ namespace Launcher.Core
 
         private static bool IsSlug(string s) { return Chars(s, 40, false, false); }
 
+        private const string DevicePictureDir = "/usr/apps/com.samsung.tv.theme-resource/shared/res/PRINCIPLE/NONFLUX/icon/r_icon_device_m/";
+
         private static readonly string[] IconRoots =
         {
             "/opt/share/webappservice/apps_icon/", "/opt/usr/apps/", "/usr/apps/",
@@ -147,7 +149,11 @@ namespace Launcher.Core
         /// </summary>
         public static bool ValidIconPath(string s)
         {
-            if (s == null || s.Length == 0 || s.Length > 200 || !s.EndsWith(".png", StringComparison.Ordinal)) return false;
+            if (s == null || s.Length == 0 || s.Length > 200) return false;
+            // WebP only for Samsung's device pictures from Tizen 9 on (the twin of the SVG its cache names, #297); a file that does not load
+            // leaves the tile with Vetro's own icon.
+            bool webp = s.EndsWith(".webp", StringComparison.Ordinal) && s.StartsWith(DevicePictureDir, StringComparison.Ordinal);
+            if (!webp && !s.EndsWith(".png", StringComparison.Ordinal)) return false;
             if (s.Contains("..") || s.Contains("//")) return false;
             foreach (char c in s)
             {

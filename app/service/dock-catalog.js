@@ -100,7 +100,9 @@ function iconOk(p) { return ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexO
 // An input's picture: Samsung keeps the pictures of the devices it recognises (consoles, boxes) in canalysis' folder, on 6.0, 6.5 and
 // 9 alike (#297: they were refused, so HDMI source images never showed). Its device-type icons are SVG, which the launcher cannot draw.
 var SOURCE_ICON_FILE = /^\/usr\/share\/canalysis\/Icon\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
-function sourceIconOk(p) { return iconOk(p) || (SOURCE_ICON_FILE.test(p) && p.indexOf('..') < 0 && p.indexOf('//') < 0); }
+// A device-type picture (PC, Blu-ray...): the PNG or WebP twin of the SVG Samsung's cache names, in theme-resource (#297).
+var DEVICE_PICTURE_FILE = /^\/usr\/apps\/com\.samsung\.tv\.theme-resource\/shared\/res\/PRINCIPLE\/NONFLUX\/icon\/r_icon_device_m\/r_icon_device_m_[A-Za-z0-9_-]{1,40}\.(?:png|webp)$/;
+function sourceIconOk(p) { return iconOk(p) || ((SOURCE_ICON_FILE.test(p) || DEVICE_PICTURE_FILE.test(p)) && p.indexOf('..') < 0 && p.indexOf('//') < 0); }
 
 // Live TV entries in the Home row are not web apps. The icon comes from the package of the same
 // name when the TV has one; the dock draws its own generic one otherwise.
@@ -245,8 +247,10 @@ function sourceEntries(parsed, options) {
     return inputSources.normalize(parsed.sources).map(function (source) {
         var useImages = options && options.useSourceImages === true && source.sourceType >= 13;
         var icon = useImages && sourceIconOk(source.displayIcon) ? source.displayIcon : null;
+        // No picture of the recognised device: the generic one for its type, if the TV has it (the first that exists is taken in existing()).
+        var twins = useImages && !icon ? (source.displayTwins || []).filter(sourceIconOk) : [];
         return {slug: source.slug, label: source.name, inputLabel: source.inputLabel,
-            appId: source.rowKey, icon: icon, sourceIcon: source.sourceIcon, sourceIcons: source.sourceIcons, killFirst: null, key: source.rowKey};
+            appId: source.rowKey, icon: icon, iconTwins: twins.length ? twins : null, sourceIcon: source.sourceIcon, sourceIcons: source.sourceIcons, killFirst: null, key: source.rowKey};
     });
 }
 
@@ -303,6 +307,7 @@ function build(parsed, options) {
             var tile = add(source.slug, source.label, source.appId, source.icon, 'source:' + source.appId.slice(7));
             tile.sourceIcon = source.sourceIcon;
             tile.sourceIcons = source.sourceIcons;
+            tile.iconTwins = source.iconTwins;
             if (source.altIcon) tile.altIcon = source.altIcon;
             return;
         }
@@ -372,6 +377,7 @@ function build(parsed, options) {
         var e = make(source.slug, source.label, source.appId, source.icon, source.key);
         e.sourceIcon = source.sourceIcon;
         e.sourceIcons = source.sourceIcons;
+        e.iconTwins = source.iconTwins;
         pool[source.key] = e; sourceTiles.push(e);
     });
     // The user's own row (Vetro's dock state, never Samsung's .appLayerCache): their order first, then whatever Samsung's row
@@ -439,11 +445,11 @@ function existing(execute, built) {
     var paths = [];
     var all = built.entries.concat(built.inputs || []);
     (built.allApps || []).forEach(function (e) { if (all.indexOf(e) < 0) all.push(e); });
-    all.forEach(function (e) { [e.icon, e.altIcon, e.sourceIcon].concat(e.sourceIcons || []).forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
+    all.forEach(function (e) { [e.icon, e.altIcon, e.sourceIcon].concat(e.sourceIcons || [], e.iconTwins || []).forEach(function (p) { if (p && paths.indexOf(p) < 0) paths.push(p); }); });
     if (!paths.length) return Promise.resolve(built);
     var script = 'for p in ' + paths.map(function (p) { return "'" + p + "'"; }).join(' ') + '; do [ -f "$p" ] && echo "OK|$p"; done; true';
     return execute(wrap(script), 10000).then(function (r) {
-        if (r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; delete e.sourceIcons; }); return built; }
+        if (r.exit_code || r.timed_out) { all.forEach(function (e) { delete e.altIcon; delete e.sourceIcons; delete e.iconTwins; }); return built; }
         var ok = {};
         String(r.stdout || '').split('\n').forEach(function (l) { if (l.indexOf('OK|') === 0) ok[l.slice(3).trim()] = true; });
         all.forEach(function (e) {
@@ -451,12 +457,13 @@ function existing(execute, built) {
                 if (!(e.icon && ok[e.icon]) && ok[e.altIcon]) e.icon = e.altIcon;
                 delete e.altIcon;
             }
+            if (e.iconTwins) { if (!e.icon) e.icon = e.iconTwins.filter(function (icon) { return ok[icon]; })[0] || null; delete e.iconTwins; }
             if (e.sourceIcons) { e.sourceIcon = e.sourceIcons.filter(function (icon) { return ok[icon]; })[0] || null; delete e.sourceIcons; }
             else if (e.sourceIcon && !ok[e.sourceIcon]) e.sourceIcon = null;
             if (e.icon && !ok[e.icon]) { built.skipped.push({item: e.slug, reason: 'Icon file missing; a generic icon is used'}); e.icon = null; }
         });
         return built;
-    }, function () { all.forEach(function (e) { delete e.altIcon; delete e.sourceIcons; }); return built; });
+    }, function () { all.forEach(function (e) { delete e.altIcon; delete e.sourceIcons; delete e.iconTwins; }); return built; });
 }
 
 // Reads the TV and returns {tsv, count, skipped}. Throws when the Home row cannot be read at all,
