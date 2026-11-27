@@ -8,7 +8,7 @@ const {Tuner, unsupportedReason, CONTROL, TARGET_APP} = require('../service/tune
 
 function fixture(options) {
     options = options || {};
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-tuner-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-tuner_'));
     const dir = path.join(tmp, 'tuner');
     if (options.installed !== false) {
         fs.mkdirSync(path.join(dir, 'res'), {recursive: true});
