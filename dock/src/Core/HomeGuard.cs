@@ -46,5 +46,16 @@ namespace Launcher.Core
         {
             return Catalog.ValidAppId(appId) ? new AppEntry("custom", appId, appId, null) : null;
         }
+
+        /// <summary>The detached shell command the Home key runs in custom launcher mode (#334, found by a reporter on a Tizen 9 TV).
+        /// <c>app_launcher -e</c> starts or resumes the app without Samsung's loader, so the four-dot animation is not drawn on every press
+        /// even when the app is already running; the plain <c>-s</c> launch (through the loader) is the fallback when -e fails. Both return
+        /// 255 for an app that is not installed. On the 2021 Q80A (Tizen 6.0), -e started a stopped app in about 0.5 s and resumed a running
+        /// one in about 50 ms, the same as -s. The id is checked (Catalog.ValidAppId), so it is safe on a command line.</summary>
+        public static string Command(string appId)
+        {
+            if (!Catalog.ValidAppId(appId)) throw new ArgumentException("Invalid Home launch app id");
+            return "( /usr/bin/app_launcher -e " + appId + " || /usr/bin/app_launcher -s " + appId + " ) >/dev/null 2>&1 &";
+        }
     }
 }

@@ -128,6 +128,9 @@ namespace Launcher.Tests
                 T.Eq(HomeLaunch.Parse("app;reboot"), null, "shell metacharacters refused");
                 T.Eq(HomeLaunch.Parse(""), null, "empty id refused");
                 T.Eq(HomeLaunch.Parse(null), null, "missing id refused");
+                T.Eq(HomeLaunch.Command("org.example.projectivy"), "( /usr/bin/app_launcher -e org.example.projectivy || /usr/bin/app_launcher -s org.example.projectivy ) >/dev/null 2>&1 &", "the Home app starts without the loader, with the plain launch as the fallback");
+                bool refused = false; try { HomeLaunch.Command("app;reboot"); } catch (ArgumentException) { refused = true; }
+                T.True(refused, "an id with shell characters never reaches the command line");
             });
 
             T.Run("Samsung Home: csfs, with Samsung's Home-key bundle on root-app firmware; the component package is never launched", () =>

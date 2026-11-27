@@ -2281,7 +2281,14 @@ namespace Launcher
             _lastHome = now;
             if (raw) { _lastRawHome = now; _rawHomeSeen = true; }
             _perfWhy = "home";
-            if (_homeLaunch != null) { LaunchApp(_homeLaunch); ArmGuard(); return; }
+            if (_homeLaunch != null)
+            {
+                // The Home app is started without Samsung's loader (#334); the guard below still keeps Samsung's own Home away.
+                try { Log("home-launch " + _homeLaunch.AppId + " rc=" + Libc.system(HomeLaunch.Command(_homeLaunch.AppId))); }
+                catch (Exception ex) { Log("home-launch failed: " + ex.Message); LaunchApp(_homeLaunch); }
+                ArmGuard();
+                return;
+            }
             if (DockActive) HideDock(); else { ProbeBegin("home"); ShowDock(); }
             ArmGuard();
             ProbeHandlerDone();
