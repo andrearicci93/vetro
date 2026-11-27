@@ -237,7 +237,8 @@ Tuner.prototype.status = function () {
 // or refuses, the old detached start is used. Never in this line: --seconds (auto exit), --hold, --backdrop (test options).
 // quiet: this start replaces a tuner that was running (an update, another build), so its Banner does not come up by itself.
 Tuner.prototype.startScript = function (quiet) {
-    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0';
+    // DOTNET_EnableDiagnostics=0: no diagnostics IPC socket and thread in the tuner; nothing attaches a debugger on a TV.
+    var env = 'HOME=/home/owner XDG_RUNTIME_DIR=/run WAYLAND_DISPLAY=wayland-0 DOTNET_EnableDiagnostics=0';
     var state = this.readState();
     var args = DLL + ' --resident --notif --control ' + CONTROL + ' --log ' + LOG_FILE + ' --pid-file ' + PID_FILE +
         ' --takeover ' + TARGET_APP + ' --features ' + q(this.featuresFile) + (quiet ? ' --quiet' : '');

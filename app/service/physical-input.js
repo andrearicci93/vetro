@@ -138,7 +138,7 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                 var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill -9 "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
                 // The last helper's words are kept one start longer (vetro-input.prev.log): a helper that ended on its own (the remote went
                 // away, an exception) is followed within seconds by a new start, whose log would otherwise replace them.
-                var command=stale+'umask 077; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
+                var command=stale+'umask 077; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; DOTNET_EnableDiagnostics=0 nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
                 self.execute(command,5000,active).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
         });

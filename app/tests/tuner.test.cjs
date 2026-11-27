@@ -81,6 +81,8 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     assert.ok(f.tuner.readState().since > 0);
     const line = f.tv.started;
     assert.match(line, /systemd-run --unit=vetro-tuner --collect -p WorkingDirectory=/);
+    assert.match(line, /DOTNET_EnableDiagnostics=0/);
+    assert.ok(!line.includes('GLOBALIZATION_INVARIANT'));
     assert.match(line, /dotnet vetro-tuner\.dll --resident --notif --control \/tmp\/vetro-tuner\.ctl --log \/home\/owner\/vetro-tuner\.log --pid-file \/home\/owner\/vetro-tuner\.pid --takeover org\.tizen\.tv-viewer/);
     for (const test of ['--seconds', '--hold', '--backdrop', '--shm', '--close-target']) assert.ok(!line.includes(test), test + ' is not on the launch line');
     assert.ok(line.includes("WorkingDirectory='" + f.tuner.dir + "'"), 'the folder with the res/ pictures is the working directory');

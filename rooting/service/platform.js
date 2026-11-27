@@ -170,7 +170,7 @@ function prepareHostBootstrap(agentPort) {
     var agentDir = STAGE + '/' + pkg;
     fs.writeFileSync(agentDir + '/root-agent.token', secretB64 + '\n', { mode: 384 /* 0o600 */ });
     var agentLaunch = '#!/bin/sh\n' +
-        '/usr/bin/dotnet ' + agentDir + '/SamsungTvRootAgent.dll ' +
+        'DOTNET_EnableDiagnostics=0 /usr/bin/dotnet ' + agentDir + '/SamsungTvRootAgent.dll ' +
         '127.0.0.1 ' + agentPort + ' ' +
         agentDir + '/root-agent.token ' + agentDir +
         ' </dev/null >/dev/null 2>&1 &\n' +
@@ -186,7 +186,7 @@ function prepareHostBootstrap(agentPort) {
 function buildLaunchScript(agentPort) {
     var staging = STAGE + '/' + pkg;
     return '#!/bin/sh\n' +
-        '/usr/bin/dotnet ' + staging + '/SamsungTvRootAgent.dll ' +
+        'DOTNET_EnableDiagnostics=0 /usr/bin/dotnet ' + staging + '/SamsungTvRootAgent.dll ' +
         '127.0.0.1 ' + agentPort + ' ' +
         staging + '/root-agent.token ' +
         staging + ' </dev/null >' + staging + '/root-agent.log 2>&1 &\n';
@@ -507,6 +507,16 @@ function startAgent(resetFallback) {
             // The agent has detached; release any remaining launch connection.
             if (launchClient) { try { sdb.close(launchClient); } catch (e) {} launchClient = null; }
             notifyAgent(true);
+            var activePid = Number(conn.identity && conn.identity.pid);
+            if (isFinite(activePid) && Math.floor(activePid) === activePid && activePid > 0) {
+                var cleanCmd = 'active=' + activePid + '; ' +
+                    'for d in /proc/[0-9]*; do pid=${d#/proc/}; [ "$pid" = "$active" ] || [ "$pid" = "$PPID" ] && continue; ' +
+                    'case "$(tr "\\0" " " < "$d/cmdline" 2>/dev/null)" in *SamsungTvRootAgent.dll*) ' +
+                    'kill -9 "$pid" 2>/dev/null; rm -rf "/run/samsung-tv-root/agent-$pid" 2>/dev/null;; esac; done; ' +
+                    'for s in /tmp/dotnet-diagnostic-*-socket; do [ -e "$s" ] || continue; sp=${s#/tmp/dotnet-diagnostic-}; sp=${sp%%-*}; ' +
+                    '[ "$sp" = "$active" ] || [ -d "/proc/$sp" ] || rm -f "$s" 2>/dev/null; done; true';
+                try { if (typeof conn.execute === 'function') conn.execute(cleanCmd, 5000).catch(function () {}); } catch (e) {}
+            }
         },
         onClose: function () {
             if (!state.running) return;

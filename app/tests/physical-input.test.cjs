@@ -52,6 +52,7 @@ assert.equal(bleParsed[3].selectable,false);
   authMode='observe';
   bad=true;await assert.rejects(bridge.start('Smart Control','observe',[]),/authentication/);assert.equal(bridge.status().policy.mode,'off');
   assert.equal(commands.filter(x=>x.includes('nohup')).length,3);
+  assert.ok(commands.filter(x=>x.includes('nohup')).every(x=>x.includes('DOTNET_EnableDiagnostics=0')&&!x.includes('GLOBALIZATION_INVARIANT')));
   console.log('PASS physical input: exact devices, own forwarding device skipped, authenticated events, stop, reject invalid MAC');
  }finally{bridge.stop();if(socket)socket.destroy();}
 })().catch(e=>{console.error(e);process.exitCode=1});
