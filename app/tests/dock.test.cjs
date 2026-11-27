@@ -747,11 +747,13 @@ function fixture(options) {
             }
         });
         assert.deepEqual(
-            {m: d.readState().idleMode, a: d.readState().idleAutoDock, p: d.readState().idlePictureOffMin, s: d.readState().idleSuppressScreensaver},
-            {m: 'off', a: false, p: 0, s: false},
-            'idleScreen defaults to off / false / 0 / false'
+            {m: d.readState().idleMode, a: d.readState().idleAutoDock, p: d.readState().idlePictureOffMin, s: d.readState().idleSuppressScreensaver, bh: d.readState().idleBackHoldMode, bhd: d.readState().idleBackHoldDock},
+            {m: 'off', a: false, p: 0, s: false, bh: 'off', bhd: false},
+            'idleScreen defaults to off / false / 0 / false / off / false'
         );
         assert.equal((await d.status()).idleSuppressScreensaver, false, 'status exposes idleSuppressScreensaver default');
+        assert.equal((await d.status()).idleBackHoldMode, 'off', 'status exposes idleBackHoldMode default');
+        assert.equal((await d.status()).idleBackHoldDock, false, 'status exposes idleBackHoldDock default');
         assert.ok(!d.startScript().includes('--idle-mode'), 'off mode omits --idle-mode from startScript');
         assert.ok(!d.startScript().includes('--idle-no-screensaver'), 'off mode omits --idle-no-screensaver from startScript');
 
@@ -761,6 +763,8 @@ function fixture(options) {
         await assert.rejects(() => d.setIdleScreen({pictureOffMin: 30}), /Invalid idle picture-off/);
         await assert.rejects(() => d.setIdleScreen({pictureOffMin: -2}), /Invalid idle picture-off/);
         await assert.rejects(() => d.setIdleScreen({suppressScreensaver: 'yes'}), /Invalid screensaver setting/);
+        await assert.rejects(() => d.setIdleScreen({backHoldMode: 'kill'}), /Invalid back-hold mode/);
+        await assert.rejects(() => d.setIdleScreen({backHoldDock: 'yes'}), /Invalid back-hold dock setting/);
 
         await d.setIdleScreen({mode: 'aurora'});
         assert.equal(d.readState().idleMode, 'aurora');
@@ -812,12 +816,18 @@ function fixture(options) {
         d.refreshOr = undo => { refreshed++; return origRefreshOr(undo); };
         await d.setIdleScreen({mode: 'wallpaper', autoDock: true, pictureOffMin: 5, suppressScreensaver: true});
         assert.equal(refreshed, 0, 'live FIFO update avoids launcher restart');
-        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 5 1" >&3')), 'FIFO command carries mode, autoDock, potOff, and suppressScreensaver=1');
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 5 1 off 0" >&3')), 'FIFO command carries mode, autoDock, potOff, suppressScreensaver=1, backHoldMode, and backHoldDock');
         assert.ok(!execLog.some(cmd => cmd.includes('kill -9')), 'live FIFO update does not kill or restart launcher');
 
         execLog = [];
         await d.setIdleScreen({suppressScreensaver: false, pictureOffMin: -1});
-        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 -1 0" >&3')), 'FIFO command carries -1 for no-dim and suppressScreensaver=0');
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 -1 0 off 0" >&3')), 'FIFO command carries -1 for no-dim and suppressScreensaver=0');
+
+        execLog = [];
+        await d.setIdleScreen({backHoldMode: 'minimize', backHoldDock: true});
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 -1 0 minimize 1" >&3')), 'FIFO command carries minimize and backHoldDock=1');
+        assert.ok(d.startScript().includes('--idle-back-hold minimize --idle-back-hold-dock'), 'startScript carries --idle-back-hold and --idle-back-hold-dock');
+        await d.setIdleScreen({backHoldMode: 'off', backHoldDock: false});
 
         execLog = [];
         await d.notifyAppLaunch(true, 'com.samsung.tv.cobalt-yt');

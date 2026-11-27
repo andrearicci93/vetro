@@ -78,6 +78,7 @@ namespace Launcher.Ui
         private volatile bool _screensaverTakeover;
         private volatile bool _launchingApp;
         private volatile bool _idleShown;
+        private volatile bool _minimizedActive;
         private uint _idleWinId;
         private long _burstUntilMs;
         private long _fastBurstUntilMs;
@@ -134,6 +135,12 @@ namespace Launcher.Ui
         {
             get { return _guardedHomeActive; }
             set { _guardedHomeActive = value; }
+        }
+
+        public bool MinimizedActive
+        {
+            get { return _minimizedActive; }
+            set { _minimizedActive = value; }
         }
 
         public bool PartialActive
@@ -491,7 +498,7 @@ namespace Launcher.Ui
             bool active = Volatile.Read(ref _active);
             lock (_stepGate)
             {
-                WmStackLogic.Step(NativeBackend, _allowSamsungHome, _guardedHomeActive, _partialActive, effectiveShield, saverActive, ref active, ref _probed, ref _idleWinId, out obs, _log, launching, ls, nowMs, () => _cachedFullscreenAppId, _screensaverTakeover);
+                WmStackLogic.Step(NativeBackend, _allowSamsungHome, _guardedHomeActive, _partialActive, effectiveShield, saverActive, ref active, ref _probed, ref _idleWinId, out obs, _log, launching, ls, nowMs, () => _cachedFullscreenAppId, _screensaverTakeover, _minimizedActive);
             }
             bool prevObserved = Volatile.Read(ref _hasObservedWindows);
             bool prevHome = Volatile.Read(ref _guardedHomeWinPresent);

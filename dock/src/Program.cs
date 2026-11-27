@@ -168,11 +168,12 @@ namespace Launcher
         private static bool _lastTunerActive;
         private static double _lastTunerCheckMono = -100.0;
         private static string _fifoReadyPath;
-        private static IntPtr _idleWatchTimer, _idleLcdVerifyTimer, _screensaverKeepaliveTimer, _screensaverWakeReleaseTimer, _syncBackTimer, _elmRunStartTimer, _backPrewarmTimer, _backHoldTimer, _backForceCloseTimer, _deferredForceCloseTimer;
+        private static IntPtr _idleWatchTimer, _idleLcdVerifyTimer, _screensaverKeepaliveTimer, _screensaverWakeReleaseTimer, _syncBackTimer, _elmRunStartTimer, _backPrewarmTimer, _backHoldTimer, _deferredForceCloseTimer;
         private static bool _wasScreensaverTakeoverActive, _screensaverWakePendingRelease;
         private static string _deferredForceCloseApp = "";
         private static int _deferredForceCloseGen;
         private static bool _deferredForceCloseWasLaunching;
+        private static bool _deferredForceCloseMinimizeOnly;
         private static int _deferredForceCloseLaunchEpoch;
         private static int _launchEpoch;
         private static string _lastLaunchTargetApp = "";
@@ -196,7 +197,6 @@ namespace Launcher
         private static readonly Efl.TaskCb ElmRunStartCb = OnElmRunStarted;
         private static readonly Efl.TaskCb BackPrewarmCb = OnBackPrewarm;
         private static readonly Efl.TaskCb BackHoldCb = OnBackHold;
-        private static readonly Efl.TaskCb BackForceCloseCb = OnBackForceClose;
         private static readonly Efl.TaskCb DeferredForceCloseCb = OnDeferredForceClose;
         private static readonly Efl.VconfCb VconfFullscreenCb = OnVconfFullscreenChanged;
         private static readonly Efl.VconfCb VconfScreensaverCb = OnVconfScreensaverChanged;
@@ -678,6 +678,7 @@ namespace Launcher
                 _deferredForceCloseTimer = IntPtr.Zero;
             }
             _deferredForceCloseApp = "";
+            _deferredForceCloseMinimizeOnly = false;
         }
 
         private static void ReleaseBackClaimOnExit()
@@ -792,7 +793,6 @@ namespace Launcher
         {
             if (_backPrewarmTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backPrewarmTimer); _backPrewarmTimer = IntPtr.Zero; }
             if (_backHoldTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backHoldTimer); _backHoldTimer = IntPtr.Zero; }
-            if (_backForceCloseTimer != IntPtr.Zero) { Efl.ecore_timer_del(_backForceCloseTimer); _backForceCloseTimer = IntPtr.Zero; }
             _backHoldCode = 0;
         }
 
@@ -830,7 +830,44 @@ namespace Launcher
             return 0;
         }
 
+        private static void SendAsyncBackKey()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try { Libc.system("/usr/bin/input_keyevent XF86Back >/dev/null 2>&1"); } catch (Exception) { }
+            });
+        }
+
+        private static bool IsTunerOnScreen()
+        {
+            if (!FileExistsFn(IdleBackdropModel.TunerShownFlag) || !FileExistsFn(IdleBackdropModel.TunerPidPath))
+                return false;
+            int pid;
+            return int.TryParse((ReadTextFn(IdleBackdropModel.TunerPidPath) ?? "").Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out pid)
+                && pid > 1
+                && PidAliveFn(pid);
+        }
+
+        private static void TryWriteTunerPipe(string cmd, string logLine = null)
+        {
+            int fd = Libc.open(TunerPipe, Libc.O_WRONLY | Libc.O_NONBLOCK);
+            if (fd < 0) return;
+            try
+            {
+                byte[] b = System.Text.Encoding.ASCII.GetBytes(cmd);
+                Libc.write(fd, b, (UIntPtr)b.Length);
+                if (!string.IsNullOrEmpty(logLine)) Log(logLine);
+            }
+            catch (Exception) { }
+            finally { Libc.close(fd); }
+        }
+
         private static bool TriggerProactiveForceClose(double now, string rawFullApp, string triggerSource)
+        {
+            return TriggerProactiveBackAction(now, rawFullApp, triggerSource, false, null);
+        }
+
+        private static bool TriggerProactiveBackAction(double now, string rawFullApp, string triggerSource, bool minimizeOnly, bool? openDockOverride)
         {
             if (_idleModel == null || DockActive || _idleWin == null || (_idleConfig != null && _idleConfig.Mode == IdleMode.Off) || _homeLaunch != null)
                 return false;
@@ -838,41 +875,58 @@ namespace Launcher
             if ((_idleModel.Visible || _idleModel.HoldOcclusionForScreensaver || IsAnyRealScreensaverActive()) && !launching)
                 return false;
 
-            string appToClose = rawFullApp ?? "";
-            if (IdleBackdropModel.IsScreensaverApp(appToClose))
+            string appToAct = rawFullApp ?? "";
+            if (IdleBackdropModel.IsScreensaverApp(appToAct))
                 return false;
-            if (string.IsNullOrEmpty(appToClose)
-                || appToClose == IdleBackdropModel.TvViewerAppId
-                || IdleBackdropModel.IsGuardedSamsungHome(appToClose))
+            if (string.IsNullOrEmpty(appToAct)
+                || appToAct == IdleBackdropModel.TvViewerAppId
+                || IdleBackdropModel.IsGuardedSamsungHome(appToAct))
             {
-                appToClose = launching ? (_idleModel.LaunchTargetAppId ?? "") : "";
+                appToAct = launching ? (_idleModel.LaunchTargetAppId ?? "") : "";
             }
-            if (appToClose == IdleBackdropModel.WrapperYouTubeAppId)
-                appToClose = IdleBackdropModel.CobaltYouTubeAppId;
+            if (appToAct == IdleBackdropModel.WrapperYouTubeAppId)
+                appToAct = IdleBackdropModel.CobaltYouTubeAppId;
 
-            if (!string.IsNullOrEmpty(appToClose)
-                && (appToClose == IdleBackdropModel.TvViewerAppId
-                    || IdleBackdropModel.IsGuardedSamsungHome(appToClose)
-                    || IdleBackdropModel.IsScreensaverApp(appToClose)
-                    || appToClose.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase)
-                    || !Catalog.ValidAppId(appToClose)))
+            if (!string.IsNullOrEmpty(appToAct)
+                && (appToAct == IdleBackdropModel.TvViewerAppId
+                    || IdleBackdropModel.IsGuardedSamsungHome(appToAct)
+                    || IdleBackdropModel.IsScreensaverApp(appToAct)
+                    || (!minimizeOnly && appToAct.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase))
+                    || !Catalog.ValidAppId(appToAct)))
             {
                 return false;
             }
-            if (string.IsNullOrEmpty(appToClose) && !launching)
+            if (string.IsNullOrEmpty(appToAct) && !launching)
                 return false;
 
             CancelBackHoldTimer();
             CancelDeferredForceClose();
             _lastExitForceCloseMono = now;
 
-            // Step A (T = 0 ms, synchronous on EFL main thread): paint opaque Layer-250 vetro-idle + Arrival Dock
-            // OVER the still-open app on the very next Wayland VSync (~16 ms) before requesting app termination.
-            IdleAction action = _idleModel.OnProactiveForceClose(now, appToClose);
+            // Step A (T = 0 ms, synchronous on EFL main thread): paint opaque Layer-250 vetro-idle + optional Dock
+            // OVER the still-open app on the very next Wayland VSync (~16 ms) before soft-backgrounding or closing.
+            IdleAction action;
+            if (minimizeOnly)
+            {
+                bool wantDock = openDockOverride ?? (_idleConfig != null && _idleConfig.BackHoldDock);
+                action = _idleModel.OnProactiveMinimize(now, appToAct, wantDock);
+            }
+            else
+            {
+                action = _idleModel.OnProactiveForceClose(now, appToAct, openDockOverride);
+            }
             if (action == IdleAction.None) return false;
             _launchBackClaimSuppressUntil = 0;
-            _lastPausedAppId = "";
-            if (!string.IsNullOrEmpty(appToClose)) _lastForceClosedAppId = appToClose;
+            if (minimizeOnly)
+            {
+                _lastPausedAppId = appToAct;
+                _lastForceClosedAppId = "";
+            }
+            else
+            {
+                _lastPausedAppId = "";
+                if (!string.IsNullOrEmpty(appToAct)) _lastForceClosedAppId = appToAct;
+            }
             bool openDock = action == IdleAction.ShowWithDock;
             bool padOpen = _pad != null && _pad.IsOnScreen;
             bool pillOpen = _pill != null && _pill.IsOnScreen;
@@ -882,6 +936,7 @@ namespace Launcher
             if (_wmStack != null)
             {
                 _wmStack.IdleShown = _idleWin.IsShown;
+                _wmStack.MinimizedActive = _idleModel.MinimizedActive;
                 if (!_samsungHomeRequested)
                 {
                     _wmStack.ActivateShield(4500);
@@ -896,15 +951,16 @@ namespace Launcher
             ArmGuard();
             BumpDismissRestoreGen();
             int restoreGen = System.Threading.Volatile.Read(ref _dismissRestoreGen);
-            if (!string.IsNullOrEmpty(appToClose))
+            if (!string.IsNullOrEmpty(appToAct))
             {
-                _deferredForceCloseApp = appToClose;
+                _deferredForceCloseApp = appToAct;
                 _deferredForceCloseGen = restoreGen;
                 _deferredForceCloseWasLaunching = launching;
+                _deferredForceCloseMinimizeOnly = minimizeOnly;
                 _deferredForceCloseLaunchEpoch = System.Threading.Volatile.Read(ref _launchEpoch);
                 _deferredForceCloseTimer = Efl.ecore_timer_add(0.035, DeferredForceCloseCb, IntPtr.Zero);
             }
-            Log("idle: proactive " + triggerSource + " close app=" + (string.IsNullOrEmpty(appToClose) ? "(launching)" : appToClose));
+            Log("idle: proactive " + triggerSource + (minimizeOnly ? " minimize" : " close") + " app=" + (string.IsNullOrEmpty(appToAct) ? "(launching)" : appToAct));
             SyncBackClaim();
             _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, now + 2.5);
             UpdateIdleWatchTimer(0.10);
@@ -947,13 +1003,35 @@ namespace Launcher
             _deferredForceCloseApp = "";
             int restoreGen = _deferredForceCloseGen;
             bool wasLaunching = _deferredForceCloseWasLaunching;
+            bool minimizeOnly = _deferredForceCloseMinimizeOnly;
             int launchEpoch = _deferredForceCloseLaunchEpoch;
             _deferredForceCloseWasLaunching = false;
-            if (string.IsNullOrEmpty(app) || !Catalog.ValidAppId(app)) return 0;
+            _deferredForceCloseMinimizeOnly = false;
+            if (string.IsNullOrEmpty(app)
+                || app == IdleBackdropModel.TvViewerAppId
+                || IdleBackdropModel.IsGuardedSamsungHome(app)
+                || IdleBackdropModel.IsScreensaverApp(app)
+                || (!minimizeOnly && app.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase))
+                || !Catalog.ValidAppId(app))
+            {
+                return 0;
+            }
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
+                    if (minimizeOnly)
+                    {
+                        if (!_samsungHomeRequested
+                            && System.Threading.Volatile.Read(ref _launchEpoch) == launchEpoch
+                            && System.Threading.Volatile.Read(ref _dismissRestoreGen) == restoreGen)
+                        {
+                            Libc.system("/usr/bin/app_launcher -s " + IdleBackdropModel.TvViewerAppId + " -u 5001 >/dev/null 2>&1; "
+                                + "/usr/bin/vconftool set -f -t string memory/appfw/current_fullscreen_appid " + IdleBackdropModel.TvViewerAppId + " >/dev/null 2>&1");
+                        }
+                        return;
+                    }
+
                     string settleCmd = "case \"$(/usr/bin/vconftool get memory/appfw/current_fullscreen_appid 2>/dev/null)\" in "
                         + "*com.samsung.tv.csfs*|*com.samsung.tv.home.*|*com.samsung.tv.coba.*|*" + app + "*) "
                         + "/usr/bin/app_launcher -s " + IdleBackdropModel.TvViewerAppId + " -u 5001 >/dev/null 2>&1; "
@@ -1051,10 +1129,7 @@ namespace Launcher
                 _backReleaseUntil = now + 1.0;
                 SyncBackClaim();
                 PollIdleBackdrop();
-                System.Threading.Tasks.Task.Run(() =>
-                {
-                    try { Libc.system("/usr/bin/input_keyevent XF86Back >/dev/null 2>&1"); } catch (Exception) { }
-                });
+                SendAsyncBackKey();
                 return;
             }
 
@@ -1066,15 +1141,99 @@ namespace Launcher
             _lastExitForceCloseMono = now;
         }
 
-        private static byte OnBackForceClose(IntPtr data)
+        private static void HandleBackHold(double now)
         {
-            _backForceCloseTimer = IntPtr.Zero;
-            try
+            if (now - _lastExitForceCloseMono < 0.60) return;
+            if (IsDisplayOff()) return;
+            if (_pad != null && _pad.IsOnScreen)
             {
-                TriggerProactiveForceClose(Efl.ecore_time_get(), Efl.VconfGetString(FullscreenAppIdKey), "back-hold");
+                _lastExitForceCloseMono = now;
+                ClosePad();
+                return;
             }
-            catch (Exception ex) { Log("idle: proactive back-hold close: " + ex.Message); }
-            return 0;
+            if (DockActive)
+            {
+                if (now < _arrivalBackShieldUntil) return;
+                _lastExitForceCloseMono = now;
+                if (_moveIndex >= 0) MoveKey("XF86Back");
+                else HideDock();
+                return;
+            }
+            if (IsTunerOnScreen())
+            {
+                _lastExitForceCloseMono = now;
+                TryWriteTunerPipe("key 1\n");
+                return;
+            }
+            if ((_idleModel != null && _idleModel.ScreensaverTakeoverActive) || _screensaverWakePendingRelease)
+            {
+                _lastExitForceCloseMono = now;
+                ArmScreensaverTakeoverWakeRelease(now);
+                return;
+            }
+            if (IsAnyRealScreensaverActive() || (_idleModel != null && _idleModel.HoldOcclusionForScreensaver))
+            {
+                _lastExitForceCloseMono = now;
+                WakeOrResetScreensaverForUserAction(false);
+                return;
+            }
+
+            string partial = IdleBackdropModel.NormalizePartialAppId(Efl.VconfGetString("memory/appfw/current_partial_appid"));
+            if (!string.IsNullOrEmpty(partial) && !IdleBackdropModel.IsGuardedSamsungHome(partial) && !IdleBackdropModel.IsScreensaverApp(partial))
+            {
+                _lastExitForceCloseMono = now;
+                _backReleaseUntil = now + 1.0;
+                SyncBackClaim();
+                PollIdleBackdrop();
+                SendAsyncBackKey();
+                return;
+            }
+
+            int src = -1;
+            try { if (Efl.vconf_get_int("memory/system/source_type", out src) != 0) src = -1; } catch (Exception) { src = -1; }
+            string full = Efl.VconfGetString(FullscreenAppIdKey);
+            if (_idleModel == null
+                || _idleWin == null
+                || _homeLaunch != null
+                || _idleConfig == null
+                || _idleConfig.Mode == IdleMode.Off
+                || _idleConfig.BackHoldMode == IdleBackHoldMode.Off
+                || src > 0
+                || _samsungHomeRequested)
+            {
+                _lastExitForceCloseMono = now;
+                SendAsyncBackKey();
+                return;
+            }
+            if (_idleModel.Visible && !_idleModel.IsLaunchSuppressed(now))
+            {
+                _lastExitForceCloseMono = now;
+                return;
+            }
+            if ((string.IsNullOrEmpty(full)
+                    || full == IdleBackdropModel.TvViewerAppId
+                    || IdleBackdropModel.IsGuardedSamsungHome(full))
+                && !_idleModel.IsLaunchSuppressed(now))
+            {
+                _lastExitForceCloseMono = now;
+                SendAsyncBackKey();
+                return;
+            }
+
+            string appTarget = full ?? "";
+            if (string.IsNullOrEmpty(appTarget)
+                || appTarget == IdleBackdropModel.TvViewerAppId
+                || IdleBackdropModel.IsGuardedSamsungHome(appTarget))
+            {
+                appTarget = _idleModel.IsLaunchSuppressed(now) ? (_idleModel.LaunchTargetAppId ?? "") : "";
+            }
+            bool isVetroApp = !string.IsNullOrEmpty(appTarget) && appTarget.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase);
+            bool minimizeOnly = isVetroApp || _idleConfig.BackHoldMode == IdleBackHoldMode.Minimize;
+            if (!TriggerProactiveBackAction(now, full, "back-hold", minimizeOnly, _idleConfig.BackHoldDock))
+            {
+                _lastExitForceCloseMono = now;
+                SendAsyncBackKey();
+            }
         }
 
         private static void CancelIdleTimers()
@@ -1166,7 +1325,9 @@ namespace Launcher
             if (_homeLaunch != null || string.IsNullOrEmpty(argsLine)) return;
             int fallbackLvl = _idleConfig != null ? _idleConfig.NotificationLevel : 10;
             bool fallbackSuppress = _idleConfig != null && _idleConfig.SuppressScreensaver;
-            IdleConfig next = IdleConfig.ParseLiveArgs(argsLine, fallbackLvl, fallbackSuppress);
+            IdleBackHoldMode fallbackBackHold = _idleConfig != null ? _idleConfig.BackHoldMode : IdleBackHoldMode.Off;
+            bool fallbackBackHoldDock = _idleConfig != null && _idleConfig.BackHoldDock;
+            IdleConfig next = IdleConfig.ParseLiveArgs(argsLine, fallbackLvl, fallbackSuppress, fallbackBackHold, fallbackBackHoldDock);
             if (next == null) return;
             _idleConfig = next;
             if (next.Mode == IdleMode.Off)
@@ -1184,7 +1345,7 @@ namespace Launcher
                     _idleWin.SetInteractiveFocus(false);
                     _idleWin.Hide(true);
                 }
-                if (_wmStack != null) { _wmStack.ScreensaverActive = false; _wmStack.ScreensaverTakeover = false; _wmStack.IdleShown = false; }
+                if (_wmStack != null) { _wmStack.ScreensaverActive = false; _wmStack.ScreensaverTakeover = false; _wmStack.IdleShown = false; _wmStack.MinimizedActive = false; }
                 SyncBackClaim();
                 Log("idle: live off");
                 return;
@@ -1416,7 +1577,8 @@ namespace Launcher
                     || IdleBackdropModel.IsScreensaverApp(fullApp)
                     || string.IsNullOrEmpty(fullApp)
                     || wmGuardedHome
-                    || wmScreensaver)
+                    || wmScreensaver
+                    || _idleModel.MinimizedActive)
                 {
                     if (!displayOff) snap.PartialAppId = IdleBackdropModel.NormalizePartialAppId(Efl.VconfGetString("memory/appfw/current_partial_appid"));
                     bool steadyIdleVisible = _idleModel.Visible && _idleWin.IsShown && !displayOff;
@@ -1481,6 +1643,7 @@ namespace Launcher
                 _wmStack.ScreensaverActive = realScreensaver;
                 _wmStack.ScreensaverTakeover = _idleModel.ScreensaverTakeoverActive || (_idleConfig.SuppressScreensaver && realScreensaver && _idleModel.Visible);
                 _wmStack.LaunchingApp = _idleModel.IsLaunchSuppressed(now);
+                _wmStack.MinimizedActive = _idleModel.MinimizedActive;
             }
 
             bool dockWasActive = DockActive;
@@ -1491,7 +1654,10 @@ namespace Launcher
             bool leftTakeover = !takeoverNow && _wasScreensaverTakeoverActive;
             _wasScreensaverTakeoverActive = takeoverNow;
             if (_wmStack != null)
+            {
                 _wmStack.ScreensaverTakeover = takeoverNow || (_idleConfig.SuppressScreensaver && realScreensaver && _idleModel.Visible);
+                _wmStack.MinimizedActive = _idleModel.MinimizedActive;
+            }
             if (leftTakeover)
             {
                 CancelScreensaverWakeReleaseTimer();
@@ -1736,16 +1902,7 @@ namespace Launcher
 
         private static void HideTunerForScreensaverTakeover()
         {
-            int fd = Libc.open(TunerPipe, Libc.O_WRONLY | Libc.O_NONBLOCK);
-            if (fd < 0) return;
-            try
-            {
-                byte[] b = System.Text.Encoding.ASCII.GetBytes("hide\n");
-                Libc.write(fd, b, (UIntPtr)b.Length);
-                Log("tuner: hide (screensaver takeover)");
-            }
-            catch (Exception) { }
-            finally { Libc.close(fd); }
+            TryWriteTunerPipe("hide\n", "tuner: hide (screensaver takeover)");
         }
 
         private static void ArmScreensaverTakeoverWakeRelease(double now)
@@ -4500,6 +4657,7 @@ namespace Launcher
                             case Command.Reload: ReloadLists(); break;
                             case Command.Idle: ApplyLiveIdleConfig(Commands.TakeIdleArgs()); break;
                             case Command.Launch: CompleteScreensaverTakeoverWake(false); HandleExternalLaunch(Commands.TakeLaunchArgs()); break;
+                            case Command.BackHold: HandleBackHold(Efl.ecore_time_get()); break;
                         }
                     }
                 }
@@ -4597,7 +4755,6 @@ namespace Launcher
                                     _backHoldCode = code;
                                     _backPrewarmTimer = Efl.ecore_timer_add(0.01, BackPrewarmCb, IntPtr.Zero);
                                     _backHoldTimer = Efl.ecore_timer_add(0.45, BackHoldCb, IntPtr.Zero);
-                                    _backForceCloseTimer = Efl.ecore_timer_add(0.55, BackForceCloseCb, IntPtr.Zero);
                                     _fastIdleWatchUntil = Math.Max(_fastIdleWatchUntil, keyNow + 2.5);
                                     PollIdleBackdrop();
                                     UpdateIdleWatchTimer(0.10);
@@ -4659,7 +4816,7 @@ namespace Launcher
                             continue;
                         }
                         if (rel == RawOkCode) { TaskOkUp(); RowOkUp(); }
-                        else if (rel == RawBackCode) BackUp.KernelRelease(Efl.ecore_time_get());
+                        else if (rel == RawBackCode || rel == 158) BackUp.KernelRelease(Efl.ecore_time_get());
                         if (_idleWin != null && _idleModel != null && (_screensaverWakePendingRelease || _idleModel.ScreensaverTakeoverActive))
                         {
                             CompleteScreensaverTakeoverWake(rel != _homeCode);
@@ -5266,7 +5423,14 @@ namespace Launcher
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
-            _idleConfig = IdleConfig.Parse(Arg(args, "--idle-mode"), Flag(args, "--idle-autodock"), Arg(args, "--idle-potoff"), Arg(args, "--idle-level"), Flag(args, "--idle-no-screensaver"));
+            _idleConfig = IdleConfig.Parse(
+                Arg(args, "--idle-mode"),
+                Flag(args, "--idle-autodock"),
+                Arg(args, "--idle-potoff"),
+                Arg(args, "--idle-level"),
+                Flag(args, "--idle-no-screensaver"),
+                Arg(args, "--idle-back-hold"),
+                Flag(args, "--idle-back-hold-dock"));
             ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; PadMotion.Instant = true; VolumeFade.Instant = true; }

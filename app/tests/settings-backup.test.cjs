@@ -24,6 +24,7 @@ assert.equal(file.format, 'vetro-settings'); assert.equal(file.schemaVersion, 1)
     .forEach(s => assert.ok(!text.includes(s), 'not in the file: ' + s));
 assert.equal(file.sections.mqtt.hadPassword, true, 'only whether a password has to be typed again');
 assert.deepEqual(file.sections.launcher.cards, ['tasks', 'shard:clock']); assert.equal(file.sections.launcher.mode, 'vetro');
+assert.equal(file.sections.launcher.idleMode, 'off'); assert.equal(file.sections.launcher.idleBackHoldMode, 'off'); assert.equal(file.sections.launcher.idleBackHoldDock, false);
 assert.deepEqual(file.sections.essentials, {wins: {firmware: true, quickboot: false, multiscreen: false, ambient: true, telemetry: false, airplay: false, remotesupport: false, delivery: false, wifipresence: false}, keyGuides: true, hbbtvOff: true});
 assert.deepEqual(file.sections.shards.list.map(p => p.id), ['clock'], 'bundled Shards are part of Vetro, not of the file');
 // A shortcut for an input of the Odyssey OLED G8 (#314) is an ordinary Remapper rule: it is saved, read again, and the service accepts it.
@@ -81,6 +82,18 @@ const swap = b.plan(b.parse(toCustom), curOf(src)).steps.filter(s => s.path === 
 assert.deepEqual(swap, ['disable', 'enableCustom']);
 const backToVetro = b.plan(b.parse(text), curOf(Object.assign({}, src, {dock: Object.assign({}, dock, {customApp: 'org.example.home'})}))).steps.filter(s => s.path === '/dock' && /able/.test(s.body.action)).map(s => s.body.action);
 assert.deepEqual(backToVetro, ['disableCustom', 'enable']);
+
+// Empty TV screen + Hold Back settings round-trip and backwards compatibility with pre-Empty-TV backups
+const withIdle = JSON.parse(text);
+Object.assign(withIdle.sections.launcher, {idleMode: 'wallpaper', idleAutoDock: true, idlePictureOffMin: 10, idleSuppressScreensaver: true, idleBackHoldMode: 'minimize', idleBackHoldDock: true});
+const idlePlan = b.plan(b.parse(withIdle), curOf(src));
+const idleStep = idlePlan.steps.find(s => s.path === '/dock' && s.body.action === 'idleScreen');
+assert.deepEqual(idleStep.body, {action: 'idleScreen', mode: 'wallpaper', autoDock: true, pictureOffMin: 10, suppressScreensaver: true, backHoldMode: 'minimize', backHoldDock: true});
+assert.equal(idleStep.root, true);
+const legacyBackup = JSON.parse(text);
+['idleMode', 'idleAutoDock', 'idlePictureOffMin', 'idleSuppressScreensaver', 'idleBackHoldMode', 'idleBackHoldDock'].forEach(k => delete legacyBackup.sections.launcher[k]);
+const legacyPlan = b.plan(b.parse(legacyBackup), curOf(src));
+assert.ok(!legacyPlan.steps.some(s => s.body && s.body.action === 'idleScreen'), 'pre-Empty-TV backup does not emit idleScreen');
 
 // 5. Without root: what needs it is blocked, the rest still loads
 const q = b.plan(b.parse(text), Object.assign(curOf(Object.assign({}, fresh, {root: false, quickOff: undefined, dns: undefined, multiscreen: undefined})), {root: false, hbbtvValue: null}));

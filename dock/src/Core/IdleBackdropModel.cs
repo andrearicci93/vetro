@@ -6,6 +6,8 @@ namespace Launcher.Core
 {
     internal enum IdleMode { Off, Clock, Wallpaper, Clean, Aurora, AuroraClean }
 
+    internal enum IdleBackHoldMode { Off, Minimize, ForceClose }
+
     internal enum IdleAction { None, Show, ShowWithDock, Hide, Dim, TriggerLcdOff, FallbackDim }
 
     /// <summary>Parsed configuration for the Empty TV screen ("No Live TV" idle backdrop).</summary>
@@ -17,21 +19,60 @@ namespace Launcher.Core
         public int PictureOffMinutes { get; private set; }
         public int NotificationLevel { get; private set; }
         public bool SuppressScreensaver { get; private set; }
+        public IdleBackHoldMode BackHoldMode { get; private set; }
+        public bool BackHoldDock { get; private set; }
         public bool UsesWallpaper { get { return UsesLake || UsesAurora; } }
         public bool UsesLake { get { return Mode == IdleMode.Wallpaper || Mode == IdleMode.Clean; } }
         public bool UsesAurora { get { return Mode == IdleMode.Aurora || Mode == IdleMode.AuroraClean; } }
         public bool ShowsClock { get { return Mode == IdleMode.Clock || Mode == IdleMode.Wallpaper || Mode == IdleMode.Aurora; } }
 
-        public IdleConfig(IdleMode mode, bool autoDock, int pictureOffMinutes, int notificationLevel, bool suppressScreensaver = false)
+        public IdleConfig(
+            IdleMode mode,
+            bool autoDock,
+            int pictureOffMinutes,
+            int notificationLevel,
+            bool suppressScreensaver = false,
+            IdleBackHoldMode backHoldMode = IdleBackHoldMode.Off,
+            bool backHoldDock = false)
         {
             Mode = mode;
             AutoDock = autoDock;
             PictureOffMinutes = pictureOffMinutes;
             NotificationLevel = notificationLevel;
             SuppressScreensaver = suppressScreensaver;
+            BackHoldMode = backHoldMode;
+            BackHoldDock = backHoldDock;
         }
 
-        public static IdleConfig Parse(string mode, bool autoDock, string potOff, string level, bool suppressScreensaver = false)
+        public static IdleBackHoldMode ParseBackHoldMode(string mode, IdleBackHoldMode fallback = IdleBackHoldMode.Off)
+        {
+            if (string.IsNullOrEmpty(mode)) return fallback;
+            if (string.Equals(mode, "off", StringComparison.OrdinalIgnoreCase)) return IdleBackHoldMode.Off;
+            if (string.Equals(mode, "minimize", StringComparison.OrdinalIgnoreCase)) return IdleBackHoldMode.Minimize;
+            if (string.Equals(mode, "force-close", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mode, "forceclose", StringComparison.OrdinalIgnoreCase))
+                return IdleBackHoldMode.ForceClose;
+            return IdleBackHoldMode.Off;
+        }
+
+        private static string FormatBackHoldMode(IdleBackHoldMode mode)
+        {
+            switch (mode)
+            {
+                case IdleBackHoldMode.Minimize: return "minimize";
+                case IdleBackHoldMode.ForceClose: return "force-close";
+                default: return "off";
+            }
+        }
+
+        public static IdleConfig Parse(
+            string mode,
+            bool autoDock,
+            string potOff,
+            string level,
+            bool suppressScreensaver = false,
+            string backHoldMode = null,
+            bool backHoldDock = false)
         {
             IdleMode m = IdleMode.Off;
             if (string.Equals(mode, "clock", StringComparison.OrdinalIgnoreCase)) m = IdleMode.Clock;
@@ -51,10 +92,15 @@ namespace Launcher.Core
             if (int.TryParse(level, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedLvl))
                 lvl = parsedLvl < 0 ? 0 : (parsedLvl > 40 ? 40 : parsedLvl);
 
-            return new IdleConfig(m, autoDock, po, lvl, suppressScreensaver);
+            return new IdleConfig(m, autoDock, po, lvl, suppressScreensaver, ParseBackHoldMode(backHoldMode), backHoldDock);
         }
 
-        public static IdleConfig ParseLiveArgs(string argsLine, int fallbackNotificationLevel, bool fallbackSuppressScreensaver = false)
+        public static IdleConfig ParseLiveArgs(
+            string argsLine,
+            int fallbackNotificationLevel,
+            bool fallbackSuppressScreensaver = false,
+            IdleBackHoldMode fallbackBackHoldMode = IdleBackHoldMode.Off,
+            bool fallbackBackHoldDock = false)
         {
             if (string.IsNullOrEmpty(argsLine)) return null;
             string[] parts = argsLine.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
@@ -63,7 +109,11 @@ namespace Launcher.Core
             bool suppressSs = parts.Length >= 4
                 ? (parts[3] == "1" || string.Equals(parts[3], "true", StringComparison.OrdinalIgnoreCase))
                 : fallbackSuppressScreensaver;
-            return Parse(parts[0], parts[1] == "1" || string.Equals(parts[1], "true", StringComparison.OrdinalIgnoreCase), parts[2], lvl, suppressSs);
+            string backHoldStr = parts.Length >= 5 ? parts[4] : FormatBackHoldMode(fallbackBackHoldMode);
+            bool backHoldDock = parts.Length >= 6
+                ? (parts[5] == "1" || string.Equals(parts[5], "true", StringComparison.OrdinalIgnoreCase))
+                : fallbackBackHoldDock;
+            return Parse(parts[0], parts[1] == "1" || string.Equals(parts[1], "true", StringComparison.OrdinalIgnoreCase), parts[2], lvl, suppressSs, backHoldStr, backHoldDock);
         }
     }
 
@@ -112,6 +162,7 @@ namespace Launcher.Core
         public const double ShardLaunchSuppressSeconds = 8.0;
         public const double NormalLaunchClearDwellSeconds = 1.5;
         public const double ShardLaunchClearDwellSeconds = 3.0;
+        public const double ResumeMinimizedLaunchClearDwellSeconds = 0.15;
         public const double ShardLaunchDwellThresholdSeconds = 7.0;
         public const double DyingRelaunchHoldSeconds = 3.2;
         public const string ChannelListAppId = "com.samsung.tv.channel-list";
@@ -398,10 +449,12 @@ namespace Launcher.Core
         private bool _launchWasVisible;
         private bool _launchSawEmptyGap;
         private bool _pendingLaunchHide;
+        private bool _launchResumedMinimized;
         private double _wakeGraceUntil;
         private double _screensaverExitGraceUntil;
         private double _displayOffSince = -1.0;
         private bool _pictureOffActive;
+        private string _minimizedAppId = "";
 
         public IdleBackdropModel(IdleConfig cfg)
         {
@@ -411,6 +464,8 @@ namespace Launcher.Core
         public bool Visible { get; private set; }
         public bool HoldOcclusionForScreensaver { get; private set; }
         public bool ScreensaverTakeoverActive { get; private set; }
+        public bool MinimizedActive { get { return !string.IsNullOrEmpty(_minimizedAppId); } }
+        public string MinimizedAppId { get { return _minimizedAppId; } }
         public bool Dimmed { get { return _dimmed; } }
         public double WakeSuppressUntil { get; private set; }
         public bool WakeRestackPending { get; private set; }
@@ -596,11 +651,13 @@ namespace Launcher.Core
                 Visible = false;
                 HoldOcclusionForScreensaver = false;
                 ScreensaverTakeoverActive = false;
+                _minimizedAppId = "";
             }
             else if (!_cfg.SuppressScreensaver)
             {
                 ScreensaverTakeoverActive = false;
             }
+            _launchResumedMinimized = false;
         }
 
         /// <summary>
@@ -657,6 +714,11 @@ namespace Launcher.Core
             _dimmed = false;
             _lcdOffSent = false;
             _wasOtherApp = true;
+            bool resumingMinimized = !string.IsNullOrEmpty(_minimizedAppId)
+                && !string.IsNullOrEmpty(targetAppId)
+                && SameLaunchAppOrYouTubeAlias(targetAppId, _minimizedAppId);
+            _minimizedAppId = "";
+            if (resumingMinimized) _lastNonIdleAppId = "";
             if (_lastKnownSource > 0 && (string.IsNullOrEmpty(targetAppId) || !targetAppId.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase)))
                 _lastKnownSource = 0;
             _guardedHomeHoldUntil = 0;
@@ -667,18 +729,26 @@ namespace Launcher.Core
                 _teardownHoldAppId = "";
             }
             if (suppressSeconds < 0) suppressSeconds = 0;
-            double dwell = suppressSeconds >= ShardLaunchDwellThresholdSeconds
-                ? ShardLaunchClearDwellSeconds
-                : NormalLaunchClearDwellSeconds;
             bool sameGesture = now < _launchSuppressUntil
                 && (now - _launchStartedAt) < 0.5
                 && (string.IsNullOrEmpty(targetAppId)
                     || string.IsNullOrEmpty(_launchTargetAppId)
                     || SameLaunchAppOrYouTubeAlias(targetAppId, _launchTargetAppId));
+            double dwell = (resumingMinimized || (sameGesture && _launchResumedMinimized))
+                ? ResumeMinimizedLaunchClearDwellSeconds
+                : (suppressSeconds >= ShardLaunchDwellThresholdSeconds
+                    ? ShardLaunchClearDwellSeconds
+                    : NormalLaunchClearDwellSeconds);
             if (sameGesture)
             {
+                if (resumingMinimized)
+                {
+                    _launchResumedMinimized = true;
+                    _launchSawEmptyGap = true;
+                }
                 _launchSuppressUntil = Math.Max(_launchSuppressUntil, now + suppressSeconds);
-                if (dwell > _launchClearDwellSeconds) _launchClearDwellSeconds = dwell;
+                if (_launchResumedMinimized) _launchClearDwellSeconds = ResumeMinimizedLaunchClearDwellSeconds;
+                else if (dwell > _launchClearDwellSeconds) _launchClearDwellSeconds = dwell;
                 if (!string.IsNullOrEmpty(targetAppId) && string.IsNullOrEmpty(_launchTargetAppId))
                     _launchTargetAppId = targetAppId;
                 _launchClearSince = 0;
@@ -686,6 +756,7 @@ namespace Launcher.Core
             }
             else
             {
+                _launchResumedMinimized = resumingMinimized;
                 _launchStartedAt = now;
                 _launchTargetAppId = targetAppId ?? "";
                 _launchSuppressUntil = Math.Max(_launchSuppressUntil, now + suppressSeconds);
@@ -693,7 +764,7 @@ namespace Launcher.Core
                 _launchClearSince = 0;
                 _launchClearAppId = "";
                 _launchWasVisible = Visible || wasHolding;
-                _launchSawEmptyGap = false;
+                _launchSawEmptyGap = resumingMinimized;
             }
             _wakeGraceUntil = 0;
         }
@@ -715,14 +786,8 @@ namespace Launcher.Core
             _lcdOffSent = false;
         }
 
-        /// <summary>
-        /// Proactively shows the opaque backdrop (and AutoDock if enabled) before closing a foreground app
-        /// on a sustained Back/Exit hold, clearing any active launch suppression and arming a teardown hold
-        /// so <see cref="Evaluate"/> keeps the backdrop steady while <c>app_launcher -t</c> finishes closing the app.
-        /// </summary>
-        public IdleAction OnProactiveForceClose(double now, string closingAppId = "")
+        private void ResetTransitionState(double now)
         {
-            if (_cfg.Mode == IdleMode.Off) return IdleAction.None;
             HoldOcclusionForScreensaver = false;
             _screensaverExitGraceUntil = 0;
             _launchSuppressUntil = 0;
@@ -733,19 +798,50 @@ namespace Launcher.Core
             _launchWasVisible = false;
             _launchSawEmptyGap = false;
             _pendingLaunchHide = false;
+            _launchResumedMinimized = false;
             _wakeGraceUntil = 0;
-            string closing = closingAppId ?? "";
-            _teardownHoldAppId = closing;
-            _teardownHoldUntil = !string.IsNullOrEmpty(closing) ? now + TeardownHoldSeconds : 0;
-            _guardedHomeDyingAppId = closing;
-            _guardedHomeHoldUntil = _teardownHoldUntil;
+            _guardedHomeHoldUntil = 0;
+            _guardedHomeDyingAppId = "";
+            _teardownHoldUntil = 0;
+            _teardownHoldAppId = "";
             _idleSince = now;
             _dimmed = false;
             _lcdOffSent = false;
             _wasOtherApp = false;
             ScreensaverTakeoverActive = false;
+        }
+
+        /// <summary>
+        /// Proactively shows the opaque backdrop (and optional Dock) while softly sending a foreground app to background
+        /// on Back hold without terminating its process.
+        /// </summary>
+        public IdleAction OnProactiveMinimize(double now, string appId, bool openDock)
+        {
+            if (_cfg.Mode == IdleMode.Off) return IdleAction.None;
+            ResetTransitionState(now);
+            _minimizedAppId = appId ?? "";
             Visible = true;
-            return _cfg.AutoDock ? IdleAction.ShowWithDock : IdleAction.Show;
+            return openDock ? IdleAction.ShowWithDock : IdleAction.Show;
+        }
+
+        /// <summary>
+        /// Proactively shows the opaque backdrop (and AutoDock if enabled, or <paramref name="openDockOverride"/> when supplied)
+        /// before closing a foreground app on a sustained Back/Exit hold, clearing any active launch suppression and arming
+        /// a teardown hold so <see cref="Evaluate"/> keeps the backdrop steady while <c>app_launcher -t</c> finishes closing the app.
+        /// </summary>
+        public IdleAction OnProactiveForceClose(double now, string closingAppId = "", bool? openDockOverride = null)
+        {
+            if (_cfg.Mode == IdleMode.Off) return IdleAction.None;
+            ResetTransitionState(now);
+            _minimizedAppId = "";
+            string closing = closingAppId ?? "";
+            _teardownHoldAppId = closing;
+            _teardownHoldUntil = !string.IsNullOrEmpty(closing) ? now + TeardownHoldSeconds : 0;
+            _guardedHomeDyingAppId = closing;
+            _guardedHomeHoldUntil = _teardownHoldUntil;
+            Visible = true;
+            bool openDock = openDockOverride ?? _cfg.AutoDock;
+            return openDock ? IdleAction.ShowWithDock : IdleAction.Show;
         }
 
         /// <summary>
@@ -786,6 +882,7 @@ namespace Launcher.Core
             if (_cfg.Mode == IdleMode.Off)
             {
                 ScreensaverTakeoverActive = false;
+                _minimizedAppId = "";
                 if (!Visible && !HoldOcclusionForScreensaver) return IdleAction.None;
                 Visible = false;
                 HoldOcclusionForScreensaver = false;
@@ -906,6 +1003,8 @@ namespace Launcher.Core
             string normPartial = NormalizePartialAppId(snap.PartialAppId);
             bool dyingTargetHold = launchSuppressed
                 && !_launchSawEmptyGap
+                && !_launchResumedMinimized
+                && _launchClearSince <= 0
                 && (now - _launchStartedAt) < DyingRelaunchHoldSeconds
                 && !string.IsNullOrEmpty(snap.FullscreenAppId)
                 && !string.IsNullOrEmpty(_lastNonIdleAppId)
@@ -959,6 +1058,29 @@ namespace Launcher.Core
                 && !snap.TvPlusActive
                 && (snap.SourceType == 0 || (snap.SourceType < 0 && (_lastKnownSource <= 0 || snap.PendingTvSource)));
 
+            if (!string.IsNullOrEmpty(_minimizedAppId)
+                && (snap.SamsungHomeRequested
+                    || snap.SourceType > 0
+                    || snap.TunerActive
+                    || snap.FullscreenAppId == TvViewerAppId
+                    || _cfg.Mode == IdleMode.Off
+                    || (!string.IsNullOrEmpty(snap.FullscreenAppId)
+                        && !IsGuardedSamsungHome(snap.FullscreenAppId)
+                        && !IsScreensaverApp(snap.FullscreenAppId)
+                        && !SameLaunchAppOrYouTubeAlias(snap.FullscreenAppId, _minimizedAppId))))
+            {
+                _minimizedAppId = "";
+            }
+
+            bool minimizedHold = (Visible || HoldOcclusionForScreensaver)
+                && !string.IsNullOrEmpty(_minimizedAppId)
+                && !snap.SamsungHomeRequested
+                && !realScreensaver
+                && !snap.TunerActive
+                && snap.SourceType <= 0
+                && _lastKnownSource <= 0
+                && (string.IsNullOrEmpty(snap.FullscreenAppId) || SameLaunchAppOrYouTubeAlias(snap.FullscreenAppId, _minimizedAppId));
+
             bool onEmptyTv = (snap.FullscreenAppId == TvViewerAppId
                 && !snap.TvPlusActive
                 && (snap.SourceType == 0 || (snap.SourceType < 0 && (Visible || HoldOcclusionForScreensaver || _lastKnownSource <= 0 || snap.PendingTvSource))))
@@ -967,7 +1089,8 @@ namespace Launcher.Core
                 || screensaverExitHold
                 || wakeEmptyHold
                 || guardedHome
-                || guardedHomeHold;
+                || guardedHomeHold
+                || minimizedHold;
             double curtainMaxSeconds = _launchClearDwellSeconds >= ShardLaunchClearDwellSeconds ? 4.5 : 2.5;
             bool launchCurtainHold = launchSuppressed
                 && Visible
@@ -1028,6 +1151,7 @@ namespace Launcher.Core
                             _launchWasVisible = false;
                             _launchSawEmptyGap = false;
                             _pendingLaunchHide = false;
+                            _launchResumedMinimized = false;
                             launchSuppressed = false;
                         }
                     }
@@ -2046,14 +2170,16 @@ namespace Launcher.Core
             bool launchingApp = false,
             WmLaunchState launchState = null,
             long nowMs = 0,
-            Func<string> readFullscreenAppId = null)
+            Func<string> readFullscreenAppId = null,
+            bool screensaverTakeover = false,
+            bool minimizedActive = false)
         {
             if (shellRead == null)
             {
                 observation = default(WmStackObservation);
                 return;
             }
-            Step(new ShellEnlightenmentWmBackend(shellRead), allowSamsungHome, guardedHomeActive, partialActive, shieldTime, screensaverActive, ref active, ref probed, ref idleWinId, out observation, log, launchingApp, launchState, nowMs, readFullscreenAppId);
+            Step(new ShellEnlightenmentWmBackend(shellRead), allowSamsungHome, guardedHomeActive, partialActive, shieldTime, screensaverActive, ref active, ref probed, ref idleWinId, out observation, log, launchingApp, launchState, nowMs, readFullscreenAppId, screensaverTakeover, minimizedActive);
         }
 
         public static void Step(
@@ -2072,7 +2198,8 @@ namespace Launcher.Core
             WmLaunchState launchState = null,
             long nowMs = 0,
             Func<string> readFullscreenAppId = null,
-            bool screensaverTakeover = false)
+            bool screensaverTakeover = false,
+            bool minimizedActive = false)
         {
             observation = default(WmStackObservation);
             if (backend == null) return;
@@ -2459,6 +2586,31 @@ namespace Launcher.Core
                     if (tvViewerWin != 0 && tvViewerIndex < topTvIndex) { topTv = tvViewerWin; topTvIndex = tvViewerIndex; }
                     if (tvVideoSinkWin != 0 && tvVideoSinkIndex < topTvIndex) { topTv = tvVideoSinkWin; topTvIndex = tvVideoSinkIndex; }
                     if (!allowSamsungHome && homeWin != 0 && (homeLayer < 0 || homeLayer == LayerNormal) && homeIndex < topTvIndex) { topTv = homeWin; topTvIndex = homeIndex; }
+                    uint topTarget = topTv;
+                    int topTargetIndex = topTvIndex;
+                    if (!saverNow && minimizedActive && idleVisible)
+                    {
+                        for (int i = 0; i < wins.Count; i++)
+                        {
+                            WinInfo w = wins[i];
+                            if (w.WinId == idleWin) continue;
+                            bool isUserApp = IsLayer200UserAppWindow(w)
+                                || (w.WinId != 0
+                                    && w.Visible
+                                    && !w.IsHidden
+                                    && w.Layer < 0
+                                    && w.Width >= 1280
+                                    && w.Height >= 720
+                                    && !IsSystemBackgroundWindow(w.Title)
+                                    && !IsLaunchscreenWindow(w.Title));
+                            if (isUserApp && (topTarget == 0 || i < topTargetIndex))
+                            {
+                                topTarget = w.WinId;
+                                topTargetIndex = i;
+                                break;
+                            }
+                        }
+                    }
                     if (saverNow)
                     {
                         // Keep vetro-idle directly below any layer-200 screensaver window (e.g. spotlight-ss) and at the top of
@@ -2474,9 +2626,9 @@ namespace Launcher.Core
                             stackChanged = true;
                         }
                     }
-                    else if (topTv != 0 && (layerChanged || idleIndex > topTvIndex))
+                    else if (topTarget != 0 && (layerChanged || idleIndex > topTargetIndex))
                     {
-                        backend.TrySetWindowStack(idleWin, topTv, 1);
+                        backend.TrySetWindowStack(idleWin, topTarget, 1);
                         stackChanged = true;
                     }
                 }

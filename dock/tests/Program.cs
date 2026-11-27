@@ -2149,6 +2149,7 @@ namespace Launcher.Tests
             Console.WriteLine();
             LauncherRegressionTests.Run();
             LauncherRegressionTests.RunWallpaperScaleTests();
+            BackHoldTests.Run();
             Console.WriteLine(T.Checks + " checks, " + T.Failures + " failures");
             return T.Failures == 0 ? 0 : 1;
         }

@@ -177,6 +177,7 @@ Dock.prototype.installed = function () {
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom', 'hidden'];   // where the volume bar sits (the dock's --volume-edge); hidden: the level changes, no bar
 var IDLE_MODES = ['off', 'clock', 'wallpaper', 'clean', 'aurora', 'aurora-clean'];
 var IDLE_POTOFF_MINS = [-1, 0, 5, 10, 15];
+var IDLE_BACK_HOLD_MODES = ['off', 'minimize', 'force-close'];
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
 var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;
 // A Shard (plugin) can add one card (manifest "controlCenter"): it is named "shard:<plugin id>". A saved list keeps such a name even while
@@ -264,9 +265,11 @@ Dock.prototype.readState = function () {
             idleMode: s && IDLE_MODES.indexOf(s.idleMode) >= 0 ? s.idleMode : 'off',
             idleAutoDock: s && s.idleAutoDock === true,
             idlePictureOffMin: s && IDLE_POTOFF_MINS.indexOf(s.idlePictureOffMin) >= 0 ? s.idlePictureOffMin : 0,
-            idleSuppressScreensaver: s && s.idleSuppressScreensaver === true};
+            idleSuppressScreensaver: s && s.idleSuppressScreensaver === true,
+            idleBackHoldMode: s && IDLE_BACK_HOLD_MODES.indexOf(s.idleBackHoldMode) >= 0 ? s.idleBackHoldMode : 'off',
+            idleBackHoldDock: s && s.idleBackHoldDock === true};
     } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
-        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), connectedSourcesOnly: false, hideTvSource: false, appStore: 'tvstore', idleMode: 'off', idleAutoDock: false, idlePictureOffMin: 0, idleSuppressScreensaver: false}; }
+        showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), connectedSourcesOnly: false, hideTvSource: false, appStore: 'tvstore', idleMode: 'off', idleAutoDock: false, idlePictureOffMin: 0, idleSuppressScreensaver: false, idleBackHoldMode: 'off', idleBackHoldDock: false}; }
 };
 
 // Source-option migration must never overwrite an unreadable or malformed existing state.
@@ -459,7 +462,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, connectedSourcesOnly: state.connectedSourcesOnly, hideTvSource: state.hideTvSource, appStore: state.appStore, idleMode: state.idleMode, idleAutoDock: state.idleAutoDock, idlePictureOffMin: state.idlePictureOffMin, idleSuppressScreensaver: !!state.idleSuppressScreensaver, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, connectedSourcesOnly: state.connectedSourcesOnly, hideTvSource: state.hideTvSource, appStore: state.appStore, idleMode: state.idleMode, idleAutoDock: state.idleAutoDock, idlePictureOffMin: state.idlePictureOffMin, idleSuppressScreensaver: !!state.idleSuppressScreensaver, idleBackHoldMode: state.idleBackHoldMode, idleBackHoldDock: !!state.idleBackHoldDock, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -535,7 +538,7 @@ Dock.prototype.startScript = function () {
         // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
         (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
-        (!state.customApp && state.idleMode !== 'off' ? ' --idle-mode ' + state.idleMode + (state.idleAutoDock ? ' --idle-autodock' : '') + (state.idlePictureOffMin !== 0 ? ' --idle-potoff ' + state.idlePictureOffMin : '') + (state.idleSuppressScreensaver ? ' --idle-no-screensaver' : '') : '') +
+        (!state.customApp && state.idleMode !== 'off' ? ' --idle-mode ' + state.idleMode + (state.idleAutoDock ? ' --idle-autodock' : '') + (state.idlePictureOffMin !== 0 ? ' --idle-potoff ' + state.idlePictureOffMin : '') + (state.idleSuppressScreensaver ? ' --idle-no-screensaver' : '') + ' --idle-back-hold ' + state.idleBackHoldMode + (state.idleBackHoldDock ? ' --idle-back-hold-dock' : '') : '') +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
         (!state.customApp && this.cardsArg(state) ? ' --cards ' + this.cardsArg(state) : ' --no-tasks');
     return [
@@ -1284,8 +1287,9 @@ Dock.prototype.setVolumeEdge = function (edge) {
     return this.refreshOr(function () { self.patchState({volumeEdge: state.volumeEdge}); });
 };
 // "idle" down the launcher's control pipe so Empty TV screen settings apply live with zero restart flash.
-Dock.prototype.tellIdle = function (mode, autoDock, potOff, suppressScreensaver) {
-    var cmd = 'idle ' + mode + ' ' + (autoDock ? 1 : 0) + ' ' + potOff + ' ' + (suppressScreensaver ? 1 : 0);
+Dock.prototype.tellIdle = function (mode, autoDock, potOff, suppressScreensaver, backHoldMode, backHoldDock) {
+    var bhMode = IDLE_BACK_HOLD_MODES.indexOf(backHoldMode) >= 0 ? backHoldMode : 'off';
+    var cmd = 'idle ' + mode + ' ' + (autoDock ? 1 : 0) + ' ' + potOff + ' ' + (suppressScreensaver ? 1 : 0) + ' ' + bhMode + ' ' + (backHoldDock ? 1 : 0);
     var line = 'if ' + dockAliveCmd() + ' && [ "$(cat ' + FIFO_READY + ' 2>/dev/null)" = "$p" ]; then ( exec 3<>' + FIFO + ' && echo "' + cmd + '" >&3 ) && echo live; fi; true';
     return this.execute(line, 5000).then(function (r) {
         return !!(r && /\blive\b/.test(r.stdout || ''));
@@ -1312,19 +1316,32 @@ Dock.prototype.setIdleScreen = function (opts) {
     var autoDock = o.autoDock !== undefined ? o.autoDock : state.idleAutoDock;
     var potOff = o.pictureOffMin !== undefined ? o.pictureOffMin : state.idlePictureOffMin;
     var suppressSs = o.suppressScreensaver !== undefined ? o.suppressScreensaver : state.idleSuppressScreensaver;
+    var backHoldMode = o.backHoldMode !== undefined ? o.backHoldMode : state.idleBackHoldMode;
+    var backHoldDock = o.backHoldDock !== undefined ? o.backHoldDock : state.idleBackHoldDock;
     if (IDLE_MODES.indexOf(mode) < 0) return Promise.reject(new Error('Invalid idle mode'));
     if (typeof autoDock !== 'boolean') return Promise.reject(new Error('Invalid auto-dock setting'));
     if (IDLE_POTOFF_MINS.indexOf(potOff) < 0) return Promise.reject(new Error('Invalid idle picture-off interval'));
     if (typeof suppressSs !== 'boolean') return Promise.reject(new Error('Invalid screensaver setting'));
-    try { this.patchState({idleMode: mode, idleAutoDock: autoDock, idlePictureOffMin: potOff, idleSuppressScreensaver: suppressSs}); }
+    if (IDLE_BACK_HOLD_MODES.indexOf(backHoldMode) < 0) return Promise.reject(new Error('Invalid back-hold mode'));
+    if (typeof backHoldDock !== 'boolean') return Promise.reject(new Error('Invalid back-hold dock setting'));
+    var prevBackHold = state.enabled && !state.customApp && state.idleMode !== 'off' && state.idleBackHoldMode !== 'off';
+    var nextBackHold = state.enabled && !state.customApp && mode !== 'off' && backHoldMode !== 'off';
+    try { this.patchState({idleMode: mode, idleAutoDock: autoDock, idlePictureOffMin: potOff, idleSuppressScreensaver: suppressSs, idleBackHoldMode: backHoldMode, idleBackHoldDock: backHoldDock}); }
     catch (e) { return Promise.reject(e); }
     var run = function () {
         var cur = self.readState();
-        if (!cur.enabled || cur.customApp) return self.status();
-        return self.tellIdle(cur.idleMode, cur.idleAutoDock, cur.idlePictureOffMin, cur.idleSuppressScreensaver).then(function (live) {
-            if (live) return self.status();
-            if (self.busy) return self.status();
-            return self.refreshOr(function () {});
+        function done() {
+            return (prevBackHold !== nextBackHold ? self.keysChanged() : Promise.resolve()).then(function () { return self.status(); });
+        }
+        if (!cur.enabled || cur.customApp) return done();
+        return self.tellIdle(cur.idleMode, cur.idleAutoDock, cur.idlePictureOffMin, cur.idleSuppressScreensaver, cur.idleBackHoldMode, cur.idleBackHoldDock).then(function (live) {
+            if (live) return done();
+            if (self.busy) return done();
+            return self.refreshOr(function () {}).then(function (st) {
+                return prevBackHold !== nextBackHold ? self.keysChanged().then(function () { return self.status(); }) : st;
+            }, function (err) {
+                return (prevBackHold !== nextBackHold ? self.keysChanged() : Promise.resolve()).then(function () { throw err; });
+            });
         });
     };
     this.idleQueue = (this.idleQueue || Promise.resolve()).then(run, run);

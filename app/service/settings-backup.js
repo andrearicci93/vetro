@@ -15,6 +15,9 @@ var WIN_IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', '
 var DOCK_SWITCHES = ['fixTizenTube', 'closeIdleHome', 'volumePill', 'numberPad', 'noMotion', 'showHomeSources', 'useSourceImages', 'connectedSourcesOnly', 'hideTvSource'];
 var DOCK_ROOT = {showHomeSources: true, useSourceImages: true, connectedSourcesOnly: true, hideTvSource: true};     // these read the TV's sources even with the launcher off
 var EDGES = ['left', 'right', 'top', 'bottom', 'hidden'], STORES = ['tvstore', 'samsung'];
+var IDLE_MODES = ['off', 'clock', 'wallpaper', 'clean', 'aurora', 'aurora-clean'];
+var IDLE_POTOFF_MINS = [-1, 0, 5, 10, 15];
+var IDLE_BACK_HOLD_MODES = ['off', 'minimize', 'force-close'];
 var ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/, CARD_RE = /^(?:tasks|audio|picture|sleep|shard:[A-Za-z0-9._-]{1,64})$/;
 var SECTIONS = ['launcher', 'tuner', 'remapper', 'essentials', 'performance', 'keepRemoved', 'quickSettings', 'dns', 'mqtt', 'shards'];
 var LABELS = {launcher: 'Launcher', tuner: 'Vetro TV Tuner', remapper: 'Remapper', essentials: 'Essential settings', performance: 'Extra performance mode',
@@ -46,6 +49,12 @@ function build(src) {
         fixTizenTube: bool(d.fixTizenTube), closeIdleHome: d.closeIdleHome !== false, volumePill: bool(d.volumePill), numberPad: bool(d.numberPad),
         noMotion: bool(d.noMotion), showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages), connectedSourcesOnly: bool(d.connectedSourcesOnly), hideTvSource: bool(d.hideTvSource),
         volumeEdge: EDGES.indexOf(d.volumeEdge) >= 0 ? d.volumeEdge : 'left', appStore: d.appStore === 'samsung' ? 'samsung' : 'tvstore',
+        idleMode: IDLE_MODES.indexOf(d.idleMode) >= 0 ? d.idleMode : 'off',
+        idleAutoDock: bool(d.idleAutoDock),
+        idlePictureOffMin: IDLE_POTOFF_MINS.indexOf(d.idlePictureOffMin) >= 0 ? d.idlePictureOffMin : 0,
+        idleSuppressScreensaver: bool(d.idleSuppressScreensaver),
+        idleBackHoldMode: IDLE_BACK_HOLD_MODES.indexOf(d.idleBackHoldMode) >= 0 ? d.idleBackHoldMode : 'off',
+        idleBackHoldDock: bool(d.idleBackHoldDock),
         cards: ids(d.cards, CARD_RE, 3)};
     else notRead.launcher = 'unreadable';
     if (src.tuner) s.tuner = {enabled: bool(src.tuner.enabled)}; else notRead.tuner = 'unreadable';
@@ -94,6 +103,12 @@ function parse(file) {
         return obj(v) && ['vetro', 'custom', 'off'].indexOf(v.mode) >= 0 && (v.mode !== 'custom' || (typeof v.customApp === 'string' && ID_RE.test(v.customApp))) &&
             DOCK_SWITCHES.every(function (k) { return v[k] === undefined || isBool(v[k]); }) &&
             (v.volumeEdge === undefined || EDGES.indexOf(v.volumeEdge) >= 0) && (v.appStore === undefined || STORES.indexOf(v.appStore) >= 0) &&
+            (v.idleMode === undefined || IDLE_MODES.indexOf(v.idleMode) >= 0) &&
+            (v.idleAutoDock === undefined || isBool(v.idleAutoDock)) &&
+            (v.idlePictureOffMin === undefined || IDLE_POTOFF_MINS.indexOf(v.idlePictureOffMin) >= 0) &&
+            (v.idleSuppressScreensaver === undefined || isBool(v.idleSuppressScreensaver)) &&
+            (v.idleBackHoldMode === undefined || IDLE_BACK_HOLD_MODES.indexOf(v.idleBackHoldMode) >= 0) &&
+            (v.idleBackHoldDock === undefined || isBool(v.idleBackHoldDock)) &&
             (v.cards === undefined || (Array.isArray(v.cards) && v.cards.length <= 3 && v.cards.every(function (c) { return typeof c === 'string' && CARD_RE.test(c); })));
     });
     take('tuner', function (v) { return obj(v) && isBool(v.enabled); });
@@ -164,6 +179,15 @@ function plan(want, cur) {
         });
         if (f.volumeEdge && f.volumeEdge !== now.volumeEdge) step('launcher', 'Volume bar position: ' + f.volumeEdge, '/dock', {action: 'volumeEdge', edge: f.volumeEdge}, running);
         if (f.appStore && f.appStore !== now.appStore) step('launcher', 'Store in All apps: ' + (f.appStore === 'samsung' ? 'Samsung' : 'TV-Store'), '/dock', {action: 'appStore', store: f.appStore}, false);
+        var IDLE_FIELDS = [['idleMode', 'mode'], ['idleAutoDock', 'autoDock'], ['idlePictureOffMin', 'pictureOffMin'], ['idleSuppressScreensaver', 'suppressScreensaver'], ['idleBackHoldMode', 'backHoldMode'], ['idleBackHoldDock', 'backHoldDock']];
+        var idleBody = {action: 'idleScreen'}, idleDiff = false;
+        IDLE_FIELDS.forEach(function (pair) {
+            if (f[pair[0]] !== undefined) {
+                idleBody[pair[1]] = f[pair[0]];
+                if (f[pair[0]] !== now[pair[0]]) idleDiff = true;
+            }
+        });
+        if (idleDiff) step('launcher', 'Empty TV screen', '/dock', idleBody, now.mode === 'vetro');
         if (f.cards && !same(f.cards, now.cards)) {
             var missing = f.cards.filter(function (k) { var id = k.indexOf('shard:') === 0 ? k.slice(6) : null; return id && !((cur.shards || {})[id] && (cur.shards[id].enabled || (w.shards && w.shards.list.some(function (p) { return p.id === id && p.enabled === true; })))); });
             if (missing.length) skip('launcher', 'Control center cards', 'They name a Shard that is not installed here (' + missing.join(', ') + '). Set the cards in Launcher.');

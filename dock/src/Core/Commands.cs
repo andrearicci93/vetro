@@ -5,14 +5,15 @@ using System.Text;
 
 namespace Launcher.Core
 {
-    internal enum Command { Show, Hide, Toggle, VolUp, VolDown, VolMute, Pad, Rescan, Reload, Idle, Launch }
+    internal enum Command { Show, Hide, Toggle, VolUp, VolDown, VolMute, Pad, Rescan, Reload, Idle, Launch, BackHold }
 
     /// <summary>
     /// Newline-delimited command stream read from the control FIFO ("show", "hide", "toggle", and the volume keys
     /// "volup", "voldown", "volmute" and "pad" that the Vetro service forwards when it swallows the remote's volume and 123 keys, and
     /// "rescan", which the service sends when its remote bridge has just made a new forwarding node, so it is watched at once, and "reload",
-    /// which it sends when it has written the app lists again after an app was installed or removed, plus "idle &lt;mode&gt; &lt;0|1&gt; &lt;potoff&gt; [0|1]"
-    /// for live reconfiguration of the Empty TV screen without restarting and "launch [seconds]" when an app is started externally).
+    /// which it sends when it has written the app lists again after an app was installed or removed, plus "idle &lt;mode&gt; &lt;0|1&gt; &lt;potoff&gt; [0|1] [backhold] [backholddock]"
+    /// for live reconfiguration of the Empty TV screen without restarting, "launch [seconds]" when an app is started externally,
+    /// and "backhold" when the remote bridge detects a sustained Back hold).
     /// Unknown words are dropped, a line without a terminator waits for more bytes, and a
     /// writer that never sends a newline cannot grow the buffer past <see cref="MaxLine"/>.
     /// </summary>
@@ -101,6 +102,7 @@ namespace Launcher.Core
                 case "pad": into.Add(Command.Pad); break;
                 case "rescan": into.Add(Command.Rescan); break;
                 case "reload": into.Add(Command.Reload); break;
+                case "backhold": into.Add(Command.BackHold); break;
             }
         }
     }

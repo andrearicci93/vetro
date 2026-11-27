@@ -208,7 +208,7 @@ var projectors = {
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),
         {mode:['off','vetro','custom'].indexOf(d.mode)>=0?d.mode:null,customApp:boolean(!!d.customApp),volumeBar:boolean(d.volumePill),numberPad:boolean(d.numberPad),
-         idleMode:['off','clock','wallpaper','clean','aurora','aurora-clean'].indexOf(d.idleMode)>=0?d.idleMode:null,idleAutoDock:boolean(d.idleAutoDock),idlePictureOffMin:numeric(d.idlePictureOffMin),idleSuppressScreensaver:boolean(d.idleSuppressScreensaver),
+         idleMode:['off','clock','wallpaper','clean','aurora','aurora-clean'].indexOf(d.idleMode)>=0?d.idleMode:null,idleAutoDock:boolean(d.idleAutoDock),idlePictureOffMin:numeric(d.idlePictureOffMin),idleSuppressScreensaver:boolean(d.idleSuppressScreensaver),idleBackHoldMode:['off','minimize','force-close'].indexOf(d.idleBackHoldMode)>=0?d.idleBackHoldMode:null,idleBackHoldDock:boolean(d.idleBackHoldDock),
          cardCount:Array.isArray(d.cards)?d.cards.length:null,homePictureClears:numeric(d.homePictureClears),homePictureAgoSeconds:numeric(d.homePictureAgoSeconds),appStore:choice(d.appStore,['samsung','tvstore']),events:dockEvents(d.keyLog),
          bootTimeline:d.bootTimeline&&typeof d.bootTimeline==='object'?numbers(d.bootTimeline,['serviceStart','agentSeen','shownAtPowerOn']):null,
          openings:dockOpenings(d.openLog)});},
@@ -254,7 +254,7 @@ var projectors = {
     // failure: the service's last reason for not holding the remote, as a fixed word; helperError: the input helper's last exception, its type
     // and the operation that failed with the errno ("IOException: EVIOCGRAB failed with errno 16"), device paths cut out; prevHelperError: the
     // same for the helper before it (why a helper that held the remote ended).
-    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','savedNodePresent','volumeKeys','padKey','problem']),numbers(d,['sameNameCount','keyedSameNameCount','selectableCount']),
+    input:function(d){return Object.assign(flags(d,['enabled','auto','connected','savedPresent','savedNodePresent','volumeKeys','padKey','backHoldKey','problem']),numbers(d,['sameNameCount','keyedSameNameCount','selectableCount']),
         {failure:inputErrorCode(d.failure),helperError:helperError(d.helperLog),prevHelperError:helperError(d.prevHelperLog),
             // remoconSubtype: whether the helper made its copy of the remote a Remocon on the TV (set, refused, no tool, no node, failed).
             remoconSubtype:(function(m){return m?m[1].replace(' ','-'):null;})(/^remocon subtype: (set|unsupported|refused|no tool|no node|failed)$/.exec(String(d.remoconSubtype||'').trim())),

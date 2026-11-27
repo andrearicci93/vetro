@@ -12,7 +12,7 @@ namespace Launcher.Core
         public const double KernelGraceSeconds = 0.15;
         public const double LimitSeconds = 1.5;
         private string _key;
-        private double _since = -1, _kernelAt = -1;
+        private double _since = -1, _kernelAt = -1, _lastKernelReleaseAt = -1;
 
         public bool Pending { get { return _key != null; } }
 
@@ -22,7 +22,14 @@ namespace Launcher.Core
         public bool Press(string key, double now)
         {
             if (!Closes(key)) return false;
-            if (_key == null) { _key = key; _since = now; _kernelAt = -1; }
+            if (_key == null)
+            {
+                _key = key;
+                _since = now;
+                _kernelAt = (_lastKernelReleaseAt >= 0 && now >= _lastKernelReleaseAt && (now - _lastKernelReleaseAt) <= 0.05)
+                    ? now
+                    : -1;
+            }
             return true;
         }
 
@@ -35,7 +42,11 @@ namespace Launcher.Core
         }
 
         /// <summary>The kernel reported the release on the remote's node; the window's copy may still be on its way.</summary>
-        public void KernelRelease(double now) { if (_key != null && _kernelAt < 0) _kernelAt = now; }
+        public void KernelRelease(double now)
+        {
+            _lastKernelReleaseAt = now;
+            if (_key != null && _kernelAt < 0) _kernelAt = now;
+        }
 
         /// <summary>True when the launcher should close without the window's release.</summary>
         public bool Due(double now)
@@ -43,6 +54,6 @@ namespace Launcher.Core
             return _key != null && ((_kernelAt >= 0 && now - _kernelAt >= KernelGraceSeconds) || now - _since >= LimitSeconds);
         }
 
-        public void Cancel() { _key = null; _since = -1; _kernelAt = -1; }
+        public void Cancel() { _key = null; _since = -1; _kernelAt = -1; _lastKernelReleaseAt = -1; }
     }
 }

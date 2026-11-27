@@ -11,8 +11,17 @@ const {Dock} = require('../service/dock.js');
     assert.deepEqual(vk.withTokens(['560'], {volume: true}), ['560', '66', '67', '68']);
     assert.deepEqual(vk.withTokens(['68'], {volume: true}), ['68', '66', '67']);
     assert.deepEqual(vk.withTokens(['560'], {}), ['560']);
+    assert.deepEqual(vk.withTokens(['560'], {backHold: true}), ['560', '1:hold', '158:hold']);
+    assert.deepEqual(vk.withTokens(['1', '158:hold'], {backHold: true}), ['1', '158:hold']);
+    assert.equal(vk.reinjectCommand('XF86Back'), '/usr/bin/input_keyevent XF86Back');
 
-    const V = {volume: true}, P = {pad: true};
+    const V = {volume: true}, P = {pad: true}, BH = {backHold: true};
+    assert.equal(vk.wants({code: 1, action: 'hold', decision: 'blocked'}, BH), true);
+    assert.equal(vk.wants({code: 158, action: 'up', decision: 'blocked'}, BH), true);
+    assert.equal(vk.wants({code: 1, action: 'down', decision: 'hold-wait'}, BH), false);
+    assert.equal(vk.wants({code: 1, action: 'down', decision: 'blocked'}, BH), false);
+    assert.equal(vk.wants({code: 1, action: 'repeat', decision: 'blocked'}, BH), false);
+    assert.equal(vk.wants({code: 1, action: 'hold', decision: 'blocked'}, V), false);
     const down = {code: 68, action: 'down', decision: 'blocked'};
     assert.equal(vk.wants(down, V), true);
     assert.equal(vk.wants({code: 67, action: 'repeat', decision: 'blocked'}, V), true);
