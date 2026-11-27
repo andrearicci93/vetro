@@ -2,6 +2,10 @@
 
 ## 0.7.3 — unreleased
 
+### Launcher
+
+- **Custom launcher mode: no flash of Samsung's four-dot loader on Home** ([#334](https://github.com/andrearicci93/vetro/issues/334), [#341](https://github.com/andrearicci93/vetro/pull/341) by [YounessFkhach](https://github.com/YounessFkhach), read on a Tizen 9 UA65CU7000). 0.7.2 started the Home app without the loader, but the press itself still reached Samsung's Home, which began to open until the guard closed it 150 ms later. The launcher now claims the Home key at the compositor in custom launcher mode too, as Vetro mode does: after the first real press it maps its empty, focus-skipping window just long enough to take the grab and hides it again. The guard stays as the fallback if the claim is refused. The first press after the launcher starts is still the old way, because the claim is made after it. Tried by the author on the Tizen 9 TV (before and after videos in the pull request) and on a Q80A (Tizen 6.0) with Stremio as the Home app: claim granted, then Home started the app on every press, and Samsung's Home process did not start at all after a press.
+
 ### Live TV
 
 - **The Guide key no longer opens Samsung's guide behind Vetro's** ([#340](https://github.com/andrearicci93/vetro/issues/340), QN74F). In 0.7.2 the tuner read the remote's Guide key (130) from the input device at the same moment Samsung's TV app did, so Vetro's guide opened and a second later Samsung's took over. The remote interception (Remapper, or Vetro UI's volume bar and 123 pad) now holds the key back while Vetro TV Tuner is on: with the tuner on screen it goes to the tuner only; when the tuner is not on screen the key goes back to Samsung by name, so Samsung's own guide still opens from its TV app. It needs the remote interception to be on, as for the volume bar and the 123 pad; turning the tuner on or off restarts the interception with the new key list. Tried on a Q80A with the key sent as the remote's code 130 (its own remote has no Guide key): with the tuner on screen only Vetro's guide opened and stayed; with Samsung's TV app in front and the tuner hidden, Samsung's guide opened. Not tried on the QN74F.
