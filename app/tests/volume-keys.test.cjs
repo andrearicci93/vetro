@@ -12,6 +12,25 @@ const {Dock} = require('../service/dock.js');
     assert.deepEqual(vk.withTokens(['68'], {volume: true}), ['68', '66', '67']);
     assert.deepEqual(vk.withTokens(['560'], {}), ['560']);
 
+    // Guide (#340): held back only while the tuner is on, and handed to the tuner's own line, never to the launcher's FIFO.
+    assert.deepEqual(vk.withTokens([], {guide: true}), ['130']);
+    assert.deepEqual(vk.withTokens(['130'], {guide: true}), ['130'], 'no duplicate');
+    assert.equal(vk.wants({code: 130, action: 'down', decision: 'blocked'}, {guide: true}), true);
+    assert.equal(vk.wants({code: 130, action: 'down', decision: 'blocked'}, {volume: true, pad: true}), false, 'tuner off: Samsung keeps the key');
+    const guideSent = [], guideWritten = [], guideBack = [];
+    let g = await vk.handle({code: 130, action: 'down', decision: 'blocked'}, {write: (p, t) => guideWritten.push(t), reinject: k => guideBack.push(k), tuner: n => { guideSent.push(n); }});
+    assert.equal(g, 'tuner');
+    assert.deepEqual(guideSent, ['XF86ChannelGuide']);
+    assert.deepEqual(guideWritten, [], 'the launcher\'s FIFO is not touched');
+    g = await vk.handle({code: 130, action: 'down', decision: 'blocked'}, {write: () => {}, reinject: async k => { guideBack.push(k); }, tuner: async () => { throw new Error('agent gone'); }});
+    assert.equal(g, 'native');
+    assert.deepEqual(guideBack, ['XF86ChannelGuide'], 'a line that fails gives the key back to Samsung');
+    assert.equal(vk.reinjectCommand('XF86ChannelGuide'), '/usr/bin/input_keyevent XF86ChannelGuide');
+    const guideRep = vk.repeater({reinject: () => {}, tuner: () => {}});
+    await guideRep.event({code: 130, action: "down", decision: "blocked"});
+    assert.equal(guideRep.active(), false, "Guide is a toggle: no repeat timer");
+    guideRep.stop();
+
     const V = {volume: true}, P = {pad: true};
     const down = {code: 68, action: 'down', decision: 'blocked'};
     assert.equal(vk.wants(down, V), true);

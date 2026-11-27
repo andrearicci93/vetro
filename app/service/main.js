@@ -85,7 +85,9 @@ var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port:
     }});
 // Vetro TV Tuner: a native part like the launcher (tuner.js), run by the bundled plugin registered below.
 var tunerModule = require('./tuner.js');
-var tuner = new tunerModule.Tuner({execute: agentExecute, build: nativeBuild, noMotion: function () { return dock.readState().noMotion; }});
+var tuner = new tunerModule.Tuner({execute: agentExecute, build: nativeBuild, noMotion: function () { return dock.readState().noMotion; },
+    // The Guide key is held back by the remote bridge only while the tuner is on: the bridge restarts with the new key list, if it is on.
+    onChange: function () { if (inputPreference().enabled) { stopInput('keys'); return vetroUiInput(); } }});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
 // #135: factory, hotel and shop apps, and the Aging key AgingApp can leave at 1 (factory-apps.js).
 var factoryApps = require('./factory-apps.js');
@@ -1193,13 +1195,15 @@ function runActions(actions, direct, dispatchGuard) {
 var actionQueue=Promise.resolve(), pendingActions=0, inputError=null;
 var volumeKeys=require('./volume-keys.js');
 // The glass volume pill is on when the dock (or the custom launcher) runs and the user switched it on.
-function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp;return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true};}
+function keyFlags(){var s=dock.readState(),live=s.enabled===true||!!s.customApp,guide=false;try{guide=tuner.readState().enabled===true;}catch(e){}return {volume:live&&s.volumePill===true,pad:live&&s.numberPad===true,guide:guide};}
 var keyRouting=require('./key-routing.js');
 // volumeRoute (diagnostics): which way the last Vol / 123 key went to the launcher (its FIFO opened by the service, or written by the root
 // agent once the service was refused), or back to Samsung, with the service's errno for its own open. In memory only.
 var volumeRoute=null;
 var volumeRepeat=volumeKeys.repeater({reinject:function(key){var c=volumeKeys.reinjectCommand(key);return c?agentExecute(c,5000):Promise.resolve();},
     relay:function(word){var c=keyRouting.dockWordCommand(word);return c?agentExecute(c,5000).then(function(r){if(!r||r.exit_code||r.timed_out)throw new Error('launcher not reading');}):Promise.reject(new Error('bad word'));},
+    // The Guide key (#340): to the tuner while it is on screen, by name to Samsung otherwise (key-routing.js keyCommand).
+    tuner:function(native){var c=keyRouting.keyCommand(native,control.injectCommand(native));return c?agentExecute(c,5000).then(function(r){if(!r||r.exit_code||r.timed_out)throw new Error('guide key not sent');}):Promise.reject(new Error('bad key'));},
     route:function(how,errno){volumeRoute={route:how,errno:errno,at:Date.now()};}});
 // Every stop of the bridge (asked for, or the helper went away on its own) ends a volume repeat: its release will never come.
 // Once a helper holds the remote, its forwarding node is new: the launcher and the tuner are told to watch it now, not at their next 3 s scan.

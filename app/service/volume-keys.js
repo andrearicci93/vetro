@@ -1,5 +1,6 @@
 'use strict';
-// Vol+, Vol-, Mute and the 123 key on the real remote, handed to the dock's glass pill and number pad (each opt-in).
+// Vol+, Vol-, Mute and the 123 key on the real remote, handed to the dock's glass pill and number pad (each opt-in), and the Guide
+// key (130), handed to Vetro's TV tuner when it is on (#340).
 // The root input bridge swallows the two keys (so Samsung's own bar never draws) and reports them here;
 // the dock changes the level and shows the pill. If the dock cannot be reached the original key is
 // injected again, so the volume keys never go dead. Mute is soft (the dock drops the level to 0 and restores it), so Samsung's mute banner never draws.
@@ -13,10 +14,14 @@ var KEYS = {
     '66': {word: 'volmute', native: 'XF86AudioMute'},
     // The 123 key: the dock draws its own number pad. Without the launcher it goes back to Samsung as XF86More, the name its code 140
     // has in tizen_key_layout on 6.0, 6.5 and 9; XF86NumberPad (185) has no handler on 6.5 and 9, so 123 was dead there.
-    '140': {word: 'pad', native: 'XF86More'}
+    '140': {word: 'pad', native: 'XF86More'},
+    // Guide: Samsung's own guide also opens on this key, a moment after Vetro's own (the tuner reads the remote at the same time as
+    // Samsung's TV app). Held back by the bridge it goes to the tuner when the tuner is on screen (key-routing.js keyCommand) and
+    // back to Samsung by name when it is not, so Samsung's guide still opens from other apps. `tuner` marks the key's own route.
+    '130': {word: 'guide', native: 'XF86ChannelGuide', tuner: true}
 };
-var GROUPS = {volume: ['66', '67', '68'], pad: ['140']};
-var TOKENS = GROUPS.volume.concat(GROUPS.pad);
+var GROUPS = {volume: ['66', '67', '68'], pad: ['140'], guide: ['130']};
+var TOKENS = GROUPS.volume.concat(GROUPS.pad, GROUPS.guide);
 
 function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, String(code)); }
 
@@ -27,7 +32,7 @@ Object.keys(KEYS).forEach(function (c) { NATIVE[KEYS[c].native] = true; });
 function reinjectCommand(native) { return NATIVE[native] === true ? '/usr/bin/input_keyevent ' + native : null; }
 
 // Tokens the bridge must hold back, beside the ones the shortcuts ask for (no duplicates).
-// flags: {volume: bool, pad: bool}
+// flags: {volume: bool, pad: bool, guide: bool}
 function withTokens(tokens, flags) {
     var out = tokens.slice();
     Object.keys(GROUPS).forEach(function (g) {
@@ -57,6 +62,11 @@ function handle(event, opts) {
         try { fs.writeSync(fd, t); } finally { fs.closeSync(fd); }
     };
     function native() { return Promise.resolve(opts.reinject(key.native)).then(function () { note('native', err); return 'native'; }); }
+    // The Guide key: the service's own line decides between the tuner (on screen) and Samsung (by name); no FIFO of the launcher.
+    if (key.tuner) {
+        if (!opts.tuner) return native();
+        return Promise.resolve(opts.tuner(key.native)).then(function () { note('tuner', null); return 'tuner'; }, native);
+    }
     if (!state.refused) {
         try { write(opts.fifo || FIFO, key.word + '\n'); note('dock', null); return Promise.resolve('dock'); }
         catch (e) { err = e && /^E[A-Z0-9]{1,15}$/.test(e.code) ? e.code : 'EOTHER'; }
@@ -82,8 +92,8 @@ function repeater(opts) {
     return {
         event: function (event) {
             if (event.action === 'up') { stop(); return Promise.resolve(); }
-            // Mute and the 123 key are toggles: one press, one change, never repeated.
-            if (String(event.code) === '66' || String(event.code) === '140') return event.action === 'down' ? send(event) : Promise.resolve();
+            // Mute, the 123 key and Guide are toggles: one press, one change, never repeated.
+            if (String(event.code) === '66' || String(event.code) === '140' || String(event.code) === '130') return event.action === 'down' ? send(event) : Promise.resolve();
             if (event.action === 'repeat' && timer) return Promise.resolve();
             if (event.action === 'down') {
                 stop(); started = Date.now();

@@ -76,6 +76,7 @@ function Tuner(options) {
     this.featuresFile = options.featuresFile || FEATURES_FILE;
     this.sleep = options.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
     this.now = options.now || Date.now;
+    this.onChange = options.onChange || function () {};   // told after the tuner is switched on or off (main.js: the remote bridge's key list includes Guide while the tuner is on)
     this.uptime = options.uptime || function () { return os.uptime(); };
     this.busy = false;
     this.failures = 0;
@@ -334,6 +335,7 @@ Tuner.prototype.enable = function () {
     }).then(function () {
         self.patchState({enabled: true, since: self.now()});
         self.failures = 0; self.nextTry = 0;
+        try { self.onChange(true); } catch (e) { /* the switch itself worked */ }
         return self.status();
     }).catch(function (e) {
         self.lastError = e.message;
@@ -349,7 +351,7 @@ Tuner.prototype.disable = function () {
     this.busy = true; this.lastError = null;
     try { this.patchState({enabled: false}); }
     catch (e) { this.busy = false; return Promise.reject(e); }
-    return this.stopTuner().then(function () { return self.status(); }).finally(function () { self.busy = false; });
+    return this.stopTuner().then(function () { try { self.onChange(false); } catch (e) { /* the switch itself worked */ } return self.status(); }).finally(function () { self.busy = false; });
 };
 
 // Ask a running tuner to show, hide or open its guide (the dashboard's "Open now"). Only the words above get through, and only
