@@ -27,8 +27,11 @@ namespace Tuner
         // 158/174/402/403 stay for other remotes.
         private const int KeyBack = 158, KeyEsc = 1, KeyExit = 174, KeyChannelUp = 88, KeyChannelDown = 87, KeyChannelUp2 = 402, KeyChannelDown2 = 403;
         private const int KeyUp = 103, KeyDown = 108, KeyLeft = 105, KeyRight = 106, KeyEnter = 28, KeyPower = 116;
-        // The guide opens on Up (nothing else uses it) and on the Guide / EPG keys of remotes that have one (KEY_EPG 365, KEY_GUIDE 362: not seen on the Smart Control).
-        private const int KeyEpg = 365, KeyGuide = 362;
+        // The guide opens on Up (nothing else uses it) and on the Guide / EPG keys of remotes that have one: Samsung's own Channel Guide key is
+        // 130 (XF86ChannelGuide in the TV's key layout, the same in the firmware of 2021 to 2025; read on a QN74F's Smart Control 2016, #340), and
+        // other remotes send KEY_EPG 365 or KEY_GUIDE 362. The Q80A's Smart Control has none of them.
+        private const int KeyEpg = 365, KeyGuide = 362, KeyGuideSamsung = 130;
+        private static bool IsGuideKey(int code) { return code == KeyEpg || code == KeyGuide || code == KeyGuideSamsung; }
         // The info panel opens on the Info key of remotes that have one (KEY_INFO 358; Samsung's own Info is 188 in the TV's key layout,
         // /usr/share/X11/xkb/tizen_key_layout.txt.tv) and on `info` from the control pipe: the dock's 123 pad sends that.
         private const int KeyInfo = 358, KeyInfoSamsung = 188;
@@ -881,7 +884,7 @@ namespace Tuner
 
         private static void OnGuideKey(int code, bool back)
         {
-            if (back || code == KeyEpg || code == KeyGuide) { CloseGuide(); return; }
+            if (back || IsGuideKey(code)) { CloseGuide(); return; }
             if (code == KeyUp || code == KeyDown || code == KeyLeft || code == KeyRight) { GuideMove(code); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { _grid.MovePage(+1); GuideChanged(true); return; }
             if (code == KeyChannelDown || code == KeyChannelDown2) { _grid.MovePage(-1); GuideChanged(true); return; }
@@ -1079,7 +1082,7 @@ namespace Tuner
                 return;
             }
             if (IsInfoKey(code)) { OpenInfo(); return; }
-            if (code == KeyUp || code == KeyEpg || code == KeyGuide) { OpenGuide(); return; }
+            if (code == KeyUp || IsGuideKey(code)) { OpenGuide(); return; }
             if (code == KeyChannelUp || code == KeyChannelUp2) { if (_list != null) GoTo(_list.Step(+1)); return; }
             if (code == KeyChannelDown || code == KeyChannelDown2) { if (_list != null) GoTo(_list.Step(-1)); return; }
             if (code == KeyRight) { OpenPad(-1); return; }   // not "123" (140): Samsung opens its own pad on that key whatever we do
@@ -1096,7 +1099,7 @@ namespace Tuner
         /// and Samsung's own overlays (Source, quick settings) leave the live TV app "in front" while they use those keys, and the tuner would
         /// pop up over them. Digits are left out too (the remotes that have them are rare, and Samsung's number entry would tune as well).
         /// </summary>
-        private static bool IsTvKey(int code) { return IsChannelKey(code) || code == KeyEpg || code == KeyGuide || code == KeyInfo || code == KeyInfoSamsung; }
+        private static bool IsTvKey(int code) { return IsChannelKey(code) || IsGuideKey(code) || code == KeyInfo || code == KeyInfoSamsung; }
 
         /// <summary>
         /// Enforcement of the takeover. The poll runs twice a second and, after Back, leaves the screen to Samsung's app on purpose; but

@@ -109,7 +109,7 @@ would vanish on it.
 | CH+ / CH- | 88 / 87 | next / previous channel |
 | OK | 28 | opens the channel list; in the list tunes the selection; on the pad presses the key |
 | Up / Down / Left / Right | 103 / 108 / 105 / 106 | list, pad and guide movement; with nothing open: Up opens the guide, Right our pad, Left switches audio (Audio toast); Down switches subtitles only while the Audio toast is up |
-| Guide / EPG | 362 / 365 | opens (and closes) the guide on remotes that have the key; the Smart Control has none |
+| Guide / EPG | 130 / 362 / 365 | opens (and closes) the guide on remotes that have the key (130 is Samsung's own Channel Guide key, read on a QN74F's Smart Control 2016); the Q80A's Smart Control has none |
 | Back | 1 (ESC) | closes the list/pad/guide/info panel, then clears the banner, then goes to the channel watched before (and back again on the next Back), as Samsung's tuner does; the tuner stays up and keeps the focus, so Samsung's app never sees the key (a hidden tuner hands the focus over and Samsung answers Back with its own "previous channel" and banner) |
 | Home | 63 | the tuner steps aside (hides/exits) and the system's Home handles the key; also 172 (HOMEPAGE), 139 (MENU), 116 (POWER) |
 | "123" | 140 | Samsung's own pad opens whatever we do (owner confirmed 2026-11-07), so it is not used: our pad is on Right |

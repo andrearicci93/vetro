@@ -154,7 +154,7 @@ Vetro is developed on a **Samsung Q80A**. The table also draws on community repo
 
 | Tizen (typical year) | Dashboard, app list, diagnostics | Root features (launcher, privacy switches, remapper) | Reports |
 | --- | --- | --- | --- |
-| **10** (2025–2026) | Reported working on some models | Root connected in test builds on the QE65S85F, Q70F, U8000F and QN900F on 2103.1. See the model reports for earlier failures. | QE65S85F, Q70F, U8000F, QN900F, M70H, M73H, U8000H, QN80F |
+| **10** (2025–2026) | Reported working on some models | Root connected in test builds on the QE65S85F, Q70F, U8000F and QN900F on 2103.1. See the model reports for earlier failures. | QE65S85F, Q70F, U8000F, QN900F, QN74F, M70H, M73H, U8000H, QN80F |
 | **9** (2024–2025 and some older TVs after updates) | Reported working | Reported working on some TVs. Some TVs have service connection or root issues ([#122](https://github.com/andrearicci93/vetro/issues/122), [#99](https://github.com/andrearicci93/vetro/issues/99)). | S90C, S90D, S90F, S95F, Q7F, GU75CU7179, DUE77, DU6900, DU7700, CU8070 |
 | **7 and 8** (2023–2024) | Reported working | Reported working | S90C, S95C, Q65D, QN90D, DU7000, DU7179 |
 | **6.5** (2022) | Reported working | Reported working on 1720.7. Root failures were reported on 1722.0 and 1722.1. | Q60B, Q67B, QN85B, QN90B, S95B, BU8002, BU8075, The Frame, Odyssey OLED G8 |
@@ -205,6 +205,7 @@ Vetro is developed on a **Samsung Q80A**. The table also draws on community repo
 | Q70F (2025, Tizen 10) | T-RSLFDEUC-0100-2103.1 | Root connected in a test build |
 | U8000F (2025, Tizen 10) | T-KSU2EFAKUC-0100-2103.1 | Root connected in a test build |
 | QN900F QA65QN900FWXXY (2025, Tizen 10) | T-OSCPFUABC-0100-2103.1 | Root connected after retries in a test build. The launcher was off during the test. Earlier builds failed on this model ([#193](https://github.com/andrearicci93/vetro/issues/193), [#194](https://github.com/andrearicci93/vetro/issues/194)) |
+| QN74F TQ65QN74FATXXC (2025, Tizen 10) · [#340](https://github.com/andrearicci93/vetro/issues/340) | T-PTMFDEUC-0100-2103.1 | Vetro 0.7.1 with a hand-built root package: root connected in 2.4 s and again after a cold boot, the launcher opens on Home, and the Live TV tuner works on an antenna (DVB-T). Channel Guide key (code 130) opened Samsung's guide before 0.7.2 |
 | QN80F (2025, Tizen 10) · [#181](https://github.com/andrearicci93/vetro/issues/181) | 2103.1 | Root stopped connecting with Vetro 0.5.0 after a firmware update. Root is still unconfirmed on this model with 0.7.1 |
 | M70H, M73H, U8000H (2026, Tizen 10) | Varies by model | Earlier builds had service or dashboard reports and root failures. Root remains unconfirmed on these models with 0.7.1 ([#91](https://github.com/andrearicci93/vetro/issues/91), [#140](https://github.com/andrearicci93/vetro/issues/140), [#177](https://github.com/andrearicci93/vetro/issues/177), [#178](https://github.com/andrearicci93/vetro/issues/178)) |
 | LS03B QN75LS03BAFXZA (The Frame, 2022) · [#39](https://github.com/andrearicci93/vetro/issues/39) | T-PTMAKUC-1720.7 | Reported working, the service started by itself after a cold boot; the Launcher was not tried |

@@ -31,7 +31,7 @@ var UI_TASK_KEYS = [{code: '108', label: 'Down'}, {code: '28', label: 'OK'}, {co
 var UI_TUNER_KEYS = [
     {code: '88', label: 'CH +'}, {code: '87', label: 'CH \u2212'}, {code: '402', label: 'CH +'}, {code: '403', label: 'CH \u2212'},
     {code: '28', label: 'OK'}, {code: '103', label: 'Up'}, {code: '108', label: 'Down'}, {code: '105', label: 'Left'}, {code: '106', label: 'Right'},
-    {code: '358', label: 'Info'}, {code: '365', label: 'Guide'}, {code: '362', label: 'Guide'}, {code: '1', label: 'Back'}, {code: '158', label: 'Back'}
+    {code: '358', label: 'Info'}, {code: '365', label: 'Guide'}, {code: '362', label: 'Guide'}, {code: '130', label: 'Guide'}, {code: '1', label: 'Back'}, {code: '158', label: 'Back'}
 ];
 
 // 'off' (Samsung's Home answers the Home key), 'vetro' or 'custom'. Older states have no mode, only enabled.
