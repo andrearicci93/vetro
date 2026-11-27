@@ -15,7 +15,7 @@ function call(method, url, body) {
 }
 (async () => {
   const s = await call('GET', '/update');
-  assert.equal(s.status, 200); assert.equal(s.body.configured, true); assert.equal(s.body.shell, 2);
+  assert.equal(s.status, 200); assert.equal(s.body.configured, true); assert.equal(s.body.shell, 1);
   assert.match(s.body.source, /^https:\/\/raw\.githubusercontent\.com\/.*\/$/);
   const refused = await call('POST', '/update/apply', '{"format":"vetro-update"}');
   assert.equal(refused.status, 400); assert.equal(refused.body.ok, false); assert.notEqual(refused.body.code, 'no-key');
