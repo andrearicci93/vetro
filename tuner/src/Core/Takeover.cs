@@ -56,6 +56,65 @@ namespace Tuner.Core
         /// <summary>True when the status means the TV app is on screen.</summary>
         public static bool IsUp(int status) { return status == Focus || status == Visible; }
 
+        public delegate bool TryGetVconfInt(out int value);
+
+        public static bool ReadBoolOrInt(TryGetVconfInt tryBool, TryGetVconfInt tryInt)
+        {
+            int v = 0;
+            if (tryBool != null && tryBool(out v)) return v != 0;
+            v = 0;
+            if (tryInt != null && tryInt(out v)) return v != 0;
+            return false;
+        }
+
+        public static bool IsScreensaverApp(string appId)
+        {
+            if (string.IsNullOrEmpty(appId)) return false;
+            return appId == "com.samsung.tv.spotlight-ss"
+                || appId == "com.samsung.tv.screen-saver"
+                || appId == "org.tizen.rscm-screensaver"
+                || appId == "org.tizen.screen-saver"
+                || appId == "Default_Screensaver"
+                || appId == "DefaultScreensaver"
+                || appId.StartsWith("com.samsung.tv.glscreensaver", StringComparison.Ordinal)
+                || appId.IndexOf("spotlight-ss", StringComparison.OrdinalIgnoreCase) >= 0
+                || appId.IndexOf("screen-saver", StringComparison.OrdinalIgnoreCase) >= 0
+                || appId.IndexOf("screensaver", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static bool CanShow(bool launcherOpen, bool ready) { return !launcherOpen && ready; }
+
+        /// <summary>
+        /// Tracks whether <c>memory/system/source_type == -1</c> after a screensaver exit still represents antenna Live TV.
+        /// On Tizen 9 (<c>spotlight-ss</c>), launching the screensaver flips <c>source_type</c> to <c>-1</c>, and while
+        /// <c>vetro-tuner</c> sits above <c>tv-viewer</c> on exit, <c>source_type</c> can stay <c>-1</c>.
+        /// Never arms when entering screensaver from Samsung TV Plus, HDMI, or another app.
+        /// </summary>
+        public static bool UpdatePostScreensaverTv(
+            bool postScreensaverTv,
+            bool screensaver,
+            bool tunerActive,
+            bool tvUpMarked,
+            int source,
+            bool leftPlus,
+            int status,
+            FrontApp.Kind front)
+        {
+            if (source >= 0) return false;
+            if (screensaver)
+            {
+                return postScreensaverTv || tunerActive || tvUpMarked || leftPlus;
+            }
+            if (!postScreensaverTv) return false;
+            if (front == FrontApp.Kind.Other || (status >= 0 && !IsUp(status))) return false;
+            return true;
+        }
+
+        public static bool EffectiveTvInput(int source, bool leftPlus, bool postScreensaverTv)
+        {
+            return source == 0 || (source == -1 && (leftPlus || postScreensaverTv));
+        }
+
         /// <summary>True while the tuner is held away (sent away while the TV app stayed up).</summary>
         public bool Held { get { return _held; } }
 
@@ -65,13 +124,27 @@ namespace Tuner.Core
         public bool Observe(int status, bool tunerShown) { return Poll(status, tunerShown) == Step.Show; }
 
         /// <summary>One poll, with the input and the focused app not known.</summary>
-        public Step Poll(int status, bool tunerShown) { return Poll(status, tunerShown, true, FrontApp.Kind.Unknown); }
+        public Step Poll(int status, bool tunerShown) { return Poll(status, tunerShown, true, FrontApp.Kind.Unknown, false); }
 
         /// <summary>One poll: show the tuner, hide it (the TV app has been left while it was on screen), take the keys back, or leave it.</summary>
         /// <param name="tvInput">The TV's input is the tuner (true when it could not be read).</param>
         /// <param name="front">Who has the keys, as the window manager says.</param>
         public Step Poll(int status, bool tunerShown, bool tvInput, FrontApp.Kind front)
         {
+            return Poll(status, tunerShown, tvInput, front, false);
+        }
+
+        /// <summary>One poll with explicit screensaver state: while a screensaver is active, hold steady without showing, reclaiming, or hiding.</summary>
+        public Step Poll(int status, bool tunerShown, bool tvInput, FrontApp.Kind front, bool screensaver)
+        {
+            if (screensaver)
+            {
+                if (!tunerShown) _seenUp = false;
+                _away = 0;
+                _tvHasKeys = 0;
+                _otherHasKeys = 0;
+                return Step.None;
+            }
             bool up;
             if (status < 0)
             {
@@ -129,7 +202,7 @@ namespace Tuner.Core
         public void Dismissed() { _held = true; }
 
         /// <summary>A key wake with the input and the focused app not known.</summary>
-        public bool KeyWake(int status) { return KeyWake(status, true, FrontApp.Kind.Unknown); }
+        public bool KeyWake(int status) { return KeyWake(status, true, FrontApp.Kind.Unknown, false); }
 
         /// <summary>
         /// The viewer pressed a key that belongs to watching TV (CH+/-, Info, Guide) while the tuner is hidden. The caller decides which keys count: not the arrows or OK, which the launcher and Samsung's overlays use while the TV app is still "in front". Waiting for
@@ -138,9 +211,9 @@ namespace Tuner.Core
         /// input (HDMI) or any other app in front changes nothing (the key is not ours).
         /// </summary>
         /// <param name="status">AUL status of the TV app, read now; negative when the reading failed.</param>
-        public bool KeyWake(int status, bool tvInput, FrontApp.Kind front)
+        public bool KeyWake(int status, bool tvInput, FrontApp.Kind front, bool screensaver = false)
         {
-            if (!IsUp(status) || !tvInput || front == FrontApp.Kind.Other) return false;
+            if (screensaver || !IsUp(status) || !tvInput || front == FrontApp.Kind.Other) return false;
             _held = false;
             _unreadable = 0;
             return true;
@@ -154,9 +227,15 @@ namespace Tuner.Core
         /// that app has gone.
         /// </summary>
         /// <returns>True when the tuner should be shown now.</returns>
-        public bool Resume(int status, bool tvInput, FrontApp.Kind front)
+        public bool Resume(int status, bool tvInput, FrontApp.Kind front, bool screensaver = false)
         {
             if (!IsUp(status) || !tvInput) return false;
+            if (screensaver)
+            {
+                _held = false;
+                _unreadable = 0;
+                return false;
+            }
             _held = false;
             _unreadable = 0;
             return front != FrontApp.Kind.Other;

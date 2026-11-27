@@ -112,8 +112,23 @@ namespace Tuner.Native
         // The TV's current input, memory/system/source_type (the key the launcher's input panel reads): 0 is the TV tuner, 13-16 are
         // HDMI 1-4 (Samsung's Source enum). The call returns 0 when the key was read.
         [DllImport("libvconf.so.0")] public static extern int vconf_get_int(string key, out int value);
+        [DllImport("libvconf.so.0")] public static extern int vconf_get_bool(string key, out int value);
+        [DllImport("libvconf.so.0")] public static extern IntPtr vconf_get_str(string key);
         // Writes an int setting (0 = written). The subtitle switch of the Audio toast writes the TV's two subtitle settings with it (Tvs/SubtitleSettings.cs).
         [DllImport("libvconf.so.0")] public static extern int vconf_set_int(string key, int value);
+
+        public static string VconfGetString(string key)
+        {
+            IntPtr ptr = IntPtr.Zero;
+            try
+            {
+                ptr = vconf_get_str(key);
+                if (ptr == IntPtr.Zero) return "";
+                return Marshal.PtrToStringUTF8(ptr) ?? "";
+            }
+            catch (Exception) { return ""; }
+            finally { if (ptr != IntPtr.Zero) Libc.free(ptr); }
+        }
 
         /// <summary>Name of the evas engine in use, or null when it cannot be read.</summary>
         public static string EngineName(IntPtr evas)

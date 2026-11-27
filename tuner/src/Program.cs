@@ -793,7 +793,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnHoldFirst = d => { _holdTimer = IntPtr.Zero; StartHoldRepeat(); return 0; };
         private static readonly Efl.TaskCb OnHoldTick = d =>
         {
-            if (_holdCode == 0 || Environment.TickCount64 - _holdStarted > HoldMaxSeconds * 1000 || !_active || LauncherOpen() || !KeysAreOurs()) { _holdTimer = IntPtr.Zero; _holdCode = 0; return 0; }
+            if (_holdCode == 0 || Environment.TickCount64 - _holdStarted > HoldMaxSeconds * 1000 || !_active || LauncherOpen() || ScreensaverActive() || !KeysAreOurs()) { _holdTimer = IntPtr.Zero; _holdCode = 0; return 0; }
             HoldStep();
             return 1;
         };
@@ -1014,7 +1014,11 @@ namespace Tuner
         {
             _inputAt = Environment.TickCount64;
             Log("key " + code + (from != null ? " from " + from : ""));
-            if (code == KeyPower && _leftPlus) { _leftPlus = false; Log("live: Power, the TV input is read again"); }   // standby wakes on Samsung's last channel, maybe TV Plus
+            if (code == KeyPower)
+            {
+                _postScreensaverTv = false;
+                if (_leftPlus) { _leftPlus = false; Log("live: Power, the TV input is read again"); }   // standby wakes on Samsung's last channel, maybe TV Plus
+            }
             Anim.FinishAll();                                           // a transition still running ends now: the key acts on the final screen
             if (!_active)
             {
@@ -1148,8 +1152,10 @@ namespace Tuner
         {
             if (!_resident || _takeoverApp == null || _takeoverBroken || !IsTvKey(code)) return false;
             int status = ReadTargetStatus();
-            FrontApp.Kind front = CurrentFront();
-            if (!TakeoverState.KeyWake(status, TvInput(), front)) return false;
+            string frontApp;
+            FrontApp.Kind front = CurrentFront(out frontApp);
+            bool screensaver = ScreensaverActive(frontApp);
+            if (!TakeoverState.KeyWake(status, TvInput(status, front, screensaver), front, screensaver)) return false;
             if (!Ready()) return false;                                 // the key stays with Samsung's app until the tuner has channels
             Log("takeover: key " + code + " with " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
             Activate();
@@ -1166,12 +1172,15 @@ namespace Tuner
             if (_active || !_resident || _takeoverApp == null || _takeoverBroken) return;
             if (LauncherOpen()) { Log("resume: a launcher window is still open"); return; }
             int status = ReadTargetStatus();
-            FrontApp.Kind front = CurrentFront();
-            bool tv = TvInput();
-            if (!TakeoverState.Resume(status, tv, front))
+            string frontApp;
+            FrontApp.Kind front = CurrentFront(out frontApp);
+            bool screensaver = ScreensaverActive(frontApp);
+            bool tv = TvInput(status, front, screensaver);
+            if (!TakeoverState.Resume(status, tv, front, screensaver))
             {
-                Log(TakeoverState.Held ? "resume: not on live TV (status " + status + ", tv input " + tv + ")"
-                                       : "resume: another app has the keys for now (front " + front + "); the tuner comes back with live TV");
+                Log(screensaver ? "resume: the screensaver is on, the tuner comes back when it ends"
+                    : TakeoverState.Held ? "resume: not on live TV (status " + status + ", tv input " + tv + ")"
+                                         : "resume: another app has the keys for now (front " + front + "); the tuner comes back with live TV");
                 return;
             }
             if (!Ready()) { Log("resume: back on live TV, but no channel list yet"); return; }
@@ -1574,13 +1583,30 @@ namespace Tuner
             _readers[index].Feed(_buf, (int)got, _presses, _held, _released);
             if (_presses.Count > 0 || _held.Count > 0)
             {
-                string why = LauncherOpen() ? "a launcher window has them" : (_active && !KeysAreOurs()) ? "another window has the focus" : null;
+                bool screensaver = ScreensaverActive();
+                string why = LauncherOpen() ? "a launcher window has them" : screensaver ? "the screensaver is on" : (_active && !KeysAreOurs()) ? "another window has the focus" : null;
                 if (why != null)
                 {
-                    // The key went to another window, which answers it: the tuner leaves it alone (Home, Power... still make it step aside),
+                    // The key went to another window, which answers it: the tuner leaves it alone (Home, Power... still make it step aside,
+                    // except during an active screensaver where wake keys must neither unmap _win nor set Dismissed()),
                     // does not wake up on it, and its Banner makes room for that window.
-                    foreach (int c in _presses) if (!SystemKeys.Contains(c)) Log("key " + c + " from " + Path.GetFileName(_paths[index]) + " left alone: " + why);
-                    _presses.RemoveAll(c => !SystemKeys.Contains(c));
+                    if (screensaver)
+                    {
+                        if (_presses.Contains(KeyPower))
+                        {
+                            _postScreensaverTv = false;
+                            if (_leftPlus) { _leftPlus = false; Log("live: Power, the TV input is read again"); }
+                        }
+                        string nodeName = Path.GetFileName(_paths[index]);
+                        foreach (int c in _presses) Log("key " + c + " from " + nodeName + " left alone: " + why);
+                        _presses.Clear();
+                        StopHold();
+                    }
+                    else
+                    {
+                        foreach (int c in _presses) if (!SystemKeys.Contains(c)) Log("key " + c + " from " + Path.GetFileName(_paths[index]) + " left alone: " + why);
+                        _presses.RemoveAll(c => !SystemKeys.Contains(c));
+                    }
                     _held.Clear();
                     if (_banner.Visible) _banner.Hide();
                 }
@@ -1738,27 +1764,34 @@ namespace Tuner
         {
             int status = ReadTargetStatus();
             if (_takeoverBroken) return;
-            FrontApp.Kind front = CurrentFront();
-            if (_leftPlus && front == FrontApp.Kind.Other) { _leftPlus = false; Log("live: another app came in front, the TV input is read again"); }
-            bool tv = TvInput();
+            string frontApp;
+            FrontApp.Kind front = CurrentFront(out frontApp);
+            bool screensaver = ScreensaverActive(frontApp);
+            if (_leftPlus && !screensaver && front == FrontApp.Kind.Other) { _leftPlus = false; Log("live: another app came in front, the TV input is read again"); }
             bool launcher = LauncherOpen();
+            bool tv = TvInput(status, launcher ? FrontApp.Kind.Unknown : front, screensaver);
             if (_liveAskedAt >= 0)
             {
                 if (_active || Efl.ecore_time_get() - _liveAskedAt > LiveWindowSeconds) _liveAskedAt = -1;
-                else if (!launcher && status >= 0 && Takeover.IsUp(status) && !tv && _lastSource == -1 && front == FrontApp.Kind.Tv && Ready()) { LeaveTvPlus("Samsung resumed a TV Plus channel (source -1)"); return; }
+                else if (!launcher && !screensaver && status >= 0 && Takeover.IsUp(status) && !tv && _lastSource == -1 && front == FrontApp.Kind.Tv && Ready()) { LeaveTvPlus("Samsung resumed a TV Plus channel (source -1)"); return; }
             }
             if (launcher) front = FrontApp.Kind.Unknown;                 // the launcher has the keys: who else might is beside the point (Takeover)
-            if (_active) KeysAreOurs();                                  // samples the focus, so the log shows when another window takes the keys
+            if (_active && !screensaver) KeysAreOurs();                  // samples the focus, so the log shows when another window takes the keys
             bool up = status >= 0 && Takeover.IsUp(status) && tv;
             // Samsung's live TV is what is on screen: the osd 123 sends its digits to the tuner only then (over another app they are that app's keys).
-            // Not touched while a launcher window is open: it has the keys then, and what counts is what was in front when it opened (the osd 123
+            // Not touched while a launcher window or screensaver is open: what counts is what was in front when it opened (the osd 123
             // opened over YouTube must not start sending its digits to the tuner).
-            if (!launcher) MarkTvUp(Ready() && up && front != FrontApp.Kind.Other);   // no list yet: the osd 123 keeps its digits for Samsung's app
-            else if (!up || !Ready()) MarkTvUp(false);
-            switch (TakeoverState.Poll(status, _active, tv, front))
+            if (!launcher && !screensaver) MarkTvUp(Ready() && up && front != FrontApp.Kind.Other);   // no list yet: the osd 123 keeps its digits for Samsung's app
+            else if ((!up || !Ready()) && !screensaver) MarkTvUp(false);
+            switch (TakeoverState.Poll(status, _active, tv, front, screensaver))
             {
                 case Takeover.Step.Show:
-                    if (launcher) break;                                 // the launcher is open over live TV: the tuner waits for it to close (Resume)
+                    if (launcher || screensaver) break;                  // the launcher or screensaver is open over live TV: wait for it to close
+                    if (!Takeover.CanShow(launcher, Ready()))
+                    {
+                        if (!_loggedNotReady) { _loggedNotReady = true; Log("not shown: no channel list yet, Samsung's live TV keeps the screen"); }
+                        break;
+                    }
                     Log("takeover: " + _takeoverApp + " status " + status + " (front " + front + "), showing the tuner");
                     Activate();
                     break;
@@ -1771,7 +1804,7 @@ namespace Tuner
                 case Takeover.Step.Reclaim:
                     // On screen, but the window manager gives the keys to Samsung's app (a window that closed handed the focus back to it):
                     // the tuner asks for them again, or Samsung's app would answer the remote under it while the tuner leaves the keys alone.
-                    if (launcher) break;
+                    if (launcher || screensaver) break;
                     Log("takeover: " + _takeoverApp + " has the keys while the tuner is on screen, asking for them back");
                     Efl.elm_win_activate(_win);
                     Efl.elm_win_raise(_win);
@@ -1779,14 +1812,64 @@ namespace Tuner
             }
         }
 
+        private const string ScreensaverKey = "memory/window_system/screensaver_on_off";
+        private const string DisplayStateKey = "memory/pm/state";
+        private const int DisplayStateOff = 3;
+        private static bool _screensaverBroken;
+        private static bool _lastScreensaver;
+        private static readonly Takeover.TryGetVconfInt TryScreensaverBool = (out int b) => Efl.vconf_get_bool(ScreensaverKey, out b) == 0;
+        private static readonly Takeover.TryGetVconfInt TryScreensaverInt = (out int i) => Efl.vconf_get_int(ScreensaverKey, out i) == 0;
+
+        private static bool ScreensaverActive(string frontAppId = null)
+        {
+            if (_screensaverBroken) return false;
+            try
+            {
+                int pm;
+                if (Efl.vconf_get_int(DisplayStateKey, out pm) == 0 && pm >= DisplayStateOff)
+                {
+                    if (_lastScreensaver) { _lastScreensaver = false; Log("screensaver: off (display off)"); }
+                    return false;
+                }
+                if (frontAppId == null)
+                {
+                    long at;
+                    lock (FrontLock) { frontAppId = _frontAppId; at = _frontAt; }
+                    if (at == 0) frontAppId = null;
+                    else
+                    {
+                        double age = (Environment.TickCount64 - at) / 1000.0;
+                        if (age < 0 || age > FrontApp.StaleSeconds) frontAppId = null;
+                    }
+                }
+                bool active = Takeover.IsScreensaverApp(frontAppId)
+                    || Takeover.ReadBoolOrInt(TryScreensaverBool, TryScreensaverInt)
+                    || Takeover.IsScreensaverApp(Efl.VconfGetString("memory/appfw/current_fullscreen_appid"))
+                    || Takeover.IsScreensaverApp(Efl.VconfGetString("memory/appfw/current_partial_appid"));
+                if (active != _lastScreensaver)
+                {
+                    _lastScreensaver = active;
+                    Log("screensaver: " + (active ? "on" : "off") + (_active ? " (tuner shown)" : " (tuner hidden)"));
+                }
+                return active;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException || ex is EntryPointNotFoundException)
+            {
+                _screensaverBroken = true;
+                return false;
+            }
+            catch (Exception) { return false; }
+        }
+
         // ---- the TV's input: the tuner covers the TV tuner only, never HDMI ----
 
         private const string SourceKey = "memory/system/source_type";
         private static bool _sourceBroken;
         private static int _lastSource = int.MinValue;
+        private static bool _postScreensaverTv;
 
         /// <summary>True when the TV shows its own tuner (source type 0), or when that cannot be read (the tuner then behaves as before).</summary>
-        private static bool TvInput()
+        private static bool TvInput(int status = -1, FrontApp.Kind front = FrontApp.Kind.Unknown, bool screensaver = false)
         {
             if (_sourceBroken) return true;
             int source;
@@ -1808,7 +1891,8 @@ namespace Tuner
                 _lastSource = source;
             }
             if (source != -1 && _leftPlus) _leftPlus = false;            // a real input again (TV, HDMI): Samsung's own value counts
-            return source == 0 || (source == -1 && _leftPlus);
+            _postScreensaverTv = Takeover.UpdatePostScreensaverTv(_postScreensaverTv, screensaver, _active, _tvUpMarked, source, _leftPlus, status, front);
+            return Takeover.EffectiveTvInput(source, _leftPlus, _postScreensaverTv);
         }
 
         // ---- leaving Samsung TV Plus for the antenna when the TV input is chosen ----
@@ -1904,11 +1988,20 @@ namespace Tuner
         /// <summary>Who has the keys now (FrontApp), from the last reading of the thread above. Logs every change.</summary>
         private static FrontApp.Kind CurrentFront()
         {
+            string ignored;
+            return CurrentFront(out ignored);
+        }
+
+        private static FrontApp.Kind CurrentFront(out string app)
+        {
+            app = null;
             if (_frontBroken) return FrontApp.Kind.Unknown;
-            bool ok; int pid; string app; long at;
+            bool ok; int pid; long at;
             lock (FrontLock) { ok = _frontOk; pid = _frontPid; app = _frontAppId; at = _frontAt; }
-            if (at == 0) return FrontApp.Kind.Unknown;
-            FrontApp.Kind kind = FrontApp.Judge(ok, pid, app, (Environment.TickCount64 - at) / 1000.0, _ownPid, _takeoverApp);
+            if (at == 0) { app = null; return FrontApp.Kind.Unknown; }
+            double age = (Environment.TickCount64 - at) / 1000.0;
+            FrontApp.Kind kind = FrontApp.Judge(ok, pid, app, age, _ownPid, _takeoverApp);
+            if (age < 0 || age > FrontApp.StaleSeconds) app = null;
             // The log line is made only when what it says changes (this runs twice a second for weeks): same kind, same app, same pid when there is no app.
             if (kind != _frontLoggedKind || !string.Equals(app, _frontLoggedApp) || (app == null && (ok ? pid : 0) != _frontLoggedPid) || _frontLogged == null)
             {
