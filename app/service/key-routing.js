@@ -36,9 +36,16 @@ function alive(pidFile, pipe) {
 }
 function write(pipe, word) { return '( exec 3<>' + pipe + ' && echo \'' + word + '\' >&3 )'; }
 
-// The shell line for a Remapper key action. inject: the line that sends the key by name (control.injectCommand), already checked.
-function keyCommand(nativeKey, inject) {
+// Volume keys sent by name and the launcher word that does the same (volume-keys.js): with the glass volume pill on, the launcher owns volume.
+var VOLUME_WORDS = {XF86AudioRaiseVolume: 'volup', XF86AudioLowerVolume: 'voldown', XF86AudioMute: 'volmute'};
+
+// The shell line for a key sent by name: the Remapper's Send key action and the /control endpoint (the app, Home Assistant, a script).
+// inject: the line that sends the key by name (control.injectCommand), already checked.
+// flags (optional, main.js keyFlags()): volume true = the launcher's volume pill is on, so Vol and Mute go to it as words, like the physical
+// keys do, and by name only when the launcher is not reading its FIFO. Named volume keys alone would change the volume without the pill.
+function keyCommand(nativeKey, inject, flags) {
     if (!inject) return null;
+    if (flags && flags.volume && Object.prototype.hasOwnProperty.call(VOLUME_WORDS, nativeKey)) return '( ' + dockWordCommand(VOLUME_WORDS[nativeKey]) + ' ) || { ' + inject + '; }';
     var word = Object.prototype.hasOwnProperty.call(TUNER_KEYS, nativeKey) ? TUNER_KEYS[nativeKey] : null;
     var shown = alive(TUNER_PID, TUNER_PIPE) + ' && [ -e ' + TUNER_SHOWN + ' ]';
     if (word) return 'if ' + shown + '; then ' + write(TUNER_PIPE, word) + '; else ' + inject + '; fi';

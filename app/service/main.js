@@ -641,9 +641,10 @@ function handleControl(req, res) {
         if (!key || typeof key !== 'string') {
             return serveJson(res, { error: 'missing "key" (see GET /control for names)' }, 400);
         }
-        var cmd = control.injectCommand(key);
-        // Home goes to the Vetro launcher's FIFO while it holds the key (key-routing.js), or it would only reach the launcher's window.
-        if (cmd && key === 'XF86Home') cmd = keyRouting.homeCommand(cmd);
+        // Through the same routing as the Remapper's Send key (key-routing.js): Home goes to the Vetro launcher's FIFO while it holds the key,
+        // the keys the tuner answers go to it while it is on screen, Vol and Mute to the launcher while its volume pill is on. By name alone
+        // they would only reach whatever window has the focus (#315).
+        var cmd = keyRouting.keyCommand(key, control.injectCommand(key), keyFlags());
         if (!cmd) {
             return serveJson(res, { error: 'unknown key ' + key, keys: control.KEYS }, 400);
         }
@@ -1089,7 +1090,7 @@ function handleRemap(req, res) {
 // Package ID of an installed app from the last registry read, if there is one (rules only carry the app ID).
 function packageOf(appId){var row=registryCache&&registryCache.apps.find(function(r){return r.appId===appId;});return row?row.packageId:null;}
 function sendNativeKey(key, dispatchGuard) {
-    var native = control.nativeKey(key), command = native && keyRouting.keyCommand(native, control.injectCommand(native));
+    var native = control.nativeKey(key), command = native && keyRouting.keyCommand(native, control.injectCommand(native), keyFlags());
     if (!command) return Promise.reject(new Error('unsupported native key: ' + key));
     return agentExecute(command, 10000, dispatchGuard).then(function (r) { if (r.exit_code || r.timed_out) throw new Error(r.stderr || 'native action failed'); });
 }

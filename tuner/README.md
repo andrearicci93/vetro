@@ -133,7 +133,7 @@ opened read-write so it never reports end-of-file). One command per line:
 
 ```
 show | hide | toggle | banner | list | pad | guide | info | quit | tune N (channel number, shows the tuner) | audio | key CODE (acts as that remote key: for tests, and for a Remapper shortcut while the tuner is on screen)
-resume (the launcher closed without opening anything: back if live TV is on screen) | rescan (watch the remote bridge's new forwarding node now)
+resume (the launcher closed without opening anything: back if live TV is on screen) | rescan (watch the remote bridge's new forwarding node now) | reload (read the channel list again now, instead of after 10 minutes)
 ```
 
 `--quiet` (added by the service when the start replaces a tuner that was running: an update, another build of Vetro): for the first 15 s the Banner

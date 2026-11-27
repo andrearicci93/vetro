@@ -1547,6 +1547,7 @@ namespace Tuner
                 case "key": int k; if (p.Length > 1 && int.TryParse(p[1], out k) && k > 0 && k < 768) OnKey(k, "pipe"); break;
                 case "resume": Resume(); break;
                 case "live": _liveAskedAt = Efl.ecore_time_get(); Resume(); LiveCheckChannel(); break;   // the launcher switched to the TV input: as resume, and see LeaveTvPlus                // the launcher closed without opening anything (see Resume)
+                case "reload": QueueListRead(); break;         // read the channel list again now (a rescan, a channel update), without waiting for the 10 minutes
                 case "rescan": WatchNodes(); break;            // the remote bridge has just made a new forwarding node: watch it now, not at the next 3 s scan
                 case "tune":
                     int n;

@@ -44,6 +44,16 @@ assert.equal(kr.keyCommand('XF86PowerOff', control.injectCommand('XF86PowerOff')
 assert.equal(kr.keyCommand('Return', null), null, 'nothing to send stays nothing');
 Object.keys(kr.TUNER_KEYS).forEach(function (k) { assert.ok(control.injectCommand(k), k + ' is a key a rule can send'); });
 
+// ---- volume and the launcher's pill (#315) ----
+const volOn = {volume: true};
+const volUp = kr.keyCommand('XF86AudioRaiseVolume', control.injectCommand('XF86AudioRaiseVolume'), volOn);
+assert.ok(volUp.includes("echo 'volup' >&3") && volUp.endsWith('|| { /usr/bin/input_keyevent XF86AudioRaiseVolume; }'), 'Vol+ goes to the launcher, by name when it is not reading');
+assert.ok(kr.keyCommand('XF86AudioLowerVolume', control.injectCommand('XF86AudioLowerVolume'), volOn).includes("echo 'voldown' >&3"), 'Vol- word');
+assert.ok(kr.keyCommand('XF86AudioMute', control.injectCommand('XF86AudioMute'), volOn).includes("echo 'volmute' >&3"), 'Mute word');
+assert.equal(kr.keyCommand('XF86AudioMute', control.injectCommand('XF86AudioMute'), {volume: false}), '/usr/bin/input_keyevent XF86AudioMute', 'pill off: by name as before');
+assert.equal(kr.keyCommand('XF86AudioMute', control.injectCommand('XF86AudioMute'), {}), '/usr/bin/input_keyevent XF86AudioMute', 'no flags: by name as before');
+assert.equal(kr.keyCommand('XF86AudioPlay', control.injectCommand('XF86AudioPlay'), volOn), '/usr/bin/input_keyevent XF86AudioPlay', 'other keys do not care about the pill');
+
 // ---- rescan ----
 const rescan = kr.rescanCommand();
 assert.ok(rescan.includes("[ -d /proc/$p ] && [ -p /home/owner/tvlauncher.fifo ]; then ( exec 3<>/home/owner/tvlauncher.fifo && echo 'rescan' >&3 ); fi"), 'the launcher, only alive and with its pipe');
