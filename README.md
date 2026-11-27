@@ -24,15 +24,15 @@ Vetro runs on your Samsung TV and gives you a dashboard, open from any computer 
   <br><em>The Vetro launcher, rendered from its own code in Vetro's preview.</em>
 </p>
 
-## What's new in 0.7.1
+## What's new in 0.7.2
 
-- **Tizen 10 root support.** Root access was reported on four model and firmware combinations with test builds. See [Compatibility](#compatibility).
-- **Save and load settings.** Keep a file with your Vetro settings before a reinstall or move them to another TV.
-- **Turn off the screen from the remote.** Assign Picture Off to a button in the Remapper and keep listening with the picture off.
-- **Samsung Odyssey OLED G8 inputs.** HDMI, DisplayPort and USB-C are available in the launcher, Remapper and Home Assistant on monitors with that input layout.
-- **Home Assistant channel sensor.** See the current channel while watching TV through Vetro's tuner.
+- **Change channel from Home Assistant.** Send a channel number to the TV from Home Assistant, a script or a voice assistant, and see On or Standby as a sensor.
+- **Keys from the app and scripts reach the tuner and the volume bar.** `/control` and the Remapper's Send key use the same routing as the remote.
+- **TV and HDMI tiles on 2025 Samsung TVs.** The launcher switches inputs again on Tizen 9, and HDMI devices get their own pictures.
+- **Order the Control center cards, and two switches for the Sources page.** Connected sources only, and Hide TV.
+- **Number pad on the remote's own keys** and a faster Home in custom launcher mode.
 
-See the full [0.7.1 changelog](CHANGELOG.md#071--2026-11-26).
+See the full [0.7.2 changelog](CHANGELOG.md#072--2026-11-27). Earlier: [0.7.1](CHANGELOG.md#071--2026-11-26).
 
 ## What's new in 0.7.0
 
