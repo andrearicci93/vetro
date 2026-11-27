@@ -40,8 +40,7 @@ function ageMinutes(receivedAt) {
 function numeric(v) { return typeof v === 'number' && Number.isFinite(v) ? v : null; }
 // The numbers of the physical inputs the launcher lists (row keys 'source:<type>'): which of Samsung's port types this display has
 // (13-16 HDMI, 33 DisplayPort, 41 USB-C, 0 TV). 41 only appears for the Odyssey OLED G8 layout (#314). Nothing but the number is kept.
-// inputsWithIcon counts the inputs for which Samsung's icon file was found (the launcher switches with it, and falls back to the input's key
-// without one), so a TV where the launcher's TV/HDMI tiles do nothing shows 0 here (#333).
+// The launcher's own log says how an input was switched (with Samsung's icon file, or by the key because none was found, #333): see events.
 function inputTypes(v) {
     var out = [];
     list(v, 16).forEach(function (e) { var m = /^source:(\d{1,5})$/.exec(String(e && e.key)); if (m && out.indexOf(+m[1]) < 0) out.push(+m[1]); });
@@ -102,7 +101,7 @@ var HELPER_ERROR_RE=/^[A-Za-z]{1,40}Exception: [A-Za-z0-9_ .,<>:-]{1,100}$/;   /
 // osd 123), and the Audio card's speaker-selection number. Fixed shapes only: the time of day is cut, Bluetooth addresses never pass
 // (the "outputs: <device>" lines are not in the list), an exception message passes only without slashes or quotes.
 var DOCK_EVENT_RES=[/^command (?:Show|Hide|Toggle|VolUp|VolDown|VolMute|Pad|Rescan|Reload)$/,/^volume: (?:the level cannot be read|level change refused|pill ready|elm_win_add failed)$/,
-    /^pad: (?:ready|elm_win_add failed)$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
+    /^pad: (?:ready|elm_win_add failed)$/,/^source \d{1,5}: (?:request with icon rc=-?\d{1,6}|no icon, request not sent|no icon, key XF86Discret[A-Za-z0-9]{1,20} rc=-?\d{1,6})$/,/^(?:volume|pad): asset missing [A-Za-z0-9_]{1,40}$/,/^unmute key rc=-?\d{1,6}$/,/^pad: sending [A-Za-z0-9_ -]{1,40} rc=-?\d{1,6}$/,
     /^outputs: speaker selection -?\d{1,3}, \d{1,3} rows, read in \d{1,6} ms$/,/^outputs: (?:UseTv TV speakers|UseExternal [A-Za-z ()+-]{1,30}) (?:ok|refused \([A-Za-z0-9 .,:=_-]{0,80}\))$/,/^launch com\.samsung\.tv\.csfs rc=-?\d{1,6}$/,/^launch via HbbTV (?:request \d{1,6} ms|failed)$/,/^(?:volume|volume hold|volume tick|pad|pad tick|pad key|pad send|pad closed|fifo|screen): [A-Za-z0-9 .,()_:=-]{1,160}$/,
     /^home: (?:claim (?:granted|refused|unavailable)|window keys (?:on|refused|unavailable)|claimed press from the window|picture check not started rc=-?\d{1,6})$/];
 // The launcher's last openings (its OpenProbe lines): what opened and how long it took from the key to the first and the last frame of the
@@ -203,7 +202,7 @@ var projectors = {
     hbbtv:function(d){return Object.assign({value:numeric(d.value)},flags(d,['off','canRestore']));},
     // Launcher: states and counts only. The error text, the log tail and the app list (names of installed apps) stay out; `events` is the
     // last lines of its log about Vol, Mute, 123, their windows and the Audio card, in the fixed shapes of DOCK_EVENT_RES.
-    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,inputTypes:inputTypes(d.inputs),inputsWithIcon:Array.isArray(d.inputs)?d.inputs.filter(function(e){return e&&e.hasSourceIcon===true}).length:null,monitorInputLayout:Array.isArray(d.inputs)?inputTypes(d.inputs).indexOf(41)>=0:null,
+    launcher:function(d){return Object.assign({entryCount:Array.isArray(d.entries)?d.entries.length:null,inputCount:Array.isArray(d.inputs)?d.inputs.length:null,inputTypes:inputTypes(d.inputs),monitorInputLayout:Array.isArray(d.inputs)?inputTypes(d.inputs).indexOf(41)>=0:null,
         appCount:numeric((d.apps||{}).count),rowFrom:choice((d.apps||{}).rowFrom,['csfs','media']),homeStores:homeStores((d.apps||{}).homeStores),skippedCount:Array.isArray((d.apps||{}).skipped)?d.apps.skipped.length:null,failures:numeric(d.failures),hasError:boolean(d.hasError),
         tizenTubeTile:Array.isArray(d.entries)?d.entries.some(function(e){return LAUNCHER_RE.test(String(e.appId));}):null},
         flags(d,['installed','enabled','running','samsungHome','busy','fixTizenTube','noMotion','autorunSwitchedOff','customHomeDisabled']),

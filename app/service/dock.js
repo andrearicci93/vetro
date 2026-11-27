@@ -958,7 +958,7 @@ Dock.prototype.giveUpCustom = function (reason) {
 function parseTsv(text) {
     return String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim()[0] !== '#'; }).map(function (l) {
         var f = l.split('\t'), target = f[2] || '';
-        return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null, shard: f[6] === 'shard', key: f[7] || null, hasSourceIcon: !!f[9],
+        return {slug: f[0], label: f[1], appId: target, icon: f[4] || null, killFirst: f[5] || null, shard: f[6] === 'shard', key: f[7] || null,
             system: TARGET_SYSTEM_RE.test(target), panel: TARGET_PANEL_RE.test(target), source: TARGET_SOURCE_RE.test(target) ? +target.slice(7) : null};
     }).filter(function (e) { return SLUG_RE.test(e.slug || '') && e.label; });
 }

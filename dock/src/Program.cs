@@ -2496,13 +2496,13 @@ namespace Launcher
                 {
                     // No icon file on this firmware: do what the dashboard's Inputs page does and press the input's key instead.
                     string key = Launcher.Core.SourceSwitch.FallbackKey(e);
-                    if (key == null) { Log("source " + e.Label + " (" + e.SourceType + "): no existing Samsung source icon; request not sent"); return; }
+                    if (key == null) { Log("source " + e.SourceType + ": no icon, request not sent"); return; }
                     int krc = Libc.system(KeyTool + key);
-                    Log("source " + e.Label + " (" + e.SourceType + "): no Samsung source icon, key " + key + " rc=" + krc);
+                    Log("source " + e.SourceType + ": no icon, key " + key + " rc=" + krc);
                     return;
                 }
                 int rc = Launcher.Core.SourceSwitch.Send(e.SourceType, e.Label, icon, File.Exists, new SourceControl());
-                Log("source " + e.Label + " (" + e.SourceType + ") rc=" + rc);
+                Log("source " + e.SourceType + ": request with icon rc=" + rc);
             }
             catch (Exception ex) { Log("source error: " + ex.Message); }
         }
