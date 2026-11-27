@@ -34,6 +34,7 @@ namespace Launcher.Ui
         private readonly Action<PadResult, string> _send;
         private readonly int _screenW, _screenH;
         private readonly NumberPadModel _model = new NumberPadModel();
+        private readonly NavigationInput _nav = new NavigationInput();
         private IntPtr _win, _rim, _body, _focus, _typed, _typedBg, _doneBg, _doneText, _tipBg, _tipText;
         private readonly Slot[][] _slots = new Slot[2][];
         private IntPtr _animator, _idle;
@@ -71,7 +72,7 @@ namespace Launcher.Ui
         /// <summary>The window is mapped (open, or fading out): it has the keyboard focus, so the remote's keys are its own.</summary>
         public bool IsOnScreen { get { return _shown; } }
 
-        public void KernelBackRelease() { _backUp.KernelRelease(Efl.ecore_time_get()); }
+        public void KernelBackRelease() { HandleRawRelease(1); }
 
         public void Toggle() { if (IsShown) Close(); else Open(); }
 
@@ -100,11 +101,13 @@ namespace Launcher.Ui
                     _log("pad: keygrab failed, falling back to focus activation");
                     Efl.elm_win_prop_focus_skip_set(_win, false);
                     Efl.elm_win_activate(_win);
+                    Efl.evas_object_focus_set(_win, true);
                 }
             }
             else
             {
                 Efl.elm_win_activate(_win);
+                Efl.evas_object_focus_set(_win, true);
             }
             ArmIdle();
             if (_animator == IntPtr.Zero) { if (!fresh) _step.Resume(); _animator = Efl.ecore_animator_add(_tick, IntPtr.Zero); }
@@ -382,6 +385,7 @@ namespace Launcher.Ui
                 if (gone)
                 {
                     UngrabKeys();
+                    if (_grabFallback) Efl.evas_object_focus_set(_win, false);
                     Efl.evas_object_hide(_win);
                     _shown = false; _closing = false; _animator = IntPtr.Zero;
                     if (Probe != null) Probe.Cancel();
@@ -396,7 +400,7 @@ namespace Launcher.Ui
                 _animator = IntPtr.Zero;
                 return 0;
             }
-            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; UngrabKeys(); Efl.evas_object_hide(_win); MarkOpen(false); SendPending(); return 0; }
+            catch (Exception ex) { _log("pad tick: " + ex.Message); _animator = IntPtr.Zero; _shown = false; _closing = false; UngrabKeys(); if (_grabFallback) Efl.evas_object_focus_set(_win, false); Efl.evas_object_hide(_win); MarkOpen(false); SendPending(); return 0; }
         }
 
         /// <summary>The window is gone: what Done or a function key asked for goes out now (the shell still waits a moment for the focus to move).</summary>
@@ -415,27 +419,56 @@ namespace Launcher.Ui
             try
             {
                 string key = Marshal.PtrToStringAnsi(Marshal.ReadIntPtr(eventInfo));
-                if (!IsShown) return;
-                ArmIdle();
-                PadResult r = _model.Key(key);
-                switch (r)
-                {
-                    case PadResult.Close:
-                        if (_backUp.Press(key, Efl.ecore_time_get())) { if (_backTimer == IntPtr.Zero) _backTimer = Efl.ecore_timer_add(0.05, _backCb, IntPtr.Zero); }
-                        else Close();
-                        break;
-                    case PadResult.Send: { string typed = _model.Typed; Close(); _pendingKind = r; _pendingWhat = typed; break; }
-                    case PadResult.SendKey: { string k = _model.PendingKey; Close(); _pendingKind = r; _pendingWhat = k; break; }
-                    case PadResult.None: break;
-                    default:
-                        // A move onto the other page starts the focus capsule at the cell it lands on.
-                        if (r == PadResult.Page) { LayoutPage(false); _motion.FocusX = _slots[_model.Page][_model.Focus].X; }
-                        Refresh();
-                        break;
-                }
-                Wake();   // whatever the key did, the next frame draws it (and the capsule slides from where it is)
+                if (_nav.IsEcho(key, Efl.ecore_time_get())) return;
+                HandleKey(key);
             }
             catch (Exception ex) { _log("pad key: " + ex.Message); }
+        }
+
+        public void HandleRawInput(int code)
+        {
+            try
+            {
+                if (!IsShown) return;
+                double now = Efl.ecore_time_get();
+                if (code == 174) { HandleKey("XF86Exit"); return; }
+                int navCode = code == 353 ? 28 : code == 158 ? 1 : code;
+                string key = _nav.Press(navCode, true, now);
+                if (key != null) HandleKey(key);
+            }
+            catch (Exception ex) { _log("pad raw key: " + ex.Message); }
+        }
+
+        public void HandleRawRelease(int code)
+        {
+            try
+            {
+                if (code == 1 || code == 158 || code == 174) _backUp.KernelRelease(Efl.ecore_time_get());
+            }
+            catch (Exception ex) { _log("pad raw up: " + ex.Message); }
+        }
+
+        private void HandleKey(string key)
+        {
+            if (!IsShown) return;
+            ArmIdle();
+            PadResult r = _model.Key(key);
+            switch (r)
+            {
+                case PadResult.Close:
+                    if (_backUp.Press(key, Efl.ecore_time_get())) { if (_backTimer == IntPtr.Zero) _backTimer = Efl.ecore_timer_add(0.05, _backCb, IntPtr.Zero); }
+                    else Close();
+                    break;
+                case PadResult.Send: { string typed = _model.Typed; Close(); _pendingKind = r; _pendingWhat = typed; break; }
+                case PadResult.SendKey: { string k = _model.PendingKey; Close(); _pendingKind = r; _pendingWhat = k; break; }
+                case PadResult.None: break;
+                default:
+                    // A move onto the other page starts the focus capsule at the cell it lands on.
+                    if (r == PadResult.Page) { LayoutPage(false); _motion.FocusX = _slots[_model.Page][_model.Focus].X; }
+                    Refresh();
+                    break;
+            }
+            Wake();   // whatever the key did, the next frame draws it (and the capsule slides from where it is)
         }
 
         private void OnKeyUp(IntPtr data, IntPtr evas, IntPtr obj, IntPtr eventInfo)

@@ -62,6 +62,7 @@ namespace Launcher.Native
         [DllImport(Evas)] public static extern void evas_object_event_callback_add(IntPtr obj, int type, EvasCb cb, IntPtr data);
         [DllImport(Evas)] public static extern IntPtr evas_object_rectangle_add(IntPtr evas);
         [DllImport(Evas)] public static extern void evas_object_pass_events_set(IntPtr obj, [MarshalAs(UnmanagedType.U1)] bool pass);
+        [DllImport(Evas)] public static extern void evas_object_focus_set(IntPtr obj, [MarshalAs(UnmanagedType.U1)] bool focus);
         [DllImport(Evas)] [return: MarshalAs(UnmanagedType.U1)] public static extern bool evas_object_key_grab(IntPtr obj, string keyname, ulong modifiers, ulong notModifiers, [MarshalAs(UnmanagedType.U1)] bool exclusive);
         [DllImport(Evas)] public static extern void evas_object_key_ungrab(IntPtr obj, string keyname, ulong modifiers, ulong notModifiers);
         [DllImport(Evas)] public static extern void evas_object_del(IntPtr obj);
