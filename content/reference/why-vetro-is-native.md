@@ -4,13 +4,13 @@ description: "Why Vetro's Samsung TV launcher is a native .NET program, not a we
 keywords: ["vetro launcher native", "samsung tv native launcher", "samsung tv launcher memory", "vetro dock"]
 date: 2026-11-10
 updated: 2026-11-27
-verified: "Vetro parts checked on 2026-11-27 against the 0.7.1 CHANGELOG, README and PERFORMANCE.md at commit cbc363f, plus VETRO-UI.md, TUNER.md, the dock README and STATE-MACHINES.md as checked on 2026-11-21; the EFL project page was checked on 2026-11-10."
+verified: "Vetro parts checked on 2026-11-27 against the 0.7.2 README and CHANGELOG at tag v0.7.2 (commit 2ee0456), with the 0.7.1 CHANGELOG and PERFORMANCE.md as checked the same day at commit cbc363f, plus VETRO-UI.md, TUNER.md, the dock README and STATE-MACHINES.md as checked on 2026-11-21; the EFL project page was checked on 2026-11-10."
 related: ["custom-launcher-samsung-tv", "remove-ads-samsung-tv-home-screen", "samsung-tv-memory-usage", "what-each-vetro-switch-changes", "vetro-vs-aerotizen-free-my-tv-tizenbrew", "vetro-security-model"]
 ---
 
 Vetro's launcher is a native program, not a web page in a browser engine. It is written in C#, draws with the TV's own EFL graphics libraries and runs under the TV's own `dotnet`, as the [dock README](https://github.com/andrearicci93/vetro/blob/main/dock/README.md) describes. The reason is memory. On a Samsung [Q80A](/tested-tvs/q80a/), Samsung's Home process held about 152 MB resident, the launcher about 22 MB, and available RAM went from 533 MB to 662 MB when the launcher replaced it. That is one run, and it measures memory only.
 
-Vetro is experimental, needs root and ships no signed installer: see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and [the risks of rooting](/root/is-it-safe-to-root-samsung-tv/). The launcher is part of Vetro UI, which the dashboard still marks Preview in 0.7.1, and the dashboard you use to turn it on is web, not native.
+Vetro is experimental, needs root and ships no signed installer: see [Vetro's root requirements](/root/how-to-root-samsung-tv/) and [the risks of rooting](/root/is-it-safe-to-root-samsung-tv/). The launcher is part of Vetro UI, which the dashboard still marks Preview in 0.7.2, and the dashboard you use to turn it on is web, not native.
 
 ## What is native and what is web in Vetro?
 
@@ -51,7 +51,7 @@ That guard is how the memory is held. Since 0.5.0 the guard also handles Samsung
 
 Version 0.7.0 changes that. According to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), the launcher now claims the Home key from the TV after the first press it reads from the remote, so from the second press on only the launcher answers and Samsung's Home no longer starts first. It was tried on a Q80A (Tizen 6.0); the call exists in the 2022 and 2024 firmware but was not yet tried there, and it does not apply in custom launcher mode. Vetro also closes Samsung's Home after a boot once the launcher runs and the TV has been up five minutes, about 130 MB on a Q80A.
 
-Vetro 0.7.1 adds Close idle Samsung Home (Vetro UI → Launcher, on by default). While Vetro's launcher is on, Samsung Home and its background parts are closed 25 seconds after the TV wakes from standby, or after 10 minutes unused, and never while Samsung Home is on screen, according to the [0.7.1 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#launcher). The Samsung Home closed after a boot is now closed whole, media hub and sidebar included. The same release moves the checks that started a shell on the launcher's own loop beside it, so an opening no longer waits for them.
+Vetro 0.7.1 adds Close idle Samsung Home (Vetro UI → Launcher, on by default). While Vetro's launcher is on, Samsung Home and its background parts are closed 25 seconds after the TV wakes from standby, or after 10 minutes unused, and never while Samsung Home is on screen, according to the [0.7.1 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#launcher-1). The Samsung Home closed after a boot is now closed whole, media hub and sidebar included. The same release moves the checks that started a shell on the launcher's own loop beside it, so an opening no longer waits for them.
 
 ## What does native cost?
 

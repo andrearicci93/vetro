@@ -33,7 +33,7 @@ The README's Tizen 9 row says root features are reported working on some TVs, an
 
 Tizen 9 also ships on 2025 models, and the next two reports are 2025 sets. A report from The Frame 2025 says loopback is blocked for apps on Tizen 9. One contributor proposed reaching the service through the TV's own address, and that fallback in 0.5.0 has not been tried on a TV. A Q8F on Tizen 9 could not reach the service in the first 0.5.0 build, so the pairing code never appeared. The republished 0.5.0 changes pairing to automatic; it has not yet been tried on a Q8F.
 
-The 0.3.2 changelog noted that on Tizen 9 the Launcher closed only one of Samsung's Home packages. In 0.7.1, Close idle Samsung Home closes Samsung Home whole after a boot, its media hub and sidebar included ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#launcher)). The published measurements vary by TV: the changelog gives 63 to 118 MiB for the media hub in the diagnostics of 2022 and later TVs.
+The 0.3.2 changelog noted that on Tizen 9 the Launcher closed only one of Samsung's Home packages. In 0.7.1, Close idle Samsung Home closes Samsung Home whole after a boot, its media hub and sidebar included ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#launcher-1)). The published measurements vary by TV: the changelog gives 63 to 118 MiB for the media hub in the diagnostics of 2022 and later TVs.
 
 ## Does Vetro 0.7.1 root Tizen 10 TVs?
 

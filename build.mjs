@@ -372,7 +372,7 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <h1>A cleaner Home for your Samsung TV</h1>
 <p class="lede">Vetro is an open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Replace Home with your own row of apps, disable selected tracking services and give remote buttons new shortcuts.</p>
 <p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Install Vetro</a><a class="textlink" href="${url('/root/how-to-root-samsung-tv/')}">How Samsung TV rooting works</a></p>
-<p class="req">Vetro 0.7.1. Root features need a compatible TV on Tizen 6 to 10; root on Tizen 10 starts in this version and is reported on test builds only. Experimental software; Vetro UI is in preview.</p>
+<p class="req">Vetro 0.7.2. Root features need a compatible TV on Tizen 6 to 10; root on Tizen 10 starts in 0.7.1 and is reported on test builds only. Experimental software; Vetro UI is in preview.</p>
 <figure class="stage"><div class="stage-glass"><a class="stage-img" href="${url('/assets/img/launcher-on-tv.jpg')}" aria-label="View launcher image">${shot('launcher-on-tv.jpg', "The Vetro launcher, a horizontal app bar at the bottom of the TV screen with the apps from Samsung's Home", 'eager')}</a></div>
 <figcaption>Vetro's launcher on the TV, earlier version shown. The row starts in Samsung's Home order where Vetro finds its cache, otherwise with the installed apps, and you can rearrange it; Samsung Home is one press away. ${full('launcher-on-tv.jpg', 'View launcher image')}</figcaption></figure>
 <p class="stage-note">Vetro runs on the TV. Open its dashboard from a computer or phone on the same network.</p>
@@ -417,7 +417,7 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
 <section class="chapter install"><div class="wrap">
 <h2 id="install-h">Install Vetro on a compatible TV</h2>
 <p class="copy">Apps2Samsung handles signing and installation. After installing, open Vetro once, set Host PC IP to 127.0.0.1 in Developer Mode and restart the TV. Follow the complete guide for prerequisites and checks.</p>
-<p class="copy">Already running Vetro 0.7.0 with root connected? Start the 0.7.1 update in Quick settings, General, Software update. On Tizen 6.5 or later, restart the whole TV within three minutes of Updating…, or install with Apps2Samsung. Vetro 0.5.0 and older versions install 0.7.1 with Apps2Samsung. Before a reinstall or a firmware update, Save settings (General, Settings file) keeps your Vetro choices in one file; it is new in 0.7.1 and not tried on a TV yet.</p>
+<p class="copy">Already running Vetro 0.7.1 or 0.7.0 with root connected? Start the 0.7.2 update in Quick settings, General, Software update. Coming from 0.7.0 on Tizen 6.5 or later, restart the whole TV within three minutes of Updating…, or install with Apps2Samsung. Vetro 0.5.0 and older versions install 0.7.2 with Apps2Samsung. Before a reinstall or a firmware update, Save settings (General, Settings file) keeps your Vetro choices in one file; it is new in 0.7.1 and not tried on a TV yet.</p>
 <p class="actions"><a class="btn primary" href="${url('/root/install-vetro-apps2samsung/')}">Follow the Vetro installation guide</a><a class="textlink" href="${REPO}" rel="noopener">Read the source and release notes</a></p>
 <aside class="secnote"><p>The dashboard uses plain HTTP. Keep it on a trusted local network and never expose it to the Internet. Automatic pairing starts after the TV app has been seen; until then the dashboard can be open.</p><a href="${url('/reference/vetro-security-model/')}">Dashboard security and pairing</a></aside>
 </div></section>
@@ -437,7 +437,7 @@ ${others.length ? `<h2>Other ${t.year} TVs</h2><ul>${others.map((o) => `<li><a h
     {
       '@context': 'https://schema.org', '@graph': [
         { '@type': 'WebPage', '@id': abs('/#webpage'), url: abs('/'), name: 'Vetro: Launcher & Debloater for Samsung Tizen TVs', description: desc, inLanguage: 'en', isPartOf: { '@id': abs('/#website') }, mainEntity: { '@id': abs('/#software') } },
-        { '@type': 'SoftwareApplication', '@id': abs('/#software'), name: 'Vetro', url: abs('/'), description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Experimental software; root features require a compatible TV on Tizen 6 to 10.', softwareVersion: '0.7.1', operatingSystem: 'Samsung Tizen', applicationCategory: 'UtilitiesApplication', license: 'https://opensource.org/license/mit', sameAs: [REPO], publisher: { '@id': abs('/#organization') }, isBasedOn: { '@type': 'SoftwareSourceCode', codeRepository: REPO, name: 'Vetro source code' } },
+        { '@type': 'SoftwareApplication', '@id': abs('/#software'), name: 'Vetro', url: abs('/'), description: 'Open source launcher, debloater and remapper for rooted Samsung Tizen TVs. Experimental software; root features require a compatible TV on Tizen 6 to 10.', softwareVersion: '0.7.2', operatingSystem: 'Samsung Tizen', applicationCategory: 'UtilitiesApplication', license: 'https://opensource.org/license/mit', sameAs: [REPO], publisher: { '@id': abs('/#organization') }, isBasedOn: { '@type': 'SoftwareSourceCode', codeRepository: REPO, name: 'Vetro source code' } },
       ],
     },
   ];

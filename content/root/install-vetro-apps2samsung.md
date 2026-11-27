@@ -4,11 +4,11 @@ description: "Step by step: Developer Mode, Apps2Samsung, the root package, pair
 keywords: ["install app samsung tv apps2samsung", "install vetro samsung tv", "apps2samsung vetro", "sideload app samsung tizen tv"]
 date: 2026-11-10
 updated: 2026-11-27
-verified: "Updated on 2026-11-27 against the Vetro 0.7.1 README (Install, Compatibility), CHANGELOG (Updates, Update lock, Settings file), UPDATING.md and INSTALLATION.md at commit cbc363f. SIGN-IN.md and the Apps2Samsung README are as checked on 2026-11-21."
+verified: "Updated on 2026-11-27 against the Vetro 0.7.2 README (Install) and CHANGELOG and UPDATING.md at tag v0.7.2 (commit 2ee0456); the 0.7.1 parts (Compatibility, Update lock, Settings file) and INSTALLATION.md as checked on 2026-11-27 at commit cbc363f. SIGN-IN.md and the Apps2Samsung README are as checked on 2026-11-21."
 related: ["samsung-tv-developer-mode", "samsung-developer-certificate-errors", "keep-root-after-restart", "uninstall-vetro-samsung-tv", "how-to-root-samsung-tv", "is-it-safe-to-root-samsung-tv"]
 ---
 
-To install Vetro with Apps2Samsung: turn on Developer Mode on the TV, run Apps2Samsung on a computer or phone on the same network, pick Vetro from its catalog and confirm the root badge, open Vetro once on the TV, then set Host PC IP to `127.0.0.1`, restart the TV and open the dashboard at `http://TV_IP:8099/`. There is no signed installer to download, because a Samsung certificate belongs to its owner. Vetro is experimental and needs root, and Vetro UI (the launcher, live TV and on-screen displays it draws on the TV) is in preview, so read [is it safe to root a Samsung TV](/root/is-it-safe-to-root-samsung-tv/) first. Already on Vetro 0.7.0 with root connected? [Use Software update in the dashboard](#can-i-update-vetro-without-reinstalling); if root is unavailable, use Apps2Samsung. On 0.5.0, install 0.7.1 with Apps2Samsung.
+To install Vetro with Apps2Samsung: turn on Developer Mode on the TV, run Apps2Samsung on a computer or phone on the same network, pick Vetro from its catalog and confirm the root badge, open Vetro once on the TV, then set Host PC IP to `127.0.0.1`, restart the TV and open the dashboard at `http://TV_IP:8099/`. There is no signed installer to download, because a Samsung certificate belongs to its owner. Vetro is experimental and needs root, and Vetro UI (the launcher, live TV and on-screen displays it draws on the TV) is in preview, so read [is it safe to root a Samsung TV](/root/is-it-safe-to-root-samsung-tv/) first. Already on Vetro 0.7.0 or 0.7.1 with root connected? [Use Software update in the dashboard](#can-i-update-vetro-without-reinstalling); if root is unavailable, use Apps2Samsung. On 0.5.0, install 0.7.2 with Apps2Samsung.
 
 ## What is Apps2Samsung?
 
@@ -66,13 +66,14 @@ The guide's test is to fully power off the TV, unplug it for 30 seconds, turn it
 
 ## Can I update Vetro without reinstalling?
 
-Yes, from Vetro 0.7.0 on, while root is connected; if root is unavailable, install the new version with Apps2Samsung. [Quick settings, General, Software update](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md) checks GitHub when you press Check for update, verifies a signed bundle and replaces the files when you press Update, with no computer attached and Host PC IP staying at `127.0.0.1`. If the new version does not start, Vetro puts the previous one back within four minutes. On a Tizen 6.5 or later TV, 0.7.0's updater still restarts its old service, so the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#install) says to restart the whole TV within 3 minutes once the dashboard says Updating… (hold the remote's power button until it restarts, or unplug it for 30 seconds; standby is not enough), or to install with Apps2Samsung instead. A TV on 0.5.0 refuses the 0.7.1 update before anything changes, says [UPDATING.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md#which-versions-can-update), so install 0.7.1 with Apps2Samsung there.
+Yes, from Vetro 0.7.0 on, while root is connected; if root is unavailable, install the new version with Apps2Samsung. [Quick settings, General, Software update](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md) checks GitHub when you press Check for update, verifies a signed bundle and replaces the files when you press Update, with no computer attached and Host PC IP staying at `127.0.0.1`. If the new version does not start, Vetro puts the previous one back within four minutes. On a Tizen 6.5 or later TV, 0.7.0's updater still restarts its old service, so the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#install) says to restart the whole TV within 3 minutes once the dashboard says Updating… (hold the remote's power button until it restarts, or unplug it for 30 seconds; standby is not enough), or to install with Apps2Samsung instead. That restart is for 0.7.0's updater. From 0.7.1 the updater restarts Vetro's service itself on Tizen 6.5 to 9; the [0.7.1 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#071--2026-11-26) says no such TV had run that restart yet, and that if the new version is not there 2 minutes after Updating…, you restart the whole TV. A TV on 0.5.0 cannot take 0.7.1 or a later version and refuses it before anything changes, says [UPDATING.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/UPDATING.md#which-versions-can-update), so install 0.7.2 with Apps2Samsung there. Version 0.7.2 changes nothing in `config.xml` that needs a reinstall.
 
-| You have | How to get 0.7.1 |
+| You have | How to get 0.7.2 |
 | --- | --- |
+| Vetro 0.7.1, root connected | Quick settings, General, Software update; if the new version is not there 2 minutes after Updating…, restart the whole TV |
 | Vetro 0.7.0, root connected | Quick settings, General, Software update; on Tizen 6.5 or later, restart the whole TV within 3 minutes of Updating… |
-| Vetro 0.7.0, root not connected | Install with Apps2Samsung as above |
-| Vetro 0.5.0 | Install with Apps2Samsung as above; its updater refuses 0.7.1 |
+| Vetro 0.7.0 or 0.7.1, root not connected | Install with Apps2Samsung as above |
+| Vetro 0.5.0 | Install with Apps2Samsung as above; its updater refuses 0.7.1 and later |
 | Vetro 0.3.x or older | Install with Apps2Samsung as above; those versions have no self-update |
 | No Vetro yet | Install with Apps2Samsung as above |
 

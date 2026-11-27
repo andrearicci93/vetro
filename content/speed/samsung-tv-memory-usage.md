@@ -67,7 +67,7 @@ HbbTV and Ambient also restart themselves on this TV. According to the changelog
 
 On a rooted TV, Vetro's dashboard (the Resource monitor page) shows CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes (README). The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, 0.72 to 0.79% on the summary view and 2.07% on the page then called Task manager, now Apps and processes. These are percentages of one core, not of the four.
 
-If you use Vetro's Home Assistant link, 0.7.1 also cuts a cost of its own: volume, mute and input were read by starting a small .NET program at each read, every 10 seconds, which costs memory and processor time on 2 GB TVs. Vetro now reads the TV's own settings for them in one short command, about 34 ms on a Q80A, and keeps the program only as a fallback for TVs where those settings cannot be read ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#home-assistant-mqtt)).
+If you use Vetro's Home Assistant link, 0.7.1 also cuts a cost of its own: volume, mute and input were read by starting a small .NET program at each read, every 10 seconds, which costs memory and processor time on 2 GB TVs. Vetro now reads the TV's own settings for them in one short command, about 34 ms on a Q80A, and keeps the program only as a fallback for TVs where those settings cannot be read ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#home-assistant-mqtt-1)).
 
 ![Vetro's Apps and processes page in an earlier interface, when it was called Task manager, filtered to Tracking, with component descriptions, app state and startup flags](/assets/img/task-manager.jpg)
 
