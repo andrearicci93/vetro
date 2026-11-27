@@ -16,7 +16,7 @@ var DEVICE_PHYS_RE = /^P: Phys=(.*)$/m;
 var DEVICE_EV_RE = /^B: EV=([0-9a-f]+)$/mi;
 var DEVICE_KEY_RE = /^B: KEY=(.*)$/m;
 var NON_ZERO_HEX_RE = /[1-9a-f]/i;
-var KEY_CODE_RE = /^\d{1,3}$/;
+var TOKEN_RE = /^(\d{1,3})(?::hold)?$/;
 var MAC_HEX_RE = /^[a-f0-9]{64}$/;
 function quote(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
 function blockHasKeys(block) {
@@ -76,7 +76,7 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
     var self=this;
     if (mode==='off') {self.stop(); return Promise.resolve(self.status());}
     if (mode!=='observe' && mode!=='filter') return Promise.reject(new Error('invalid input mode'));
-    if (!Array.isArray(tokens) || tokens.some(function(t){return !KEY_CODE_RE.test(t) || +t>767;})) return Promise.reject(new Error('invalid input codes'));
+    if (!Array.isArray(tokens) || tokens.some(function(t){var m=typeof t==='string'?TOKEN_RE.exec(t):null;return !m||+m[1]>767;})) return Promise.reject(new Error('invalid input codes'));
     if (mode==='filter' && !tokens.length) return Promise.reject(new Error('save a physical rule before enabling interception'));
     var requestGeneration=self.generation;
     return (Array.isArray(list) ? Promise.resolve(list) : self.inventory()).then(function(list){
@@ -114,7 +114,7 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                             try{
                                 if(fields.length!==3||fields[0]!=='EVENT'||+fields[1]!==seq+1)throw new Error('invalid input sequence');
                                 var event=JSON.parse(Buffer.from(fields[2],'base64').toString());
-                                if(event.type!==1||!Number.isInteger(event.code)||event.code<0||event.code>767||event.node!==selected.node||event.device!==selected.name||event.sequence!==+fields[1])throw new Error('invalid input event');
+                                if(!event||typeof event!=='object'||event.type!==1||!Number.isInteger(event.code)||event.code<0||event.code>767||event.node!==selected.node||event.device!==selected.name||event.sequence!==+fields[1]||(event.action!=='down'&&event.action!=='up'&&event.action!=='repeat'&&event.action!=='hold'))throw new Error('invalid input event');
                                 seq=+fields[1];self.events.push(event);if(self.events.length>30)self.events.shift();
                                 self.onEvent(event);
                             }catch(e){fail(e);return;}
