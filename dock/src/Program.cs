@@ -702,6 +702,7 @@ namespace Launcher
             DockLayout appsLayout = _appsLayout, inputsLayout = _inputsLayout, allLayout = _allLayout;
             bool editableBefore = _sourcesEditable;
             _apps = apps; _inputs = inputs; _allApps = all;
+            if (_taskSource != null) _taskSource.UpdateCatalog(_apps, _allApps);
             PageLayouts();
             // The window keeps its size: an unchanged list is laid out exactly as before (as in RebuildPages), so its page is kept. An
             // installed app usually changes All apps alone, and making the apps row and Sources again prepared every icon of them for nothing.
@@ -802,6 +803,8 @@ namespace Launcher
             if (HasCard(CardKind.Tasks))
             {
                 _taskUserMoved = false;
+                TaskSnapshot ready = _taskSource.TryTake();
+                if (ready != null) ApplySnapshot(ready);
                 _tasksCtl.SetCount(_taskPanel.Count);
                 RefreshTasks(true);
                 if (_taskRefresh == IntPtr.Zero) _taskRefresh = Efl.ecore_timer_add(TaskRefreshSeconds, TaskRefreshCb, IntPtr.Zero);
@@ -862,6 +865,13 @@ namespace Launcher
         {
             if (_taskRefresh != IntPtr.Zero) { Efl.ecore_timer_del(_taskRefresh); _taskRefresh = IntPtr.Zero; }
             if (_taskPoll != IntPtr.Zero) { Efl.ecore_timer_del(_taskPoll); _taskPoll = IntPtr.Zero; }
+            CancelTaskCloseTimers();
+        }
+
+        private static void CancelTaskCloseTimers()
+        {
+            if (_taskCloseTimer1 != IntPtr.Zero) { Efl.ecore_timer_del(_taskCloseTimer1); _taskCloseTimer1 = IntPtr.Zero; }
+            if (_taskCloseTimer2 != IntPtr.Zero) { Efl.ecore_timer_del(_taskCloseTimer2); _taskCloseTimer2 = IntPtr.Zero; }
         }
 
         private static bool _taskResort, _taskUserMoved;
@@ -955,7 +965,7 @@ namespace Launcher
             switch (ctl.Key(key))
             {
                 case TaskAction.Moved:
-                    if (card == CardKind.Tasks) _taskUserMoved = true;
+                    if (card == CardKind.Tasks) { _taskUserMoved = true; CancelTaskOk(); }
                     StartAnimator();
                     ResetIdle();
                     break;
@@ -1016,7 +1026,7 @@ namespace Launcher
             if (_taskOkTimer != IntPtr.Zero) { Efl.ecore_timer_del(_taskOkTimer); _taskOkTimer = IntPtr.Zero; }
             RunningApp app = _taskOkApp;
             _taskOkApp = null;
-            if (_tasksOn && _tasksCtl.IsActive) OpenTaskApp(app);
+            if (_tasksOn && _tasksCtl.IsActive && FocusedCard == CardKind.Tasks && _taskPanel != null && _taskPanel.AppAt(_tasksCtl.Selected) == app) OpenTaskApp(app);
         }
 
         private static byte OnTaskOkHold(IntPtr data)
@@ -1024,7 +1034,8 @@ namespace Launcher
             _taskOkTimer = IntPtr.Zero;   // returning 0 makes ecore free the timer
             try
             {
-                if (TaskOk.Fire() == HoldResult.Hold && _tasksOn && _tasksCtl.IsActive) CloseTaskApp(_taskOkApp);
+                if (TaskOk.Fire() == HoldResult.Hold && _tasksOn && _tasksCtl.IsActive && FocusedCard == CardKind.Tasks && _taskPanel != null && _taskPanel.AppAt(_tasksCtl.Selected) == _taskOkApp)
+                    CloseTaskApp(_taskOkApp);
             }
             catch (Exception ex) { Log("tasks hold: " + ex); }
             return 0;
@@ -1046,6 +1057,7 @@ namespace Launcher
             // An app only in All apps opens the way All apps opens it (its launch mode or data), not as a bare id.
             if (e == null && _allApps != null) foreach (AppEntry a in _allApps) if (a.AppId == app.AppId) { e = a; break; }
             if (e == null) e = new AppEntry(app.AppId, app.Label ?? app.AppId, app.AppId, null);
+            if (_taskSource != null) _taskSource.CancelClose(app.AppId);
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             Log("tasks: open " + app.AppId);
             HideDock();
@@ -1057,11 +1069,13 @@ namespace Launcher
             if (app != null && !app.Closing)
             {
                 _taskPanel.MarkClosing(app);
+                _taskSource.RecordClose(app.AppId, app.Pid);
                 _taskSource.Close(app.AppId);
                 ApplyCards();
                 // Look again soon: the list shrinks as soon as the app is gone, in sort order again.
-                Efl.ecore_timer_add(0.9, TaskAfterCloseCb, IntPtr.Zero);
-                Efl.ecore_timer_add(2.6, TaskAfterCloseCb, IntPtr.Zero);
+                CancelTaskCloseTimers();
+                _taskCloseTimer1 = Efl.ecore_timer_add(0.9, TaskAfterCloseCb, (IntPtr)1);
+                _taskCloseTimer2 = Efl.ecore_timer_add(2.6, TaskAfterCloseCb, (IntPtr)2);
             }
             ResetIdle();
         }
@@ -1074,10 +1088,13 @@ namespace Launcher
             return true;
         }
 
+        private static IntPtr _taskCloseTimer1, _taskCloseTimer2;
         private static readonly Efl.TaskCb TaskAfterCloseCb = OnTaskAfterClose;
 
         private static byte OnTaskAfterClose(IntPtr data)
         {
+            if (data == (IntPtr)1) _taskCloseTimer1 = IntPtr.Zero;
+            else if (data == (IntPtr)2) _taskCloseTimer2 = IntPtr.Zero;
             try { if (_tasksOn) RefreshTasks(true); }
             catch (Exception ex) { Log("tasks after close: " + ex); }
             return 0;
@@ -2468,6 +2485,7 @@ namespace Launcher
                 if (e.Panel == "inputs") OpenInputs(); else if (e.Panel == "allapps") OpenAllApps(); else Log("unknown panel " + e.Panel);
                 return;
             }
+            if (_taskSource != null && e.AppId != null) _taskSource.CancelClose(e.AppId);
             if (HomeGuard.ShouldCancel(_guardApps, e.AppId)) CancelGuard();
             HideDock();
             _pendingLaunch = e;
@@ -2727,7 +2745,7 @@ namespace Launcher
                     _cardCtl[i] = kind == CardKind.Tasks ? _tasksCtl : kind == CardKind.Audio ? _audioCtl : new TaskController();
                     _choiceSrcs[i] = ChoiceSourceFor(_cards[i]);
                 }
-                _taskSource = new TaskSource(_apps, Log);
+                _taskSource = new TaskSource(_apps, _allApps, _dir, Log);
 
                 Efl.elm_win_title_set(_win, "tvlauncher");
                 Efl.elm_win_alpha_set(_win, true);
