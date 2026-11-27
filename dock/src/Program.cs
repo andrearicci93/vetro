@@ -2658,6 +2658,7 @@ namespace Launcher
                 catch (Exception ex) { Console.Error.WriteLine("Source switch failed: " + ex.Message); return 1; }
             }
             if (Flag(args, "--get-home")) return GetHome();
+            try { Libc.prctl(Libc.PR_SET_DUMPABLE, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero); } catch (Exception) { }
             _perf = Flag(args, "--perf");
             _probe = new OpenProbe();
             _volumeEdge = VolumePlacement.ParseEdge(Arg(args, "--volume-edge"));
