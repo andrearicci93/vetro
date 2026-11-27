@@ -49,13 +49,13 @@ namespace Launcher.Core
         public const int GlowColor = 0xE2EDFF;
         public const float GlowStrength = 0.44f;
         public const int GlowSpread = 16;
-        public const int RingW = 2;
+        public static readonly int RingW = DockScale.Px(2);
         /// <summary>The focus mark: an ice-white ring, clearly apart from the sheet and from the icons' own rim.</summary>
         public const int RingColor = 0xE4F2FF;
         /// <summary>A Control center card's scroll bar: the track in the rim's white, the thumb in the capsule's ice (half as bright on a card without the focus).</summary>
         public const float ScrollTrackAlpha = 0.14f, ScrollThumbAlpha = 0.6f;
         /// <summary>The selected icon rises by this many pixels.</summary>
-        public const int Lift = 4;
+        public static readonly int Lift = DockScale.Px(4);
 
         // ---- Chips and light (the Fumé material: dark smoked sheet, ice focus, blue light only for progress and indicators) ----
         /// <summary>Light blue used only for progress and indicators (the level of the volume pill, a switch that is on).</summary>
@@ -71,7 +71,7 @@ namespace Launcher.Core
 
         // ---- The two pills ----
         public const float PillBorderAlpha = 0.75f;
-        public const int PillTextSize = 22;
+        public static readonly int PillTextSize = DockScale.Px(22);
         public const float PillDim = 0.88f;
 
         // ---- Divider ----

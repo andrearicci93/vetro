@@ -18,42 +18,42 @@ namespace Launcher.Core
     /// </summary>
     internal sealed class DockLayout
     {
-        public const int Icon = 92;
-        public const int FocusIcon = 112;
-        public const int Gap = 18;
-        public const int PadX = 26;
-        public const int PadTop = 16;
+        public static readonly int Icon = DockScale.Px(92);
+        public static readonly int FocusIcon = DockScale.Px(112);
+        public static readonly int Gap = DockScale.Px(18);
+        public static readonly int PadX = DockScale.Px(26);
+        public static readonly int PadTop = DockScale.Px(16);
         public const int LabelGap = 10;
         public const int LabelH = 34;
-        public const int PadBottom = 16;
+        public static readonly int PadBottom = DockScale.Px(16);
         /// <summary>Height of the name/clock row under the icons; none when the design shows neither.</summary>
         public static readonly int LabelRow = Design.ShowLabels || Design.ShowClock ? LabelGap + LabelH : 0;
-        public const int Margin = 40;          // room for the focus glow and the rim on every side (also: pill bottom to screen bottom)
+        public static readonly int Margin = DockScale.Px(40);          // room for the focus glow and the rim on every side (also: pill bottom to screen bottom)
         public const int BottomGap = 0;        // window bottom to screen bottom
-        public const int ScreenSideGap = 12;   // pill never closer than this to the screen edge
+        public static readonly int ScreenSideGap = DockScale.Px(12);   // pill never closer than this to the screen edge
         public const int MaxPillW = 1808;      // the bar is never wider than this
-        public const int HighlightPad = 32;      // reach of the soft glow around the focused icon (spread * 1.95, rounded up)
-        public const int SlideDistance = 48;
+        public static readonly int HighlightPad = DockScale.Px(32);      // reach of the soft glow around the focused icon (spread * 1.95, rounded up)
+        public static readonly int SlideDistance = DockScale.Px(48);
         // The apps clipper is wider than the app viewport by this much on both sides, so the enlarged focused
         // icon and its ring are never cut at the first and last app. (The glow is not clipped: it always fits in the padding.)
-        public const int ClipPad = (FocusIcon - Icon) / 2 + Design.RingW;
+        public static readonly int ClipPad = (FocusIcon - Icon) / 2 + Design.RingW;
         /// <summary>Space between the scrolling apps and the pinned system entries; the divider sits in its middle.</summary>
-        public const int GroupGap = 56;
-        public const int Pitch = Icon + Gap;
+        public static readonly int GroupGap = DockScale.Px(56);
+        public static readonly int Pitch = Icon + Gap;
         /// <summary>The pinned system entries are oval pills (icon and name drawn into one image) of this fixed size.</summary>
-        public const int PillItemW = 232;
-        public const int PillItemH = 48;
-        public const int PillItemGap = 8;
+        public static readonly int PillItemW = DockScale.Px(232);
+        public static readonly int PillItemH = DockScale.Px(48);
+        public static readonly int PillItemGap = DockScale.Px(8);
         /// <summary>Reach of the capsule glow around a focused pill (same spread as the icons' glow).</summary>
-        public const int PillGlowPad = 32;
+        public static readonly int PillGlowPad = DockScale.Px(32);
         /// <summary>Smallest space kept between the label and the clock; with less, the clock is not drawn.</summary>
-        public const int ClockGap = 16;
+        public static readonly int ClockGap = DockScale.Px(16);
         // Room for the navigation hint ("Input" above the apps, "Back" below the inputs): HintH is the
         // whole band, the capsule inside it is CapsuleH tall and HintH - CapsuleH away from the pill.
-        public const int HintH = 46;
-        public const int CapsuleH = 36;
-        public const int DividerW = 2;
-        public const int DividerH = 72;
+        public static readonly int HintH = DockScale.Px(46);
+        public static readonly int CapsuleH = DockScale.Px(36);
+        public static readonly int DividerW = DockScale.Px(2);
+        public static readonly int DividerH = DockScale.Px(72);
 
         public readonly int Count, ScreenW, ScreenH;
         /// <summary>Natural width of the whole strip: the apps, then (when grouped) the gap and the pinned entries.</summary>

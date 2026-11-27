@@ -32,7 +32,7 @@ namespace Launcher.Core
         public const int IconSize = 52;
         /// <summary>Space between the panel's sides and the selection plate.</summary>
         public const int PlateInset = PadX - 8;
-        public const int Margin = DockLayout.Margin;
+        public static readonly int Margin = DockLayout.Margin;
 
         public readonly int WinW, WinH, WinX, WinY, ScreenW, ScreenH;
         /// <summary>Empty space under the panel's margin: the dock's hint band below the bar, so both end on one line.</summary>

@@ -171,6 +171,7 @@ Dock.prototype.installed = function () {
     catch (e) { return false; }
 };
 
+var DOCK_SCALES = [100, 115, 130, 150];   // size of the bar in percent (the dock's --dock-scale)
 var VOLUME_EDGES = ['left', 'right', 'top', 'bottom', 'hidden'];   // where the volume bar sits (the dock's --volume-edge); hidden: the level changes, no bar
 // The Control center's cards (Down on the apps row), in the order they stand on screen; at most three (the dock's --cards).
 var CARDS = ['tasks', 'audio', 'picture', 'sleep'], MAX_CARDS = 3;
@@ -233,7 +234,7 @@ Dock.prototype.readState = function () {
     try {
         var s = this.readStateFile();
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), closeIdleHome: s && typeof s.closeIdleHome === 'boolean' ? s.closeIdleHome : true, row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', dockScale: s && DOCK_SCALES.indexOf(s.dockScale) >= 0 ? s.dockScale : 100, numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), closeIdleHome: s && typeof s.closeIdleHome === 'boolean' ? s.closeIdleHome : true, row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
@@ -248,7 +249,7 @@ Dock.prototype.readState = function () {
             useSourceImages: s && typeof s.useSourceImages === 'boolean' ? s.useSourceImages : this.legacy('images'),
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', dockScale: 100, numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), appStore: 'tvstore'}; }
 };
 
@@ -442,7 +443,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, dockScale: state.dockScale, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -516,6 +517,7 @@ Dock.prototype.startScript = function () {
         // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
         (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
+        (state.dockScale !== 100 && !state.customApp ? ' --dock-scale ' + state.dockScale : '') +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
         (!state.customApp && this.cardsArg(state) ? ' --cards ' + this.cardsArg(state) : ' --no-tasks');
     return [
@@ -1250,6 +1252,18 @@ Dock.prototype.setVolumeEdge = function (edge) {
     catch (e) { return Promise.reject(e); }
     if (!state.enabled) return this.status();
     return this.refreshOr(function () { self.patchState({volumeEdge: state.volumeEdge}); });
+};
+// Size of the bar. It is a start argument, so a running dock is restarted.
+Dock.prototype.setDockScale = function (scale) {
+    var self = this;
+    if (DOCK_SCALES.indexOf(scale) < 0) return Promise.reject(new Error('Invalid value'));
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    var state = this.readState();
+    if (state.dockScale === scale) return this.status();
+    try { this.patchState({dockScale: scale}); }
+    catch (e) { return Promise.reject(e); }
+    if (!state.enabled) return this.status();
+    return this.refreshOr(function () { self.patchState({dockScale: state.dockScale}); });
 };
 // The same for the number pad that replaces Samsung's 123 pad.
 Dock.prototype.setNumberPad = function (on) { return this.setKeyOption('numberPad', on); };
