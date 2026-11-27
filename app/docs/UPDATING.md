@@ -41,7 +41,7 @@ node rooting/release.cjs keygen ~/vetro-keys
 VETRO_UPDATE_KEY=~/vetro-keys/update-private.pem node rooting/release.cjs build /tmp/vetro-update
 ```
 
-This writes `vetro-update-<version>.json` (about 1.4 MB) and `update-index.json`. Publish both in the folder the dashboard reads (`VETRO_UPDATE_SOURCE`, default the `updates` branch of the repository on `raw.githubusercontent.com`, which allows browser downloads). Raise `shell` in `app/service/build-info.js` whenever `config.xml` changes.
+This writes `vetro-update-<version>.json` (about 1.4 MB) and `update-index.json`. Publish both in the folder the dashboard reads (`VETRO_UPDATE_SOURCE`, default the `updates` branch of the repository on `raw.githubusercontent.com`, which allows browser downloads). Raise `shell` in `app/service/build-info.js` only when `config.xml` changes something a file swap cannot (privileges, service flags). The `version` attribute changes every release and stays behind on the TV after an update, so it does not count; raising `shell` for it makes every TV on the previous version reinstall instead of update.
 
 An installed Vetro can take updates only if its package already contained the key: the first release with this feature has to be installed the usual way.
 
