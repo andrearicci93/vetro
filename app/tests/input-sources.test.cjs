@@ -102,5 +102,19 @@ function device(options={}) {
     assert.equal(fallback.available,false);
     assert.deepEqual(fallback.items.map(x=>x.key),['KEY_TV','KEY_HDMI1','KEY_HDMI2','KEY_HDMI3','KEY_HDMI4'],'an unreadable cache does not remove the upstream default keys');
     await assert.rejects(sources.select(async()=>({exit_code:0,stdout:'not a cache'}),13,{monitor:true}),/inventory is unavailable/,'a previously detected G8 does not fall back to TV inputs');
+    // A TV on the 2025 Tizen 9 firmware keeps Samsung's input icons as WebP, not PNG: the launcher's TV and HDMI tiles need one of them to switch.
+    const plainTv={TV:{SourceType:0},HDMI1:{SourceType:13},HDMI2:{SourceType:14}};
+    for(const [ext,other] of [['.webp','.png'],['.png','.webp']]) {
+        const read=await sources.read(async command=>{
+            if(command.includes('.sourceCache')) return {exit_code:0,stdout:cacheLine(plainTv)+'\n'+readback(13)};
+            const lines=command.split('\n'),found=[];
+            lines.forEach(l=>{const m=/\[ ! -f '([^']+)' \] \|\| echo (ICON_\d+)/.exec(l);if(m&&m[1].endsWith(ext)&&!m[1].endsWith(other))found.push(m[2]);});
+            return {exit_code:0,stdout:found.join('\n')+'\n'};
+        });
+        assert.equal(read.monitor,false);
+        const hdmi1=read.items.find(x=>x.sourceType===13);
+        assert.ok(hdmi1.sourceIcon&&hdmi1.sourceIcon.endsWith('r_icon_device_s_hdmi1'+ext),'the existing '+ext+' icon is the input icon on a TV: '+hdmi1.sourceIcon);
+        assert.ok(sources.sourceIconOk(hdmi1.sourceIcon));
+    }
     console.log('PASS physical inputs: G8 HDMI/DisplayPort/USB-C, source icons, merged caches and verified native switching');
 })().catch(e=>{console.error(e);process.exitCode=1});

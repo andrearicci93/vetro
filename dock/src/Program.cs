@@ -2492,7 +2492,15 @@ namespace Launcher
             try
             {
                 string icon = Launcher.Core.SourceSwitch.ResolveIcon(e, File.Exists);
-                if (icon == null) { Log("source " + e.Label + " (" + e.SourceType + "): no existing Samsung source icon; request not sent"); return; }
+                if (icon == null)
+                {
+                    // No icon file on this firmware: do what the dashboard's Inputs page does and press the input's key instead.
+                    string key = Launcher.Core.SourceSwitch.FallbackKey(e);
+                    if (key == null) { Log("source " + e.Label + " (" + e.SourceType + "): no existing Samsung source icon; request not sent"); return; }
+                    int krc = Libc.system(KeyTool + key);
+                    Log("source " + e.Label + " (" + e.SourceType + "): no Samsung source icon, key " + key + " rc=" + krc);
+                    return;
+                }
                 int rc = Launcher.Core.SourceSwitch.Send(e.SourceType, e.Label, icon, File.Exists, new SourceControl());
                 Log("source " + e.Label + " (" + e.SourceType + ") rc=" + rc);
             }

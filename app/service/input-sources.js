@@ -13,7 +13,7 @@ var CACHE_PATHS = [
 var MAX_CACHE_BYTES = 262144;
 var MAX_ITEMS = 16;
 var ICON_ROOT = '/usr/apps/com.samsung.tv.theme-resource/shared/res/org.tizen.menu/Settings_Popup/device_icon/';
-var SOURCE_ICON_RE = /^\/(?:usr\/apps|opt\/usr\/apps)\/[A-Za-z0-9_.\/-]+\.(?:png|svg)$/;
+var SOURCE_ICON_RE = /^\/(?:usr\/apps|opt\/usr\/apps)\/[A-Za-z0-9_.\/-]+\.(?:png|svg|webp)$/;
 var ARTWORK_RE = /^(?:\/opt\/share\/webappservice\/apps_icon|\/opt\/usr\/apps|\/usr\/apps|\/usr\/share\/canalysis\/Icon)\/[A-Za-z0-9_.\/-]{1,160}\.png$/;
 var HDMI_RE = /^HDMI([1-4])(?:\/\d+)?$/i;
 var DP_RE = /^(?:DISPLAYPORT|DP)(?:\/\d+)?$/i;
@@ -102,9 +102,10 @@ function validType(f, n) {
     // ports: TV/HDMI on TVs, DisplayPort and USB-C in the G8's own cache.
     return integer(n) && (f === 'tv' ? n === 0 : f === 'hdmi' ? n >= 13 && n <= 16 : f === 'displayport' ? n === 33 : f === 'usbc' && n === 41);
 }
-function fallbackIcon(f, port) {
+// Samsung's device_icon folder holds PNG files up to the 2024 firmware and WebP files from the 2025 Tizen 9 firmware (stock package).
+function fallbackIcons(f, port) {
     var name = f === 'tv' ? 'tv' : f === 'hdmi' ? 'hdmi' + port : f === 'displayport' ? 'dpport' : null;
-    return name ? ICON_ROOT + 'r_icon_device_s_' + name + '.png' : null;
+    return name ? ['.png', '.webp'].map(function (ext) { return ICON_ROOT + 'r_icon_device_s_' + name + ext; }) : [];
 }
 function normalize(caches) {
     var sources = mergeCaches(caches), monitor = isMonitor(sources), found = {};
@@ -188,8 +189,7 @@ function read(execute) {
     return inventory.then(function (parsed) {
         var items = normalize(parsed.sources), icons = [];
         items.forEach(function (item) {
-            var fallback = fallbackIcon(item.family, item.port);
-            if (fallback && item.sourceIcons.indexOf(fallback) < 0) item.sourceIcons.push(fallback);
+            fallbackIcons(item.family, item.port).forEach(function (fallback) { if (item.sourceIcons.indexOf(fallback) < 0) item.sourceIcons.push(fallback); });
             item.sourceIcons.forEach(function (icon) { if (icons.indexOf(icon) < 0) icons.push(icon); });
         });
         var command = icons.map(function (icon, i) { return '[ ! -f ' + q(icon) + ' ] || echo ICON_' + i; }).concat(['true']).join('\n');

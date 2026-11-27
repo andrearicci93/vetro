@@ -158,12 +158,12 @@ namespace Launcher.Core
             return false;
         }
 
-        /// <summary>A physical source icon from Samsung's installed package resources. SVG is valid for tv-viewer even
+        /// <summary>A physical source icon from Samsung's installed package resources. SVG and WebP are valid for tv-viewer even
         /// though the dock's own artwork renderer accepts PNG only.</summary>
         public static bool ValidSourceIconPath(string s)
         {
             if (s == null || s.Length == 0 || s.Length > 240) return false;
-            if (!(s.EndsWith(".png", StringComparison.Ordinal) || s.EndsWith(".svg", StringComparison.Ordinal))) return false;
+            if (!(s.EndsWith(".png", StringComparison.Ordinal) || s.EndsWith(".svg", StringComparison.Ordinal) || s.EndsWith(".webp", StringComparison.Ordinal))) return false;
             if (!(s.StartsWith("/usr/apps/", StringComparison.Ordinal) || s.StartsWith("/opt/usr/apps/", StringComparison.Ordinal))) return false;
             if (s.Contains("..") || s.Contains("//")) return false;
             foreach (char c in s)

@@ -29,8 +29,26 @@ namespace Launcher.Core
                 : entry.SourceType >= 13 && entry.SourceType <= 16 ? "hdmi" + (entry.SourceType - 12)
                 : entry.SourceType == 33 ? "dpport" : null;
             if (name == null) return null;
-            string fallback = LegacyIconDir + "r_icon_device_s_" + name + ".png";
-            return exists(fallback) ? fallback : null;
+            // Samsung's folder holds PNG files up to the 2024 firmware and WebP files from the 2025 Tizen 9 firmware (checked on the stock
+            // 2025 package), so either is a real resource for tv-viewer.
+            foreach (string extension in FallbackExtensions)
+            {
+                string fallback = LegacyIconDir + "r_icon_device_s_" + name + extension;
+                if (exists(fallback)) return fallback;
+            }
+            return null;
+        }
+
+        private static readonly string[] FallbackExtensions = { ".png", ".webp" };
+
+        /// <summary>The remote key the dashboard's Inputs page falls back to when no icon exists on this firmware (TV and HDMI 1-4 only).
+        /// A key name is letters and digits only, so it is safe on a command line.</summary>
+        public static string FallbackKey(AppEntry entry)
+        {
+            if (entry == null) return null;
+            if (entry.SourceType == 0) return "XF86DiscretSourceTV";
+            if (entry.SourceType >= 13 && entry.SourceType <= 16) return "XF86DiscretHDMI" + (entry.SourceType - 12).ToString(CultureInfo.InvariantCulture);
+            return null;
         }
 
         public static int Send(int type, string label, string icon, Func<string, bool> exists, ISourceControl control)

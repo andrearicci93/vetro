@@ -11,6 +11,7 @@ namespace Launcher.Tests
         private const string HdmiIcon = ResourceRoot + "VD_ICONS/i_icon_device_m_microhdmi.svg";
         private const string PcIcon = ResourceRoot + "VD_ICONS/i_icon_device_m_pc.svg";
         private const string HdmiFallback = ResourceRoot + "org.tizen.menu/Settings_Popup/device_icon/r_icon_device_s_hdmi1.png";
+        private const string HdmiFallbackWebp = ResourceRoot + "org.tizen.menu/Settings_Popup/device_icon/r_icon_device_s_hdmi1.webp";
 
         private static string Line(string source, string icon, string artwork = "")
         {
@@ -94,6 +95,7 @@ namespace Launcher.Tests
             {
                 T.True(Catalog.ValidSourceIconPath(HdmiIcon), "Samsung's micro-HDMI SVG is accepted");
                 T.True(Catalog.ValidSourceIconPath("/opt/usr/apps/com.samsung.tv.theme-resource/shared/res/a.png"), "the installed-package PNG location is accepted");
+                T.True(Catalog.ValidSourceIconPath(HdmiFallbackWebp), "the 2025 firmware's WebP input icon is accepted");
                 foreach (string path in new[] { "/etc/shadow.svg", "https://example.com/a.svg", "/usr/apps/a/../b.svg", "/usr/apps//a.svg", "/usr/apps/a b.svg", "/usr/apps/a.svg;id", "/usr/apps/a.jpg", "/usr/apps/" + new string('a', 230) + ".svg" })
                 {
                     T.True(!Catalog.ValidSourceIconPath(path), "invalid source resource rejected: " + path);
@@ -112,7 +114,13 @@ namespace Launcher.Tests
                 var usb = Catalog.Parse(Line("source:41", PcIcon)).Entries[0];
                 T.Eq(SourceSwitch.ResolveIcon(hdmi, p => p == HdmiIcon || p == HdmiFallback), HdmiIcon, "the monitor's SVG wins over a TV fallback");
                 T.Eq(SourceSwitch.ResolveIcon(hdmi, p => p == HdmiFallback), HdmiFallback, "an existing legacy HDMI icon remains usable");
+                T.Eq(SourceSwitch.ResolveIcon(hdmi, p => p == HdmiFallbackWebp), HdmiFallbackWebp, "the 2025 firmware keeps the same icon as WebP, which is a real resource too");
+                T.Eq(SourceSwitch.ResolveIcon(hdmi, p => p == HdmiFallback || p == HdmiFallbackWebp), HdmiFallback, "PNG is looked for first");
                 T.Eq(SourceSwitch.ResolveIcon(hdmi, p => false), null, "a missing resource prevents the request");
+                T.Eq(SourceSwitch.FallbackKey(hdmi), "XF86DiscretHDMI1", "with no icon at all HDMI 1 falls back to its key");
+                T.Eq(SourceSwitch.FallbackKey(Catalog.Parse(Line("source:0", null)).Entries[0]), "XF86DiscretSourceTV", "and TV to the TV key");
+                T.Eq(SourceSwitch.FallbackKey(usb), null, "an input without a key has no fallback");
+                T.Eq(SourceSwitch.FallbackKey(null), null, "a missing entry has none");
                 T.Eq(SourceSwitch.ResolveIcon(usb, p => p == PcIcon), PcIcon, "USB-C uses its discovered resource");
                 T.Eq(SourceSwitch.ResolveIcon(usb, p => p.EndsWith("r_icon_device_s_tv.png", StringComparison.Ordinal)), null, "USB-C never guesses a TV icon");
                 T.Eq(SourceSwitch.ResolveIcon(new AppEntry("a", "A", "org.a", null), p => true), null, "an ordinary app is not a source");
