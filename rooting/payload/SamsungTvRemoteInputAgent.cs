@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -56,6 +57,7 @@ internal static class SamsungTvRemoteInputAgent
     private const int DeviceBusy = 16;   // EBUSY
     private const int UinputUserDeviceSize = 1116;
     private const int UinputNameBytes = 80;
+    private const int HoldThresholdMs = 700;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PollDescriptor
@@ -79,6 +81,15 @@ internal static class SamsungTvRemoteInputAgent
     {
         public string FullscreenApplicationId = "";
         public string PartialApplicationId = "";
+    }
+
+    private sealed class HoldPending
+    {
+        public byte[] DownEvent;
+        public long DeadlineMs;
+        public bool Fired;
+        public string Key;
+        public int? ScanCode;
     }
 
     private sealed class UinputForwarder : IDisposable
@@ -301,6 +312,13 @@ internal static class SamsungTvRemoteInputAgent
             }
         }
 
+        public void ForwardSyn()
+        {
+            int eventSize = IntPtr.Size == 8 ? 24 : 16;
+            byte[] synchronization = new byte[eventSize];
+            RequireWrite(descriptor, synchronization);
+        }
+
         public void Dispose()
         {
             int current = descriptor;
@@ -440,8 +458,10 @@ internal static class SamsungTvRemoteInputAgent
             {
                 throw new ArgumentException("remote-input mode must be observe or filter");
             }
-            HashSet<string> blocked = ParseTokens(arguments[7]);
-            if (!filter && blocked.Count != 0)
+            HashSet<string> blocked;
+            HashSet<string> holdBlocked;
+            ParseTokens(arguments[7], out blocked, out holdBlocked);
+            if (!filter && (blocked.Count != 0 || holdBlocked.Count != 0))
             {
                 throw new ArgumentException("observe mode cannot block input tokens");
             }
@@ -459,7 +479,8 @@ internal static class SamsungTvRemoteInputAgent
                 arguments[4],
                 arguments[5],
                 filter,
-                blocked);
+                blocked,
+                holdBlocked);
             return 0;
         }
         catch (Exception exception)
@@ -485,7 +506,8 @@ internal static class SamsungTvRemoteInputAgent
         string transport,
         string model,
         bool filter,
-        HashSet<string> blocked)
+        HashSet<string> blocked,
+        HashSet<string> holdBlocked)
     {
         InputDevice device = FindInputDevice(deviceName);
         if (device == null)
@@ -578,6 +600,7 @@ internal static class SamsungTvRemoteInputAgent
                         model,
                         filter,
                         blocked,
+                        holdBlocked,
                         forwarder,
                         nonce,
                         secret);
@@ -607,6 +630,7 @@ internal static class SamsungTvRemoteInputAgent
         string model,
         bool filter,
         HashSet<string> blocked,
+        HashSet<string> holdBlocked,
         UinputForwarder forwarder,
         byte[] nonce,
         byte[] secret)
@@ -617,6 +641,7 @@ internal static class SamsungTvRemoteInputAgent
         int valueOffset = codeOffset + 2;
         Dictionary<int, string> keyNames = ReadKeyNames();
         Dictionary<ushort, bool> pressedBlocked = new Dictionary<ushort, bool>();
+        Dictionary<ushort, HoldPending> pendingHolds = new Dictionary<ushort, HoldPending>();
         HashSet<ushort> pressedWake = new HashSet<ushort>();
         long sequence = 0;
         int? scanCode = null;
@@ -630,122 +655,159 @@ internal static class SamsungTvRemoteInputAgent
                 Events = PollIn,
             },
         };
-        while (true)
+        try
         {
-            descriptors[0].ReturnedEvents = 0;
-            descriptors[1].ReturnedEvents = 0;
-            int ready = poll(descriptors, 2, -1);
-            if (ready < 0)
+            while (true)
             {
-                if (Marshal.GetLastWin32Error() == InterruptedSystemCall)
+                int timeoutMs = -1;
+                if (pendingHolds.Count != 0)
                 {
-                    continue;
+                    long nowBeforePoll = MonotonicMilliseconds();
+                    long minDeadline = long.MaxValue;
+                    foreach (KeyValuePair<ushort, HoldPending> entry in pendingHolds)
+                    {
+                        if (!entry.Value.Fired && entry.Value.DeadlineMs < minDeadline)
+                        {
+                            minDeadline = entry.Value.DeadlineMs;
+                        }
+                    }
+                    if (minDeadline != long.MaxValue)
+                    {
+                        long remaining = minDeadline - nowBeforePoll;
+                        timeoutMs = remaining > int.MaxValue ? int.MaxValue : Math.Max(1, (int)remaining);
+                    }
                 }
-                throw NativeError("poll remote input");
-            }
-            if ((descriptors[1].ReturnedEvents
-                    & (PollError | PollHangup | PollInvalid)) != 0)
-            {
-                return;
-            }
-            if ((descriptors[1].ReturnedEvents & PollIn) != 0)
-            {
-                byte[] probe = new byte[1];
-                int count = client.Client.Receive(probe, 0, 1, SocketFlags.Peek);
-                if (count == 0)
+                descriptors[0].ReturnedEvents = 0;
+                descriptors[1].ReturnedEvents = 0;
+                int ready = poll(descriptors, 2, timeoutMs);
+                if (ready < 0)
+                {
+                    if (Marshal.GetLastWin32Error() == InterruptedSystemCall)
+                    {
+                        continue;
+                    }
+                    throw NativeError("poll remote input");
+                }
+                if ((descriptors[1].ReturnedEvents
+                        & (PollError | PollHangup | PollInvalid)) != 0)
                 {
                     return;
                 }
-                throw new InvalidDataException(
-                    "remote-input host sent unexpected data");
-            }
-            if ((descriptors[0].ReturnedEvents
-                    & (PollError | PollHangup | PollInvalid)) != 0)
-            {
-                throw new IOException("remote input device disconnected");
-            }
-            if ((descriptors[0].ReturnedEvents & PollIn) == 0)
-            {
-                continue;
-            }
-            while (true)
-            {
-                int count = read(inputDescriptor, buffer, buffer.Length);
-                if (count != eventSize)
+                if ((descriptors[1].ReturnedEvents & PollIn) != 0)
                 {
-                    break;
-                }
-                ushort type = BitConverter.ToUInt16(buffer, typeOffset);
-                ushort code = BitConverter.ToUInt16(buffer, codeOffset);
-                int value = BitConverter.ToInt32(buffer, valueOffset);
-                if (type == EventMiscellaneous && code == MiscellaneousScan)
-                {
-                    scanCode = value;
-                }
-                string key;
-                if (!keyNames.TryGetValue(code, out key))
-                {
-                    key = "";
-                }
-                bool block = false;
-                // With the screen off, Samsung turns it back on at the first key that is not a volume or power key and drops
-                // that key. A key re-emitted through uinput only moves deviced's state back to "lcdon" and leaves the panel
-                // dark (Q80A, 2026-11-19), so while this agent holds the remote it does the same itself: the key (down,
-                // repeats and up) goes nowhere, not even to a shortcut, and deviced is asked for "lcdon".
-                bool wake = false;
-                if (filter && type == EventKey)
-                {
-                    if (value == 1 && !KeepsScreenOff(code) && ScreenIsOff())
+                    byte[] probe = new byte[1];
+                    int count = client.Client.Receive(probe, 0, 1, SocketFlags.Peek);
+                    if (count == 0)
                     {
-                        pressedWake.Add(code);
-                        TurnScreenOn();
+                        return;
                     }
-                    wake = pressedWake.Contains(code);
-                    if (wake && value == 0)
+                    throw new InvalidDataException(
+                        "remote-input host sent unexpected data");
+                }
+                if ((descriptors[0].ReturnedEvents
+                        & (PollError | PollHangup | PollInvalid)) != 0)
+                {
+                    throw new IOException("remote input device disconnected");
+                }
+                if (pendingHolds.Count != 0)
+                {
+                    long nowAfterPoll = MonotonicMilliseconds();
+                    foreach (KeyValuePair<ushort, HoldPending> entry in pendingHolds)
                     {
-                        pressedWake.Remove(code);
+                        HoldPending pending = entry.Value;
+                        if (!pending.Fired && nowAfterPoll >= pending.DeadlineMs)
+                        {
+                            pending.Fired = true;
+                            pressedBlocked[entry.Key] = true;
+                            EmitInputEvent(
+                                stream,
+                                nonce,
+                                secret,
+                                ref sequence,
+                                pending.DownEvent,
+                                device,
+                                transport,
+                                model,
+                                filter,
+                                entry.Key,
+                                2,
+                                pending.Key,
+                                "blocked",
+                                pending.ScanCode,
+                                "hold");
+                        }
                     }
                 }
-                if (type == EventKey && !wake)
+                if ((descriptors[0].ReturnedEvents & PollIn) == 0)
                 {
-                    bool first = blocked.Contains(code.ToString())
-                        || (!string.IsNullOrEmpty(key) && blocked.Contains(key));
-                    bool original;
-                    if (value == 1)
-                    {
-                        block = first;
-                        pressedBlocked[code] = block;
-                    }
-                    else if (pressedBlocked.TryGetValue(code, out original))
-                    {
-                        block = original;
-                    }
-                    else
-                    {
-                        block = first;
-                    }
+                    continue;
                 }
-                if (filter
-                    && !block
-                    && !wake
-                    && (type == EventKey || type == EventSynchronization))
+                while (true)
                 {
-                    forwarder.Forward(buffer);
-                }
-                if (type == EventKey)
-                {
-                    sequence++;
-                    WriteAuthenticated(
-                        stream,
-                        nonce,
-                        secret,
-                        "EVENT\t"
-                        + sequence
-                        + "\t"
-                        + Convert.ToBase64String(
-                            Encoding.UTF8.GetBytes(
-                                EventJson(
-                                    sequence,
+                    int count = read(inputDescriptor, buffer, buffer.Length);
+                    if (count != eventSize)
+                    {
+                        break;
+                    }
+                    ushort type = BitConverter.ToUInt16(buffer, typeOffset);
+                    ushort code = BitConverter.ToUInt16(buffer, codeOffset);
+                    int value = BitConverter.ToInt32(buffer, valueOffset);
+                    if (type == EventMiscellaneous && code == MiscellaneousScan)
+                    {
+                        scanCode = value;
+                    }
+                    string key;
+                    if (!keyNames.TryGetValue(code, out key))
+                    {
+                        key = "";
+                    }
+                    bool block = false;
+                    // With the screen off, Samsung turns it back on at the first key that is not a volume or power key and drops
+                    // that key. A key re-emitted through uinput only moves deviced's state back to "lcdon" and leaves the panel
+                    // dark (Q80A, 2026-11-19), so while this agent holds the remote it does the same itself: the key (down,
+                    // repeats and up) goes nowhere, not even to a shortcut, and deviced is asked for "lcdon".
+                    bool wake = false;
+                    if (filter && type == EventKey)
+                    {
+                        if (value == 1 && !KeepsScreenOff(code) && ScreenIsOff())
+                        {
+                            pressedWake.Add(code);
+                            TurnScreenOn();
+                        }
+                        wake = pressedWake.Contains(code);
+                        if (wake && value == 0)
+                        {
+                            pressedWake.Remove(code);
+                        }
+                    }
+                    if (type == EventKey && !wake)
+                    {
+                        bool isBlocked = blocked.Contains(code.ToString())
+                            || (!string.IsNullOrEmpty(key) && blocked.Contains(key));
+                        bool isHoldBlocked = filter
+                            && !isBlocked
+                            && (holdBlocked.Contains(code.ToString())
+                                || (!string.IsNullOrEmpty(key) && holdBlocked.Contains(key)));
+                        if (isHoldBlocked)
+                        {
+                            if (value == 1)
+                            {
+                                byte[] downCopy = new byte[buffer.Length];
+                                Buffer.BlockCopy(buffer, 0, downCopy, 0, buffer.Length);
+                                pendingHolds[code] = new HoldPending
+                                {
+                                    DownEvent = downCopy,
+                                    DeadlineMs = MonotonicMilliseconds() + HoldThresholdMs,
+                                    Fired = false,
+                                    Key = key,
+                                    ScanCode = scanCode,
+                                };
+                                pressedBlocked.Remove(code);
+                                EmitInputEvent(
+                                    stream,
+                                    nonce,
+                                    secret,
+                                    ref sequence,
                                     buffer,
                                     device,
                                     transport,
@@ -754,19 +816,209 @@ internal static class SamsungTvRemoteInputAgent
                                     code,
                                     value,
                                     key,
-                                    wake ? "wake" : block ? "blocked" : "native",
-                                    scanCode))));
-                    if (value == 0)
-                    {
-                        pressedBlocked.Remove(code);
+                                    "hold-wait",
+                                    scanCode,
+                                    null);
+                            }
+                            else if (value == 2)
+                            {
+                                HoldPending pending;
+                                if (pendingHolds.TryGetValue(code, out pending)
+                                    && !pending.Fired
+                                    && MonotonicMilliseconds() >= pending.DeadlineMs)
+                                {
+                                    pending.Fired = true;
+                                    pressedBlocked[code] = true;
+                                    EmitInputEvent(
+                                        stream,
+                                        nonce,
+                                        secret,
+                                        ref sequence,
+                                        pending.DownEvent,
+                                        device,
+                                        transport,
+                                        model,
+                                        filter,
+                                        code,
+                                        2,
+                                        pending.Key,
+                                        "blocked",
+                                        pending.ScanCode,
+                                        "hold");
+                                }
+                            }
+                            else if (value == 0)
+                            {
+                                HoldPending pending;
+                                if (pendingHolds.TryGetValue(code, out pending))
+                                {
+                                    pendingHolds.Remove(code);
+                                    if (!pending.Fired)
+                                    {
+                                        forwarder.Forward(pending.DownEvent);
+                                        forwarder.ForwardSyn();
+                                        forwarder.Forward(buffer);
+                                        forwarder.ForwardSyn();
+                                        EmitInputEvent(
+                                            stream,
+                                            nonce,
+                                            secret,
+                                            ref sequence,
+                                            buffer,
+                                            device,
+                                            transport,
+                                            model,
+                                            filter,
+                                            code,
+                                            value,
+                                            key,
+                                            "native",
+                                            scanCode,
+                                            null);
+                                    }
+                                    else
+                                    {
+                                        pressedBlocked.Remove(code);
+                                        EmitInputEvent(
+                                            stream,
+                                            nonce,
+                                            secret,
+                                            ref sequence,
+                                            buffer,
+                                            device,
+                                            transport,
+                                            model,
+                                            filter,
+                                            code,
+                                            value,
+                                            key,
+                                            "blocked",
+                                            scanCode,
+                                            null);
+                                    }
+                                }
+                                else
+                                {
+                                    forwarder.Forward(buffer);
+                                    pressedBlocked.Remove(code);
+                                    EmitInputEvent(
+                                        stream,
+                                        nonce,
+                                        secret,
+                                        ref sequence,
+                                        buffer,
+                                        device,
+                                        transport,
+                                        model,
+                                        filter,
+                                        code,
+                                        value,
+                                        key,
+                                        "native",
+                                        scanCode,
+                                        null);
+                                }
+                            }
+                            continue;
+                        }
+                        bool original;
+                        if (value == 1)
+                        {
+                            block = isBlocked;
+                            pressedBlocked[code] = block;
+                        }
+                        else if (pressedBlocked.TryGetValue(code, out original))
+                        {
+                            block = original;
+                        }
+                        else
+                        {
+                            block = isBlocked;
+                        }
                     }
-                }
-                if (type == EventSynchronization)
-                {
-                    scanCode = null;
+                    if (filter
+                        && !block
+                        && !wake
+                        && (type == EventKey || type == EventSynchronization))
+                    {
+                        forwarder.Forward(buffer);
+                    }
+                    if (type == EventKey)
+                    {
+                        EmitInputEvent(
+                            stream,
+                            nonce,
+                            secret,
+                            ref sequence,
+                            buffer,
+                            device,
+                            transport,
+                            model,
+                            filter,
+                            code,
+                            value,
+                            key,
+                            wake ? "wake" : block ? "blocked" : "native",
+                            scanCode,
+                            null);
+                        if (value == 0)
+                        {
+                            pressedBlocked.Remove(code);
+                        }
+                    }
+                    if (type == EventSynchronization)
+                    {
+                        scanCode = null;
+                    }
                 }
             }
         }
+        finally
+        {
+            pendingHolds.Clear();
+        }
+    }
+
+    private static void EmitInputEvent(
+        Stream stream,
+        byte[] nonce,
+        byte[] secret,
+        ref long sequence,
+        byte[] buffer,
+        InputDevice device,
+        string transport,
+        string model,
+        bool filter,
+        ushort code,
+        int value,
+        string key,
+        string decision,
+        int? scanCode,
+        string actionOverride)
+    {
+        sequence++;
+        WriteAuthenticated(
+            stream,
+            nonce,
+            secret,
+            "EVENT\t"
+            + sequence
+            + "\t"
+            + Convert.ToBase64String(
+                Encoding.UTF8.GetBytes(
+                    EventJson(
+                        sequence,
+                        buffer,
+                        device,
+                        transport,
+                        model,
+                        filter,
+                        code,
+                        value,
+                        key,
+                        decision,
+                        scanCode,
+                        actionOverride))));
     }
 
     private static string EventJson(
@@ -780,7 +1032,8 @@ internal static class SamsungTvRemoteInputAgent
         int value,
         string key,
         string decision,
-        int? scanCode)
+        int? scanCode,
+        string actionOverride)
     {
         long seconds = IntPtr.Size == 8
             ? BitConverter.ToInt64(buffer, 0)
@@ -805,7 +1058,7 @@ internal static class SamsungTvRemoteInputAgent
             + ",\"value\":" + value
             + ",\"type_name\":\"EV_KEY\""
             + ",\"key\":\"" + EscapeJson(key) + "\""
-            + ",\"action\":\"" + ActionName(value) + "\""
+            + ",\"action\":\"" + (actionOverride ?? ActionName(value)) + "\""
             + ",\"decision\":\"" + decision + "\""
             + (scanCode.HasValue
                 ? ",\"scan_code\":" + scanCode.Value
@@ -1045,18 +1298,41 @@ internal static class SamsungTvRemoteInputAgent
         result[213] = "XF86Caption";
     }
 
-    private static HashSet<string> ParseTokens(string value)
+    private static void ParseTokens(
+        string value,
+        out HashSet<string> blocked,
+        out HashSet<string> holdBlocked)
     {
-        HashSet<string> result = new HashSet<string>(StringComparer.Ordinal);
+        blocked = new HashSet<string>(StringComparer.Ordinal);
+        holdBlocked = new HashSet<string>(StringComparer.Ordinal);
         foreach (string token in (value ?? "").Split(','))
         {
             string normalized = token.Trim();
-            if (normalized.Length > 0)
+            if (normalized.Length == 0)
             {
-                result.Add(normalized);
+                continue;
+            }
+            if (normalized.EndsWith(":hold", StringComparison.Ordinal))
+            {
+                string target = normalized.Substring(0, normalized.Length - 5).Trim();
+                if (target.Length > 0)
+                {
+                    holdBlocked.Add(target);
+                }
+            }
+            else
+            {
+                blocked.Add(normalized);
             }
         }
-        return result;
+        holdBlocked.ExceptWith(blocked);
+    }
+
+    private static long MonotonicMilliseconds()
+    {
+        long ticks = Stopwatch.GetTimestamp();
+        long frequency = Stopwatch.Frequency;
+        return (ticks / frequency) * 1000L + ((ticks % frequency) * 1000L) / frequency;
     }
 
     private static byte[] ReadAndRemoveSecret(string path)
