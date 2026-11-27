@@ -51,8 +51,33 @@ internal static class SamsungTvRemoteInputAgent
     // it is off (read on a Q80A, fw 2310.0; the key is in deviced on Tizen 6.0, 6.5 and 9).
     private const string DisplayStateKey = "memory/pm/state";
     private const int DisplayStateOff = 3;
+    private const string ScreensaverKey = "memory/window_system/screensaver_on_off";
     private const string ScreenOnCommand = "--timeout=3 call org.tizen.system.deviced /Org/Tizen/System/DeviceD/Display "
         + "org.tizen.system.deviced.display ChangeState s lcdon";
+    private const string ScrsaverDbusCall =
+        "dbus-send --system --reply-timeout=1000 --print-reply=literal --dest=org.enlightenment.wm /org/enlightenment/wm org.enlightenment.wm.info.scrsaver ";
+    private const string ScreensaverActivityCommand =
+        "lk='/tmp/vetro-scrsaver.lock'; "
+        + "if ! mkdir \"$lk\" 2>/dev/null; then "
+        + "for _ in 1 2 3 4 5; do [ -e \"$lk/p\" ] && break; done; "
+        + "read -r lp < \"$lk/p\" 2>/dev/null || lp=; "
+        + "if [ -n \"$lp\" ] && (kill -0 \"$lp\" 2>/dev/null || [ -d \"/proc/$lp\" ]); then exit 0; fi; "
+        + "if [ -e \"$lk/d\" ]; then "
+        + "if " + ScrsaverDbusCall + "int32:2 double:0 >/dev/null 2>&1 || " + ScrsaverDbusCall + "int32:2 double:0 >/dev/null 2>&1; then "
+        + "rm -f \"$lk/d\" 2>/dev/null; else exit 1; fi; "
+        + "fi; "
+        + "rm -rf \"$lk\" 2>/dev/null; "
+        + "mkdir \"$lk\" 2>/dev/null || exit 0; "
+        + "fi; "
+        + "trap '' HUP INT TERM; "
+        + "echo $$ > \"$lk/p\" 2>/dev/null; "
+        + "s=$(" + ScrsaverDbusCall + "int32:1 double:0 2>/dev/null); "
+        + "case \"$s\" in *\"State: Enabled\"*) "
+        + ": > \"$lk/d\" 2>/dev/null; "
+        + ScrsaverDbusCall + "int32:3 double:0 >/dev/null 2>&1; "
+        + "if " + ScrsaverDbusCall + "int32:2 double:0 >/dev/null 2>&1 || " + ScrsaverDbusCall + "int32:2 double:0 >/dev/null 2>&1; then "
+        + "rm -f \"$lk/d\" 2>/dev/null; fi ;; esac; "
+        + "if [ ! -e \"$lk/d\" ]; then rm -rf \"$lk\" 2>/dev/null; fi";
     private const int DeviceBusy = 16;   // EBUSY
     private const int UinputUserDeviceSize = 1116;
     private const int UinputNameBytes = 80;
@@ -402,11 +427,17 @@ internal static class SamsungTvRemoteInputAgent
     [DllImport(Libc)]
     private static extern int getgid();
 
+    [DllImport(VconfApi, EntryPoint = "vconf_get_bool")]
+    private static extern int VconfGetBool(string key, out int value);
+
     [DllImport(VconfApi, EntryPoint = "vconf_get_int")]
     private static extern int VconfGetInt(string key, out int value);
 
     [DllImport(VconfApi, EntryPoint = "vconf_get_str")]
     private static extern IntPtr VconfGetString(string key);
+
+    [DllImport(Libc)]
+    private static extern int system(string command);
 
     [DllImport(Libc)]
     private static extern void free(IntPtr pointer);
@@ -732,6 +763,14 @@ internal static class SamsungTvRemoteInputAgent
                 {
                     forwarder.Forward(buffer);
                 }
+                else if (filter
+                    && block
+                    && !wake
+                    && type == EventKey
+                    && (value == 1 || value == 2))
+                {
+                    NotifyFilteredKeyActivity(code, value);
+                }
                 if (type == EventKey)
                 {
                     sequence++;
@@ -841,10 +880,137 @@ internal static class SamsungTvRemoteInputAgent
         }
     }
 
+    private static bool IsPowerOrSleepKey(ushort code)
+    {
+        switch (code)
+        {
+            case 112: case 116: case 142: case 352: case 353: case 374:
+            case 449: case 463: case 523: case 531:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static bool ScreenIsOff()
     {
         int state;
-        return VconfGetInt(DisplayStateKey, out state) == 0 && state == DisplayStateOff;
+        return VconfGetInt(DisplayStateKey, out state) == 0 && state >= DisplayStateOff;
+    }
+
+    private static bool IsScreensaverAppId(string appId)
+    {
+        if (string.IsNullOrEmpty(appId))
+        {
+            return false;
+        }
+        return appId == "com.samsung.tv.spotlight-ss"
+            || appId == "com.samsung.tv.screen-saver"
+            || appId == "org.tizen.rscm-screensaver"
+            || appId == "org.tizen.screen-saver"
+            || appId == "Default_Screensaver"
+            || appId == "DefaultScreensaver"
+            || appId.StartsWith("com.samsung.tv.glscreensaver", StringComparison.Ordinal)
+            || appId.IndexOf("spotlight-ss", StringComparison.OrdinalIgnoreCase) >= 0
+            || appId.IndexOf("screen-saver", StringComparison.OrdinalIgnoreCase) >= 0
+            || appId.IndexOf("screensaver", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool ScreensaverIsActive()
+    {
+        int val;
+        if (VconfGetBool(ScreensaverKey, out val) == 0)
+        {
+            if (val != 0)
+            {
+                return true;
+            }
+        }
+        else if (VconfGetInt(ScreensaverKey, out val) == 0 && val != 0)
+        {
+            return true;
+        }
+        string fullscreen;
+        if (TryReadVconfString(CurrentFullscreenAppIdKey, out fullscreen)
+            && IsScreensaverAppId(fullscreen))
+        {
+            return true;
+        }
+        string partial;
+        return TryReadVconfString(CurrentPartialAppIdKey, out partial)
+            && IsScreensaverAppId(partial);
+    }
+
+    private static readonly object ScreensaverResetLock = new object();
+    private static bool screensaverResetRunning;
+    private static bool screensaverResetPending;
+    private static long lastScreensaverResetTicks;
+
+    // Swallowed keys in filter mode never reach /dev/uinput, so Enlightenment would otherwise count the user as idle
+    // (launching spotlight-ss right over an open Dock / 123 pad) and leave active screensavers covering VolumePill / overlays.
+    private static void NotifyFilteredKeyActivity(ushort code, int value)
+    {
+        if (IsPowerOrSleepKey(code) || ScreenIsOff())
+        {
+            return;
+        }
+        double minSeconds = (value == 1 && ScreensaverIsActive())
+            ? 0.0
+            : (value == 1 ? 1.0 : 2.5);
+        long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        lock (ScreensaverResetLock)
+        {
+            if (minSeconds > 0.0 && lastScreensaverResetTicks != 0)
+            {
+                double elapsed = (nowTicks - lastScreensaverResetTicks)
+                    / (double)System.Diagnostics.Stopwatch.Frequency;
+                if (elapsed >= 0.0 && elapsed < minSeconds)
+                {
+                    return;
+                }
+            }
+            lastScreensaverResetTicks = nowTicks;
+            if (screensaverResetRunning)
+            {
+                screensaverResetPending = true;
+                return;
+            }
+            screensaverResetRunning = true;
+            screensaverResetPending = false;
+        }
+        Task.Run(() =>
+        {
+            try
+            {
+                while (true)
+                {
+                    try
+                    {
+                        system(ScreensaverActivityCommand);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                    lock (ScreensaverResetLock)
+                    {
+                        if (!screensaverResetPending)
+                        {
+                            screensaverResetRunning = false;
+                            return;
+                        }
+                        screensaverResetPending = false;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                lock (ScreensaverResetLock)
+                {
+                    screensaverResetRunning = false;
+                    screensaverResetPending = false;
+                }
+            }
+        });
     }
 
     private static void TurnScreenOn()
