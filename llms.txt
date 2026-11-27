@@ -4,12 +4,12 @@
 
 ## Rooting guides
 
-- [How to root a Samsung TV (Tizen): what works in 2026](https://andrearicci93.github.io/vetro/root/how-to-root-samsung-tv/): How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2024, the risks and the research.
+- [How to root a Samsung TV (Tizen): what works in 2026](https://andrearicci93.github.io/vetro/root/how-to-root-samsung-tv/): How rooting a Samsung Tizen TV works today: what root means and does not give you, which TVs have reports from 2018 to 2026, the risks and the research.
 - [Root a Tizen 6 Samsung TV (2021): models and firmware](https://andrearicci93.github.io/vetro/root/root-tizen-6-samsung-tv/): 2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A), an AU7172 sent a report and an AU7000 failed at the root agent.
-- [Root a 2022 Samsung TV (Tizen 6.5): models and firmware](https://andrearicci93.github.io/vetro/root/root-samsung-tizen-6-5-2022/): 2022 Samsung TVs run Tizen 6.5. Seven models have Vetro reports, the Home cache fix, and the forced 1722.0 update that removed root on another 2022 TV.
-- [Root a 2023 Samsung TV (Tizen 7+): what owners reported](https://andrearicci93.github.io/vetro/root/root-samsung-tizen-7-2023/): 2023 Samsung TVs launched on Tizen 7. Owners reported Vetro on the S90C, Q65S95C, CU7179 and CU8070, with an installer caveat and two sets on Tizen 9.0.
-- [Root a 2024 Samsung TV (Tizen 8, 9): what is confirmed](https://andrearicci93.github.io/vetro/root/root-samsung-tizen-8-9-2024/): What is confirmed for 2024 Samsung TVs on Tizen 8 and 9: Q65D, S90D and DUE77 owner reports, the Tizen 9 problems, why Tizen 10 has no root yet.
-- [Root a 2019 or 2020 Samsung TV (Tizen 5): what works](https://andrearicci93.github.io/vetro/root/root-samsung-2019-2020-tizen-5/): Vetro's root features need Tizen 6 to 9. A 2019 Q80R works with a local port; the 2020 TU7090 and T4300 and a 2018 NU7090 get the dashboard only, no root.
+- [Root a 2022 Samsung TV (Tizen 6.5): models and firmware](https://andrearicci93.github.io/vetro/root/root-samsung-tizen-6-5-2022/): Seven 2022 Samsung TV models have Vetro reports on Tizen 6.5 firmware 1720.7. See the Home cache fix, root failures on 1722.0 and 1722.1, and recovery status.
+- [Root a 2023 Samsung TV (Tizen 7+): what owners reported](https://andrearicci93.github.io/vetro/root/root-samsung-tizen-7-2023/): 2023 Samsung TVs launched on Tizen 7. Owners reported Vetro on the S90C, Q65S95C, CU7179 and CU8070, with an installer caveat and three reports on Tizen 9.
+- [Root a 2024 Samsung TV (Tizen 8, 9): what is confirmed](https://andrearicci93.github.io/vetro/root/root-samsung-tizen-8-9-2024/): What is confirmed for 2024 Samsung TVs on Tizen 8 and 9: Q65D, S90D and DUE77 owner reports, the Tizen 9 problems and the first Tizen 10 root reports.
+- [Root a 2019 or 2020 Samsung TV (Tizen 5): what works](https://andrearicci93.github.io/vetro/root/root-samsung-2019-2020-tizen-5/): A 2019 Samsung Q80R needs a personal Vetro port. The 2020 TU7090 and T4300 and a 2018 NU7090 have reports for the dashboard, app list and diagnostics only.
 - [Samsung TV Tizen version by year, 2017 to 2026](https://andrearicci93.github.io/vetro/root/samsung-tv-tizen-version-by-year/): Which Tizen version a Samsung TV shipped with, year by year from 2017 to 2026, why your TV may run a newer one now, and how the version relates to rooting.
 - [How to enable Developer Mode on a Samsung TV](https://andrearicci93.github.io/vetro/root/samsung-tv-developer-mode/): Turn on Samsung TV Developer Mode: open Apps, enter 12345, switch it on, type the host IP and restart. Fixes for a remote that will not take the code.
 - [Is it safe to root a Samsung TV? Risks and what to undo](https://andrearicci93.github.io/vetro/root/is-it-safe-to-root-samsung-tv/): Rooting a Samsung TV carries boot, network and update risks. See the documented Q80A boot hazard, open dashboard, Shard trust and what Restore can undo.
@@ -38,9 +38,9 @@
 
 ## Firmware updates
 
-- [Stop Samsung TV automatic firmware updates: options](https://andrearicci93.github.io/vetro/updates/stop-samsung-tv-auto-update/): How to turn off Samsung TV Auto Update, what keeps installing anyway, how to block updates on the router, and what Vetro 0.7.0's update lock does when rooted.
+- [Stop Samsung TV automatic firmware updates: options](https://andrearicci93.github.io/vetro/updates/stop-samsung-tv-auto-update/): How to turn off Samsung TV Auto Update, what keeps installing anyway, how to block updates on the router, and what Vetro 0.7.1's update lock does when rooted.
 - [Can you downgrade Samsung TV firmware? What reports say](https://andrearicci93.github.io/vetro/updates/downgrade-samsung-tv-firmware/): Samsung says downgrading TV firmware is not supported. See what its community and SamyGO threads report, and why Vetro offers prevention, not a rollback.
-- [Will a Samsung TV firmware update remove root? What we know](https://andrearicci93.github.io/vetro/updates/firmware-update-remove-root/): A forced Samsung firmware update has already removed root from a rooted TV. What the reports show, how Vetro 0.7.0 blocks updates and what it cannot promise.
+- [Will a Samsung TV firmware update remove root? What we know](https://andrearicci93.github.io/vetro/updates/firmware-update-remove-root/): A forced Samsung firmware update has already removed root from a rooted TV. What the reports show, how Vetro 0.7.1 blocks updates and what it cannot promise.
 
 ## Remote, apps and smart home
 
@@ -58,7 +58,7 @@
 ## Reference
 
 - [Samsung TV model number decoder: model code and firmware](https://andrearicci93.github.io/vetro/reference/samsung-model-code-decoder/): Read a Samsung TV model number letter by letter, from QE50Q80AATXZT to the year letter, and learn what a firmware string like T-NKM2DEUC-2301.1 can tell you.
-- [What each Vetro switch changes on a Samsung TV (0.7.0)](https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/): What each Vetro 0.7.0 Quick settings switch, Vetro UI option and Apps and processes action changes on a Samsung TV, how to undo it, and what is untested.
+- [What each Vetro switch changes on a Samsung TV (0.7.1)](https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/): What each Vetro 0.7.1 Quick settings switch, Vetro UI option and Apps and processes action changes on a Samsung TV, how to undo it, and what is untested.
 - [Vetro security model: pairing, plain HTTP, trusted LAN](https://andrearicci93.github.io/vetro/reference/vetro-security-model/): Since 0.5.0 Vetro pairs browsers with a six-digit code shown on the TV, but traffic is plain HTTP. What pairing covers, what stays open, SDB, Shards.
 - [Why Vetro's launcher is native, not a web app](https://andrearicci93.github.io/vetro/reference/why-vetro-is-native/): Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.
 
