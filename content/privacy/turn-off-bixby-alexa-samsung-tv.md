@@ -3,8 +3,8 @@ title: "Turn off Bixby, Alexa and the mic on a Samsung TV"
 description: "How to disable Bixby and Alexa on a Samsung TV: the hardware mic switch on some models, Voice Wake-up, the Voice menu, and what Vetro's voice switch does."
 keywords: ["disable bixby samsung tv", "turn off alexa samsung tv", "samsung tv microphone switch", "samsung tv voice wake-up"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Vetro parts checked on 2026-11-21 against the 0.7.0 CHANGELOG, dashboard labels and README; Samsung's UAE, Canada and Australia pages and Malwarebytes as re-read on 2026-11-10."
+updated: 2026-11-27
+verified: "Vetro parts checked on 2026-11-27 against the 0.7.1 CHANGELOG and README at commit cbc363f; Samsung's UAE, Canada and Australia pages and Malwarebytes as re-read on 2026-11-10."
 related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "samsung-ads-opt-out", "remap-samsung-remote-buttons", "what-each-vetro-switch-changes"]
 ---
 
@@ -46,6 +46,10 @@ Voice Guide, the read-aloud accessibility feature, is a separate setting. We hav
 Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer: see [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [the Apps2Samsung install route](/root/install-vetro-apps2samsung/). The stock menus are the better answer if you only want to stop wake-up.
 
 According to the Vetro [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md), Quick settings has a Voice tab with a Disable all voice assistants switch, plus per-feature switches for Alexa, Google Assistant, Bixby and other voice services. The all-in switch disables whatever the Apps and processes page (called Task manager before 0.7.0) files under voice assistants on that TV. It asks for confirmation because it also turns off the remote's microphone button, Voice Guide (read-aloud) and voice suggestions in search. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) says each switch shows Done or Partly done.
+
+Since 0.7.1 the voice services and Bixby also use Samsung's own "do not start" files, according to the [0.7.1 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#quick-settings). Their background services are started by units that skip the start when such a file exists, so turning the switch off puts the file down where the TV's units look for one, and turning it on takes it away. The switch says Partly done when a file is missing while the apps are off, or when one is left while the apps are on again. If you turned a voice switch off before 0.7.1, turn it off again to get the file. Restore the TV removes every file Vetro put down. This has not yet been tried with a voice remote on a TV.
+
+The same release adds two switches on the Privacy and ads tab, Disable Samsung remote support and Disable Wi-Fi presence. Each shows only on a TV that has its services, and Remote PC is left alone. The changelog does not describe what they stop.
 
 Vetro 0.7.0 adds a Vision AI switch on the Disable tab, for 2024 and later TVs that have Samsung's Vision AI apps. On those TVs, holding Home or pressing the AI button of the newer remotes opens Samsung's AI screens (Click to Search, the AI companion), and turning off Bixby does not stop that, according to the CHANGELOG. The switch turns those apps off, so nothing opens; a short Home press works as before, and the Vision AI row of Samsung's Home stays. The tab lists it only on a TV that has those apps. The switch was worked out from the firmware and has not yet been tried on a TV that has these apps.
 

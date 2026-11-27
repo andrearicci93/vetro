@@ -3,8 +3,8 @@ title: "Remove Samsung TV Plus from a Samsung TV: what works"
 description: "Samsung says TV Plus can't be fully removed. See the channel and tile steps on its support pages, and what Vetro's TV Plus switch does on a rooted TV."
 keywords: ["disable samsung tv plus", "remove samsung tv plus", "samsung tv plus channels delete", "samsung tv plus root"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG and dashboard labels, the README and DOMAIN-FILTER.md; Samsung's Canadian and US TV Plus support pages were checked on 2026-11-10."
+updated: 2026-11-27
+verified: "Samsung's Canadian and US TV Plus support pages were checked on 2026-11-10; Vetro parts rechecked on 2026-11-27 against the 0.7.1 CHANGELOG, the README and DOMAIN-FILTER.md at commit cbc363f."
 related: ["remove-ads-samsung-tv-home-screen", "custom-launcher-samsung-tv", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "samsung-tv-memory-usage"]
 ---
 
@@ -27,9 +27,11 @@ Because it is part of the TV's software, not an app you installed. Hiding it rem
 
 ## What changes on a rooted TV?
 
-Root lets you switch off the components behind the feature. Since Vetro 0.7.0, **Samsung TV Plus** is one switch on the Quick settings Disable tab: the app, its helpers and the two background services behind it, which the dashboard says frees about 25 MB ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md)). Systemd starts those two services again by itself, so the switch also keeps them from starting. Turning the switch off brings them back. The changelog records no TV test of this switch.
+Root lets you switch off the components behind the feature. Since Vetro 0.7.0, **Samsung TV Plus** is one switch on the Quick settings Disable tab. In 0.7.0 it covered the app and the two background services behind it, about 25 MB. Vetro 0.7.1 changes that ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#quick-settings)): the switch also stopped TV Plus's channel service, which Samsung's live TV app uses too, so channel changes on live TV stopped working on a 2024 The Frame ([#299](https://github.com/andrearicci93/vetro/issues/299)). It now stops the TV Plus app, its helpers and the player and leaves the channel service on, which frees about 15 MB instead of 25. Where an earlier Vetro stopped that service, it is started again the next time the switch is used, or by Restore the TV. TV Plus channels can still show up among the channels, but they do not play.
 
-The new Uninstall tab can delete the Samsung TV Plus app instead. Its background services stay on the TV, and the dashboard says Disable → Samsung TV Plus is what stops them. Each TV only lists the apps it has and allows removing, and an uninstalled app needs an installer to come back.
+Switching TV Plus off in 0.7.1 also turns off Samsung's "start TV Plus at power-on" setting; switching TV Plus back on, or Restore the TV, puts back the value it had. The changelog does not say the 0.7.1 switch was tried on a TV.
+
+The Uninstall tab, new in 0.7.0, can delete the Samsung TV Plus app instead. Its background services stay on the TV; Disable → Samsung TV Plus stops them, except the channel service, which it leaves on since 0.7.1. Each TV only lists the apps it has and allows removing, and an uninstalled app needs an installer to come back.
 
 For anything else, the Apps and processes page (called Task manager before 0.7.0) lists every app and service on the TV with a plain description and a role, and can disable, stop or uninstall them behind an in-page confirmation. Disabling keeps the component installed and can be reversed, and protected system components can't be touched ([README](https://github.com/andrearicci93/vetro/blob/main/README.md)).
 

@@ -3,8 +3,8 @@ title: "Root a Tizen 6 Samsung TV (2021): models and firmware"
 description: "2021 Samsung TVs run Tizen 6. Four are reported working with Vetro (Q80A, Q70A, Q60A, QN85A), an AU7172 sent a report and an AU7000 failed at the root agent."
 keywords: ["root tizen 6 tv", "samsung q80a root", "samsung 2021 tv root"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro README compatibility table on main, the 0.7.0 CHANGELOG, the install guide, UPDATES-WITHOUT-ROOT.md and issue #223."
+updated: 2026-11-27
+verified: "Updated on 2026-11-27 against the Vetro 0.7.1 README (Compatibility, Report a problem) and CHANGELOG (Update lock) at commit cbc363f. The install guide, UPDATES-WITHOUT-ROOT.md and issue #223 are as checked on 2026-11-21."
 related: ["how-to-root-samsung-tv", "root-samsung-tizen-6-5-2022", "samsung-tv-tizen-version-by-year", "install-vetro-apps2samsung", "keep-root-after-restart", "samsung-model-code-decoder"]
 ---
 
@@ -39,7 +39,7 @@ The Q60A owner changed the listen port to avoid a clash with tizen-youtube, whic
 
 The AU7000 report ([#134](https://github.com/andrearicci93/vetro/issues/134)) is the one failed 2021 result in the README. The service and dashboard ran, but the root agent did not connect because the Host PC IP step was not confirmed, so everything that needs root stayed off. The README's 2021 row says one TV needs that step confirmed. The install guide has the step as its own part and a troubleshooting table that starts from what the status page shows, so read it before concluding a TV cannot be rooted.
 
-If your TV is not listed, open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the exact model, firmware and what worked or failed. The README says the report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it.
+If your TV is not listed, open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the exact model, firmware and what worked or failed. The README says the report has no passwords, network addresses, device ids or viewing history, but it lists app names; read it before you upload it.
 
 ## What should I check before I try a 2021 TV?
 
@@ -47,7 +47,7 @@ If your TV is not listed, open a [diagnostic report issue](https://github.com/an
 - That the TV is on Tizen 6. [Samsung TV Tizen version by year](/root/samsung-tv-tizen-version-by-year/) lists the versions.
 - That Developer Mode works and that you can enter an IP address. The [Developer Mode guide](/root/samsung-tv-developer-mode/) lists the usual snags.
 - That you allow time: after a restart, startup and root can take more than a minute, sometimes more than 90 seconds, according to the [install guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md); wait until the dashboard says the root agent is connected. [Does root survive a restart](/root/keep-root-after-restart/) says what has been measured.
-- That you decide about firmware updates before one arrives. In [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update to 1722.0 removed root on a 2022 TV, and Samsung does not support downgrades. Vetro 0.7.0's Block firmware and software updates switch (Quick settings, General, Essential settings) stops and masks every update service and, on Tizen 6, applies the lock at power-on through the TV's AT-HUB boot step; the changelog says it was read from the Tizen 6, 6.5 and 9 firmware and tried on a Q80A only. Turn it on while root still works: it can help keep root, it does not guarantee it, and while it is on Samsung's firmware and app updates do not install. More in [will a firmware update remove root](/updates/firmware-update-remove-root/).
+- That you decide about firmware updates before one arrives. In [#223](https://github.com/andrearicci93/vetro/issues/223) a forced update to 1722.0 removed root on a 2022 TV, and Samsung does not support downgrades. Since 0.7.0, Vetro's Block firmware and software updates switch (Quick settings, General, Essential settings) stops and masks the update services Vetro knows about, is designed to block Samsung's firmware and app updates and, on Tizen 6, applies the lock at power-on through the TV's AT-HUB boot step; the changelog says it was read from the Tizen 6, 6.5 and 9 firmware and tried on a Q80A only. Vetro 0.7.1 extends it to Samsung's separate update mode after a re-check against 2021 (Tizen 6.0) firmware among others, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#update-lock) says that extension is not tried on a TV yet. In [#308](https://github.com/andrearicci93/vetro/issues/308) an update reached a QE65S85F with the earlier block on, and what happened there is not known. Turn it on while root still works: it can help keep root, but it does not guarantee it. More in [will a firmware update remove root](/updates/firmware-update-remove-root/).
 
 ## Next steps
 

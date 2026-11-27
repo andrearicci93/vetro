@@ -3,8 +3,8 @@ title: "Samsung TV memory usage: what uses RAM and how to read it"
 description: "What uses memory on a Samsung TV: available versus used RAM, zram and swap, and the sizes Vetro's notes record for Samsung Home, HbbTV and Ambient on a Q80A."
 keywords: ["samsung tv memory usage", "samsung tv ram", "samsung tv available memory", "samsung tv zram swap"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG and dashboard labels, the README and PERFORMANCE.md, and the Linux kernel proc documentation; every measured size comes from one Samsung Q80A."
+updated: 2026-11-27
+verified: "The Linux kernel proc documentation was checked on 2026-11-21; Vetro parts rechecked on 2026-11-27 against the 0.7.1 CHANGELOG and README at commit cbc363f, with PERFORMANCE.md. Most measured sizes come from one Samsung Q80A."
 related: ["samsung-tv-slow-fix", "custom-launcher-samsung-tv", "remove-ads-samsung-tv-home-screen", "what-each-vetro-switch-changes", "keep-root-after-restart"]
 ---
 
@@ -46,6 +46,17 @@ The [0.7.0 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG
 
 None of these comes with a before-and-after measurement of available RAM.
 
+### What changes in Vetro 0.7.1?
+
+The [0.7.1 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#071--2026-11-26) changes one of the items above and adds three:
+
+- The Samsung TV Plus switch now leaves TV Plus's channel service on, because stopping it broke channel changes on live TV ([#299](https://github.com/andrearicci93/vetro/issues/299)). It frees about 15 MB instead of 25.
+- Close idle Samsung Home (Vetro UI, Launcher, on by default) closes Samsung's Home and its background parts 25 s after the TV wakes from standby or after 10 minutes unused, while Vetro's launcher is on and never while Samsung's Home is on screen. The changelog gives Samsung's Home about 67 MiB on a Q80A and its media hub 63 to 118 MiB on 2022 and later TVs, from public diagnostics.
+- Extra performance mode, on the new Experimental tab, closes apps left in the background for 15 minutes, or the longest-idle one after 2 minutes when the TV has less than 500 MiB available. It never closes the app on screen, apps that report playing sound, the TV's own apps, Samsung's Home or the apps you choose.
+- A Disable switch for Gaming Hub, whose background service runs on most TVs (about 11 MB).
+
+Again, none of these is published with a before-and-after reading of available RAM.
+
 ### Does stopping them free that much?
 
 Not necessarily. The 0.3.0 changelog's sizes for HbbTV, MultiScreen and Ambient come from a survey of a running Q80A, and the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md) says the effect of each change on a running TV is not yet verified.
@@ -55,6 +66,8 @@ HbbTV and Ambient also restart themselves on this TV. According to the changelog
 ## How do I see memory use on the TV?
 
 On a rooted TV, Vetro's dashboard (the Resource monitor page) shows CPU, RAM, swap, storage and processes. Live sampling starts when you ask and stops after two minutes (README). The notes measured the service and root agent at 0.44 to 0.51% of one core with the dashboard closed, 0.72 to 0.79% on the summary view and 2.07% on the page then called Task manager, now Apps and processes. These are percentages of one core, not of the four.
+
+If you use Vetro's Home Assistant link, 0.7.1 also cuts a cost of its own: volume, mute and input were read by starting a small .NET program at each read, every 10 seconds, which costs memory and processor time on 2 GB TVs. Vetro now reads the TV's own settings for them in one short command, about 34 ms on a Q80A, and keeps the program only as a fallback for TVs where those settings cannot be read ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#home-assistant-mqtt)).
 
 ![Vetro's Apps and processes page in an earlier interface, when it was called Task manager, filtered to Tracking, with component descriptions, app state and startup flags](/assets/img/task-manager.jpg)
 

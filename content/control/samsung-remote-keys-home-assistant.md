@@ -3,8 +3,8 @@ title: "Samsung TV remote buttons as Home Assistant events"
 description: "Home Assistant can send keys to a Samsung TV but cannot hear its remote. Here is how a rooted TV running Vetro can publish a button press over MQTT."
 keywords: ["samsung tv remote button home assistant", "home assistant remote button trigger", "samsung remote mqtt", "samsung tv remote events"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, VETRO-UI.md and dashboard labels, the Vetro MQTT guide, README, SECURITY.md and release audit, and Home Assistant's samsungtv integration and trigger docs."
+updated: 2026-11-27
+verified: "Checked on 2026-11-27 against the Vetro 0.7.1 CHANGELOG, README, VETRO-UI.md and MQTT guide at commit cbc363f; the release audit, SECURITY.md and Home Assistant's samsungtv integration and trigger docs as checked on 2026-11-21."
 related: ["home-assistant-samsung-tv", "remap-samsung-remote-buttons", "what-each-vetro-switch-changes", "vetro-security-model", "how-to-root-samsung-tv", "is-it-safe-to-root-samsung-tv"]
 ---
 
@@ -39,7 +39,7 @@ Replace the topic with the one from your Vetro rule. The trigger page links to a
 
 Interception means Vetro blocks the original action for keys you save. In the [release audit](https://github.com/andrearicci93/vetro/blob/main/app/docs/RELEASE-AUDIT.md) for an earlier build on a [Q80A](/tested-tvs/q80a/), two saved key codes were blocked after a reboot and the Prime Video button opened Stremio instead. A remapped button therefore stops doing what Samsung built it to do. The documentation does not say whether a button can keep its old function and also publish a message, and we have not tested it.
 
-Vol +, Vol -, Mute and 123 are a special case in 0.7.0. While Vetro UI's volume bar is on, the volume and Mute keys go to it first; while its number pad is on, 123 does. A shortcut of yours on such a key does not run, and the Remapper marks it Overridden by Vetro UI ([VETRO-UI.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/VETRO-UI.md)). Vetro UI is marked Preview in the dashboard.
+Vol +, Vol -, Mute and 123 are a special case since 0.7.0. While Vetro UI's volume bar is on, the volume and Mute keys go to it first; while its number pad is on, 123 does. A shortcut of yours on such a key does not run, and the Remapper marks it Overridden by Vetro UI ([VETRO-UI.md](https://github.com/andrearicci93/vetro/blob/main/app/docs/VETRO-UI.md)). Vetro UI is marked Preview in the dashboard.
 
 ## What is verified and what is not?
 
@@ -51,7 +51,7 @@ Vol +, Vol -, Mute and 123 are a special case in 0.7.0. While Vetro UI's volume 
 
 ## What does the finished chain look like?
 
-A press is read on the TV, the original action is blocked, the Remapper publishes a message to the broker, and Home Assistant's MQTT trigger fires an automation: a light, a scene, anything you attach. The reverse direction works through exact-topic rules, so an automation can open an app on the TV or, since 0.7.0, press a key there: switch to an input, play or pause, or send Home, Back, OK, an arrow or a volume key ([#204](https://github.com/andrearicci93/vetro/issues/204)). Keep command topics and state topics separate.
+A press is read on the TV, the original action is blocked, the Remapper publishes a message to the broker, and Home Assistant's MQTT trigger fires an automation: a light, a scene, anything you attach. The reverse direction works through exact-topic rules, so an automation can open an app on the TV or, since 0.7.0, press a key there: switch to an input, play or pause, or send Home, Back, OK, an arrow or a volume key ([#204](https://github.com/andrearicci93/vetro/issues/204)). Vetro 0.7.1 adds Power and DisplayPort to the keys a rule can send ([#303](https://github.com/andrearicci93/vetro/pull/303)). Power is the remote's power key; on a monitor it toggles standby, so check the state before sending it again. DisplayPort is for Samsung monitors, since a TV has none. A rule can also turn the screen off with Samsung's Picture Off while the sound plays on, as long as remote interception is active and Vetro holds the remote ([CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#remapper)). Keep command topics and state topics separate.
 
 ## What are the risks?
 

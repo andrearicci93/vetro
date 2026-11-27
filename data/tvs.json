@@ -8,7 +8,7 @@
   "firmware": "T-NKM2DEUC-2301.1",
   "status": "Developed and tested",
   "issue": null,
-  "summary": "The Q80A is the TV Vetro is developed on. Published Q80A records cover launcher behavior, root-agent startup and signed self-updates. In 0.7.0 the firmware update lock and Quick boot were tried on a Q80A on firmware 2310.0; many other 0.7.0 changes are marked in the changelog as not yet tried on a TV."
+  "summary": "The Q80A is the TV Vetro is developed on. Published Q80A records cover launcher behavior, root-agent startup and signed self-updates. In 0.7.0 the firmware update lock and Quick boot were tried on a Q80A on firmware 2310.0. In 0.7.1 the Turn off screen action and the new Home Assistant reads of volume, mute and input were tried on one; the changelog lists the Settings file and the extended update lock as not yet tried on a TV."
  },
  {
   "slug": "q70a",
@@ -247,31 +247,99 @@
   "description": "Samsung Smart Monitor M8 with Vetro: service and root agent reported running on firmware T-PTMWWC-1720.7. Feature testing and Tizen version were not reported."
  },
  {
+  "slug": "s85f",
+  "name": "Samsung S85F",
+  "code": "QE65S85FAEXXH",
+  "year": 2025,
+  "tizen": "Tizen 10",
+  "firmware": "T-PTMFDEUC-0100-2103.1",
+  "status": "Root connected in a test build",
+  "issue": null,
+  "summary": "Root connected in the contributor's test build, according to the README. An earlier report records root loss after a Samsung firmware update (#308); an update reached this TV with the older update block on, and what happened there is not known yet. Vetro 0.7.1 extends the block, and that is not tried on a TV yet.",
+  "note": "Root on Tizen 10 starts in Vetro 0.7.1. This report is from a test build; reports for the final 0.7.1 build are still pending and feature coverage varies by model.",
+  "description": "Samsung S85F on Tizen 10 with Vetro. Root connected in a test build on firmware 2103.1. An earlier report records root loss after a Samsung update.",
+  "source": "Vetro README; earlier root loss after a firmware update: #308"
+ },
+ {
+  "slug": "q70f",
+  "name": "Samsung Q70F",
+  "code": "Full code not reported",
+  "year": 2025,
+  "tizen": "Tizen 10",
+  "firmware": "T-RSLFDEUC-0100-2103.1",
+  "status": "Root connected in a test build",
+  "issue": null,
+  "source": "Vetro README",
+  "summary": "Root connected in a test build, according to the README. The README gives no issue number for this report.",
+  "note": "Root on Tizen 10 starts in Vetro 0.7.1. This report is from a test build; reports for the final 0.7.1 build are still pending and feature coverage varies by model.",
+  "description": "Samsung Q70F on Tizen 10 with Vetro: root connected in a test build on firmware 2103.1, and what the README says about the final 0.7.1 build."
+ },
+ {
+  "slug": "u8000f",
+  "name": "Samsung U8000F",
+  "code": "Full code not reported",
+  "year": 2025,
+  "tizen": "Tizen 10",
+  "firmware": "T-KSU2EFAKUC-0100-2103.1",
+  "status": "Root connected in a test build",
+  "issue": null,
+  "source": "Vetro README",
+  "summary": "Root connected in a test build, according to the README. The README gives no issue number for this report.",
+  "note": "Root on Tizen 10 starts in Vetro 0.7.1. This report is from a test build; reports for the final 0.7.1 build are still pending and feature coverage varies by model.",
+  "description": "Samsung U8000F on Tizen 10 with Vetro: root connected in a test build on firmware 2103.1, and what the README says about the final 0.7.1 build."
+ },
+ {
+  "slug": "qn900f",
+  "name": "Samsung QN900F",
+  "code": "QA65QN900FWXXY",
+  "year": 2025,
+  "tizen": "Tizen 10",
+  "firmware": "T-OSCPFUABC-0100-2103.1",
+  "status": "Root connected after retries in a test build",
+  "issue": null,
+  "summary": "Root connected after retries in a test build, with the launcher off during the test, according to the README. Earlier builds failed on this model (#193, #194).",
+  "note": "Root on Tizen 10 starts in Vetro 0.7.1. This report is from a test build; reports for the final 0.7.1 build are still pending and feature coverage varies by model.",
+  "description": "Samsung QN900F on Tizen 10 with Vetro: root connected after retries in a test build with the launcher off; earlier builds failed (#193, #194).",
+  "source": "Vetro README; earlier failures: #193, #194"
+ },
+ {
+  "slug": "odyssey-oled-g8",
+  "name": "Samsung Odyssey OLED G8",
+  "code": "LS34BG850SNXZA",
+  "year": null,
+  "tizen": "Tizen 6.5",
+  "firmware": "T-PTMLWWC-1720.7",
+  "status": "Root and launcher verified on a test build",
+  "issue": 316,
+  "summary": "Root, launcher and remote interception were verified on a test build for the input fix (#316, #314). Vetro 0.7.0 offered TV and HDMI 1 to 4 on this monitor and left out USB-C. From 0.7.1, when Samsung's source list holds exactly one HDMI, one DisplayPort and one USB-C port, the launcher, the Remapper and Home Assistant offer those three and read the input back after a switch.",
+  "description": "Samsung Odyssey OLED G8 (LS34BG850SNXZA) with Vetro: root, launcher and remote verified on a test build, and the HDMI, DisplayPort and USB-C inputs in 0.7.1."
+ },
+ {
   "slug": "qn80f",
   "name": "Samsung QN80F",
   "code": "QN80F",
-  "year": null,
-  "tizen": "Tizen 10 (after a firmware update)",
+  "year": 2025,
+  "tizen": "Tizen 10",
   "firmware": "2103.1",
-  "status": "Lost root after an update to Tizen 10",
+  "status": "Root unconfirmed with 0.7.1",
   "issue": 181,
   "noRoot": true,
-  "description": "Samsung QN80F with Vetro: root was lost when a firmware update moved the TV to Tizen 10. What still works on Tizen 10 and what to do before an update.",
-  "summary": "Root stopped working when a firmware update moved this TV to Tizen 10, so the launcher, privacy switches and remapper no longer run on it. Tizen 10 has no root method yet."
+  "description": "Samsung QN80F on Tizen 10 with Vetro. Root stopped connecting after a firmware update on 0.5.0 and remains unconfirmed with 0.7.1.",
+  "summary": "Root stopped connecting with Vetro 0.5.0 after a firmware update (#181). The README says root is still unconfirmed on this model with 0.7.1, which adds a root route for Tizen 10."
  },
  {
   "slug": "m70h",
   "name": "Samsung M70H",
   "code": "UA55M70HAULXL",
-  "year": null,
+  "year": 2026,
   "tizen": "Tizen 10.0",
   "firmware": "Not readable",
   "platformId": "26_X22U_UHD_VOX",
-  "status": "Dashboard works; no root on Tizen 10",
+  "status": "Dashboard reported on 0.3.5; root unconfirmed with 0.7.1",
   "issue": 91,
   "noRoot": true,
-  "description": "Samsung M70H on Tizen 10.0 with Vetro: the service and dashboard ran, but the TV closed the SDB connection Vetro uses to get root. Why there is no root yet.",
-  "summary": "Reported on Tizen 10.0 with Vetro 0.3.5; the firmware version could not be read. The service and dashboard ran, but the TV's local SDB daemon closed the connection before the handshake finished, so the root agent never started."
+  "description": "Samsung M70H on Tizen 10.0 with Vetro. The service and dashboard ran on 0.3.5 but root did not connect. Root is unconfirmed with 0.7.1.",
+  "summary": "Reported on Tizen 10.0 with Vetro 0.3.5; the firmware version could not be read. The service and dashboard ran on 0.3.5, but the TV's local SDB daemon closed the connection before the handshake finished, so the root agent never started. The README says root remains unconfirmed on this model with 0.7.1, which adds a root route for Tizen 10."
  },
  {
   "slug": "tu7090",

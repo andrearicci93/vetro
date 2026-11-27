@@ -3,8 +3,8 @@ title: "Remove ads from the Samsung TV home screen: your options"
 description: "Can you remove ads from the Samsung TV home screen? What the menus allow, what DNS blocking leaves behind, and how a launcher on a rooted TV replaces Home."
 keywords: ["remove ads samsung tv home screen", "samsung tv home screen ads", "disable samsung tv promotional content", "samsung tv launcher"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, VETRO-UI.md and dashboard labels, the README, DOMAIN-FILTER.md, PERFORMANCE.md and SECURITY.md; the Samsung community threads and TV Plus page were checked on 2026-11-10."
+updated: 2026-11-27
+verified: "The Samsung community threads and TV Plus page were checked on 2026-11-10; Vetro parts rechecked on 2026-11-27 against the 0.7.1 CHANGELOG and README at commit cbc363f, with VETRO-UI.md, DOMAIN-FILTER.md, PERFORMANCE.md and SECURITY.md."
 related: ["custom-launcher-samsung-tv", "disable-samsung-tv-plus", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "rooted-samsung-tv-vs-streaming-box", "samsung-tv-slow-fix"]
 faq:
   - q: "Can you turn off ads on the Samsung TV home screen?"
@@ -12,7 +12,7 @@ faq:
   - q: "Does blocking ad domains with DNS remove home screen ads?"
     a: "Only partly. Vetro's changelog says blocking the Home-picture host alone does not remove pictures already cached on the TV, so that host stays out of its default lists."
   - q: "Does the Vetro launcher have ads?"
-    a: "The launcher row starts with the apps in Samsung's own Home row, which you can reorder or trim, plus an All apps pill and a Samsung Home button. Samsung's Home stays one press away. Vetro is experimental and needs root, and Vetro UI, which holds the launcher, is in preview."
+    a: "The launcher row starts with the apps in Samsung's own Home row (or the list of installed apps where Vetro finds no readable Home row, which can be the case on Tizen 10), which you can reorder or trim, plus an All apps pill and a Samsung Home button. Samsung's Home stays one press away. Vetro is experimental and needs root, and Vetro UI, which holds the launcher, is in preview."
   - q: "Will replacing the Samsung home screen void my warranty?"
     a: "We can't tell you. Rooting changes the TV in ways Samsung may not accept, so read Samsung's terms for your country before you try it."
 ---
@@ -45,7 +45,9 @@ The longer treatment is in [blocking Samsung TV telemetry with DNS](/privacy/blo
 
 The promotional content is part of Samsung's Home, a system app (`com.samsung.tv.csfs` on the Q80A, per the changelog). A launcher is a different app that opens on the Home key. If Samsung's Home isn't on screen, its tiles aren't either.
 
-Vetro's launcher is native: a bar at the bottom of the screen. According to the [README](https://github.com/andrearicci93/vetro/blob/main/README.md) it starts with the same apps and icons as Samsung's Home, in the same order, and comes back by itself after a restart or a standby. Since 0.7.0 the row is yours to change, and an **All apps** pill at its end lists every app Samsung's Apps screen lists. Up opens the TV's sources, and a Samsung Home button opens the original, so nothing is removed and Samsung's Home is one press away. While the launcher is on, Samsung's Home is closed.
+Vetro's launcher is native: a bar at the bottom of the screen. According to the [README](https://github.com/andrearicci93/vetro/blob/main/README.md) it starts with the apps and icons of Samsung's Home, in the same order, where Vetro finds Samsung's Home cache, and with the installed apps otherwise. Since 0.7.0 the row is yours to change, and an **All apps** pill at its end lists every app Samsung's Apps screen lists. Up opens the TV's sources, and a Samsung Home button opens the original, so nothing is removed and Samsung's Home is one press away. With Close idle Samsung Home on, Vetro closes Samsung's Home after 10 minutes idle or 25 seconds after the TV wakes, while Samsung's Home is not on screen.
+
+Tizen 10 is a partial exception. The [0.7.1 CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#tizen-10) says Tizen 10 keeps Samsung's Home row in a database of its own app, which Vetro does not read. Where no cache file is found, the launcher's row is the list of installed apps, so its first row may not match Samsung's. The changelog says the next Tizen 10 diagnostic report will settle which of the two a Tizen 10 TV shows.
 
 ![The Vetro launcher at the bottom of the TV screen in an earlier version, with the apps from Samsung's Home row, a Source hint, and Settings and Samsung Home buttons](/assets/img/launcher-on-tv.jpg)
 
@@ -99,7 +101,7 @@ Each step reverses differently. Menu changes go back in the menu. Vetro's switch
 
 ## What does the Vetro setup involve?
 
-The [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) describes three routes: Apps2Samsung, a coding agent, or manual signing with Tizen Studio. All of them end the same way: open Vetro once on the TV, set Host PC IP to `127.0.0.1` in Developer Mode and restart. After a restart, startup and root can take more than a minute, sometimes more than 90 seconds. The root runs through TV-local SDB, so no computer needs to stay connected.
+The [installation guide](https://github.com/andrearicci93/vetro/blob/main/app/docs/INSTALLATION.md) describes three routes: Apps2Samsung, a coding agent, or manual signing with Tizen Studio. All of them end the same way: open Vetro once on the TV, set Host PC IP to `127.0.0.1` in Developer Mode and restart. After a restart, startup and root can take more than a minute, sometimes more than 90 seconds. On Tizen 6 to 9 the root runs through TV-local SDB, so no computer needs to stay connected; Tizen 10 has a separate root route in 0.7.1, reported on test builds only.
 
 The dashboard is served over plain HTTP. Once the Vetro app on the TV has been seen, each browser pairs once with a six-digit code shown on the TV; until then the dashboard is open to the local network, as [SECURITY.md](https://github.com/andrearicci93/vetro/blob/main/SECURITY.md) explains. Keep the TV on a trusted network. For the steps, see [Developer Mode](/root/samsung-tv-developer-mode/) and [installing Vetro with Apps2Samsung](/root/install-vetro-apps2samsung/).
 

@@ -3,8 +3,8 @@ title: "Samsung TV ads opt-out: turn off interest-based ads"
 description: "Turn off Interest-Based Advertisements on a Samsung TV, reset the advertising ID, and learn what Samsung's notices say you will still see. Menu paths vary."
 keywords: ["samsung tv ads opt out", "interest based advertisements samsung tv", "samsung ads privacy", "reset psid samsung tv"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Vetro parts checked on 2026-11-21 against the 0.7.0 CHANGELOG, dashboard labels, README and DOMAIN-FILTER.md; Samsung's US privacy policy, Samsung Australia's ads notice and Malwarebytes as re-read on 2026-11-10."
+updated: 2026-11-27
+verified: "Vetro parts checked on 2026-11-27 against the 0.7.1 CHANGELOG, README and DOMAIN-FILTER.md at commit cbc363f; Samsung's US privacy policy, Samsung Australia's ads notice and Malwarebytes as re-read on 2026-11-10."
 related: ["turn-off-acr-samsung-tv", "what-data-samsung-tv-collects", "remove-ads-samsung-tv-home-screen", "block-samsung-tv-telemetry-dns", "samsung-acr-texas-settlement", "rooted-samsung-tv-vs-streaming-box"]
 ---
 
@@ -51,7 +51,7 @@ In February 2026 the [Texas Attorney General announced](https://www.texasattorne
 
 Vetro is a launcher, debloater and remapper for rooted Samsung Tizen TVs. It is experimental, needs root and ships no signed installer; read [Vetro's root requirements](/root/how-to-root-samsung-tv/), [whether rooting a Samsung TV is safe](/root/is-it-safe-to-root-samsung-tv/) and [the Apps2Samsung install route](/root/install-vetro-apps2samsung/) before deciding.
 
-Its Disable advertising and tracking services switch, on the Privacy and ads tab of Quick settings, disables the components that the Apps and processes page (called Task manager before 0.7.0) files under advertising and tracking, except those with the role Keep (Smart Hub's ad agent, which Home loads), according to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md). Vetro also has DNS blocking that writes ad and tracking hostnames to the TV's hosts file; the [domain notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md) say it matches exact names and that whether firmware-derived names are reached at run time has not been tested on a TV. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) states that domain filtering does not guarantee that every app's ads or telemetry are blocked, so this reduces ad services rather than removing all ads. The project is developed on the [Q80A](/tested-tvs/q80a/).
+Its Disable advertising and tracking services switch, on the Privacy and ads tab of Quick settings, disables the components that the Apps and processes page (called Task manager before 0.7.0) files under advertising and tracking, except those with the role Keep (Smart Hub's ad agent, which Home loads), according to the [CHANGELOG](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md). Since 0.7.1 the group also leaves the cable and satellite box remote-control relay alone; if an earlier version disabled it, using the switch again or Restore the TV turns it back on. Vetro also has DNS blocking that writes ad and tracking hostnames to the TV's hosts file; the [domain notes](https://github.com/andrearicci93/vetro/blob/main/app/docs/DOMAIN-FILTER.md) say it matches exact names and that whether firmware-derived names are reached at run time has not been tested on a TV. The [README](https://github.com/andrearicci93/vetro/blob/main/README.md) states that domain filtering does not guarantee that every app's ads or telemetry are blocked, so this reduces ad services rather than removing all ads. The project is developed on the [Q80A](/tested-tvs/q80a/).
 
 Network-level blocking is the other route: [block Samsung TV telemetry with Pi-hole or AdGuard](/privacy/block-samsung-tv-telemetry-dns/).
 

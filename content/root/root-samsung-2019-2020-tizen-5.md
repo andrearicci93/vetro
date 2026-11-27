@@ -1,14 +1,14 @@
 ---
 title: "Root a 2019 or 2020 Samsung TV (Tizen 5): what works"
-description: "Vetro's root features need Tizen 6 to 9. A 2019 Q80R works with a local port; the 2020 TU7090 and T4300 and a 2018 NU7090 get the dashboard only, no root."
+description: "A 2019 Samsung Q80R needs a personal Vetro port. The 2020 TU7090 and T4300 and a 2018 NU7090 have reports for the dashboard, app list and diagnostics only."
 keywords: ["root samsung tizen 5", "samsung q80r root", "samsung 2019 tv root", "samsung 2020 tv root"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro README compatibility table on main, the CHANGELOG Node 4.4 entries up to 0.7.0, the integration README and Samsung's TV model groups page."
+updated: 2026-11-27
+verified: "Updated on 2026-11-27 against the Vetro 0.7.1 README (Compatibility, Report a problem) at commit cbc363f. The CHANGELOG Node 4.4 entries, the integration README and Samsung's TV model groups page are as checked on 2026-11-21."
 related: ["how-to-root-samsung-tv", "root-tizen-6-samsung-tv", "samsung-tv-tizen-version-by-year", "is-it-safe-to-root-samsung-tv", "samsung-model-code-decoder", "samsung-sdb-connect-tv"]
 ---
 
-For Vetro's root features the short answer is no, not with the stock package: the README says they work on Tizen 6 to 9. Older TVs still get something. Two 2020 models and one 2018 model are reported with the dashboard, the app list and diagnostics working and the root features unavailable, and the only 2019 report works with a personal port that was never reviewed or merged.
+For Vetro's root features the short answer is no, not with the stock package: the [README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility) reports them on selected Tizen 6 to 9 TVs, and on Tizen 10 its test-build reports confirm root connected on four specific model and firmware combinations. It lists root features as not available on Tizen 4 and 5.5. Older TVs still get something. Two 2020 models and one 2018 model are reported with the dashboard, the app list and diagnostics working and the root features unavailable, and the only 2019 report works with a personal port that was never reviewed or merged.
 
 The linked research repository is written for researchers and can contain exploit code. This page contains none; see [how rooting works](/root/how-to-root-samsung-tv/) for the general picture. Vetro is experimental, needs root and ships no signed installer; read [the risks](/root/is-it-safe-to-root-samsung-tv/) too.
 
@@ -39,7 +39,7 @@ Tizen 4 and 5.5 TVs run Vetro's web service on Node.js 4.4, where newer TVs run 
 
 ## What can you do on an older TV?
 
-Check the exact model and firmware with [the model code decoder](/reference/samsung-model-code-decoder/), and report the result: the [tested TVs list](/tested-tvs/) grows from reports, and failed attempts help too. If your TV is not listed, open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the exact model, firmware and what worked or failed. The README says the report excludes credentials, IP and MAC addresses, serial numbers and viewing history; read it before you upload it. For a generation that does have root reports, start with [2021 TVs](/root/root-tizen-6-samsung-tv/).
+Check the exact model and firmware with [the model code decoder](/reference/samsung-model-code-decoder/), and report the result: the [tested TVs list](/tested-tvs/) grows from reports, and failed attempts help too. If your TV is not listed, open a [diagnostic report issue](https://github.com/andrearicci93/vetro/issues/new?template=log_report.yml) with the exact model, firmware and what worked or failed. The README says the report has no passwords, network addresses, device ids or viewing history, but it lists app names; read it before you upload it. For a generation that does have root reports, start with [2021 TVs](/root/root-tizen-6-samsung-tv/).
 
 ## Next steps
 

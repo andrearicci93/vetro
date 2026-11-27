@@ -3,8 +3,8 @@ title: "Turn off ACR on a Samsung TV: menu steps and limits"
 description: "Disable ACR on a Samsung TV with the Viewing Information Services switch, see what it leaves running, a 2026 opt-out test, and extra blocking on rooted TVs."
 keywords: ["disable acr samsung tv", "viewing information services", "samsung tv acr opt out", "samsung automatic content recognition"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Vetro parts checked on 2026-11-21 against the 0.7.0 CHANGELOG, dashboard labels, README and DOMAIN-FILTER.md; Malwarebytes, Techlicious, Watching the Watchers and Samsung's notices as re-read on 2026-11-10."
+updated: 2026-11-27
+verified: "Vetro parts checked on 2026-11-27 against the 0.7.1 CHANGELOG and README at commit cbc363f, plus DOMAIN-FILTER.md; Malwarebytes, Techlicious, Watching the Watchers and Samsung's notices as re-read on 2026-11-10."
 related: ["samsung-acr-texas-settlement", "what-data-samsung-tv-collects", "samsung-ads-opt-out", "block-samsung-tv-telemetry-dns", "turn-off-bixby-alexa-samsung-tv", "what-each-vetro-switch-changes"]
 faq:
   - q: "How do I turn off ACR on a Samsung TV?"
@@ -83,6 +83,8 @@ Vetro's Quick settings has a Stop viewing-data collection switch on the Privacy 
 - The data service can still run, so uploads may continue unless DNS blocking is on.
 - Effects on recognition and suggestions have not been verified.
 - The release notes list the viewing-data stop as checked on a Q80A (see the [Q80A page](/tested-tvs/q80a/)) in earlier restart tests, and "consolidated package and other models" as still to be tested.
+
+Vetro 0.7.1 widens the switch, according to the [0.7.1 changelog](https://github.com/andrearicci93/vetro/blob/main/CHANGELOG.md#quick-settings). It also stops `abnormal_user_behavior`, `issue_report_agent` (diagnostic reports) and `media-analytics-service`. The services without a file of their own are now masked until the next restart and masked again about 10 seconds into every boot, through the boot step the update lock uses, instead of being stopped once Vetro's service is up (about 95 seconds on a Q80A). `data-service` is still only stopped. On Tizen 9 the switch also masks `contents-cognition-service-manager`, `psid-checker` and `screen-analysis-service-manager`. Turning the switch off and on again no longer leaves the DNS filter off when the usage-log host was its only domain: Vetro switches the filter back on only if it was the one that switched it off.
 
 ![Vetro Quick settings with advertising, tracking and domain blocking switches](/assets/img/dashboard-quick-settings.jpg)
 

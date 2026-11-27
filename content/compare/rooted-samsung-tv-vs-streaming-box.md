@@ -3,8 +3,8 @@ title: "Rooted Samsung TV vs streaming box: which one to choose"
 description: "A debloated, rooted Samsung TV or a Fire TV, Google TV or Apple TV box? Compared on ads, privacy, updates and effort. Neither route removes every ad."
 keywords: ["samsung tv vs streaming box ads privacy", "rooted samsung tv vs fire tv", "streaming box or smart tv", "samsung tv ads streaming stick"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against the Vetro 0.7.0 CHANGELOG, README, SECURITY.md, PERFORMANCE.md and issue #223; Google TV Help, Apple Support and the AFTVnews guide were checked on 2026-11-10."
+updated: 2026-11-27
+verified: "Vetro parts checked on 2026-11-27 against the 0.7.1 CHANGELOG and README and SECURITY.md at commit cbc363f, with PERFORMANCE.md as checked on 2026-11-21; Google TV Help, Apple Support and the AFTVnews guide were checked on 2026-11-10."
 related: ["remove-ads-samsung-tv-home-screen", "what-data-samsung-tv-collects", "turn-off-acr-samsung-tv", "is-it-safe-to-root-samsung-tv", "how-to-root-samsung-tv", "vetro-vs-aerotizen-free-my-tv-tizenbrew"]
 ---
 
@@ -35,7 +35,7 @@ Stock Samsung menus cover only part of this, and what they offer depends on mode
 | Setup | Plug in and sign in | Developer Mode, Apps2Samsung or manual signing, compatible root route |
 | Ads | Present on Fire TV and Google TV; check Apple TV yourself | Home screen ads can be replaced by a launcher; ads inside apps stay |
 | Tracking | Platform's own settings; the TV still has its own | Switches for viewing-data services, domain filter; no guarantee of full blocking |
-| Updates | Maintained by the platform vendor | A firmware update can remove root, and one forced update already did ([#223](https://github.com/andrearicci93/vetro/issues/223)); Vetro's Block firmware and software updates switch can help, with no guarantee, and holds back Samsung's fixes too |
+| Updates | Maintained by the platform vendor | A firmware update can remove root, and one forced update already did ([#223](https://github.com/andrearicci93/vetro/issues/223)); Vetro's Block firmware and software updates switch can help, with no guarantee, and holds back Samsung's fixes too. An update reached a [QE65S85F](/tested-tvs/s85f/) with the block on before 0.7.1 extended it ([#308](https://github.com/andrearicci93/vetro/issues/308)); the extension is not yet tried on a TV |
 | Risk | Low | Privileged changes can disrupt TV features; the dashboard runs over plain HTTP |
 | Cost | You buy a box | No purchase, but time and some risk |
 | Warranty | Normal | Check Samsung's terms; we do not give warranty advice |
@@ -45,7 +45,7 @@ The README says domain filtering does not guarantee every app's ads or telemetry
 ## Which should I pick?
 
 - If you want it working this evening and do not enjoy tinkering, buy a box. On Google TV, use the controls on Google's page; on Fire TV, expect to live with some ads.
-- If your TV is a model Vetro has been reported on, you are comfortable with certificates, and you want the TV's own services switched off, a rooted TV is worth a try. Check the [tested TVs](/tested-tvs/) list first. Reports are small in number, root features target Tizen 6 to 9 (Tizen 10 has no root yet), and firmware updates can change the result.
+- If your TV is a model Vetro has been reported on, you are comfortable with certificates, and you want the TV's own services switched off, a rooted TV is worth a try. Check the [tested TVs](/tested-tvs/) list first. Reports are small in number and firmware updates can change the result. Root features have reports on Tizen 6 to 9; Tizen 10 root support starts in Vetro 0.7.1, with root reported on four model and firmware combinations using test builds and field reports for the final build still pending, so it is not a guarantee ([README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility)).
 - If you want a nicer Home screen without root, use one of the tools in [Samsung TV launcher tools compared](/compare/vetro-vs-aerotizen-free-my-tv-tizenbrew/).
 - If you want both, nothing stops you from using a box on one HDMI input of a TV you have also debloated.
 

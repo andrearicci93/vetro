@@ -3,8 +3,8 @@ title: "Connect to a Samsung TV with sdb (port 26101)"
 description: "How to run sdb connect to a Samsung TV on port 26101, why sdb shell is often closed on retail firmware, and how Vetro uses the TV's own SDB with no PC."
 keywords: ["samsung sdb connect tv", "sdb connect samsung tv 26101", "sdb shell closed samsung tv", "samsung sdb tizen tv"]
 date: 2026-11-10
-updated: 2026-11-21
-verified: "Checked on 2026-11-21 against Samsung's command line and tv-device pages, the Jellyfin Tizen README, the samsung-tv-root page, and Vetro 0.7.0's INSTALLATION.md, SECURITY.md, rooting README, CHANGELOG and dashboard labels."
+updated: 2026-11-27
+verified: "Updated on 2026-11-27 against the Vetro 0.7.1 README (Compatibility) and INSTALLATION.md at commit cbc363f. Samsung's command line and tv-device pages, the Jellyfin Tizen README, the samsung-tv-root page, and Vetro's SECURITY.md, rooting README and CHANGELOG are as checked on 2026-11-21."
 related: ["samsung-tv-developer-mode", "install-vetro-apps2samsung", "how-to-root-samsung-tv", "keep-root-after-restart", "vetro-security-model", "samsung-developer-certificate-errors"]
 ---
 
@@ -52,7 +52,7 @@ On retail firmware the connection can work while the interactive shell does not.
 
 ## How does Vetro use SDB?
 
-After you set Host PC IP to `127.0.0.1` and restart, the Vetro service on the TV starts a small root helper through the TV's own SDB service, and the helper connects back to Vetro. No computer needs to stay connected. Startup can take more than a minute, sometimes more than 90 seconds; the dashboard shows when the root agent is connected. The root comes from Chris Ritsen's research; Vetro is experimental, needs root and ships no signed installer. See [does root survive a restart](/root/keep-root-after-restart/).
+After you set Host PC IP to `127.0.0.1` and restart, the Vetro service on the TV starts a small root helper through the TV's own SDB service, and the helper connects back to Vetro. No computer needs to stay connected. Startup can take more than a minute, sometimes more than 90 seconds; the dashboard shows when the root agent is connected. This route, based on Chris Ritsen's research, is the one Vetro uses on Tizen 6 to 9. Vetro 0.7.1 adds a separate route for Tizen 10, with root connected in test builds on four models so far ([README](https://github.com/andrearicci93/vetro/blob/main/README.md#compatibility)); this page does not describe it. Vetro is experimental, needs root and ships no signed installer. See [does root survive a restart](/root/keep-root-after-restart/).
 
 ### Can a computer share the connection with Vetro?
 
