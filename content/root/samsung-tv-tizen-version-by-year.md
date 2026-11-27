@@ -36,7 +36,7 @@ Wikipedia's [Tizen article](https://en.wikipedia.org/wiki/Tizen) lists releases 
 
 Samsung updates the operating system on some TVs. [SamMobile](https://www.sammobile.com/opinion/samsung-promised-7-years-of-tv-updates-still-waiting-to-see-what-happens/) reports that in mid-2024 Samsung said TVs released in 2024 or later, plus select 2023 models, would get seven years of Tizen OS updates. Its article says premium 2023 models got Tizen 8.0 in November 2024, and its October 2025 update says Samsung confirmed those 2023 models would start moving to Tizen 9 the following week, possibly in stages and not in every region at once. It names no full model list.
 
-The Vetro README table shows the same pattern from the owners' side. The 2023 [CU7179](/tested-tvs/cu7179/) and [CU8070](/tested-tvs/cu8070/) are reported on Tizen 9.0, a 2023 [S90C](/tested-tvs/s90c/) on Tizen 7.0, and the 2024 [S90D](/tested-tvs/s90d/) and [DUE77](/tested-tvs/due77/) on Tizen 9. A separate S90C (QN65S90CAFXZA) was reported on Tizen 9 with firmware `T-PTMCAKUC-0090-2220.4`; its service and root were verified with Vetro 0.7.0 ([#317](https://github.com/andrearicci93/vetro/issues/317)). The README's Tizen 10 row lists 2025 models, which Samsung's table puts on Tizen 9.0: an [S85F](/tested-tvs/s85f/), a [Q70F](/tested-tvs/q70f/), a [U8000F](/tested-tvs/u8000f/), a [QN900F](/tested-tvs/qn900f/) and a [QN80F](/tested-tvs/qn80f/), all on Tizen 10 firmware ending in 2103.1. The QN80F stopped connecting to root with Vetro 0.5.0 after a firmware update ([#181](https://github.com/andrearicci93/vetro/issues/181)). Two TVs from the same year can sit on different versions, so treat the table as a starting guess and check the real value.
+The Vetro README table shows the same pattern from the owners' side. The 2023 [CU7179](/tested-tvs/cu7179/) and [CU8070](/tested-tvs/cu8070/) are reported on Tizen 9.0, a 2023 [S90C](/tested-tvs/s90c/) on Tizen 7.0, and the 2024 [S90D](/tested-tvs/s90d/) and [DUE77](/tested-tvs/due77/) on Tizen 9. A separate [S90C (QN65S90CAFXZA)](/tested-tvs/s90c-tizen-9/) was reported on Tizen 9 with firmware `T-PTMCAKUC-0090-2220.4`; its service and root were verified with Vetro 0.7.0 ([#317](https://github.com/andrearicci93/vetro/issues/317)). The README's Tizen 10 row lists 2025 models, which Samsung's table puts on Tizen 9.0: an [S85F](/tested-tvs/s85f/), a [Q70F](/tested-tvs/q70f/), a [U8000F](/tested-tvs/u8000f/), a [QN900F](/tested-tvs/qn900f/) and a [QN80F](/tested-tvs/qn80f/), all on Tizen 10 firmware ending in 2103.1. The QN80F stopped connecting to root with Vetro 0.5.0 after a firmware update ([#181](https://github.com/andrearicci93/vetro/issues/181)). Two TVs from the same year can sit on different versions, so treat the table as a starting guess and check the real value.
 
 ## How do I see which Tizen version my TV runs?
 
@@ -50,7 +50,7 @@ Rows from the [Vetro compatibility table](https://github.com/andrearicci93/vetro
 | --- | --- | --- | --- |
 | [Q80A](/tested-tvs/q80a/) | 2021 | 6.0 | Listed under Tizen 6; firmware 2301.1 |
 | [S90C](/tested-tvs/s90c/) | 2023 | 7.0 | Tizen 7.0 |
-| S90C QN65S90CAFXZA ([#317](https://github.com/andrearicci93/vetro/issues/317)) | 2023 | 7.0 | Tizen 9 |
+| [S90C QN65S90CAFXZA](/tested-tvs/s90c-tizen-9/) ([#317](https://github.com/andrearicci93/vetro/issues/317)) | 2023 | 7.0 | Tizen 9 |
 | [CU7179](/tested-tvs/cu7179/) | 2023 | 7.0 | Tizen 9.0 |
 | [CU8070](/tested-tvs/cu8070/) | 2023 | 7.0 | Tizen 9.0 |
 | [S90D](/tested-tvs/s90d/) | 2024 | 8.0 | Tizen 9 |

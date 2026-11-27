@@ -166,6 +166,18 @@
   "summary": "Reported working on Tizen 7.0."
  },
  {
+  "slug": "s90c-tizen-9",
+  "name": "Samsung S90C (Tizen 9)",
+  "code": "QN65S90CAFXZA",
+  "year": 2023,
+  "tizen": "Tizen 9",
+  "firmware": "T-PTMCAKUC-0090-2220.4",
+  "status": "Service and root verified with 0.7.0",
+  "issue": 317,
+  "summary": "Service and root verified with Vetro 0.7.0, according to the README. A separate S90C report on Tizen 7.0 has its own page: the two are different TVs.",
+  "description": "Samsung S90C QN65S90CAFXZA on Tizen 9 with Vetro: service and root verified with 0.7.0 on firmware T-PTMCAKUC-0090-2220.4. A separate S90C is on Tizen 7."
+ },
+ {
   "slug": "cu7179",
   "name": "Samsung GU75CU7179",
   "code": "GU75CU7179",
@@ -187,6 +199,18 @@
   "status": "Reported working",
   "issue": 183,
   "summary": "Reported working with Vetro 0.5.0, installed with Apps2Samsung: root agent with UID 0 after setting Host PC IP to 127.0.0.1 and restarting. The physical Home key opens a custom launcher, with Samsung Home kept. Like the GU75CU7179, it is a 2023 TV reported on Tizen 9.0."
+ },
+ {
+  "slug": "du7000",
+  "name": "Samsung DU7000 / DU7179",
+  "code": "DU7000 / DU7179",
+  "year": null,
+  "tizen": "Tizen 8",
+  "firmware": "T-KSU2EDDEUC-1400.0",
+  "status": "Reported working with 0.7.0",
+  "issue": 313,
+  "summary": "Reported working with Vetro 0.7.0, according to the README. The report names the DU7000 and the DU7179 together.",
+  "description": "Samsung DU7000 / DU7179 on Tizen 8 with Vetro: reported working with 0.7.0 on firmware T-KSU2EDDEUC-1400.0 (#313). What was reported and what to check."
  },
  {
   "slug": "q65d",
@@ -222,6 +246,18 @@
   "status": "Reported working",
   "issue": 36,
   "summary": "Reported working on Tizen 9, with the root agent back after a full restart (the owner's account)."
+ },
+ {
+  "slug": "s95f",
+  "name": "Samsung S95F",
+  "code": "QN65S95FAFXZA",
+  "year": 2025,
+  "tizen": "Tizen 9",
+  "firmware": "T-RSMFAKUC-0090-1301.0",
+  "status": "Root reported working across restarts with 0.7.0",
+  "issue": 284,
+  "summary": "Root reported working across restarts with Vetro 0.7.0, according to the README.",
+  "description": "Samsung S95F QN65S95FAFXZA on Tizen 9 with Vetro: root reported working across restarts with 0.7.0 on firmware T-RSMFAKUC-0090-1301.0."
  },
  {
   "slug": "due77",
