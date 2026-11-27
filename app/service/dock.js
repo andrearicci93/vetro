@@ -516,9 +516,9 @@ Dock.prototype.startScript = function () {
     // Custom mode: headless. The one-line list only gives the process something to load; the window is never shown.
     var args = DLL + ' --apps ' + q(state.customApp ? this.customAppsFile : this.appsFile) + ' --inputs ' + q(this.inputListPath()) +
         (!state.customApp && fs.existsSync(this.allAppsFile) ? ' --all-apps ' + q(this.allAppsFile) : '') +
-        // Vetro mode claims the Home key at the compositor, so Samsung's Home no longer comes up for a moment before the dock (#184, by
-        // chemicalsno); custom mode has no window to claim it on, and its guard keeps Samsung's Home away as before.
-        ' --hidden' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : ' --claim-home') +
+        // Claim the Home key at the compositor in both Vetro and custom launcher modes (#184), so Samsung's Home no longer
+        // flashes or triggers its transition before the dock or custom Home app appears; the guard stays armed as fallback.
+        ' --hidden --claim-home' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
         (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
         ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
