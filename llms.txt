@@ -58,7 +58,7 @@
 ## Reference
 
 - [Samsung TV model number decoder: model code and firmware](https://andrearicci93.github.io/vetro/reference/samsung-model-code-decoder/): Read a Samsung TV model number letter by letter, from QE50Q80AATXZT to the year letter, and learn what a firmware string like T-NKM2DEUC-2301.1 can tell you.
-- [What each Vetro switch changes on a Samsung TV (0.7.1)](https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/): What each Vetro 0.7.1 Quick settings switch, Vetro UI option and Apps and processes action changes on a Samsung TV, how to undo it, and what is untested.
+- [What each Vetro switch changes on a Samsung TV (0.7.2)](https://andrearicci93.github.io/vetro/reference/what-each-vetro-switch-changes/): What each Vetro 0.7.2 Quick settings switch, Vetro UI option and Apps and processes action changes on a Samsung TV, how to undo it, and what is untested.
 - [Vetro security model: pairing, plain HTTP, trusted LAN](https://andrearicci93.github.io/vetro/reference/vetro-security-model/): Since 0.5.0 Vetro pairs browsers with a six-digit code shown on the TV, but traffic is plain HTTP. What pairing covers, what stays open, SDB, Shards.
 - [Why Vetro's launcher is native, not a web app](https://andrearicci93.github.io/vetro/reference/why-vetro-is-native/): Why Vetro's Samsung TV launcher is a native .NET program, not a web app: the memory numbers from one Q80A run, how the Home key works, and what native costs.
 
