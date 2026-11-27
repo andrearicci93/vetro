@@ -41,7 +41,7 @@ node rooting/release.cjs keygen ~/vetro-keys
 VETRO_UPDATE_KEY=~/vetro-keys/update-private.pem node rooting/release.cjs build /tmp/vetro-update
 ```
 
-This writes `vetro-update-<version>.json` (about 1.4 MB) and `update-index.json`. Publish both in the folder the dashboard reads (`VETRO_UPDATE_SOURCE`, default the `updates` branch of the repository on `raw.githubusercontent.com`, which allows browser downloads). Raise `shell` in `app/service/build-info.js` only when `config.xml` changes something a file swap cannot (privileges, service flags). The `version` attribute changes every release and stays behind on the TV after an update, so it does not count; raising `shell` for it makes every TV on the previous version reinstall instead of update.
+This writes `vetro-update-<version>.json` (about 1.4 MB) and `update-index.json`. Publish both in the folder the dashboard reads (`VETRO_UPDATE_SOURCE`, default the `updates` branch of the repository on `raw.githubusercontent.com`, which allows browser downloads). Raise `shell` in `app/service/build-info.js` only when `config.xml` changes something a file swap cannot (privileges, service flags). The `version` attribute changes every release and stays behind on the TV after an update, so it does not count; raising `shell` for it makes every TV on the previous version reinstall instead of update. Installs built from the `v0.7.1` tag (commit `24cbee6`, which Apps2Samsung built until 27 Nov 2026) report `shell` 2 although `config.xml` is the same as at 1: the next real `config.xml` change has to raise `shell` to 3, not 2.
 
 An installed Vetro can take updates only if its package already contained the key: the first release with this feature has to be installed the usual way.
 
