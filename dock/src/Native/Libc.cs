@@ -20,6 +20,17 @@ namespace Launcher.Native
         public const int PR_SET_DUMPABLE = 4;
 
         [DllImport(C, SetLastError = true)] public static extern int prctl(int option, IntPtr arg2, IntPtr arg3, IntPtr arg4, IntPtr arg5);
+        public const int SCHED_OTHER = 0;
+        public const int SCHED_RR = 2;
+        public const int SCHED_RESET_ON_FORK = 0x40000000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct SchedParam
+        {
+            public int sched_priority;
+        }
+
+        [DllImport(C, SetLastError = true)] public static extern int sched_setscheduler(int pid, int policy, ref SchedParam param);
         [DllImport(C, SetLastError = true)] public static extern int setenv(string name, string value, int overwrite);
         [DllImport(C, SetLastError = true)] public static extern int mkfifo(string path, uint mode);
         [DllImport(C, SetLastError = true)] public static extern int open(string path, int flags);
@@ -29,11 +40,14 @@ namespace Launcher.Native
         [DllImport(C)] public static extern uint getuid();
         [DllImport(C)] public static extern int getpid();
         [DllImport(C, SetLastError = true)] public static extern int unlink(string path);
+        [DllImport(C, SetLastError = true)] public static extern int mkdir(string pathname, uint mode);
+        [DllImport(C, SetLastError = true)] public static extern int rmdir(string pathname);
         [DllImport(C, SetLastError = true)] public static extern int kill(int pid, int sig);
         [DllImport(C, SetLastError = true)] public static extern int chmod(string path, uint mode);
         [DllImport(C, SetLastError = true)] public static extern int setxattr(string path, string name, byte[] value, UIntPtr size, int flags);
         [DllImport(C)] public static extern int system(string command);
         [DllImport(C, SetLastError = true)] public static extern int inotify_init1(int flags);
         [DllImport(C, SetLastError = true)] public static extern int inotify_add_watch(int fd, string path, uint mask);
+        [DllImport(C)] public static extern void free(IntPtr ptr);
     }
 }

@@ -21,6 +21,12 @@ var UI_RESERVED = [
     {code: '140', label: '123', owner: 'pad', name: 'Number pad', icon: 'color-123'}
 ];
 
+var UI_BACK_HOLD_KEYS = [
+    {code: '1', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true},
+    {code: '158', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true},
+    {code: '174', label: 'Exit', owner: 'backhold', name: 'Hold Back'}
+];
+
 // The keys Vetro TV Tuner answers (evdev codes of the remote, tuner/src/Program.cs). The remote bridge does not pass on a key that a
 // shortcut of the user's holds, and the tuner reads the bridge's copy of the remote: such a key never reaches the tuner.
 // The keys the launcher's Control center needs (Down opens it from the apps row, Left / Right move between its cards, OK acts on a row:
@@ -49,11 +55,21 @@ function uiReservedKeys(d) {
         var k = UI_RESERVED[i], on = !!d && (k.owner === 'volume' ? d.volumePill === true : d.numberPad === true);
         if (on) out.push({code: k.code, label: k.label, owner: k.owner, name: k.name, icon: k.icon, live: live});
     }
+    if (d && (d.idleBackHoldMode === 'minimize' || d.idleBackHoldMode === 'force-close')) {
+        var bhLive = uiLauncherMode(d) === 'vetro' && (d.idleMode || 'off') !== 'off';
+        for (var j = 0; j < UI_BACK_HOLD_KEYS.length; j++) {
+            var b = UI_BACK_HOLD_KEYS[j];
+            var entry = {code: b.code, label: b.label, owner: b.owner, name: b.name, live: bhLive};
+            if (b.hold === true) entry.hold = true;
+            out.push(entry);
+        }
+    }
     return out;
 }
 
-// The keys of one part ('volume' or 'pad'), whether it is on or not: what switching it on would take.
-function uiKeysOf(owner) {
+// The keys of one part ('volume', 'pad', or 'backhold'), whether it is on or not: what switching it on would take.
+function uiKeysOf(owner, d) {
+    if (owner === 'backhold') return UI_BACK_HOLD_KEYS.slice();
     var out = [];
     for (var i = 0; i < UI_RESERVED.length; i++) if (UI_RESERVED[i].owner === owner) out.push(UI_RESERVED[i]);
     return out;
@@ -79,6 +95,12 @@ function uiNeeds(part, d, input) {
         var st = input && input.status, pref = st && st.preference;
         if (input && !(pref && pref.enabled === true)) needs.push('interception');
         else if (st && st.policy && st.policy.mode === 'observe') needs.push('listening');
+    } else if (part === 'backhold') {
+        if (mode !== 'vetro') needs.push('launcher');
+        if (!d || (d.idleMode || 'off') === 'off') needs.push('idle');
+        var bst = input && input.status, bpref = bst && bst.preference;
+        if (input && !(bpref && bpref.enabled === true)) needs.push('interception');
+        else if (bst && bst.policy && bst.policy.mode === 'observe') needs.push('listening');
     }
     return needs;
 }
@@ -101,7 +123,7 @@ var FUNCTIONS = [uiLauncherMode, uiReservedKeys, uiKeysOf, uiConflicts, uiNeeds,
 
 // The page's copy of the rules: the list and the functions, ready to drop into its script.
 function pageSource() {
-    return 'var UI_RESERVED=' + JSON.stringify(UI_RESERVED) + ',UI_TUNER_KEYS=' + JSON.stringify(UI_TUNER_KEYS) + ',UI_TASK_KEYS=' + JSON.stringify(UI_TASK_KEYS) + ';\n' + FUNCTIONS.map(function (f) { return f.toString(); }).join('\n');
+    return 'var UI_RESERVED=' + JSON.stringify(UI_RESERVED) + ',UI_BACK_HOLD_KEYS=' + JSON.stringify(UI_BACK_HOLD_KEYS) + ',UI_TUNER_KEYS=' + JSON.stringify(UI_TUNER_KEYS) + ',UI_TASK_KEYS=' + JSON.stringify(UI_TASK_KEYS) + ';\n' + FUNCTIONS.map(function (f) { return f.toString(); }).join('\n');
 }
 
-module.exports = {UI_RESERVED: UI_RESERVED, UI_TUNER_KEYS: UI_TUNER_KEYS, UI_TASK_KEYS: UI_TASK_KEYS, keysWhen: uiKeysWhen, launcherMode: uiLauncherMode, reservedKeys: uiReservedKeys, keysOf: uiKeysOf, conflicts: uiConflicts, needs: uiNeeds, pageSource: pageSource};
+module.exports = {UI_RESERVED: UI_RESERVED, UI_BACK_HOLD_KEYS: UI_BACK_HOLD_KEYS, UI_TUNER_KEYS: UI_TUNER_KEYS, UI_TASK_KEYS: UI_TASK_KEYS, keysWhen: uiKeysWhen, launcherMode: uiLauncherMode, reservedKeys: uiReservedKeys, keysOf: uiKeysOf, conflicts: uiConflicts, needs: uiNeeds, pageSource: pageSource};

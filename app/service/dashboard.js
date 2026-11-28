@@ -60,6 +60,7 @@ input[type=file]{height:auto;max-width:100%;padding:var(--s2);color:var(--muted)
 input[type=file]::file-selector-button{min-height:44px;height:auto;margin-right:var(--s3);padding:0 var(--s3);border:1px solid var(--vetro-control-border);border-radius:var(--r);background:var(--surface);color:var(--text);font:inherit;cursor:pointer}
 button,input,select,textarea{font:inherit;color:var(--text);border:1px solid var(--vetro-control-border);border-radius:var(--r);background:var(--raised)}
 button,select,input:not([type=checkbox]){min-height:var(--vetro-control-height);height:auto;padding:var(--s2) var(--s4)}
+select{padding-right:2.25rem;max-width:100%}
 input:not([type=checkbox]),select,textarea{font-size:var(--fs-m)}
 button{cursor:pointer;max-width:100%;overflow-wrap:anywhere;scroll-margin-block:var(--scroll-clearance)}
 input,select,textarea{caret-color:var(--accent);scroll-margin-block:var(--scroll-clearance)}
@@ -252,7 +253,7 @@ pre.small-mono{white-space:pre-wrap;overflow-wrap:anywhere;margin:var(--s2) 0 0}
 .quick-item+.quick-item{border-top:1px solid var(--border)}
 .quick-group>#quickControl+#quickSdb>.quick-item:first-child{margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--border)}
 .quick-sub{padding-left:var(--s5)}
-.quick-edge{grid-column:1/-1;display:flex;align-items:center;gap:var(--s3);color:var(--muted)}
+.quick-edge{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s3);color:var(--muted)}
 .quick-item .notice{margin-top:var(--s2)}
 .quick-item p{font-size:var(--fs-s);line-height:1.6;color:var(--muted);margin-top:2px;max-width:60ch;text-wrap:pretty}
 .quick-item .switch{margin:0;align-self:start}
@@ -602,7 +603,7 @@ $('overlay').onclick=closeDetail;document.addEventListener('keydown',function(e)
 $('appGrid').onclick=function(e){var b=e.target.closest('[data-app]');if(b)detail(b.dataset.app)};$('search').oninput=render;$('category').onchange=render;$('refresh').onclick=function(){loadApps(true)};
 function showRules(){renderMqttRules();
  var lock='<svg class="lock-icon" viewBox="0 0 24 24" role="img" aria-label="Locked"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>';
- var held=reservedKeys.map(function(k){return '<div class="rule rule-locked" data-held="'+esc(k.code)+'"><div>'+lock+' '+(k.icon?remoteKey(k.icon,k.label)+' ':'')+'Key <code>'+esc(k.code)+'</code> ('+esc(k.label)+') → '+esc(k.name)+' <span class="muted">Vetro UI'+(k.live?'':' · waits for a launcher')+'</span></div><button data-open-ui="osd">Open Vetro UI</button></div>'}).join('');
+ var held=reservedKeys.map(function(k){return '<div class="rule rule-locked" data-held="'+esc(k.code)+'"><div>'+lock+' '+(k.icon?remoteKey(k.icon,k.label)+' ':'')+'Key <code>'+esc(k.code)+'</code> ('+esc(k.label)+') → '+esc(k.name)+' <span class="muted">Vetro UI'+(k.live?'':' · waits for a launcher')+'</span></div><button data-open-ui="'+(k.owner==='backhold'?'dock':'osd')+'">Open Vetro UI</button></div>'}).join('');
  var mine=rules.map(function(r){var a=r.actions[0],name=a.type==='launch'?appLabel(inventory.find(function(x){return x.appId===a.appId})||{appId:a.appId}):a.type==='key'?inputKeyLabel(a.key):a.type==='screenoff'?'Turn off screen':a.type;var over=r.enabled&&r.trigger.type==='physical'&&reservedKeys.some(function(k){return k.live&&k.code===String(r.trigger.value)});var tk=!over&&remapTuner&&r.enabled&&r.trigger.type==='physical'?UI_TUNER_KEYS.filter(function(k){return k.code===String(r.trigger.value)})[0]:null;return '<div class="rule"><div>'+(r.trigger.type==='physical'?'Key <code>'+esc(r.trigger.value)+'</code>':'<code>'+esc(r.trigger.type)+' / '+esc(r.trigger.value)+'</code>')+' → '+esc(name)+whenTag(r)+' <span class="muted">'+(r.enabled?'':'(off)')+'</span>'+(over?' <span class="tag">Overridden by Vetro UI</span>':'')+(tk?' <span class="tag">Live TV does not get '+esc(tk.label)+'</span>':'')+'</div><button class="danger" data-delete="'+esc(r.id)+'">Delete shortcut</button></div>'}).join('');
  $('rules').innerHTML=held||mine?held+mine:'No shortcuts yet. Capture a key and choose what it does.'}
 function loadRules(){return api('/remap').then(function(d){if(!Array.isArray(d.rules))throw Error('Shortcut list unreadable');rules=d.rules;reservedKeys=Array.isArray(d.reserved)?d.reserved:[];remapTuner=!!(d.tuner&&d.tuner.enabled);showRules()}).catch(function(e){$('rules').textContent='Could not read the saved shortcuts: '+e.message})}
@@ -1595,6 +1596,7 @@ function fitOne(lp,width){
   if(img.complete){if(img.naturalWidth)judge();else img.onerror();}else img.onload=judge;
  });
 }
+function idlePotMin(d){var v=d&&d.idlePictureOffMin;return [-1,0,5,10,15].indexOf(v)>=0?v:0}
 function renderDock(){
  var box=$('dockBody');if(!box)return;var d=dockData,cbox=$('dockCards');
  if(!d){var wait='<div class="panel"><p class="notice">'+esc(dockError||'Reading…')+'</p></div>';paint(box,wait);paint(cbox,wait);return}
@@ -1621,14 +1623,36 @@ function renderDock(){
  sourceOptions+=sourceOption('hideTvSource','Hide TV on Sources','Leaves TV out of Sources, for a TV without an antenna. The tuner and remapped keys still use it; with no other source, TV stays.');
  var idleHomeOn=d.closeIdleHome!==false;
  var idleHome='<div class="quick-item" data-quick-item="close-idle-home"><div><h3>Close idle Samsung Home</h3><p>While Vetro’s launcher is on, Samsung Home and its background parts are closed 25 s after the TV wakes from standby, or after 10 minutes unused. Samsung Home opens again when you choose it, a little slower the first time.</p><div class="quick-state">'+(idleHomeOn?chip('On','on'):chip('Off'))+(d.enabled?'':chip('Applies when the launcher is on'))+(d.idleHomeClears?chip('Closed '+d.idleHomeClears+(d.idleHomeClears===1?' time':' times')+' since Vetro started'):'')+'</div></div>'+switchMarkup('data-dock-idle-home',idleHomeOn,dockBusy||!d.installed,'Close idle Samsung Home')+'</div>';
+ var iMode=d.idleMode||'off',iAuto=!!d.idleAutoDock,iPot=idlePotMin(d),iNoSs=!!d.idleSuppressScreensaver,iBackMode=d.idleBackHoldMode==='minimize'||d.idleBackHoldMode==='force-close'?d.idleBackHoldMode:'off',iBackDock=!!d.idleBackHoldDock;
+ var iState=iMode==='clock'?chip('On · Pure Black + Clock','on'):iMode==='wallpaper'?chip('On · Midnight Lake + Clock','on'):iMode==='clean'?chip('On · Midnight Lake','on'):iMode==='aurora'?chip('On · Aurora Silk + Clock','on'):iMode==='aurora-clean'?chip('On · Aurora Silk','on'):chip('Off');
+ var iStyle='<div class="quick-item" data-quick-item="idle-screen"><div><h3>Backdrop style</h3><p>Choose an OLED-black clock or slow-drifting Midnight Lake and Aurora Silk themes without the antenna warning.</p><div class="quick-state">'+iState+chip('Experimental')+(iMode!=='off'&&!d.enabled?chip('Applies when the launcher is on','partial'):'')+'</div><label class="field"><span>Style</span><select data-dock-idle-mode aria-label="Empty TV screen style"'+(dockBusy||!d.installed?' disabled':'')+'>'+
+  [['off','Off (Samsung default)'],['clock','Pure Black + Clock (OLED)'],['wallpaper','Midnight Lake + Clock'],['clean','Midnight Lake (No text)'],['aurora','Aurora Silk + Clock'],['aurora-clean','Aurora Silk (No text)']].map(function(o){return '<option value="'+o[0]+'"'+(iMode===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label></div></div>';
+ var iPotLabel=iPot<0?'No dim':iPot>0?'Picture Off after '+iPot+' min':'Dim after 10 min';
+ var iExtras=iMode==='off'?'':'<div class="quick-item" data-quick-item="idle-potoff"><div><h3>After idle</h3><p>Keeps the backdrop at full brightness, dims it after 10 min, or switches off the OLED panel.</p><div class="quick-state">'+chip(iPotLabel)+'</div><label class="field"><span>Action</span><select data-dock-idle-potoff aria-label="After idle"'+(dockBusy||!d.installed?' disabled':'')+'>'+
+  [[-1,'No dim (Keep full brightness)'],[0,'Dim after 10 min (Keep visible)'],[5,'Picture Off after 5 min'],[10,'Picture Off after 10 min'],[15,'Picture Off after 15 min']].map(function(o){return '<option value="'+o[0]+'"'+(iPot===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label></div></div>'+
+  '<div class="quick-item" data-quick-item="idle-autodock"><div><h3>Open Dock on arrival</h3><p>Opens the app bar for 20 s at power-on or after closing an app, then fades back to the backdrop.</p><div class="quick-state">'+chip(iAuto?'On':'Off',iAuto?'on':'')+'</div></div>'+switchMarkup('data-dock-idle-autodock',iAuto,dockBusy||!d.installed,'Open Dock on arrival')+'</div>'+
+  '<div class="quick-item" data-quick-item="idle-noscreensaver"><div><h3>Replace Samsung screensaver</h3><p>Shows Vetro’s backdrop instead of Samsung’s screen saver whenever the TV goes idle in apps, menus, HDMI inputs or Empty TV.</p><div class="quick-state">'+chip(iNoSs?'On':'Off',iNoSs?'on':'')+'</div></div>'+switchMarkup('data-dock-idle-noscreensaver',iNoSs,dockBusy||!d.installed,'Replace Samsung screensaver')+'</div>';
+ var iBackLabel=iBackMode==='minimize'?'Minimize to backdrop':iBackMode==='force-close'?'Force close app':'Off';
+ var iBackDisabled=dockBusy||!d.installed||iMode==='off',iBackDockDisabled=iBackDisabled||iBackMode==='off';
+ var iBackNote=iMode==='off'?'<p class="notice">Turn on Backdrop style above to use Hold Back.</p>':'';
+ var bhNeeds=iBackMode!=='off'?uiNeeds('backhold',d,uiInput):[],bhCallout='';
+ if(iMode!=='off'&&bhNeeds.indexOf('launcher')>=0)bhCallout+='<p class="quick-callout">Hold Back applies while the Vetro launcher is on.</p>';
+ if(iMode!=='off'&&bhNeeds.indexOf('interception')>=0)bhCallout+='<p class="quick-callout">The remote interception is off, so Back goes to Samsung. Turn it on in the Remapper'+((uiInterception&&uiInterception.problem)?' ('+esc(uiInterception.problem)+')':'')+'.</p>';
+ else if(iMode!=='off'&&bhNeeds.indexOf('listening')>=0)bhCallout+='<p class="quick-callout">Paused while the Remapper is listening to the remote.</p>';
+ var bhConf=iBackMode!=='off'&&uiRules?uiConflicts(uiRules,uiKeysOf('backhold',d)):[];
+ if(bhConf.length)bhCallout+='<p class="quick-callout"><strong>'+(bhConf.length===1?'One of your shortcuts uses':'Shortcuts of yours use')+' the Back key.</strong> '+bhConf.map(function(x){return 'Key '+esc(x.label)+' ('+esc(x.code)+') opens '+esc(ruleName(x.rule))}).join('; ')+'. While Hold Back is on, holding Back goes to Vetro instead.</p>';
+ var iBack='<div class="quick-item" data-quick-item="idle-backhold"><div><h3>Hold Back</h3><p>Hold Back inside any app to return to the backdrop instead of stepping through menus.</p><div class="quick-state">'+(iBackMode==='off'?chip('Off'):chip('On · '+iBackLabel,'on'))+(iMode==='off'?chip('Needs Backdrop style on','partial'):'')+'</div><label class="field"><span>Action</span><select data-dock-idle-backhold aria-label="Hold Back action"'+(iBackDisabled?' disabled':'')+'>'+
+  [['off','Off (TV default)'],['minimize','Minimize to backdrop'],['force-close','Force close app']].map(function(o){return '<option value="'+o[0]+'"'+(iBackMode===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>'+iBackNote+bhCallout+'</div></div>';
+ var iBackDockItem='<div class="quick-item" data-quick-item="idle-backhold-dock"><div><h3>Open Dock on hold Back</h3><p>Opens the app bar when Hold Back returns to the backdrop.</p><div class="quick-state">'+chip(iBackDock?'On':'Off',iBackDock?'on':'')+(iMode==='off'?chip('Needs Backdrop style on','partial'):iBackMode==='off'?chip('Needs Hold Back on'):'')+'</div>'+iBackNote+'</div>'+switchMarkup('data-dock-idle-backhold-dock',iBackDock,iBackDockDisabled,'Open Dock on hold Back')+'</div>';
+ var idleBox='<h2 class="section-title" id="dockIdleTitle">${sectionIcon('tv')}Empty TV screen</h2><p class="section-note">Replaces Samsung’s “Aerial Cable: Disconnected” screen when the TV input has no live tuner active.</p>'+iStyle+iExtras+iBack+iBackDockItem;
  var look='<h2 class="section-title" id="dockLookTitle">${sectionIcon('home')}Customization</h2>'+row+store+sourceOptions+still+idleHome+fix;
  // The preview (a TV picture and the app icons) is drawn again only when it changes; a busy or changed switch redraws the
  // switches beside it, not the pictures.
- var preview=previewMarkup(d),lay=box.firstChild,group=lay&&lay.lastChild,sec=box.lastChild;
- if(box.vetroPreview===preview&&box.vetroFirst===lay&&group&&sec&&sec!==lay){paint(group,main);paint(sec,look)}
- else if(paint(box,'<div class="dock-layout">'+preview+'<div class="quick-group">'+main+'</div></div><section class="quick-group ui-cols" aria-labelledby="dockLookTitle">'+look+'</section>')){
-  box.vetroPreview=preview;lay=box.firstChild;group=lay&&lay.lastChild;sec=box.lastChild;
-  if(group&&sec){group.vetroHtml=main;group.vetroFirst=group.firstChild;sec.vetroHtml=look;sec.vetroFirst=sec.firstChild}
+ var preview=previewMarkup(d),lay=box.firstChild,group=lay&&lay.lastChild,sec=box.lastChild,idleSec=$('dockIdleSec');
+ if(box.vetroPreview===preview&&box.vetroFirst===lay&&group&&sec&&idleSec){paint(group,main);paint(sec,look);paint(idleSec,idleBox)}
+ else if(paint(box,'<div class="dock-layout">'+preview+'<div class="quick-group">'+main+'</div></div><section id="dockIdleSec" class="quick-group" aria-labelledby="dockIdleTitle">'+idleBox+'</section><section id="dockLookSec" class="quick-group ui-cols" aria-labelledby="dockLookTitle">'+look+'</section>')){
+  box.vetroPreview=preview;lay=box.firstChild;group=lay&&lay.lastChild;sec=box.lastChild;idleSec=$('dockIdleSec');
+  if(group&&sec&&idleSec){group.vetroHtml=main;group.vetroFirst=group.firstChild;sec.vetroHtml=look;sec.vetroFirst=sec.firstChild;idleSec.vetroHtml=idleBox;idleSec.vetroFirst=idleSec.firstChild}
   setTimeout(fitPreview,0);
  }
  if(cbox)replaceControls(cbox,cardsMarkup(d),['data-dock-slot','data-dock-cards-apply','data-dock-cards-cancel','data-dock-card']);
@@ -1677,7 +1701,7 @@ function setDock(action,label,extra){
  if(dockBusy)return;dockBusy=true;dockConfirm=false;customConfirm=false;renderDock();renderUi();   // the Overview's and the displays' switches lock too
  return runUiOperation('dock',label,'Launcher',null,function(mark){return api('/dock',Object.assign({action:action},extra||{})).then(function(d){
   dockSeq++;dockData=d;launcherEnabled=launcherOn(d);dockError=null;if(action==='cards'){cardsDraft=null;cardsPick=null}
-  var message=action==='appStore'?'All apps now opens '+(d.appStore==='samsung'?'Samsung’s store':'TV-Store')+(d.enabled?'; the launcher was restarted.':'.'):action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Home opens Samsung Home.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Home opens Samsung Home.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='closeIdleHome'?'Close idle Samsung Home '+(d.closeIdleHome!==false?'on':'off')+(d.enabled?'.':'; it applies when the launcher is on.'):action==='resetRow'?'Samsung’s row is back'+(d.enabled?'; the launcher was restarted.':'.'):action==='cards'?'Control center: '+(dockCards(d).length?dockCards(d).map(function(c){return cardInfo(c,d).name}).join(', '):'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?(d.volumeEdge==='hidden'?'The volume bar is hidden: Vol changes the level without a bar':'The volume bar moves to the '+(d.volumeEdge||'left')+' edge')+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
+  var message=action==='idleScreen'?(d.idleMode==='off'?'Empty TV screen off.':('Empty TV screen: '+(d.idleMode==='clean'?'Midnight Lake (No text)':d.idleMode==='wallpaper'?'Midnight Lake + Clock':d.idleMode==='aurora-clean'?'Aurora Silk (No text)':d.idleMode==='aurora'?'Aurora Silk + Clock':'Pure Black + Clock')+(d.idleAutoDock?', Dock on arrival':'')+(d.idlePictureOffMin<0?', no dim':d.idlePictureOffMin>0?', Picture Off '+d.idlePictureOffMin+'m':', dim 10m')+(d.idleSuppressScreensaver?', replace screensaver':'')+(d.idleBackHoldMode==='minimize'?', Hold Back: minimize':d.idleBackHoldMode==='force-close'?', Hold Back: force close':'')+(d.idleBackHoldMode!=='off'&&d.idleBackHoldDock?' + Dock':'')+'.')):action==='appStore'?'All apps now opens '+(d.appStore==='samsung'?'Samsung’s store':'TV-Store')+(d.enabled?'; the launcher was restarted.':'.'):action==='enableCustom'?'Custom launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disableCustom'?'Custom launcher off. Home opens Samsung Home.':action==='enable'?'Launcher on'+(d.running?' and running':'')+'. Press Home on the remote to open it.':action==='disable'?'Launcher off. Home opens Samsung Home.':action==='showHomeSources'||action==='useSourceImages'?'Source preference saved; '+(d.enabled?'the launcher was restarted.':'the preview was updated.'):action==='fixTizenTube'?'Fix TizenTube '+(d.fixTizenTube?'on':'off')+(d.enabled?'; the launcher was restarted with the new list.':'; it applies when the launcher is on.'):action==='noMotion'?'Reduce motion '+(d.noMotion?'on':'off')+(d.enabled?'; the launcher was restarted.':'; it applies when the launcher is on.'):action==='closeIdleHome'?'Close idle Samsung Home '+(d.closeIdleHome!==false?'on':'off')+(d.enabled?'.':'; it applies when the launcher is on.'):action==='resetRow'?'Samsung’s row is back'+(d.enabled?'; the launcher was restarted.':'.'):action==='cards'?'Control center: '+(dockCards(d).length?dockCards(d).map(function(c){return cardInfo(c,d).name}).join(', '):'off')+(d.enabled?'; the launcher was restarted.':d.mode==='custom'?'; it shows in the Vetro launcher only.':'; it applies when the launcher is on.'):action==='volumePill'?'Volume bar '+(d.volumePill?'on.':'off: Samsung’s bar is back.'):action==='numberPad'?'Number pad '+(d.numberPad?'on.':'off: Samsung’s pad is back.'):action==='volumeEdge'?(d.volumeEdge==='hidden'?'The volume bar is hidden: Vol changes the level without a bar':'The volume bar moves to the '+(d.volumeEdge||'left')+' edge')+(d.enabled?'; the launcher was restarted.':'.'):'App list rebuilt and the launcher restarted.';
   mark(message,'Service confirmed');return {state:'success',resultLabel:'Service confirmed',message:message};
  })}).then(function(ok){if(!ok)return loadDock()}).finally(function(){dockBusy=false;renderDock();renderQuick();renderUi();if(action==='enableCustom'||action==='disableCustom')loadApps(true)});
 }
@@ -1764,17 +1788,18 @@ function loadUiInput(){
  ]).then(renderUi);
 }
 function loadVetroUi(){showUiTab(uiTab);return Promise.all([loadDock(),loadTuner(true),loadUiInput()]).then(renderUi)}   // loadTuner(true): the launcher is read here, once (each read is a root command on the TV)
-function renderUi(){renderOverview();renderOsd()}
+function renderUi(){renderOverview();renderOsd();renderDock()}
 // A bundled part switched off in Vetro Shards answers \u201c... is not running\u201d: say where to turn it back on.
 function uiErr(m){return /is not running/.test(String(m))?String(m).split(' is not running')[0]+' is switched off in Vetro Shards. Turn it on there to use this part.':m}
 function uiState(d,on){return !d.installed?chip('Not in this package','partial'):on?(d.running===true?chip('On · running','on'):d.running===false?chip('On · not running','partial'):chip('On · state unknown','partial')):chip('Off')}
 function ruleName(r){var a=(r.actions||[])[0]||{};return a.type==='launch'?appLabel(inventory.find(function(x){return x.appId===a.appId})||{appId:a.appId}):a.type==='screenoff'?'Turn off screen':a.key||a.type||'?'}
 function uiNeedNotes(part){
  var d=dockData;if(!d)return '';var n=uiNeeds(part,d,uiInput),out='';
- if(n.indexOf('launcher')>=0)out+=chip('Needs a launcher','partial');
+ if(n.indexOf('launcher')>=0)out+=chip(part==='backhold'?'Needs the Vetro launcher':'Needs a launcher','partial');
+ if(n.indexOf('idle')>=0)out+=chip('Needs Backdrop style on','partial');
  if(n.indexOf('interception')>=0)out+=chip('Needs the remote interception','partial');
  if(n.indexOf('listening')>=0)out+=chip('Paused: the Remapper is listening','partial');
- var c=uiConflicts(uiRules||[],uiKeysOf(part));if(c.length)out+=chip(c.length+' shortcut'+(c.length===1?'':'s')+' of yours on the same key'+(c.length===1?'':'s'),'partial');
+ var c=uiConflicts(uiRules||[],uiKeysOf(part,d));if(c.length)out+=chip(c.length+' shortcut'+(c.length===1?'':'s')+' of yours on the same key'+(c.length===1?'':'s'),'partial');
  return out;
 }
 // One row of the overview: what the part is, its state, its switch (or the place where it is chosen).
@@ -2045,6 +2070,12 @@ $('dock').onchange=function(e){var x=e.target;if(!x.dataset)return;
  if(x.dataset.dockStill!=null)return setDock('noMotion',x.checked?'Turn on Reduce motion':'Turn off Reduce motion',{on:!!x.checked});
  if(x.dataset.dockIdleHome!=null)return setDock('closeIdleHome',x.checked?'Turn on Close idle Samsung Home':'Turn off Close idle Samsung Home',{on:!!x.checked});
  if(x.dataset.dockSourceOption!=null)return setDock(x.dataset.dockSourceOption,(x.checked?'Turn on ':'Turn off ')+({showHomeSources:'HDMI sources on Home',useSourceImages:'HDMI source images',connectedSourcesOnly:'Connected sources only',hideTvSource:'Hide TV on Sources'}[x.dataset.dockSourceOption]),{on:!!x.checked});
+ if(x.dataset.dockIdleMode!=null)return Promise.resolve(setDock('idleScreen',x.value==='off'?'Turn off Empty TV screen':'Set Empty TV screen style',{mode:x.value})).then(loadUiInput);
+ if(x.dataset.dockIdleAutodock!=null)return setDock('idleScreen',x.checked?'Turn on Open Dock on arrival':'Turn off Open Dock on arrival',{autoDock:!!x.checked});
+ if(x.dataset.dockIdlePotoff!=null){var pv=parseInt(x.value,10);return setDock('idleScreen','Set Empty TV screen idle action',{pictureOffMin:isNaN(pv)?0:pv})}
+ if(x.dataset.dockIdleNoscreensaver!=null)return setDock('idleScreen',x.checked?'Turn on Replace Samsung screensaver':'Turn off Replace Samsung screensaver',{suppressScreensaver:!!x.checked});
+ if(x.dataset.dockIdleBackhold!=null)return Promise.resolve(setDock('idleScreen',x.value==='off'?'Turn off Hold Back':'Set Hold Back to '+(x.value==='force-close'?'Force close app':'Minimize to backdrop'),{backHoldMode:x.value})).then(loadUiInput);
+ if(x.dataset.dockIdleBackholdDock!=null)return setDock('idleScreen',x.checked?'Turn on Open Dock on hold Back':'Turn off Open Dock on hold Back',{backHoldDock:!!x.checked});
  if(x.dataset.dockSwitch==null)return;
  if(x.checked){x.checked=false;dockConfirm=true;renderDock();var c=document.querySelector('[data-dock-confirm]');if(c)c.focus();return}
  return setDock('disable','Turn off the launcher');

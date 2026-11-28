@@ -17,10 +17,10 @@ namespace Launcher.Core
             return text != null && int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out port) && port >= 1024 && port <= 65535 ? port : 8099;
         }
 
-        public static string Command(AppEntry e, int port)
+        public static string Command(AppEntry e, int port, bool fromDock = false)
         {
             if (e == null || !e.ViaShard || !Catalog.ValidSlug(e.Slug) || !Catalog.ValidAppId(e.AppId)) return null;
-            string url = "http://127.0.0.1:" + port + "/plugins/launcher/api/open?slug=" + e.Slug;
+            string url = "http://127.0.0.1:" + port + "/plugins/launcher/api/open?slug=" + e.Slug + (fromDock ? "&from=dock" : "");
             return "( /usr/bin/curl -sf -m 5 -X POST '" + url + "' >/dev/null 2>&1 || /usr/bin/app_launcher -s " + e.AppId + " >/dev/null 2>&1 ) &";
         }
     }

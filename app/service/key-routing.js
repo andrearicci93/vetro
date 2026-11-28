@@ -66,10 +66,10 @@ function rescanCommand() {
     }).join('; ') + '; true';
 }
 
-// The shell line that hands the launcher one of the volume-keys.js words (volup, voldown, volmute, pad) when the service may not open
+// The shell line that hands the launcher one of the volume-keys.js words (volup, voldown, volmute, pad, backhold) when the service may not open
 // its FIFO itself: exits non-zero when the launcher is not there to read it, so the key goes back to Samsung instead.
 function dockWordCommand(word) {
-    return /^(?:volup|voldown|volmute|pad)$/.test(word) ? alive(DOCK_PID, DOCK_FIFO) + ' && ' + write(DOCK_FIFO, word) : null;
+    return /^(?:volup|voldown|volmute|pad|backhold)$/.test(word) ? alive(DOCK_PID, DOCK_FIFO) + ' && ' + write(DOCK_FIFO, word) : null;
 }
 
 // "Go to channel N" (MQTT channel/set). Vetro's tuner when it is running with Samsung's live TV on screen (the same test as the 123 pad: its

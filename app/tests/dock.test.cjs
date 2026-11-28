@@ -80,6 +80,10 @@ function fixture(options) {
         f.tv.started.indexOf('systemctl stop --no-block vetro-dock.service') < f.tv.started.indexOf('systemd-run'), 'a previous unit is stopped non-blockingly first');
     assert.ok(f.tv.started.includes('systemctl is-active vetro-dock.service 2>/dev/null') && f.tv.started.includes('active|activating|deactivating|reloading') && f.tv.started.includes('systemctl reset-failed vetro-dock.service'),
         'unit stop polls is-active states including deactivating and resets failed unit state');
+    assert.ok(f.tv.started.includes('tvlauncher.longpress') && f.tv.started.includes('wm.keyroutertv.longpress.info.unset_longpress_key_info string:"XF86Back" double:1.0 int32:"$u"') && f.tv.started.indexOf('unset_longpress_key_info') > f.tv.started.indexOf('kill -9 $p') && f.tv.started.indexOf('unset_longpress_key_info') < f.tv.started.indexOf('rm -f /home/owner/tvlauncher.pid'),
+        'stopLines cleans up stale XF86Back longpress registration after stopping the dock and before removing state files');
+    assert.ok(require('../service/restore.js').ERASE_SCRIPT.includes('/home/owner/tvlauncher.longpress'),
+        'restore ERASE_SCRIPT removes tvlauncher.longpress alongside tvlauncher.pid');
     assert.ok(/systemd-run [^\n]*\|\| \{ [^\n]*setsid nohup \/usr\/bin\/dotnet [^\n]*<\/dev\/null >\/dev\/null 2>&1 & \}/.test(f.tv.started), 'the detached start remains as a braced fallback');
     assert.equal(f.tv.csfs, false, 'Samsung Home closed once the dock is up');
     assert.equal(JSON.parse(fs.readFileSync(path.join(f.tmp, 'state.json'), 'utf8')).enabled, true);
@@ -519,6 +523,17 @@ function fixture(options) {
         assert.equal(await mk().supervise(true), 'started', 'the supervision restarts a process of another Vetro too');
         assert.equal(starts(), 4);
         t.tv.pid = undefined;
+        // Empty TV mode keeps com.samsung.tv.csfs warm in RAM across closeHomeOnce and maintainIdleHome so app exits never cold-boot Launchscreen Winsys.
+        const warm = fixture({running: true});
+        warm.dock.serviceStart = 20;
+        warm.dock.uptime = () => 600;
+        fs.writeFileSync(warm.dock.stateFile, JSON.stringify({enabled: true, since: 5, idleMode: 'wallpaper', idleAutoDock: true}));
+        assert.equal(await warm.dock.supervise(true), 'running');
+        warm.tv.clock += 750000;
+        warm.dock.noteWake();
+        warm.tv.clock += 30000;
+        assert.equal(await warm.dock.supervise(true), 'running');
+        assert.equal(warm.tv.csfs, true, 'Empty TV mode keeps csfs warm in RAM after boot window, idle timer, and standby wake');
         // A state that cannot be saved must not turn into a restart at every round.
         const ro = fixture({running: true});
         fs.writeFileSync(ro.dock.stateFile, JSON.stringify({enabled: true, since: 5}));
@@ -706,4 +721,130 @@ function fixture(options) {
     const down = new Dock({execute: () => Promise.reject(Error('no root agent connected'))});
     assert.equal(await down.audioOutput(), null);
     console.log('PASS dock audio output: parsed, cached, null when unreadable');
+})().catch(e => { console.error(e); process.exitCode = 1; });
+
+(async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const {Dock} = require('../service/dock.js');
+    const launcher = require('../service/plugin-launcher.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vetro-idle-test-'));
+    try {
+        const stateFile = path.join(dir, 'state.json');
+        let powerOnCmds = 0, pipeLive = false, execLog = [];
+        const d = new Dock({
+            dir: path.join(__dirname, '..', 'native', 'dock'),
+            stateFile: stateFile,
+            appsFile: path.join(dir, 'apps.tsv'),
+            inputsFile: path.join(dir, 'inputs.tsv'),
+            customAppsFile: path.join(dir, 'custom.tsv'),
+            uptime: () => 60,
+            execute: cmd => {
+                powerOnCmds++;
+                execLog.push(cmd);
+                return Promise.resolve({exit_code: 0, stdout: pipeLive && cmd.indexOf('echo "idle ') >= 0 ? 'live\n' : ''});
+            }
+        });
+        assert.deepEqual(
+            {m: d.readState().idleMode, a: d.readState().idleAutoDock, p: d.readState().idlePictureOffMin, s: d.readState().idleSuppressScreensaver, bh: d.readState().idleBackHoldMode, bhd: d.readState().idleBackHoldDock},
+            {m: 'off', a: false, p: 0, s: false, bh: 'off', bhd: false},
+            'idleScreen defaults to off / false / 0 / false / off / false'
+        );
+        assert.equal((await d.status()).idleSuppressScreensaver, false, 'status exposes idleSuppressScreensaver default');
+        assert.equal((await d.status()).idleBackHoldMode, 'off', 'status exposes idleBackHoldMode default');
+        assert.equal((await d.status()).idleBackHoldDock, false, 'status exposes idleBackHoldDock default');
+        assert.ok(!d.startScript().includes('--idle-mode'), 'off mode omits --idle-mode from startScript');
+        assert.ok(!d.startScript().includes('--idle-no-screensaver'), 'off mode omits --idle-no-screensaver from startScript');
+
+        await assert.rejects(() => d.setIdleScreen({mode: 'invalid'}), /Invalid idle mode/);
+        await assert.rejects(() => d.setIdleScreen({mode: 'beacon'}), /Invalid idle mode/);
+        await assert.rejects(() => d.setIdleScreen({autoDock: 'yes'}), /Invalid auto-dock/);
+        await assert.rejects(() => d.setIdleScreen({pictureOffMin: 30}), /Invalid idle picture-off/);
+        await assert.rejects(() => d.setIdleScreen({pictureOffMin: -2}), /Invalid idle picture-off/);
+        await assert.rejects(() => d.setIdleScreen({suppressScreensaver: 'yes'}), /Invalid screensaver setting/);
+        await assert.rejects(() => d.setIdleScreen({backHoldMode: 'kill'}), /Invalid back-hold mode/);
+        await assert.rejects(() => d.setIdleScreen({backHoldDock: 'yes'}), /Invalid back-hold dock setting/);
+
+        await d.setIdleScreen({mode: 'aurora'});
+        assert.equal(d.readState().idleMode, 'aurora');
+        assert.ok(d.startScript().includes('--idle-mode aurora'), 'startScript carries aurora mode');
+        await d.setIdleScreen({mode: 'aurora-clean', pictureOffMin: -1});
+        assert.equal(d.readState().idleMode, 'aurora-clean');
+        assert.equal(d.readState().idlePictureOffMin, -1);
+        assert.ok(d.startScript().includes('--idle-mode aurora-clean --idle-potoff -1'), 'startScript carries --idle-potoff -1 for no-dim mode');
+        await d.setIdleScreen({mode: 'off', pictureOffMin: 0});
+
+        await d.setIdleScreen({mode: 'clock', autoDock: true, pictureOffMin: 5, suppressScreensaver: true});
+        assert.equal(d.readState().idleMode, 'clock');
+        assert.equal(d.readState().idleAutoDock, true);
+        assert.equal(d.readState().idlePictureOffMin, 5);
+        assert.equal(d.readState().idleSuppressScreensaver, true);
+        assert.equal((await d.status()).idleSuppressScreensaver, true, 'status reflects idleSuppressScreensaver');
+        const script = d.startScript();
+        assert.ok(script.includes('--idle-mode clock --idle-autodock --idle-potoff 5 --idle-no-screensaver'), 'startScript carries idle flags including --idle-no-screensaver when enabled');
+        assert.ok(script.includes('DOTNET_EnableDiagnostics=0'), 'startScript keeps DOTNET_EnableDiagnostics=0');
+        assert.ok(!script.includes('DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1'), 'startScript omits rejected DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 (#278)');
+
+        // Omitting suppressScreensaver preserves existing idleSuppressScreensaver=true
+        await d.setIdleScreen({mode: 'wallpaper'});
+        assert.equal(d.readState().idleSuppressScreensaver, true, 'setIdleScreen preserves idleSuppressScreensaver when omitted');
+
+        powerOnCmds = 0;
+        await d.showAtPowerOn({enabled: true, customApp: null, idleMode: 'clock', idleAutoDock: true});
+        assert.equal(powerOnCmds, 0, 'showAtPowerOn backs off when idleAutoDock owns arrival');
+
+        const pl = launcher.definition(d).create({vetro: {agentConnected: () => true, json: (res, obj, code) => { res.code = code || 200; res.body = obj; }, readJson: (req, res, cb) => cb(req.body)}});
+        const plRes = {code: 0, body: null};
+        pl.route({method: 'POST', url: '/plugins/launcher/api/action', body: {action: 'idleScreen', mode: 'wallpaper', autoDock: false, pictureOffMin: 0}}, plRes, 'action');
+        await new Promise(r => setTimeout(r, 30));
+        assert.equal(plRes.code, 200);
+        assert.equal(d.readState().idleMode, 'wallpaper');
+        assert.equal(d.readState().idleSuppressScreensaver, true, 'plugin route without suppressScreensaver preserves state');
+
+        await d.setIdleScreen({mode: 'clean', suppressScreensaver: false});
+        assert.equal(d.readState().idleMode, 'clean');
+        assert.equal(d.readState().idleSuppressScreensaver, false);
+        assert.ok(d.startScript().includes('--idle-mode clean') && !d.startScript().includes('--idle-no-screensaver'), 'startScript omits --idle-no-screensaver when false');
+
+        // Enabled launcher: live FIFO update succeeds without calling refreshOr / restart; external launch sends launch curtain.
+        d.patchState({enabled: true});
+        pipeLive = true;
+        execLog = [];
+        let refreshed = 0;
+        const origRefreshOr = d.refreshOr.bind(d);
+        d.refreshOr = undo => { refreshed++; return origRefreshOr(undo); };
+        await d.setIdleScreen({mode: 'wallpaper', autoDock: true, pictureOffMin: 5, suppressScreensaver: true});
+        assert.equal(refreshed, 0, 'live FIFO update avoids launcher restart');
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 5 1 off 0" >&3')), 'FIFO command carries mode, autoDock, potOff, suppressScreensaver=1, backHoldMode, and backHoldDock');
+        assert.ok(!execLog.some(cmd => cmd.includes('kill -9')), 'live FIFO update does not kill or restart launcher');
+
+        execLog = [];
+        await d.setIdleScreen({suppressScreensaver: false, pictureOffMin: -1});
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 -1 0 off 0" >&3')), 'FIFO command carries -1 for no-dim and suppressScreensaver=0');
+
+        execLog = [];
+        await d.setIdleScreen({backHoldMode: 'minimize', backHoldDock: true});
+        assert.ok(execLog.some(cmd => cmd.includes('echo "idle wallpaper 1 -1 0 minimize 1" >&3')), 'FIFO command carries minimize and backHoldDock=1');
+        assert.ok(d.startScript().includes('--idle-back-hold minimize --idle-back-hold-dock'), 'startScript carries --idle-back-hold and --idle-back-hold-dock');
+        await d.setIdleScreen({backHoldMode: 'off', backHoldDock: false});
+
+        execLog = [];
+        await d.notifyAppLaunch(true, 'com.samsung.tv.cobalt-yt');
+        assert.ok(execLog.some(cmd => cmd.includes('echo "launch 8 com.samsung.tv.cobalt-yt" >&3')), 'notifyAppLaunch sends shard launch curtain over FIFO');
+
+        // Fallback to refreshOr when launcher pipe is unavailable.
+        pipeLive = false;
+        d.refreshOr = () => { refreshed++; return Promise.resolve(d.status()); };
+        await d.setIdleScreen({mode: 'clock', autoDock: false, pictureOffMin: 0});
+        assert.equal(refreshed, 1, 'falls back to restart when FIFO is not live');
+        d.patchState({enabled: false});
+        d.refreshOr = origRefreshOr;
+
+        const dashHtml = require('../service/dashboard.js')();
+        assert.ok(!dashHtml.includes('Minimal Beacon') && !dashHtml.includes('quick-item-wide') && dashHtml.includes('<div class="quick-item" data-quick-item="idle-autodock">') && dashHtml.includes('<div class="quick-item" data-quick-item="idle-noscreensaver">') && dashHtml.includes('data-dock-idle-mode') && dashHtml.includes('data-dock-idle-autodock') && dashHtml.includes('data-dock-idle-potoff') && dashHtml.includes('No dim (Keep full brightness)') && dashHtml.includes('data-dock-idle-noscreensaver') && dashHtml.includes('Replace Samsung screensaver') && dashHtml.includes('Shows Vetro’s backdrop instead of Samsung’s screen saver whenever the TV goes idle in apps, menus, HDMI inputs or Empty TV.') && dashHtml.includes('Empty TV screen') && dashHtml.includes('dockIdleSec') && dashHtml.includes('Pure Black + Clock (OLED)') && dashHtml.includes('Midnight Lake + Clock') && dashHtml.includes('Midnight Lake (No text)') && dashHtml.includes('Aurora Silk + Clock') && dashHtml.includes('Aurora Silk (No text)'), 'dashboard includes Empty TV screen section, 2-column quick-items without quick-item-wide, No-dim option, Replace Samsung screensaver toggle, and updated backdrop mode labels without beacon');
+        console.log('PASS dock idleScreen: defaults, validation, startScript flags, showAtPowerOn guard, plugin route, dashboard');
+    } finally {
+        fs.rmSync(dir, {recursive: true, force: true});
+    }
 })().catch(e => { console.error(e); process.exitCode = 1; });

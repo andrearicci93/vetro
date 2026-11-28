@@ -1328,7 +1328,7 @@ namespace Launcher.Tests
                     }
                     presses.Clear(); reader.Feed(ev, ev.Length, presses); sink += presses.Count;
                 };
-                for (int i = 0; i < 2000; i++) once();   // warm-up: JIT and first-use costs
+                for (int i = 0; i < 10000; i++) once();   // warm-up: JIT, Tier-1 promotion and first-use costs
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 for (int i = 0; i < 20000; i++) once();
                 long after = GC.GetAllocatedBytesForCurrentThread();
@@ -2148,6 +2148,8 @@ namespace Launcher.Tests
 
             Console.WriteLine();
             LauncherRegressionTests.Run();
+            LauncherRegressionTests.RunWallpaperScaleTests();
+            BackHoldTests.Run();
             Console.WriteLine(T.Checks + " checks, " + T.Failures + " failures");
             return T.Failures == 0 ? 0 : 1;
         }

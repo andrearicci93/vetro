@@ -75,6 +75,17 @@ function request() {
         assert.equal(p.speakerSelection, null); assert.equal(p.extVolume, null); assert.equal(report.projectors.firmware({extVolume: 'True'}).extVolume, true); assert.equal(p.dotnetRuntime, null); assert.equal(p.rootApp, null); assert.equal(p.inputHelpers, null);
         assert.equal(report.projectors.firmware({front: 'vetrotvapp.app'}).front, 'vetro');
         assert.equal(report.projectors.firmware({front: 'org.tizen.tv-viewer'}).front, 'tv-viewer');
+        assert.equal(report.projectors.firmware({front: 'com.samsung.tv.spotlight-ss'}).front, 'screensaver');
+        assert.equal(report.projectors.firmware({front: 'com.samsung.tv.glscreensaver-launcher'}).front, 'screensaver');
+        assert.equal(report.projectors.firmware({front: 'com.samsung.tv.glscreensaver-service'}).front, 'screensaver');
+        assert.equal(report.projectors.firmware({front: 'DefaultScreensaver'}).front, 'screensaver');
+        assert.equal(report.projectors.firmware({front: 'Default_Screensaver'}).front, 'screensaver');
+        assert.equal(report.projectors.firmware({screensaverOn: 'TRUE'}).screensaverOn, 1);
+        assert.equal(report.projectors.firmware({screensaverOn: 'FALSE'}).screensaverOn, 0);
+        assert.equal(report.projectors.firmware({screensaverOn: '1'}).screensaverOn, 1);
+        assert.equal(report.projectors.firmware({screensaverOn: ''}).screensaverOn, null);
+        assert.equal(report.projectors.launcher({idleMode: 'aurora'}).idleMode, 'aurora');
+        assert.equal(report.projectors.launcher({idleMode: 'aurora-clean'}).idleMode, 'aurora-clean');
 
         // The tuner's log: fixed shapes, the channel name cut, an exception's message cut.
         const ev = report.projectors.tuner({tunerLog: [
@@ -93,10 +104,10 @@ function request() {
         // Its window and the last show / takeover lines, and its threads (S95B: which thread stops, and where).
         const tw = report.projectors.tuner({tunerLog: ['+500ms window up engine=wayland_egl', '+900ms takeover: org.tizen.tv-viewer status first -> 3 (tuner hidden)',
             "+901ms not shown: no channel list yet, Samsung's live TV keeps the screen", '+950ms shown', '+960ms takeover: failed /home/owner/x',
-            '+970ms resume: not on live TV (status 3, tv input True)'].join('\n'),
+            '+970ms resume: not on live TV (status 3, tv input True)', '+980ms screensaver: on (tuner shown)'].join('\n'),
             tunerThreads: ['vetro-tuner.dll|D|mali_ioctl|__switch_to mali_kbase_ioctl /home/x', 'tvs|S|futex_wait_queue_me|', '.NET ThreadPool|S|0|', 'bad|name|Q|', '/home/x|S|f|', 'junk'].join('\n')});
         assert.deepEqual(tw.events.map(e => e.line), ['window up engine=wayland_egl', 'takeover: org.tizen.tv-viewer status first -> 3 (tuner hidden)',
-            "not shown: no channel list yet, Samsung's live TV keeps the screen", 'shown', 'resume: not on live TV (status 3, tv input True)']);
+            "not shown: no channel list yet, Samsung's live TV keeps the screen", 'shown', 'resume: not on live TV (status 3, tv input True)', 'screensaver: on (tuner shown)']);
         assert.deepEqual(tw.threads, [{name: 'vetro-tuner.dll', state: 'D', wait: 'mali_ioctl', stack: ['__switch_to', 'mali_kbase_ioctl']},
             {name: 'tvs', state: 'S', wait: 'futex_wait_queue_me', stack: null}, {name: '.NET ThreadPool', state: 'S', wait: null, stack: null}]);
         assert.deepEqual(report.projectors.tuner({}).threads, []);

@@ -433,7 +433,7 @@ Restore.prototype.runFlags = function (rows) {
 var ERASE_SCRIPT = [
     'find ' + SHARE + ' -maxdepth 1 -name \'vetro-*\' ! -name \'vetro-auth.json\' -exec rm -rf {} + 2>/dev/null',
     'rm -rf /home/owner/share/vetro',
-    'rm -f /home/owner/tvlauncher.pid /home/owner/tvlauncher.fifo /home/owner/tvlauncher.log /home/owner/tvlauncher.homeclaim /home/owner/tvlauncher.guard /home/owner/vetro-tuner.pid /home/owner/vetro-tuner.log /home/owner/vetro-tuner.log.prev',
+    'rm -f /home/owner/tvlauncher.pid /home/owner/tvlauncher.fifo /home/owner/tvlauncher.fifo.ready /home/owner/tvlauncher.log /home/owner/tvlauncher.homeclaim /home/owner/tvlauncher.longpress /home/owner/tvlauncher.guard /home/owner/vetro-tuner.pid /home/owner/vetro-tuner.log /home/owner/vetro-tuner.log.prev',
     'for c in ' + homeOrder.BASE + ' ' + homeOrder.BASE_NEW_HOME + '; do rm -f "$c"/.appLayerCache.[12].vetro-bak "$c"/.appLayerCache.[12].vetro-txn "$c"/.appLayerCache.[12].vetro-missing "$c"/.appLayerCache.[12].vetro-tmp; done',
     'echo left=$(find ' + SHARE + ' -maxdepth 1 -name \'vetro-*\' ! -name \'vetro-auth.json\' | wc -l)',
     'true'

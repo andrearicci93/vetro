@@ -16,6 +16,8 @@ var KEYS = {
     '140': {word: 'pad', native: 'XF86More'}
 };
 var GROUPS = {volume: ['66', '67', '68'], pad: ['140']};
+var BACK_HOLD_CODES = ['1', '158'];
+var EXIT_HOLD_CODE = '174';
 var TOKENS = GROUPS.volume.concat(GROUPS.pad);
 
 function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, String(code)); }
@@ -24,15 +26,23 @@ function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, 
 // control.js's list (the shortcuts' keys) left the 123 key dead whenever the dock was down.
 var NATIVE = {};
 Object.keys(KEYS).forEach(function (c) { NATIVE[KEYS[c].native] = true; });
+NATIVE['XF86Back'] = true;
+NATIVE['XF86Exit'] = true;
 function reinjectCommand(native) { return NATIVE[native] === true ? '/usr/bin/input_keyevent ' + native : null; }
 
 // Tokens the bridge must hold back, beside the ones the shortcuts ask for (no duplicates).
-// flags: {volume: bool, pad: bool}
+// flags: {volume: bool, pad: bool, backHold: bool}
 function withTokens(tokens, flags) {
     var out = tokens.slice();
     Object.keys(GROUPS).forEach(function (g) {
         if (flags && flags[g]) GROUPS[g].forEach(function (t) { if (out.indexOf(t) < 0) out.push(t); });
     });
+    if (flags && flags.backHold) {
+        BACK_HOLD_CODES.forEach(function (c) {
+            if (out.indexOf(c) < 0 && out.indexOf(c + ':hold') < 0) out.push(c + ':hold');
+        });
+        if (out.indexOf(EXIT_HOLD_CODE) < 0 && out.indexOf(EXIT_HOLD_CODE + ':hold') < 0) out.push(EXIT_HOLD_CODE);
+    }
     return out;
 }
 
@@ -41,24 +51,34 @@ function enabled(code, flags) {
     return !!flags && Object.keys(GROUPS).some(function (g) { return flags[g] === true && GROUPS[g].indexOf(c) >= 0; });
 }
 
-// True when the event is a held-back volume key event the pill should handle: press, auto-repeat or release.
+// True when the event is a held-back volume/pad/back-hold key event the dock should handle.
 function wants(event, flags) {
-    return !!event && event.decision === 'blocked' && (event.action === 'down' || event.action === 'repeat' || event.action === 'up') && enabled(event.code, flags);
+    if (!event || event.decision !== 'blocked') return false;
+    if (flags && flags.backHold && BACK_HOLD_CODES.indexOf(String(event.code)) >= 0) {
+        return event.action === 'hold' || event.action === 'up';
+    }
+    if (flags && flags.backHold && String(event.code) === EXIT_HOLD_CODE) {
+        return event.action === 'down' || event.action === 'repeat' || event.action === 'up';
+    }
+    return (event.action === 'down' || event.action === 'repeat' || event.action === 'up') && enabled(event.code, flags);
 }
 
 // opts.write(path, text) -> throws on failure; opts.relay(word) -> Promise, the same word written by the root agent (rejects when
 // the launcher does not read); opts.reinject(nativeKey) -> Promise; opts.route(how, errno) is told which way each key went;
 // opts.state {refused} is kept between keys (the repeater gives one).
-function handle(event, opts) {
-    var key = KEYS[String(event.code)], note = opts.route || function () {}, state = opts.state || {}, err = state.refused ? state.errno || null : null;
+function sendWord(word, nativeKey, opts) {
+    var note = opts.route || function () {}, state = opts.state || {}, err = state.refused ? state.errno || null : null;
     // Non-blocking open: a FIFO nobody reads fails at once (ENXIO) instead of freezing the service.
     var write = opts.write || function (p, t) {
         var fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
         try { fs.writeSync(fd, t); } finally { fs.closeSync(fd); }
     };
-    function native() { return Promise.resolve(opts.reinject(key.native)).then(function () { note('native', err); return 'native'; }); }
+    function native() {
+        if (!nativeKey) return Promise.resolve('native');
+        return Promise.resolve(opts.reinject(nativeKey)).then(function () { note('native', err); return 'native'; });
+    }
     if (!state.refused) {
-        try { write(opts.fifo || FIFO, key.word + '\n'); note('dock', null); return Promise.resolve('dock'); }
+        try { write(opts.fifo || FIFO, word + '\n'); note('dock', null); return Promise.resolve('dock'); }
         catch (e) { err = e && /^E[A-Z0-9]{1,15}$/.test(e.code) ? e.code : 'EOTHER'; }
         // ENXIO: nobody reads the FIFO, the launcher is down. Anything else goes through the root agent (on the 2022+ exports no Vol or
         // 123 ever reached the launcher while the agent's words did; why is not known: EACCES under Smack, or ENOENT if the service sees
@@ -66,7 +86,12 @@ function handle(event, opts) {
         if (err === 'ENXIO' || !opts.relay) return native();
         if (err === 'EACCES' || err === 'EPERM') { state.refused = true; state.errno = err; }
     }
-    return Promise.resolve(opts.relay(key.word)).then(function () { note('agent', err); return 'agent'; }, native);
+    return Promise.resolve(opts.relay(word)).then(function () { note('agent', err); return 'agent'; }, native);
+}
+
+function handle(event, opts) {
+    var key = KEYS[String(event.code)];
+    return sendWord(key.word, key.native, opts);
 }
 
 // The remote may send no auto-repeat for a held key (Bluetooth remotes often do not), so a press starts its own
@@ -80,10 +105,20 @@ function repeater(opts) {
     function stop() { if (timer) { clearTimeout(timer); clearInterval(timer); timer = null; } }
     function send(event) { return handle(event, opts).catch(function () {}); }
     return {
-        event: function (event) {
+        event: function (event, flags) {
+            var code = String(event.code);
+            if (flags && flags.backHold && BACK_HOLD_CODES.indexOf(code) >= 0) {
+                if (event.action === 'hold') return sendWord('backhold', 'XF86Back', opts).catch(function () {});
+                if (event.action === 'up') return Promise.resolve();
+                return Promise.resolve();
+            }
+            if (flags && flags.backHold && code === EXIT_HOLD_CODE) {
+                if (event.action === 'down') return sendWord('backhold', 'XF86Exit', opts).catch(function () {});
+                return Promise.resolve();
+            }
             if (event.action === 'up') { stop(); return Promise.resolve(); }
             // Mute and the 123 key are toggles: one press, one change, never repeated.
-            if (String(event.code) === '66' || String(event.code) === '140') return event.action === 'down' ? send(event) : Promise.resolve();
+            if (code === '66' || code === '140') return event.action === 'down' ? send(event) : Promise.resolve();
             if (event.action === 'repeat' && timer) return Promise.resolve();
             if (event.action === 'down') {
                 stop(); started = Date.now();
@@ -107,4 +142,4 @@ function repeater(opts) {
     };
 }
 
-module.exports = {enabled: enabled, repeater: repeater, KEYS: KEYS, TOKENS: TOKENS, FIFO: FIFO, isVolumeCode: isVolumeCode, withTokens: withTokens, wants: wants, handle: handle, reinjectCommand: reinjectCommand};
+module.exports = {enabled: enabled, repeater: repeater, KEYS: KEYS, TOKENS: TOKENS, BACK_HOLD_CODES: BACK_HOLD_CODES, EXIT_HOLD_CODE: EXIT_HOLD_CODE, FIFO: FIFO, isVolumeCode: isVolumeCode, withTokens: withTokens, wants: wants, sendWord: sendWord, handle: handle, reinjectCommand: reinjectCommand};
