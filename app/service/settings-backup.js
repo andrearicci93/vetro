@@ -12,7 +12,7 @@
 var FORMAT = 'vetro-settings', SCHEMA = 1, MAX_BYTES = 256 * 1024;
 var WIN_IDS = ['firmware', 'quickboot', 'multiscreen', 'ambient', 'telemetry', 'airplay', 'remotesupport', 'delivery', 'wifipresence'];
 // Launcher switches, in the order they are applied (before the launcher itself is switched on, which then starts with them).
-var DOCK_SWITCHES = ['fixTizenTube', 'closeIdleHome', 'volumePill', 'numberPad', 'noMotion', 'showHomeSources', 'useSourceImages', 'connectedSourcesOnly', 'hideTvSource'];
+var DOCK_SWITCHES = ['fixTizenTube', 'closeIdleHome', 'volumePill', 'numberPad', 'noMotion', 'hdrDim', 'showHomeSources', 'useSourceImages', 'connectedSourcesOnly', 'hideTvSource'];
 var DOCK_ROOT = {showHomeSources: true, useSourceImages: true, connectedSourcesOnly: true, hideTvSource: true};     // these read the TV's sources even with the launcher off
 var EDGES = ['left', 'right', 'top', 'bottom', 'hidden'], STORES = ['tvstore', 'samsung'];
 var ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/, CARD_RE = /^(?:tasks|audio|picture|sleep|shard:[A-Za-z0-9._-]{1,64})$/;
@@ -23,7 +23,7 @@ var WIN_LABELS = {firmware: 'Block firmware and software updates', quickboot: 'Q
     telemetry: 'Stop viewing-data collection', airplay: 'Disable AirPlay', remotesupport: 'Disable Samsung remote support', delivery: 'Disable background app delivery',
     wifipresence: 'Disable Wi-Fi presence'};
 var DOCK_LABELS = {fixTizenTube: 'Fix TizenTube', closeIdleHome: 'Close idle Samsung Home', volumePill: 'Volume bar', numberPad: 'Number pad',
-    noMotion: 'Reduce motion', showHomeSources: 'HDMI sources on Home', useSourceImages: 'HDMI source images', connectedSourcesOnly: 'Connected sources only', hideTvSource: 'Hide TV on Sources'};
+    noMotion: 'Reduce motion', hdrDim: 'Dim UI in HDR', showHomeSources: 'HDMI sources on Home', useSourceImages: 'HDMI source images', connectedSourcesOnly: 'Connected sources only', hideTvSource: 'Hide TV on Sources'};
 var MQTT_FIELDS = ['enabled', 'host', 'port', 'tls', 'ca', 'username', 'topicPrefix', 'deviceName'];
 // Groups loading never switches off: Samsung Home has its own warning (the TV may not start without it).
 var QUICK_NEVER = ['samsung-home'];
@@ -31,6 +31,7 @@ var QUICK_NEVER = ['samsung-home'];
 var ROOT_READ = ['quickSettings', 'dns'];
 
 function bool(v) { return v === true; }
+function hdrBrightnessInt(v) { return typeof v === 'number' && isFinite(v) && Math.floor(v) === v && v >= 0 && v <= 100 ? v : 40; }
 function str(v, max) { return typeof v === 'string' && v.length <= max ? v : null; }
 function ids(list, re, max) {
     return (Array.isArray(list) ? list : []).filter(function (x, i, a) { return typeof x === 'string' && re.test(x) && a.indexOf(x) === i; }).slice(0, max);
@@ -44,7 +45,8 @@ function build(src) {
     var d = src.dock;
     if (d) s.launcher = {mode: d.customApp ? 'custom' : d.enabled ? 'vetro' : 'off', customApp: d.customApp || null,
         fixTizenTube: bool(d.fixTizenTube), closeIdleHome: d.closeIdleHome !== false, volumePill: bool(d.volumePill), numberPad: bool(d.numberPad),
-        noMotion: bool(d.noMotion), showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages), connectedSourcesOnly: bool(d.connectedSourcesOnly), hideTvSource: bool(d.hideTvSource),
+        noMotion: bool(d.noMotion), hdrDim: bool(d.hdrDim), hdrBrightness: hdrBrightnessInt(d.hdrBrightness),
+        showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages), connectedSourcesOnly: bool(d.connectedSourcesOnly), hideTvSource: bool(d.hideTvSource),
         volumeEdge: EDGES.indexOf(d.volumeEdge) >= 0 ? d.volumeEdge : 'left', appStore: d.appStore === 'samsung' ? 'samsung' : 'tvstore',
         cards: ids(d.cards, CARD_RE, 3)};
     else notRead.launcher = 'unreadable';
@@ -93,6 +95,7 @@ function parse(file) {
     take('launcher', function (v) {
         return obj(v) && ['vetro', 'custom', 'off'].indexOf(v.mode) >= 0 && (v.mode !== 'custom' || (typeof v.customApp === 'string' && ID_RE.test(v.customApp))) &&
             DOCK_SWITCHES.every(function (k) { return v[k] === undefined || isBool(v[k]); }) &&
+            (v.hdrBrightness === undefined || (typeof v.hdrBrightness === 'number' && isFinite(v.hdrBrightness) && Math.floor(v.hdrBrightness) === v.hdrBrightness && v.hdrBrightness >= 0 && v.hdrBrightness <= 100)) &&
             (v.volumeEdge === undefined || EDGES.indexOf(v.volumeEdge) >= 0) && (v.appStore === undefined || STORES.indexOf(v.appStore) >= 0) &&
             (v.cards === undefined || (Array.isArray(v.cards) && v.cards.length <= 3 && v.cards.every(function (c) { return typeof c === 'string' && CARD_RE.test(c); })));
     });
@@ -160,8 +163,12 @@ function plan(want, cur) {
         var running = now.mode !== 'off';
         DOCK_SWITCHES.forEach(function (k) {
             if (f[k] === undefined || f[k] === now[k]) return;
-            step('launcher', DOCK_LABELS[k] + (f[k] ? ' on' : ' off'), '/dock', {action: k, on: f[k]}, DOCK_ROOT[k] || (running && k === 'noMotion'));
+            step('launcher', DOCK_LABELS[k] + (f[k] ? ' on' : ' off'), '/dock', {action: k, on: f[k]}, DOCK_ROOT[k] || (running && (k === 'noMotion' || k === 'hdrDim')));
         });
+        if (f.hdrBrightness !== undefined && f.hdrBrightness !== now.hdrBrightness) {
+            var hdrWillRun = f.hdrDim !== undefined ? f.hdrDim : now.hdrDim;
+            step('launcher', 'HDR overlay brightness: ' + f.hdrBrightness + '%', '/dock', {action: 'hdrBrightness', brightness: f.hdrBrightness}, running && hdrWillRun);
+        }
         if (f.volumeEdge && f.volumeEdge !== now.volumeEdge) step('launcher', 'Volume bar position: ' + f.volumeEdge, '/dock', {action: 'volumeEdge', edge: f.volumeEdge}, running);
         if (f.appStore && f.appStore !== now.appStore) step('launcher', 'Store in All apps: ' + (f.appStore === 'samsung' ? 'Samsung' : 'TV-Store'), '/dock', {action: 'appStore', store: f.appStore}, false);
         if (f.cards && !same(f.cards, now.cards)) {

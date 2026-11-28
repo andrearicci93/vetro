@@ -22,8 +22,8 @@ namespace Launcher.Ui
         private int _busyRow = -1;
         private PlaceKey _rowsAt;   // what the rows were last placed for
 
-        public ChoiceCard(IntPtr win, TaskLayout layout, string assets, Action<string> log, string tag, string title, string reading)
-            : base(win, layout, assets, log, tag) { _heading = title; _reading = reading; }
+        public ChoiceCard(IntPtr win, TaskLayout layout, string assets, Action<string> log, string tag, string title, string reading, IntPtr dimClip = default(IntPtr))
+            : base(win, layout, assets, log, tag, dimClip) { _heading = title; _reading = reading; }
 
         public int Count { get { return _rows.Count; } }
         public bool Choosable { get { return _state.Choosable && _busyRow < 0; } }

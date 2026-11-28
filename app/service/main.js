@@ -70,6 +70,7 @@ var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port:
     // remote interception on (or back off, if it had turned it on itself) when its keys need it.
     onVolumeChange: function () { stopInput('keys'); return vetroUiInput(); },
     onMotionChange: function () { tuner.writeFeatures(); },
+    onHdrDimChange: function () { tuner.writeFeatures(); },
     home: {
         restore: function () { return applySamsungHome(false); }
     },
@@ -86,7 +87,9 @@ var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port:
     }});
 // Vetro TV Tuner: a native part like the launcher (tuner.js), run by the bundled plugin registered below.
 var tunerModule = require('./tuner.js');
-var tuner = new tunerModule.Tuner({execute: agentExecute, build: nativeBuild, noMotion: function () { return dock.readState().noMotion; },
+var tuner = new tunerModule.Tuner({execute: agentExecute, build: nativeBuild,
+    noMotion: function () { return dock.readState().noMotion; },
+    hdrDim: function () { var s = dock.readState(); return {enabled: s.hdrDim === true, brightness: s.hdrBrightness}; },
     // The Guide key is held back by the remote bridge only while the tuner is on: the bridge restarts with the new key list, if it is on.
     onChange: function () { if (inputPreference().enabled) { stopInput('keys'); return vetroUiInput(); } }});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);

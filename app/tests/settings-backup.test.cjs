@@ -5,7 +5,7 @@
 const assert = require('assert').strict, EventEmitter = require('events'), path = require('path');
 const b = require('../service/settings-backup.js');
 
-const dock = {enabled: true, customApp: null, fixTizenTube: true, noMotion: true, closeIdleHome: false, volumePill: true, volumeEdge: 'right', numberPad: false,
+const dock = {enabled: true, customApp: null, fixTizenTube: true, noMotion: true, hdrDim: true, hdrBrightness: 30, closeIdleHome: false, volumePill: true, volumeEdge: 'right', numberPad: false,
     cards: ['tasks', 'shard:clock'], showHomeSources: true, useSourceImages: false, appStore: 'samsung',
     // recorded about this TV: never in the file
     autorunWas: 1, customHomeDisabled: true, since: 123, build: 'x', row: {order: ['app:secret.row'], hidden: [], labels: {}}, lastCards: ['audio']};
@@ -63,6 +63,8 @@ const p = b.plan(b.parse(withSamsungHome), curOf(fresh, {shards: {}, quick: {ale
 const at = label => p.steps.findIndex(s => s.label === label);
 assert.equal(p.steps[0].label, 'Extra performance mode off', 'turning Performance mode off comes first: it undoes what it turned on');
 assert.ok(at('Reduce motion on') < at('Turn on the Vetro launcher'), 'switches before the launcher starts with them');
+assert.ok(at('Dim UI in HDR on') < at('Turn on the Vetro launcher'), 'HDR dim switch before launcher starts');
+assert.ok(at('HDR overlay brightness: 30%') < at('Turn on the Vetro launcher'), 'HDR brightness before launcher starts');
 assert.ok(at('Turn on Vetro TV Tuner') > at('Turn on the Vetro launcher'));
 assert.deepEqual(p.steps.filter(s => s.section === 'quickSettings').map(s => [s.body.id, s.confirm]), [['alexa', true], ['tvplus', true]], 'partial groups are switched off again, each needs the confirmation');
 assert.ok(!p.steps.some(s => s.path === '/quick' && s.body.off !== true), 'loading never switches a group back on');

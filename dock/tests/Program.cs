@@ -2146,6 +2146,53 @@ namespace Launcher.Tests
                 T.True(2 * Design.PanelRadius <= new DockLayout(5, 1920, 1080).PillH, "the bar's corners meet at most in the middle of its sides");
             });
 
+            T.Run("hdr dimming: brightness curve, premultiplied channels and avocd replies", () =>
+            {
+                T.Eq(HdrDim.NormalizeBrightness(-5), 0, "clamp below 0");
+                T.Eq(HdrDim.NormalizeBrightness(120), 100, "clamp above 100");
+                T.Eq(HdrDim.ParseBrightness(null), 40, "null falls back to default 40");
+                T.Eq(HdrDim.ParseBrightness("bad"), 40, "invalid falls back to default 40");
+                T.Eq(HdrDim.ParseBrightness(" 60 "), 60, "trimmed integer parsed");
+                T.Eq(HdrDim.ParseBrightness("200"), 100, "parsed integer clamped");
+
+                T.True(Math.Abs(HdrDim.Factor(false, true, 0) - 1.0) < 1e-9, "disabled stays 1.0");
+                T.True(Math.Abs(HdrDim.Factor(true, false, 0) - 1.0) < 1e-9, "SDR stays 1.0");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 0) - 0.30) < 1e-9, "0% maps to 0.30 floor");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 40) - 0.58) < 1e-9, "40% maps to 0.58");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 100) - 1.0) < 1e-9, "100% maps to 1.00");
+
+                T.Eq(HdrDim.Channel(255, 0.58), 148, "premultiplied RGB channel scales with factor");
+                T.Eq(HdrDim.Channel(100, 0.50), 50, "premultiplied RGB channel never exceeds alpha");
+                T.Eq(HdrDim.Channel(0, 0.30), 0, "zero alpha remains zero");
+                T.Eq(HdrDim.Channel(200, double.NaN), 200, "NaN factor leaves alpha untouched");
+
+                T.Eq(HdrDim.ParseStatus("ii 1 0\n"), true, "busctl HDR active (ii 1 0)");
+                T.Eq(HdrDim.ParseStatus("ii 0 0\n"), false, "busctl SDR (ii 0 0)");
+                T.True(HdrDim.ParseStatus("ii 1 -1") == null, "non-zero rc returns null");
+                T.Eq(HdrDim.ParseStatus("   int32 1\n   int32 0\n"), true, "dbus-send literal HDR active");
+                T.Eq(HdrDim.ParseStatus("   int32 0\n   int32 0\n"), false, "dbus-send literal SDR");
+                T.True(HdrDim.ParseStatus("") == null && HdrDim.ParseStatus("Failed to connect") == null, "empty or error returns null");
+                T.True(HdrDim.IsHdrSignalLine("signal time=1.0 interface=org.tizen.tv.avoc.AvOutputControl; member=HdrModeChanged"), "signal line matched");
+                T.True(!HdrDim.IsHdrSignalLine("member=PictureModeChanged"), "non-HDR signal ignored");
+
+                T.True(Math.Abs(HdrDim.EaseOutCubic(0.0) - 0.0) < 1e-9 && Math.Abs(HdrDim.EaseOutCubic(1.0) - 1.0) < 1e-9, "ease-out endpoints");
+                T.True(HdrDim.EaseOutCubic(0.5) > 0.5, "ease-out accelerates early");
+                T.True(Math.Abs(HdrDim.Lerp(1.0, 0.58, 0.5) - 0.79) < 1e-9, "lerp midpoint");
+
+                bool cmdEn; int cmdBr;
+                T.True(HdrDim.TryParseCommandArgs("1 30", out cmdEn, out cmdBr) && cmdEn && cmdBr == 30, "hdr args 1 30");
+                T.True(HdrDim.TryParseCommandArgs("0 0", out cmdEn, out cmdBr) && !cmdEn && cmdBr == 0, "hdr args 0 0");
+                T.True(!HdrDim.TryParseCommandArgs("2 40", out cmdEn, out cmdBr) && !HdrDim.TryParseCommandArgs("1 120", out cmdEn, out cmdBr) && !HdrDim.TryParseCommandArgs("bad", out cmdEn, out cmdBr), "invalid hdr args rejected");
+
+                var cb = new CommandBuffer();
+                byte[] bytes = System.Text.Encoding.ASCII.GetBytes("show\nhdr 1 30\nhdr 0 70\n");
+                var cmds = cb.Feed(bytes, bytes.Length);
+                T.Eq(cmds.Count, 3, "command buffer emits three commands");
+                T.True(cmds[0] == Command.Show && cmds[1] == Command.Hdr && cmds[2] == Command.Hdr, "command types match");
+                T.Eq(cb.TakeHdrArgs(), "1 30", "first hdr args preserved");
+                T.Eq(cb.TakeHdrArgs(), "0 70", "second hdr args preserved");
+            });
+
             Console.WriteLine();
             LauncherRegressionTests.Run();
             Console.WriteLine(T.Checks + " checks, " + T.Failures + " failures");

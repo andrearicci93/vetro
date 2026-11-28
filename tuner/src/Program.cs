@@ -116,6 +116,9 @@ namespace Tuner
         private static IntPtr _win;
         private static Veil _veil;                    // the one veil under the Banner, Info and the guide
         private static BannerView _banner;
+        private static bool _hdrCliDim, _hdrDimEnabled, _isHdr;
+        private static int _hdrCliBrightness = HdrDim.DefaultBrightness, _hdrBrightness = HdrDim.DefaultBrightness;
+        private static HdrWatcher _hdrWatcher;
         private static InfoView _infoView;
         private static InfoData _info;
         private static int _infoGen;                  // a reading for an info panel that was closed or replaced is dropped
@@ -151,7 +154,7 @@ namespace Tuner
         private static readonly Efl.TaskCb OnProgramTimer = d => { _programTimer = IntPtr.Zero; RequestProgram(); return 0; };
         private static readonly Efl.TaskCb OnTakeoverPoll = d => { try { PollTakeover(); } catch (Exception ex) { Log("takeover: " + ex.Message); } return (byte)(_takeoverBroken ? 0 : 1); };
         private static readonly Efl.TaskCb OnQuit = d => { Log("auto exit"); Efl.elm_exit(); return 0; };
-        private static readonly Efl.TaskCb OnRescan = d => { try { WatchNodes(false); } catch (Exception ex) { Log("rescan: " + ex.Message); } return 1; };
+        private static readonly Efl.TaskCb OnRescan = d => { try { WatchNodes(false); SyncHdrConfig(); } catch (Exception ex) { Log("rescan: " + ex.Message); } return 1; };
         private static readonly Efl.FdCb OnInput = (d, h) => { try { return ReadInput((int)d); } catch (Exception ex) { Log("input: " + ex.Message); return 1; } };
         private static readonly Efl.FdCb OnControlFd = (d, h) => { try { OnControl(); } catch (Exception ex) { Log("control: " + ex.Message); } return 1; };
 
@@ -177,6 +180,8 @@ namespace Tuner
             if (Flag(args, "--hold")) BannerSeconds = 3600;   // for screenshots
             // --no-motion (Reduce motion, as the dock): every transition is immediate. "motion=0" in the features file does the same, live.
             if (Flag(args, "--no-motion")) Anim.Enabled = false;
+            _hdrCliDim = Flag(args, "--hdr-dim");
+            _hdrCliBrightness = HdrDim.ParseBrightness(StrArg(args, "--hdr-brightness", null));
             Anim.Switch = () => _features.On("motion");
             OpenLog();
             if (takeover != null && _takeoverApp == null) Log("takeover: bad app id ignored");
@@ -222,6 +227,7 @@ namespace Tuner
             }
             long mWin = _clock.ElapsedMilliseconds;
             BuildViews(Path.Combine(AppContext.BaseDirectory, "res"));
+            SyncHdrConfig();
             long mViews = _clock.ElapsedMilliseconds;
             try { _utcOffset = TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow); } catch (Exception) { }
             Log("utc offset " + _utcOffset);
@@ -255,12 +261,45 @@ namespace Tuner
 
             Efl.elm_run();
             Log("elm_run returned");
+            if (_hdrWatcher != null) { _hdrWatcher.Dispose(); _hdrWatcher = null; }
             if (_controlFd >= 0) { Libc.close(_controlFd); Libc.unlink(_controlPath); }
             RemovePid();
             MarkShown(false);
             MarkTvUp(false);
             Efl.elm_shutdown();
             return 0;
+        }
+
+        private static void SyncHdrConfig()
+        {
+            bool? dimOverride = _features.HdrDimOverride;
+            int? brightOverride = _features.HdrBrightnessOverride;
+            bool enabled = dimOverride.HasValue ? dimOverride.Value : _hdrCliDim;
+            int brightness = brightOverride.HasValue ? brightOverride.Value : _hdrCliBrightness;
+            if (enabled == _hdrDimEnabled && brightness == _hdrBrightness) return;
+            _hdrDimEnabled = enabled;
+            _hdrBrightness = brightness;
+            if (enabled && _hdrWatcher == null)
+            {
+                _hdrWatcher = new HdrWatcher(Log, isHdr =>
+                {
+                    _isHdr = isHdr;
+                    ApplyTunerHdrDim();
+                    Log("hdr: active=" + isHdr + " factor=" + HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                });
+            }
+            else if (!enabled && _hdrWatcher != null)
+            {
+                _hdrWatcher.Dispose();
+                _hdrWatcher = null;
+                _isHdr = false;
+            }
+            ApplyTunerHdrDim();
+        }
+
+        private static void ApplyTunerHdrDim()
+        {
+            Surface.SetDimFactor(HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness), _active);
         }
 
         // ---- showing and hiding the whole tuner ----
@@ -283,6 +322,7 @@ namespace Tuner
                 return;
             }
             _loggedNotReady = false;
+            SyncHdrConfig();
             long perfAt = Perf.On ? Perf.Now() : 0;
             _active = true;
             MarkShown(true);

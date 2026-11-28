@@ -19,7 +19,7 @@ namespace Launcher.Ui
         // list every weight fell back to SamsungOneUI 400 on the TV (Q80A, 2026-11-11). fontconfig falls back by itself.
         private const string Font = "SamsungOneUI 500";
 
-        private readonly IntPtr _win, _evas;
+        private readonly IntPtr _win, _evas, _dimClip;
         private readonly DockLayout _layout;
         private readonly AppEntry[] _items;
         private readonly string _assets;
@@ -60,22 +60,22 @@ namespace Launcher.Ui
         /// <param name="hint">Word of the navigation hint ("Input", "Back"), or null for none.</param>
         /// <param name="hintUp">True: chevron up, capsule above the pill; false: chevron down, below it.</param>
         public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp)
-            : this(win, layout, items, assetsDir, log, hint, hintUp, null) { }
+            : this(win, layout, items, assetsDir, log, hint, hintUp, null, default(IntPtr)) { }
 
         /// <param name="keyHint">A key hint, like the Control center cards' footer: the remote's keys as pictures ("key_ok": res/key_ok.png)
         /// and words, "|" between two groups (<see cref="KeyHint"/>). It has no chevron: the key it shows says where it leads.</param>
         /// <param name="hintUp">True: the hint above the pill; false: below it.</param>
-        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string[] keyHint, bool hintUp)
-            : this(win, layout, items, assetsDir, log, (string)null, hintUp, null)
+        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string[] keyHint, bool hintUp, IntPtr dimClip = default(IntPtr))
+            : this(win, layout, items, assetsDir, log, (string)null, hintUp, null, dimClip)
         {
             if (keyHint != null) _hint = new NavHint(keyHint, hintUp);
         }
 
         /// <param name="hintBelow">Word of a second hint under the pill, with a down chevron ("Task manager"), or null.
         /// Only used with an up hint, and the layout needs <see cref="DockLayout.BelowBand"/> to have room for it.</param>
-        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp, string hintBelow)
+        public Dock(IntPtr win, DockLayout layout, AppEntry[] items, string assetsDir, Action<string> log, string hint, bool hintUp, string hintBelow, IntPtr dimClip = default(IntPtr))
         {
-            _win = win; _layout = layout; _items = items; _assets = assetsDir; _log = log;
+            _win = win; _dimClip = dimClip; _layout = layout; _items = items; _assets = assetsDir; _log = log;
             if (hint != null) _hint = new NavHint(new[] { hint }, hintUp);
             if (hintBelow != null && hintUp && layout.BelowBand) _hintBelow = new NavHint(new[] { hintBelow }, false);
             _evas = Efl.evas_object_evas_get(win);
@@ -100,12 +100,18 @@ namespace Launcher.Ui
             // nine-sliced to the panel radius (border_scale = radius / border), and no drop shadow.
             _rim = NineSlice("pill_rim", Design.RimSlice, (Design.PanelRadius + Design.ShellBorderW) / (double)Design.RimSlice);
             _pill = NineSlice("pill_bg", Design.SheetSlice, Design.PanelRadius / (double)Design.SheetSlice);
+            if (_dimClip != IntPtr.Zero)
+            {
+                Efl.evas_object_clip_set(_rim, _dimClip);
+                Efl.evas_object_clip_set(_pill, _dimClip);
+            }
             // The focused icon grows and a soft glow, drawn at its final size, sits behind it; a thin ring is drawn around it.
             _highlight = NineSlice("dock_glow", 0);
             _highlight2 = NineSlice("dock_glow", 0);
 
             _clip = Efl.evas_object_rectangle_add(_evas);
             Efl.evas_object_color_set(_clip, 255, 255, 255, 255);
+            if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(_clip, _dimClip);
             Efl.evas_object_show(_clip);
             // The apps scroll under their own clipper, itself clipped by the page clipper: hiding the page
             // still takes everything with it, while the pinned entries, the glow and the divider stay uncut.
@@ -143,6 +149,7 @@ namespace Launcher.Ui
                     Efl.evas_object_text_font_set(_label[k], Font, 26);
                     SoftShadow(_label[k]);
                     TintText(_label[k], 0);
+                    if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(_label[k], _dimClip);
                     Efl.evas_object_show(_label[k]);
                 }
 
@@ -153,6 +160,7 @@ namespace Launcher.Ui
                 Efl.evas_object_text_text_set(_clock, "--:--");
                 _clockW = Efl.evas_object_text_horiz_advance_get(_clock);
                 SoftShadow(_clock);
+                if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(_clock, _dimClip);
                 Efl.evas_object_show(_clock);
             }
 
@@ -272,6 +280,7 @@ namespace Launcher.Ui
                     p.Dy = (DockLayout.CapsuleH - Efl.evas_object_text_vert_advance_get(p.Obj)) / 2 - 1;
                     if (h.Lead == null) h.Lead = p;
                 }
+                if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(p.Obj, _dimClip);
                 Efl.evas_object_show(p.Obj);
                 // The space after it: a group break, two keys side by side, or a key and its word.
                 bool next = i + 1 < h.Spec.Length, brk = next && h.Spec[i + 1] == "|";
@@ -287,6 +296,7 @@ namespace Launcher.Ui
                 Efl.evas_object_image_filled_set(h.Chev, true);
                 Efl.evas_object_image_smooth_scale_set(h.Chev, true);
                 Efl.evas_object_resize(h.Chev, HintChev, HintChev);
+                if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(h.Chev, _dimClip);
                 Efl.evas_object_show(h.Chev);
             }
             h.Measure(_layout);

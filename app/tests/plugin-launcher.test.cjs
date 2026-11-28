@@ -17,6 +17,8 @@ const dock = {
     disable: () => { log.push('disable'); enabled = false; return Promise.resolve({ enabled }); },
     refresh: () => { log.push('refresh'); return Promise.resolve({ ok: true }); },
     setNoMotion: on => { log.push('motion:' + on); return Promise.resolve({ noMotion: on }); },
+    setHdrDim: on => { log.push('hdrDim:' + on); return Promise.resolve({ hdrDim: on }); },
+    setHdrBrightness: brightness => { log.push('hdrBrightness:' + brightness); return Promise.resolve({ hdrBrightness: brightness }); },
     setFixTizenTube: on => { log.push('fix:' + on); return Promise.resolve({ fix: on }); },
     iconFile: slug => slug === 'known' ? Buffer.from('PNG') : null,
     supervise: up => { log.push('supervise:' + up); return Promise.resolve(); }
@@ -41,7 +43,7 @@ const post = (body) => { const r = res(); host.dispatch('launcher', { method: 'P
     // status, actions, icon: the answers the old routes gave
     const st = get('status'); await nextTick(1);
     assert.deepEqual(st.body, { enabled: false, preview: true });
-    for (const [body, entry] of [['{"action":"enable"}', 'enable'], ['{"action":"disable"}', 'disable'], ['{"action":"refresh"}', 'refresh'], ['{"action":"fixTizenTube","on":true}', 'fix:true'], ['{"action":"noMotion","on":true}', 'motion:true'], ['{"action":"noMotion","on":false}', 'motion:false']]) {
+    for (const [body, entry] of [['{"action":"enable"}', 'enable'], ['{"action":"disable"}', 'disable'], ['{"action":"refresh"}', 'refresh'], ['{"action":"fixTizenTube","on":true}', 'fix:true'], ['{"action":"noMotion","on":true}', 'motion:true'], ['{"action":"noMotion","on":false}', 'motion:false'], ['{"action":"hdrDim","on":true}', 'hdrDim:true'], ['{"action":"hdrBrightness","brightness":30}', 'hdrBrightness:30']]) {
         const before = log.length;
         post(body); await nextTick(1);
         assert.equal(log[before], entry);

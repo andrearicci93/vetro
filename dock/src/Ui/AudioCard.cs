@@ -24,7 +24,7 @@ namespace Launcher.Ui
         private string _busyText;
         private PlaceKey _rowsAt;   // what the rows were last placed for
 
-        public AudioCard(IntPtr win, TaskLayout layout, string assets, Action<string> log) : base(win, layout, assets, log, "audio") { }
+        public AudioCard(IntPtr win, TaskLayout layout, string assets, Action<string> log, IntPtr dimClip = default(IntPtr)) : base(win, layout, assets, log, "audio", dimClip) { }
 
         public int Count { get { return _entries.Count; } }
 

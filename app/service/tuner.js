@@ -84,6 +84,7 @@ function Tuner(options) {
     this.lastError = null;
     this.build = options.build || null;         // this Vetro build: a tuner started by another one is restarted (supervise)
     this.noMotion = options.noMotion || null;   // the launcher's Reduce motion setting: the tuner follows it
+    this.hdrDim = options.hdrDim || null;       // the launcher's HDR dimming setting: the tuner follows it
     this.cheapBroken = false;                   // as for the launcher: the full probe found running a pid the cheap check did not
     this.changes = 0;                           // counts starts and stops: the supervision goes back to its short interval when it moves
     // First start of this service run, in seconds since the TV booted (as the launcher's bootTimeline): serviceStart, agentSeen,
@@ -132,6 +133,12 @@ Tuner.prototype.writeFeatures = function () {
     var still = false;
     try { still = !!(this.noMotion && this.noMotion()); } catch (e) { /* unreadable launcher state: motion stays on */ }
     if (still) lines.push('motion=0');
+    var hdr = null;
+    try { hdr = this.hdrDim && this.hdrDim(); } catch (e) { /* unreadable launcher state: hdr dim stays off */ }
+    if (hdr && hdr.enabled === true) {
+        lines.push('hdr_dim=1');
+        if (typeof hdr.brightness === 'number' && hdr.brightness >= 0 && hdr.brightness <= 100) lines.push('hdr_brightness=' + Math.round(hdr.brightness));
+    }
     try { atomicFile.write(fs, this.featuresFile, lines.join('\n') + (lines.length ? '\n' : '')); }
     catch (e) { throw new Error('The tuner switches could not be saved: ' + e.message); }
 };

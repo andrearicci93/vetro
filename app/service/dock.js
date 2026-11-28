@@ -38,6 +38,10 @@ var STATE_FILE = SHARE + '/vetro-dock.json';
 var APPS_FILE = SHARE + '/vetro-dock-apps.tsv';
 var CUSTOM_APPS_FILE = SHARE + '/vetro-dock-custom.tsv';      // the one-line list of the headless custom mode
 var APP_ID_RE = /^[A-Za-z0-9_.-]{1,120}$/;
+var HDR_BRIGHTNESS_DEFAULT = 40;
+function cleanHdrBrightness(v) {
+    return typeof v === 'number' && isFinite(v) && Math.floor(v) === v && v >= 0 && v <= 100 ? v : HDR_BRIGHTNESS_DEFAULT;
+}
 var RUN_DIR = '/home/owner';                          // the dock's own pid, fifo and log
 var PID_FILE = RUN_DIR + '/tvlauncher.pid';
 var FIFO = RUN_DIR + '/tvlauncher.fifo';
@@ -121,6 +125,7 @@ function Dock(options) {
     this.port = options.port || null;                         // the service's port (a number or a function), for the launcher's own calls to Vetro
     this.build = options.build || null;                       // this Vetro build: a launcher started by another one is restarted (supervise)
     this.onMotionChange = options.onMotionChange || null;     // Reduce motion changed: the tuner follows the same setting
+    this.onHdrDimChange = options.onHdrDimChange || null;     // HDR dimming changed: the tuner follows the same setting
     this.appCheckedAt = null;     // this.now() of the last lookup of the custom launcher's app
     this.goneRounds = 0;
     this.inputsFile = options.inputsFile || path.join(path.dirname(this.appsFile), 'vetro-dock-inputs.tsv');
@@ -233,7 +238,8 @@ Dock.prototype.readState = function () {
     try {
         var s = this.readStateFile();
         return {enabled: s && s.enabled === true, since: typeof s.since === 'number' ? s.since : null, fixTizenTube: s && s.fixTizenTube === true,
-            noMotion: s && s.noMotion === true, volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), closeIdleHome: s && typeof s.closeIdleHome === 'boolean' ? s.closeIdleHome : true, row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
+            noMotion: s && s.noMotion === true, hdrDim: s && s.hdrDim === true, hdrBrightness: cleanHdrBrightness(s && s.hdrBrightness),
+            volumePill: s && s.volumePill === true, volumeEdge: s && VOLUME_EDGES.indexOf(s.volumeEdge) >= 0 ? s.volumeEdge : 'left', numberPad: s && s.numberPad === true, taskManager: stateCards(s).indexOf('tasks') >= 0, cards: stateCards(s), closeIdleHome: s && typeof s.closeIdleHome === 'boolean' ? s.closeIdleHome : true, row: cleanRow(s && s.row), autorunWas: s && s.autorunWas === 1 ? 1 : null,
             customApp: s && typeof s.customApp === 'string' && APP_ID_RE.test(s.customApp) ? s.customApp : null,
             customSince: s && typeof s.customSince === 'number' ? s.customSince : null,
             customHomeDisabled: s && s.customHomeDisabled === true,
@@ -252,7 +258,7 @@ Dock.prototype.readState = function () {
             hideTvSource: s && s.hideTvSource === true,
             // The store pill of All apps: TV-Store when it is installed (the default), or Samsung's store.
             appStore: s && s.appStore === 'samsung' ? 'samsung' : 'tvstore'};
-    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
+    } catch (e) { return {enabled: false, since: null, fixTizenTube: false, noMotion: false, hdrDim: false, hdrBrightness: HDR_BRIGHTNESS_DEFAULT, volumePill: false, volumeEdge: 'left', numberPad: false, taskManager: false, cards: [], closeIdleHome: true, shownCards: null, row: null, autorunWas: null, customApp: null, customSince: null, customHomeDisabled: false,
         showHomeSources: this.legacy('home'), useSourceImages: this.legacy('images'), connectedSourcesOnly: false, hideTvSource: false, appStore: 'tvstore'}; }
 };
 
@@ -446,7 +452,7 @@ Dock.prototype.bootSettled = function () {
 Dock.prototype.statusNow = function () {
     var self = this, state = this.readState();
     var base = {installed: this.installed(), enabled: state.enabled, since: state.since, busy: this.busy,
-        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, connectedSourcesOnly: state.connectedSourcesOnly, hideTvSource: state.hideTvSource, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
+        error: this.lastError, failures: this.failures, homePictureClears: this.homePictureClears || 0, homePictureAgoSeconds: this.homePictureAt ? Math.round((this.now() - this.homePictureAt) / 1000) : null, apps: this.lastCatalog, fixTizenTube: state.fixTizenTube, noMotion: state.noMotion, hdrDim: state.hdrDim, hdrBrightness: state.hdrBrightness, volumePill: state.volumePill, volumeEdge: state.volumeEdge, numberPad: state.numberPad, taskManager: state.taskManager, cards: this.cardsEffective(state), cardChoices: this.cardChoices(), cardShards: this.cardShards(), cardsPaused: this.cardsPaused(state), maxCards: MAX_CARDS, closeIdleHome: state.closeIdleHome, idleHomeClears: this.idleHomeClears || 0, rowCustomised: !!state.row, showHomeSources: state.showHomeSources, useSourceImages: state.useSourceImages, connectedSourcesOnly: state.connectedSourcesOnly, hideTvSource: state.hideTvSource, appStore: state.appStore, autorunSwitchedOff: state.autorunWas === 1,
         mode: state.customApp ? 'custom' : state.enabled ? 'vetro' : 'off', customApp: state.customApp, customSince: state.customSince,
         customHomeDisabled: state.customHomeDisabled,
         entries: this.entries(), inputs: this.inputEntries(), lastShardLaunch: this.lastShardLaunch, bootTimeline: this.timeline,
@@ -521,7 +527,7 @@ Dock.prototype.startScript = function () {
         ' --hidden --claim-home' + (state.customApp ? ' --no-premap --no-warmup --home-launch ' + state.customApp : '') +
         // The launcher calls Vetro for a tile a plugin took over and to save the row: on the port this build answers on.
         (servicePort(this.port) ? ' --service-port ' + servicePort(this.port) : '') +
-        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + ' --volume-edge ' + state.volumeEdge +
+        ' --home-code ' + HOME_CODE + ' --kill-on-home ' + HOME_KILL.join(',') + (state.noMotion && !state.customApp ? ' --no-motion' : '') + (state.hdrDim ? ' --hdr-dim --hdr-brightness ' + state.hdrBrightness : '') + ' --volume-edge ' + state.volumeEdge +
         // The Control center (Down from the apps row) is opt-in: without a card the dock looks and acts as before.
         (!state.customApp && this.cardsArg(state) ? ' --cards ' + this.cardsArg(state) : ' --no-tasks');
     return [
@@ -1044,6 +1050,48 @@ Dock.prototype.setNoMotion = function (on) {
     tell();
     if (!state.enabled) return this.status();
     return this.refreshOr(function () { self.patchState({noMotion: state.noMotion}); tell(); });
+};
+
+// Automatic HDR GUI dimming (OLED burn-in protection): updates the running launcher live over its FIFO without closing any overlay
+// on screen, and restarts only when the running process cannot take the pipe command.
+Dock.prototype.tellHdr = function (on, brightness) {
+    var cmd = 'hdr ' + (on ? '1' : '0') + ' ' + cleanHdrBrightness(brightness);
+    var line = 'p=$(cat ' + PID_FILE + ' 2>/dev/null); if [ -n "$p" ] && tr "\\0" " " < /proc/$p/cmdline 2>/dev/null | grep -q ' + DLL + ' && [ -p ' + FIFO + ' ]; then ( exec 3<>' + FIFO + ' && echo "' + cmd + '" >&3 ) && echo live; fi; true';
+    return this.execute(line, 5000).then(function (r) {
+        return !!(r && /live/.test(r.stdout || ''));
+    }).catch(function () { return false; });
+};
+
+Dock.prototype.applyHdrChange = function (patch, prev) {
+    var self = this, wasOn = !!this.readState().hdrDim;
+    function tell() { if (self.onHdrDimChange) { try { self.onHdrDimChange(); } catch (e) {} } }
+    if (this.busy) return Promise.reject(new Error('Another launcher change is in progress'));
+    try { this.patchState(patch); }
+    catch (e) { return Promise.reject(e); }
+    tell();
+    var run = function () {
+        var cur = self.readState();
+        if ((!cur.enabled && !cur.customApp) || (!wasOn && !cur.hdrDim)) return self.status();
+        return self.tellHdr(cur.hdrDim, cur.hdrBrightness).then(function (live) {
+            if (live) return self.status();
+            if (self.busy) return self.status();
+            return self.refreshOr(function () { self.patchState(prev); tell(); });
+        });
+    };
+    this.hdrQueue = (this.hdrQueue || Promise.resolve()).then(run, run);
+    return this.hdrQueue;
+};
+
+Dock.prototype.setHdrDim = function (on) {
+    if (typeof on !== 'boolean') return Promise.reject(new Error('Invalid value'));
+    var state = this.readState();
+    return this.applyHdrChange({hdrDim: on}, {hdrDim: state.hdrDim});
+};
+
+Dock.prototype.setHdrBrightness = function (level) {
+    if (typeof level !== 'number' || !isFinite(level) || Math.floor(level) !== level || level < 0 || level > 100) return Promise.reject(new Error('Invalid value'));
+    var state = this.readState();
+    return this.applyHdrChange({hdrBrightness: level}, {hdrBrightness: state.hdrBrightness});
 };
 
 Dock.prototype.setCloseIdleHome = function (on) {
