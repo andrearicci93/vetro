@@ -51,7 +51,54 @@ assert.equal(bleParsed[3].selectable,false);
   bridge.stop();
   authMode='observe';
   bad=true;await assert.rejects(bridge.start('Smart Control','observe',[]),/authentication/);assert.equal(bridge.status().policy.mode,'off');
-  assert.equal(commands.filter(x=>x.includes('nohup')).length,3);
-  console.log('PASS physical input: exact devices, own forwarding device skipped, authenticated events, stop, reject invalid MAC');
+  bad=false;
+  const irRemote='N: Name="wt61p807 rc device"\nP: Phys=wt61p807/rc\nH: Handlers=kbd event1\n';
+  const btRemote='N: Name="Smart Control 2016"\nP: Phys=\nH: Handlers=kbd event6\nB: EV=3\nB: KEY=380000 0 10001ffe\n';
+  const multiInventory=forwarded+'\n'+irRemote+'\n'+btRemote;
+  let multiGot=[];
+  const multiBridge=new Bridge(cmd=>{
+   commands.push(cmd);
+   if(cmd==='cat /proc/bus/input/devices')return Promise.resolve({exit_code:0,stdout:multiInventory});
+   const secret=Buffer.from(/printf %s '([^']+)'/.exec(cmd)[1],'base64');
+   const port=Number(/'127\.0\.0\.1' '(\d+)'/.exec(cmd)[1]);
+   assert.ok(cmd.includes("'*'")||cmd.includes("'*!"),'all-remotes mode passes * target to agent');
+   if(cmd.includes("'filter'")||cmd.includes("'capture'"))assert.ok(cmd.includes('systemd-run --unit=vetro-input --collect'),'filter and capture use persistent systemd unit with fallback');
+   const s=net.connect(port,'127.0.0.1');s.on('error',()=>{});
+   s.once('data',chunk=>{
+    const nonce=Buffer.from(chunk.toString().trim().split('\t')[1],'hex');
+    function send(payload){const mac=crypto.createHmac('sha256',secret).update(nonce).update(Buffer.from([0])).update(payload).digest('hex');s.write(payload+'\t'+mac+'\n');}
+    const b=v=>Buffer.from(v).toString('base64');
+    const modeMatch=/'evdev' 'TV' '(observe|filter|capture)'/.exec(cmd)[1];
+    send(['AUTH','124','0','0',b('all'),b('all'),b('evdev'),b('TV'),modeMatch].join('\t'));
+    if(modeMatch==='filter'||modeMatch==='capture'){
+     setTimeout(()=>{
+      send('EVENT\t1\t'+b(JSON.stringify({type:1,code:626,sequence:1,device:'wt61p807 rc device',node:'/dev/input/event1',action:'down',decision:'blocked'})));
+      send('EVENT\t2\t'+b(JSON.stringify({type:1,code:626,sequence:2,device:'Smart Control 2016',node:'/dev/input/event6',action:'down',decision:'blocked'})));
+     },20);
+    }
+   });
+   return Promise.resolve({exit_code:0});
+  },e=>multiGot.push(e));
+  try{
+   const allObs=await multiBridge.start('all','observe',[]);
+   assert.equal(allObs.policy.device,'all');
+   assert.equal(allObs.policy.node,'all');
+   assert.equal(allObs.policy.devices.length,2);
+   const allFilt=await multiBridge.start('all','filter',['63','626']);
+   assert.equal(allFilt.policy.connected,true);
+   assert.equal(allFilt.policy.device,'all');
+   await new Promise(r=>setTimeout(r,60));
+   assert.deepEqual(multiGot.map(x=>[x.node,x.code]),[['/dev/input/event1',626],['/dev/input/event6',626]],'accepts events from multiple physical remote nodes');
+   multiGot=[];
+   const allExcl=await multiBridge.start('all','filter',['63'],undefined,{exclude:['wt61p807 rc device']});
+   assert.deepEqual(allExcl.policy.devices,[{name:'Smart Control 2016',node:'/dev/input/event6'}]);
+   assert.deepEqual(allExcl.policy.exclude,['wt61p807 rc device']);
+   const allCap=await multiBridge.start('all','capture',[]);
+   assert.equal(allCap.policy.mode,'capture');
+   await new Promise(r=>setTimeout(r,60));
+   assert.equal(multiGot.length,2,'capture mode receives blocked events without filter tokens');
+  }finally{multiBridge.stop();}
+  assert.equal(commands.filter(x=>x.includes('nohup')).length,7);
+  console.log('PASS physical input: exact devices, own forwarding device skipped, all-remotes, exclude, capture, authenticated events, stop, reject invalid MAC');
  }finally{bridge.stop();if(socket)socket.destroy();}
 })().catch(e=>{console.error(e);process.exitCode=1});
