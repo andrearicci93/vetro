@@ -322,4 +322,27 @@ function settle() { return new Promise(r => setImmediate(r)); }
         console.log('PASS the 1722 archive preflight failure falls back to vddebugmenu once with the 3.1 payload');
     }
 
+    // Package installation rejects parent-directory segments before opening SDB and closes a dispatched session.
+    {
+        const client = {};
+        let connected = 0, closed = 0;
+        const failed = new Error('install failed');
+        const t = load({'./sdb.js': {
+            connect: () => { connected++; return Promise.resolve(client); },
+            exec: (_client, command) => {
+                assert.equal(_client, client);
+                if (command.endsWith('/failed.wgt')) return Promise.reject(failed);
+                assert.ok(command.endsWith('/Vetro..test.wgt'));
+                return Promise.resolve('installed');
+            },
+            close: connection => { assert.equal(connection, client); closed++; }
+        }});
+        await assert.rejects(t.provider.install('vetrotvapp', '/tmp/../Vetro.wgt'), /invalid package ID or WGT path/);
+        assert.equal(connected, 0, 'invalid paths never reach SDB');
+        assert.equal(await t.provider.install('vetrotvapp', '/tmp/Vetro..test.wgt'), 'installed');
+        await assert.rejects(t.provider.install('vetrotvapp', '/tmp/failed.wgt'), error => error === failed && error.submitted === null);
+        assert.equal(closed, 2);
+        console.log('PASS package install rejects path traversal and closes SDB after success or failure');
+    }
+
 })().catch(e => { console.error(e); process.exit(1); });

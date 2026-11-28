@@ -800,14 +800,20 @@ function stop() {
     state.agent = {connected: false};
 }
 function install(packageId, wgtPath) {
-    if (!/^[A-Za-z0-9_.-]{1,128}$/.test(packageId) || !/^\/[A-Za-z0-9_./-]+\.wgt$/.test(wgtPath)) {
+    if (!/^[A-Za-z0-9_.-]{1,128}$/.test(packageId) || !/^\/[A-Za-z0-9_./-]+\.wgt$/.test(wgtPath) || /\/\.\.\//.test(wgtPath)) {
         return Promise.reject(new Error('invalid package ID or WGT path'));
     }
     var dispatched = false;
     return sdb.connect(sdbTarget()).then(function (client) {
         dispatched = true;
         return sdb.exec(client, 'shell:0 vd_appinstall ' + packageId + ' ' + wgtPath, {timeout: 120000})
-            .finally(function () {sdb.close(client);});
+            .then(function (result) {
+                sdb.close(client);
+                return result;
+            }, function (error) {
+                sdb.close(client);
+                throw error;
+            });
     }).catch(function (error) {
         error.submitted = dispatched ? null : false;
         throw error;
