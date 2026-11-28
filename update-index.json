@@ -1,7 +1,7 @@
 {
-  "version": "0.7.2",
+  "version": "0.7.3",
   "shell": 1,
-  "file": "vetro-update-0.7.2.json",
-  "sha256": "21e7513867d60ad9044ee831cea5fba5e26780609c5097e20cc74a649a520970",
-  "size": 3308653
+  "file": "vetro-update-0.7.3.json",
+  "sha256": "e443ca053036dfcabcce32bbac5f568c51c51ef0b1dd5ca83aeda8d3b7c90e72",
+  "size": 3335442
 }
