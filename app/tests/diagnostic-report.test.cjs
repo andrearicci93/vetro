@@ -62,11 +62,14 @@ const probeStore=require('../service/probe');
  assert.equal(d.sections.startup.data.services[0].bootState,'disabled');
  assert.equal(d.sections.serviceApis.data.tizenObject,false);
  assert.equal(d.sections.hbbtv.status,'unavailable');
- assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:3,inputTypes:[13,41],monitorInputLayout:true,appCount:11,rowFrom:null,homeStores:null,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:true,volumeBar:true,numberPad:false,cardCount:2,homePictureClears:null,homePictureAgoSeconds:null,appStore:null,events:['command VolDown','volume: the level cannot be read','command Pad','pad: elm_win_add failed','pad: sending 12-1 rc=0','outputs: speaker selection 1, 1 rows, read in 4 ms','fifo: System.IO.IOException: broken'],bootTimeline:null,openings:[]},'launcher: states and counts only, and the key lines of its log in fixed shapes (no device addresses, no paths) (the custom app id is reduced to a yes/no)');
+ assert.deepEqual(d.sections.launcher.data,{entryCount:2,inputCount:3,inputTypes:[13,41],monitorInputLayout:true,appCount:11,rowFrom:null,homeStores:null,skippedCount:1,failures:2,hasError:true,tizenTubeTile:true,installed:true,enabled:true,running:true,samsungHome:false,busy:false,fixTizenTube:true,noMotion:false,autorunSwitchedOff:true,customHomeDisabled:false,mode:'vetro',customApp:true,volumeBar:true,numberPad:false,idleMode:null,idleAutoDock:null,idlePictureOffMin:null,idleSuppressScreensaver:null,cardCount:2,homePictureClears:null,homePictureAgoSeconds:null,appStore:null,events:['command VolDown','volume: the level cannot be read','command Pad','pad: elm_win_add failed','pad: sending 12-1 rc=0','outputs: speaker selection 1, 1 rows, read in 4 ms','fifo: System.IO.IOException: broken'],bootTimeline:null,openings:[]},'launcher: states and counts only, and the key lines of its log in fixed shapes (no device addresses, no paths) (the custom app id is reduced to a yes/no)');
 { // Where the Home row came from, and which Home stores the TV has (Tizen 10 keeps the row in mainhub's database): words and yes/no only.
- const l=report.projectors.launcher({apps:{count:5,rowFrom:'media',homeStores:{csfsCache:false,mediaCache:true,mainhub:true,mainhubCache:true,mainhubDb:true,path:'/opt/x'}}});
+ const l=report.projectors.launcher({apps:{count:5,rowFrom:'media',homeStores:{csfsCache:false,mediaCache:true,mainhub:true,mainhubCache:true,mainhubDb:true,path:'/opt/x'}},idleSuppressScreensaver:true});
  assert.equal(l.rowFrom,'media');
  assert.deepEqual(l.homeStores,{csfsCache:false,mediaCache:true,mainhub:true,mainhubCache:true,mainhubDb:true},'only the five yes/no flags, nothing else');
+ assert.equal(l.idleSuppressScreensaver,true);
+ assert.equal(report.projectors.launcher({idleSuppressScreensaver:false}).idleSuppressScreensaver,false);
+ assert.equal(report.projectors.launcher({idleSuppressScreensaver:'yes'}).idleSuppressScreensaver,null);
  assert.equal(report.projectors.launcher({apps:{rowFrom:'/opt/usr/home/secret'}}).rowFrom,null,'an unknown value is dropped');
  assert.equal(report.projectors.launcher({}).homeStores,null);
 }

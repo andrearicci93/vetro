@@ -56,6 +56,7 @@ namespace Launcher.Ui
 
         /// <summary>--perf: the open's timing (OpenProbe), or null.</summary>
         public OpenProbe Probe;
+        public Action OnActivity;
         private int _bodyX, _bodyW, _doneX, _doneW, _shownPage = -1;
 
         private readonly Action<bool> _closed;
@@ -452,6 +453,7 @@ namespace Launcher.Ui
         {
             if (!IsShown) return;
             ArmIdle();
+            if (OnActivity != null) OnActivity();
             PadResult r = _model.Key(key);
             switch (r)
             {

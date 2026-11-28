@@ -1169,6 +1169,7 @@ function runActions(actions, direct, dispatchGuard) {
             var claimed=plugins&&typeof plugins.intercepted==='function'?plugins.intercepted():{};
             var targetId=shardLaunchTarget(claimed,a.appId);
             if(targetId&&typeof plugins.launch==='function'){
+                if(dock&&typeof dock.notifyAppLaunch==='function')dock.notifyAppLaunch(true,targetId);
                 // A Shard may need up to a minute to get ready, and the rule actions run one after another: waiting here would hold every
                 // other key and rule behind it (the dock answers at once and starts afterwards for the same reason). The app still starts
                 // by itself when the plugin cannot.
@@ -1180,6 +1181,7 @@ function runActions(actions, direct, dispatchGuard) {
                 sent++;
                 return;
             }
+            if(dock&&typeof dock.notifyAppLaunch==='function')dock.notifyAppLaunch(false,a.appId);
             command=hbbtvLink.launchCommand(a.appId);
         }
         // A named key goes to the window with the focus; with Vetro TV Tuner on screen that is the tuner's, so its keys go to it (key-routing.js).
