@@ -844,6 +844,25 @@ namespace Launcher.Core
             return openDock ? IdleAction.ShowWithDock : IdleAction.Show;
         }
 
+        public static void ResolveExitKeyAction(
+            IdleBackHoldMode backHoldMode,
+            bool backHoldDock,
+            string appTarget,
+            out bool minimizeOnly,
+            out bool? openDockOverride)
+        {
+            if (backHoldMode == IdleBackHoldMode.Off)
+            {
+                minimizeOnly = false;
+                openDockOverride = null;
+                return;
+            }
+            bool isVetroApp = !string.IsNullOrEmpty(appTarget)
+                && appTarget.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase);
+            minimizeOnly = isVetroApp || backHoldMode == IdleBackHoldMode.Minimize;
+            openDockOverride = backHoldDock;
+        }
+
         /// <summary>
         /// Filters raw evdev key presses: suppresses the wake key while the panel is in lcdoff, and resets
         /// the idle dim/Picture-Off timer without ever hiding the backdrop.

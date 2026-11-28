@@ -314,6 +314,31 @@ namespace Launcher.Tests
                 T.True(!br.Due(20.300), "stale KernelRelease does not trigger early close");
                 T.True(br.Due(21.600), "falls back to LimitSeconds");
             });
+
+            T.Run("BackHold ResolveExitKeyAction: honors BackHoldMode, BackHoldDock, and Vetro self-protection", () =>
+            {
+                bool min;
+                bool? dock;
+
+                IdleBackdropModel.ResolveExitKeyAction(IdleBackHoldMode.Off, true, "NuvioTV001.NuvioTV", out min, out dock);
+                T.True(!min, "Off mode does not force minimize");
+                T.True(dock == null, "Off mode keeps openDockOverride null (uses AutoDock)");
+
+                IdleBackdropModel.ResolveExitKeyAction(IdleBackHoldMode.Minimize, true, "NuvioTV001.NuvioTV", out min, out dock);
+                T.True(min && dock == true, "Minimize with BackHoldDock=true");
+
+                IdleBackdropModel.ResolveExitKeyAction(IdleBackHoldMode.Minimize, false, "NuvioTV001.NuvioTV", out min, out dock);
+                T.True(min && dock == false, "Minimize with BackHoldDock=false");
+
+                IdleBackdropModel.ResolveExitKeyAction(IdleBackHoldMode.ForceClose, true, "NuvioTV001.NuvioTV", out min, out dock);
+                T.True(!min && dock == true, "ForceClose on regular app with BackHoldDock=true");
+
+                IdleBackdropModel.ResolveExitKeyAction(IdleBackHoldMode.ForceClose, false, "NuvioTV001.NuvioTV", out min, out dock);
+                T.True(!min && dock == false, "ForceClose on regular app with BackHoldDock=false");
+
+                IdleBackdropModel.ResolveExitKeyAction(IdleBackHoldMode.ForceClose, true, "vetrotvapp.app", out min, out dock);
+                T.True(min && dock == true, "ForceClose on vetrotvapp stays minimize-only for self-protection");
+            });
         }
     }
 }

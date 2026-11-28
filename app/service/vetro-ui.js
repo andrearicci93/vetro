@@ -23,7 +23,8 @@ var UI_RESERVED = [
 
 var UI_BACK_HOLD_KEYS = [
     {code: '1', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true},
-    {code: '158', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true}
+    {code: '158', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true},
+    {code: '174', label: 'Exit', owner: 'backhold', name: 'Hold Back'}
 ];
 
 // The keys Vetro TV Tuner answers (evdev codes of the remote, tuner/src/Program.cs). The remote bridge does not pass on a key that a
@@ -58,7 +59,9 @@ function uiReservedKeys(d) {
         var bhLive = uiLauncherMode(d) === 'vetro' && (d.idleMode || 'off') !== 'off';
         for (var j = 0; j < UI_BACK_HOLD_KEYS.length; j++) {
             var b = UI_BACK_HOLD_KEYS[j];
-            out.push({code: b.code, label: b.label, owner: b.owner, name: b.name, hold: true, live: bhLive});
+            var entry = {code: b.code, label: b.label, owner: b.owner, name: b.name, live: bhLive};
+            if (b.hold === true) entry.hold = true;
+            out.push(entry);
         }
     }
     return out;

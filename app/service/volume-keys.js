@@ -17,6 +17,7 @@ var KEYS = {
 };
 var GROUPS = {volume: ['66', '67', '68'], pad: ['140']};
 var BACK_HOLD_CODES = ['1', '158'];
+var EXIT_HOLD_CODE = '174';
 var TOKENS = GROUPS.volume.concat(GROUPS.pad);
 
 function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, String(code)); }
@@ -26,6 +27,7 @@ function isVolumeCode(code) { return Object.prototype.hasOwnProperty.call(KEYS, 
 var NATIVE = {};
 Object.keys(KEYS).forEach(function (c) { NATIVE[KEYS[c].native] = true; });
 NATIVE['XF86Back'] = true;
+NATIVE['XF86Exit'] = true;
 function reinjectCommand(native) { return NATIVE[native] === true ? '/usr/bin/input_keyevent ' + native : null; }
 
 // Tokens the bridge must hold back, beside the ones the shortcuts ask for (no duplicates).
@@ -39,6 +41,7 @@ function withTokens(tokens, flags) {
         BACK_HOLD_CODES.forEach(function (c) {
             if (out.indexOf(c) < 0 && out.indexOf(c + ':hold') < 0) out.push(c + ':hold');
         });
+        if (out.indexOf(EXIT_HOLD_CODE) < 0 && out.indexOf(EXIT_HOLD_CODE + ':hold') < 0) out.push(EXIT_HOLD_CODE);
     }
     return out;
 }
@@ -53,6 +56,9 @@ function wants(event, flags) {
     if (!event || event.decision !== 'blocked') return false;
     if (flags && flags.backHold && BACK_HOLD_CODES.indexOf(String(event.code)) >= 0) {
         return event.action === 'hold' || event.action === 'up';
+    }
+    if (flags && flags.backHold && String(event.code) === EXIT_HOLD_CODE) {
+        return event.action === 'down' || event.action === 'repeat' || event.action === 'up';
     }
     return (event.action === 'down' || event.action === 'repeat' || event.action === 'up') && enabled(event.code, flags);
 }
@@ -106,6 +112,10 @@ function repeater(opts) {
                 if (event.action === 'up') return Promise.resolve();
                 return Promise.resolve();
             }
+            if (flags && flags.backHold && code === EXIT_HOLD_CODE) {
+                if (event.action === 'down') return sendWord('backhold', 'XF86Exit', opts).catch(function () {});
+                return Promise.resolve();
+            }
             if (event.action === 'up') { stop(); return Promise.resolve(); }
             // Mute and the 123 key are toggles: one press, one change, never repeated.
             if (code === '66' || code === '140') return event.action === 'down' ? send(event) : Promise.resolve();
@@ -132,4 +142,4 @@ function repeater(opts) {
     };
 }
 
-module.exports = {enabled: enabled, repeater: repeater, KEYS: KEYS, TOKENS: TOKENS, BACK_HOLD_CODES: BACK_HOLD_CODES, FIFO: FIFO, isVolumeCode: isVolumeCode, withTokens: withTokens, wants: wants, sendWord: sendWord, handle: handle, reinjectCommand: reinjectCommand};
+module.exports = {enabled: enabled, repeater: repeater, KEYS: KEYS, TOKENS: TOKENS, BACK_HOLD_CODES: BACK_HOLD_CODES, EXIT_HOLD_CODE: EXIT_HOLD_CODE, FIFO: FIFO, isVolumeCode: isVolumeCode, withTokens: withTokens, wants: wants, sendWord: sendWord, handle: handle, reinjectCommand: reinjectCommand};

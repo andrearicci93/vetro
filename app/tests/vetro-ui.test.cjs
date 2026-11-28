@@ -24,10 +24,10 @@ assert.deepEqual(ui.needs('volume', {enabled: false}, null), ['launcher'], 'inpu
 assert.deepEqual(ui.needs('volume', {enabled: true}, {status: {preference: {enabled: false}, policy: {mode: 'off'}}}), ['interception']);
 assert.deepEqual(ui.needs('pad', {mode: 'custom', customApp: 'x'}, {status: {preference: {enabled: true}, policy: {mode: 'filter'}}}), []);
 assert.deepEqual(ui.needs('tuner', {enabled: false}, null), []);
-assert.deepEqual(ui.reservedKeys({enabled: true, idleMode: 'clock', idleBackHoldMode: 'minimize'}).map(k => ({code: k.code, hold: k.hold, live: k.live})), [{code: '1', hold: true, live: true}, {code: '158', hold: true, live: true}]);
+assert.deepEqual(ui.reservedKeys({enabled: true, idleMode: 'clock', idleBackHoldMode: 'minimize'}).map(k => ({code: k.code, hold: !!k.hold, live: k.live})), [{code: '1', hold: true, live: true}, {code: '158', hold: true, live: true}, {code: '174', hold: false, live: true}]);
 assert.equal(ui.reservedKeys({enabled: true, idleMode: 'off', idleBackHoldMode: 'force-close'})[0].live, false);
 assert.equal(ui.reservedKeys({mode: 'custom', customApp: 'a.b', idleMode: 'clock', idleBackHoldMode: 'minimize'})[0].live, false);
-assert.deepEqual(ui.keysOf('backhold').map(k => k.code), ['1', '158']);
+assert.deepEqual(ui.keysOf('backhold').map(k => k.code), ['1', '158', '174']);
 assert.deepEqual(ui.needs('backhold', {enabled: false, idleMode: 'off'}, null), ['launcher', 'idle']);
 assert.deepEqual(ui.needs('backhold', {enabled: true, idleMode: 'clock'}, {status: {preference: {enabled: false}, policy: {mode: 'off'}}}), ['interception']);
 assert.deepEqual(ui.needs('backhold', {enabled: true, idleMode: 'clock'}, {status: {preference: {enabled: true}, policy: {mode: 'observe'}}}), ['listening']);

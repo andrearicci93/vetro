@@ -83,11 +83,13 @@ const makeDashboard = require('../service/dashboard.js');
         assert.equal(callOrder.filter(x => x.type === 'keysChanged').length, 1);
         assert.ok(callOrder.findIndex(x => x.type === 'keysChanged') < callOrder.findIndex(x => x.type === 'status'));
 
-        // 2. volume-keys.js + key-routing.js: single-shot backhold, ENXIO -> XF86Back, no repeat timer
+        // 2. volume-keys.js + key-routing.js: single-shot backhold, ENXIO -> XF86Back/XF86Exit, no repeat timer
         assert.ok(kr.dockWordCommand('backhold').includes("echo 'backhold' >&3"));
         assert.equal(vk.reinjectCommand('XF86Back'), '/usr/bin/input_keyevent XF86Back');
-        assert.deepEqual(vk.withTokens(['68'], {backHold: true}), ['68', '1:hold', '158:hold']);
-        assert.deepEqual(vk.withTokens(['1', '158:hold'], {backHold: true}), ['1', '158:hold']);
+        assert.equal(vk.reinjectCommand('XF86Exit'), '/usr/bin/input_keyevent XF86Exit');
+        assert.deepEqual(vk.withTokens(['68'], {backHold: true}), ['68', '1:hold', '158:hold', '174']);
+        assert.deepEqual(vk.withTokens(['1', '158:hold'], {backHold: true}), ['1', '158:hold', '174']);
+        assert.deepEqual(vk.withTokens(['1', '158:hold', '174'], {backHold: true}), ['1', '158:hold', '174']);
 
         const BH = {backHold: true};
         assert.equal(vk.wants({code: 1, action: 'hold', decision: 'blocked'}, BH), true);
@@ -95,6 +97,10 @@ const makeDashboard = require('../service/dashboard.js');
         assert.equal(vk.wants({code: 1, action: 'down', decision: 'hold-wait'}, BH), false);
         assert.equal(vk.wants({code: 1, action: 'down', decision: 'blocked'}, BH), false);
         assert.equal(vk.wants({code: 1, action: 'repeat', decision: 'blocked'}, BH), false);
+        assert.equal(vk.wants({code: 174, action: 'down', decision: 'blocked'}, BH), true);
+        assert.equal(vk.wants({code: 174, action: 'repeat', decision: 'blocked'}, BH), true);
+        assert.equal(vk.wants({code: 174, action: 'up', decision: 'blocked'}, BH), true);
+        assert.equal(vk.wants({code: 174, action: 'down', decision: 'native'}, BH), false);
 
         const written = [], reinjected = [];
         const rep = vk.repeater({write: (p, t) => written.push(t), reinject: k => reinjected.push(k)});
@@ -105,21 +111,31 @@ const makeDashboard = require('../service/dashboard.js');
         await rep.event({code: 1, action: 'up', decision: 'blocked'}, BH);
         assert.deepEqual(written, ['backhold\n'], 'up does not send another backhold');
 
+        const written174 = [];
+        const rep174 = vk.repeater({write: (p, t) => written174.push(t), reinject: k => reinjected.push(k)});
+        await rep174.event({code: 174, action: 'down', decision: 'blocked'}, BH);
+        await rep174.event({code: 174, action: 'repeat', decision: 'blocked'}, BH);
+        await rep174.event({code: 174, action: 'up', decision: 'blocked'}, BH);
+        assert.equal(rep174.active(), false, 'no repeat timer started for 174 backhold');
+        assert.deepEqual(written174, ['backhold\n'], 'code 174 sends single-shot backhold on down only');
+
         const nxReinj = [];
         const repNx = vk.repeater({
             write: () => { const e = new Error('no reader'); e.code = 'ENXIO'; throw e; },
             reinject: k => { nxReinj.push(k); }
         });
         await repNx.event({code: 158, action: 'hold', decision: 'blocked'}, BH);
-        assert.deepEqual(nxReinj, ['XF86Back'], 'ENXIO reinjects XF86Back');
+        await repNx.event({code: 174, action: 'down', decision: 'blocked'}, BH);
+        assert.deepEqual(nxReinj, ['XF86Back', 'XF86Exit'], 'ENXIO reinjects XF86Back and XF86Exit');
 
         // 3. vetro-ui.js: UI_BACK_HOLD_KEYS, reservedKeys, keysOf, needs, keysWhen
-        assert.equal(ui.UI_BACK_HOLD_KEYS.length, 2);
-        assert.deepEqual(ui.keysOf('backhold').map(k => k.code), ['1', '158']);
+        assert.equal(ui.UI_BACK_HOLD_KEYS.length, 3);
+        assert.deepEqual(ui.keysOf('backhold').map(k => k.code), ['1', '158', '174']);
         const resLive = ui.reservedKeys({enabled: true, idleMode: 'clock', idleBackHoldMode: 'minimize'});
         assert.deepEqual(resLive, [
             {code: '1', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true, live: true},
-            {code: '158', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true, live: true}
+            {code: '158', label: 'Back', owner: 'backhold', name: 'Hold Back', hold: true, live: true},
+            {code: '174', label: 'Exit', owner: 'backhold', name: 'Hold Back', live: true}
         ]);
         assert.equal(ui.reservedKeys({enabled: true, idleMode: 'off', idleBackHoldMode: 'minimize'})[0].live, false);
         assert.equal(ui.reservedKeys({mode: 'custom', customApp: 'x.y', idleMode: 'clock', idleBackHoldMode: 'force-close'})[0].live, false);
@@ -127,7 +143,7 @@ const makeDashboard = require('../service/dashboard.js');
         assert.deepEqual(ui.needs('backhold', {enabled: true, idleMode: 'clock'}, {status: {preference: {enabled: false}, policy: {mode: 'off'}}}), ['interception']);
         assert.deepEqual(ui.needs('backhold', {enabled: true, idleMode: 'clock'}, {status: {preference: {enabled: true}, policy: {mode: 'observe'}}}), ['listening']);
         assert.deepEqual(ui.needs('backhold', {enabled: true, idleMode: 'clock'}, {status: {preference: {enabled: true}, policy: {mode: 'filter'}}}), []);
-        assert.deepEqual(ui.keysWhen({enabled: false, idleMode: 'clock', idleBackHoldMode: 'minimize'}, 'vetro').map(k => k.code), ['1', '158']);
+        assert.deepEqual(ui.keysWhen({enabled: false, idleMode: 'clock', idleBackHoldMode: 'minimize'}, 'vetro').map(k => k.code), ['1', '158', '174']);
         assert.deepEqual(ui.keysWhen({enabled: false, idleMode: 'clock', idleBackHoldMode: 'minimize'}, 'custom'), []);
         new Function(ui.pageSource());
 
@@ -164,7 +180,7 @@ const makeDashboard = require('../service/dashboard.js');
             assert.deepEqual(JSON.parse(JSON.stringify(svc.context.keyFlags())), {volume: false, pad: false, backHold: true});
             const started = await svc.context.vetroUiInput();
             assert.equal(started, true);
-            assert.deepEqual(Array.from(starts[0].tokens), ['1', '158:hold'], 'user rule keeps 1 plain, 158 gets :hold');
+            assert.deepEqual(Array.from(starts[0].tokens), ['1', '158:hold', '174'], 'user rule keeps 1 plain, 158 gets :hold, 174 blocked');
 
             // hold on 158 goes to backhold (NOT user rule), hold-wait does not trigger Remapper
             svc.context.physical.onEvent({code: 158, action: 'down', decision: 'hold-wait'});
@@ -174,15 +190,24 @@ const makeDashboard = require('../service/dashboard.js');
             assert.ok(commands.some(c => c.includes("echo 'backhold' >&3")), '158:hold sends backhold to launcher');
             assert.ok(!commands.some(c => c.includes('example.back')));
 
+            // code 174 (Smart Control 2016 hold-Back) routes to backhold without triggering user rules
+            commands.length = 0;
+            svc.context.physical.onEvent({code: 174, action: 'down', decision: 'blocked'});
+            svc.context.physical.onEvent({code: 174, action: 'up', decision: 'blocked'});
+            await new Promise(r => setTimeout(r, 40));
+            assert.equal(commands.filter(c => c.includes("echo 'backhold' >&3")).length, 1, 'code 174 down sends single backhold');
+            assert.ok(!commands.some(c => c.includes('example.back')));
+
             // GET /remap exposes locked Back hold keys
             const remapRes = await new Promise(resolve => {
                 const req = new EventEmitter(); req.method = 'GET'; req.url = '/remap';
                 svc.router(req, {writeHead() {}, end(s) { resolve(JSON.parse(s)); }});
                 req.emit('end');
             });
-            assert.deepEqual(remapRes.reserved.map(k => ({code: k.code, hold: k.hold, live: k.live})), [
+            assert.deepEqual(remapRes.reserved.map(k => ({code: k.code, hold: !!k.hold, live: k.live})), [
                 {code: '1', hold: true, live: true},
-                {code: '158', hold: true, live: true}
+                {code: '158', hold: true, live: true},
+                {code: '174', hold: false, live: true}
             ]);
 
             // Turning backHold off stops auto-started interception when no user rules exist

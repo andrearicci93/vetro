@@ -1135,7 +1135,22 @@ namespace Launcher
 
             if (!_idleModel.Visible || _idleModel.IsLaunchSuppressed(now))
             {
-                TriggerProactiveForceClose(now, full, "exit");
+                string appTarget = full ?? "";
+                if (string.IsNullOrEmpty(appTarget)
+                    || appTarget == IdleBackdropModel.TvViewerAppId
+                    || IdleBackdropModel.IsGuardedSamsungHome(appTarget))
+                {
+                    appTarget = _idleModel.IsLaunchSuppressed(now) ? (_idleModel.LaunchTargetAppId ?? "") : "";
+                }
+                bool minimizeOnly;
+                bool? openDockOverride;
+                IdleBackdropModel.ResolveExitKeyAction(
+                    _idleConfig != null ? _idleConfig.BackHoldMode : IdleBackHoldMode.Off,
+                    _idleConfig != null && _idleConfig.BackHoldDock,
+                    appTarget,
+                    out minimizeOnly,
+                    out openDockOverride);
+                TriggerProactiveBackAction(now, full, "exit", minimizeOnly, openDockOverride);
                 return;
             }
             _lastExitForceCloseMono = now;
@@ -1227,9 +1242,10 @@ namespace Launcher
             {
                 appTarget = _idleModel.IsLaunchSuppressed(now) ? (_idleModel.LaunchTargetAppId ?? "") : "";
             }
-            bool isVetroApp = !string.IsNullOrEmpty(appTarget) && appTarget.StartsWith("vetrotvapp", StringComparison.OrdinalIgnoreCase);
-            bool minimizeOnly = isVetroApp || _idleConfig.BackHoldMode == IdleBackHoldMode.Minimize;
-            if (!TriggerProactiveBackAction(now, full, "back-hold", minimizeOnly, _idleConfig.BackHoldDock))
+            bool minimizeOnly;
+            bool? openDockOverride;
+            IdleBackdropModel.ResolveExitKeyAction(_idleConfig.BackHoldMode, _idleConfig.BackHoldDock, appTarget, out minimizeOnly, out openDockOverride);
+            if (!TriggerProactiveBackAction(now, full, "back-hold", minimizeOnly, openDockOverride))
             {
                 _lastExitForceCloseMono = now;
                 SendAsyncBackKey();
