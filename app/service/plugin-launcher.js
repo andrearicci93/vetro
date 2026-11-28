@@ -97,8 +97,9 @@ function definition(dock, options) {
                 if (p.action === 'refresh') return rebuild();
                 if (p.action === 'fixTizenTube') return dock.setFixTizenTube(p.on);
                 if (p.action === 'noMotion') return dock.setNoMotion(p.on);
-                if (p.action === 'hdrDim') return dock.setHdrDim(p.on);
+                if (p.action === 'hdrDim') return dock.setHdrDim(p.on, p.brightness);
                 if (p.action === 'hdrBrightness') return dock.setHdrBrightness(p.brightness);
+                if (p.action === 'uiBrightness') return dock.setUiBrightness(p.brightness);
                 if (p.action === 'closeIdleHome') return dock.setCloseIdleHome(p.on);
                 if (p.action === 'volumePill') return dock.setVolumePill(p.on);
                 if (p.action === 'volumeEdge') return dock.setVolumeEdge(p.edge);

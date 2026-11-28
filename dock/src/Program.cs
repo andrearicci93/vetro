@@ -35,7 +35,7 @@ namespace Launcher
         private static IntPtr _win, _anim, _idle, _fifoHandler, _dimClip;
         private static int _fifoFd = -1;
         private static bool _hdrDimEnabled, _isHdr, _dimAnimating;
-        private static int _hdrBrightness = HdrDim.DefaultBrightness;
+        private static int _hdrBrightness = HdrDim.DefaultBrightness, _uiBrightness = HdrDim.DefaultBaseBrightness;
         private static double _dimFactor = 1.0, _dimFrom = 1.0, _dimTarget = 1.0, _dimStart = 0.0;
         private static IntPtr _dimAnim;
         private static readonly Efl.TaskCb DimAnimCb = OnDimFrame;
@@ -346,7 +346,7 @@ namespace Launcher
 
         private static void ApplyHdrDim(bool allowAnimate = true)
         {
-            _dimTarget = HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness);
+            _dimTarget = HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness, _uiBrightness);
             if (Math.Abs(_dimTarget - _dimFactor) < 0.001 || !allowAnimate || Controller.Instant || !AnyOverlayVisible())
             {
                 StopDimAnim();
@@ -382,17 +382,20 @@ namespace Launcher
         {
             bool enabled;
             int brightness;
-            if (!HdrDim.TryParseCommandArgs(rawArgs, out enabled, out brightness))
+            int? baseOpt;
+            if (!HdrDim.TryParseCommandArgs(rawArgs, out enabled, out brightness, out baseOpt))
             {
                 Log("hdr: bad args \"" + rawArgs + "\"");
                 return;
             }
-            if (enabled == _hdrDimEnabled && brightness == _hdrBrightness) return;
+            int nextBase = baseOpt.HasValue ? baseOpt.Value : _uiBrightness;
+            if (enabled == _hdrDimEnabled && brightness == _hdrBrightness && nextBase == _uiBrightness) return;
             _hdrDimEnabled = enabled;
             _hdrBrightness = brightness;
+            _uiBrightness = nextBase;
             StartOrStopHdrWatcher();
             ApplyHdrDim(true);
-            Log("hdr: reconfigured enabled=" + _hdrDimEnabled + " brightness=" + _hdrBrightness + " active=" + _isHdr + " target=" + _dimTarget.ToString("0.00", CultureInfo.InvariantCulture));
+            Log("hdr: reconfigured enabled=" + _hdrDimEnabled + " hdr=" + _hdrBrightness + " base=" + _uiBrightness + " active=" + _isHdr + " target=" + _dimTarget.ToString("0.00", CultureInfo.InvariantCulture));
         }
 
         private static readonly byte[] SmackStar = { (byte)'*' };
@@ -2819,6 +2822,7 @@ namespace Launcher
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; PadMotion.Instant = true; VolumeFade.Instant = true; }
             _hdrDimEnabled = Flag(args, "--hdr-dim");
             _hdrBrightness = HdrDim.ParseBrightness(Arg(args, "--hdr-brightness"));
+            _uiBrightness = HdrDim.ParseBaseBrightness(Arg(args, "--ui-brightness"));
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
@@ -2953,6 +2957,7 @@ namespace Launcher
                 }
                 _dock = _appsDock;
                 StartOrStopHdrWatcher();
+                ApplyHdrDim(false);
                 // The flags the tuner reads are cleared now (one left by a launcher that was killed), which also runs their first
                 // use here and not inside the first show.
                 OverlayFlag.Pid = Libc.getpid().ToString(System.Globalization.CultureInfo.InvariantCulture);

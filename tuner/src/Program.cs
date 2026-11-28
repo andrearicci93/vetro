@@ -116,8 +116,9 @@ namespace Tuner
         private static IntPtr _win;
         private static Veil _veil;                    // the one veil under the Banner, Info and the guide
         private static BannerView _banner;
-        private static bool _hdrCliDim, _hdrDimEnabled, _isHdr;
+        private static bool _hdrCliDim, _hdrDimEnabled, _isHdr, _hdrSynced;
         private static int _hdrCliBrightness = HdrDim.DefaultBrightness, _hdrBrightness = HdrDim.DefaultBrightness;
+        private static int _uiCliBrightness = HdrDim.DefaultBaseBrightness, _uiBrightness = HdrDim.DefaultBaseBrightness;
         private static HdrWatcher _hdrWatcher;
         private static InfoView _infoView;
         private static InfoData _info;
@@ -182,6 +183,7 @@ namespace Tuner
             if (Flag(args, "--no-motion")) Anim.Enabled = false;
             _hdrCliDim = Flag(args, "--hdr-dim");
             _hdrCliBrightness = HdrDim.ParseBrightness(StrArg(args, "--hdr-brightness", null));
+            _uiCliBrightness = HdrDim.ParseBaseBrightness(StrArg(args, "--ui-brightness", null));
             Anim.Switch = () => _features.On("motion");
             OpenLog();
             if (takeover != null && _takeoverApp == null) Log("takeover: bad app id ignored");
@@ -274,18 +276,22 @@ namespace Tuner
         {
             bool? dimOverride = _features.HdrDimOverride;
             int? brightOverride = _features.HdrBrightnessOverride;
+            int? uiOverride = _features.UiBrightnessOverride;
             bool enabled = dimOverride.HasValue ? dimOverride.Value : _hdrCliDim;
             int brightness = brightOverride.HasValue ? brightOverride.Value : _hdrCliBrightness;
-            if (enabled == _hdrDimEnabled && brightness == _hdrBrightness) return;
+            int uiBrightness = uiOverride.HasValue ? uiOverride.Value : _uiCliBrightness;
+            if (_hdrSynced && enabled == _hdrDimEnabled && brightness == _hdrBrightness && uiBrightness == _uiBrightness) return;
+            _hdrSynced = true;
             _hdrDimEnabled = enabled;
             _hdrBrightness = brightness;
+            _uiBrightness = uiBrightness;
             if (enabled && _hdrWatcher == null)
             {
                 _hdrWatcher = new HdrWatcher(Log, isHdr =>
                 {
                     _isHdr = isHdr;
                     ApplyTunerHdrDim();
-                    Log("hdr: active=" + isHdr + " factor=" + HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    Log("hdr: active=" + isHdr + " factor=" + HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness, _uiBrightness).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
                 });
             }
             else if (!enabled && _hdrWatcher != null)
@@ -299,7 +305,7 @@ namespace Tuner
 
         private static void ApplyTunerHdrDim()
         {
-            Surface.SetDimFactor(HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness), _active);
+            Surface.SetDimFactor(HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness, _uiBrightness), _active);
         }
 
         // ---- showing and hiding the whole tuner ----

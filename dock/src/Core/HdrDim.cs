@@ -5,15 +5,16 @@ using System.Globalization;
 namespace Launcher.Core
 {
     /// <summary>
-    /// Pure logic for automatic HDR overlay dimming (OLED burn-in protection):
-    /// brightness curve (ported from NuvioTVSmart, 0-100% -> 30%-100% RGB luminance),
+    /// Pure logic for native overlay brightness and automatic HDR dimming (OLED burn-in protection):
+    /// direct RGB luminance multiplier (20%-100% -> 0.20-1.00) for base (SDR) and HDR overlays,
     /// premultiplied RGBA channel scaling, and avocd D-Bus GetHdrStatus / HdrModeChanged parsing.
     /// </summary>
     internal static class HdrDim
     {
-        public const int MinBrightness = 0;
+        public const int MinBrightness = 20;
         public const int MaxBrightness = 100;
-        public const int DefaultBrightness = 40;
+        public const int DefaultBaseBrightness = 100;
+        public const int DefaultBrightness = 60;
         public const int BrightnessStep = 10;
         public const double FadeSeconds = 0.24;
 
@@ -32,11 +33,18 @@ namespace Launcher.Core
 
         public static bool TryParseCommandArgs(string args, out bool enabled, out int brightness)
         {
+            int? baseBrightness;
+            return TryParseCommandArgs(args, out enabled, out brightness, out baseBrightness);
+        }
+
+        public static bool TryParseCommandArgs(string args, out bool enabled, out int brightness, out int? baseBrightness)
+        {
             enabled = false;
             brightness = DefaultBrightness;
+            baseBrightness = null;
             if (string.IsNullOrWhiteSpace(args)) return false;
             string[] parts = args.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length != 2) return false;
+            if (parts.Length < 2 || parts.Length > 3) return false;
             if (parts[0] == "1") enabled = true;
             else if (parts[0] == "0") enabled = false;
             else return false;
@@ -44,6 +52,13 @@ namespace Launcher.Core
             if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out value)) return false;
             if (value < MinBrightness || value > MaxBrightness) return false;
             brightness = value;
+            if (parts.Length == 3)
+            {
+                int baseVal;
+                if (!int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out baseVal)) return false;
+                if (baseVal < MinBrightness || baseVal > MaxBrightness) return false;
+                baseBrightness = baseVal;
+            }
             return true;
         }
 
@@ -54,23 +69,30 @@ namespace Launcher.Core
             return value;
         }
 
-        public static int ParseBrightness(string raw)
+        public static int ParseBrightness(string raw, int fallback = DefaultBrightness)
         {
-            if (string.IsNullOrWhiteSpace(raw)) return DefaultBrightness;
+            if (string.IsNullOrWhiteSpace(raw)) return fallback;
             int value;
             if (!int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
-                return DefaultBrightness;
+                return fallback;
             return NormalizeBrightness(value);
         }
 
-        /// <summary>
-        /// RGB luminance multiplier in [0.30, 1.00] when HDR dimming is active; 1.0 otherwise.
-        /// Maps 0..100 onto 30%..100% so 0% still keeps overlays readable.
-        /// </summary>
-        public static double Factor(bool enabled, bool isHdr, int brightness)
+        public static int ParseBaseBrightness(string raw)
         {
-            if (!enabled || !isHdr) return 1.0;
-            return (0.7 * NormalizeBrightness(brightness) + 30.0) / 100.0;
+            return ParseBrightness(raw, DefaultBaseBrightness);
+        }
+
+        /// <summary>
+        /// Direct RGB luminance multiplier in [0.20, 1.00].
+        /// Uses <paramref name="baseBrightness"/> outside HDR (or when HDR dimming is off),
+        /// and <c>min(baseBrightness, brightness)</c> during HDR so HDR overlays never brighten past SDR.
+        /// </summary>
+        public static double Factor(bool enabled, bool isHdr, int brightness, int baseBrightness = MaxBrightness)
+        {
+            int basePct = NormalizeBrightness(baseBrightness);
+            int effective = (enabled && isHdr) ? Math.Min(basePct, NormalizeBrightness(brightness)) : basePct;
+            return effective >= MaxBrightness ? 1.0 : effective / 100.0;
         }
 
         /// <summary>Scales a premultiplied RGB channel by <paramref name="factor"/> while keeping alpha unchanged.</summary>

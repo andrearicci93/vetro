@@ -10,8 +10,8 @@ namespace Launcher.Core
     /// Newline-delimited command stream read from the control FIFO ("show", "hide", "toggle", and the volume keys
     /// "volup", "voldown", "volmute" and "pad" that the Vetro service forwards when it swallows the remote's volume and 123 keys, and
     /// "rescan", which the service sends when its remote bridge has just made a new forwarding node, so it is watched at once, "reload",
-    /// which it sends when it has written the app lists again after an app was installed or removed, and "hdr &lt;0|1&gt; &lt;0..100&gt;" for
-    /// live HDR dimming updates without restarting the launcher).
+    /// which it sends when it has written the app lists again after an app was installed or removed, and "hdr &lt;0|1&gt; &lt;20..100&gt; [20..100]" for
+    /// live base/HDR overlay brightness updates without restarting the launcher).
     /// Unknown words are dropped, a line without a terminator waits for more bytes, and a
     /// writer that never sends a newline cannot grow the buffer past <see cref="MaxLine"/>.
     /// </summary>

@@ -137,7 +137,10 @@ Tuner.prototype.writeFeatures = function () {
     try { hdr = this.hdrDim && this.hdrDim(); } catch (e) { /* unreadable launcher state: hdr dim stays off */ }
     if (hdr && hdr.enabled === true) {
         lines.push('hdr_dim=1');
-        if (typeof hdr.brightness === 'number' && hdr.brightness >= 0 && hdr.brightness <= 100) lines.push('hdr_brightness=' + Math.round(hdr.brightness));
+        if (typeof hdr.brightness === 'number' && hdr.brightness >= 20 && hdr.brightness <= 100) lines.push('hdr_brightness=' + Math.round(hdr.brightness));
+    }
+    if (hdr && typeof hdr.uiBrightness === 'number' && hdr.uiBrightness >= 20 && hdr.uiBrightness < 100) {
+        lines.push('ui_brightness=' + Math.round(hdr.uiBrightness));
     }
     try { atomicFile.write(fs, this.featuresFile, lines.join('\n') + (lines.length ? '\n' : '')); }
     catch (e) { throw new Error('The tuner switches could not be saved: ' + e.message); }

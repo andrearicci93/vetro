@@ -18,14 +18,17 @@ namespace Tuner.Core
         private HashSet<string> _off = new HashSet<string>();
         private bool? _hdrDimOverride;
         private int? _hdrBrightnessOverride;
+        private int? _uiBrightnessOverride;
         private long _readAt = long.MinValue;
 
         public Features(string path, Func<long> clock = null) { _path = path; _clock = clock ?? (() => Environment.TickCount64); }
 
         public bool HdrDimEnabled { get { Refresh(); return _hdrDimOverride ?? false; } }
         public int HdrBrightness { get { Refresh(); return _hdrBrightnessOverride ?? HdrDim.DefaultBrightness; } }
+        public int UiBrightness { get { Refresh(); return _uiBrightnessOverride ?? HdrDim.DefaultBaseBrightness; } }
         public bool? HdrDimOverride { get { Refresh(); return _hdrDimOverride; } }
         public int? HdrBrightnessOverride { get { Refresh(); return _hdrBrightnessOverride; } }
+        public int? UiBrightnessOverride { get { Refresh(); return _uiBrightnessOverride; } }
 
         public static HashSet<string> Parse(string text)
         {
@@ -46,15 +49,23 @@ namespace Tuner.Core
         {
             bool? ovEnabled;
             int? ovBrightness;
-            ParseHdrConfig(text, out ovEnabled, out ovBrightness);
+            int? ovUiBrightness;
+            ParseHdrConfig(text, out ovEnabled, out ovBrightness, out ovUiBrightness);
             enabled = ovEnabled ?? false;
             brightness = ovBrightness ?? HdrDim.DefaultBrightness;
         }
 
         public static void ParseHdrConfig(string text, out bool? enabled, out int? brightness)
         {
+            int? ovUiBrightness;
+            ParseHdrConfig(text, out enabled, out brightness, out ovUiBrightness);
+        }
+
+        public static void ParseHdrConfig(string text, out bool? enabled, out int? brightness, out int? uiBrightness)
+        {
             enabled = null;
             brightness = null;
+            uiBrightness = null;
             if (text == null) return;
             foreach (string raw in text.Split('\n'))
             {
@@ -65,6 +76,7 @@ namespace Tuner.Core
                 string val = line.Substring(eq + 1).Trim();
                 if (name == "hdr_dim") enabled = val == "1";
                 else if (name == "hdr_brightness") brightness = HdrDim.ParseBrightness(val);
+                else if (name == "ui_brightness") uiBrightness = HdrDim.ParseBaseBrightness(val);
             }
         }
 
@@ -79,13 +91,14 @@ namespace Tuner.Core
                 {
                     string text = File.Exists(_path) ? File.ReadAllText(_path) : null;
                     _off = Parse(text);
-                    ParseHdrConfig(text, out _hdrDimOverride, out _hdrBrightnessOverride);
+                    ParseHdrConfig(text, out _hdrDimOverride, out _hdrBrightnessOverride, out _uiBrightnessOverride);
                 }
                 catch (Exception)
                 {
                     _off = new HashSet<string>();
                     _hdrDimOverride = null;
                     _hdrBrightnessOverride = null;
+                    _uiBrightnessOverride = null;
                 }
             }
         }

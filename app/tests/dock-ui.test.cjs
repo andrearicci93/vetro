@@ -16,6 +16,8 @@ const sandbox = {document: {getElementById: el, querySelectorAll: () => [], quer
         else if (url === '/dock') {
             if (body.action === 'enable') dock = Object.assign({}, dock, {enabled: true, running: true, apps: {count: 11, skipped: [{item: 'd/webapp@gone', reason: 'Not installed'}]}, log: 'elm_run'});
             if (body.action === 'fixTizenTube') dock = Object.assign({}, dock, {fixTizenTube: body.on});
+            if (body.action === 'uiBrightness') dock = Object.assign({}, dock, {uiBrightness: body.brightness});
+            if (body.action === 'hdrDim') dock = Object.assign({}, dock, {hdrDim: body.on}, body.brightness !== undefined ? {hdrBrightness: body.brightness} : {});
             if (body.action === 'showHomeSources' || body.action === 'useSourceImages') dock=Object.assign({},dock,{[body.action]:body.on});
             if (body.action === 'disable') dock = Object.assign({}, dock, {enabled: false, running: false, mode: 'off'});   // the service derives mode from the state
             if (body.action === 'enableCustom') dock = Object.assign({}, dock, {mode: 'custom', customApp: body.appId, running: true});
@@ -153,6 +155,24 @@ const tick = () => new Promise(r => setImmediate(r));
     const source={slug:'in-hdmi1',label:'HDMI 1',appId:'source:13'};
     assert.match(sandbox.previewMarkup({entries:[source],useSourceImages:false}),/slug=in-hdmi1&images=0/);
     assert.match(sandbox.previewMarkup({entries:[source],useSourceImages:true}),/slug=in-hdmi1&images=1/,'source artwork choice invalidates the preview image cache');
+
+    // UI brightness card: base (SDR) and optional HDR selects, SDR limit chip, and single-request HDR changes.
+    assert.match(el('dockBody').innerHTML, /data-quick-item="ui-brightness"/);
+    assert.match(el('dockBody').innerHTML, /data-dock-ui-brightness/);
+    assert.match(el('dockBody').innerHTML, /data-dock-hdr-mode/);
+    await el('dock').onchange({target: {dataset: {dockUiBrightness: ''}, value: '50'}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.body).pop().body, {action: 'uiBrightness', brightness: 50});
+    assert.match(el('dockBody').innerHTML, /50%/);
+    await el('dock').onchange({target: {dataset: {dockHdrMode: ''}, value: '70'}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.body).pop().body, {action: 'hdrDim', on: true, brightness: 70});
+    assert.match(el('dockBody').innerHTML, /SDR · 50%/);
+    assert.match(el('dockBody').innerHTML, /HDR · 50% \(SDR limit\)/);
+    await el('dock').onchange({target: {dataset: {dockHdrMode: ''}, value: '30'}}); await tick(); await tick(); await tick();
+    assert.match(el('dockBody').innerHTML, /HDR · 30%/);
+    assert.doesNotMatch(el('dockBody').innerHTML, /SDR limit/);
+    await el('dock').onchange({target: {dataset: {dockHdrMode: ''}, value: 'off'}}); await tick(); await tick(); await tick();
+    assert.deepEqual(calls.filter(c => c.body).pop().body, {action: 'hdrDim', on: false});
+    await el('dock').onchange({target: {dataset: {dockUiBrightness: ''}, value: '100'}}); await tick(); await tick(); await tick();
 
     // The Custom launcher tab: the user's own app on the Home key.
     const reload = async () => { await el('dock').onclick({target: {closest: () => ({dataset: {dockReload: ''}})}}); await tick(); await tick(); };

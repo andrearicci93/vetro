@@ -5,7 +5,7 @@
 const assert = require('assert').strict, EventEmitter = require('events'), path = require('path');
 const b = require('../service/settings-backup.js');
 
-const dock = {enabled: true, customApp: null, fixTizenTube: true, noMotion: true, hdrDim: true, hdrBrightness: 30, closeIdleHome: false, volumePill: true, volumeEdge: 'right', numberPad: false,
+const dock = {enabled: true, customApp: null, fixTizenTube: true, noMotion: true, hdrDim: true, hdrBrightness: 30, uiBrightness: 80, closeIdleHome: false, volumePill: true, volumeEdge: 'right', numberPad: false,
     cards: ['tasks', 'shard:clock'], showHomeSources: true, useSourceImages: false, appStore: 'samsung',
     // recorded about this TV: never in the file
     autorunWas: 1, customHomeDisabled: true, since: 123, build: 'x', row: {order: ['app:secret.row'], hidden: [], labels: {}}, lastCards: ['audio']};
@@ -47,6 +47,8 @@ assert.throws(() => b.parse(Object.assign({}, file, {schemaVersion: 2})), /newer
 assert.throws(() => b.parse(Object.assign({}, file, {schemaVersion: '1'})), /no valid version/);
 const odd = b.parse(Object.assign({}, file, {sections: Object.assign({}, file.sections, {tuner: {enabled: 'yes'}, launcher: Object.assign({}, file.sections.launcher, {cards: ['rm -rf']}), future: {x: 1}})}));
 assert.deepEqual(odd.dropped.sort(), ['launcher', 'tuner']); assert.ok(!('future' in odd.sections), 'an unknown section is ignored');
+const lowUi = b.parse(Object.assign({}, file, {sections: Object.assign({}, file.sections, {launcher: Object.assign({}, file.sections.launcher, {uiBrightness: 10})})}));
+assert.deepEqual(lowUi.dropped, ['launcher'], 'uiBrightness below 20 is rejected');
 
 // 3. The same TV: nothing to change
 const curOf = (s, extra) => Object.assign({sections: b.build(s).sections, root: s.root, shards: {clock: {enabled: true}},
@@ -65,6 +67,7 @@ assert.equal(p.steps[0].label, 'Extra performance mode off', 'turning Performanc
 assert.ok(at('Reduce motion on') < at('Turn on the Vetro launcher'), 'switches before the launcher starts with them');
 assert.ok(at('Dim UI in HDR on') < at('Turn on the Vetro launcher'), 'HDR dim switch before launcher starts');
 assert.ok(at('HDR overlay brightness: 30%') < at('Turn on the Vetro launcher'), 'HDR brightness before launcher starts');
+assert.ok(at('UI overlay brightness: 80%') < at('Turn on the Vetro launcher'), 'UI brightness before launcher starts');
 assert.ok(at('Turn on Vetro TV Tuner') > at('Turn on the Vetro launcher'));
 assert.deepEqual(p.steps.filter(s => s.section === 'quickSettings').map(s => [s.body.id, s.confirm]), [['alexa', true], ['tvplus', true]], 'partial groups are switched off again, each needs the confirmation');
 assert.ok(!p.steps.some(s => s.path === '/quick' && s.body.off !== true), 'loading never switches a group back on');

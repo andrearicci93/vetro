@@ -5,15 +5,16 @@ using System.Globalization;
 namespace Tuner.Core
 {
     /// <summary>
-    /// Pure logic for automatic HDR overlay dimming (OLED burn-in protection):
-    /// brightness curve (ported from NuvioTVSmart, 0-100% -> 30%-100% RGB luminance),
+    /// Pure logic for native overlay brightness and automatic HDR dimming (OLED burn-in protection):
+    /// direct RGB luminance multiplier (20%-100% -> 0.20-1.00) for base (SDR) and HDR overlays,
     /// premultiplied RGBA channel scaling, and avocd D-Bus GetHdrStatus / HdrModeChanged parsing.
     /// </summary>
     internal static class HdrDim
     {
-        public const int MinBrightness = 0;
+        public const int MinBrightness = 20;
         public const int MaxBrightness = 100;
-        public const int DefaultBrightness = 40;
+        public const int DefaultBaseBrightness = 100;
+        public const int DefaultBrightness = 60;
         public const int BrightnessStep = 10;
 
         public static int NormalizeBrightness(int value)
@@ -23,23 +24,30 @@ namespace Tuner.Core
             return value;
         }
 
-        public static int ParseBrightness(string raw)
+        public static int ParseBrightness(string raw, int fallback = DefaultBrightness)
         {
-            if (string.IsNullOrWhiteSpace(raw)) return DefaultBrightness;
+            if (string.IsNullOrWhiteSpace(raw)) return fallback;
             int value;
             if (!int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
-                return DefaultBrightness;
+                return fallback;
             return NormalizeBrightness(value);
         }
 
-        /// <summary>
-        /// RGB luminance multiplier in [0.30, 1.00] when HDR dimming is active; 1.0 otherwise.
-        /// Maps 0..100 onto 30%..100% so 0% still keeps overlays readable.
-        /// </summary>
-        public static double Factor(bool enabled, bool isHdr, int brightness)
+        public static int ParseBaseBrightness(string raw)
         {
-            if (!enabled || !isHdr) return 1.0;
-            return (0.7 * NormalizeBrightness(brightness) + 30.0) / 100.0;
+            return ParseBrightness(raw, DefaultBaseBrightness);
+        }
+
+        /// <summary>
+        /// Direct RGB luminance multiplier in [0.20, 1.00].
+        /// Uses <paramref name="baseBrightness"/> outside HDR (or when HDR dimming is off),
+        /// and <c>min(baseBrightness, brightness)</c> during HDR so HDR overlays never brighten past SDR.
+        /// </summary>
+        public static double Factor(bool enabled, bool isHdr, int brightness, int baseBrightness = MaxBrightness)
+        {
+            int basePct = NormalizeBrightness(baseBrightness);
+            int effective = (enabled && isHdr) ? Math.Min(basePct, NormalizeBrightness(brightness)) : basePct;
+            return effective >= MaxBrightness ? 1.0 : effective / 100.0;
         }
 
         /// <summary>Scales a premultiplied RGB channel by <paramref name="factor"/> while keeping alpha unchanged.</summary>

@@ -31,7 +31,11 @@ var QUICK_NEVER = ['samsung-home'];
 var ROOT_READ = ['quickSettings', 'dns'];
 
 function bool(v) { return v === true; }
-function hdrBrightnessInt(v) { return typeof v === 'number' && isFinite(v) && Math.floor(v) === v && v >= 0 && v <= 100 ? v : 40; }
+function brightnessInt(v, fallback) {
+    if (typeof v !== 'number' || !isFinite(v) || Math.floor(v) !== v || v < 0 || v > 100) return fallback;
+    return v < 20 ? 20 : v;
+}
+function isValidBrightness(v) { return typeof v === 'number' && isFinite(v) && Math.floor(v) === v && v >= 20 && v <= 100; }
 function str(v, max) { return typeof v === 'string' && v.length <= max ? v : null; }
 function ids(list, re, max) {
     return (Array.isArray(list) ? list : []).filter(function (x, i, a) { return typeof x === 'string' && re.test(x) && a.indexOf(x) === i; }).slice(0, max);
@@ -45,7 +49,7 @@ function build(src) {
     var d = src.dock;
     if (d) s.launcher = {mode: d.customApp ? 'custom' : d.enabled ? 'vetro' : 'off', customApp: d.customApp || null,
         fixTizenTube: bool(d.fixTizenTube), closeIdleHome: d.closeIdleHome !== false, volumePill: bool(d.volumePill), numberPad: bool(d.numberPad),
-        noMotion: bool(d.noMotion), hdrDim: bool(d.hdrDim), hdrBrightness: hdrBrightnessInt(d.hdrBrightness),
+        noMotion: bool(d.noMotion), hdrDim: bool(d.hdrDim), hdrBrightness: brightnessInt(d.hdrBrightness, 60), uiBrightness: brightnessInt(d.uiBrightness, 100),
         showHomeSources: bool(d.showHomeSources), useSourceImages: bool(d.useSourceImages), connectedSourcesOnly: bool(d.connectedSourcesOnly), hideTvSource: bool(d.hideTvSource),
         volumeEdge: EDGES.indexOf(d.volumeEdge) >= 0 ? d.volumeEdge : 'left', appStore: d.appStore === 'samsung' ? 'samsung' : 'tvstore',
         cards: ids(d.cards, CARD_RE, 3)};
@@ -95,7 +99,8 @@ function parse(file) {
     take('launcher', function (v) {
         return obj(v) && ['vetro', 'custom', 'off'].indexOf(v.mode) >= 0 && (v.mode !== 'custom' || (typeof v.customApp === 'string' && ID_RE.test(v.customApp))) &&
             DOCK_SWITCHES.every(function (k) { return v[k] === undefined || isBool(v[k]); }) &&
-            (v.hdrBrightness === undefined || (typeof v.hdrBrightness === 'number' && isFinite(v.hdrBrightness) && Math.floor(v.hdrBrightness) === v.hdrBrightness && v.hdrBrightness >= 0 && v.hdrBrightness <= 100)) &&
+            (v.hdrBrightness === undefined || isValidBrightness(v.hdrBrightness)) &&
+            (v.uiBrightness === undefined || isValidBrightness(v.uiBrightness)) &&
             (v.volumeEdge === undefined || EDGES.indexOf(v.volumeEdge) >= 0) && (v.appStore === undefined || STORES.indexOf(v.appStore) >= 0) &&
             (v.cards === undefined || (Array.isArray(v.cards) && v.cards.length <= 3 && v.cards.every(function (c) { return typeof c === 'string' && CARD_RE.test(c); })));
     });
@@ -168,6 +173,9 @@ function plan(want, cur) {
         if (f.hdrBrightness !== undefined && f.hdrBrightness !== now.hdrBrightness) {
             var hdrWillRun = f.hdrDim !== undefined ? f.hdrDim : now.hdrDim;
             step('launcher', 'HDR overlay brightness: ' + f.hdrBrightness + '%', '/dock', {action: 'hdrBrightness', brightness: f.hdrBrightness}, running && hdrWillRun);
+        }
+        if (f.uiBrightness !== undefined && f.uiBrightness !== now.uiBrightness) {
+            step('launcher', 'UI overlay brightness: ' + f.uiBrightness + '%', '/dock', {action: 'uiBrightness', brightness: f.uiBrightness}, running);
         }
         if (f.volumeEdge && f.volumeEdge !== now.volumeEdge) step('launcher', 'Volume bar position: ' + f.volumeEdge, '/dock', {action: 'volumeEdge', edge: f.volumeEdge}, running);
         if (f.appStore && f.appStore !== now.appStore) step('launcher', 'Store in All apps: ' + (f.appStore === 'samsung' ? 'Samsung' : 'TV-Store'), '/dock', {action: 'appStore', store: f.appStore}, false);

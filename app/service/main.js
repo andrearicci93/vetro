@@ -89,7 +89,7 @@ var dock = new dockModule.Dock({execute: agentExecute, build: nativeBuild, port:
 var tunerModule = require('./tuner.js');
 var tuner = new tunerModule.Tuner({execute: agentExecute, build: nativeBuild,
     noMotion: function () { return dock.readState().noMotion; },
-    hdrDim: function () { var s = dock.readState(); return {enabled: s.hdrDim === true, brightness: s.hdrBrightness}; },
+    hdrDim: function () { var s = dock.readState(); return {enabled: s.hdrDim === true, brightness: s.hdrBrightness, uiBrightness: s.uiBrightness}; },
     // The Guide key is held back by the remote bridge only while the tuner is on: the bridge restarts with the new key list, if it is on.
     onChange: function () { if (inputPreference().enabled) { stopInput('keys'); return vetroUiInput(); } }});
 var hbbtv = new (require('./hbbtv.js').Control)(agentExecute);
