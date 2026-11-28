@@ -74,6 +74,10 @@ namespace Tuner.Ui
     /// </summary>
     internal sealed class Surface
     {
+        private static readonly System.Collections.Generic.List<Surface> All = new System.Collections.Generic.List<Surface>();
+        private static readonly object DimAnimKey = new object();
+        private static double _dimFactor = 1.0;
+
         private readonly IntPtr _evas, _clip;
         private readonly string _assets;
         private bool _drawn;      // the clipper is shown (true also while fading out)
@@ -85,8 +89,29 @@ namespace Tuner.Ui
             _clip = Efl.evas_object_rectangle_add(evas);
             Efl.evas_object_move(_clip, 0, 0);
             Efl.evas_object_resize(_clip, screenW, screenH);
+            All.Add(this);
             SetAlpha(255);
             Efl.evas_object_hide(_clip);
+        }
+
+        /// <summary>Sets the RGB luminance multiplier (0..1) applied to every tuner surface while keeping opacity intact.</summary>
+        public static void SetDimFactor(double factor, bool animate = false)
+        {
+            double target = double.IsNaN(factor) || double.IsInfinity(factor) ? 1.0 : Math.Max(0.0, Math.Min(1.0, factor));
+            if (!animate || !Anim.On || Math.Abs(target - _dimFactor) < 0.001)
+            {
+                Anim.Cancel(DimAnimKey);
+                ApplyDimFactor(target);
+                return;
+            }
+            double from = _dimFactor;
+            Anim.Run(DimAnimKey, 0.24, 0, Tuner.Core.Motion.Ease, p => ApplyDimFactor(from + (target - from) * p));
+        }
+
+        private static void ApplyDimFactor(double factor)
+        {
+            _dimFactor = factor;
+            foreach (Surface s in All) s.SetAlpha(s._alpha);
         }
 
         public bool Visible { get; private set; }
@@ -137,7 +162,12 @@ namespace Tuner.Ui
 
         private void Draw() { if (!_drawn) { _drawn = true; Efl.evas_object_show(_clip); } }
         private void Undraw() { _drawn = false; Efl.evas_object_hide(_clip); SetAlpha(0); }
-        private void SetAlpha(int a) { _alpha = a; Efl.evas_object_color_set(_clip, a, a, a, a); }
+        private void SetAlpha(int a)
+        {
+            _alpha = a;
+            int m = HdrDim.Channel(a, _dimFactor);
+            Efl.evas_object_color_set(_clip, m, m, m, a);
+        }
 
         private IntPtr Clipped(IntPtr obj) { Efl.evas_object_clip_set(obj, _clip); Efl.evas_object_show(obj); return obj; }
 

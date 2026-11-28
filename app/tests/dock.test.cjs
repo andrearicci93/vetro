@@ -22,11 +22,16 @@ function fixture(options) {
         fs.writeFileSync(path.join(dir, 'tvlauncher-dotnet.dll'), 'x');
         fs.writeFileSync(path.join(dir, 'res', 'glass_tile.png'), 'x');
     }
-    const tv = {autorun: options.autorun == null ? 1 : options.autorun, running: options.running === true, scripts: [], neverStarts: options.neverStarts === true, csfs: true, clock: 1000000,
+    const tv = {autorun: options.autorun == null ? 1 : options.autorun, running: options.running === true, scripts: [], hdrCommands: [], neverStarts: options.neverStarts === true, noFifo: options.noFifo === true, csfs: true, clock: 1000000,
         homeData: options.homeData == null ? HOME_DATA : options.homeData, log: options.log || ''};
     const execute = async function (cmd) {
         tv.scripts.push(cmd);
         if (/^app_launcher -k /.test(cmd)) { tv.csfs = false; return {exit_code: 0, stdout: ''}; }
+        if (cmd.includes('echo "hdr ')) {
+            const m = /echo "(hdr [^"]+)"/.exec(cmd);
+            if (tv.running && !tv.noFifo && m) { tv.hdrCommands.push(m[1]); return {exit_code: 0, stdout: 'live\n'}; }
+            return {exit_code: 0, stdout: ''};
+        }
         const script = /^echo \S+ \| base64 -d \| sh$/.test(cmd) ? Buffer.from(cmd.split(' ')[1], 'base64').toString() : cmd;   // the running check goes unwrapped
         // Samsung's Home closed by the launcher's script (closeHomeOnce, Close idle Samsung Home): not while it is on screen
         if (script.includes('current_fullscreen_appid') && script.includes('app_launcher -k')) {
@@ -97,6 +102,75 @@ function fixture(options) {
     f.tv.neverStarts = true;
     await assert.rejects(f.dock.setNoMotion(true), /did not start/);
     assert.equal(f.dock.readState().noMotion, false, 'failed restart restores the selection preference');
+
+    // Base overlay brightness and HDR GUI dimming are persisted, update live over FIFO without restarting a running launcher, notify tuner, and roll back if FIFO fallback fails.
+    f = fixture();
+    await f.dock.enable();
+    let hdrNotified = 0;
+    f.dock.onHdrDimChange = () => { hdrNotified++; };
+    assert.equal(f.dock.readState().hdrDim, false);
+    assert.equal(f.dock.readState().hdrBrightness, 60);
+    assert.equal(f.dock.readState().uiBrightness, 100);
+    assert.ok(!f.tv.started.includes('--ui-brightness'), 'default 100% omits --ui-brightness');
+    f.tv.started = '';
+    // Changing base brightness while HDR dim is off still updates live over FIFO.
+    let hdrStatus = await f.dock.setUiBrightness(70);
+    assert.equal(hdrStatus.uiBrightness, 70);
+    assert.equal(hdrNotified, 1);
+    assert.equal(f.tv.started, '', 'live FIFO does not restart running launcher for base brightness');
+    assert.deepEqual(f.tv.hdrCommands, ['hdr 0 60 70']);
+    // Atomic enable + brightness from HDR dropdown.
+    hdrStatus = await f.dock.setHdrDim(true, 40);
+    assert.equal(hdrStatus.hdrDim, true);
+    assert.equal(hdrStatus.hdrBrightness, 40);
+    assert.equal(hdrNotified, 2);
+    assert.equal(f.tv.started, '');
+    assert.deepEqual(f.tv.hdrCommands, ['hdr 0 60 70', 'hdr 1 40 70']);
+    hdrStatus = await f.dock.setHdrBrightness(30);
+    assert.equal(hdrStatus.hdrBrightness, 30);
+    assert.equal(hdrNotified, 3);
+    assert.equal(f.tv.started, '');
+    assert.deepEqual(f.tv.hdrCommands, ['hdr 0 60 70', 'hdr 1 40 70', 'hdr 1 30 70']);
+    await assert.rejects(f.dock.setHdrDim('true'), /Invalid value/);
+    await assert.rejects(f.dock.setHdrDim(true, 10), /Invalid value/);
+    await assert.rejects(f.dock.setHdrBrightness(110), /Invalid value/);
+    await assert.rejects(f.dock.setHdrBrightness(15.5), /Invalid value/);
+    await assert.rejects(f.dock.setUiBrightness(10), /Invalid value/);
+    await assert.rejects(f.dock.setUiBrightness(110), /Invalid value/);
+    await assert.rejects(f.dock.setUiBrightness(55.5), /Invalid value/);
+    assert.equal((await f.dock.setHdrDim(false)).hdrDim, false);
+    assert.deepEqual(f.tv.hdrCommands, ['hdr 0 60 70', 'hdr 1 40 70', 'hdr 1 30 70', 'hdr 0 30 70']);
+    // When FIFO is unavailable, fallback restarts the launcher cleanly and rolls back on failure.
+    f.tv.noFifo = true;
+    await f.dock.setHdrDim(true);
+    assert.ok(f.tv.started.includes(' --ui-brightness 70 --hdr-dim --hdr-brightness 30'));
+    f.tv.neverStarts = true;
+    await assert.rejects(f.dock.setHdrBrightness(70), /did not start/);
+    assert.equal(f.dock.readState().hdrBrightness, 30, 'failed restart restores HDR brightness');
+    await assert.rejects(f.dock.setUiBrightness(50), /did not start/);
+    assert.equal(f.dock.readState().uiBrightness, 70, 'failed restart restores base brightness');
+    f.tv.neverStarts = false;
+    await f.dock.setHdrDim(false);
+    assert.ok(!f.tv.started.includes(' --hdr-dim'));
+    assert.ok(f.tv.started.includes(' --ui-brightness 70'));
+    f.tv.started = '';
+    assert.equal((await f.dock.setHdrBrightness(60)).hdrBrightness, 60);
+    assert.equal(f.tv.started, '');
+    // Legacy 0..19 values in saved state clamp to 20 on readState().
+    f.dock.patchState({hdrBrightness: 0, uiBrightness: 10});
+    assert.equal(f.dock.readState().hdrBrightness, 20);
+    assert.equal(f.dock.readState().uiBrightness, 20);
+    await f.dock.setUiBrightness(100);
+    assert.ok(!f.tv.started.includes('--ui-brightness'));
+    // Custom launcher mode also keeps --hdr-dim and --ui-brightness for Volume bar / Number pad.
+    await f.dock.disable();
+    f.dock.customAppsFile = path.join(f.tmp, 'custom.tsv');
+    f.dock.appCheck = async () => ({ok: true, label: 'Home'});
+    f.dock.home = {restore: async () => {}};
+    await f.dock.enableCustom('org.example.home');
+    await f.dock.setUiBrightness(80);
+    await f.dock.setHdrDim(true, 60);
+    assert.ok(f.tv.started.includes(' --home-launch org.example.home') && f.tv.started.includes(' --ui-brightness 80 --hdr-dim --hdr-brightness 60'));
 
     // Autorun Smart Hub: switched off with the launcher, put back with it, only if the launcher changed it.
     f = fixture({autorun: 1});

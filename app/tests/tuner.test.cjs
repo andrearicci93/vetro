@@ -211,6 +211,22 @@ const decode = cmd => Buffer.from(cmd.split(' ')[1], 'base64').toString();
     f.tuner.noMotion = () => { throw new Error('launcher state unreadable'); };
     f.tuner.writeFeatures();
     assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), '', 'an unreadable launcher state leaves motion on');
+    // Base brightness and HDR dimming follow the launcher state into the tuner's features file too.
+    let hdrCfg = {enabled: false, brightness: 60, uiBrightness: 100};
+    f.tuner.noMotion = () => false;
+    f.tuner.hdrDim = () => hdrCfg;
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), '');
+    hdrCfg = {enabled: false, brightness: 60, uiBrightness: 70};
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), 'ui_brightness=70\n');
+    hdrCfg = {enabled: true, brightness: 30, uiBrightness: 70};
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), 'hdr_dim=1\nhdr_brightness=30\nui_brightness=70\n');
+    still = true;
+    f.tuner.noMotion = () => still;
+    f.tuner.writeFeatures();
+    assert.equal(fs.readFileSync(f.tuner.featuresFile, 'utf8'), 'motion=0\nhdr_dim=1\nhdr_brightness=30\nui_brightness=70\n');
 
     // A start script that outlives its wait is not a failed start when the tuner comes up from it (#179, as the launcher);
     // a warning left by a failed round clears once the tuner is seen running.

@@ -145,6 +145,7 @@ internal static partial class Tests
         GuideGridChecks();
         MotionChecks();
         PerfChecks();
+        HdrDimTests();
 
         // On the TV the package has native/tuner/res without the osd 123's pill pictures and native/dock/res with them: the tuner finds them there.
         string pkg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vetro-assets-" + Guid.NewGuid().ToString("N"));

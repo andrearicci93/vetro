@@ -23,12 +23,12 @@ namespace Launcher.Ui
         private readonly string _assets;
         private readonly Action<string> _log;
         private readonly VolumePlacement _p;
-        private IntPtr _win, _rim, _body, _track, _fill, _clip, _num;
+        private IntPtr _win, _rim, _body, _track, _fill, _clip, _dimClip, _num;
         private readonly IntPtr[] _icons = new IntPtr[3];
         private IntPtr _animator, _holdTimer;
         private readonly Efl.TaskCb _tick, _holdEnd;
         private bool _built, _failed, _shown, _muted;
-        private double _shownAt, _until;
+        private double _shownAt, _until, _dimFactor = 1.0;
         private int _fillLength, _iconLevel = -1;
 
         private readonly VolumeEdge _edge;
@@ -47,6 +47,20 @@ namespace Launcher.Ui
 
         /// <summary>The bar is on screen (fading in, held or fading out).</summary>
         public bool IsOnScreen { get { return _shown; } }
+
+        /// <summary>Sets the RGB luminance multiplier (0..1) applied to the whole volume pill.</summary>
+        public void SetDimFactor(double factor)
+        {
+            _dimFactor = factor;
+            ApplyDim();
+        }
+
+        private void ApplyDim()
+        {
+            if (_dimClip == IntPtr.Zero) return;
+            int m = HdrDim.Channel(255, _dimFactor);
+            Efl.evas_object_color_set(_dimClip, m, m, m, 255);
+        }
 
         public void Show(int volume, bool muted)
         {
@@ -109,6 +123,12 @@ namespace Launcher.Ui
                 Efl.evas_object_resize(_win, _p.WinW, _p.WinH);
                 Efl.evas_object_pass_events_set(_win, true);
                 IntPtr evas = Efl.evas_object_evas_get(_win);
+                _dimClip = Efl.evas_object_rectangle_add(evas);
+                Efl.evas_object_move(_dimClip, 0, 0);
+                Efl.evas_object_resize(_dimClip, _p.WinW, _p.WinH);
+                Efl.evas_object_pass_events_set(_dimClip, true);
+                ApplyDim();
+                Efl.evas_object_show(_dimClip);
                 int ox = _p.WinX, oy = _p.WinY;
                 int half = _p.BodyH < _p.BodyW ? _p.BodyH / 2 : _p.BodyW / 2;        // body radius: a full capsule
                 int trackHalf = (_p.Vertical ? _p.TrackW : _p.TrackH) / 2;
@@ -123,10 +143,12 @@ namespace Launcher.Ui
                 Efl.evas_object_move(_clip, _p.TrackX - ox, _p.TrackY - oy);
                 Efl.evas_object_resize(_clip, 1, 1);
                 Efl.evas_object_clip_set(_fill, _clip);
+                Efl.evas_object_clip_set(_clip, _dimClip);
                 Efl.evas_object_show(_clip);
                 _num = Efl.evas_object_text_add(evas);
                 Efl.evas_object_text_font_set(_num, Font, VolumePlacement.NumberSize);
                 Efl.evas_object_pass_events_set(_num, true);
+                Efl.evas_object_clip_set(_num, _dimClip);
                 Efl.evas_object_show(_num);
                 for (int i = 0; i < _icons.Length; i++)
                 {
@@ -138,6 +160,7 @@ namespace Launcher.Ui
                     Efl.evas_object_move(img, _p.IconX - ox, _p.IconY - oy);
                     Efl.evas_object_resize(img, VolumePlacement.IconSize, VolumePlacement.IconSize);
                     Efl.evas_object_pass_events_set(img, true);
+                    Efl.evas_object_clip_set(img, _dimClip);
                     _icons[i] = img;
                 }
                 _built = true;
@@ -159,6 +182,7 @@ namespace Launcher.Ui
             Efl.evas_object_move(img, x, y);
             Efl.evas_object_resize(img, w, h);
             Efl.evas_object_pass_events_set(img, true);
+            if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(img, _dimClip);
             Efl.evas_object_show(img);
             return img;
         }

@@ -34,7 +34,7 @@ namespace Launcher.Ui
         private bool _loaded;
         private PlaceKey _rowsAt;   // what the rows were last placed for
 
-        public TaskPanel(IntPtr win, TaskLayout layout, string assets, Action<string> log) : base(win, layout, assets, log, "tasks") { }
+        public TaskPanel(IntPtr win, TaskLayout layout, string assets, Action<string> log, IntPtr dimClip = default(IntPtr)) : base(win, layout, assets, log, "tasks", dimClip) { }
 
         public int Count { get { return _rows.Count; } }
 

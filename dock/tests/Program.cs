@@ -2146,6 +2146,61 @@ namespace Launcher.Tests
                 T.True(2 * Design.PanelRadius <= new DockLayout(5, 1920, 1080).PillH, "the bar's corners meet at most in the middle of its sides");
             });
 
+            T.Run("hdr dimming: brightness curve, premultiplied channels and avocd replies", () =>
+            {
+                T.Eq(HdrDim.NormalizeBrightness(-5), 20, "clamp below 20");
+                T.Eq(HdrDim.NormalizeBrightness(120), 100, "clamp above 100");
+                T.Eq(HdrDim.ParseBrightness(null), 60, "null falls back to default 60");
+                T.Eq(HdrDim.ParseBrightness("bad"), 60, "invalid falls back to default 60");
+                T.Eq(HdrDim.ParseBrightness(" 60 "), 60, "trimmed integer parsed");
+                T.Eq(HdrDim.ParseBrightness("200"), 100, "parsed integer clamped");
+                T.Eq(HdrDim.ParseBaseBrightness(null), 100, "base null falls back to 100");
+                T.Eq(HdrDim.ParseBaseBrightness("bad"), 100, "base invalid falls back to 100");
+                T.Eq(HdrDim.ParseBaseBrightness(" 80 "), 80, "base trimmed integer parsed");
+                T.Eq(HdrDim.ParseBaseBrightness("10"), 20, "base integer clamped to 20");
+
+                T.True(Math.Abs(HdrDim.Factor(false, true, 20) - 1.0) < 1e-9, "disabled with default base stays 1.0");
+                T.True(Math.Abs(HdrDim.Factor(false, true, 60, 70) - 0.70) < 1e-9, "disabled uses base brightness");
+                T.True(Math.Abs(HdrDim.Factor(true, false, 20) - 1.0) < 1e-9, "SDR with default base stays 1.0");
+                T.True(Math.Abs(HdrDim.Factor(true, false, 60, 80) - 0.80) < 1e-9, "SDR uses base brightness");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 20) - 0.20) < 1e-9, "20% maps directly to 0.20");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 60, 80) - 0.60) < 1e-9, "60% maps directly to 0.60");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 60, 40) - 0.40) < 1e-9, "HDR capped by lower base brightness");
+                T.True(Math.Abs(HdrDim.Factor(true, true, 100) - 1.0) < 1e-9, "100% maps to 1.00");
+
+                T.Eq(HdrDim.Channel(255, 0.60), 153, "premultiplied RGB channel scales with factor");
+                T.Eq(HdrDim.Channel(100, 0.50), 50, "premultiplied RGB channel never exceeds alpha");
+                T.Eq(HdrDim.Channel(0, 0.20), 0, "zero alpha remains zero");
+                T.Eq(HdrDim.Channel(200, double.NaN), 200, "NaN factor leaves alpha untouched");
+
+                T.Eq(HdrDim.ParseStatus("ii 1 0\n"), true, "busctl HDR active (ii 1 0)");
+                T.Eq(HdrDim.ParseStatus("ii 0 0\n"), false, "busctl SDR (ii 0 0)");
+                T.True(HdrDim.ParseStatus("ii 1 -1") == null, "non-zero rc returns null");
+                T.Eq(HdrDim.ParseStatus("   int32 1\n   int32 0\n"), true, "dbus-send literal HDR active");
+                T.Eq(HdrDim.ParseStatus("   int32 0\n   int32 0\n"), false, "dbus-send literal SDR");
+                T.True(HdrDim.ParseStatus("") == null && HdrDim.ParseStatus("Failed to connect") == null, "empty or error returns null");
+                T.True(HdrDim.IsHdrSignalLine("signal time=1.0 interface=org.tizen.tv.avoc.AvOutputControl; member=HdrModeChanged"), "signal line matched");
+                T.True(!HdrDim.IsHdrSignalLine("member=PictureModeChanged"), "non-HDR signal ignored");
+
+                T.True(Math.Abs(HdrDim.EaseOutCubic(0.0) - 0.0) < 1e-9 && Math.Abs(HdrDim.EaseOutCubic(1.0) - 1.0) < 1e-9, "ease-out endpoints");
+                T.True(HdrDim.EaseOutCubic(0.5) > 0.5, "ease-out accelerates early");
+                T.True(Math.Abs(HdrDim.Lerp(1.0, 0.60, 0.5) - 0.80) < 1e-9, "lerp midpoint");
+
+                bool cmdEn; int cmdBr; int? cmdBase;
+                T.True(HdrDim.TryParseCommandArgs("1 30", out cmdEn, out cmdBr, out cmdBase) && cmdEn && cmdBr == 30 && cmdBase == null, "hdr args 1 30");
+                T.True(HdrDim.TryParseCommandArgs("0 20 80", out cmdEn, out cmdBr, out cmdBase) && !cmdEn && cmdBr == 20 && cmdBase == 80, "hdr args 0 20 80");
+                T.True(HdrDim.TryParseCommandArgs("0 20", out cmdEn, out cmdBr) && !cmdEn && cmdBr == 20, "hdr 2-arg overload 0 20");
+                T.True(!HdrDim.TryParseCommandArgs("2 40", out cmdEn, out cmdBr) && !HdrDim.TryParseCommandArgs("1 10", out cmdEn, out cmdBr) && !HdrDim.TryParseCommandArgs("1 40 10", out cmdEn, out cmdBr, out cmdBase) && !HdrDim.TryParseCommandArgs("1 120", out cmdEn, out cmdBr) && !HdrDim.TryParseCommandArgs("bad", out cmdEn, out cmdBr), "invalid hdr args rejected");
+
+                var cb = new CommandBuffer();
+                byte[] bytes = System.Text.Encoding.ASCII.GetBytes("show\nhdr 1 30 80\nhdr 0 70\n");
+                var cmds = cb.Feed(bytes, bytes.Length);
+                T.Eq(cmds.Count, 3, "command buffer emits three commands");
+                T.True(cmds[0] == Command.Show && cmds[1] == Command.Hdr && cmds[2] == Command.Hdr, "command types match");
+                T.Eq(cb.TakeHdrArgs(), "1 30 80", "first hdr args preserved");
+                T.Eq(cb.TakeHdrArgs(), "0 70", "second hdr args preserved");
+            });
+
             Console.WriteLine();
             LauncherRegressionTests.Run();
             Console.WriteLine(T.Checks + " checks, " + T.Failures + " failures");

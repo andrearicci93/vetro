@@ -18,7 +18,7 @@ namespace Launcher.Ui
         protected const string Font = "SamsungOneUI 500";
         protected const string FontBold = "SamsungOneUI 600";
 
-        protected readonly IntPtr _win, _evas;
+        protected readonly IntPtr _win, _evas, _dimClip;
         protected readonly TaskLayout _layout;
         protected readonly string _assets;
         protected readonly Action<string> _log;
@@ -42,9 +42,9 @@ namespace Launcher.Ui
         // selection moving) moves and resizes nothing.
         private PlaceKey _chromeAt, _plateAt, _barAt;
 
-        protected CardChrome(IntPtr win, TaskLayout layout, string assets, Action<string> log, string tag)
+        protected CardChrome(IntPtr win, TaskLayout layout, string assets, Action<string> log, string tag, IntPtr dimClip = default(IntPtr))
         {
-            _win = win; _layout = layout; _assets = assets; _log = log; _tag = tag;
+            _win = win; _dimClip = dimClip; _layout = layout; _assets = assets; _log = log; _tag = tag;
             _evas = Efl.evas_object_evas_get(win);
         }
 
@@ -96,6 +96,7 @@ namespace Launcher.Ui
         {
             _clip = Efl.evas_object_rectangle_add(_evas);
             Efl.evas_object_color_set(_clip, 255, 255, 255, 255);
+            if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(_clip, _dimClip);
             _listClip = Efl.evas_object_rectangle_add(_evas);
             Efl.evas_object_color_set(_listClip, 255, 255, 255, 255);
             Efl.evas_object_clip_set(_listClip, _clip);

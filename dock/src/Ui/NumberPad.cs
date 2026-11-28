@@ -35,7 +35,7 @@ namespace Launcher.Ui
         private readonly int _screenW, _screenH;
         private readonly NumberPadModel _model = new NumberPadModel();
         private readonly NavigationInput _nav = new NavigationInput();
-        private IntPtr _win, _rim, _body, _focus, _typed, _typedBg, _doneBg, _doneText, _tipBg, _tipText;
+        private IntPtr _win, _dimClip, _rim, _body, _focus, _typed, _typedBg, _doneBg, _doneText, _tipBg, _tipText;
         private readonly Slot[][] _slots = new Slot[2][];
         private IntPtr _animator, _idle;
         private readonly Efl.TaskCb _tick, _idleCb, _backCb;
@@ -44,6 +44,7 @@ namespace Launcher.Ui
         private readonly BackRelease _backUp = new BackRelease();
         private IntPtr _backTimer;
         private bool _built, _failed, _shown, _closing, _grabbed, _grabFallback;
+        private double _dimFactor = 1.0;
         // The fade and the capsule's slide. At rest (open, opaque, capsule on its cell) the animator stops; a key starts it again, and its
         // first tick advances by one frame interval of the earlier run (FrameStep), so the next movement starts exactly as it did before.
         private readonly PadMotion _motion = new PadMotion();
@@ -162,6 +163,20 @@ namespace Launcher.Ui
             }
         }
 
+        /// <summary>Sets the RGB luminance multiplier (0..1) applied to the whole number pad.</summary>
+        public void SetDimFactor(double factor)
+        {
+            _dimFactor = factor;
+            ApplyDim();
+        }
+
+        private void ApplyDim()
+        {
+            if (_dimClip == IntPtr.Zero) return;
+            int m = HdrDim.Channel(255, _dimFactor);
+            Efl.evas_object_color_set(_dimClip, m, m, m, 255);
+        }
+
         private bool Build()
         {
             if (_built) return true;
@@ -181,6 +196,12 @@ namespace Launcher.Ui
                 Efl.evas_object_move(_win, (_screenW - WinW) / 2, _screenH - WinH - EdgeGap);
                 Efl.evas_object_resize(_win, WinW, WinH);
                 IntPtr evas = Efl.evas_object_evas_get(_win);
+                _dimClip = Efl.evas_object_rectangle_add(evas);
+                Efl.evas_object_move(_dimClip, 0, 0);
+                Efl.evas_object_resize(_dimClip, WinW, WinH);
+                Efl.evas_object_pass_events_set(_dimClip, true);
+                ApplyDim();
+                Efl.evas_object_show(_dimClip);
                 _rim = Image(evas, "pill_rim", 50);
                 _body = Image(evas, "pill_bg", 48);
                 _focus = Image(evas, "pill_cap", 36);
@@ -228,6 +249,7 @@ namespace Launcher.Ui
                 Efl.evas_object_image_border_center_fill_set(img, 1);
             }
             Efl.evas_object_image_smooth_scale_set(img, true);
+            if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(img, _dimClip);
             Efl.evas_object_show(img);
             return img;
         }
@@ -237,6 +259,7 @@ namespace Launcher.Ui
             IntPtr t = Efl.evas_object_text_add(evas);
             Efl.evas_object_text_font_set(t, Font, size);
             Efl.evas_object_text_text_set(t, text);
+            if (_dimClip != IntPtr.Zero) Efl.evas_object_clip_set(t, _dimClip);
             Efl.evas_object_show(t);
             return t;
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using Launcher.Core;
@@ -31,8 +32,14 @@ namespace Launcher
         private static readonly Efl.FdCb InputCb = OnInput;
 
         private static string _dir, _logPath, _pidPath, _fifoPath;
-        private static IntPtr _win, _anim, _idle, _fifoHandler;
+        private static IntPtr _win, _anim, _idle, _fifoHandler, _dimClip;
         private static int _fifoFd = -1;
+        private static bool _hdrDimEnabled, _isHdr, _dimAnimating;
+        private static int _hdrBrightness = HdrDim.DefaultBrightness, _uiBrightness = HdrDim.DefaultBaseBrightness;
+        private static double _dimFactor = 1.0, _dimFrom = 1.0, _dimTarget = 1.0, _dimStart = 0.0;
+        private static IntPtr _dimAnim;
+        private static readonly Efl.TaskCb DimAnimCb = OnDimFrame;
+        private static HdrWatcher _hdrWatcher;
         private static double _lastFrame;
         private static AppEntry[] _apps, _inputs, _allApps;
         // Where the three lists were read from, to read them again when Vetro says "reload"; _allAppsWatch is the All apps list Vetro wrote
@@ -279,6 +286,8 @@ namespace Launcher
         {
             try
             {
+                StopDimAnim();
+                if (_hdrWatcher != null) { _hdrWatcher.Dispose(); _hdrWatcher = null; }
                 int pid;
                 if (File.Exists(_pidPath) && int.TryParse(File.ReadAllText(_pidPath).Trim(), out pid)
                     && pid == Libc.getpid())
@@ -291,6 +300,102 @@ namespace Launcher
                 if (_pad != null && _pad.IsOnScreen) OverlayFlag.Mark(OverlayFlag.PadPath, false, null);
             }
             catch (Exception) { }
+        }
+
+        private static bool AnyOverlayVisible()
+        {
+            return _dockMapped || _tasksOn || (_pad != null && _pad.IsOnScreen) || (_pill != null && _pill.IsOnScreen);
+        }
+
+        private static void StopDimAnim()
+        {
+            _dimAnimating = false;
+        }
+
+        private static void SetDimFactorNow(double factor)
+        {
+            _dimFactor = factor;
+            if (_dimClip != IntPtr.Zero)
+            {
+                int m = HdrDim.Channel(255, _dimFactor);
+                Efl.evas_object_color_set(_dimClip, m, m, m, 255);
+            }
+            if (_pill != null) _pill.SetDimFactor(_dimFactor);
+            if (_pad != null) _pad.SetDimFactor(_dimFactor);
+        }
+
+        private static byte OnDimFrame(IntPtr data)
+        {
+            try
+            {
+                if (!_dimAnimating) { _dimAnim = IntPtr.Zero; return 0; }
+                double elapsed = Efl.ecore_time_get() - _dimStart;
+                double t = HdrDim.FadeSeconds > 0 ? elapsed / HdrDim.FadeSeconds : 1.0;
+                if (t >= 1.0)
+                {
+                    SetDimFactorNow(_dimTarget);
+                    _dimAnimating = false;
+                    _dimAnim = IntPtr.Zero;
+                    return 0;
+                }
+                SetDimFactorNow(HdrDim.Lerp(_dimFrom, _dimTarget, HdrDim.EaseOutCubic(t)));
+            }
+            catch (Exception ex) { Log("hdr dim frame: " + ex.Message); _dimAnimating = false; _dimAnim = IntPtr.Zero; return 0; }
+            return 1;
+        }
+
+        private static void ApplyHdrDim(bool allowAnimate = true)
+        {
+            _dimTarget = HdrDim.Factor(_hdrDimEnabled, _isHdr, _hdrBrightness, _uiBrightness);
+            if (Math.Abs(_dimTarget - _dimFactor) < 0.001 || !allowAnimate || Controller.Instant || !AnyOverlayVisible())
+            {
+                StopDimAnim();
+                SetDimFactorNow(_dimTarget);
+                return;
+            }
+            _dimFrom = _dimFactor;
+            _dimStart = Efl.ecore_time_get();
+            _dimAnimating = true;
+            if (_dimAnim == IntPtr.Zero) _dimAnim = Efl.ecore_animator_add(DimAnimCb, IntPtr.Zero);
+        }
+
+        private static void StartOrStopHdrWatcher()
+        {
+            if (_hdrDimEnabled && _hdrWatcher == null)
+            {
+                _hdrWatcher = new HdrWatcher(Log, isHdr =>
+                {
+                    _isHdr = isHdr;
+                    ApplyHdrDim(true);
+                    Log("hdr: active=" + isHdr + " factor=" + _dimTarget.ToString("0.00", CultureInfo.InvariantCulture));
+                });
+            }
+            else if (!_hdrDimEnabled && _hdrWatcher != null)
+            {
+                _hdrWatcher.Dispose();
+                _hdrWatcher = null;
+                _isHdr = false;
+            }
+        }
+
+        private static void ReconfigureHdr(string rawArgs)
+        {
+            bool enabled;
+            int brightness;
+            int? baseOpt;
+            if (!HdrDim.TryParseCommandArgs(rawArgs, out enabled, out brightness, out baseOpt))
+            {
+                Log("hdr: bad args \"" + rawArgs + "\"");
+                return;
+            }
+            int nextBase = baseOpt.HasValue ? baseOpt.Value : _uiBrightness;
+            if (enabled == _hdrDimEnabled && brightness == _hdrBrightness && nextBase == _uiBrightness) return;
+            _hdrDimEnabled = enabled;
+            _hdrBrightness = brightness;
+            _uiBrightness = nextBase;
+            StartOrStopHdrWatcher();
+            ApplyHdrDim(true);
+            Log("hdr: reconfigured enabled=" + _hdrDimEnabled + " hdr=" + _hdrBrightness + " base=" + _uiBrightness + " active=" + _isHdr + " target=" + _dimTarget.ToString("0.00", CultureInfo.InvariantCulture));
         }
 
         private static readonly byte[] SmackStar = { (byte)'*' };
@@ -786,6 +891,7 @@ namespace Launcher
         {
             Efl.evas_object_move(_win, x, y);
             Efl.evas_object_resize(_win, w, h);
+            if (_dimClip != IntPtr.Zero) Efl.evas_object_resize(_dimClip, Math.Max(_screenW, w), Math.Max(_screenH, h));
         }
 
         /// <summary>Down on the apps row: the Control center's cards rise where the bar was, in a window grown upwards for them.</summary>
@@ -1153,7 +1259,7 @@ namespace Launcher
         /// <summary>The apps row's objects, shown (a new Dock is visible until hidden).</summary>
         private static void BuildAppsPage()
         {
-            _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards));
+            _appsDock = new Dock(_win, _appsLayout, _apps, _res, Log, Design.HintText, true, ControlCenter.HintText(_cards), _dimClip);
             _appsDock.Build();
         }
 
@@ -1161,7 +1267,7 @@ namespace Launcher
         private static void BuildInputsPage()
         {
             _sourcesEditable = RowEdit.CanAddFrom(_inputs, _apps);
-            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, Dock.KeyHint(_sourcesEditable), false);
+            _inputsDock = new Dock(_win, _inputsLayout, _inputs, _res, Log, Dock.KeyHint(_sourcesEditable), false, _dimClip);
             _inputsDock.Build();
             _inputsDock.SetVisible(false);
         }
@@ -1169,7 +1275,7 @@ namespace Launcher
         /// <summary>All apps' objects, hidden.</summary>
         private static void BuildAllPage()
         {
-            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, Dock.KeyHint(true), false);
+            _allDock = new Dock(_win, _allLayout, _allApps, _res, Log, Dock.KeyHint(true), false, _dimClip);
             _allDock.Build();
             _allDock.SetVisible(false);
         }
@@ -1841,6 +1947,7 @@ namespace Launcher
             double keyAt = _perf ? Efl.ecore_time_get() : 0;
             bool first = _pad == null;
             if (_pad == null)
+            {
                 _pad = new NumberPad(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH,
                     delegate (PadResult kind, string what)
                     {
@@ -1855,6 +1962,8 @@ namespace Launcher
                         _padFromDock = false;
                         if (fromDock && !sent) ResumeTuner("osd 123 closed after the dock");
                     });
+                _pad.SetDimFactor(_dimFactor);
+            }
             bool opening = !_pad.IsShown;
             if (opening) _padFromDock = _dockMapped;
             if (_perf && opening)
@@ -2164,7 +2273,7 @@ namespace Launcher
             if (target != volume) { if (Sound.TrySetVolume(target)) volume = target; else Log("volume: level change refused"); }
             if (_volumeEdge == VolumeEdge.Hidden) return;      // the level changes, no bar is drawn
             bool first = _pill == null;
-            if (_pill == null) _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge);
+            if (_pill == null) { _pill = new VolumePill(Path.Combine(AppContext.BaseDirectory, "res"), Log, _pillScreenW, _pillScreenH, _volumeEdge); _pill.SetDimFactor(_dimFactor); }
             bool probe = _perf && !_pill.IsOnScreen;
             if (probe)
             {
@@ -2197,6 +2306,7 @@ namespace Launcher
                             case Command.Pad: TogglePad(); break;
                             case Command.Rescan: if (_inputFds.Count > 0 || _homeCode > 0 || _learn) WatchNewNodes(); break;
                             case Command.Reload: ReloadLists(); break;
+                            case Command.Hdr: ReconfigureHdr(Commands.TakeHdrArgs()); break;
                         }
                     }
                 }
@@ -2710,6 +2820,9 @@ namespace Launcher
             ShardLaunch.ServicePort = ShardLaunch.ParsePort(Arg(args, "--service-port"));
             // --no-motion (Reduce motion): show, hide, page changes and navigation are immediate; no icon zoom or lift.
             if (Flag(args, "--no-motion")) { Controller.Instant = true; DockLayout.Grow = false; DockLayout.GlowFromIcon = false; PadMotion.Instant = true; VolumeFade.Instant = true; }
+            _hdrDimEnabled = Flag(args, "--hdr-dim");
+            _hdrBrightness = HdrDim.ParseBrightness(Arg(args, "--hdr-brightness"));
+            _uiBrightness = HdrDim.ParseBaseBrightness(Arg(args, "--ui-brightness"));
             _dir = ResolveDir(args);
             _logPath = Path.Combine(_dir, "tvlauncher.log");
             _pidPath = Path.Combine(_dir, "tvlauncher.pid");
@@ -2786,6 +2899,12 @@ namespace Launcher
                 Efl.elm_win_aux_hint_add(_win, "wm.comp.win.effect.enable", "0");
                 Efl.evas_object_move(_win, layout.WinX, layout.WinY);
                 Efl.evas_object_resize(_win, layout.WinW, layout.WinH);
+                _dimClip = Efl.evas_object_rectangle_add(Efl.evas_object_evas_get(_win));
+                Efl.evas_object_move(_dimClip, 0, 0);
+                Efl.evas_object_resize(_dimClip, Math.Max(screenW, layout.WinW), Math.Max(screenH, layout.WinH));
+                Efl.evas_object_pass_events_set(_dimClip, true);
+                Efl.evas_object_color_set(_dimClip, 255, 255, 255, 255);
+                Efl.evas_object_show(_dimClip);
                 Log("window " + layout.WinW + "x" + layout.WinH + " at " + layout.WinX + "," + layout.WinY + " notification-level=" + level);
 
                 string guard = Arg(args, "--kill-on-home");
@@ -2818,12 +2937,12 @@ namespace Launcher
                 int cardsN = Math.Max(1, _cards.Length);
                 if (HasCard(CardKind.Tasks))
                 {
-                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Tasks)), res, Log);
+                    _taskPanel = new TaskPanel(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Tasks)), res, Log, _dimClip);
                     _taskPanel.Build();
                 }
                 if (HasCard(CardKind.Audio))
                 {
-                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Audio)), res, Log);
+                    _audioCard = new AudioCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, CardAt(CardKind.Audio)), res, Log, _dimClip);
                     _audioCard.Build();
                 }
                 _choiceCards = new ChoiceCard[_cards.Length];
@@ -2833,10 +2952,12 @@ namespace Launcher
                     if (spec.Kind != CardKind.Picture && spec.Kind != CardKind.Sleep && spec.Kind != CardKind.Shard) continue;
                     string tag = spec.Kind == CardKind.Picture ? "picture" : spec.Kind == CardKind.Sleep ? "sleep" : "shard " + spec.ShardId;
                     string reading = spec.Kind == CardKind.Picture ? "Reading the picture modes…" : spec.Kind == CardKind.Sleep ? "Reading the sleep timer…" : "Reading…";
-                    _choiceCards[i] = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, i), res, Log, tag, ControlCenter.Title(spec), reading);
+                    _choiceCards[i] = new ChoiceCard(_win, new TaskLayout(screenW, screenH, layout.WinW, band, cardsN, i), res, Log, tag, ControlCenter.Title(spec), reading, _dimClip);
                     _choiceCards[i].Build();
                 }
                 _dock = _appsDock;
+                StartOrStopHdrWatcher();
+                ApplyHdrDim(false);
                 // The flags the tuner reads are cleared now (one left by a launcher that was killed), which also runs their first
                 // use here and not inside the first show.
                 OverlayFlag.Pid = Libc.getpid().ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -2880,6 +3001,8 @@ namespace Launcher
                 Log("elm_run");
                 Efl.elm_run();
                 Log("elm_run returned");
+                StopDimAnim();
+                if (_hdrWatcher != null) { _hdrWatcher.Dispose(); _hdrWatcher = null; }
                 Efl.elm_shutdown();
             }
             catch (Exception ex)
