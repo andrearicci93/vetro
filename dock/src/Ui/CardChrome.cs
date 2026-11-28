@@ -206,6 +206,16 @@ namespace Launcher.Ui
             return img;
         }
 
+        /// <summary>A 1 px horizontal divider inside the list (clipped to it while the list scrolls).</summary>
+        protected IntPtr RowRule()
+        {
+            IntPtr r = Efl.evas_object_rectangle_add(_evas);
+            Efl.evas_object_clip_set(r, _listClip);
+            Efl.evas_object_color_set(r, 0, 0, 0, 0);
+            Efl.evas_object_show(r);
+            return r;
+        }
+
         public void SetVisible(bool visible)
         {
             if (visible) Efl.evas_object_show(_clip); else Efl.evas_object_hide(_clip);

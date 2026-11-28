@@ -12,6 +12,10 @@ namespace Launcher.Core
         public bool Active;
         /// <summary>A Shard card's own name for the row (what a choice sends back); null on the TV's own cards.</summary>
         public string Id;
+        /// <summary>Optional right-aligned value label shown instead of the tick mark (for example Energy saving's current state).</summary>
+        public string RightText;
+        /// <summary>True when a thin horizontal rule separates this row from the rows above it.</summary>
+        public bool DividerAbove;
     }
 
     /// <summary>What a choice card shows after a read: its rows, a line for the header, and whether the rows can be chosen.</summary>
@@ -72,6 +76,27 @@ namespace Launcher.Core
         // would otherwise keep the card "Reading…" for minutes. The set keeps the default: the switch itself may take a moment.
         private const string AvocRead = "busctl --timeout=3 call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl ";
 
+        public const int EnergySavingBase = 1000;
+        public const int EnergySavingOff = 0;
+        public const int EnergySavingOn = 3;
+        public static readonly string[] EnergySavingNames = { "Off", "On", "On", "On" };
+
+        public static string EnergySavingName(int level)
+        {
+            return level >= 0 && level < EnergySavingNames.Length ? EnergySavingNames[level] : null;
+        }
+
+        public static int NextEnergySaving(int level)
+        {
+            if (level < 0 || level >= EnergySavingNames.Length) return -1;
+            return level == 0 ? EnergySavingOn : EnergySavingOff;
+        }
+
+        public static bool IsEnergySavingValue(int value)
+        {
+            return value >= EnergySavingBase && value < EnergySavingBase + EnergySavingNames.Length;
+        }
+
         public static string GetCommand() { return AvocRead + "GetPictureMode i 1"; }
 
         /// <summary>One dbus-send call checking all 22 candidates in ~35 ms (busctl fails on Tizen 9 aii serialization).</summary>
@@ -87,6 +112,17 @@ namespace Launcher.Core
         public static string GetAndCheckGroupCommand()
         {
             return "{ " + GetCommand() + " || echo x; echo __GROUP__; " + CheckGroupCommand() + " || echo x; }";
+        }
+
+        /// <summary>Reads current PictureMode, Energy saving capability/level, and CheckPictureModeByGroup in one shell round-trip.</summary>
+        public static string GetWithEnergyCommand()
+        {
+            return "{ " + AvocRead + "GetPictureMode i 1 || echo x; " + AvocRead + "CheckEnergySaving || echo x; " + AvocRead + "GetEnergySaving i 1 || echo x; }";
+        }
+
+        public static string GetAndCheckGroupWithEnergyCommand()
+        {
+            return "{ " + AvocRead + "GetPictureMode i 1 || echo x; " + AvocRead + "CheckEnergySaving || echo x; " + AvocRead + "GetEnergySaving i 1 || echo x; echo __GROUP__; " + CheckGroupCommand() + " || echo x; }";
         }
 
         /// <summary>
@@ -141,9 +177,11 @@ namespace Launcher.Core
             return "{ " + string.Join("; ", parts.ToArray()) + "; }";
         }
 
-        /// <summary>The command that sets mode <paramref name="id"/>, or null for a mode that is not a candidate (nothing else reaches the shell).</summary>
+        /// <summary>The command that sets mode or energy saving level <paramref name="id"/>, or null for any other value (nothing else reaches the shell).</summary>
         public static string SetCommand(int id)
         {
+            if (IsEnergySavingValue(id))
+                return Avoc + "SetEnergySaving ii 1 " + (id - EnergySavingBase).ToString(CultureInfo.InvariantCulture);
             return Array.IndexOf(Candidates, id) < 0 ? null : Avoc + "SetPictureMode ii " + id.ToString(CultureInfo.InvariantCulture) + " 1";
         }
 
@@ -195,6 +233,26 @@ namespace Launcher.Core
         private static void MarkActive(ChoiceState st, string name)
         {
             foreach (ChoiceRow r in st.Rows) if (r.Label == name) r.Active = true;
+        }
+
+        public static void AppendEnergySaving(ChoiceState st, string checkLine, string getLine)
+        {
+            if (st == null || !st.Choosable || st.Rows.Count == 0) return;
+            List<int> chk = Numbers(checkLine);
+            if (chk.Count != 1 || chk[0] != 1) return;
+            List<int> cur = Numbers(getLine);
+            if (cur.Count < 2 || cur[1] != 0) return;
+            string label = EnergySavingName(cur[0]);
+            int next = NextEnergySaving(cur[0]);
+            if (label == null || next < 0) return;
+            st.Rows.Add(new ChoiceRow
+            {
+                Label = "Energy saving",
+                RightText = label,
+                Value = EnergySavingBase + next,
+                Active = false,
+                DividerAbove = true
+            });
         }
     }
 
