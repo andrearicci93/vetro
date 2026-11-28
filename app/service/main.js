@@ -54,6 +54,7 @@ var SCOPE_QUERY_RE = /[?&]scope=([^&]*)/;
 var MONITOR_SCOPE_RE = /^(summary|full)$/;
 var monitor = new SystemMonitor(agentExecute);
 var ComponentActions = require('./component-actions.js');
+var ServiceMetadata = require('./service-metadata.js');
 var quickUninstall = require('./quick-uninstall.js');
 var homeCleanup = require('./home-cleanup.js');
 var dnsFilter = new (require('./local-dns.js').Filter)(agentExecute);
@@ -1723,3 +1724,7 @@ var startupWarmAttempts=0;var startupWarmTimer=setInterval(function(){if(os.upti
 // Put the service's own on-boot and auto-restart flags back once the adapter is connected (see ComponentActions.selfStartup).
 // The two flags come from Vetro's own row of the registry (one query), not from the whole inventory (three queries and a join).
 var selfStartupAttempts=0,selfStartupBusy=false;var selfStartupTimer=setInterval(function(){if(++selfStartupAttempts>BOOT_RETRIES){clearInterval(selfStartupTimer);return}if(selfStartupBusy||!platform.status().agent.connected||!dock.bootSettled())return;selfStartupBusy=true;AppRegistry.one(agentExecute,'vetrotvapp.svc',{user:false}).then(function(row){return ComponentActions.selfStartup(row?[row]:[]).reduce(function(p,cmd){return p.then(function(){return agentExecute(cmd,30000).then(function(r){invalidateInventory();if(r.exit_code||r.timed_out)throw Error(r.stderr||r.stdout||'Startup flag not set')})})},Promise.resolve())}).then(function(){clearInterval(selfStartupTimer)}).catch(function(){}).finally(function(){selfStartupBusy=false})},5000);if(selfStartupTimer.unref)selfStartupTimer.unref();
+
+// Declare allow.bgservice for the service in the registry where the launcher of this firmware asks for it (see service-metadata.js). Same moment as the
+// startup flags above: once the root agent is connected; a result of any kind ends it, only a TV that does not answer is tried again.
+var serviceMetadataAttempts=0,serviceMetadataBusy=false,serviceMetadataState=null;var serviceMetadataTimer=setInterval(function(){if(++serviceMetadataAttempts>BOOT_RETRIES){clearInterval(serviceMetadataTimer);return}if(serviceMetadataBusy||!platform.status().agent.connected||!dock.bootSettled())return;serviceMetadataBusy=true;ServiceMetadata.apply(agentExecute).then(function(r){serviceMetadataState=r.state;clearInterval(serviceMetadataTimer)}).catch(function(){}).finally(function(){serviceMetadataBusy=false})},5000);if(serviceMetadataTimer.unref)serviceMetadataTimer.unref();
