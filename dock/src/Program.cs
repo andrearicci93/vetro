@@ -2024,12 +2024,18 @@ namespace Launcher
                 case CardKind.Picture:
                     return new ChoiceSource("picture mode", () =>
                     {
-                        string raw = Shell.Read(PictureModes.GetAndCheckGroupCommand());
+                        string raw = Shell.Read(PictureModes.GetAndCheckGroupWithEnergyCommand());
                         int split = raw.IndexOf("__GROUP__", StringComparison.Ordinal);
-                        string get = split >= 0 ? raw.Substring(0, split) : raw;
+                        string head = split >= 0 ? raw.Substring(0, split) : raw;
+                        string[] lines = head.Replace("\r", "").Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        string get = lines.Length > 0 ? lines[0] : "";
+                        string checkEnergy = lines.Length > 1 ? lines[1] : "";
+                        string getEnergy = lines.Length > 2 ? lines[2] : "";
                         string groupRaw = split >= 0 ? raw.Substring(split + 9) : "";
                         string checks = PictureModes.ParseGroupReply(groupRaw) ?? Shell.Read(PictureModes.CheckCommand());
-                        return PictureModes.Build(get, checks);
+                        ChoiceState st = PictureModes.Build(get, checks);
+                        PictureModes.AppendEnergySaving(st, checkEnergy, getEnergy);
+                        return st;
                     }, PictureModes.SetCommand, Log);
                 case CardKind.Sleep:
                     return new ChoiceSource("sleep timer", () => SleepTimer.Build(Shell.Read(SleepTimer.ReadCommand())), SleepTimer.SetCommand, Log);

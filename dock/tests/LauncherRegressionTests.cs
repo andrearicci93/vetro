@@ -340,6 +340,56 @@ namespace Launcher.Tests
                 foreach (string k in new[] { "KP_Enter", "Select", "BackSpace", "Escape", "XF86Exit", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" })
                     T.True(seen.Contains(k), "GrabKeys includes " + k);
             });
+
+            T.Run("picture modes: Energy saving Off/On toggle and locking", () =>
+            {
+                string combined = PictureModes.GetWithEnergyCommand();
+                T.True(combined.Contains("GetPictureMode i 1") && combined.Contains("CheckEnergySaving") && combined.Contains("GetEnergySaving i 1"),
+                    "GetWithEnergyCommand reads PictureMode, CheckEnergySaving and GetEnergySaving");
+                string combinedGroup = PictureModes.GetAndCheckGroupWithEnergyCommand();
+                T.True(combinedGroup.Contains("GetPictureMode i 1") && combinedGroup.Contains("CheckEnergySaving") && combinedGroup.Contains("GetEnergySaving i 1") && combinedGroup.Contains("__GROUP__") && combinedGroup.Contains("CheckPictureModeByGroup"),
+                    "GetAndCheckGroupWithEnergyCommand reads PictureMode, EnergySaving, and CheckPictureModeByGroup");
+
+                var lines = new string[PictureModes.Candidates.Length];
+                for (int i = 0; i < lines.Length; i++) lines[i] = (i == 0 || i == 3 || i == 12) ? "i 1" : "i 0";
+                string sdrChecks = string.Join("\n", lines) + "\n";
+
+                string[] expectedLabels = { "Off", "On", "On", "On" };
+                for (int level = 0; level < 4; level++)
+                {
+                    ChoiceState st = PictureModes.Build("ii 65538 0", sdrChecks);
+                    int modeRows = st.Rows.Count;
+                    PictureModes.AppendEnergySaving(st, "i 1", "ii " + level + " 0");
+                    T.Eq(st.Rows.Count, modeRows + 1, "appends Energy saving row for level " + level);
+                    ChoiceRow row = st.Rows[st.Rows.Count - 1];
+                    T.Eq(row.Label, "Energy saving", "row label");
+                    T.Eq(row.RightText, expectedLabels[level], "right label for level " + level);
+                    T.True(row.DividerAbove, "divider above Energy saving row");
+                    T.True(!row.Active, "Energy saving row is never ticked so toggling stays enabled");
+                    int next = level == 0 ? 3 : 0;
+                    T.Eq(row.Value, PictureModes.EnergySavingBase + next, "next toggled value");
+                    T.Eq(PictureModes.SetCommand(row.Value),
+                        "busctl call org.tizen.tv.avoc /org/tizen/tv/avoc org.tizen.tv.avoc.AvOutputControl SetEnergySaving ii 1 " + next,
+                        "SetCommand emits SetEnergySaving for target level " + next);
+                }
+
+                T.Eq(PictureModes.SetCommand(PictureModes.EnergySavingBase - 1), null, "rejects value below EnergySavingBase");
+                T.Eq(PictureModes.SetCommand(PictureModes.EnergySavingBase + 4), null, "rejects value above High");
+
+                ChoiceState unsupported = PictureModes.Build("ii 65538 0", sdrChecks);
+                int before = unsupported.Rows.Count;
+                PictureModes.AppendEnergySaving(unsupported, "i 0", "ii 0 0");
+                T.Eq(unsupported.Rows.Count, before, "CheckEnergySaving=0 omits row");
+                PictureModes.AppendEnergySaving(unsupported, "i 1", "ii 0 1");
+                T.Eq(unsupported.Rows.Count, before, "non-zero rc from GetEnergySaving omits row");
+                PictureModes.AppendEnergySaving(unsupported, "i 1", "ii 9 0");
+                T.Eq(unsupported.Rows.Count, before, "unknown energy saving level omits row");
+
+                ChoiceState locked = PictureModes.Build("ii 65547 0", sdrChecks);
+                T.True(!locked.Choosable, "Game mode is non-choosable");
+                PictureModes.AppendEnergySaving(locked, "i 1", "ii 3 0");
+                T.Eq(locked.Rows.Count, 1, "locked Picture mode card omits Energy saving row");
+            });
         }
     }
 }
