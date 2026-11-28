@@ -5,7 +5,7 @@
 <p align="center"><strong>Launcher. Debloater. Remapper.<br>The all-in-one TV manager for Samsung Tizen.</strong></p>
 <p align="center">Manage your Samsung TV from a browser, and give it a launcher, a Control center and a live TV screen of its own.</p>
 <p align="center">
-  <a href="#whats-new-in-071">What's new</a> ·
+  <a href="#whats-new-in-073">What's new</a> ·
   <a href="#vetro-ui-preview">Vetro UI</a> ·
   <a href="#debloater">Debloater</a> ·
   <a href="#remapper">Remapper</a> ·
@@ -24,15 +24,14 @@ Vetro runs on your Samsung TV and gives you a dashboard, open from any computer 
   <br><em>The Vetro launcher, rendered from its own code in Vetro's preview.</em>
 </p>
 
-## What's new in 0.7.2
+## What's new in 0.7.3
 
-- **Change channel from Home Assistant.** Send a channel number to the TV from Home Assistant, a script or a voice assistant, and see On or Standby as a sensor.
-- **Keys from the app and scripts reach the tuner and the volume bar.** `/control` and the Remapper's Send key use the same routing as the remote.
-- **TV and HDMI tiles on 2025 Samsung TVs.** The launcher switches inputs again on Tizen 9, and HDMI devices get their own pictures.
-- **Order the Control center cards, and two switches for the Sources page.** Connected sources only, and Hide TV.
-- **Number pad on the remote's own keys** and a faster Home in custom launcher mode.
+- **Home in custom launcher mode no longer flashes Samsung's loader**, and HDMI pictures in WebP show in the dashboard preview.
+- **The Guide key opens only Vetro's guide** while the tuner is on.
+- **The service starts by itself at boot again on Tizen 10.** Not tried on a TV yet.
+- **The screensaver no longer starts over the Dock, the 123 pad or the volume bar**, and the SDB tunnel is sturdier.
 
-See the full [0.7.2 changelog](CHANGELOG.md#072--2026-11-27). Earlier: [0.7.1](CHANGELOG.md#071--2026-11-26).
+See the full [0.7.3 changelog](CHANGELOG.md#073--2026-11-28). Earlier: [0.7.2](CHANGELOG.md#072--2026-11-27), [0.7.1](CHANGELOG.md#071--2026-11-26).
 
 ## What's new in 0.7.0
 
@@ -205,7 +204,7 @@ Vetro is developed on a **Samsung Q80A**. The table also draws on community repo
 | Q70F (2025, Tizen 10) | T-RSLFDEUC-0100-2103.1 | Root connected in a test build |
 | U8000F (2025, Tizen 10) | T-KSU2EFAKUC-0100-2103.1 | Root connected in a test build |
 | QN900F QA65QN900FWXXY (2025, Tizen 10) | T-OSCPFUABC-0100-2103.1 | Root connected after retries in a test build. The launcher was off during the test. Earlier builds failed on this model ([#193](https://github.com/andrearicci93/vetro/issues/193), [#194](https://github.com/andrearicci93/vetro/issues/194)) |
-| QN74F TQ65QN74FATXXC (2025, Tizen 10) · [#340](https://github.com/andrearicci93/vetro/issues/340) | T-PTMFDEUC-0100-2103.1 | Vetro 0.7.1 with a hand-built root package: root connected in 2.4 s and again after a cold boot, the launcher opens on Home, and the Live TV tuner works on an antenna (DVB-T). Channel Guide key (code 130) opened Samsung's guide before 0.7.2 |
+| QN74F TQ65QN74FATXXC (2025, Tizen 10) · [#340](https://github.com/andrearicci93/vetro/issues/340) | T-PTMFDEUC-0100-2103.1 | Vetro 0.7.1 with a hand-built root package: root connected in 2.4 s and again after a cold boot, the launcher opens on Home, and the Live TV tuner works on an antenna (DVB-T). Channel Guide key (code 130) opened Samsung's guide before 0.7.2; 0.7.2 opened both guides, 0.7.3 holds Samsung's back (not tried on this TV) |
 | QN80F (2025, Tizen 10) · [#181](https://github.com/andrearicci93/vetro/issues/181) | 2103.1 | Root stopped connecting with Vetro 0.5.0 after a firmware update. Root is still unconfirmed on this model with 0.7.1 |
 | M70H, M73H, U8000H (2026, Tizen 10) | Varies by model | Earlier builds had service or dashboard reports and root failures. Root remains unconfirmed on these models with 0.7.1 ([#91](https://github.com/andrearicci93/vetro/issues/91), [#140](https://github.com/andrearicci93/vetro/issues/140), [#177](https://github.com/andrearicci93/vetro/issues/177), [#178](https://github.com/andrearicci93/vetro/issues/178)) |
 | LS03B QN75LS03BAFXZA (The Frame, 2022) · [#39](https://github.com/andrearicci93/vetro/issues/39) | T-PTMAKUC-1720.7 | Reported working, the service started by itself after a cold boot; the Launcher was not tried |
@@ -254,7 +253,8 @@ The launcher (`dock/`) and the tuner (`tuner/`) are .NET programs that run on th
 
 Thanks to the people who contributed code and documentation to Vetro (including adapted work whose PR was not merged on GitHub):
 
-- [swiezaczek](https://github.com/swiezaczek): a code review and fixes taken into 0.7.0: keyless remote parts no longer listed, payload folders for later updates, pairing refused to sandboxed pages, Shard isolation in Restore the TV, smaller launcher icons, MQTT topics in place, release checks, the YouTube tile fallback, systemd restarts without waiting, the Channel list hold and Task manager fixes ([#218](https://github.com/andrearicci93/vetro/pull/218), [#227](https://github.com/andrearicci93/vetro/pull/227), [#231](https://github.com/andrearicci93/vetro/pull/231), [#241](https://github.com/andrearicci93/vetro/pull/241), [#243](https://github.com/andrearicci93/vetro/pull/243), [#245](https://github.com/andrearicci93/vetro/pull/245), [#249](https://github.com/andrearicci93/vetro/pull/249), [#258](https://github.com/andrearicci93/vetro/pull/258), [#259](https://github.com/andrearicci93/vetro/pull/259), [#268](https://github.com/andrearicci93/vetro/pull/268), [#270](https://github.com/andrearicci93/vetro/pull/270)).
+- [swiezaczek](https://github.com/swiezaczek): a code review and fixes taken into 0.7.0: keyless remote parts no longer listed, payload folders for later updates, pairing refused to sandboxed pages, Shard isolation in Restore the TV, smaller launcher icons, MQTT topics in place, release checks, the YouTube tile fallback, systemd restarts without waiting, the Channel list hold and Task manager fixes, and in 0.7.3 the screensaver idle reset and a sturdier SDB tunnel ([#218](https://github.com/andrearicci93/vetro/pull/218), [#227](https://github.com/andrearicci93/vetro/pull/227), [#231](https://github.com/andrearicci93/vetro/pull/231), [#241](https://github.com/andrearicci93/vetro/pull/241), [#243](https://github.com/andrearicci93/vetro/pull/243), [#245](https://github.com/andrearicci93/vetro/pull/245), [#249](https://github.com/andrearicci93/vetro/pull/249), [#258](https://github.com/andrearicci93/vetro/pull/258), [#259](https://github.com/andrearicci93/vetro/pull/259), [#268](https://github.com/andrearicci93/vetro/pull/268), [#270](https://github.com/andrearicci93/vetro/pull/270)).
+- [YounessFkhach](https://github.com/YounessFkhach): the Home claim in custom launcher mode, tried on a Tizen 9 TV ([#341](https://github.com/andrearicci93/vetro/pull/341)).
 - [chemicalsno](https://github.com/chemicalsno): the idea and first version of the launcher's Home claim, which keeps Samsung's Home from flashing before the launcher ([#184](https://github.com/andrearicci93/vetro/pull/184)).
 - [genesai](https://github.com/genesai): SVT Play and other HbbTV-link apps open from Vetro ([#211](https://github.com/andrearicci93/vetro/pull/211)), tried on a Samsung The Frame LS03B.
 - [BirikuSistema](https://github.com/BirikuSistema): the input watcher that picks up a Bluetooth remote coming back from standby ([#219](https://github.com/andrearicci93/vetro/issues/219)).
