@@ -18,6 +18,16 @@ var DEVICE_KEY_RE = /^B: KEY=(.*)$/m;
 var NON_ZERO_HEX_RE = /[1-9a-f]/i;
 var KEY_CODE_RE = /^\d{1,3}$/;
 var MAC_HEX_RE = /^[a-f0-9]{64}$/;
+var EVENT_PATH_RE = /^\/dev\/input\/event\d+$/;
+var INPUT_UNIT = 'vetro-input';
+function normalizeExclude(list) {
+    var out = [];
+    if (!Array.isArray(list)) return out;
+    list.forEach(function (name) {
+        if (typeof name === 'string' && name.length > 0 && out.indexOf(name) < 0) out.push(name);
+    });
+    return out;
+}
 function quote(s) { return "'" + String(s).replace(QUOTE_RE, "'\\''") + "'"; }
 function blockHasKeys(block) {
     var key = DEVICE_KEY_RE.exec(block);
@@ -50,19 +60,19 @@ function devices(text) {
 // was asked for, else {reason, connected}: the error that ended it and whether a helper was holding the remote at that moment.
 function Bridge(execute, onEvent, hooks) {
     this.execute = execute; this.onEvent = onEvent; this.current = {mode:'off',connected:false};
-    this.events = []; this.server = null; this.socket = null; this.generation = 0; this.lastError=null; this.cancel=null;
+    this.events = []; this.server = null; this.socket = null; this.generation = 0; this.startSeq = 0; this.lastError=null; this.cancel=null;
     this.hooks = hooks || {};
 }
 function callHook(fn, arg){if(typeof fn==='function'){try{fn(arg);}catch(e){}}}
 Bridge.prototype.inventory = function () {
     return this.execute('cat /proc/bus/input/devices',10000).then(function(r){
-        if (r.exit_code || r.timed_out) throw new Error('input inventory unavailable');
+        if (!r || r.exit_code || r.timed_out) throw new Error('input inventory unavailable');
         return devices(r.stdout);
     });
 };
 Bridge.prototype.status = function () {return {policy:this.current,events:this.events.slice(-30),error:this.lastError};};
 Bridge.prototype.stop = function (reason) {
-    ++this.generation;
+    ++this.generation; ++this.startSeq;
     var cancel=this.cancel, socket=this.socket, server=this.server, connected=!!this.current.connected;
     this.cancel=null; this.socket=null; this.server=null;
     this.current = {mode:'off',connected:false};
@@ -72,19 +82,30 @@ Bridge.prototype.stop = function (reason) {
     callHook(this.hooks.onStop,reason?{reason:reason,connected:connected}:null);
 };
 // list (optional): the device list the caller has just read (restoreInput, Vetro UI), so it is not read a second time.
-Bridge.prototype.start = function (device, mode, tokens, list) {
+Bridge.prototype.start = function (device, mode, tokens, list, options) {
     var self=this;
     if (mode==='off') {self.stop(); return Promise.resolve(self.status());}
-    if (mode!=='observe' && mode!=='filter') return Promise.reject(new Error('invalid input mode'));
+    if (mode!=='observe' && mode!=='filter' && mode!=='capture') return Promise.reject(new Error('invalid input mode'));
     if (!Array.isArray(tokens) || tokens.some(function(t){return !KEY_CODE_RE.test(t) || +t>767;})) return Promise.reject(new Error('invalid input codes'));
     if (mode==='filter' && !tokens.length) return Promise.reject(new Error('save a physical rule before enabling interception'));
-    var requestGeneration=self.generation;
+    var reqSeq=++self.startSeq, requestGeneration=self.generation, allMode=device==='all', exclude=allMode?normalizeExclude(options&&options.exclude):[];
     return (Array.isArray(list) ? Promise.resolve(list) : self.inventory()).then(function(list){
-        if(requestGeneration!==self.generation)throw new Error('input request cancelled');
-        var selected=list.find(function(d){return (d.node===device || d.unique && d.name===device) && d.selectable;});
-        if (!selected) throw new Error('select a unique physical remote device');
+        if(reqSeq!==self.startSeq||requestGeneration!==self.generation)throw new Error('input request cancelled');
+        var selected;
+        if (allMode) {
+            var selectable=list.filter(function(d){return d.selectable && exclude.indexOf(d.name)<0;});
+            if (!selectable.length) throw new Error('no physical remote devices found');
+            selected={name:'all',node:'all',all:true,exclude:exclude,devices:selectable.map(function(d){return {name:d.name,node:d.node};})};
+        } else {
+            selected=list.find(function(d){return (d.node===device || d.unique && d.name===device) && d.selectable;});
+            if (!selected) throw new Error('select a unique physical remote device');
+        }
         self.stop(); self.events=[]; self.lastError=null; var generation=self.generation, secret=crypto.randomBytes(32), nonce=crypto.randomBytes(32), seq=0, authenticated=false;
         self.current={mode:mode,device:selected.name,node:selected.node,connected:false,blocked:mode==='filter'?tokens:[]};
+        if (allMode) {
+            self.current.devices=selected.devices;
+            if (exclude.length) self.current.exclude=exclude;
+        }
         return new Promise(function(resolve,reject){
             var settled=false, timer, server, connection=null;
             function active(){return generation===self.generation && self.server===server;}
@@ -102,7 +123,9 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                     var split;
                     while((split=buffer.indexOf('\n'))>=0){
                         if(!active()||self.socket!==socket){socket.destroy();return;}
-                        var line=buffer.slice(0,split);buffer=buffer.slice(split+1);var last=line.lastIndexOf('\t'), payload=line.slice(0,last), mac=line.slice(last+1);
+                        var line=buffer.slice(0,split);buffer=buffer.slice(split+1);var last=line.lastIndexOf('\t');
+                        if(last<0){fail(new Error('invalid input authentication'));return;}
+                        var payload=line.slice(0,last), mac=line.slice(last+1);
                         var expected=crypto.createHmac('sha256',secret).update(nonce).update(Buffer.from([0])).update(payload).digest();
                         if(!MAC_HEX_RE.test(mac)||!crypto.timingSafeEqual(expected,Buffer.from(mac,'hex'))){fail(new Error('invalid input authentication'));return;}
                         var fields=payload.split('\t');
@@ -114,7 +137,8 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                             try{
                                 if(fields.length!==3||fields[0]!=='EVENT'||+fields[1]!==seq+1)throw new Error('invalid input sequence');
                                 var event=JSON.parse(Buffer.from(fields[2],'base64').toString());
-                                if(event.type!==1||!Number.isInteger(event.code)||event.code<0||event.code>767||event.node!==selected.node||event.device!==selected.name||event.sequence!==+fields[1])throw new Error('invalid input event');
+                                var nodeOk=allMode?(typeof event.node==='string'&&EVENT_PATH_RE.test(event.node)&&typeof event.device==='string'&&event.device.length>0):(event.node===selected.node&&event.device===selected.name);
+                                if(event.type!==1||!Number.isInteger(event.code)||event.code<0||event.code>767||!nodeOk||event.sequence!==+fields[1])throw new Error('invalid input event');
                                 seq=+fields[1];self.events.push(event);if(self.events.length>30)self.events.shift();
                                 self.onEvent(event);
                             }catch(e){fail(e);return;}
@@ -130,16 +154,21 @@ Bridge.prototype.start = function (device, mode, tokens, list) {
                 if(!address){fail(new Error('input listener closed before launch'));return;}
                 var token='/tmp/vetro-input-'+crypto.randomBytes(12).toString('hex')+'.token';
                 var helper=path.join(__dirname,'..','payload','SamsungTvRemoteInputAgent.dll');
-                var args=['127.0.0.1',String(address.port),token,selected.name+'@'+selected.node,'evdev','TV',mode,mode==='filter'?tokens.join(','):''];
+                var deviceArg=allMode?(exclude.length?'*!'+exclude.map(function(n){return Buffer.from(n).toString('base64');}).join(','):'*'):(selected.name+'@'+selected.node);
+                var args=['127.0.0.1',String(address.port),token,deviceArg,'evdev','TV',mode,mode==='filter'?tokens.join(','):''];
+                var isolated=(mode==='filter'||mode==='capture'||allMode);
                 // A filter helper still running from an earlier start (another service run, a bridge that was never told to stop) keeps the
                 // remote grabbed: every new helper then fails EVIOCGRAB with EBUSY and the interception never connects (S95B on 1720.7,
-                // static analysis 2026-11-19). Before a filter start any other filter helper is ended; observers (listen) are left alone.
-                // The pattern does not rely on the argument separators: the Q80A's tr leaves the NULs and the shell drops them.
-                var stale=mode==='filter'?'for d in /proc/[0-9]*; do [ "$(head -c 15 $d/cmdline 2>/dev/null)" = /usr/bin/dotnet ] || continue; case "$(tr \'\\0\' \' \' < $d/cmdline 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*filter*) kill -9 "${d#/proc/}" 2>/dev/null;; esac; done; ':'';
+                // static analysis 2026-11-19). Before a filter/capture/multi-remote start any previous unit/helper is stopped; legacy single observers are left alone.
+                var unitStop=isolated?'systemctl stop --no-block '+INPUT_UNIT+'.service >/dev/null 2>&1; i=0; while [ $i -lt 30 ]; do case "$(systemctl is-active '+INPUT_UNIT+'.service 2>/dev/null)" in active|activating|deactivating|reloading) sleep 0.1; i=$((i+1)) ;; *) break ;; esac; done; systemctl reset-failed '+INPUT_UNIT+'.service >/dev/null 2>&1; ':'';
+                var stale=isolated?'for d in /proc/[0-9]*; do c=; read -r c < "$d/cmdline" 2>/dev/null; case "$c" in /usr/bin/dotnet*) case "$(tr \'\\0\' \' \' < "$d/cmdline" 2>/dev/null)" in *SamsungTvRemoteInputAgent.dll*) kill -9 "${d#/proc/}" 2>/dev/null;; esac;; esac; done; ':'';
+                // Running in its own transient systemd unit (like dock and tuner) keeps the bridge alive across standby instead of dying with sdbd.
+                var runArgs=quote(helper)+' '+args.map(quote).join(' ');
+                var launch=isolated?('systemd-run --unit='+INPUT_UNIT+' --collect -p KillSignal=SIGKILL -p StandardOutput=null -p StandardError=null /bin/sh -c '+quote('exec /usr/bin/dotnet "$@" </dev/null >/tmp/vetro-input.log 2>&1')+' '+INPUT_UNIT+' '+runArgs+' >/dev/null 2>&1 || { nohup /usr/bin/dotnet '+runArgs+' </dev/null >/tmp/vetro-input.log 2>&1 & }'):('nohup /usr/bin/dotnet '+runArgs+' </dev/null >/tmp/vetro-input.log 2>&1 &');
                 // The last helper's words are kept one start longer (vetro-input.prev.log): a helper that ended on its own (the remote went
                 // away, an exception) is followed within seconds by a new start, whose log would otherwise replace them.
-                var command=stale+'umask 077; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; nohup /usr/bin/dotnet '+quote(helper)+' '+args.map(quote).join(' ')+' </dev/null >/tmp/vetro-input.log 2>&1 &';
-                self.execute(command,5000,active).then(function(r){if(r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
+                var command=unitStop+stale+'umask 077; rm -f /tmp/vetro-input-*.token; mv -f /tmp/vetro-input.log /tmp/vetro-input.prev.log 2>/dev/null; printf %s '+quote(secret.toString('base64'))+' > '+quote(token)+'; '+launch;
+                self.execute(command,8000,active).then(function(r){if(!r||r.exit_code||r.timed_out)fail(new Error('input helper launch failed'));}).catch(fail);
             });
         });
     });

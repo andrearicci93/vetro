@@ -109,7 +109,7 @@ class Bridge {
     inventory() { return Promise.resolve(remotes); }
     status() { return {policy: this.current, events: []}; }
     stop() { this.current = {mode: 'off', connected: false}; }
-    async start(device, mode, tokens) { starts.push({device, mode, tokens}); this.current = {mode, connected: true, device: 'Smart Control', node: device}; return this.status(); }
+    async start(device, mode, tokens) { starts.push({device, mode, tokens}); this.current = {mode, connected: true, device: device === 'all' ? 'all' : 'Smart Control', node: device}; return this.status(); }
 }
 function boot() {
     const timers = [];
@@ -170,11 +170,13 @@ function request(service, method, url, body) {
     service = boot(); await service.tick();
     assert.equal(starts.length, count, 'the user’s off stays off');
 
-    // Two remotes: nothing is guessed, the page gets the reason.
+    // Two remotes: Vetro UI intercepts all selectable remotes automatically via 'all'.
     remotes = [{name: 'Smart Control', node: '/dev/input/event5', unique: true, selectable: true}, {name: 'RC Device', node: '/dev/input/event6', unique: true, selectable: true}];
-    assert.equal(await service.context.vetroUiInput(), false);
-    assert.equal(starts.length, count);
+    assert.equal(await service.context.vetroUiInput(), true);
+    assert.equal(starts.length, count + 1);
+    assert.equal(starts.at(-1).device, 'all');
+    assert.deepEqual(JSON.parse(disk).input, {enabled: true, device: 'all', node: 'all', auto: true});
     remap = await request(service, 'GET', '/remap');
-    assert.match(remap.interception.problem, /More than one remote/);
-    console.log('PASS Vetro UI: held keys, conflicts, needs; interception on only on a switch, off again when Vetro UI started it, user off kept');
+    assert.equal(remap.interception.problem, null);
+    console.log('PASS Vetro UI: held keys, conflicts, needs; interception on only on a switch, off again when Vetro UI started it, user off kept, multi-remote all');
 })().catch(e => { console.error(e); process.exit(1); });
